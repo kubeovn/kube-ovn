@@ -93,7 +93,7 @@ func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ov
 	)
 	policyListMap, err := c.batchListLogicalRouterPoliciesByFilter(lrName, policies...)
 	if err != nil {
-		return fmt.Errorf("batch list logical router %s policies %d: %v", lrName, len(policies), err)
+		return fmt.Errorf("batch list logical router %s policies %d: %w", lrName, len(policies), err)
 	}
 
 	for lrp, policyList := range policyListMap {
@@ -270,13 +270,13 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidLi
 	start := time.Now()
 	ops, err := c.LogicalRouterUpdatePolicyOp(lrName, uuidList, ovsdb.MutateOperationDelete)
 	if err != nil {
-		err := fmt.Errorf("generate operations for removing policies '%v' from logical router %s: %v", uuidList, lrName, err)
+		err := fmt.Errorf("generate operations for removing policies '%v' from logical router %s: %w", uuidList, lrName, err)
 		klog.Error(err)
 		return err
 	}
 
 	if err = c.Transact("lr-policy-del", ops); err != nil {
-		err := fmt.Errorf("delete logical router policies '%v' from logical router %s: %v", uuidList, lrName, err)
+		err := fmt.Errorf("delete logical router policies '%v' from logical router %s: %w", uuidList, lrName, err)
 		klog.Error(err)
 		return err
 	}
@@ -567,7 +567,7 @@ func (c *OVNNbClient) batchCreateLogicalRouterPolicies(lrName string, policies [
 		lrps = append(lrps, c.newLogicalRouterPolicy(lrp.Priority, lrp.Match, lrp.Action, lrp.Nexthops, lrp.BFDSessions, lrp.ExternalIDs))
 	}
 	if err := c.CreateLogicalRouterPolicies(lrName, lrps...); err != nil {
-		return fmt.Errorf("failed to batch create policies for router %s: %v", lrName, err)
+		return fmt.Errorf("failed to batch create policies for router %s: %w", lrName, err)
 	}
 	return nil
 }
@@ -579,12 +579,12 @@ func (c *OVNNbClient) batchUpdatetLogicalRouterPolicies(updateMap map[*ovnnb.Log
 		policy.ExternalIDs = lrp.ExternalIDs
 		ops, err := c.Where(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {
-			return fmt.Errorf("failed to generate operations for updating logical router policy: %v", err)
+			return fmt.Errorf("failed to generate operations for updating logical router policy: %w", err)
 		}
 		updateOps = append(updateOps, ops...)
 	}
 	if err := c.Transact("lr-policy-update", updateOps); err != nil {
-		err := fmt.Errorf("failed to batch update logical router policy: %v", err)
+		err := fmt.Errorf("failed to batch update logical router policy: %w", err)
 		klog.Error(err)
 		return err
 	}

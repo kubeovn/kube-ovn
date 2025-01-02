@@ -290,11 +290,11 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticR
 	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, uuids, ovsdb.MutateOperationDelete)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for removing static routes %v from logical router %s: %v", uuids, lrName, err)
+		return fmt.Errorf("generate operations for removing static routes %v from logical router %s: %w", uuids, lrName, err)
 	}
 	if err = c.Transact("lr-route-del", ops); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("delete static routes %v from logical router %s: %v", uuids, lrName, err)
+		return fmt.Errorf("delete static routes %v from logical router %s: %w", uuids, lrName, err)
 	}
 
 	return nil
@@ -506,7 +506,7 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0)
 	if err := c.ovsDbClient.WhereCache(fnFilter).List(ctx, &routeList); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("batch list logical staric router %v lr staric route %v route: %v", staticRoutes, lrStaticRoute, err)
+		return nil, fmt.Errorf("batch list logical staric router %v lr staric route %v route: %w", staticRoutes, lrStaticRoute, err)
 	}
 
 	return routeList, nil

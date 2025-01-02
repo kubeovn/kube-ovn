@@ -157,7 +157,7 @@ func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
 		return exist
 	}).List(ctx, &asList); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("batch delete address set %d list failed: %v", len(asNames), err)
+		return fmt.Errorf("batch delete address set %d list failed: %w", len(asNames), err)
 	}
 
 	// not found, skip
@@ -172,11 +172,11 @@ func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
 	op, err := c.Where(modelList...).Delete()
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("batch delete address set %d op failed: %v", len(asList), err)
+		return fmt.Errorf("batch delete address set %d op failed: %w", len(asList), err)
 	}
 
 	if err := c.Transact("as-del", op); err != nil {
-		return fmt.Errorf("batch delete address set %d failed: %v", len(asList), err)
+		return fmt.Errorf("batch delete address set %d failed: %w", len(asList), err)
 	}
 
 	return nil
