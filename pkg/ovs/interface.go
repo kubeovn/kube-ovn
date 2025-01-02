@@ -162,8 +162,8 @@ type ACL interface {
 	SetACLLog(pgName string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
-	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
-	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
+	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error
+	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error)
 	UpdateAnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error)
 }
 
