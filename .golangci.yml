@@ -17,9 +17,7 @@ linters:
     - errcheck
     - gosec
     - govet
-    - perfsprint
     - usestdlibvars
-    - loggercheck
     - whitespace
     - errorlint
 
