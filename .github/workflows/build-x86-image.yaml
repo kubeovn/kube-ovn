@@ -1028,11 +1028,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create the default branch directory
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         run: mkdir -p test/e2e/source
 
       - name: Check out the default branch
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref || github.ref_name }}
@@ -1041,11 +1039,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
-            echo "E2E_DIR=." >> "$GITHUB_ENV"
-          else
-            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
-          fi
+          echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
         id: setup-go
@@ -1217,11 +1211,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create the default branch directory
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         run: mkdir -p test/e2e/source
 
       - name: Check out the default branch
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
@@ -1230,11 +1222,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
-            echo "E2E_DIR=." >> "$GITHUB_ENV"
-          else
-            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
-          fi
+          echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
         id: setup-go
