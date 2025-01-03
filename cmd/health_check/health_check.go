@@ -15,6 +15,7 @@ import (
 func CmdMain() {
 	port := pflag.Int32("port", 0, "Target port")
 	tls := pflag.Bool("tls", false, "Dial the server with TLS")
+	enableMetrics := pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -46,7 +47,7 @@ func CmdMain() {
 	}
 
 	addr := util.JoinHostPort(ip, *port)
-	if *tls {
+	if *enableMetrics && *tls {
 		addr = "tls://" + addr
 	} else {
 		addr = "tcp://" + addr

@@ -80,15 +80,36 @@ func CmdMain() {
 			}()
 		}
 
-		if !config.EnableMetrics {
-			return
+		if config.EnableMetrics {
+			metrics.InitKlogMetrics()
+			metrics.InitClientGoMetrics()
+			addr := util.JoinHostPort(metricsAddr, config.PprofPort)
+			if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer); err != nil {
+				util.LogFatalAndExit(err, "failed to run metrics server")
+			}
+		} else {
+			klog.Info("metrics server is disabled")
+			listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddr), Port: int(config.PprofPort)})
+			if err != nil {
+				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddr, config.PprofPort))
+			}
+			svr := manager.Server{
+				Name: "health-check",
+				Server: &http.Server{
+					Handler:           http.NewServeMux(),
+					MaxHeaderBytes:    1 << 20,
+					IdleTimeout:       90 * time.Second,
+					ReadHeaderTimeout: 32 * time.Second,
+				},
+				Listener: listerner,
+			}
+			go func() {
+				if err = svr.Start(ctx); err != nil {
+					util.LogFatalAndExit(err, "failed to run health check server")
+				}
+			}()
 		}
-		metrics.InitKlogMetrics()
-		metrics.InitClientGoMetrics()
-		addr := util.JoinHostPort(metricsAddr, config.PprofPort)
-		if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer); err != nil {
-			util.LogFatalAndExit(err, "failed to run metrics server")
-		}
+
 		<-ctx.Done()
 	}()
 

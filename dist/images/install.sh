@@ -22,6 +22,7 @@ ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
+ENABLE_METRICS=${ENABLE_METRICS:-true}
 # comma-separated string of nodelocal DNS ip addresses
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
@@ -4182,6 +4183,7 @@ spec:
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
+          - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --secure-serving=${SECURE_SERVING}
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
@@ -4240,6 +4242,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10660
                 - --tls=${SECURE_SERVING}
+                - --enable-metrics=$ENABLE_METRICS
             periodSeconds: 3
             timeoutSeconds: 5
           livenessProbe:
@@ -4248,6 +4251,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10660
                 - --tls=${SECURE_SERVING}
+                - --enable-metrics=$ENABLE_METRICS
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
@@ -4342,6 +4346,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
@@ -4422,6 +4427,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
+              - --enable-metrics=$ENABLE_METRICS
           timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
@@ -4432,6 +4438,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls=${SECURE_SERVING}
+              - --enable-metrics=$ENABLE_METRICS
           timeoutSeconds: 5
         resources:
           requests:
@@ -4523,6 +4530,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
@@ -4653,6 +4661,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           securityContext:
             runAsUser: 0
             privileged: false
@@ -4717,6 +4726,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
+                - --enable-metrics=$ENABLE_METRICS
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
@@ -4728,6 +4738,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls=${SECURE_SERVING}
+                - --enable-metrics=$ENABLE_METRICS
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
