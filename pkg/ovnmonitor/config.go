@@ -44,7 +44,7 @@ type Configuration struct {
 	ServiceNorthdFilePidPath        string
 	EnableMetrics                   bool
 	SecureServing                   bool
-	PprofPort                       int32
+	MetricsPort                     int32
 }
 
 // ParseFlags get parameters information.
@@ -54,7 +54,7 @@ func ParseFlags() (*Configuration, error) {
 		argPollInterval  = pflag.Int("ovs.poll-interval", 30, "The minimum interval (in seconds) between collections from OVN server.")
 		argEnableMetrics = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argSecureServing = pflag.Bool("secure-serving", false, "Whether to serve metrics securely")
-		argPprofPort     = pflag.Int32("pprof-port", 10661, "The port to get profiling data")
+		argMetricsPort   = pflag.Int32("metrics-port", 10661, "The port to get metrics data")
 
 		argSystemRunDir                    = pflag.String("system.run.dir", "/var/run/openvswitch", "OVS default run directory.")
 		argDatabaseVswitchName             = pflag.String("database.vswitch.name", "Open_vSwitch", "The name of OVS db.")
@@ -143,7 +143,7 @@ func ParseFlags() (*Configuration, error) {
 		ServiceNorthdFilePidPath:        *argServiceNorthdFilePidPath,
 		EnableMetrics:                   *argEnableMetrics,
 		SecureServing:                   *argSecureServing,
-		PprofPort:                       *argPprofPort,
+		MetricsPort:                     *argMetricsPort,
 	}
 
 	klog.Infof("ovn monitor config is %+v", config)

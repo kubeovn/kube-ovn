@@ -41,15 +41,15 @@ func CmdMain() {
 			go exporter.TryClientConnection()
 		}
 		exporter.StartOvnMetrics()
-		addr := util.JoinHostPort(metricsAddr, config.PprofPort)
+		addr := util.JoinHostPort(metricsAddr, config.MetricsPort)
 		if err = metrics.Run(ctx, nil, addr, config.SecureServing, false); err != nil {
 			util.LogFatalAndExit(err, "failed to run metrics server")
 		}
 	} else {
 		klog.Info("metrics server is disabled")
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(util.GetDefaultListenAddr()), Port: int(config.PprofPort)})
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(util.GetDefaultListenAddr()), Port: int(config.MetricsPort)})
 		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddr, config.PprofPort))
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddr, config.MetricsPort))
 		}
 		svr := manager.Server{
 			Name: "health-check",
@@ -63,7 +63,7 @@ func CmdMain() {
 		}
 		go func() {
 			if err = svr.Start(ctx); err != nil {
-				util.LogFatalAndExit(err, "failed to run metrics server")
+				util.LogFatalAndExit(err, "failed to run health check server")
 			}
 		}()
 	}

@@ -171,7 +171,7 @@ func main() {
 		}
 		go func() {
 			if err = svr.Start(ctx); err != nil {
-				util.LogFatalAndExit(err, "failed to run metrics server")
+				util.LogFatalAndExit(err, "failed to run health check server")
 			}
 		}()
 	}
