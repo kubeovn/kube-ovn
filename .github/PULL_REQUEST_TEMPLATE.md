@@ -5,7 +5,7 @@
 ## What type of this PR
 
 Examples of user facing changes:
-<!-- 
+<!--
 Select one or more options that fit this PR.
 -->
 
@@ -14,7 +14,7 @@ Select one or more options that fit this PR.
 - Docs
 - Tests
 
-<!-- 
+<!--
 Describe your changes here, ideally you can get that description straight from your descriptive commit message(s)!
 -->
 
