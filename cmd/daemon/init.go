@@ -9,11 +9,12 @@ import (
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
-	geneveLinkName = "genev_sys_6081"
-	vxlanLinkName  = "vxlan_sys_4789"
+	geneveLinkName = util.GeneveNic
+	vxlanLinkName  = util.VxlanNic
 )
 
 func printCaps() {
