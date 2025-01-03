@@ -771,13 +771,13 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 		return nil
 	}
 	start := time.Now()
-	lrps := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
+	routerPolicies := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
 	for _, policy := range policies {
 		var nextHops []string
 		if policy.NextHopIP != "" {
 			nextHops = strings.Split(policy.NextHopIP, ",")
 		}
-		lrps = append(lrps, &ovnnb.LogicalRouterPolicy{
+		routerPolicies = append(routerPolicies, &ovnnb.LogicalRouterPolicy{
 			Priority:    policy.Priority,
 			Nexthops:    nextHops,
 			Action:      string(policy.Action),
@@ -786,7 +786,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 		})
 	}
 
-	if err := c.OVNNbClient.BatchAddLogicalRouterPolicy(name, lrps...); err != nil {
+	if err := c.OVNNbClient.BatchAddLogicalRouterPolicy(name, routerPolicies...); err != nil {
 		klog.Errorf("batch add policy route to vpc %s failed, %v", name, err)
 		return err
 	}
@@ -830,15 +830,15 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 	)
 
 	start := time.Now()
-	lrps := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
+	routerPolicies := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
 	for _, policy := range policies {
-		lrps = append(lrps, &ovnnb.LogicalRouterPolicy{
+		routerPolicies = append(routerPolicies, &ovnnb.LogicalRouterPolicy{
 			Priority: policy.Priority,
 			Match:    policy.Match,
 		})
 	}
 
-	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, lrps); err != nil {
+	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))
