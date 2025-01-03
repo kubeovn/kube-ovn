@@ -190,6 +190,10 @@ func (c *OVNNbClient) DeleteLogicalRouterPolicy(lrName string, priority int, mat
 
 // DeleteLogicalRouterPolicy delete policy from logical router
 func (c *OVNNbClient) BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error {
+	if len(logicalRouteRolicies) == 0 {
+		return nil
+	}
+
 	policyListMap, err := c.batchListLogicalRouterPoliciesByFilter(lrName, logicalRouteRolicies...)
 	if err != nil {
 		klog.Error(err)

@@ -831,6 +831,24 @@ func (suite *OvnClientTestSuite) testBatchDeleteLogicalRouterPolicy() {
 	require.Len(t, policyList, 1)
 	require.Contains(t, lr.Policies, policyList[0].UUID)
 
+	t.Run("no err when delete nil router policy", func(t *testing.T) {
+		lr, err := nbClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, policyList, 1)
+		require.Contains(t, lr.Policies, policyList[0].UUID)
+
+		err = nbClient.BatchDeleteLogicalRouterPolicy(lrName, []*ovnnb.LogicalRouterPolicy{})
+		require.NoError(t, err)
+
+		policyList, err = nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, policyList, 1)
+		require.Contains(t, lr.Policies, policyList[0].UUID)
+	})
+
 	t.Run("no err when delete existent logical router policy", func(t *testing.T) {
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
