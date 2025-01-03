@@ -206,6 +206,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
+              - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           timeoutSeconds: 5
         livenessProbe:
           failureThreshold: 3
@@ -217,6 +218,7 @@ spec:
               - /kube-ovn/kube-ovn-healthcheck
               - --port=10665
               - --tls={{- .Values.func.SECURE_SERVING }}
+              - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           timeoutSeconds: 5
         resources:
           requests:

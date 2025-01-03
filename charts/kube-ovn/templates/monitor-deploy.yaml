@@ -67,6 +67,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file_max_size=200
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
@@ -130,6 +131,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls={{- .Values.func.SECURE_SERVING }}
+                - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
@@ -141,6 +143,7 @@ spec:
                 - /kube-ovn/kube-ovn-healthcheck
                 - --port=10661
                 - --tls={{- .Values.func.SECURE_SERVING }}
+                - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"

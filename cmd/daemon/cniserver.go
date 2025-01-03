@@ -29,9 +29,6 @@ import (
 func main() {
 	defer klog.Flush()
 
-	daemon.InitMetrics()
-	metrics.InitKlogMetrics()
-
 	config := daemon.ParseFlags()
 	klog.Info(versions.String())
 
@@ -149,10 +146,36 @@ func main() {
 		}()
 	}
 
-	listenAddr := util.JoinHostPort(addr, config.PprofPort)
-	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
-		util.LogFatalAndExit(err, "failed to run metrics server")
+	if config.EnableMetrics {
+		daemon.InitMetrics()
+		metrics.InitKlogMetrics()
+		listenAddr := util.JoinHostPort(addr, config.PprofPort)
+		if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
+			util.LogFatalAndExit(err, "failed to run metrics server")
+		}
+	} else {
+		klog.Info("metrics server is disabled")
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addr), Port: int(config.PprofPort)})
+		if err != nil {
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(addr, config.PprofPort))
+		}
+		svr := manager.Server{
+			Name: "health-check",
+			Server: &http.Server{
+				Handler:           http.NewServeMux(),
+				MaxHeaderBytes:    1 << 20,
+				IdleTimeout:       90 * time.Second,
+				ReadHeaderTimeout: 32 * time.Second,
+			},
+			Listener: listerner,
+		}
+		go func() {
+			if err = svr.Start(ctx); err != nil {
+				util.LogFatalAndExit(err, "failed to run health check server")
+			}
+		}()
 	}
+
 	<-stopCh
 }
 
