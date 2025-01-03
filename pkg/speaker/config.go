@@ -58,6 +58,7 @@ type Configuration struct {
 	EbgpMultihopTTL             uint8
 	ExtendedNexthop             bool
 	NatGwMode                   bool
+	EnableMetrics               bool
 
 	NodeName       string
 	KubeConfigFile string
@@ -90,6 +91,7 @@ func ParseFlags() (*Configuration, error) {
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
 		argExtendedNexthop             = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
 		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
+		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -155,6 +157,7 @@ func ParseFlags() (*Configuration, error) {
 		EbgpMultihopTTL:             *argEbgpMultihopTTL,
 		ExtendedNexthop:             *argExtendedNexthop,
 		NatGwMode:                   *argNatGwMode,
+		EnableMetrics:               *argEnableMetrics,
 	}
 
 	if *argNeighborAddress != "" {

@@ -28,9 +28,11 @@ func CmdMain() {
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		metrics.InitKlogMetrics()
-		if err = metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.PprofPort), false, false); err != nil {
-			util.LogFatalAndExit(err, "failed to run metrics server")
+		if config.EnableMetrics {
+			metrics.InitKlogMetrics()
+			if err = metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.PprofPort), false, false); err != nil {
+				util.LogFatalAndExit(err, "failed to run metrics server")
+			}
 		}
 		<-ctx.Done()
 	}()
