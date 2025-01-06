@@ -573,6 +573,7 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	// set default nic bandwidth
+	//  ovsIngress and ovsEgress are derived from the pod's egress and ingress rate annotations respectively, their roles are reversed from the OVS interface perspective.
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 	ovsIngress := pod.Annotations[util.EgressRateAnnotation]
 	ovsEgress := pod.Annotations[util.IngressRateAnnotation]
