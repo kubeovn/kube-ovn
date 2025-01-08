@@ -1325,45 +1325,55 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
+
+	usingIPv4Nums := len(podUsedIPs.Items)
+	usingIPv6Nums := len(podUsedIPs.Items)
+	for _, podUsedIP := range podUsedIPs.Items {
+		for _, excludeIP := range v4ExcludeIps {
+			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) {
+				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+				usingIPv4Nums--
+				break
+			}
+		}
+		for _, excludeIP := range v6ExcludeIps {
+			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+				usingIPv6Nums--
+				break
+			}
+		}
+	}
+
 	// gateway always in excludeIPs
 	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
 	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
 	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-	v4UsingIPs := make([]string, 0, len(podUsedIPs.Items))
-	v6UsingIPs := make([]string, 0, len(podUsedIPs.Items))
-	for _, podUsedIP := range podUsedIPs.Items {
-		// The format of podUsedIP.Spec.IPAddress is 10.244.0.0/16,fd00:10:244::/64 when protocol is dualstack
-		splitIPs := strings.Split(podUsedIP.Spec.IPAddress, ",")
-		v4toSubIPs = append(v4toSubIPs, splitIPs[0])
-		v4UsingIPs = append(v4UsingIPs, splitIPs[0])
-		if len(splitIPs) == 2 {
-			v6toSubIPs = append(v6toSubIPs, splitIPs[1])
-			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
-		}
-	}
-	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
+	usingIPv4 := float64(usingIPv4Nums)
+	usingIPv6 := float64(usingIPv6Nums)
+
+	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs) - usingIPv4
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
+	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs) - usingIPv6
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
 
 	if subnet.Status.V4AvailableIPs == v4availableIPs &&
 		subnet.Status.V6AvailableIPs == v6availableIPs &&
-		subnet.Status.V4UsingIPs == float64(len(v4UsingIPs)) &&
-		subnet.Status.V6UsingIPs == float64(len(v6UsingIPs)) {
+		subnet.Status.V4UsingIPs == usingIPv4 &&
+		subnet.Status.V6UsingIPs == usingIPv6 {
 		return nil
 	}
 
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
-	subnet.Status.V6UsingIPs = float64(len(v6UsingIPs))
-
+	subnet.Status.V4UsingIPs = usingIPv4
+	subnet.Status.V6UsingIPs = usingIPv6
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		return err
@@ -1383,16 +1393,25 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
+
+	usingIPNums := len(podUsedIPs.Items)
+	for _, podUsedIP := range podUsedIPs.Items {
+		for _, excludeIP := range subnet.Spec.ExcludeIps {
+			if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
+				// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
+				usingIPNums--
+				break
+			}
+		}
+	}
+
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-	for _, podUsedIP := range podUsedIPs.Items {
-		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
-	}
-	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
+	usingIPs := float64(usingIPNums)
+	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs) - usingIPs
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
-	usingIPs := float64(len(podUsedIPs.Items))
 	cachedFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
