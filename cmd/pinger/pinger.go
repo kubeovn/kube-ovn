@@ -17,7 +17,7 @@ import (
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 	pinger.InitPingerMetrics()
 	util.InitKlogMetrics()
 	config, err := pinger.ParseFlags()

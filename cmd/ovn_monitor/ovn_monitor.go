@@ -19,7 +19,7 @@ import (
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 	config, err := ovn.ParseFlags()
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")

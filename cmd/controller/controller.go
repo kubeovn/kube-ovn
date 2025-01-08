@@ -26,7 +26,7 @@ func CmdMain() {
 	defer klog.Flush()
 
 	stopCh := signals.SetupSignalHandler()
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	controller.InitClientGoMetrics()
 	controller.InitWorkQueueMetrics()
