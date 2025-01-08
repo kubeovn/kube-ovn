@@ -304,7 +304,9 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
 		framework.ExpectIPInCIDR(ip, cidr)
 		framework.ExpectIPInCIDR(gateway, cidr)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		}
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
@@ -437,7 +439,9 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
 		framework.ExpectIPInCIDR(ip, cidr)
 		framework.ExpectIPInCIDR(gateway, cidr)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		}
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
