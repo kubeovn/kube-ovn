@@ -993,59 +993,61 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
-	var subnet *kubeovnv1.Subnet
-	var err error
-	// 1. check annotation subnet
-	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
-	if lsExist {
-		subnet, err = c.subnetsLister.Get(lsName)
+	// check pod annotations
+	if lsName := pod.Annotations[util.LogicalSwitchAnnotation]; lsName != "" {
+		subnet, err := c.subnetsLister.Get(lsName)
 		if err != nil {
-			klog.Errorf("failed to get subnet %v", err)
+			klog.Errorf("failed to get subnet %s: %v", lsName, err)
 			return nil, err
 		}
-	} else {
-		ns, err := c.namespacesLister.Get(pod.Namespace)
-		if err != nil {
-			klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
-			return nil, err
-		}
-		if ns.Annotations == nil {
-			err = fmt.Errorf("namespace %s network annotations is nil", pod.Namespace)
+		return subnet, nil
+	}
+
+	ns, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
+		return nil, err
+	}
+	if len(ns.Annotations) == 0 {
+		err = fmt.Errorf("namespace %s network annotations is empty", ns.Name)
+		klog.Error(err)
+		return nil, err
+	}
+
+	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+	for _, subnetName := range strings.Split(subnetNames, ",") {
+		if subnetName == "" {
+			err = fmt.Errorf("namespace %s default logical switch is not found", ns.Name)
 			klog.Error(err)
 			return nil, err
 		}
-
-		subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
-		for _, subnetName := range strings.Split(subnetNames, ",") {
-			if subnetName == "" {
-				err = fmt.Errorf("namespace %s default logical switch is not found", pod.Namespace)
-				klog.Error(err)
-				return nil, err
-			}
-			subnet, err = c.subnetsLister.Get(subnetName)
-			if err != nil {
-				klog.Errorf("failed to get subnet %v", err)
-				return nil, err
-			}
-
-			switch subnet.Spec.Protocol {
-			case kubeovnv1.ProtocolIPv4:
-				fallthrough
-			case kubeovnv1.ProtocolDual:
-				if subnet.Status.V4AvailableIPs == 0 {
-					klog.V(3).Infof("there's no available ips for subnet %v, try next subnet", subnet.Name)
-					continue
-				}
-			case kubeovnv1.ProtocolIPv6:
-				if subnet.Status.V6AvailableIPs == 0 {
-					klog.Infof("there's no available ips for subnet %v, try next subnet", subnet.Name)
-					continue
-				}
-			}
-			break
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+			return nil, err
 		}
+
+		switch subnet.Spec.Protocol {
+		case kubeovnv1.ProtocolDual:
+			if subnet.Status.V6AvailableIPs == 0 {
+				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
+				continue
+			}
+			fallthrough
+		case kubeovnv1.ProtocolIPv4:
+			if subnet.Status.V4AvailableIPs == 0 {
+				klog.Infof("there's no available ipv4 address in subnet %s, try next one", subnet.Name)
+				continue
+			}
+		case kubeovnv1.ProtocolIPv6:
+			if subnet.Status.V6AvailableIPs == 0 {
+				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
+				continue
+			}
+		}
+		return subnet, nil
 	}
-	return subnet, nil
+	return nil, ipam.ErrNoAvailable
 }
 
 func loadNetConf(bytes []byte) (*multustypes.DelegateNetConf, error) {
