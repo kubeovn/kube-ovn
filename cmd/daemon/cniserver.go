@@ -27,7 +27,7 @@ import (
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 	daemon.InitMetrics()
 	util.InitKlogMetrics()
 

@@ -177,7 +177,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 
 	op := "replace"
-	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
+	if len(namespace.Annotations) == 0 {
 		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {

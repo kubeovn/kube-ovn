@@ -37,7 +37,7 @@ func init() {
 
 func main() {
 	var port int
-	klog.Infof(versions.String())
+	klog.Info(versions.String())
 
 	port = *pflag.Int("port", 8443, "The port webhook listen on.")
 

@@ -374,7 +374,7 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
@@ -484,7 +484,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 		"add", "bridge", "br-int", "mirrors", "@m")
 	if err != nil {
 		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 	return configureMirrorLink(portName, mtu)
 }
@@ -498,7 +498,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 		"add", "bridge", "br-int", "mirrors", "@m")
 	if err != nil {
 		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 	return configureMirrorLink(portName, mtu)
 }
