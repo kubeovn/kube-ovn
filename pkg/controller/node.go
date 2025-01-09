@@ -549,31 +549,32 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 	for _, subnet := range subnetList {
 		if (subnet.Spec.Vlan != "" && (subnet.Spec.U2OInterconnection || !subnet.Spec.LogicalGateway)) ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
+			subnet.Name == c.config.NodeSwitch ||
 			subnet.Spec.GatewayNode == "" ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
 			!subnet.Spec.EnableEcmp {
 			continue
 		}
+		gwNodes := strings.Split(subnet.Spec.GatewayNode, ",")
+		if len(gwNodes) < 2 {
+			continue
+		}
 
-		for _, node := range nodes {
-			ipStr := node.Annotations[util.IPAddressAnnotation]
-			for _, ip := range strings.Split(ipStr, ",") {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
+			if err != nil {
+				klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
+				continue
+			}
+			for _, node := range nodes {
+				ipStr := node.Annotations[util.IPAddressAnnotation]
+				for _, ip := range strings.Split(ipStr, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
 						continue
 					}
 
-					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-						break
-					}
-					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-						break
-					}
-
+					exist := nameIPMap[node.Name] == ip
 					if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 						pinger, err := goping.NewPinger(ip)
 						if err != nil {
@@ -864,18 +865,6 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int) (*strset.Set
 	return strset.New(policyList[0].Nexthops...), policyList[0].ExternalIDs, nil
 }
 
-func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int) (bool, error) {
-	_, nameIPMap, err := c.getPolicyRouteParas(cidr, priority)
-	if err != nil {
-		klog.Errorf("failed to get policy route paras, %v", err)
-		return false, err
-	}
-	if nodeIP, ok := nameIPMap[nodeName]; ok && nodeIP == nexthop {
-		return true, nil
-	}
-	return false, nil
-}
-
 func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -981,20 +970,16 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 						continue
 					}
-					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-						continue
-					}
-					if exist {
-						continue
-					}
 
 					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
 					}
+					if nameIPMap[nodeName] == nextHop {
+						continue
+					}
+
 					nextHops.Add(nextHop)
 					if nameIPMap == nil {
 						nameIPMap = make(map[string]string, 1)
