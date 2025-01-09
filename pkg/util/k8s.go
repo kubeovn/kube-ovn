@@ -1,7 +1,9 @@
 package util
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -168,4 +171,32 @@ func DeploymentIsReady(deployment *appsv1.Deployment) bool {
 		return false
 	}
 	return true
+}
+
+func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string, status v1.ConditionStatus, reason, message string) error {
+	now := metav1.NewTime(time.Now())
+	patch := map[string]map[string][]v1.NodeCondition{
+		"status": {
+			"conditions": []v1.NodeCondition{{
+				Type:               v1.NodeNetworkUnavailable,
+				Status:             status,
+				Reason:             reason,
+				Message:            message,
+				LastTransitionTime: now,
+				LastHeartbeatTime:  now,
+			}},
+		},
+	}
+	data, err := json.Marshal(patch)
+	if err != nil {
+		klog.Errorf("failed to marshal patch data: %v", err)
+		return err
+	}
+
+	if _, err = cs.CoreV1().Nodes().PatchStatus(context.Background(), nodeName, data); err != nil {
+		klog.Errorf("failed to patch node %s: %v", nodeName, err)
+		return err
+	}
+
+	return nil
 }
