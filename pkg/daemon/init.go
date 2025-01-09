@@ -94,7 +94,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 
 	ipAddr = util.GetIpAddrWithMask(ip, cidr)
-	return configureNodeNic(portName, ipAddr, gw, cidr, mac, config.MTU)
+	return configureNodeNic(config.KubeClient, config.NodeName, portName, ipAddr, gw, cidr, mac, config.MTU)
 }
 
 func InitMirror(config *Configuration) error {

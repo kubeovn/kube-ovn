@@ -19,6 +19,8 @@ import (
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -366,7 +368,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	return nil
 }
 
-func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int) error {
+func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int) error {
 	ipStr := util.GetIpWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -443,12 +445,21 @@ func configureNodeNic(portName, ip, gw, joinCIDR string, macAddr net.HardwareAdd
 	}
 
 	// ping ovn0 gw to activate the flow
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
+	klog.Info("wait ovn0 gw ready")
+	status := corev1.ConditionFalse
+	reason := "JoinSubnetGatewayReachable"
+	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
-		return err
+		status = corev1.ConditionTrue
+		reason = "JoinSubnetGatewayUnreachable"
+		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
+	}
+	if err := util.SetNodeNetworkUnavailableCondition(cs, nodeName, status, reason, message); err != nil {
+		klog.Errorf("failed to set node network unavailable condition: %v", err)
 	}
 
-	return nil
+	return err
 }
 
 // If OVS restart, the ovn0 port will down and prevent host to pod network,
@@ -470,7 +481,31 @@ func (c *Controller) loopOvn0Check() {
 	}
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
+	status := corev1.ConditionFalse
+	reason := "JoinSubnetGatewayReachable"
+	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
+		klog.Errorf("failed to init ovn0 check: %v", err)
+		status = corev1.ConditionTrue
+		reason = "JoinSubnetGatewayUnreachable"
+		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
+	}
+
+	var alreadySet bool
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeNetworkUnavailable && condition.Status == corev1.ConditionTrue &&
+			condition.Reason == reason && condition.Message == message {
+			alreadySet = true
+			break
+		}
+	}
+	if !alreadySet {
+		if err := util.SetNodeNetworkUnavailableCondition(c.config.KubeClient, c.config.NodeName, status, reason, message); err != nil {
+			klog.Errorf("failed to set node network unavailable condition: %v", err)
+		}
+	}
+
+	if err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }

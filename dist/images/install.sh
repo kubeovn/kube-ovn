@@ -1456,6 +1456,7 @@ rules:
       - pods/exec
       - namespaces
       - nodes
+      - nodes/status
       - configmaps
     verbs:
       - create
