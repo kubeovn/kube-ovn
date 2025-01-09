@@ -1,7 +1,9 @@
 package util
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -9,8 +11,10 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
 
@@ -115,4 +119,32 @@ func LabelSelectorNotEmpty(key string) (labels.Selector, error) {
 
 func GetTruncatedUID(uid string) string {
 	return uid[len(uid)-12:]
+}
+
+func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string, status v1.ConditionStatus, reason, message string) error {
+	now := metav1.NewTime(time.Now())
+	patch := map[string]map[string][]v1.NodeCondition{
+		"status": {
+			"conditions": []v1.NodeCondition{{
+				Type:               v1.NodeNetworkUnavailable,
+				Status:             status,
+				Reason:             reason,
+				Message:            message,
+				LastTransitionTime: now,
+				LastHeartbeatTime:  now,
+			}},
+		},
+	}
+	data, err := json.Marshal(patch)
+	if err != nil {
+		klog.Errorf("failed to marshal patch data: %v", err)
+		return err
+	}
+
+	if _, err = cs.CoreV1().Nodes().PatchStatus(context.Background(), nodeName, data); err != nil {
+		klog.Errorf("failed to patch node %s: %v", nodeName, err)
+		return err
+	}
+
+	return nil
 }

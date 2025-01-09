@@ -3287,6 +3287,7 @@ rules:
       - ovn-eips
       - ovn-eips/status
       - nodes
+      - nodes/status
       - pods
     verbs:
       - get
