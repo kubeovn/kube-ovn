@@ -9,7 +9,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.1.2
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
-	github.com/containerd/containerd v1.7.22
+	github.com/containerd/containerd v1.7.25
 	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.6.0
 	github.com/docker/docker v27.4.1+incompatible
@@ -87,9 +87,9 @@ require (
 	github.com/chai2010/gettext-go v1.0.2 // indirect
 	github.com/container-storage-interface/spec v1.9.0 // indirect
 	github.com/containerd/cgroups/v3 v3.0.3 // indirect
-	github.com/containerd/containerd/api v1.7.19 // indirect
-	github.com/containerd/continuity v0.4.3 // indirect
-	github.com/containerd/errdefs v0.1.0 // indirect
+	github.com/containerd/containerd/api v1.8.0 // indirect
+	github.com/containerd/continuity v0.4.4 // indirect
+	github.com/containerd/errdefs v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.5 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
