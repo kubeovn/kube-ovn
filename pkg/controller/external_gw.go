@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -48,7 +49,7 @@ func (c *Controller) resyncExternalGateway() {
 		return
 	}
 
-	if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
+	if exGwEnabled == "true" && lastExGwCM != nil && maps.Equal(cm.Data, lastExGwCM) {
 		return
 	}
 	klog.Infof("last external gw configmap: %v", lastExGwCM)

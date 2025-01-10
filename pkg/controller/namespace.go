@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"reflect"
+	"maps"
 	"slices"
 	"strings"
 
@@ -45,7 +45,7 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
 		return
 	}
 
-	if !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
+	if !maps.Equal(oldNs.Labels, newNs.Labels) {
 		if c.config.EnableNP {
 			oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 			newNp := c.namespaceMatchNetworkPolicies(newNs)

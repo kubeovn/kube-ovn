@@ -3,9 +3,10 @@ package ovn_ic_controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
-	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -123,12 +124,11 @@ func (c *Controller) DeleteICResources(azName string) error {
 }
 
 func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
-	isCMEqual := reflect.DeepEqual(cmData, lastcmData)
 	if icEnabled != "true" && len(lastcmData) == 0 && cmData["enable-ic"] == "true" {
 		return icFirstEstablish
 	}
 
-	if icEnabled == "true" && lastcmData != nil && isCMEqual {
+	if icEnabled == "true" && lastcmData != nil && maps.Equal(cmData, lastcmData) {
 		var err error
 		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cmData["ic-db-host"], cmData["ic-nb-port"])
 		curTSs, err = c.ovnLegacyClient.GetTs()
@@ -136,8 +136,7 @@ func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 			klog.Errorf("failed to get Transit_Switch, %v", err)
 			return icNoAction
 		}
-		isTsEqual := reflect.DeepEqual(lastTSs, curTSs)
-		if isTsEqual {
+		if slices.Equal(lastTSs, curTSs) {
 			return icNoAction
 		}
 	}

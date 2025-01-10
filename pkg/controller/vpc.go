@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"reflect"
@@ -49,12 +50,12 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 	newVpc := newObj.(*kubeovnv1.Vpc)
 
 	if !newVpc.DeletionTimestamp.IsZero() ||
-		!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+		!slices.Equal(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
-		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) ||
-		!reflect.DeepEqual(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
+		!maps.Equal(oldVpc.Annotations, newVpc.Annotations) ||
+		!slices.Equal(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
 		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
@@ -580,7 +581,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				sort.Strings(vpc.Spec.ExtraExternalSubnets)
 			}
 			// add external subnets only in spec and delete external subnets only in status
-			if !reflect.DeepEqual(vpc.Spec.ExtraExternalSubnets, vpc.Status.ExtraExternalSubnets) {
+			if !slices.Equal(vpc.Spec.ExtraExternalSubnets, vpc.Status.ExtraExternalSubnets) {
 				for _, subnetStatus := range cachedVpc.Status.ExtraExternalSubnets {
 					if !slices.Contains(cachedVpc.Spec.ExtraExternalSubnets, subnetStatus) {
 						klog.Infof("delete external subnet %s connection for vpc %s", subnetStatus, vpc.Name)

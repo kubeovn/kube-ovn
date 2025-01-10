@@ -1,7 +1,7 @@
 package util
 
 import (
-	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ func TestDiffStringSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if ret := DiffStringSlice(tt.slice1, tt.slice2); !reflect.DeepEqual(ret, tt.want) {
+			if ret := DiffStringSlice(tt.slice1, tt.slice2); !slices.Equal(ret, tt.want) {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
 		})
@@ -94,7 +94,7 @@ func TestRemoveString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if ret := RemoveString(tt.b, tt.a); !reflect.DeepEqual(ret, tt.want) {
+			if ret := RemoveString(tt.b, tt.a); !slices.Equal(ret, tt.want) {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
 		})

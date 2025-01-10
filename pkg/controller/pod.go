@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -295,7 +295,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(newPod)
 		newNp := c.podMatchNetworkPolicies(newPod)
-		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
 			for _, np := range util.DiffStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
@@ -317,7 +317,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 
 	if c.config.EnableANP {
 		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
-		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
 		}
 

@@ -93,14 +93,14 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
 		oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock ||
-		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
-		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
+		!slices.Equal(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
+		!slices.Equal(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
 		oldSubnet.Spec.LogicalGateway != newSubnet.Spec.LogicalGateway ||
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
-		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
-		!reflect.DeepEqual(oldSubnet.Spec.Vips, newSubnet.Spec.Vips) ||
+		!slices.Equal(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
+		!slices.Equal(oldSubnet.Spec.Vips, newSubnet.Spec.Vips) ||
 		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan ||
 		oldSubnet.Spec.EnableDHCP != newSubnet.Spec.EnableDHCP ||
 		oldSubnet.Spec.DHCPv4Options != newSubnet.Spec.DHCPv4Options ||
@@ -2315,7 +2315,7 @@ func checkAndFormatsExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 		}
 	}
 	sort.Strings(excludeIPs)
-	if !reflect.DeepEqual(subnet.Spec.ExcludeIps, excludeIPs) {
+	if !slices.Equal(subnet.Spec.ExcludeIps, excludeIPs) {
 		klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIPs)
 		subnet.Spec.ExcludeIps = excludeIPs
 		return true

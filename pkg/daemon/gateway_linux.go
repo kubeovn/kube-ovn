@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -516,7 +515,7 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 
 	var added int
 	for i, rule := range rules {
-		if i-added < len(existingRules) && reflect.DeepEqual(existingRules[i-added], rule.Rule) {
+		if i-added < len(existingRules) && slices.Equal(existingRules[i-added], rule.Rule) {
 			klog.V(5).Infof("iptables rule %v already exists", rule.Rule)
 			continue
 		}
