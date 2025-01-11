@@ -47,12 +47,16 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 }
 
 func nodeReady(node *v1.Node) bool {
-	for _, con := range node.Status.Conditions {
-		if con.Type == v1.NodeReady && con.Status == v1.ConditionTrue {
-			return true
+	var ready, networkUnavailable bool
+	for _, c := range node.Status.Conditions {
+		switch c.Type {
+		case v1.NodeReady:
+			ready = c.Status == v1.ConditionTrue
+		case v1.NodeNetworkUnavailable:
+			networkUnavailable = c.Status == v1.ConditionTrue
 		}
 	}
-	return false
+	return ready && !networkUnavailable
 }
 
 func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
