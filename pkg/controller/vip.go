@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -41,7 +40,7 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
-	if !reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}

@@ -4,7 +4,7 @@
 package util
 
 import (
-	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -42,7 +42,7 @@ func TestDoubleQuotedFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if ret := DoubleQuotedFields(tt.arg); !reflect.DeepEqual(ret, tt.want) {
+			if ret := DoubleQuotedFields(tt.arg); !slices.Equal(ret, tt.want) {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
 		})

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -174,7 +174,7 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 		delete(options, "ic-route-learn")
 		delete(options, "ic-route-blacklist")
 	}
-	if reflect.DeepEqual(options, nbGlobal.Options) {
+	if maps.Equal(options, nbGlobal.Options) {
 		nbGlobal.Options = options
 		return nil
 	}

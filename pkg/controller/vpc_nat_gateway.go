@@ -130,11 +130,11 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 }
 
 func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
-	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
+	if !slices.Equal(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
 		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
 		return true
 	}
-	if !reflect.DeepEqual(gw.Spec.Selector, gw.Status.Selector) {
+	if !slices.Equal(gw.Spec.Selector, gw.Status.Selector) {
 		gw.Status.Selector = gw.Spec.Selector
 		return true
 	}
@@ -1104,11 +1104,11 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	}
 	gw := oriGw.DeepCopy()
 
-	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
+	if !slices.Equal(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
 		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
 		changed = true
 	}
-	if !reflect.DeepEqual(gw.Spec.Selector, gw.Status.Selector) {
+	if !slices.Equal(gw.Spec.Selector, gw.Status.Selector) {
 		gw.Status.Selector = gw.Spec.Selector
 		changed = true
 	}

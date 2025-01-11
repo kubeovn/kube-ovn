@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -146,7 +146,7 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 	if lsp != nil {
 		externalIDs[logicalSwitchKey] = lsName
 		externalIDs["vendor"] = util.CniTypeName
-		if !reflect.DeepEqual(lsp.ExternalIDs, externalIDs) {
+		if !maps.Equal(lsp.ExternalIDs, externalIDs) {
 			lsp.ExternalIDs = externalIDs
 			if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
 				klog.Error(err)

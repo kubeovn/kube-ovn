@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,7 +27,7 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
 	newVmi := newObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 
 	if !newVmi.DeletionTimestamp.IsZero() ||
-		!reflect.DeepEqual(oldVmi.Status.Phase, newVmi.Status.Phase) {
+		oldVmi.Status.Phase != newVmi.Status.Phase {
 		key := cache.MetaObjectToName(newVmi).String()
 		klog.Infof("enqueue update VMI migration %s", key)
 		c.addOrUpdateVMIMigrationQueue.Add(key)

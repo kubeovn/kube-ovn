@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -78,7 +80,7 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 		c.updateIPQueue.Add(key)
 		return
 	}
-	if !reflect.DeepEqual(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
+	if !slices.Equal(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
 		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
 		for _, as := range newIP.Spec.AttachSubnets {
 			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
@@ -450,7 +452,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if reflect.DeepEqual(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
+		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
 			return nil
 		}
 

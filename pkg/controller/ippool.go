@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"reflect"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,8 +32,8 @@ func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
 func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
 	oldIPPool := oldObj.(*kubeovnv1.IPPool)
 	newIPPool := newObj.(*kubeovnv1.IPPool)
-	if !reflect.DeepEqual(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
-		!reflect.DeepEqual(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
+	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
+		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
 		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
