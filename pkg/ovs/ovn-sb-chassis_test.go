@@ -329,7 +329,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		require.NoError(t, err)
 
 		chassis, err := sbClient.GetChassisByHost("node1")
-		require.ErrorContains(t, err, "failed to get Chassis with with host name")
+		require.ErrorContains(t, err, "failed to get Chassis with hostname")
 		require.Nil(t, chassis)
 	})
 
@@ -338,7 +338,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		require.NoError(t, err)
 
 		chassis, err := sbClient.GetChassisByHost("node2")
-		require.ErrorContains(t, err, "failed to get Chassis with with host name")
+		require.ErrorContains(t, err, "failed to get Chassis with hostname")
 		require.Nil(t, chassis)
 	})
 
@@ -347,7 +347,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		require.NoError(t, err)
 	})
 
-	t.Run("test delete chassis by empty host name", func(t *testing.T) {
+	t.Run("test delete chassis by empty hostname", func(t *testing.T) {
 		err := sbClient.DeleteChassisByHost("")
 		require.NoError(t, err)
 	})
