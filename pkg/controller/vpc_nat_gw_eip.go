@@ -93,6 +93,13 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// make sure vpc nat gw pod is ready befor create eip
+	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	var v4ip, v6ip, mac string
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, subnet.Spec.Provider)
 	if cachedEip.Spec.V4ip != "" {
