@@ -347,3 +347,30 @@ func (suite *OvnClientTestSuite) testUpdateAddressSet() {
 		require.Contains(t, err.Error(), "address_set is nil")
 	})
 }
+
+func (suite *OvnClientTestSuite) testBatchDeleteAddressSetByNames() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	asName := "test_batch_delete_as"
+
+	t.Run("no err when delete existent address set", func(t *testing.T) {
+		t.Parallel()
+
+		err := nbClient.CreateAddressSet(asName, nil)
+		require.NoError(t, err)
+
+		err = nbClient.BatchDeleteAddressSetByNames([]string{asName})
+		require.NoError(t, err)
+
+		_, err = nbClient.GetAddressSet(asName, false)
+		require.ErrorContains(t, err, "object not found")
+	})
+
+	t.Run("no err when delete non-existent address set", func(t *testing.T) {
+		t.Parallel()
+		err := nbClient.BatchDeleteAddressSetByNames([]string{"test-batch-delete-as-non-existent"})
+		require.NoError(t, err)
+	})
+}
