@@ -840,6 +840,7 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 	}
 
 	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
+		klog.Error(err)
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))

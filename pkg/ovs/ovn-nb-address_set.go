@@ -176,6 +176,7 @@ func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
 	}
 
 	if err := c.Transact("as-del", op); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("batch delete address set %d failed: %w", len(asList), err)
 	}
 

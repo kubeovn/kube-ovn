@@ -93,6 +93,7 @@ func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ov
 	)
 	policyListMap, err := c.batchListLogicalRouterPoliciesByFilter(lrName, policies...)
 	if err != nil {
+		klog.Error(err)
 		return fmt.Errorf("batch list logical router %s policies %d: %w", lrName, len(policies), err)
 	}
 
@@ -114,16 +115,19 @@ func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ov
 	klog.Infof("take to %vms batch add logical router %s list policy del %d create %d update %d", time.Since(start).Milliseconds(), lrName, len(needDelete), len(needCreatePolicy), len(needUpdatePolicy))
 	if len(needDelete) > 0 {
 		if err := c.BatchDeleteLogicalRouterPolicyByUUID(lrName, needDelete...); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
 	if len(needCreatePolicy) > 0 {
 		if err := c.batchCreateLogicalRouterPolicies(lrName, needCreatePolicy); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
 	if len(needUpdatePolicy) > 0 {
 		if err := c.batchUpdatetLogicalRouterPolicies(needUpdatePolicy); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -210,7 +214,7 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterPolicy(lrName string, logicalRoute
 		}
 	}
 
-	// not found,skip
+	// not found, skip
 	if len(uuidList) == 0 {
 		return nil
 	}
@@ -571,6 +575,7 @@ func (c *OVNNbClient) batchCreateLogicalRouterPolicies(lrName string, policies [
 		routerPolicies = append(routerPolicies, c.newLogicalRouterPolicy(policy.Priority, policy.Match, policy.Action, policy.Nexthops, policy.BFDSessions, policy.ExternalIDs))
 	}
 	if err := c.CreateLogicalRouterPolicies(lrName, routerPolicies...); err != nil {
+		klog.Error(err)
 		return fmt.Errorf("failed to batch create policies for router %s: %w", lrName, err)
 	}
 	return nil
@@ -583,6 +588,7 @@ func (c *OVNNbClient) batchUpdatetLogicalRouterPolicies(updateMap map[*ovnnb.Log
 		policy.ExternalIDs = policyNew.ExternalIDs
 		ops, err := c.Where(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {
+			klog.Error(err)
 			return fmt.Errorf("failed to generate operations for updating logical router policy: %w", err)
 		}
 		updateOps = append(updateOps, ops...)
