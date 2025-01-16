@@ -218,10 +218,15 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		// already ok
 		return nil
 	}
+	// make sure vpc nat gw pod is ready before eip allocation
+	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, attachmentNs)
-
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, externalProvider)
 	if cachedEip.Spec.V4ip != "" {
 		if v4ip, v6ip, mac, err = c.acquireStaticEip(cachedEip.Name, cachedEip.Namespace, portName, cachedEip.Spec.V4ip, externalNetwork); err != nil {
