@@ -110,7 +110,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
-	// make sure vpc nat gw pod is ready befor create eip
+	// make sure vpc nat gw pod is ready before eip allocation
 	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp); err != nil {
 		klog.Error(err)
 		return err
