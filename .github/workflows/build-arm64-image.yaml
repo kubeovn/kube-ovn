@@ -24,13 +24,10 @@ env:
 jobs:
   build:
     name: Build arm64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - uses: actions/setup-go@v5
         with:
@@ -70,7 +67,6 @@ jobs:
       - name: Build kubectl and CNI plugins from source
         env:
           CGO_ENABLED: "0"
-          GOARCH: arm64
           GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
           cat trivy-result.json
@@ -79,7 +75,7 @@ jobs:
           cni_plugins_build_flags="-ldflags '-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=$cni_plugins_version'"
           jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
             bin=`basename $f`
-            go_bin_dir=`go env GOPATH`/bin/linux_arm64
+            go_bin_dir=`go env GOPATH`/bin
             case $bin in
               loopback|macvlan)
                 echo "Building $bin@$cni_plugins_version from source..."
