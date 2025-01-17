@@ -17,10 +17,13 @@ on:
   - cron: "20 19 * * *"
 
 jobs:
-  build-amd64:
+  build:
     strategy:
       fail-fast: false
       matrix:
+        arch:
+        - amd64
+        - arm64
         branch:
         - master
         - release-1.13
@@ -28,8 +31,8 @@ jobs:
         - release-1.11
         - release-1.9
         - release-1.12-mc
-    name: Build AMD64
-    runs-on: ubuntu-24.04
+    name: Build
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v4
         if: (github.event.inputs.branch || matrix.branch) == matrix.branch
@@ -53,67 +56,15 @@ jobs:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
-          make base-amd64
-          make base-tar-amd64
+          make base-${{ matrix.arch }}
+          make base-tar-${{ matrix.arch }}
 
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         uses: actions/upload-artifact@v4
         with:
-          name: image-amd64-${{ matrix.branch }}
-          path: image-amd64.tar
-          retention-days: 7
-
-  build-arm64:
-    strategy:
-      fail-fast: false
-      matrix:
-        branch:
-        - master
-        - release-1.13
-        - release-1.12
-        - release-1.11
-        - release-1.9
-        - release-1.12-mc
-    name: Build ARM64
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        with:
-          ref: ${{ matrix.branch }}
-
-      - uses: docker/setup-buildx-action@v3
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-
-      - uses: docker/setup-qemu-action@v3
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        with:
-          platforms: arm64
-
-      - uses: actions/setup-go@v5
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        id: setup-go
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-
-      - name: Build
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        env:
-          GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
-        run: |
-          make base-arm64 || make base-arm64
-          make base-tar-arm64
-
-      - name: Upload image to artifact
-        if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-arm64-${{ matrix.branch }}
-          path: image-arm64.tar
+          name: image-${{ matrix.arch }}-${{ matrix.branch }}
+          path: image-${{ matrix.arch }}.tar
           retention-days: 7
 
   push:
@@ -128,8 +79,7 @@ jobs:
         - release-1.9
         - release-1.12-mc
     needs:
-      - build-arm64
-      - build-amd64
+      - build
     name: push
     runs-on: ubuntu-24.04
     steps:
