@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -48,6 +50,65 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 		}
 	}
 
+	return nil
+}
+
+// BatchAddLogicalRouterPolicy  batch add a policy route to logical router
+func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
+	if len(policies) == 0 {
+		return nil
+	}
+
+	start := time.Now()
+	needDelete := make([]string, 0)
+	needCreatePolicy := make([]*ovnnb.LogicalRouterPolicy, 0)
+	policyListMap, err := c.batchListLogicalRouterPoliciesByFilter(lrName, policies...)
+	if err != nil {
+		return fmt.Errorf("batch list logical router %s policies %d: %v", lrName, len(policies), err)
+	}
+	for lrp, policyList := range policyListMap {
+		if len(policyList) == 0 {
+			needCreatePolicy = append(needCreatePolicy, lrp)
+			continue
+		}
+
+		var (
+			duplicate []string
+			found     bool
+			lrpSet    = strset.New(lrp.Nexthops...)
+		)
+
+		for _, policy := range policyList {
+			if found || policy.Action != lrp.Action || !reflect.DeepEqual(policy.ExternalIDs, lrp.ExternalIDs) || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !lrpSet.IsEqual(strset.New(policy.Nexthops...))) {
+				duplicate = append(duplicate, policy.UUID)
+			} else {
+				found = true
+			}
+		}
+		if len(policyList) == len(duplicate) {
+			needCreatePolicy = append(needCreatePolicy, lrp)
+		}
+		if len(duplicate) > 0 {
+			needDelete = append(needDelete, duplicate...)
+		}
+	}
+	klog.Infof("take to %vms batch add logical router %s list policy del %d create %d", time.Since(start).Milliseconds(), lrName, len(needDelete), len(needCreatePolicy))
+	if len(needDelete) > 0 {
+		if err := c.BatchDeleteLogicalRouterPolicyByUUID(lrName, needDelete...); err != nil {
+			return err
+		}
+	}
+
+	if len(needCreatePolicy) > 0 {
+		lrps := make([]*ovnnb.LogicalRouterPolicy, len(needCreatePolicy))
+		for _, lrp := range needCreatePolicy {
+			lrps = append(lrps, c.newLogicalRouterPolicy(lrp.Priority, lrp.Match, lrp.Action, lrp.Nexthops, lrp.ExternalIDs))
+		}
+		if err := c.CreateLogicalRouterPolicies(lrName, lrps...); err != nil {
+			return fmt.Errorf("add policy to logical router %s: %v", lrName, err)
+		}
+	}
+	klog.Infof("take to %vms batch add logical router %s policy %d", time.Since(start).Milliseconds(), lrName, len(policies))
 	return nil
 }
 
@@ -143,6 +204,54 @@ func (c *OVNNbClient) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
 	if err = c.Transact("lr-policy-del", ops); err != nil {
 		return fmt.Errorf("delete logical router policy '%s' from logical router %s: %v", uuid, lrName, err)
 	}
+	return nil
+}
+
+// DeleteLogicalRouterPolicy delete policy from logical router
+func (c *OVNNbClient) BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error {
+	policyListMap, err := c.batchListLogicalRouterPoliciesByFilter(lrName, logicalRouteRolicies...)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	uuidList := make([]string, 0)
+	for _, policyList := range policyListMap {
+		if len(policyList) == 0 {
+			continue
+		}
+		for _, p := range policyList {
+			uuidList = append(uuidList, p.UUID)
+		}
+	}
+
+	// not found,skip
+	if len(uuidList) == 0 {
+		return nil
+	}
+
+	if err := c.BatchDeleteLogicalRouterPolicyByUUID(lrName, uuidList...); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	return nil
+}
+
+// BatchDeleteLogicalRouterPolicyByUUID batch remove policy  from logical router
+func (c *OVNNbClient) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidList ...string) error {
+	if len(uuidList) == 0 {
+		return nil
+	}
+	start := time.Now()
+	ops, err := c.LogicalRouterUpdatePolicyOp(lrName, uuidList, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate operations for removing policies '%v' from logical router %s: %v", uuidList, lrName, err)
+	}
+	if err = c.Transact("lr-policy-del", ops); err != nil {
+		return fmt.Errorf("delete logical router policies '%v' from logical router %s: %v", uuidList, lrName, err)
+	}
+	klog.V(3).Infof("take to %vms batch delete logical router policies %s uuid %v", time.Since(start).Milliseconds(), lrName, uuidList)
 	return nil
 }
 
@@ -324,4 +433,72 @@ func (c *OVNNbClient) listLogicalRouterPoliciesByFilter(lrName string, filter fu
 	}
 
 	return policyList, nil
+}
+
+func (c *OVNNbClient) batchListLogicalRouterPoliciesByFilter(lrName string, policies ...*ovnnb.LogicalRouterPolicy) (map[*ovnnb.LogicalRouterPolicy][]*ovnnb.LogicalRouterPolicy, error) {
+	start := time.Now()
+	lr, err := c.GetLogicalRouter(lrName, false)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	lrPolicySet := set.New(lr.Policies...)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	policyIndex := make([]model.Model, 0)
+	for _, p := range policies {
+		policyIndex = append(policyIndex, buildLogicalRouterPolicyIndex(p.Priority, p.Match))
+	}
+
+	var pList []*ovnnb.LogicalRouterPolicy
+	indexStart := time.Now()
+	if err := c.ovsDbClient.Where(policyIndex...).List(ctx, &pList); err != nil {
+		return nil, err
+	}
+	klog.Infof("take to %v batch list logical router policy %s policies len %v lrp len %v by client index", time.Since(indexStart), lrName, len(policies), len(pList))
+
+	policySet := make(map[string]*ovnnb.LogicalRouterPolicy)
+	for _, lrp := range policies {
+		key := createPolicyKey(lrp.Priority, lrp.Match)
+		policySet[key] = lrp
+	}
+
+	policyMapByUUID := make(map[string][]*ovnnb.LogicalRouterPolicy)
+	for _, policy := range pList {
+		if lrPolicySet.Has(policy.UUID) {
+			key := createPolicyKey(policy.Priority, policy.Match)
+			policyMapByUUID[key] = append(policyMapByUUID[key], policy)
+		}
+	}
+
+	lrpMap := make(map[*ovnnb.LogicalRouterPolicy][]*ovnnb.LogicalRouterPolicy)
+	for policyKey, lrp := range policySet {
+		if matchingPolicies, found := policyMapByUUID[policyKey]; found {
+			lrpMap[lrp] = append(lrpMap[lrp], matchingPolicies...)
+		} else {
+			lrpMap[lrp] = []*ovnnb.LogicalRouterPolicy{}
+		}
+	}
+
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	if elapsed > 500 {
+		klog.Infof("take to %vms batch list logical router policy %s policies %d query result policies %d nb policies len %d", elapsed, lrName, len(policies), len(pList), len(lrpMap))
+	}
+	return lrpMap, nil
+}
+
+func createPolicyKey(priority int, match string) string {
+	return fmt.Sprintf("%s-%d", match, priority)
+}
+
+func buildLogicalRouterPolicyIndex(priority int, match string) *ovnnb.LogicalRouterPolicy {
+	lrp := &ovnnb.LogicalRouterPolicy{}
+	if match != "" {
+		lrp.Match = match
+	}
+	if priority >= 0 {
+		lrp.Priority = priority
+	}
+	return lrp
 }
