@@ -33,7 +33,7 @@ require (
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.5.0
 	github.com/prometheus/client_golang v1.20.5
-	github.com/puzpuzpuz/xsync/v3 v3.4.0
+	github.com/puzpuzpuz/xsync/v3 v3.4.1
 	github.com/rs/zerolog v1.33.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.3
