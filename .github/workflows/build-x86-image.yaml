@@ -39,7 +39,7 @@ jobs:
 
       - id: check
         run: |
-          if [ ${{ github.event_name }} != 'pull_request' ]; then
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
             exit
           fi
           tmp_dir=`mktemp -d`
@@ -104,7 +104,7 @@ jobs:
 
       - id: check
         run: |
-          if [ ${{ github.event_name }} != 'pull_request' ]; then
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
             exit
           fi
           if ! git diff --exit-code HEAD^...HEAD -- dist/images/Dockerfile.base-dpdk; then
