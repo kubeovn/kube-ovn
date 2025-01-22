@@ -10,7 +10,6 @@ jobs:
       fail-fast: false
       matrix:
         branch:
-          - master
           - release-1.12-mc
     name: Build AMD64
     runs-on: ubuntu-22.04
@@ -53,7 +52,6 @@ jobs:
       fail-fast: false
       matrix:
         branch:
-          - master
           - release-1.12-mc
     name: Build ARM64
     runs-on: ubuntu-22.04
@@ -101,7 +99,6 @@ jobs:
       fail-fast: false
       matrix:
         branch:
-          - master
           - release-1.12-mc
     needs:
       - build-arm64
