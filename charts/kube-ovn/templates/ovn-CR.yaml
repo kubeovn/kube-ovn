@@ -296,20 +296,12 @@ rules:
       - patch
       - watch
   - apiGroups:
-      - "kubeovn.io"
-    resources:
-      - ips
-    verbs:
-      - get
-      - update
-  - apiGroups:
       - ""
     resources:
-      - events
+      - services
     verbs:
-      - create
-      - patch
-      - update
+      - list
+      - watch
   - apiGroups:
       - ""
     resources:

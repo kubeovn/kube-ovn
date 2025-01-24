@@ -251,6 +251,12 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		}
 	}
 
+	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
+	if err != nil {
+		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
+		return err
+	}
+
 	return nil
 }
 
