@@ -11,10 +11,10 @@ COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
+COPY kube-ovn-healthcheck /kube-ovn/kube-ovn-healthcheck
 RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-webhook && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-healthcheck && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-ic-controller && \
     ln -s /kube-ovn/kube-ovn-controller /kube-ovn/kube-ovn-pinger && \
