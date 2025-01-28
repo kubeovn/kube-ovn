@@ -10,8 +10,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -131,7 +131,7 @@ func (c *Controller) isVMIMigrationCRDInstalled() bool {
 	return true
 }
 
-func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory kubevirtController.KubeInformerFactory) {
+func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		defer ticker.Stop()
