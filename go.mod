@@ -14,7 +14,7 @@ require (
 	github.com/containernetworking/plugins v1.6.0
 	github.com/docker/docker v27.5.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.1
-	github.com/evanphx/json-patch/v5 v5.9.0
+	github.com/evanphx/json-patch/v5 v5.9.10
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/uuid v1.6.0
 	github.com/httprunner/httprunner/v4 v4.3.7-0.20240124083022-402b74876a59
