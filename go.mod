@@ -66,6 +66,14 @@ require (
 	sigs.k8s.io/network-policy-api v0.1.5
 )
 
+replace (
+	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
+	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20241213030551-6db0aaa1c92e
+)
+
 require (
 	cel.dev/expr v0.19.0 // indirect
 	cloud.google.com/go/compute/metadata v0.5.2 // indirect
@@ -294,12 +302,4 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.18.1 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
-)
-
-replace (
-	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
-	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
-	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240814054845-978196448fb2
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20241213030551-6db0aaa1c92e
 )
