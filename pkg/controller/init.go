@@ -802,7 +802,7 @@ func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
 		return err
 	}
 	if err := c.batchDeleteStaticRouteFromVpc(c.config.ClusterRouter, staticRoutes); err != nil {
-		klog.Errorf("failed to batch delete  obsolete logical router static route for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
+		klog.Errorf("failed to batch delete obsolete logical router static route for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
 		return err
 	}
 	if err := c.batchDeletePolicyRouteFromVpc(c.config.ClusterRouter, delPolicies); err != nil {
