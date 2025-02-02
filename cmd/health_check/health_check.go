@@ -1,4 +1,4 @@
-package health_check
+package main
 
 import (
 	"flag"
@@ -12,7 +12,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func CmdMain() {
+func main() {
 	port := pflag.Int32("port", 0, "Target port")
 	tls := pflag.Bool("tls", false, "Dial the server with TLS")
 	enableMetrics := pflag.Bool("enable-metrics", true, "Whether to support metrics query")
