@@ -31,7 +31,7 @@ require (
 	github.com/osrg/gobgp/v3 v3.33.0
 	github.com/ovn-org/libovsdb v0.7.0
 	github.com/parnurzeal/gorequest v0.3.0
-	github.com/prometheus-community/pro-bing v0.6.0
+	github.com/prometheus-community/pro-bing v0.6.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/puzpuzpuz/xsync/v3 v3.5.0
 	github.com/rs/zerolog v1.33.0
