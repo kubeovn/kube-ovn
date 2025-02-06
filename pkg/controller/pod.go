@@ -164,7 +164,6 @@ func isPodAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -413,7 +412,6 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 		c.addPodQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -448,7 +446,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		klog.Infof("take %d ms to handle delete pod %s/%s", last.Milliseconds(), pod.Namespace, pod.Name)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -483,7 +480,6 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		klog.Infof("take %d ms to handle update pod %s", last.Milliseconds(), key)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -515,7 +511,6 @@ func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
 		c.updatePodSecurityQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -1093,7 +1088,15 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 	// down scaled
-	return index >= int64(*ss.Spec.Replicas)
+	var startOrdinal int64
+	if ss.Spec.Ordinals != nil {
+		startOrdinal = int64(ss.Spec.Ordinals.Start)
+	}
+	if index >= startOrdinal+int64(*ss.Spec.Replicas) {
+		klog.Infof("statefulset %s is down scaled", statefulSetName)
+		return true
+	}
+	return false
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
