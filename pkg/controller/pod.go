@@ -1281,7 +1281,11 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 	// down scaled
-	if index >= int64(*sts.Spec.Replicas) {
+	var startOrdinal int64
+	if sts.Spec.Ordinals != nil {
+		startOrdinal = int64(sts.Spec.Ordinals.Start)
+	}
+	if index >= startOrdinal+int64(*sts.Spec.Replicas) {
 		klog.Infof("statefulset %s is down scaled", statefulSetName)
 		return true
 	}
