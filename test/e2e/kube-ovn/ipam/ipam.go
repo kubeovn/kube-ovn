@@ -3,9 +3,11 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
@@ -352,6 +354,49 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+		}
+	})
+
+	framework.ConformanceIt("should consider statefulset's start ordinal", func() {
+		f.SkipVersionPriorTo(1, 11, "Support for start ordinal was introduced in v1.11")
+
+		replicas, startOrdinal := int32(3), int32(10)
+		labels := map[string]string{"app": stsName}
+
+		ginkgo.By("Creating statefulset " + stsName + " with start ordinal " + strconv.Itoa(int(startOrdinal)))
+		sts := framework.MakeStatefulSet(stsName, stsName, replicas, labels, framework.PauseImage)
+		sts.Spec.Ordinals = &appsv1.StatefulSetOrdinals{Start: startOrdinal}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, int(replicas))
+
+		ips := make([]string, 0, int(replicas))
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
+		}
+
+		ginkgo.By("Deleting pods for statefulset " + stsName)
+		for _, pod := range pods.Items {
+			err := podClient.Delete(pod.Name)
+			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
+		}
+		stsClient.WaitForRunningAndReady(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods = stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, int(replicas))
+
+		for i, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
 	})
 

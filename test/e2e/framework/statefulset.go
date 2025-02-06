@@ -96,7 +96,11 @@ func (c *StatefulSetClient) DeleteSync(name string) {
 func (c *StatefulSetClient) WaitForRunningAndReady(sts *appsv1.StatefulSet) {
 	ginkgo.GinkgoHelper()
 	Logf("Waiting up to %v for statefulset %s to be running and ready", timeout, sts.Name)
-	statefulset.WaitForRunningAndReady(context.Background(), c.f.ClientSet, *sts.Spec.Replicas, sts)
+	n := *sts.Spec.Replicas
+	if sts.Spec.Ordinals != nil {
+		n += sts.Spec.Ordinals.Start
+	}
+	statefulset.WaitForRunning(context.Background(), c.f.ClientSet, *sts.Spec.Replicas, n, sts)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified statefulset to disappear.
