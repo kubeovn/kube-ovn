@@ -51,10 +51,14 @@ func CmdMain() {
 		if err != nil {
 			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddr, config.MetricsPort))
 		}
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
+		mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
+		mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
 		svr := manager.Server{
 			Name: "health-check",
 			Server: &http.Server{
-				Handler:           http.NewServeMux(),
+				Handler:           mux,
 				MaxHeaderBytes:    1 << 20,
 				IdleTimeout:       90 * time.Second,
 				ReadHeaderTimeout: 32 * time.Second,
