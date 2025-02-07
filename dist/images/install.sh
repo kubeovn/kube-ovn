@@ -41,6 +41,11 @@ SECURE_SERVING=${SECURE_SERVING:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 
+PROBE_HTTP_SCHEME="HTTP"
+if [ "$SECURE_SERVING" = "true" ]; then
+  PROBE_HTTP_SCHEME="HTTPS"
+fi
+
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 
@@ -4161,19 +4166,17 @@ spec:
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10660
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: ${PROBE_HTTP_SCHEME}
             periodSeconds: 3
             timeoutSeconds: 5
           livenessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10660
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10660
+              path: /livez
+              scheme: ${PROBE_HTTP_SCHEME}
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
@@ -4344,21 +4347,19 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls=${SECURE_SERVING}
+          httpGet:
+            port: 10665
+            path: /livez
+            scheme: ${PROBE_HTTP_SCHEME}
           timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls=${SECURE_SERVING}
+          httpGet:
+            port: 10665
+            path: /readyz
+            scheme: ${PROBE_HTTP_SCHEME}
           timeoutSeconds: 5
         resources:
           requests:
@@ -4642,22 +4643,20 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: ${PROBE_HTTP_SCHEME}
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10661
+              path: /readyz
+              scheme: ${PROBE_HTTP_SCHEME}
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"

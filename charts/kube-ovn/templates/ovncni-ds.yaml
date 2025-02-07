@@ -152,22 +152,20 @@ spec:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls={{- .Values.func.SECURE_SERVING }}
+          httpGet:
+            port: 10665
+            path: /readyz
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
           timeoutSeconds: 5
         livenessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls={{- .Values.func.SECURE_SERVING }}
+          httpGet:
+            port: 10665
+            path: /livez
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
           timeoutSeconds: 5
         resources:
           requests:

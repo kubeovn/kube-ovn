@@ -13,7 +13,6 @@ import (
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
-	"github.com/kubeovn/kube-ovn/cmd/health_check"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -28,7 +27,6 @@ const (
 	CmdMonitor          = "kube-ovn-monitor"
 	CmdPinger           = "kube-ovn-pinger"
 	CmdSpeaker          = "kube-ovn-speaker"
-	CmdHealthCheck      = "kube-ovn-healthcheck"
 	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
 	CmdOvnICController  = "kube-ovn-ic-controller"
 )
@@ -93,8 +91,6 @@ func main() {
 	case CmdSpeaker:
 		dumpProfile()
 		speaker.CmdMain()
-	case CmdHealthCheck:
-		health_check.CmdMain()
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
 	case CmdOvnICController:
