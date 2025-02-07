@@ -199,7 +199,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 				return err
 			}
 
-			if pn.Status.Ready {
+			if pn.Status.Ready && slices.Contains(pn.Status.ReadyNodes, c.config.NodeName) {
 				bridgeName := util.ExternalBridgeName(pn.Name)
 				underlayNic := pn.Spec.DefaultInterface
 				for _, item := range pn.Spec.CustomInterfaces {
