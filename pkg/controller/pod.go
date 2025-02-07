@@ -571,8 +571,19 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
 
+			var oldSgList []string
+			if vmKey != "" {
+				existingLsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+				if err != nil {
+					klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+					return nil, err
+				}
+				if existingLsp != nil {
+					oldSgList, _ = c.getPortSg(existingLsp)
+				}
+			}
+
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
@@ -588,8 +599,10 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				}
 			}
 
-			if securityGroupAnnotation != "" {
-				sgNames := strings.Split(securityGroups, ",")
+			if securityGroupAnnotation != "" || oldSgList != nil {
+				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
+				newSgList := strings.Split(securityGroups, ",")
+				sgNames := util.UnionStringSlice(oldSgList, newSgList)
 				for _, sgName := range sgNames {
 					if sgName != "" {
 						c.syncSgPortsQueue.Add(sgName)

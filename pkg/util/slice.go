@@ -27,6 +27,31 @@ func DiffStringSlice(slice1, slice2 []string) []string {
 	return diff
 }
 
+func UnionStringSlice(slice1, slice2 []string) []string {
+	if slice1 == nil {
+		slice1 = []string{}
+	}
+	if slice2 == nil {
+		slice2 = []string{}
+	}
+
+	uniqueMap := make(map[string]struct{})
+	var union []string
+
+	for _, s1 := range slice1 {
+		uniqueMap[s1] = struct{}{}
+	}
+	for _, s2 := range slice2 {
+		uniqueMap[s2] = struct{}{}
+	}
+
+	for key := range uniqueMap {
+		union = append(union, key)
+	}
+
+	return union
+}
+
 // IsStringsOverlap check if two string slices are overlapped
 func IsStringsOverlap(a, b []string) bool {
 	for _, sa := range a {
