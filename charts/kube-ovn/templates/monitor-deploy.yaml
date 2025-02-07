@@ -126,24 +126,20 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls={{- .Values.func.SECURE_SERVING }}
-                - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls={{- .Values.func.SECURE_SERVING }}
-                - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
+            httpGet:
+              port: 10661
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
