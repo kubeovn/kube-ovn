@@ -8,6 +8,6 @@ import (
 
 func DefaultHealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	if _, err := w.Write([]byte("ok")); err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to write health check response: %v", err)
 	}
 }
