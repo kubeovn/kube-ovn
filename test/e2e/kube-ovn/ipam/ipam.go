@@ -3,6 +3,7 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -607,8 +608,16 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ipsCount := 1
 
 		ginkgo.By("Creating IPPool resources ")
-		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
-		ipsRange2 := framework.RandomIPPool(cidr, ipsCount)
+		ipsRange := framework.RandomIPPool(cidr, ipsCount*2)
+		ipv4Range, ipv6Range := util.SplitIpsByProtocol(ipsRange)
+		var ipsRange1, ipsRange2 []string
+		if f.HasIPv4() {
+			ipsRange1, ipsRange2 = slices.Clone(ipv4Range[:ipsCount]), slices.Clone(ipv4Range[ipsCount:])
+		}
+		if f.HasIPv6() {
+			ipsRange1 = append(ipsRange1, ipv6Range[:ipsCount]...)
+			ipsRange2 = append(ipsRange2, ipv6Range[ipsCount:]...)
+		}
 		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
 		ippool2 := framework.MakeIPPool(ippoolName2, subnetName, ipsRange2, []string{namespaceName})
 		ippoolClient.CreateSync(ippool1)
