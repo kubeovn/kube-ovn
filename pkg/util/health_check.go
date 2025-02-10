@@ -9,9 +9,5 @@ import (
 func DefaultHealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	if _, err := w.Write([]byte("ok")); err != nil {
 		klog.Error(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
