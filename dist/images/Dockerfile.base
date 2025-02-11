@@ -7,7 +7,7 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 ARG ARCH
 ENV CNI_VERSION="v1.5.1"
 ENV KUBE_VERSION="v1.31.1"
-ENV GOBGP_VERSION="3.33.0"
+ENV GOBGP_VERSION="3.34.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
@@ -122,16 +122,16 @@ FROM ubuntu:22.04
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
-        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        rm -rf /var/lib/apt/lists/* && \
-        rm -rf /etc/localtime && \
-        rm -f /usr/bin/nc && \
-        rm -f /usr/bin/netcat && \
-        rm -f /usr/lib/apt/methods/mirror && \
-        deluser sync
+    ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
+    tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
+    logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
+    libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /etc/localtime && \
+    rm -f /usr/bin/nc && \
+    rm -f /usr/bin/netcat && \
+    rm -f /usr/lib/apt/methods/mirror && \
+    deluser sync
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
@@ -163,9 +163,9 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     rm -rf /var/lib/openvswitch/pki/ && \
     chown -R nobody: /var/lib/logrotate && \
     if [ "${DEBUG}" = "true" ]; then \
-        apt update && apt install -y --no-install-recommends gdb valgrind && \
-        rm -rf /var/lib/apt/lists/* && \
-        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+    apt update && apt install -y --no-install-recommends gdb valgrind && \
+    rm -rf /var/lib/apt/lists/* && \
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
