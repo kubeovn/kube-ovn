@@ -46,6 +46,10 @@ ifeq ($(E2E_CILIUM_CHAINING),true)
 # This means that when defining services, the targetPort MUST equal the port,
 # otherwise the packet will be dropped.
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Networking.*Feature:SCTPConnectivity"
+ifeq ($(shell test $(VER_MAJOR) -lt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -lt 14 \) && echo true),true)
+# https://github.com/cilium/cilium/issues/9207
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Services.*should serve endpoints on same port and different protocols"
+endif
 endif
 
 GINKGO_OUTPUT_OPT =
