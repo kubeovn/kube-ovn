@@ -1,5 +1,7 @@
 package util
 
+import "k8s.io/utils/set"
+
 func DiffStringSlice(slice1, slice2 []string) []string {
 	var diff []string
 
@@ -25,6 +27,14 @@ func DiffStringSlice(slice1, slice2 []string) []string {
 		}
 	}
 	return diff
+}
+
+func UnionStringSlice(slices ...[]string) []string {
+	union := set.New[string]()
+	for _, s := range slices {
+		union.Insert(s...)
+	}
+	return union.UnsortedList()
 }
 
 // IsStringsOverlap check if two string slices are overlapped
