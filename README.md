@@ -17,7 +17,6 @@ The Kube-OVN community is waiting for your participation!
 
 - 💭 Chat with us at [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
 - 📅 Join the [Online Meeting](https://docs.google.com/document/d/1OPFC3s0rVxGkLR5GaUayNC6Nx9lwvjapg_hQl4MWt3E/edit#heading=h.1e73t98gdg9l)
-- 🐦 Follow us at [Twitter](https://twitter.com/KubeOvn)
 - 💬 微信用户请[填写表单](https://jinshuju.net/f/lyrEow)加入交流群！
 
 ## Features
