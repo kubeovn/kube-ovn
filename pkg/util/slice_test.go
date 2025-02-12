@@ -37,6 +37,54 @@ func TestDiffStringSlice(t *testing.T) {
 	}
 }
 
+func TestUnionStringSlice(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		desc   string
+		slice1 []string
+		slice2 []string
+		want   []string
+	}{
+		{
+			desc:   "both slices nil",
+			slice1: nil,
+			slice2: nil,
+			want:   []string{},
+		},
+		{
+			desc:   "first slice nil",
+			slice1: nil,
+			slice2: []string{"a", "b", "c"},
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			desc:   "second slice nil",
+			slice1: []string{"x", "y", "z"},
+			slice2: nil,
+			want:   []string{"x", "y", "z"},
+		},
+		{
+			desc:   "duplicate elements",
+			slice1: []string{"a", "b", "a", "c"},
+			slice2: []string{"b", "c", "c", "d"},
+			want:   []string{"a", "b", "c", "d"},
+		},
+		{
+			desc:   "empty slices",
+			slice1: []string{},
+			slice2: []string{},
+			want:   []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := UnionStringSlice(tt.slice1, tt.slice2)
+			require.ElementsMatch(t, tt.want, result)
+		})
+	}
+}
+
 func TestIsStringsOverlap(t *testing.T) {
 	tests := []struct {
 		name string
