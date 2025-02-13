@@ -2712,6 +2712,24 @@ spec:
                   type: array
                   items:
                     type: string
+                routes:
+                  description: |
+                    Routes is a list of route rules for the pods which are in the subnet.
+                    If specified, the routes will be added/replaced to the pod's network namespace.
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      dst:
+                        type: string
+                        format: cidr
+                      gw:
+                        type: string
+                        anyOf:
+                          - format: ipv4
+                          - format: ipv6
+                    required:
+                      - gw
                 gatewayType:
                   type: string
                 allowSubnets:

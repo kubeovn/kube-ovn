@@ -7,6 +7,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
 const (
@@ -48,6 +50,11 @@ type SubnetSpec struct {
 	Gateway    string   `json:"gateway"`
 	ExcludeIps []string `json:"excludeIps,omitempty"`
 	Provider   string   `json:"provider,omitempty"`
+
+	// Routes is a list of route rules for the pods which are in the subnet.
+	// If specified, the routes will be added/replaced to the pod's network namespace.
+	// +optional
+	Routes []request.Route `json:"routes,omitempty"`
 
 	GatewayType string `json:"gatewayType,omitempty"`
 	GatewayNode string `json:"gatewayNode"`

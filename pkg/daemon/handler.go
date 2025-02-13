@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
@@ -226,19 +226,18 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	var mtu int
-	routes = append(podRequest.Routes, routes...)
-	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
-		podSubnet, err := csh.Controller.subnetsLister.Get(subnet)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to get subnet %s: %w", subnet, err)
-			klog.Error(errMsg)
-			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-				klog.Errorf("failed to write response: %v", err)
-			}
-			return
+	if podSubnet, err = csh.Controller.subnetsLister.Get(subnet); err != nil {
+		errMsg := fmt.Errorf("failed to get subnet %q: %w", subnet, err)
+		klog.Error(errMsg)
+		if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+			klog.Errorf("failed to write response: %v", err)
 		}
+		return
+	}
 
+	var mtu int
+	routes = slices.Concat(podRequest.Routes, podSubnet.Spec.Routes, routes)
+	if util.IsOvnProvider(podRequest.Provider) {
 		if podSubnet.Status.U2OInterconnectionIP == "" && podSubnet.Spec.U2OInterconnection {
 			errMsg := fmt.Errorf("failed to generate u2o ip on subnet %s", podSubnet.Name)
 			klog.Error(errMsg)

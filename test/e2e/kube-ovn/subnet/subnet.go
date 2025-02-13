@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -21,6 +22,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -286,6 +288,73 @@ var _ = framework.Describe("[group:subnet]", func() {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
 			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
 			framework.ExpectEqual(subnet.Status.V6AvailableIPs, expected)
+		}
+	})
+
+	framework.ConformanceIt(`should be able to configure pod routes by subnet's ".spec.routes" field`, func() {
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		ginkgo.By("Creating subnet " + subnetName + " with cidr " + subnet.Spec.CIDRBlock)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By(`Constructing specified routes by subnet's ".spec.routes" field`)
+		var routeDst string
+		for i := 0; i < 3; i++ {
+			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
+			if routeDst != subnet.Spec.CIDRBlock {
+				break
+			}
+		}
+		framework.ExpectNotEqual(routeDst, subnet.Spec.CIDRBlock)
+		routeGw := framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1)
+		ipv4Gateway, ipv6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
+		ipv4RouteDst, ipv6RouteDst := util.SplitStringIP(routeDst)
+		ipv4RouteGw, ipv6RouteGw := util.SplitStringIP(routeGw)
+		routes := make([]request.Route, 0, 4)
+		if f.HasIPv4() {
+			routes = append(routes, request.Route{Gateway: ipv4RouteGw})
+			routes = append(routes, request.Route{Destination: ipv4RouteDst, Gateway: ipv4Gateway})
+
+		}
+		if f.HasIPv6() {
+			routes = append(routes, request.Route{Gateway: ipv6RouteGw})
+			routes = append(routes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6Gateway})
+		}
+
+		ginkgo.By("Updating subnet " + subnetName + " with routes " + fmt.Sprintf("%v", routes))
+		subnet.Spec.Routes = routes
+		subnet = subnetClient.Update(subnet, metav1.UpdateOptions{}, 2*time.Second)
+
+		ginkgo.By("Creating pod " + podName)
+		cmd := []string{"sleep", "infinity"}
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		_ = podClient.CreateSync(pod)
+
+		ginkgo.By("Retrieving pod routes")
+		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(namespaceName, podName, cmd...)
+		})
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Validating pod routes")
+		actualRoutes := make([]request.Route, 0, len(podRoutes))
+		for _, r := range podRoutes {
+			if r.Gateway != "" || r.Dst != "" {
+				actualRoutes = append(actualRoutes, request.Route{Destination: r.Dst, Gateway: r.Gateway})
+			}
+		}
+		ipv4CIDR, ipv6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if f.HasIPv4() {
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4CIDR})
+			framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv4Gateway})
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv4RouteGw})
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv4RouteDst, Gateway: ipv4Gateway})
+		}
+		if f.HasIPv6() {
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv6CIDR})
+			framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv6Gateway})
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: ipv6RouteGw})
+			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6Gateway})
 		}
 	})
 
