@@ -46,6 +46,8 @@ SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
+OMIT_EXTERNAL_ID=${OMIT_EXTERNAL_ID:-}
+OMIT_KNOWN_NAME=${OMIT_KNOWN_NAME:-}
 
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
@@ -4735,6 +4737,8 @@ spec:
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           - --image=$REGISTRY/kube-ovn:$VERSION
+          - --omit-external-id=$OMIT_EXTERNAL_ID
+          - --omit-known-name=$OMIT_KNOWN_NAME
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false

@@ -48,3 +48,30 @@ func Test_logicalRouterPortFilter(t *testing.T) {
 		}
 	}
 }
+
+func (c *Controller) Test_matchOmitName(t *testing.T) {
+	t.Parallel()
+
+	lrp := newLogicalRouterPort("", "name-0", "", nil)
+
+	require.False(t, c.matchOmitName(lrp.Name))
+
+	c.config.OmitKnownName = "findMe"
+	require.False(t, c.matchOmitName(lrp.Name))
+
+	lrp.Name = "findMe"
+	require.True(t, c.matchOmitName(lrp.Name))
+}
+
+func (c *Controller) Test_matchOmitExternalIDs(t *testing.T) {
+	t.Parallel()
+
+	lrp := newLogicalRouterPort("", "name-0", "", nil)
+
+	c.config.OmitExternalID = "notFound"
+	require.False(t, c.matchOmitExternalIDs(lrp.ExternalIDs))
+	require.False(t, c.matchOmitExternalIDs(lrp.ExternalIDs))
+
+	c.config.OmitExternalID = "findMe"
+	require.True(t, c.matchOmitExternalIDs(lrp.ExternalIDs))
+}

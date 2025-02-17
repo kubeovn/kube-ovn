@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -64,6 +65,9 @@ func (c *Controller) gcLogicalRouterPort() error {
 
 	exceptPeerPorts := strset.New()
 	for _, vpc := range vpcs {
+		if c.matchOmitName(vpc.Name) {
+			continue
+		}
 		for _, peer := range vpc.Status.VpcPeerings {
 			exceptPeerPorts.Add(fmt.Sprintf("%s-%s", vpc.Name, peer))
 		}
@@ -86,6 +90,9 @@ func (c *Controller) gcVpcNatGateway() error {
 
 	var gwStsNames []string
 	for _, gw := range gws {
+		if c.matchOmitName(gw.Name) {
+			continue
+		}
 		_, err = c.vpcsLister.Get(gw.Spec.Vpc)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
@@ -151,7 +158,9 @@ func (c *Controller) gcLogicalSwitch() error {
 		if s := subnetMap[ls.Name]; s != nil && isOvnSubnet(s) {
 			continue
 		}
-
+		if c.matchOmitName(ls.Name) || c.matchOmitExternalIDs(ls.ExternalIDs) {
+			continue
+		}
 		klog.Infof("gc subnet %s", ls.Name)
 		if err := c.handleDeleteLogicalSwitch(ls.Name); err != nil {
 			klog.Errorf("failed to gc subnet %s, %v", ls.Name, err)
@@ -167,6 +176,9 @@ func (c *Controller) gcLogicalSwitch() error {
 	}
 	uuidToDeleteList := []string{}
 	for _, item := range dhcpOptions {
+		if c.matchOmitExternalIDs(item.ExternalIDs) {
+			continue
+		}
 		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
 			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
 		}
@@ -204,6 +216,9 @@ func (c *Controller) gcCustomLogicalRouter() error {
 
 	for _, lr := range lrs {
 		if lr.Name == c.config.ClusterRouter {
+			continue
+		}
+		if c.matchOmitName(lr.Name) || c.matchOmitExternalIDs(lr.ExternalIDs) {
 			continue
 		}
 		if !slices.Contains(vpcNames, lr.Name) {
@@ -265,6 +280,9 @@ func (c *Controller) gcNode() error {
 		if nodeNames.Has(policy.ExternalIDs["node"]) {
 			continue
 		}
+		if c.matchOmitExternalIDs(policy.ExternalIDs) {
+			continue
+		}
 		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
 		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
@@ -288,6 +306,9 @@ func (c *Controller) gcVip() error {
 		return err
 	}
 	for _, vip := range vips {
+		if c.matchOmitName(vip.Name) {
+			continue
+		}
 		portName := vip.Labels[util.IPReservedLabel]
 		portNameSplits := strings.Split(portName, ".")
 		if len(portNameSplits) >= 2 {
@@ -371,6 +392,9 @@ func (c *Controller) markAndCleanLSP() error {
 	noPodLSP := strset.New()
 	lspMap := strset.NewWithSize(len(lsps))
 	for _, lsp := range lsps {
+		if c.matchOmitExternalIDs(lsp.ExternalIDs) {
+			continue
+		}
 		lspMap.Add(lsp.Name)
 		if ipMap.Has(lsp.Name) {
 			continue
@@ -444,6 +468,9 @@ func (c *Controller) gcLoadBalancer() error {
 
 	vpcLbs := strset.NewWithSize(len(dnats))
 	for _, dnat := range dnats {
+		if c.matchOmitName(dnat.Name) {
+			continue
+		}
 		vpcLbs.Add(dnat.Name)
 	}
 
@@ -577,7 +604,7 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 
 		for vip := range lb.Vips {
-			if !svcVips.Has(vip) {
+			if !c.matchOmitName(lb.Name) && !c.matchOmitExternalIDs(lb.ExternalIDs) && !vpcLbs.Has(lb.Name) {
 				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 					return err
@@ -588,11 +615,13 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 
 	for _, vpc := range vpcs {
+		if c.matchOmitName(vpc.Name) {
+			continue
+		}
 		var (
 			tcpLb, udpLb, sctpLb             = vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
 			tcpSessLb, udpSessLb, sctpSessLb = vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		)
-
 		vpcLbs.Add(tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 		if err = removeVip(tcpLb, tcpVips); err != nil {
 			klog.Error(err)
@@ -623,7 +652,7 @@ func (c *Controller) gcLoadBalancer() error {
 	// delete lbs
 	if err = c.OVNNbClient.DeleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
-			return !vpcLbs.Has(lb.Name)
+			return !c.matchOmitName(lb.Name) && !c.matchOmitExternalIDs(lb.ExternalIDs) && !vpcLbs.Has(lb.Name)
 		},
 	); err != nil {
 		klog.Errorf("delete load balancers: %v", err)
@@ -645,6 +674,9 @@ func (c *Controller) gcAddressSet() error {
 	for _, as := range addressSets {
 		sg := as.ExternalIDs[sgKey]
 		if sg == "" {
+			continue
+		}
+		if c.matchOmitName(as.Name) || c.matchOmitExternalIDs(as.ExternalIDs) {
 			continue
 		}
 		// if address set not found associated port group, delete it
@@ -689,6 +721,9 @@ func (c *Controller) gcSecurityGroup() error {
 	defaultPg := ovs.GetSgPortGroupName(util.DefaultSecurityGroupName)
 	for _, pg := range pgs {
 		if pg.Name == denyAllPg || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
+			continue
+		}
+		if c.matchOmitName(pg.Name) || c.matchOmitExternalIDs(pg.ExternalIDs) {
 			continue
 		}
 		// if port group not exist in security group, delete it
@@ -771,6 +806,9 @@ func (c *Controller) gcNetworkPolicy() error {
 			// not np port group
 			continue
 		}
+		if c.matchOmitName(pg.Name) || c.matchOmitExternalIDs(pg.ExternalIDs) {
+			continue
+		}
 		if !npNames.Has(pg.ExternalIDs[networkPolicyKey]) {
 			klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
 			delPgNames.Add(pg.Name)
@@ -817,6 +855,9 @@ func (c *Controller) gcRoutePolicy() error {
 		if len(parts) != 2 {
 			continue
 		}
+		if c.matchOmitExternalIDs(policy.ExternalIDs) {
+			continue
+		}
 		srcIP := strings.TrimSpace(parts[1])
 		if !slices.Contains(podIPs, srcIP) {
 			klog.Infof("gc route policy %s", policy.Match)
@@ -844,6 +885,9 @@ func (c *Controller) gcStaticRoute() error {
 	}
 	var keepStaticRoute bool
 	for _, route := range routes {
+		if c.matchOmitExternalIDs(route.ExternalIDs) {
+			continue
+		}
 		keepStaticRoute = false
 		for _, item := range defaultVpc.Spec.StaticRoutes {
 			if route.IPPrefix == item.CIDR && route.Nexthop == item.NextHopIP && route.RouteTable == item.RouteTable {
@@ -1059,6 +1103,9 @@ func (c *Controller) gcVPCDNS() error {
 		canFind := false
 		for _, vd := range vds {
 			name := genVpcDNSDpName(vd.Name)
+			if c.matchOmitName(name) {
+				continue
+			}
 			if dep.Name == name {
 				canFind = true
 				break
@@ -1084,6 +1131,9 @@ func (c *Controller) gcVPCDNS() error {
 		canFind := false
 		for _, vd := range vds {
 			name := genVpcDNSDpName(vd.Name)
+			if c.matchOmitName(name) {
+				continue
+			}
 			if slr.Name == name {
 				canFind = true
 				break
@@ -1109,4 +1159,30 @@ func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.Logica
 
 		return lrp.Peer != nil && len(*lrp.Peer) != 0
 	}
+}
+
+func (c *Controller) matchOmitName(name string) bool {
+	if c.config.OmitKnownName == "" {
+		return false
+	}
+	re, _ := regexp.Compile(c.config.OmitKnownName)
+	return re.MatchString(name)
+}
+
+func (c *Controller) matchOmitExternalIDs(data map[string]string) bool {
+	if c.config.OmitExternalID == "" {
+		return false
+	}
+
+	re, err := regexp.Compile(c.config.OmitExternalID)
+	if err != nil {
+		return false
+	}
+
+	for key := range data {
+		if re.MatchString(key) {
+			return true
+		}
+	}
+	return false
 }

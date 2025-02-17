@@ -114,6 +114,9 @@ type Configuration struct {
 
 	// used to set vpc-egress-gateway image
 	Image string
+
+	OmitExternalID string
+	OmitKnownName  string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -194,6 +197,9 @@ func ParseFlags() (*Configuration, error) {
 		argBfdDetectMult = pflag.Int("detect-mult", 3, "The negotiated transmit interval, multiplied by this value, provides the Detection Time for the receiving system in Asynchronous mode.")
 
 		argImage = pflag.String("image", "", "The image for vpc-egress-gateway")
+
+		argOmitExternalID = pflag.String("omit-external-id", "", "The external-id key in to omit when GC'ing resources. This can take the form of a regex.")
+		argOmitKnownName  = pflag.String("omit-known-name", "", "Known item names to omit when GC'ing resources. This can take the form of a regex.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -279,6 +285,8 @@ func ParseFlags() (*Configuration, error) {
 		BfdDetectMult:                  *argBfdDetectMult,
 		EnableANP:                      *argEnableANP,
 		Image:                          *argImage,
+		OmitExternalID:                 *argOmitExternalID,
+		OmitKnownName:                  *argOmitKnownName,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
