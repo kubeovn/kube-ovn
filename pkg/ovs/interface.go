@@ -25,6 +25,18 @@ type NBGlobal interface {
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
 
+type ChassisTemplateVar interface {
+	ListChassisTemplateVar() ([]ovnnb.ChassisTemplateVar, error)
+	GetChassisTemplateVar(chassis string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error)
+	GetChassisTemplateVarByNodeName(node string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error)
+	CreateChassisTemplateVar(node, chassis string, variables map[string]string) error
+	UpdateChassisTemplateVar(node, chassis string, variables map[string]*string) error
+	UpdateChassisTemplateVarVariables(variable string, nodeValues map[string]string) error
+	DeleteChassisTemplateVarVariables(variables ...string) error
+	DeleteChassisTemplateVar(chassis string) error
+	DeleteChassisTemplateVarByNodeName(node string) error
+}
+
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
 	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error
@@ -116,7 +128,7 @@ type LogicalSwitchPort interface {
 }
 
 type LoadBalancer interface {
-	CreateLoadBalancer(lbName, protocol, selectFields string) error
+	CreateLoadBalancer(lbName, protocol, selectFields string, template bool) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -226,9 +238,14 @@ type DHCPOptions interface {
 }
 
 type NbClient interface {
+	// nb/sb common interface
+	Common
+
+	// nb specific interface
 	ACL
 	AddressSet
 	BFD
+	ChassisTemplateVar
 	DHCPOptions
 	GatewayChassis
 	HAChassisGroup
@@ -243,17 +260,21 @@ type NbClient interface {
 	NAT
 	NBGlobal
 	PortGroup
+
+	// kube-ovn specific interface
 	CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error
 	CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error
 	RemoveLogicalPatchPort(lspName, lrpName string) error
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
-	Common
 }
 
 type SbClient interface {
-	Chassis
+	// nb/sb common interface
 	Common
+
+	// sb specific interface
+	Chassis
 }
 
 type Common interface {

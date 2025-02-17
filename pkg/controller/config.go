@@ -62,10 +62,17 @@ type Configuration struct {
 
 	ClusterTCPLoadBalancer         string
 	ClusterUDPLoadBalancer         string
-	ClusterSctpLoadBalancer        string
+	ClusterSCTPLoadBalancer        string
 	ClusterTCPSessionLoadBalancer  string
 	ClusterUDPSessionLoadBalancer  string
-	ClusterSctpSessionLoadBalancer string
+	ClusterSCTPSessionLoadBalancer string
+
+	LocalTCPLoadBalancer         string
+	LocalUDPLoadBalancer         string
+	LocalSCTPLoadBalancer        string
+	LocalTCPSessionLoadBalancer  string
+	LocalUDPSessionLoadBalancer  string
+	LocalSCTPSessionLoadBalancer string
 
 	PodName      string
 	PodNamespace string
@@ -148,10 +155,17 @@ func ParseFlags() (*Configuration, error) {
 
 		argClusterTCPLoadBalancer         = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
 		argClusterUDPLoadBalancer         = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
-		argClusterSctpLoadBalancer        = pflag.String("cluster-sctp-loadbalancer", "cluster-sctp-loadbalancer", "The name for cluster sctp loadbalancer")
+		argClusterSCTPLoadBalancer        = pflag.String("cluster-sctp-loadbalancer", "cluster-sctp-loadbalancer", "The name for cluster sctp loadbalancer")
 		argClusterTCPSessionLoadBalancer  = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
 		argClusterUDPSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
-		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
+		argClusterSCTPSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
+
+		argLocalTCPLoadBalancer         = pflag.String("local-tcp-loadbalancer", "local-tcp-loadbalancer", "The name for local tcp loadbalancer")
+		argLocalUDPLoadBalancer         = pflag.String("local-udp-loadbalancer", "local-udp-loadbalancer", "The name for local udp loadbalancer")
+		argLocalSCTPLoadBalancer        = pflag.String("local-sctp-loadbalancer", "local-sctp-loadbalancer", "The name for local sctp loadbalancer")
+		argLocalTCPSessionLoadBalancer  = pflag.String("local-tcp-session-loadbalancer", "local-tcp-session-loadbalancer", "The name for local tcp session loadbalancer")
+		argLocalUDPSessionLoadBalancer  = pflag.String("local-udp-session-loadbalancer", "local-udp-session-loadbalancer", "The name for local udp session loadbalancer")
+		argLocalSCTPSessionLoadBalancer = pflag.String("local-sctp-session-loadbalancer", "local-sctp-session-loadbalancer", "The name for local sctp session loadbalancer")
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
 		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
@@ -238,10 +252,16 @@ func ParseFlags() (*Configuration, error) {
 		ServiceClusterIPRange:          *argServiceClusterIPRange,
 		ClusterTCPLoadBalancer:         *argClusterTCPLoadBalancer,
 		ClusterUDPLoadBalancer:         *argClusterUDPLoadBalancer,
-		ClusterSctpLoadBalancer:        *argClusterSctpLoadBalancer,
+		ClusterSCTPLoadBalancer:        *argClusterSCTPLoadBalancer,
 		ClusterTCPSessionLoadBalancer:  *argClusterTCPSessionLoadBalancer,
 		ClusterUDPSessionLoadBalancer:  *argClusterUDPSessionLoadBalancer,
-		ClusterSctpSessionLoadBalancer: *argClusterSctpSessionLoadBalancer,
+		ClusterSCTPSessionLoadBalancer: *argClusterSCTPSessionLoadBalancer,
+		LocalTCPLoadBalancer:           *argLocalTCPLoadBalancer,
+		LocalUDPLoadBalancer:           *argLocalUDPLoadBalancer,
+		LocalSCTPLoadBalancer:          *argLocalSCTPLoadBalancer,
+		LocalTCPSessionLoadBalancer:    *argLocalTCPSessionLoadBalancer,
+		LocalUDPSessionLoadBalancer:    *argLocalUDPSessionLoadBalancer,
+		LocalSCTPSessionLoadBalancer:   *argLocalSCTPSessionLoadBalancer,
 		WorkerNum:                      *argWorkerNum,
 		EnablePprof:                    *argEnablePprof,
 		PprofPort:                      *argPprofPort,

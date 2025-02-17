@@ -724,8 +724,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			vpc.Status.TCPSessionLoadBalancer,
 			vpc.Status.UDPLoadBalancer,
 			vpc.Status.UDPSessionLoadBalancer,
-			vpc.Status.SctpLoadBalancer,
-			vpc.Status.SctpSessionLoadBalancer,
+			vpc.Status.SCTPLoadBalancer,
+			vpc.Status.SCTPSessionLoadBalancer,
+			vpc.Status.LocalTCPLoadBalancer,
+			vpc.Status.LocalTCPSessionLoadBalancer,
+			vpc.Status.LocalUDPLoadBalancer,
+			vpc.Status.LocalUDPSessionLoadBalancer,
+			vpc.Status.LocalSCTPLoadBalancer,
+			vpc.Status.LocalSCTPSessionLoadBalancer,
 		}
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {

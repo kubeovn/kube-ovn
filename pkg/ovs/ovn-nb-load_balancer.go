@@ -18,7 +18,7 @@ import (
 )
 
 // CreateLoadBalancer create loadbalancer
-func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string, template bool) error {
 	var (
 		exist bool
 		err   error
@@ -42,6 +42,9 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
 		Protocol: &protocol,
+	}
+	if template {
+		lb.Options = map[string]string{"template": "true"}
 	}
 
 	if len(selectFields) != 0 {

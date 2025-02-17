@@ -470,7 +470,20 @@ func (c *Controller) gcLoadBalancer() error {
 				if !isOvnSubnet(subnet) {
 					continue
 				}
-				lbs := []string{vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
+				lbs := []string{
+					vpc.Status.TCPLoadBalancer,
+					vpc.Status.TCPSessionLoadBalancer,
+					vpc.Status.UDPLoadBalancer,
+					vpc.Status.UDPSessionLoadBalancer,
+					vpc.Status.SCTPLoadBalancer,
+					vpc.Status.SCTPSessionLoadBalancer,
+					vpc.Status.LocalTCPLoadBalancer,
+					vpc.Status.LocalTCPSessionLoadBalancer,
+					vpc.Status.LocalUDPLoadBalancer,
+					vpc.Status.LocalUDPSessionLoadBalancer,
+					vpc.Status.LocalSCTPLoadBalancer,
+					vpc.Status.LocalSCTPSessionLoadBalancer,
+				}
 				if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
 					klog.Error(err)
 					return err
@@ -481,8 +494,14 @@ func (c *Controller) gcLoadBalancer() error {
 			vpc.Status.TCPSessionLoadBalancer = ""
 			vpc.Status.UDPLoadBalancer = ""
 			vpc.Status.UDPSessionLoadBalancer = ""
-			vpc.Status.SctpLoadBalancer = ""
-			vpc.Status.SctpSessionLoadBalancer = ""
+			vpc.Status.SCTPLoadBalancer = ""
+			vpc.Status.SCTPSessionLoadBalancer = ""
+			vpc.Status.LocalTCPLoadBalancer = ""
+			vpc.Status.LocalTCPSessionLoadBalancer = ""
+			vpc.Status.LocalUDPLoadBalancer = ""
+			vpc.Status.LocalUDPSessionLoadBalancer = ""
+			vpc.Status.LocalSCTPLoadBalancer = ""
+			vpc.Status.LocalSCTPSessionLoadBalancer = ""
 			bytes, err := vpc.Status.Bytes()
 			if err != nil {
 				klog.Error(err)
@@ -517,30 +536,42 @@ func (c *Controller) gcLoadBalancer() error {
 		tcpSessionVips  = strset.NewWithSize(len(svcs) * 2)
 		udpSessionVips  = strset.NewWithSize(len(svcs) * 2)
 		sctpSessionVips = strset.NewWithSize(len(svcs) * 2)
+
+		localTCPVips         = strset.New()
+		localUDPVips         = strset.New()
+		localSCTPVips        = strset.New()
+		localTCPSessionVips  = strset.New()
+		localUDPSessionVips  = strset.New()
+		localSCTPSessionVips = strset.New()
 	)
 
 	for _, svc := range svcs {
+		tcpVipSet, tcpSessVipSet, udpVipSet, udpSessVipSet, sctpVipSet, sctpSessVipSet := tcpVips, tcpSessionVips, udpVips, udpSessionVips, sctpVips, sctpSessionVips
+		if svc.Spec.InternalTrafficPolicy != nil && *svc.Spec.InternalTrafficPolicy == corev1.ServiceInternalTrafficPolicyLocal {
+			tcpVipSet, tcpSessVipSet, udpVipSet, udpSessVipSet, sctpVipSet, sctpSessVipSet = localTCPVips, localTCPSessionVips, localUDPVips, localUDPSessionVips, localSCTPVips, localSCTPSessionVips
+		}
+
 		for _, ip := range getVipIps(svc) {
 			for _, port := range svc.Spec.Ports {
 				vip := util.JoinHostPort(ip, port.Port)
 				switch port.Protocol {
 				case corev1.ProtocolTCP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						tcpSessionVips.Add(vip)
+						tcpSessVipSet.Add(vip)
 					} else {
-						tcpVips.Add(vip)
+						tcpVipSet.Add(vip)
 					}
 				case corev1.ProtocolUDP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						udpSessionVips.Add(vip)
+						udpSessVipSet.Add(vip)
 					} else {
-						udpVips.Add(vip)
+						udpVipSet.Add(vip)
 					}
 				case corev1.ProtocolSCTP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						sctpSessionVips.Add(vip)
+						sctpSessVipSet.Add(vip)
 					} else {
-						sctpVips.Add(vip)
+						sctpVipSet.Add(vip)
 					}
 				}
 			}
@@ -553,26 +584,16 @@ func (c *Controller) gcLoadBalancer() error {
 		return err
 	}
 
-	var (
-		removeVip         func(lbName string, svcVips *strset.Set) error
-		ignoreHealthCheck = true
-	)
-
-	removeVip = func(lbName string, svcVips *strset.Set) error {
+	removeVip := func(lbName string, svcVips *strset.Set) error {
 		if lbName == "" {
 			return nil
 		}
 
-		var (
-			lb  *ovnnb.LoadBalancer
-			err error
-		)
-
-		if lb, err = c.OVNNbClient.GetLoadBalancer(lbName, true); err != nil {
+		lb, err := c.OVNNbClient.GetLoadBalancer(lbName, true)
+		if err != nil {
 			klog.Errorf("get LB %s: %v", lbName, err)
 			return err
 		}
-
 		if lb == nil {
 			klog.Infof("load balancer %q already deleted", lbName)
 			return nil
@@ -580,7 +601,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 		for vip := range lb.Vips {
 			if !svcVips.Has(vip) {
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 					return err
 				}
@@ -590,35 +611,26 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 
 	for _, vpc := range vpcs {
-		var (
-			tcpLb, udpLb, sctpLb             = vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
-			tcpSessLb, udpSessLb, sctpSessLb = vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
-		)
-
-		vpcLbs.Add(tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
-		if err = removeVip(tcpLb, tcpVips); err != nil {
-			klog.Error(err)
-			return err
+		lbVipsMap := map[string]*strset.Set{
+			vpc.Status.TCPLoadBalancer:              tcpVips,
+			vpc.Status.UDPLoadBalancer:              udpVips,
+			vpc.Status.SCTPLoadBalancer:             sctpVips,
+			vpc.Status.TCPSessionLoadBalancer:       tcpSessionVips,
+			vpc.Status.UDPSessionLoadBalancer:       udpSessionVips,
+			vpc.Status.SCTPSessionLoadBalancer:      sctpSessionVips,
+			vpc.Status.LocalTCPLoadBalancer:         localTCPVips,
+			vpc.Status.LocalUDPLoadBalancer:         localUDPVips,
+			vpc.Status.LocalSCTPLoadBalancer:        localSCTPVips,
+			vpc.Status.LocalTCPSessionLoadBalancer:  localTCPSessionVips,
+			vpc.Status.LocalUDPSessionLoadBalancer:  localUDPSessionVips,
+			vpc.Status.LocalSCTPSessionLoadBalancer: localSCTPSessionVips,
 		}
-		if err = removeVip(tcpSessLb, tcpSessionVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(udpLb, udpVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(udpSessLb, udpSessionVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(sctpLb, sctpVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(sctpSessLb, sctpSessionVips); err != nil {
-			klog.Error(err)
-			return err
+		for lb, vips := range lbVipsMap {
+			vpcLbs.Add(lb)
+			if err = removeVip(lb, vips); err != nil {
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 

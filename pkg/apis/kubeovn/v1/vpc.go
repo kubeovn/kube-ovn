@@ -117,21 +117,29 @@ type VpcStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Standby                 bool     `json:"standby"`
-	Default                 bool     `json:"default"`
-	DefaultLogicalSwitch    string   `json:"defaultLogicalSwitch"`
-	Router                  string   `json:"router"`
-	TCPLoadBalancer         string   `json:"tcpLoadBalancer"`
-	UDPLoadBalancer         string   `json:"udpLoadBalancer"`
-	SctpLoadBalancer        string   `json:"sctpLoadBalancer"`
-	TCPSessionLoadBalancer  string   `json:"tcpSessionLoadBalancer"`
-	UDPSessionLoadBalancer  string   `json:"udpSessionLoadBalancer"`
-	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
-	Subnets                 []string `json:"subnets"`
-	VpcPeerings             []string `json:"vpcPeerings"`
-	EnableExternal          bool     `json:"enableExternal"`
-	ExtraExternalSubnets    []string `json:"extraExternalSubnets"`
-	EnableBfd               bool     `json:"enableBfd"`
+	Standby              bool     `json:"standby"`
+	Default              bool     `json:"default"`
+	DefaultLogicalSwitch string   `json:"defaultLogicalSwitch"`
+	Router               string   `json:"router"`
+	Subnets              []string `json:"subnets"`
+	VpcPeerings          []string `json:"vpcPeerings"`
+	EnableExternal       bool     `json:"enableExternal"`
+	ExtraExternalSubnets []string `json:"extraExternalSubnets"`
+	EnableBfd            bool     `json:"enableBfd"`
+
+	TCPLoadBalancer         string `json:"tcpLoadBalancer"`
+	UDPLoadBalancer         string `json:"udpLoadBalancer"`
+	SCTPLoadBalancer        string `json:"sctpLoadBalancer"`
+	TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
+	UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
+	SCTPSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
+
+	LocalTCPLoadBalancer         string `json:"localTCPLoadBalancer"`
+	LocalUDPLoadBalancer         string `json:"localUDPLoadBalancer"`
+	LocalSCTPLoadBalancer        string `json:"localSCTPLoadBalancer"`
+	LocalTCPSessionLoadBalancer  string `json:"localTCPSessionLoadBalancer"`
+	LocalUDPSessionLoadBalancer  string `json:"localUDPSessionLoadBalancer"`
+	LocalSCTPSessionLoadBalancer string `json:"localSCTPSessionLoadBalancer"`
 
 	BFDPort BFDPortStatus `json:"bfdPort"`
 }

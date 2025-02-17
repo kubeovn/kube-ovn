@@ -189,57 +189,93 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	return nil
 }
 
+type VpcLoadBalancerConfig struct {
+	Name, Protocol            string
+	Template, SessionAffinity bool
+}
+
+func newVpcLoadBalancerConfig(name string, protocol v1.Protocol, template, sessionAffinity bool) *VpcLoadBalancerConfig {
+	return &VpcLoadBalancerConfig{
+		Name:            name,
+		Protocol:        string(protocol),
+		Template:        template,
+		SessionAffinity: sessionAffinity,
+	}
+}
+
 type VpcLoadBalancer struct {
-	TCPLoadBalancer      string
-	TCPSessLoadBalancer  string
-	UDPLoadBalancer      string
-	UDPSessLoadBalancer  string
-	SctpLoadBalancer     string
-	SctpSessLoadBalancer string
+	TCPLoadBalancer           *VpcLoadBalancerConfig
+	TCPSessLoadBalancer       *VpcLoadBalancerConfig
+	UDPLoadBalancer           *VpcLoadBalancerConfig
+	UDPSessLoadBalancer       *VpcLoadBalancerConfig
+	SCTPLoadBalancer          *VpcLoadBalancerConfig
+	SCTPSessLoadBalancer      *VpcLoadBalancerConfig
+	LocalTCPLoadBalancer      *VpcLoadBalancerConfig
+	LocalTCPSessLoadBalancer  *VpcLoadBalancerConfig
+	LocalUDPLoadBalancer      *VpcLoadBalancerConfig
+	LocalUDPSessLoadBalancer  *VpcLoadBalancerConfig
+	LocalSCTPLoadBalancer     *VpcLoadBalancerConfig
+	LocalSCTPSessLoadBalancer *VpcLoadBalancerConfig
+}
+
+func (v *VpcLoadBalancer) LBs() []*VpcLoadBalancerConfig {
+	return []*VpcLoadBalancerConfig{
+		v.TCPLoadBalancer,
+		v.TCPSessLoadBalancer,
+		v.UDPLoadBalancer,
+		v.UDPSessLoadBalancer,
+		v.SCTPLoadBalancer,
+		v.SCTPSessLoadBalancer,
+		v.LocalTCPLoadBalancer,
+		v.LocalTCPSessLoadBalancer,
+		v.LocalUDPLoadBalancer,
+		v.LocalUDPSessLoadBalancer,
+		v.LocalSCTPLoadBalancer,
+		v.LocalSCTPSessLoadBalancer,
+	}
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
-			TCPLoadBalancer:      c.config.ClusterTCPLoadBalancer,
-			TCPSessLoadBalancer:  c.config.ClusterTCPSessionLoadBalancer,
-			UDPLoadBalancer:      c.config.ClusterUDPLoadBalancer,
-			UDPSessLoadBalancer:  c.config.ClusterUDPSessionLoadBalancer,
-			SctpLoadBalancer:     c.config.ClusterSctpLoadBalancer,
-			SctpSessLoadBalancer: c.config.ClusterSctpSessionLoadBalancer,
+			TCPLoadBalancer:           newVpcLoadBalancerConfig(c.config.ClusterTCPLoadBalancer, v1.ProtocolTCP, false, false),
+			TCPSessLoadBalancer:       newVpcLoadBalancerConfig(c.config.ClusterTCPSessionLoadBalancer, v1.ProtocolTCP, false, true),
+			UDPLoadBalancer:           newVpcLoadBalancerConfig(c.config.ClusterUDPLoadBalancer, v1.ProtocolUDP, false, false),
+			UDPSessLoadBalancer:       newVpcLoadBalancerConfig(c.config.ClusterUDPSessionLoadBalancer, v1.ProtocolUDP, false, true),
+			SCTPLoadBalancer:          newVpcLoadBalancerConfig(c.config.ClusterSCTPLoadBalancer, v1.ProtocolSCTP, false, false),
+			SCTPSessLoadBalancer:      newVpcLoadBalancerConfig(c.config.ClusterSCTPSessionLoadBalancer, v1.ProtocolSCTP, false, true),
+			LocalTCPLoadBalancer:      newVpcLoadBalancerConfig(c.config.LocalTCPLoadBalancer, v1.ProtocolTCP, true, false),
+			LocalTCPSessLoadBalancer:  newVpcLoadBalancerConfig(c.config.LocalTCPSessionLoadBalancer, v1.ProtocolTCP, true, true),
+			LocalUDPLoadBalancer:      newVpcLoadBalancerConfig(c.config.LocalUDPLoadBalancer, v1.ProtocolUDP, true, false),
+			LocalUDPSessLoadBalancer:  newVpcLoadBalancerConfig(c.config.LocalUDPSessionLoadBalancer, v1.ProtocolUDP, true, true),
+			LocalSCTPLoadBalancer:     newVpcLoadBalancerConfig(c.config.LocalSCTPLoadBalancer, v1.ProtocolSCTP, true, false),
+			LocalSCTPSessLoadBalancer: newVpcLoadBalancerConfig(c.config.LocalSCTPSessionLoadBalancer, v1.ProtocolSCTP, true, true),
 		}
 	}
 	return &VpcLoadBalancer{
-		TCPLoadBalancer:      fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
-		TCPSessLoadBalancer:  fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
-		UDPLoadBalancer:      fmt.Sprintf("vpc-%s-udp-load", vpcKey),
-		UDPSessLoadBalancer:  fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
-		SctpLoadBalancer:     fmt.Sprintf("vpc-%s-sctp-load", vpcKey),
-		SctpSessLoadBalancer: fmt.Sprintf("vpc-%s-sctp-sess-load", vpcKey),
+		TCPLoadBalancer:           newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-tcp-load", vpcKey), v1.ProtocolTCP, false, false),
+		TCPSessLoadBalancer:       newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey), v1.ProtocolTCP, false, true),
+		UDPLoadBalancer:           newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-udp-load", vpcKey), v1.ProtocolUDP, false, false),
+		UDPSessLoadBalancer:       newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey), v1.ProtocolUDP, false, true),
+		SCTPLoadBalancer:          newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-sctp-load", vpcKey), v1.ProtocolSCTP, false, false),
+		SCTPSessLoadBalancer:      newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-sctp-sess-load", vpcKey), v1.ProtocolSCTP, false, true),
+		LocalTCPLoadBalancer:      newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-tcp-load", vpcKey), v1.ProtocolTCP, true, false),
+		LocalTCPSessLoadBalancer:  newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-tcp-sess-load", vpcKey), v1.ProtocolTCP, true, true),
+		LocalUDPLoadBalancer:      newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-udp-load", vpcKey), v1.ProtocolUDP, true, false),
+		LocalUDPSessLoadBalancer:  newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-udp-sess-load", vpcKey), v1.ProtocolUDP, true, true),
+		LocalSCTPLoadBalancer:     newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-sctp-load", vpcKey), v1.ProtocolSCTP, true, false),
+		LocalSCTPSessLoadBalancer: newVpcLoadBalancerConfig(fmt.Sprintf("vpc-%s-local-sctp-sess-load", vpcKey), v1.ProtocolSCTP, true, true),
 	}
 }
 
 func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
-	if err := c.initLB(vpcLbConfig.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-		return nil, err
+	for _, lb := range vpcLbConfig.LBs() {
+		if err := c.initLB(lb.Name, lb.Protocol, lb.Template, lb.SessionAffinity); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
 	}
-	if err := c.initLB(vpcLbConfig.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-		return nil, err
-	}
-
 	return vpcLbConfig, nil
 }
 
@@ -495,12 +531,18 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			klog.Error(err)
 			return err
 		}
-		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
+		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer.Name
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer.Name
+		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer.Name
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer.Name
+		vpc.Status.SCTPLoadBalancer = vpcLb.SCTPLoadBalancer.Name
+		vpc.Status.SCTPSessionLoadBalancer = vpcLb.SCTPSessLoadBalancer.Name
+		vpc.Status.LocalTCPLoadBalancer = vpcLb.LocalTCPLoadBalancer.Name
+		vpc.Status.LocalTCPSessionLoadBalancer = vpcLb.LocalTCPSessLoadBalancer.Name
+		vpc.Status.LocalUDPLoadBalancer = vpcLb.LocalUDPLoadBalancer.Name
+		vpc.Status.LocalUDPSessionLoadBalancer = vpcLb.LocalUDPSessLoadBalancer.Name
+		vpc.Status.LocalSCTPLoadBalancer = vpcLb.LocalSCTPLoadBalancer.Name
+		vpc.Status.LocalSCTPSessionLoadBalancer = vpcLb.LocalSCTPSessLoadBalancer.Name
 	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {

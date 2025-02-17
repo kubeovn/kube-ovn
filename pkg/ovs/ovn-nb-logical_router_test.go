@@ -300,7 +300,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 	for i := 1; i <= 3; i++ {
 		lbName := fmt.Sprintf("%s-%d", prefix, i)
 		lbNames = append(lbNames, lbName)
-		err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+		err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 		require.NoError(t, err)
 	}
 

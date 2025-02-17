@@ -82,6 +82,32 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 	return fmt.Sprintf("node_%s_underlay_v%d", strings.ReplaceAll(node, "-", "_"), af)
 }
 
+func (c *Controller) initChassisTemplateVar(node *v1.Node) error {
+	if !c.config.EnableLb {
+		if err := c.OVNNbClient.DeleteChassisTemplateVarByNodeName(node.Name); err != nil {
+			err = fmt.Errorf("failed to delete ovn-nb Chassis_Template_Var for node %s: %w", node.Name, err)
+			klog.Error(err)
+			return err
+		}
+		return nil
+	}
+
+	chassisName := node.Annotations[util.ChassisAnnotation]
+	if chassisName == "" {
+		// kube-ovn-cni not ready to set chassis
+		klog.Infof("chassis annotation not found for node %s, skip initializing ovn-nb Chassis_Template_Var record", node.Name)
+		return nil
+	}
+
+	if err := c.OVNNbClient.CreateChassisTemplateVar(node.Name, chassisName, nil); err != nil {
+		err = fmt.Errorf("failed to create ovn-nb Chassis_Template_Var %s for node %s: %w", chassisName, node.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	return nil
+}
+
 func (c *Controller) handleAddNode(key string) error {
 	c.nodeKeyMutex.LockKey(key)
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
@@ -96,6 +122,12 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 	node := cachedNode.DeepCopy()
 	klog.Infof("handle add node %s", node.Name)
+
+	// init ovn-nb Chassis_Template_Var record which is used by template Load_Balancer
+	if err = c.initChassisTemplateVar(node); err != nil {
+		klog.Errorf("failed to init Chassis_Template_Var for node %s: %v", node.Name, err)
+		return err
+	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -424,6 +456,14 @@ func (c *Controller) deleteNode(key string) error {
 	klog.Infof("delete node ip %s", portName)
 	if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
+	}
+
+	if c.config.EnableLb {
+		if err = c.OVNNbClient.DeleteChassisTemplateVarByNodeName(key); err != nil {
+			err = fmt.Errorf("failed to delete ovn-nb Chassis_Template_Var for node %s: %w", key, err)
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
