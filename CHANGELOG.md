@@ -1114,6 +1114,37 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.31 (2025-02-17)
+
+ * [89c3acf1e](https://github.com/kubeovn/kube-ovn/commit/89c3acf1ef2f78f84175a7f47ef538012212ba13) release v1.12.31
+ * [cd0d99ebe](https://github.com/kubeovn/kube-ovn/commit/cd0d99ebe94e715aa0b27ba29479d26393dc2683) fix superfluous response.WriteHeader (#4980)
+ * [dc641799a](https://github.com/kubeovn/kube-ovn/commit/dc641799aa7d000f93312678a750a8f323f3aceb) use httpGet as liveness/readiness probe method (#4945)
+ * [97dc1210f](https://github.com/kubeovn/kube-ovn/commit/97dc1210fb888b7f04d9df02de258e13edcf5357) fix: kube-ovn-cni always dump-flows br-provider per period (#4969)
+ * [1ad46bed6](https://github.com/kubeovn/kube-ovn/commit/1ad46bed64ec333a45b58928952b4ef99a386e36) controller: consider StatefulSet's start ordinal (#4967)
+ * [5b859819f](https://github.com/kubeovn/kube-ovn/commit/5b859819fc3649e18ec595815f41de42245badca) bump go to 1.22.12 (#4965)
+ * [11def018a](https://github.com/kubeovn/kube-ovn/commit/11def018a1bdb6d145f26658bb99cbe06e0f7a75) ci: build arm64 images on arm64 hosted runners (#4936)
+ * [138da35ac](https://github.com/kubeovn/kube-ovn/commit/138da35ac8b960da9286308eb5f2214aca5f0ff5) fix log (#4928)
+ * [3518f6b80](https://github.com/kubeovn/kube-ovn/commit/3518f6b804adbd9a30c10567aee64b144b4df6e9) controller: check condition NodeNetworkUnavailable when determining whether node is ready (#4917)
+ * [7ef9ebaae](https://github.com/kubeovn/kube-ovn/commit/7ef9ebaaec74c5a20a98688e52902c104a65cd11) cni-server: set node NetworkUnavailable condition after join subnet gateway check (#4915)
+ * [b8ba5d84d](https://github.com/kubeovn/kube-ovn/commit/b8ba5d84d12c92d0189f10f91bd37a2e467203ec) ipam: check subnet's available ipv6 address count (#4903)
+ * [26224c58d](https://github.com/kubeovn/kube-ovn/commit/26224c58dfc884f86c965990ea37c5e69144ff74) fix(controller/subnet): controller crashes on subnets if gateway is unspecified and netpol are disabled (#4848)
+ * [67c9af8c1](https://github.com/kubeovn/kube-ovn/commit/67c9af8c125f77ed2c7f6ff354d8d4ac4ac1f1e5) bump go to 1.22.10 (#4853)
+ * [b030cbc4d](https://github.com/kubeovn/kube-ovn/commit/b030cbc4dc7bb91d43a34908957e7337beb5ecaf) use JSON merge patch to update labels/annotations (#4838)
+ * [e19f48c08](https://github.com/kubeovn/kube-ovn/commit/e19f48c0826f0cc236c8d7092a8f4297ae7660ca) fix getting subnet cidr by protocol (#4844)
+ * [5e8288be0](https://github.com/kubeovn/kube-ovn/commit/5e8288be0765a69f45b8fd8d475533ed3f8d5df8) ci: wait for kubevirt crd to be created before creating CR (#4839)
+ * [16955b0b0](https://github.com/kubeovn/kube-ovn/commit/16955b0b0156046b61466d07d39c2e3d739bdaae) build(deps): bump helm/kind-action from 1.10.0 to 1.11.0 (#4837)
+ * [b76c0441c](https://github.com/kubeovn/kube-ovn/commit/b76c0441cd75f59410823af3663d902ac6c952f3) refactor: remove redundant policy route addition in node handling (#4835)
+ * [3b1357316](https://github.com/kubeovn/kube-ovn/commit/3b1357316bc22dde38bff6519282dc0151bed72d) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.30 (2024-12-16)
 
  * [4344a4671](https://github.com/kubeovn/kube-ovn/commit/4344a46714a1e21a879d1842eb09afb300edddb8) release v1.12.30
