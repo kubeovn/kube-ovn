@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -59,7 +60,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	} else {
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
@@ -69,7 +70,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	}
 
@@ -92,7 +93,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	} else {
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
@@ -102,7 +103,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
-			return fmt.Errorf(raw)
+			return errors.New(raw)
 		}
 	}
 	return configureMirrorLink(portName, mtu)

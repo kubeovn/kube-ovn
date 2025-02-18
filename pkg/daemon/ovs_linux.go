@@ -401,7 +401,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
+func configureContainerNic(nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		klog.Error(err)
@@ -618,7 +618,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false); err != nil {
@@ -1279,7 +1279,7 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 	return hostNicName, vfNetdevice, nil
 }
 
-func setupYunsiliconInterface(containerID, deviceID, ifName string, mac string) (string, string, error) {
+func setupYunsiliconInterface(containerID, deviceID, ifName, mac string) (string, string, error) {
 	var vfNetdevice string
 	// 1. get VF netdevice from PCI
 	vfNetdevices, err := sriovnet.GetNetDevicesFromPci(deviceID)

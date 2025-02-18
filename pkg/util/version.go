@@ -6,7 +6,7 @@ import (
 )
 
 // CompareVersion compare two version
-func CompareVersion(version1 string, version2 string) int {
+func CompareVersion(version1, version2 string) int {
 	versionA := strings.Split(version1, ".")
 	versionB := strings.Split(version2, ".")
 

@@ -20,13 +20,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var (
-	// external underlay vlan macvlan network attachment definition provider
-	MACVLAN_NAD_PROVIDER = fmt.Sprintf("%s.%s", util.VpcExternalNet, ATTACHMENT_NS)
-)
+// external underlay vlan macvlan network attachment definition provider
+var MACVLAN_NAD_PROVIDER = fmt.Sprintf("%s.%s", util.VpcExternalNet, ATTACHMENT_NS)
 
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -105,7 +102,6 @@ func (c *Controller) processNextAddIptablesEipWorkItem() bool {
 		c.addIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -135,7 +131,6 @@ func (c *Controller) processNextResetIptablesEipWorkItem() bool {
 		c.resetIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -192,7 +187,6 @@ func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
 		c.delIptablesEipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -540,7 +534,6 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 					NatGwDp:    natGwDp,
 				},
 			}, metav1.CreateOptions{})
-
 			if err != nil {
 				err := fmt.Errorf("failed to create eip crd %s, %v", key, err)
 				klog.Error(err)
@@ -818,6 +811,7 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 	}
 	return nil
 }
+
 func (c *Controller) natLabelEip(eipName, natName string) error {
 	oriEip, err := c.iptablesEipsLister.Get(eipName)
 	if err != nil {

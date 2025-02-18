@@ -18,7 +18,6 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -101,7 +100,6 @@ func (c *Controller) processNextAddOvnSnatRuleWorkItem() bool {
 		c.addOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -131,7 +129,6 @@ func (c *Controller) processNextUpdateOvnSnatRuleWorkItem() bool {
 		c.updateOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -161,7 +158,6 @@ func (c *Controller) processNextDeleteOvnSnatRuleWorkItem() bool {
 		c.delOvnSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

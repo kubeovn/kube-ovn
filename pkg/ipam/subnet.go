@@ -166,7 +166,7 @@ func (subnet *Subnet) popPodNic(podName, nicName string) {
 	}
 }
 
-func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) GetRandomAddress(podName, nicName, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	subnet.mutex.Lock()
 	defer func() {
 		subnet.pushPodNic(podName, nicName)
@@ -182,7 +182,7 @@ func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skip
 	}
 }
 
-func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getDualRandomAddress(podName, nicName, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	v4IP, _, _, err := subnet.getV4RandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		klog.Errorf("failed to allocate v4 ip for %s: %v", podName, err)
@@ -202,7 +202,7 @@ func (subnet *Subnet) getDualRandomAddress(podName, nicName string, mac string, 
 	return v4IP, v6IP, mac, nil
 }
 
-func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getV4RandomAddress(podName, nicName, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -268,7 +268,7 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 	}
 }
 
-func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+func (subnet *Subnet) getV6RandomAddress(podName, nicName, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
 	// After 'macAdd' introduced to support only static mac address, pod restart will run into error mac AddressConflict
 	// controller will re-enqueue the new pod then wait for old pod deleted and address released.
 	// here will return only if both ip and mac exist, otherwise only ip without mac returned will trigger CreatePort error.
@@ -335,7 +335,7 @@ func (subnet *Subnet) getV6RandomAddress(podName, nicName string, mac string, sk
 	}
 }
 
-func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
+func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac string, force, checkConflict bool) (IP, string, error) {
 	subnet.mutex.Lock()
 	defer func() {
 		subnet.pushPodNic(podName, nicName)

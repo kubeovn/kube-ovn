@@ -60,7 +60,8 @@ func createHandler(csh *cniServerHandler) http.Handler {
 
 // web-service filter function used for request and response logging.
 func requestAndResponseLogger(request *restful.Request, response *restful.Response,
-	chain *restful.FilterChain) {
+	chain *restful.FilterChain,
+) {
 	klog.Infof(formatRequestLog(request))
 	start := time.Now()
 	chain.ProcessFilter(request, response)

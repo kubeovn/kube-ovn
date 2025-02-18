@@ -163,7 +163,7 @@ func (c *Controller) gcLogicalSwitch() error {
 		klog.Errorf("failed to list dhcp options, %v", err)
 		return err
 	}
-	var uuidToDeleteList = []string{}
+	uuidToDeleteList := []string{}
 	for _, item := range dhcpOptions {
 		ls := item.ExternalIds["ls"]
 		if !util.IsStringIn(ls, subnetNames) {
@@ -250,8 +250,8 @@ func (c *Controller) gcNode() error {
 func (c *Controller) gcVip() error {
 	klog.Infof("start to gc vips")
 	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermNotEqualSelector(util.IpReservedLabel, "").String()},
-	)
+		LabelSelector: fields.OneTermNotEqualSelector(util.IpReservedLabel, "").String(),
+	})
 	if err != nil {
 		klog.Errorf("failed to list VIPs: %v", err)
 		return err

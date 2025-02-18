@@ -17,8 +17,7 @@ import (
 )
 
 // ControllerRuntime represents runtime specific controller members
-type ControllerRuntime struct {
-}
+type ControllerRuntime struct{}
 
 func (c *Controller) initRuntime() error {
 	return nil

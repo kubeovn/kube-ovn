@@ -103,8 +103,7 @@ func (c *Controller) removeExternalGateway() error {
 	}
 	for _, cachedNode := range nodes {
 		no := cachedNode.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s
@@ -234,8 +233,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			return chassises, err
 		}
 		node := cachedNode.DeepCopy()
-		patchPayloadTemplate :=
-			`[{
+		patchPayloadTemplate := `[{
         "op": "%s",
         "path": "/metadata/labels",
         "value": %s

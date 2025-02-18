@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 )
 
 type Configuration struct {

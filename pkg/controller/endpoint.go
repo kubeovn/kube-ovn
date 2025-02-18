@@ -28,7 +28,6 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
-
 	oldEp := old.(*v1.Endpoints)
 	newEp := new.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {
@@ -77,7 +76,6 @@ func (c *Controller) processNextUpdateEndpointWorkItem() bool {
 		c.updateEndpointQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
