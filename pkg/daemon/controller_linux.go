@@ -558,6 +558,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 
 	return rules, routes, nil
 }
+
 func (c *Controller) handlePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -810,7 +811,7 @@ func readKos(dir string) (*[]string, error) {
 	return kos, nil
 }
 
-func isFile(filename string, dir string) (bool, string) {
+func isFile(filename, dir string) (bool, string) {
 	isFile := false
 	fileFullName := ""
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {

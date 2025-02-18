@@ -34,9 +34,8 @@ const controllerAgentName = "kube-ovn-controller"
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
-	config *Configuration
-	vpcs   *sync.Map
-	//subnetVpcMap *sync.Map
+	config       *Configuration
+	vpcs         *sync.Map
 	podSubnetMap *sync.Map
 	ipam         *ovnipam.IPAM
 	namedPort    *NamedPort

@@ -142,7 +142,8 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--timeout=10",
 		"find",
 		"port_binding",
-		fmt.Sprintf("chassis=%s", chassis)}
+		fmt.Sprintf("chassis=%s", chassis),
+	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",

@@ -87,7 +87,6 @@ func hostConfigFromReader() error {
 }
 
 func (c *Controller) enqueueAddVpcDns(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -261,7 +260,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 	needToCreateDp := false
 	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 		Get(context.Background(), genVpcDnsDpName(vpcDns.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreateDp = true
@@ -280,7 +278,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 	if needToCreateDp {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Create(context.Background(), newDp, metav1.CreateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to create deployment '%s', err: %s", newDp.Name, err)
 			return err
@@ -288,7 +285,6 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 	} else {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Update(context.Background(), newDp, metav1.UpdateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to update deployment '%s', err: %v", newDp.Name, err)
 			return err
@@ -665,7 +661,7 @@ func getCoreDnsTemplateFile(url string) error {
 		return err
 	}
 
-	err = os.WriteFile(CorednsTemplateDep, data, 0644)
+	err = os.WriteFile(CorednsTemplateDep, data, 0o644)
 	if err != nil {
 		klog.Error(err)
 		return err

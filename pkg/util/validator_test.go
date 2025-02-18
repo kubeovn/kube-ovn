@@ -10,7 +10,6 @@ import (
 )
 
 func TestValidateSubnet(t *testing.T) {
-
 	os.Setenv("KUBERNETES_SERVICE_HOST", "10.20.0.1")
 	tests := []struct {
 		name    string

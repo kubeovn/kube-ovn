@@ -53,7 +53,6 @@ func (c *Controller) disableOVNIC(azName string) error {
 }
 
 func (c *Controller) setAutoRoute(autoRoute bool) {
-
 	var blackList []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {

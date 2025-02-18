@@ -20,11 +20,13 @@ func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 			fmt.Sprintf("--db=%s", c.OvnSbAddress),
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
-			"-C", "/var/run/tls/cacert"}, cmdArgs...)
+			"-C", "/var/run/tls/cacert",
+		}, cmdArgs...)
 	} else {
 		cmdArgs = append([]string{
 			fmt.Sprintf("--timeout=%d", c.OvnTimeout),
-			fmt.Sprintf("--db=%s", c.OvnSbAddress)}, cmdArgs...)
+			fmt.Sprintf("--db=%s", c.OvnSbAddress),
+		}, cmdArgs...)
 	}
 	raw, err := exec.Command(OvnSbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
@@ -104,7 +106,7 @@ func (c LegacyClient) ChassisExist(chassisName string) (bool, error) {
 	return true, nil
 }
 
-func (c LegacyClient) InitChassisNodeTag(chassisName string, nodeName string) error {
+func (c LegacyClient) InitChassisNodeTag(chassisName, nodeName string) error {
 	_, err := c.ovnSbCommand("set", "chassis", chassisName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName), fmt.Sprintf("external_ids:node=%s", nodeName))
 	if err != nil {
 		return fmt.Errorf("failed to set chassis external_ids, %v", err)

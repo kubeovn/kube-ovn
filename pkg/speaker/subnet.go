@@ -4,7 +4,6 @@ package speaker
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"net"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	bgpapiutil "github.com/osrg/gobgp/v3/pkg/apiutil"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/anypb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -119,7 +119,7 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 }
 
-func routeDiff(expected, exists []string) (toAdd []string, toDel []string) {
+func routeDiff(expected, exists []string) (toAdd, toDel []string) {
 	expectedMap, existsMap := map[string]bool{}, map[string]bool{}
 	for _, e := range expected {
 		expectedMap[e] = true
@@ -225,7 +225,8 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 	}
 	return nil
 }
-func getNextHopAttribute(NeighborAddress string, RouteId string) string {
+
+func getNextHopAttribute(NeighborAddress, RouteId string) string {
 	nextHop := RouteId
 	routes, err := netlink.RouteGet(net.ParseIP(NeighborAddress))
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {

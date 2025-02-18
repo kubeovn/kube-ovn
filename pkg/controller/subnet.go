@@ -26,7 +26,6 @@ import (
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -38,7 +37,6 @@ func (c *Controller) enqueueAddSubnet(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -162,7 +160,6 @@ func (c *Controller) processNextSyncVirtualPortsWorkItem() bool {
 		c.syncVirtualPortsQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -192,7 +189,6 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 		c.addOrUpdateSubnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -222,7 +218,6 @@ func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
 		c.deleteRouteQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -252,7 +247,6 @@ func (c *Controller) processNextUpdateSubnetStatusWorkItem() bool {
 		c.updateSubnetStatusQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -282,7 +276,6 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 		c.deleteSubnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -471,7 +464,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	return false, nil
 }
 
-func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
+func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		if reason == "ValidateLogicalSwitchFailed" {
