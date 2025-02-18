@@ -2068,7 +2068,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4.2.0
+      - uses: azure/setup-helm@v4.3.0
         with:
           version: '${{ env.HELM_VERSION }}'
 
