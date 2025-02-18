@@ -16,12 +16,12 @@ import (
 
 	"golang.org/x/exp/slices"
 	netv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 type AclDirection string
@@ -243,7 +243,6 @@ func (c LegacyClient) SetPortSecurity(portSecurity bool, ls, port, mac, ipStr, v
 	if vips != "" {
 		ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
 			fmt.Sprintf("external_ids:vips=%s", strings.ReplaceAll(vips, ",", "/")), "external_ids:attach-vips=true")
-
 	} else {
 		ovnCommand = append(ovnCommand, "--", "remove", "logical_switch_port", port, "external_ids", "attach-vips", "vips")
 	}
@@ -304,7 +303,7 @@ func (c LegacyClient) ListVirtualPort(ls string) ([]string, error) {
 }
 
 // CreatePort create logical switch port in ovn
-func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, hasUnknown bool) error {
+func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups, vips string, liveMigration, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, hasUnknown bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
@@ -482,11 +481,13 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 			return err
 		}
 		if !exist {
-			cmd = append(cmd, []string{"--", MayExist, "lsp-add", ls, lsTolr, "--",
+			cmd = append(cmd, []string{
+				"--", MayExist, "lsp-add", ls, lsTolr, "--",
 				"set", "logical_switch_port", lsTolr, "type=router", "--",
 				"lsp-set-addresses", lsTolr, "router", "--",
 				"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
-				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+			}...)
 		}
 
 		// check router port exist
@@ -502,12 +503,16 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 			cmd = append(cmd, []string{"--", MayExist, "lrp-add", lr, lrTols, util.GenerateMac()}...)
 			cmd = append(cmd, networkList...)
 		} else {
-			cmd = append(cmd, []string{"--",
-				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+			cmd = append(cmd, []string{
+				"--",
+				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks),
+			}...)
 		}
 	}
-	cmd = append(cmd, []string{"--",
-		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+	cmd = append(cmd, []string{
+		"--",
+		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+	}...)
 	_, err = c.ovnNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("set switch config for %s failed: %v", ls, err)
@@ -520,7 +525,6 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter bool) error {
 	_, err := c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
-
 	if err != nil {
 		klog.Errorf("create switch %s failed: %v", ls, err)
 		return err
@@ -741,7 +745,7 @@ func (c LegacyClient) CustomFindEntity(entity string, attris []string, args ...s
 	return result, nil
 }
 
-func (c LegacyClient) GetEntityInfo(entity string, index string, attris []string) (result map[string]string, err error) {
+func (c LegacyClient) GetEntityInfo(entity, index string, attris []string) (result map[string]string, err error) {
 	var attrstr strings.Builder
 	for _, e := range attris {
 		attrstr.WriteString(e)
@@ -954,7 +958,6 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 		networks := strings.ReplaceAll(strings.Join(strings.Split(localRouterPortIP, ","), " "), ":", "\\:")
 		_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
 			fmt.Sprintf("networks=%s", networks))
-
 		if err != nil {
 			klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
 			return err
@@ -988,7 +991,7 @@ func (c LegacyClient) ListStaticRoute() ([]StaticRoute, error) {
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, routeType string) error {
+func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router, routeType string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -1103,7 +1106,7 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 	if !exist {
 		return nil
 	}
-	var args = []string{"lr-policy-del", router}
+	args := []string{"lr-policy-del", router}
 	// lr-policy-del ROUTER [PRIORITY [MATCH]]
 	if priority > 0 {
 		args = append(args, strconv.Itoa(int(priority)))
@@ -1123,7 +1126,7 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 func (c LegacyClient) CleanPolicyRoute(router string) error {
 	// lr-policy-del ROUTER
 	klog.Infof("clean all policy route for route %s", router)
-	var args = []string{"lr-policy-del", router}
+	args := []string{"lr-policy-del", router}
 	_, err := c.ovnNbCommand(args...)
 	return err
 }
@@ -1798,7 +1801,7 @@ func (c LegacyClient) CreateAddressSetWithAddresses(name string, addresses ...st
 	return err
 }
 
-func (c LegacyClient) AddAddressSetAddresses(name string, address string) error {
+func (c LegacyClient) AddAddressSetAddresses(name, address string) error {
 	output, err := c.ovnNbCommand("add", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
 	if err != nil {
 		klog.Errorf("failed to add address %s to address_set %s: %v, %q", address, name, err, output)
@@ -1807,7 +1810,7 @@ func (c LegacyClient) AddAddressSetAddresses(name string, address string) error 
 	return nil
 }
 
-func (c LegacyClient) RemoveAddressSetAddresses(name string, address string) error {
+func (c LegacyClient) RemoveAddressSetAddresses(name, address string) error {
 	output, err := c.ovnNbCommand("remove", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
 	if err != nil {
 		klog.Errorf("failed to remove address %s from address_set %s: %v, %q", address, name, err, output)
@@ -2586,6 +2589,7 @@ func (c LegacyClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDire
 	}
 	return nil
 }
+
 func (c LegacyClient) OvnGet(table, record, column, key string) (string, error) {
 	var columnVal string
 	if key == "" {
@@ -2818,7 +2822,7 @@ type dhcpOptions struct {
 	options     map[string]string
 }
 
-func (c LegacyClient) ListDHCPOptions(needVendorFilter bool, ls string, protocol string) ([]dhcpOptions, error) {
+func (c LegacyClient) ListDHCPOptions(needVendorFilter bool, ls, protocol string) ([]dhcpOptions, error) {
 	cmds := []string{"--format=csv", "--no-heading", "--data=bare", "--columns=_uuid,cidr,external_ids,options", "find", "dhcp_options"}
 	if needVendorFilter {
 		cmds = append(cmds, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
@@ -3029,7 +3033,7 @@ func (c *LegacyClient) DeleteDHCPOptionsByUUIDs(uuidList []string) (err error) {
 	return nil
 }
 
-func (c *LegacyClient) DeleteDHCPOptions(ls string, protocol string) error {
+func (c *LegacyClient) DeleteDHCPOptions(ls, protocol string) error {
 	klog.Infof("delete dhcp options for switch %s protocol %s", ls, protocol)
 	dhcpOptionsList, err := c.ListDHCPOptions(true, ls, protocol)
 	if err != nil {

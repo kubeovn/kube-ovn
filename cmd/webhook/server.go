@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/spf13/pflag"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,16 +16,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
-	"github.com/spf13/pflag"
 )
 
 const (
 	hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
 )
 
-var (
-	scheme = runtime.NewScheme()
-)
+var scheme = runtime.NewScheme()
 
 func init() {
 	if err := corev1.AddToScheme(scheme); err != nil {

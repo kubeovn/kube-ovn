@@ -26,7 +26,6 @@ type vpcService struct {
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -56,7 +55,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 
 func (c *Controller) enqueueDeleteService(obj interface{}) {
 	svc := obj.(*v1.Service)
-	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	// klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
@@ -164,7 +163,6 @@ func (c *Controller) processNextAddServiceWorkItem() bool {
 		c.addServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -195,7 +193,6 @@ func (c *Controller) processNextDeleteServiceWorkItem() bool {
 		c.deleteServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -226,7 +223,6 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 		c.updateServiceQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

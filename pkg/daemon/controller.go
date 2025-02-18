@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/scylladb/go-set/strset"
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,7 +30,6 @@ import (
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 // Controller watch pod and namespace changes to update iptables, ipset and ovs qos
@@ -66,7 +66,7 @@ type Controller struct {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
@@ -200,7 +200,6 @@ func (c *Controller) processNextAddOrUpdateProviderNetworkWorkItem() bool {
 		c.addOrUpdateProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.addOrUpdateProviderNetworkQueue.AddRateLimited(obj)
@@ -230,7 +229,6 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 		c.deleteProviderNetworkQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		c.deleteProviderNetworkQueue.AddRateLimited(obj)
@@ -329,7 +327,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	return nil
 }
 
-func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg string) {
+func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
@@ -493,7 +491,6 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		c.subnetQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -588,7 +585,6 @@ func (c *Controller) processNextPodWorkItem() bool {
 		c.podQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true

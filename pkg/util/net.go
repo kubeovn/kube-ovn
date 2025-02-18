@@ -386,7 +386,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	return rv
 }
 
-func ContainsIPs(excludeIP string, ip string) bool {
+func ContainsIPs(excludeIP, ip string) bool {
 	if strings.Contains(excludeIP, "..") {
 		parts := strings.Split(excludeIP, "..")
 		s := Ip2BigInt(parts[0])
@@ -537,7 +537,6 @@ func TCPConnectivityListen(address string) error {
 }
 
 func UDPConnectivityCheck(address string) error {
-
 	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return fmt.Errorf("resolve udp addr failed with err %v", err)

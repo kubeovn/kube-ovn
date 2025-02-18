@@ -101,7 +101,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 }
 
 func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -193,7 +192,6 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 		queue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("process: %s. err: %v", processName, err))
 		queue.AddRateLimited(obj)
@@ -246,7 +244,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToCreate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 		Get(context.Background(), genNatGwStsName(gw.Name), metav1.GetOptions{})
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true
@@ -261,7 +258,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{})
-		// if pod create successfully, will add initVpcNatGatewayQueue
+			// if pod create successfully, will add initVpcNatGatewayQueue
 		if err != nil {
 			klog.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			return err
@@ -270,7 +267,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	} else {
 		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{})
-
 		if err != nil {
 			klog.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
 			return err
@@ -357,7 +353,6 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
-
 	if err != nil {
 		klog.Errorf("failed to get all fips, %v", err)
 		return err
@@ -469,7 +464,6 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -611,7 +605,6 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
 	klog.V(3).Infof(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
-
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)

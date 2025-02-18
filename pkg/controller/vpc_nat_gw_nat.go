@@ -19,7 +19,6 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -31,7 +30,6 @@ func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
-
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -213,6 +211,7 @@ func (c *Controller) runDelIptablesSnatRuleWorker() {
 	for c.processNextDeleteIptablesSnatRuleWorkItem() {
 	}
 }
+
 func (c *Controller) processNextAddIptablesFipWorkItem() bool {
 	obj, shutdown := c.addIptablesFipQueue.Get()
 	if shutdown {
@@ -235,7 +234,6 @@ func (c *Controller) processNextAddIptablesFipWorkItem() bool {
 		c.addIptablesFipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -265,7 +263,6 @@ func (c *Controller) processNextUpdateIptablesFipWorkItem() bool {
 		c.updateIptablesFipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -295,7 +292,6 @@ func (c *Controller) processNextDeleteIptablesFipWorkItem() bool {
 		c.delIptablesFipQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -325,7 +321,6 @@ func (c *Controller) processNextAddIptablesDnatRuleWorkItem() bool {
 		c.addIptablesDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -355,7 +350,6 @@ func (c *Controller) processNextUpdateIptablesDnatRuleWorkItem() bool {
 		c.updateIptablesDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -385,7 +379,6 @@ func (c *Controller) processNextDeleteIptablesDnatRuleWorkItem() bool {
 		c.delIptablesDnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -415,7 +408,6 @@ func (c *Controller) processNextAddIptablesSnatRuleWorkItem() bool {
 		c.addIptablesSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -445,7 +437,6 @@ func (c *Controller) processNextUpdateIptablesSnatRuleWorkItem() bool {
 		c.updateIptablesSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -475,7 +466,6 @@ func (c *Controller) processNextDeleteIptablesSnatRuleWorkItem() bool {
 		c.delIptablesSnatRuleQueue.Forget(obj)
 		return nil
 	}(obj)
-
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -1162,6 +1152,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 	}
 	return nil
 }
+
 func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {

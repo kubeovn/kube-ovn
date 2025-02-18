@@ -196,7 +196,7 @@ func getCidrByProtocol(cidr, protocol string) string {
 }
 
 func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, error) {
-	var subnetsNatIp = make(map[string]string)
+	subnetsNatIp := make(map[string]string)
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)

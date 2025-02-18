@@ -427,7 +427,6 @@ func (c *Controller) InitIPAM() error {
 		for _, oeip := range oeips {
 			if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Spec.V4Ip,
 				oeip.Spec.MacAddress, oeip.Spec.ExternalSubnet, false); err != nil {
-
 				klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
 			}
 		}

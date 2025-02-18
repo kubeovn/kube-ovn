@@ -11,7 +11,8 @@ import (
 )
 
 func (c OvnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, match string, action ovnnb.LogicalRouterPolicyAction,
-	opts map[string]string, extIDs map[string]string, priority int) error {
+	opts, extIDs map[string]string, priority int,
+) error {
 	lrPolicy := &ovnnb.LogicalRouterPolicy{
 		Action:      action,
 		Match:       match,
