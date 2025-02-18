@@ -285,7 +285,7 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 			return err
 		}
 		if len(portUUIDs) != 1 {
-			return fmt.Errorf(fmt.Sprintf("find port failed, portName=%s", ifName))
+			return fmt.Errorf("find port failed, portName=%s", ifName)
 		}
 		portId := portUUIDs[0]
 		if open == "true" {

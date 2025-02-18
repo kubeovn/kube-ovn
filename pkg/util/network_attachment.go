@@ -47,12 +47,12 @@ func parsePodNetworkObjectName(podNetwork string) (string, string, string, error
 	allItems := []string{netNsName, networkName, netIfName}
 	for i := range allItems {
 		if !attachmentRegexp.MatchString(allItems[i]) && len([]rune(allItems[i])) > 0 {
-			klog.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
+			klog.Errorf("parsePodNetworkObjectName: Failed to parse: "+
 				"one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). "+
-				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
-			return "", "", "", fmt.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
+				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i])
+			return "", "", "", fmt.Errorf("parsePodNetworkObjectName: Failed to parse: "+
 				"one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). "+
-				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
+				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i])
 		}
 	}
 
