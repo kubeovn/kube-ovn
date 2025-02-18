@@ -22,7 +22,7 @@ var (
 
 type ValidatingHook struct {
 	client  client.Client
-	decoder *admission.Decoder
+	decoder admission.Decoder
 	cache   cache.Cache
 }
 
@@ -106,7 +106,7 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 }
 
 func (v *ValidatingHook) InjectDecoder(d *admission.Decoder) error {
-	v.decoder = d
+	v.decoder = *d
 	return nil
 }
 

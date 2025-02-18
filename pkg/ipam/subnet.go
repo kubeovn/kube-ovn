@@ -230,7 +230,7 @@ func (subnet *Subnet) getV4RandomAddress(podName, nicName string, mac string, sk
 				ip = next
 				break
 			} else {
-				klog.Infof("v4 ip %s is in skipped addrs %+v", skippedAddrs)
+				klog.Infof("v4 ip %s is in skipped addrs %+v", ip, skippedAddrs)
 			}
 		}
 		if ip != "" {

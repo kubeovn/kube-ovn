@@ -18,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
-	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
+	k8sipset "k8s.io/kubernetes/pkg/proxy/ipvs/ipset"
 	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -312,7 +312,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 
 	s := strings.Join(rule.Rule, " ")
 	if exists {
-		klog.V(3).Infof(`iptables rule "%s" already exists`, s, exists)
+		klog.V(3).Infof(`iptables rule "%s" already exists %v`, s, exists)
 		return nil
 	}
 
@@ -523,7 +523,7 @@ func (c *Controller) setIptables() error {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
 				ipsetExists, err := ipsetExists(ipset)
 				if err != nil {
-					klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+					klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
 					return err
 				}
 				if !ipsetExists {
@@ -584,15 +584,15 @@ func (c *Controller) setIptables() error {
 		}
 
 		if err = c.updateIptablesChain(ipt, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting, err)
 			return err
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnMasquerade, "", ovnMasqueradeRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnMasquerade)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnMasquerade, err)
 			return err
 		}
 		if err = c.updateIptablesChain(ipt, NAT, OvnPostrouting, Postrouting, natPostroutingRules); err != nil {
-			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting)
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting, err)
 			return err
 		}
 
