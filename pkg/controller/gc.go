@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -127,34 +128,35 @@ func (c *Controller) gcLogicalSwitch() error {
 		klog.Errorf("failed to list subnet, %v", err)
 		return err
 	}
-	subnetNames := strset.NewWithSize(len(subnets))
-	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
-	for _, s := range subnets {
-		subnetMap[s.Name] = s
-		subnetNames.Add(s.Name)
-	}
 
-	lss, err := c.OVNNbClient.ListLogicalSwitch(c.config.EnableExternalVpc, nil)
+	lss, err := c.OVNNbClient.ListLogicalSwitchNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
-		klog.Errorf("list logical switch: %v", err)
+		klog.Errorf("failed to list logical switch: %v", err)
 		return err
 	}
 
-	klog.Infof("ls in ovn %v", lss)
-	klog.Infof("subnet in kubernetes %v", subnetNames)
+	subnetNames := set.New[string]()
+	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
+	for _, s := range subnets {
+		subnetMap[s.Name] = s
+		subnetNames.Insert(s.Name)
+	}
+
+	klog.Infof("logical switch in ovn: %v", lss)
+	klog.Infof("subnet in kubernetes: %v", subnetNames)
 	for _, ls := range lss {
-		if ls.Name == util.InterconnectionSwitch ||
-			ls.Name == util.ExternalGatewaySwitch ||
-			ls.Name == c.config.ExternalGatewaySwitch {
+		if ls == util.InterconnectionSwitch ||
+			ls == util.ExternalGatewaySwitch ||
+			ls == c.config.ExternalGatewaySwitch {
 			continue
 		}
-		if s := subnetMap[ls.Name]; s != nil && isOvnSubnet(s) {
+		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
 			continue
 		}
 
-		klog.Infof("gc subnet %s", ls.Name)
-		if err := c.handleDeleteLogicalSwitch(ls.Name); err != nil {
-			klog.Errorf("failed to gc subnet %s, %v", ls.Name, err)
+		klog.Infof("gc logical switch %s", ls)
+		if err = c.handleDeleteLogicalSwitch(ls); err != nil {
+			klog.Errorf("failed to gc logical switch %q: %v", ls, err)
 			return err
 		}
 	}
@@ -188,30 +190,30 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		klog.Errorf("failed to list vpc, %v", err)
 		return err
 	}
-	vpcNames := make([]string, 0, len(vpcs))
-	for _, s := range vpcs {
-		vpcNames = append(vpcNames, s.Name)
-	}
 
-	lrs, err := c.OVNNbClient.ListLogicalRouter(c.config.EnableExternalVpc, nil)
+	lrs, err := c.OVNNbClient.ListLogicalRouterNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
 	}
 
-	klog.Infof("lr in ovn %v", lrs)
-	klog.Infof("vpc in kubernetes %v", vpcNames)
+	vpcNames := set.New[string]()
+	for _, v := range vpcs {
+		vpcNames.Insert(v.Name)
+	}
+
+	klog.Infof("lr in ovn: %v", lrs)
+	klog.Infof("vpc in kubernetes: %v", vpcNames)
 
 	for _, lr := range lrs {
-		if lr.Name == c.config.ClusterRouter {
+		if lr == c.config.ClusterRouter || vpcNames.Has(lr) {
 			continue
 		}
-		if !slices.Contains(vpcNames, lr.Name) {
-			klog.Infof("gc router %s", lr.Name)
-			if err := c.deleteVpcRouter(lr.Name); err != nil {
-				klog.Errorf("failed to delete router %s, %v", lr.Name, err)
-				return err
-			}
+
+		klog.Infof("gc logical router %s", lr)
+		if err = c.deleteVpcRouter(lr); err != nil {
+			klog.Errorf("failed to gc logical router %q: %v", lr, err)
+			return err
 		}
 	}
 	return nil

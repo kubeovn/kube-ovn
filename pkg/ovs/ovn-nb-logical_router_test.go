@@ -7,8 +7,9 @@ import (
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
-	"github.com/stretchr/testify/require"
 	"k8s.io/klog/v2"
+
+	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -70,7 +71,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 		require.NoError(t, err)
 
 		err = nbClient.CreateLogicalRouter(name)
-		require.ErrorContains(t, err, "more than one logical router with same name \"test-create-lr-more-than-one\"")
+		require.ErrorContains(t, err, fmt.Sprintf("more than one logical router with same name %q", name))
 	})
 }
 
@@ -154,7 +155,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
 		require.NoError(t, err)
 
 		err = nbClient.DeleteLogicalRouter(name)
-		require.ErrorContains(t, err, "more than one logical router with same name \"test-delete-lr-more-than-one\"")
+		require.ErrorContains(t, err, fmt.Sprintf("more than one logical router with same name %q", name))
 	})
 }
 
@@ -232,30 +233,55 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 		lrs, err := nbClient.ListLogicalRouter(true, nil)
 		require.NoError(t, err)
 
-		count := 0
+		count, names := 0, make([]string, 0, 3)
 		for _, lr := range lrs {
 			if strings.Contains(lr.Name, namePrefix) {
+				names = append(names, lr.Name)
 				count++
 			}
 		}
-		require.Equal(t, count, 3)
+		require.Equal(t, 3, count)
+
+		lrNames, err := nbClient.ListLogicalRouterNames(true, nil)
+		require.NoError(t, err)
+
+		filterdNames := make([]string, 0, len(names))
+		for _, lr := range lrNames {
+			if strings.Contains(lr, namePrefix) {
+				filterdNames = append(filterdNames, lr)
+			}
+		}
+		require.ElementsMatch(t, filterdNames, names)
 	})
 
 	t.Run("has custom filter", func(t *testing.T) {
 		t.Parallel()
-		lrs, err := nbClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
-			return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
-		})
 
+		filter := func(lr *ovnnb.LogicalRouter) bool {
+			return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
+		}
+		lrs, err := nbClient.ListLogicalRouter(false, filter)
 		require.NoError(t, err)
 
-		count := 0
+		count, names := 0, make([]string, 0, 4)
 		for _, lr := range lrs {
 			if strings.Contains(lr.Name, namePrefix) {
+				names = append(names, lr.Name)
 				count++
 			}
 		}
-		require.Equal(t, count, 4)
+		require.Equal(t, 4, count)
+
+		lrNames, err := nbClient.ListLogicalRouterNames(false, filter)
+		require.NoError(t, err)
+
+		filterdNames := make([]string, 0, len(names))
+		for _, lr := range lrNames {
+			if strings.Contains(lr, namePrefix) {
+				filterdNames = append(filterdNames, lr)
+			}
+		}
+		require.ElementsMatch(t, filterdNames, names)
 	})
 }
 
@@ -328,9 +354,10 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 
 	t.Run("del lbs from logical router with more than one existing lb", func(t *testing.T) {
 		protocol := "tcp"
+		name := "test-del-lb-with-more-than-one-lb"
 		lb := &ovnnb.LoadBalancer{
 			UUID:     ovsclient.NamedUUID(),
-			Name:     "test-del-lb-with-more-than-one-lb",
+			Name:     name,
 			Protocol: &protocol,
 		}
 		ops, err := nbClient.ovsDbClient.Create(lb)
@@ -341,8 +368,8 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 		err = nbClient.Transact("lb-add", ops)
 		require.NoError(t, err)
 
-		err = nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{"test-del-lb-with-more-than-one-lb"}...)
-		require.ErrorContains(t, err, "more than one load balancer with same name \"test-del-lb-with-more-than-one-lb\"")
+		err = nbClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{name}...)
+		require.ErrorContains(t, err, fmt.Sprintf("more than one load balancer with same name %q", name))
 	})
 
 	t.Run("del lbs from non-exist logical router", func(t *testing.T) {

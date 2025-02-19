@@ -293,6 +293,21 @@ func (c *OVNNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *o
 	return lsList, nil
 }
 
+// ListLogicalSwitchNames list logical switch names
+func (c *OVNNbClient) ListLogicalSwitchNames(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]string, error) {
+	lsList, err := c.ListLogicalSwitch(needVendorFilter, filter)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	names := make([]string, 0, len(lsList))
+	for i := range lsList {
+		names = append(names, lsList[i].Name)
+	}
+	return names, nil
+}
+
 // LogicalSwitchUpdatePortOp create operations add port to or delete port from logical switch
 func (c *OVNNbClient) LogicalSwitchUpdatePortOp(lsName, lspUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(lspUUID) == 0 {

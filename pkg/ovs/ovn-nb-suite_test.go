@@ -1348,7 +1348,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 	}
 
 	dbModel.SetIndexes(map[string][]model.ClientIndex{
-		"Logical_Router_Policy": {{Columns: []model.ColumnKey{
+		ovnnb.LogicalRouterPolicyTable: {{Columns: []model.ColumnKey{
 			{Column: "match"},
 			{Column: "priority"},
 		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},

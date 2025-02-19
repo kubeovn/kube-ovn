@@ -130,8 +130,7 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
-	lrList := make([]ovnnb.LogicalRouter, 0)
-
+	var lrList []ovnnb.LogicalRouter
 	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		if needVendorFilter && (len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
@@ -148,6 +147,21 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 	}
 
 	return lrList, nil
+}
+
+// ListLogicalRouterNames list logical router names
+func (c *OVNNbClient) ListLogicalRouterNames(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]string, error) {
+	lrList, err := c.ListLogicalRouter(needVendorFilter, filter)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	names := make([]string, 0, len(lrList))
+	for _, lr := range lrList {
+		names = append(names, lr.Name)
+	}
+	return names, nil
 }
 
 // LogicalRouterUpdateLoadBalancers add several lb to or from logical router once
