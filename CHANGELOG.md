@@ -2517,6 +2517,30 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.22 (2025-02-19)
+
+ * [f8079e29e](https://github.com/kubeovn/kube-ovn/commit/f8079e29eaac69de8fb04a894d5cb0497f071aa4) release v1.11.22
+ * [b4e666add](https://github.com/kubeovn/kube-ovn/commit/b4e666add8ba9fa85e2d453040f31433177f0673) fix cve (#5006)
+ * [c0c9fe58e](https://github.com/kubeovn/kube-ovn/commit/c0c9fe58e6757febbe904441c63197e4fb7f9e94) bump go to 1.22.12 (#5008)
+ * [7add545c8](https://github.com/kubeovn/kube-ovn/commit/7add545c8beec55c4e49b137f92a72666a410df8) fix cilium chaining e2e test failure
+ * [974a23ec5](https://github.com/kubeovn/kube-ovn/commit/974a23ec51b97adfadd4e10b925148a0c7da98f3) ignore trivy (#5004)
+ * [b455c7797](https://github.com/kubeovn/kube-ovn/commit/b455c7797662ae929eb1a03a3a6921a900fe226d) fix: kube-ovn-cni always dump-flows br-provider per period (#4971)
+ * [3fc588c93](https://github.com/kubeovn/kube-ovn/commit/3fc588c93ceb03f92e44d5876751dc72ec5b364b) controller: consider StatefulSet's start ordinal (#4967)
+ * [60f3dcbec](https://github.com/kubeovn/kube-ovn/commit/60f3dcbec88fbecc5c5e55446e0c98f4de1bc4c5) ci: build arm64 base images on arm64 hosted runners (#4936)
+ * [a8fde894a](https://github.com/kubeovn/kube-ovn/commit/a8fde894aeaee5d106dd61ef709d24f9ae595086) ci: build arm64 images on arm64 hosted runners (#4936)
+ * [6b8e67c09](https://github.com/kubeovn/kube-ovn/commit/6b8e67c093f9e65c79179d8e0ab60e7f46ba35d0) controller: check condition NodeNetworkUnavailable when determining whether node is ready (#4917)
+ * [cc9f56645](https://github.com/kubeovn/kube-ovn/commit/cc9f56645c791defcdfadb5bf04c4a2ba6cc23ad) cni-server: set node NetworkUnavailable condition after join subnet gateway check (#4915)
+ * [4cf6035b7](https://github.com/kubeovn/kube-ovn/commit/4cf6035b71331c9fb5f1f8d18e0b54c31d794a66) ipam: check subnet's available ipv6 address count (#4903)
+ * [8a21336d4](https://github.com/kubeovn/kube-ovn/commit/8a21336d4221909fd556ce87bce3c4e270132f2b) bump go to 1.22.10 (#4854)
+ * [be1f189db](https://github.com/kubeovn/kube-ovn/commit/be1f189db5ead8809b64b87ca06a70e4c79c1258) add release scripts
+ * [a604b5931](https://github.com/kubeovn/kube-ovn/commit/a604b5931f889bee269bace7b774ffc2be2af604) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.21 (2024-10-18)
 
  * [e6a8501d5](https://github.com/kubeovn/kube-ovn/commit/e6a8501d5c12f5c6a101bc7f223af5bb52c68b54) release v1.11.21
