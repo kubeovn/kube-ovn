@@ -28,6 +28,10 @@ import (
 var lastNoPodLSP = strset.New()
 
 func (c *Controller) gc() error {
+	if c.config.GCInterval == 0 {
+		klog.Infof("gc is disabled")
+		return nil
+	}
 	gcFunctions := []func() error{
 		c.gcNode,
 		c.gcChassis,
