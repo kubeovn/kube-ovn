@@ -170,7 +170,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
 		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
 
-		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
+		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds. If set to 0, GC will be disabled")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
 
 		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
