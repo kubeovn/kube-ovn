@@ -51,7 +51,7 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.29.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
