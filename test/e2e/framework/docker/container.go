@@ -3,14 +3,13 @@ package docker
 import (
 	"context"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
-func ContainerList(filters map[string][]string) ([]types.Container, error) {
+func ContainerList(filters map[string][]string) ([]container.Summary, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -26,7 +25,7 @@ func ContainerList(filters map[string][]string) ([]types.Container, error) {
 	return cli.ContainerList(context.Background(), container.ListOptions{All: true, Filters: f})
 }
 
-func ContainerCreate(name, image, networkName string, cmd []string) (*types.ContainerJSON, error) {
+func ContainerCreate(name, image, networkName string, cmd []string) (*container.InspectResponse, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -61,7 +60,7 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*types.Cont
 	return &info, nil
 }
 
-func ContainerInspect(id string) (*types.ContainerJSON, error) {
+func ContainerInspect(id string) (*container.InspectResponse, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
