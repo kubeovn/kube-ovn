@@ -1189,11 +1189,13 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		c.resyncVpcNatConfig()
 	}, time.Second, ctx.Done())
 
-	go wait.Until(func() {
-		if err := c.markAndCleanLSP(); err != nil {
-			klog.Errorf("gc lsp error: %v", err)
-		}
-	}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+	if c.config.GCInterval != 0 {
+		go wait.Until(func() {
+			if err := c.markAndCleanLSP(); err != nil {
+				klog.Errorf("gc lsp error: %v", err)
+			}
+		}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+	}
 
 	go wait.Until(func() {
 		if err := c.inspectPod(); err != nil {
