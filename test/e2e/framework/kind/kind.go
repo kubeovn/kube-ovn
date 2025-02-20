@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -25,7 +25,7 @@ const (
 )
 
 type Node struct {
-	types.Container
+	container.Summary
 }
 
 func (n *Node) Name() string {
