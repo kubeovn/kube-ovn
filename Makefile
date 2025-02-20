@@ -803,6 +803,9 @@ kind-install-metallb:
 		--set speaker.frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
+
+.PHONY: kind-configure-metallb
+kind-configure-metallb:
 	@metallb_pool=$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.201/')-$(shell echo $(KIND_IPV4_SUBNET) | sed 's/.[^.]\+$$/.250/') \
 		jinjanate yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
 	kubectl apply -f metallb-cr.yaml
@@ -978,6 +981,11 @@ kind-install-anp: kind-load-image
 	kubectl apply -f "$(ANP_CR_YAML)"
 	kubectl apply -f "$(BANP_CR_YAML)"
 	@$(MAKE) ENABLE_ANP=true kind-install
+
+.PHONY: kind-install-metallb-pool-from-underlay
+kind-install-metallb-pool-from-underlay: kind-load-image
+	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false kind-install
+	@$(MAKE) kind-install-metallb
 
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs

@@ -290,6 +290,7 @@ rules:
       - nodes
       - nodes/status
       - pods
+      - services
     verbs:
       - get
       - list
