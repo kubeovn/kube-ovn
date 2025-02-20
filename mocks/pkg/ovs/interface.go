@@ -261,6 +261,21 @@ func (mr *MockLogicalRouterMockRecorder) ListLogicalRouter(needVendorFilter, fil
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).ListLogicalRouter), needVendorFilter, filter)
 }
 
+// ListLogicalRouterNames mocks base method.
+func (m *MockLogicalRouter) ListLogicalRouterNames(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterNames indicates an expected call of ListLogicalRouterNames.
+func (mr *MockLogicalRouterMockRecorder) ListLogicalRouterNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterNames", reflect.TypeOf((*MockLogicalRouter)(nil).ListLogicalRouterNames), needVendorFilter, filter)
+}
+
 // LogicalRouterExists mocks base method.
 func (m *MockLogicalRouter) LogicalRouterExists(name string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -872,6 +887,21 @@ func (m *MockLogicalSwitch) ListLogicalSwitch(needVendorFilter bool, filter func
 func (mr *MockLogicalSwitchMockRecorder) ListLogicalSwitch(needVendorFilter, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitch", reflect.TypeOf((*MockLogicalSwitch)(nil).ListLogicalSwitch), needVendorFilter, filter)
+}
+
+// ListLogicalSwitchNames mocks base method.
+func (m *MockLogicalSwitch) ListLogicalSwitchNames(needVendorFilter bool, filter func(*ovnnb.LogicalSwitch) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchNames indicates an expected call of ListLogicalSwitchNames.
+func (mr *MockLogicalSwitchMockRecorder) ListLogicalSwitchNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchNames", reflect.TypeOf((*MockLogicalSwitch)(nil).ListLogicalSwitchNames), needVendorFilter, filter)
 }
 
 // LogicalSwitchExists mocks base method.
@@ -4086,6 +4116,21 @@ func (mr *MockNbClientMockRecorder) ListLogicalRouter(needVendorFilter, filter a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).ListLogicalRouter), needVendorFilter, filter)
 }
 
+// ListLogicalRouterNames mocks base method.
+func (m *MockNbClient) ListLogicalRouterNames(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterNames indicates an expected call of ListLogicalRouterNames.
+func (mr *MockNbClientMockRecorder) ListLogicalRouterNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterNames", reflect.TypeOf((*MockNbClient)(nil).ListLogicalRouterNames), needVendorFilter, filter)
+}
+
 // ListLogicalRouterPolicies mocks base method.
 func (m *MockNbClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
@@ -4159,6 +4204,21 @@ func (m *MockNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(*ovn
 func (mr *MockNbClientMockRecorder) ListLogicalSwitch(needVendorFilter, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitch", reflect.TypeOf((*MockNbClient)(nil).ListLogicalSwitch), needVendorFilter, filter)
+}
+
+// ListLogicalSwitchNames mocks base method.
+func (m *MockNbClient) ListLogicalSwitchNames(needVendorFilter bool, filter func(*ovnnb.LogicalSwitch) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchNames indicates an expected call of ListLogicalSwitchNames.
+func (mr *MockNbClientMockRecorder) ListLogicalSwitchNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchNames", reflect.TypeOf((*MockNbClient)(nil).ListLogicalSwitchNames), needVendorFilter, filter)
 }
 
 // ListLogicalSwitchPorts mocks base method.
