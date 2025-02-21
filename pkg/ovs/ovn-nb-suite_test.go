@@ -484,6 +484,39 @@ func (suite *OvnClientTestSuite) Test_MonitorBFDs() {
 	suite.testMonitorBFDs()
 }
 
+/* Chassis_Template_Var unit tests */
+func (suite *OvnClientTestSuite) Test_CreateChassisTemplateVar() {
+	suite.testCreateChassisTemplateVar()
+}
+
+func (suite *OvnClientTestSuite) Test_GetChassisTemplateVar() {
+	suite.testGetChassisTemplateVar()
+}
+
+func (suite *OvnClientTestSuite) Test_GetChassisTemplateVarByNodeName() {
+	suite.testGetChassisTemplateVarByNodeName()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateChassisTemplateVar() {
+	suite.testUpdateChassisTemplateVar()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateChassisTemplateVarVariables() {
+	suite.testUpdateChassisTemplateVarVariables()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVarVariables() {
+	suite.testDeleteChassisTemplateVarVariables()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVar() {
+	suite.testDeleteChassisTemplateVar()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVarByNodeName() {
+	suite.testDeleteChassisTemplateVarByNodeName()
+}
+
 /* gateway_chassis unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
@@ -1384,6 +1417,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
 		client.WithTable(&ovnnb.BFD{}),
+		client.WithTable(&ovnnb.ChassisTemplateVar{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.HAChassis{}),
