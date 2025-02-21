@@ -2,8 +2,8 @@
 
 set -ex
 
-bfdd-control session new set mintx "${BFD_MIN_TX:-1000}"
-bfdd-control session new set minrx "${BFD_MIN_RX:-1000}"
+bfdd-control session new set mintx "${BFD_MIN_TX:-1000}" ms
+bfdd-control session new set minrx "${BFD_MIN_RX:-1000}" ms
 bfdd-control session new set multi "${BFD_MULTI:-3}"
 
 PEER_IPS=($(echo "${BFD_PEER_IPS:-::}" | tr ',' ' '))
