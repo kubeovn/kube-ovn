@@ -61,7 +61,12 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 	if vmiMigration.Status.MigrationState == nil {
-		klog.Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
+		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
+		return nil
+	}
+
+	if vmiMigration.Status.MigrationState.Completed {
+		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is completed, skipping", key)
 		return nil
 	}
 
