@@ -83,6 +83,9 @@ type Configuration struct {
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
 	ExternalGatewayVlanID   int
+
+	GCInterval      int
+	InspectInterval int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -138,6 +141,8 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The namespace of configmap external-gateway-config, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
+		argGCInterval              = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
+		argInspectInterval         = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -202,6 +207,8 @@ func ParseFlags() (*Configuration, error) {
 		EnableKeepVmIP:                *argKeepVmIP,
 		NodePgProbeTime:               *argNodePgProbeTime,
 		EnableMetrics:                 *argEnableMetrics,
+		GCInterval:                    *argGCInterval,
+		InspectInterval:               *argInspectInterval,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
