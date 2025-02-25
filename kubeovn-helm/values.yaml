@@ -72,6 +72,8 @@ dual_stack:
 perform:
   MODULES: "kube_ovn_fastpath.ko"
   RPMS: "openvswitch-kmod"
+  GC_INTERVAL: 90
+  INSPECT_INTERVAL: 20
 
 debug:
   ENABLE_MIRROR: false

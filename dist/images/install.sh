@@ -81,6 +81,9 @@ DPDK_VERSION=""
 DPDK_CPU="1000m"                        # Default CPU configuration for if --dpdk-cpu flag is not included
 DPDK_MEMORY="2Gi"                       # Default Memory configuration for it --dpdk-memory flag is not included
 
+GC_INTERVAL=360
+INSPECT_INTERVAL=20
+
 display_help() {
     echo "Usage: $0 [option...]"
     echo
@@ -1970,6 +1973,8 @@ spec:
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false
           - --alsologtostderr=true
+          - --gc-interval=$GC_INTERVAL
+          - --inspect-interval=$INSPECT_INTERVAL
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP

@@ -97,6 +97,8 @@ spec:
           - --enable-external-vpc={{- .Values.func.ENABLE_EXTERNAL_VPC }}
           - --logtostderr=false
           - --alsologtostderr=true
+          - --gc-interval={{- .Values.perform.GC_INTERVAL }}
+          - --inspect-interval={{- .Values.perform.INSPECT_INTERVAL }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
