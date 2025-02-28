@@ -139,7 +139,11 @@ func (c *Controller) handleAddNamespace(key string) error {
 		// check if subnet is in custom vpc with configured defaultSubnet, then annotate the namespace with this subnet
 		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
-			if err != nil {
+			if err == errors.IsNotFound(err) {
+				klog.Errorf("custom vpc is not found - %v", err)
+				// this subnet is broken (it references a non-existent VPC) - we just ignore it.
+				break
+			} else if err != nil {
 				klog.Errorf("failed to get custom vpc %v", err)
 				return err
 			}
