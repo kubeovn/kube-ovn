@@ -379,7 +379,7 @@ kind-network-create-underlay:
 	$(eval UNDERLAY_NETWORK_ID = $(shell docker network ls -f name='^kind-underlay$$' --format '{{.ID}}'))
 	@if [ -z "$(UNDERLAY_NETWORK_ID)" ]; then \
 		docker network create --attachable -d bridge \
-			--ipv6 --subnet fc00:adb1:b29b:608d::/64 --gateway fc00:adb1:b29b:608d::1 \
+			--ipv6 --subnet fc00:19fa:9eea:6085::/64 --gateway fc00:19fa:9eea:6085::1 \
 			-o com.docker.network.bridge.enable_ip_masquerade=true \
 			-o com.docker.network.driver.mtu=1500 kind-underlay; \
 	fi

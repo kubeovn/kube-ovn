@@ -68,7 +68,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -197,7 +197,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return nil, err
 	}
-	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -380,7 +380,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return nil, fmt.Errorf("can not find container nic %s: %w", nicName, err)
@@ -397,9 +397,14 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		return nil, fmt.Errorf("failed to move link to netns: %w", err)
 	}
 
+	// do not perform ipv4/ipv6 duplicate address detection during VM live migration
+	checkIPv6DAD := !vmMigration
+	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
+		interfaceName := nicName
 		if nicType != util.InternalType {
+			interfaceName = ifName
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 				klog.Error(err)
 				return err
@@ -415,12 +420,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict, false, false); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, false, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict, true, false); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, true, false); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -501,22 +506,35 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		}
 
 		if gwCheckMode != gatewayCheckModeDisabled {
-			var (
-				underlayGateway = gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
-				interfaceName   = nicName
-			)
-
-			if nicType != util.InternalType {
-				interfaceName = ifName
-			}
-
+			underlayGateway := gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
 			if u2oInterconnectionIP != "" {
-				if err := csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+				if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
 					klog.Error(err)
 					return err
 				}
 			}
-			return csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true)
+			if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true); err != nil {
+				klog.Error(err)
+				return err
+			}
+		}
+
+		if checkIPv6DAD {
+			// check whether the ipv6 address has a dadfailed flag
+			addresses, err := netlink.AddrList(containerLink, netlink.FAMILY_V6)
+			if err != nil {
+				err = fmt.Errorf("failed to get ipv6 addresses of link %s: %w", interfaceName, err)
+				klog.Error(err)
+				return err
+			}
+
+			for _, addr := range addresses {
+				if addr.Flags&syscall.IFA_F_DADFAILED != 0 {
+					err = fmt.Errorf("IPv6 address %s has a dadfailed flag, please check whether it has been used by another host", addr.IP.String())
+					klog.Error(err)
+					return err
+				}
+			}
 		}
 
 		return nil
@@ -1122,7 +1140,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict, setUfoOff, ipv6LinkLocalOn bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1207,22 +1225,23 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		}
 	}
 	for ip, addr := range ipAddMap {
-		if detectIPConflict && addr.IP.To4() != nil {
-			ip := addr.IP.String()
-			mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
-			if err != nil {
-				err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", ip, link, err)
-				klog.Error(err)
-				return err
-			}
-			if mac != nil {
-				return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
-			}
-		}
-		if addr.IP.To4() != nil && !detectIPConflict {
-			// when detectIPConflict is true, free arp is already broadcast in the step of announcement
-			if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
-				klog.Warningf("failed to broadcast free arp with err %v", err)
+		if addr.IP.To4() != nil {
+			if detectIPv4Conflict {
+				ip := addr.IP.String()
+				mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
+				if err != nil {
+					err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", ip, link, err)
+					klog.Error(err)
+					return err
+				}
+				if mac != nil {
+					return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
+				}
+			} else {
+				// when detectIPConflict is true, free arp is already broadcast in the step of announcement
+				if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
+					klog.Warningf("failed to broadcast free arp with err %v", err)
+				}
 			}
 		}
 
