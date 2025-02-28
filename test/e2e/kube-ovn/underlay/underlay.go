@@ -517,7 +517,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		if f.HasIPv4() {
 			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
 		} else {
-			message = "dadfail"
+			message = "dadfailed"
 		}
 		var found bool
 		for _, event := range events {

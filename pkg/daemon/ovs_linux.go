@@ -520,7 +520,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		}
 
 		if checkIPv6DAD {
-			// check whether the ipv6 address has a dadfail flag
+			// check whether the ipv6 address has a dadfailed flag
 			addresses, err := netlink.AddrList(containerLink, netlink.FAMILY_V6)
 			if err != nil {
 				err = fmt.Errorf("failed to get ipv6 addresses of link %s: %w", interfaceName, err)
@@ -530,7 +530,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 
 			for _, addr := range addresses {
 				if addr.Flags&syscall.IFA_F_DADFAILED != 0 {
-					err = fmt.Errorf("IPv6 address %s has a dadfail flag, please check whether it has been used by another host", addr.IP.String())
+					err = fmt.Errorf("IPv6 address %s has a dadfailed flag, please check whether it has been used by another host", addr.IP.String())
 					klog.Error(err)
 					return err
 				}
