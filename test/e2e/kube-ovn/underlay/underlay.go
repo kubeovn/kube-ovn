@@ -473,15 +473,30 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		_ = vlanClient.Create(vlan)
 
 		ginkgo.By("Creating subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
-		for _, config := range dockerNetwork.IPAM.Config {
-			protocol := util.CheckProtocol(config.Subnet)
-			if (protocol == apiv1.ProtocolIPv4) == f.HasIPv4() ||
-				(protocol == apiv1.ProtocolIPv6) == f.HasIPv6() {
-				cidr = append(cidr, config.Subnet)
-				gateway = append(gateway, config.Gateway)
-			}
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
