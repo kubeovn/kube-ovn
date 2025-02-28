@@ -425,8 +425,13 @@ trace(){
       ;;
     tcp|udp)
       set -x
+      tcp_flags=""
+      if [ "$type" = "tcp" ]; then
+        # TCP SYN
+        tcp_flags=" && tcp.flags == 2"
+      fi
       kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new --ct=new --ct=new --ct=new "$ls" \
-        "inport == \"$lsp\" && ip.ttl == 255 && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst && $type.src == 10000 && $type.dst == $4"
+        "inport == \"$lsp\" && ip.ttl == 255 && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst && $type.src == 30000 && $type.dst == $4 $tcp_flags"
       ;;
     arp)
       case "$4" in
