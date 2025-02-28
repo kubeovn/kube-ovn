@@ -6,14 +6,20 @@ import (
 	"math/rand/v2"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -23,10 +29,13 @@ const (
 	targetIPv6 = "2001:4860:4860::8888"
 )
 
-func execOrDie(cmd string) {
+func execOrDie(cmd string, checks ...func(string)) {
 	ginkgo.GinkgoHelper()
 	ginkgo.By(`Executing "kubectl ` + cmd + `"`)
-	e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
+	output := e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
+	for _, check := range checks {
+		check(output)
+	}
 }
 
 var _ = framework.Describe("[group:kubectl-ko]", func() {
@@ -34,17 +43,33 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	var cs clientset.Interface
 	var podClient *framework.PodClient
-	var namespaceName, podName, kubectlConfig string
+	var serviceClient *framework.ServiceClient
+	var netpolClient *framework.NetworkPolicyClient
+	var namespaceName, podName, pod2Name, serviceName, netpolName, kubectlConfig string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
+		serviceClient = f.ServiceClient()
+		netpolClient = f.NetworkPolicyClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
+		pod2Name = "pod-" + framework.RandomSuffix()
+		serviceName = "svc-" + framework.RandomSuffix()
+		netpolName = "netpol-" + framework.RandomSuffix()
 		kubectlConfig = k8sframework.TestContext.KubeConfig
 		k8sframework.TestContext.KubeConfig = ""
 	})
 	ginkgo.AfterEach(func() {
 		k8sframework.TestContext.KubeConfig = kubectlConfig
+
+		ginkgo.By("Deleting network policy " + netpolName)
+		netpolClient.DeleteSync(netpolName)
+
+		ginkgo.By("Deleting service " + serviceName)
+		serviceClient.DeleteSync(serviceName)
+
+		ginkgo.By("Deleting pod " + pod2Name)
+		podClient.DeleteSync(pod2Name)
 
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
@@ -233,6 +258,85 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
+			}
+		}
+	})
+
+	framework.ConformanceIt(`"kubectl ko trace ..." should work with network policy`, func() {
+		ginkgo.By("Creating pod " + pod2Name)
+		labels := map[string]string{"foo": "bar"}
+		pod2 := framework.MakePod(namespaceName, pod2Name, labels, nil, "", nil, nil)
+		pod2 = podClient.CreateSync(pod2)
+
+		ginkgo.By("Creating network policy " + netpolName)
+		tcpPort := 8000 + rand.Int32N(1000)
+		udpPort := 8000 + rand.Int32N(1000)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
+				Egress: []netv1.NetworkPolicyEgressRule{{
+					Ports: []netv1.NetworkPolicyPort{{
+						Protocol: ptr.To(corev1.ProtocolTCP),
+						Port:     ptr.To(intstr.FromInt32(tcpPort)),
+					}, {
+						Protocol: ptr.To(corev1.ProtocolUDP),
+						Port:     ptr.To(intstr.FromInt32(udpPort)),
+					}},
+					To: []netv1.NetworkPolicyPeer{{
+						NamespaceSelector: &metav1.LabelSelector{},
+						PodSelector:       &metav1.LabelSelector{MatchLabels: labels},
+					}},
+				}},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		ginkgo.By("Creating service " + serviceName)
+		ports := []corev1.ServicePort{{
+			Name:       "tcp",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       tcpPort,
+			TargetPort: intstr.FromInt32(tcpPort),
+		}, {
+			Name:       "udp",
+			Protocol:   corev1.ProtocolUDP,
+			Port:       udpPort,
+			TargetPort: intstr.FromInt32(udpPort),
+		}}
+		service := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, labels, ports, "")
+		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.ClusterIPs) != 0, nil
+		}, "cluster ips are not empty")
+
+		ginkgo.By("Creating pod " + podName)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Checking trace output")
+		subCmd := "ovn-trace"
+		if f.VersionPriorTo(1, 12) {
+			subCmd = "trace"
+		}
+		outputMatch := fmt.Sprintf("output to %q", ovs.PodNameToPortName(pod2Name, pod2.Namespace, util.OvnProvider))
+		checkFunc := func(output string) {
+			ginkgo.GinkgoHelper()
+			if subCmd == "ovn-trace" {
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+				framework.ExpectContainSubstring(lines[len(lines)-1], outputMatch)
+			} else {
+				framework.ExpectContainSubstring(output, outputMatch)
+			}
+		}
+		for protocol, port := range map[corev1.Protocol]int32{corev1.ProtocolTCP: tcpPort, corev1.ProtocolUDP: udpPort} {
+			proto := strings.ToLower(string(protocol))
+			for _, ip := range pod2.Status.PodIPs {
+				execOrDie(fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip.IP, proto, port), checkFunc)
+			}
+			for _, ip := range service.Spec.ClusterIPs {
+				execOrDie(fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip, proto, port), checkFunc)
 			}
 		}
 	})
