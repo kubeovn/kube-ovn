@@ -249,8 +249,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
+		var vmMigration bool
 		subnetHasVlan := podSubnet.Spec.Vlan != ""
-		detectIPConflict := csh.Config.EnableArpDetectIPConflict && subnetHasVlan
 		// skip ping check gateway for pods during live migration
 		if pod.Annotations[util.MigrationJobAnnotation] == "" {
 			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
@@ -267,8 +267,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				}
 			}
 		} else {
-			// do not perform ipv4 conflict detection during VM live migration
-			detectIPConflict = false
+			vmMigration = true
 		}
 		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podRequest.Provider)] != "" {
 			gatewayCheckMode = gatewayCheckModeDisabled
@@ -308,12 +307,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		podNicName = ifName
 		switch nicType {
 		case util.InternalType:
-			podNicName, routes, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
+			podNicName, routes, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		case util.DpdkType:
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:
-			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
