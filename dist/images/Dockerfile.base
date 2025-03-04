@@ -117,7 +117,7 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 ARG ARCH
 ENV CNI_PLUGINS_VERSION="v1.6.2"
 ENV KUBECTL_VERSION="v1.32.2"
-ENV GOBGP_VERSION="3.34.0"
+ENV GOBGP_VERSION="3.35.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
