@@ -64,3 +64,45 @@ func TestUint32ToIPv6(t *testing.T) {
 		}
 	}
 }
+
+func TestIP2Hex(t *testing.T) {
+	tests := []struct {
+		name  string
+		input net.IP
+		want  string
+	}{
+		{
+			name:  "nil",
+			input: nil,
+			want:  "",
+		},
+		{
+			name:  "IPv4",
+			input: net.ParseIP("17.0.254.255"),
+			want:  "1100feff",
+		},
+		{
+			name:  "IPv6",
+			input: net.ParseIP("2001:0db8:85a3:0000:0000:8a2e:0370:7334"),
+			want:  "20010db885a3000000008a2e03707334",
+		},
+		{
+			name:  "IPv4 with heading zeros",
+			input: net.ParseIP("0.0.0.1"),
+			want:  "00000001",
+		},
+		{
+			name:  "IPv6 with heading zeros",
+			input: net.ParseIP("::1"),
+			want:  "00000000000000000000000000000001",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IP2Hex(tt.input); got != tt.want {
+				t.Errorf("got %v, but want %v", got, tt.want)
+			}
+		})
+	}
+}

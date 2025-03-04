@@ -40,6 +40,7 @@ func (c *Controller) InitOVN() error {
 	}
 
 	if c.config.EnableLb {
+		klog.Info("init load balancer")
 		if err = c.initLoadBalancer(); err != nil {
 			klog.Errorf("init load balancer failed: %v", err)
 			return err
@@ -227,25 +228,19 @@ func (c *Controller) initClusterRouter() error {
 	return nil
 }
 
-func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
-	protocol = strings.ToLower(protocol)
-
-	var (
-		selectFields string
-		err          error
-	)
-
+func (c *Controller) initLB(name, protocol string, template, sessionAffinity bool) error {
+	var selectFields string
 	if sessionAffinity {
 		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
 	}
 
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(protocol), selectFields, template); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
 
 	if sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err := c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
@@ -265,37 +260,26 @@ func (c *Controller) initLoadBalancer() error {
 	for _, cachedVpc := range vpcs {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
-		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-			klog.Error(err)
-			return err
+		for _, lb := range vpcLb.LBs() {
+			klog.Infof("init load balancer %s", lb.Name)
+			if err = c.initLB(lb.Name, lb.Protocol, lb.Template, lb.SessionAffinity); err != nil {
+				klog.Error(err)
+				return err
+			}
 		}
 
-		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
+		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer.Name
+		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer.Name
+		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer.Name
+		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer.Name
+		vpc.Status.SCTPLoadBalancer = vpcLb.SCTPLoadBalancer.Name
+		vpc.Status.SCTPSessionLoadBalancer = vpcLb.SCTPSessLoadBalancer.Name
+		vpc.Status.LocalTCPLoadBalancer = vpcLb.LocalTCPLoadBalancer.Name
+		vpc.Status.LocalTCPSessionLoadBalancer = vpcLb.LocalTCPSessLoadBalancer.Name
+		vpc.Status.LocalUDPLoadBalancer = vpcLb.LocalUDPLoadBalancer.Name
+		vpc.Status.LocalUDPSessionLoadBalancer = vpcLb.LocalUDPSessLoadBalancer.Name
+		vpc.Status.LocalSCTPLoadBalancer = vpcLb.LocalSCTPLoadBalancer.Name
+		vpc.Status.LocalSCTPSessionLoadBalancer = vpcLb.LocalSCTPSessLoadBalancer.Name
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
 			klog.Error(err)
