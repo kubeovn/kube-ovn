@@ -163,7 +163,6 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
@@ -402,13 +401,9 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			}
 			needUpdateLabel = true
 		}
-		if vip.Labels[util.SubnetNameLabel] != subnet {
-			op = "replace"
-			vip.Labels[util.SubnetNameLabel] = subnet
-			needUpdateLabel = true
-		}
-		if _, ok := vip.Labels[util.IPReservedLabel]; !ok {
+		if _, ok := vip.Labels[util.SubnetNameLabel]; !ok {
 			op = "add"
+			vip.Labels[util.SubnetNameLabel] = subnet
 			vip.Labels[util.IPReservedLabel] = ""
 			needUpdateLabel = true
 		}
@@ -423,6 +418,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			}
 		}
 	}
+	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
 
