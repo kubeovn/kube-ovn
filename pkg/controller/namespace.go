@@ -144,7 +144,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 					// this subnet is broken (it references a non-existent VPC) - we just ignore it.
 					klog.Errorf("vpc %q is not found. Ignoring subnet %q: %v", s.Spec.Vpc, s.Name, err)
 					break
-					return nil
 				}
 				klog.Errorf("failed to get vpc %q: %v", s.Spec.Vpc, err)
 				return err
