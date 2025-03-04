@@ -676,6 +676,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        mode:
+          - overlay
+          - underlay
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -766,7 +769,7 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        run: make kind-install-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         id: e2e
@@ -776,41 +779,41 @@ jobs:
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
-          kubectl get events -A -o yaml > k8s-netpol-e2e-${{ matrix.ip-family }}-events.yaml
-          tar zcf k8s-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          tar zcf k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: k8s-netpol-e2e-${{ matrix.ip-family }}-events
-          path: k8s-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz
+          name: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
+          path: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log
-          path: k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+          name: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
+          path: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
-          path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
@@ -867,6 +870,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        mode:
+          - overlay
+          - underlay
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -933,7 +939,7 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        run: make kind-install-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         id: e2e
@@ -943,41 +949,41 @@ jobs:
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
-          kubectl get events -A -o yaml > cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.yaml
-          tar zcf cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          tar zcf cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-events
-          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz
+          name: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
+          path: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log
-          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+          name: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
+          path: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
-          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
+          path: cyclonus-netpol-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
