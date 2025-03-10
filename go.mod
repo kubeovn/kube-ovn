@@ -55,6 +55,7 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/component-base v0.32.2
 	k8s.io/klog/v2 v2.130.1
+	k8s.io/kube-aggregator v0.32.2
 	k8s.io/kubectl v0.32.2
 	k8s.io/kubernetes v1.32.2
 	k8s.io/pod-security-admission v0.32.2
@@ -62,7 +63,6 @@ require (
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.75
 	kubevirt.io/api v1.4.0
 	kubevirt.io/client-go v1.4.0
-	kubevirt.io/kubevirt v1.4.0
 	sigs.k8s.io/controller-runtime v0.20.2
 	sigs.k8s.io/network-policy-api v0.1.5
 )
@@ -127,7 +127,6 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -280,7 +279,6 @@ require (
 	k8s.io/csi-translation-lib v0.32.2 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.32.2 // indirect
-	k8s.io/kube-aggregator v0.32.2 // indirect
 	k8s.io/kube-openapi v0.32.2 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.32.2 // indirect
