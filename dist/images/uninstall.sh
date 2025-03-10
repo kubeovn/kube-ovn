@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Remove geneve_sys_6081 interface by setting ovn-encap-type to a deprecated value.
+# Otherwise we need extra permission to remove the interface.
+ovs-vsctl set open . external_ids:ovn-encap-type=stt
 /usr/share/openvswitch/scripts/ovs-ctl stop
 ovs-dpctl del-dp ovs-system
 
