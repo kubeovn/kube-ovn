@@ -26,10 +26,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
-	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -271,7 +272,7 @@ type Controller struct {
 
 	vmiMigrationSynced           cache.InformerSynced
 	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
-	kubevirtInformerFactory      kubevirtController.KubeInformerFactory
+	kubevirtInformerFactory      informer.KubeVirtInformerFactory
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -328,7 +329,7 @@ func Run(ctx context.Context, config *Configuration) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
-	kubevirtInformerFactory := kubevirtController.NewKubeInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, util.KubevirtNamespace)
+	kubevirtInformerFactory := informer.NewKubeVirtInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, util.KubevirtNamespace)
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
