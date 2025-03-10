@@ -140,7 +140,12 @@ func (c *Controller) handleAddNamespace(key string) error {
 		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
 			if err != nil {
-				klog.Errorf("failed to get custom vpc %v", err)
+				if errors.IsNotFound(err) {
+					// this subnet is broken (it references a non-existent VPC) - we just ignore it.
+					klog.Errorf("vpc %q is not found. Ignoring subnet %q: %v", s.Spec.Vpc, s.Name, err)
+					break
+				}
+				klog.Errorf("failed to get vpc %q: %v", s.Spec.Vpc, err)
 				return err
 			}
 			if s.Name == vpc.Spec.DefaultSubnet {
