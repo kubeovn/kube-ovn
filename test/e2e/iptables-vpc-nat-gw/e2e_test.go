@@ -421,6 +421,8 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		cm.Data["image"] = oldImage
 		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+		subnetClient.DeleteSync(overlaySubnetName + "image")
 	})
 
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
@@ -545,16 +547,8 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		vipClient.DeleteSync(dnatVipName)
 		ginkgo.By("Deleting vip " + sharedVipName)
 		vipClient.DeleteSync(sharedVipName)
-
-		ginkgo.By("Deleting custom vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
-
-		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(vpcNatGwName)
-
 		// the only pod for vpc nat gateway
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-
 		// delete vpc nat gw statefulset remaining ip for eth0 and net1
 		overlaySubnet := subnetClient.Get(overlaySubnetName)
 		macvlanSubnet := subnetClient.Get(networkAttachDefName)
@@ -567,6 +561,12 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
 		subnetClient.DeleteSync(overlaySubnetName)
+
+		ginkgo.By("Deleting custom vpc nat gw")
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+
+		ginkgo.By("Deleting custom vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 
 		// multiple external network case
 		net2OverlaySubnetV4Cidr := "10.0.1.0/24"
@@ -590,9 +590,6 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting iptables eip " + net2EipName)
 		iptablesEIPClient.DeleteSync(net2EipName)
 
-		ginkgo.By("Deleting custom vpc " + net2VpcName)
-		vpcClient.DeleteSync(net2VpcName)
-
 		ginkgo.By("Deleting custom vpc nat gw")
 		vpcNatGwClient.DeleteSync(net2VpcNatGwName)
 
@@ -614,6 +611,9 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting overlay subnet " + net2OverlaySubnetName)
 		subnetClient.DeleteSync(net2OverlaySubnetName)
+
+		ginkgo.By("Deleting custom vpc " + net2VpcName)
+		vpcClient.DeleteSync(net2VpcName)
 	})
 })
 
@@ -1318,12 +1318,6 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			ginkgo.By("Deleting pod " + vpcQosParams.vpc2PodName)
 			podClient.DeleteSync(vpcQosParams.vpc2PodName)
 
-			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc1Name)
-			vpcClient.DeleteSync(vpcQosParams.vpc1Name)
-
-			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc2Name)
-			vpcClient.DeleteSync(vpcQosParams.vpc2Name)
-
 			ginkgo.By("Deleting custom vpc nat gw " + vpcQosParams.vpcNat1GwName)
 			vpcNatGwClient.DeleteSync(vpcQosParams.vpcNat1GwName)
 
@@ -1357,6 +1351,12 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 			ipClient.DeleteSync(net1IpName)
 			ginkgo.By("Deleting overlay subnet " + vpcQosParams.vpc2SubnetName)
 			subnetClient.DeleteSync(vpcQosParams.vpc2SubnetName)
+
+			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc1Name)
+			vpcClient.DeleteSync(vpcQosParams.vpc1Name)
+
+			ginkgo.By("Deleting custom vpc " + vpcQosParams.vpc2Name)
+			vpcClient.DeleteSync(vpcQosParams.vpc2Name)
 		})
 		framework.ConformanceIt("default nic qos", func() {
 			// case 1: set qos policy for natgw
