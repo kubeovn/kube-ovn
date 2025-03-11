@@ -485,6 +485,12 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
+	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+		if needRestartNatGatewayPod(pod) {
+			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
+		}
+	}
+
 	// check if route subnet is need.
 	return c.reconcileRouteSubnets(pod, needRouteSubnets(pod, podNets))
 }
@@ -1347,6 +1353,18 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 		}
 	}
 	return result
+}
+
+func needRestartNatGatewayPod(pod *v1.Pod) bool {
+	for _, psc := range pod.Status.ContainerStatuses {
+		if psc.Name != "vpc-nat-gw" {
+			continue
+		}
+		if psc.RestartCount > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {

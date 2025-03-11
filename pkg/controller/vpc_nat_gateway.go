@@ -179,6 +179,18 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return err
 	}
 
+	var natGwPodContainerRestartCount int32
+	pod, _err := c.getNatGwPod(key)
+	if _err == nil {
+		for _, psc := range pod.Status.ContainerStatuses {
+			if psc.Name != "vpc-nat-gw" {
+				continue
+			}
+			natGwPodContainerRestartCount = psc.RestartCount
+			break
+		}
+	}
+
 	// check or create statefulset
 	needToCreate := false
 	needToUpdate := false
@@ -191,12 +203,12 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 		needToCreate, oldSts = true, nil
 	}
-	newSts, err := c.genNatGwStatefulSet(gw, oldSts)
+	newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	if !needToCreate && isVpcNatGwChanged(gw) {
+	if !needToCreate && (isVpcNatGwChanged(gw) || natGwPodContainerRestartCount > 0) {
 		needToUpdate = true
 	}
 
@@ -717,7 +729,7 @@ func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespac
 	return nil
 }
 
-func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (*v1.StatefulSet, error) {
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
 	annotations := make(map[string]string, 7)
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		annotations = maps.Clone(oldSts.Annotations)
@@ -730,6 +742,13 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.LogicalSwitchAnnotation: gw.Spec.Subnet,
 		util.IPAddressAnnotation:     gw.Spec.LanIP,
 	}
+
+	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
+		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
+			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
+		}
+	}
+	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
 	if gw.Spec.BgpSpeaker.Enabled {
