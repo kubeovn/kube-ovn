@@ -256,6 +256,19 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return err
 	}
 
+	var natGwPodContainerRestartCount int32
+	oriPod, _err := c.getNatGwPod(key)
+	if _err == nil {
+		pod := oriPod.DeepCopy()
+		for _, psc := range pod.Status.ContainerStatuses {
+			if psc.Name != "vpc-nat-gw" {
+				continue
+			}
+			natGwPodContainerRestartCount = psc.RestartCount
+			break
+		}
+	}
+
 	// check or create statefulset
 	needToCreate := false
 	needToUpdate := false
@@ -269,11 +282,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 	}
-	newSts := c.genNatGwStatefulSet(gw, oldSts.DeepCopy())
-	if !needToCreate && isVpcNatGwChanged(gw) {
+	newSts := c.genNatGwStatefulSet(gw, oldSts.DeepCopy(), natGwPodContainerRestartCount)
+	if !needToCreate && (isVpcNatGwChanged(gw) || natGwPodContainerRestartCount > 0) {
 		needToUpdate = true
 	}
-
 	switch {
 	case needToCreate:
 		// if pod create successfully, will add initVpcNatGatewayQueue
@@ -741,7 +753,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (newSts *v1.StatefulSet) {
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (newSts *v1.StatefulSet) {
 	replicas := int32(1)
 	name := util.GenNatGwStsName(gw.Name)
 	allowPrivilegeEscalation := true
@@ -761,6 +773,14 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IPAddressAnnotation:         gw.Spec.LanIP,
 	}
+
+	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
+		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
+			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
+		}
+	}
+	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
+
 	for key, value := range podAnnotations {
 		newPodAnnotations[key] = value
 	}
