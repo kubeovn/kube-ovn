@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -156,6 +157,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Subnets = subnets
+
 	if !vpc.Spec.BFDPort.IsEnabled() && !vpc.Status.BFDPort.IsEmpty() {
 		vpc.Status.BFDPort.Clear()
 	}
@@ -170,6 +172,12 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if len(vpc.Status.Subnets) == 0 {
+		klog.Infof("vpc %s has no subnets, add to queue", vpc.Name)
+		c.addOrUpdateVpcQueue.AddAfter(vpc.Name, 5*time.Second)
+	}
+
 	if change {
 		for _, ns := range vpc.Spec.Namespaces {
 			c.addNamespaceQueue.Add(ns)
@@ -262,6 +270,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Errorf("failed to format vpc %s: %v", key, err)
 		return err
 	}
+
 	if err = c.createVpcRouter(key); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
@@ -1092,6 +1101,16 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 				}
 			}
 		}
+	}
+
+	if vpc.DeletionTimestamp.IsZero() && !slices.Contains(vpc.GetFinalizers(), util.KubeOVNControllerFinalizer) {
+		controllerutil.AddFinalizer(vpc, util.KubeOVNControllerFinalizer)
+		changed = true
+	}
+
+	if !vpc.DeletionTimestamp.IsZero() && len(vpc.Status.Subnets) == 0 {
+		controllerutil.RemoveFinalizer(vpc, util.KubeOVNControllerFinalizer)
+		changed = true
 	}
 
 	if changed {

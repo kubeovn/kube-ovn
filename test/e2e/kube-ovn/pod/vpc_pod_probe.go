@@ -30,7 +30,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	var eventClient *framework.EventClient
 	var subnetClient *framework.SubnetClient
 	var vpcClient *framework.VpcClient
-	var namespaceName, subnetName, podName, vpcName string
+	var namespaceName, subnetName, podName, vpcName, custVPCSubnetName string
 	var subnet *apiv1.Subnet
 	var cidr string
 
@@ -43,6 +43,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		subnetName = "subnet-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
+		custVPCSubnetName = "subnet-" + framework.RandomSuffix()
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
@@ -54,6 +55,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
+		subnetClient.DeleteSync(custVPCSubnetName)
 
 		ginkgo.By("Deleting VPC " + vpcName)
 		vpcClient.DeleteSync(vpcName)
@@ -77,12 +79,6 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		newArgs = append(newArgs, "--enable-tproxy=true")
 		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
 		daemonSetClient.PatchSync(modifyDs)
-
-		custVPCSubnetName := "subnet-" + framework.RandomSuffix()
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Deleting subnet " + custVPCSubnetName)
-			subnetClient.DeleteSync(custVPCSubnetName)
-		})
 
 		ginkgo.By("Creating VPC " + vpcName)
 		vpcName = "vpc-" + framework.RandomSuffix()
