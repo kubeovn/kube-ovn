@@ -21,8 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  KIND_VERSION: v0.26.0
-  GOLANGCI_LINT_VERSION: 'v1.62.2'
+  KIND_VERSION: v0.27.0
+  GOLANGCI_LINT_VERSION: 'v1.64.7'
   HELM_VERSION: v3.16.4
   SUBMARINER_VERSION: '0.18.3'
 
