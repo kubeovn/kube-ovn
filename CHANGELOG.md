@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.13.4 (2025-03-13)
+
+ * [0284f481a](https://github.com/kubeovn/kube-ovn/commit/0284f481a32e6952dd4aa334f65a0ee9548d711e) release v1.13.4
+ * [959c0b6c7](https://github.com/kubeovn/kube-ovn/commit/959c0b6c71404a6c4e9789b63a2244ab9c0f6cdc) bump go to 1.23.7 (#5077)
+ * [3e7b7849c](https://github.com/kubeovn/kube-ovn/commit/3e7b7849cf6ccd806871b24fb64efef74ec35c0f) feat: Enhance finalizer handling for VPC and subnet
+ * [3105f7882](https://github.com/kubeovn/kube-ovn/commit/3105f788277de2e4eb3b464f7b44980f694c92e8) feat: Make Kube-OVN namespace configurable with default value (#5069)
+ * [79b70fd47](https://github.com/kubeovn/kube-ovn/commit/79b70fd4729678ea39bd20ceeefe0f9e4e87d93a) Fix #5028: Orphaned subnets which reference a non-existent VPC cause new namespaces to never get correct annotations. (#5031)
+ * [a5a76ac80](https://github.com/kubeovn/kube-ovn/commit/a5a76ac80d1dfcc05b4521cceb258c7b87b10577) remove genev_sys_6081 when uninstall kube-ovn (#5066)
+ * [28e2290b6](https://github.com/kubeovn/kube-ovn/commit/28e2290b6f489d86699e6cbdb3431e016b46fd46) simple vip lable update and then update subnet status (#5036)
+ * [20e307940](https://github.com/kubeovn/kube-ovn/commit/20e307940d00170c9e9e650c12e267ea0ecf7fb1) kubectl-ko: fix conntrack state (#5038)
+ * [de7a53101](https://github.com/kubeovn/kube-ovn/commit/de7a531012417e4c070bfdbca7bd8248870cd738) fix rerun the completed vim migration (#5020)
+ * [24dae762d](https://github.com/kubeovn/kube-ovn/commit/24dae762d61d8e8d42370f342d13d71209fefb5b) feat(GC): Add check for GC disabled (#5005)
+ * [1b04dbde9](https://github.com/kubeovn/kube-ovn/commit/1b04dbde9f584d86c3aa2e930f80d12456190071) ci: bump aquasecurity/trivy-action to 0.29.0
+ * [1a6249be4](https://github.com/kubeovn/kube-ovn/commit/1a6249be4bf988734263a529a50a2e8616d016e9) prepare for next release
+
+### Contributors
+
+ * Kevin Carter
+ * Mengxin Liu
+ * andrewlee1089
+ * changluyi
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.13.3 (2025-02-17)
 
  * [4a10a7571](https://github.com/kubeovn/kube-ovn/commit/4a10a7571f8c0c44067b427e01c0e8da3174694b) release v1.13.3
@@ -4134,6 +4159,18 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.39 (2025-02-19)
+
+ * [d8396d307](https://github.com/kubeovn/kube-ovn/commit/d8396d30700f31c853ccac6208247f2c54a625e3) release v1.9.39
+ * [582309418](https://github.com/kubeovn/kube-ovn/commit/5823094184d124f33f36898861616e49f203e9cb) fix: kube-ovn-cni always dump-flows br-provider per period (#4972)
+ * [91ba72acd](https://github.com/kubeovn/kube-ovn/commit/91ba72acd7c42f31f1867c3593a5887da23cbdc9) bump go to 1.23.6 (#4961)
+ * [2c56a40f2](https://github.com/kubeovn/kube-ovn/commit/2c56a40f22ac30d467b684bcb9bd3619b0e73373) prepare for next release
+
+### Contributors
+
+ * changluyi
+ * 张祖建
 
 ## v1.9.38 (2025-01-13)
 
