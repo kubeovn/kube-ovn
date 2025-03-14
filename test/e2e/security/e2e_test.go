@@ -74,7 +74,9 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 	listenPodIP, err := strconv.ParseBool(envValue)
 	framework.ExpectNoError(err)
 
-	if listenPodIP && len(pods[0].Status.PodIPs) != 1 && (process != "ovsdb-server" || f.VersionPriorTo(1, 12)) {
+	if listenPodIP &&
+		(len(pods[0].Status.PodIPs) != 1 && (!strings.HasPrefix(process, "kube-ovn-") || f.VersionPriorTo(1, 13))) &&
+		(process != "ovsdb-server" || f.VersionPriorTo(1, 12)) {
 		// ovn db processes support listening on both ipv4 and ipv6 addresses in versions >= 1.12
 		listenPodIP = false
 	}
@@ -133,11 +135,11 @@ var _ = framework.Describe("[group:security]", func() {
 	})
 
 	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", func() {
-		checkDeployment(f, "kube-ovn-controller", "kube-ovn-controller")
+		checkDeployment(f, "kube-ovn-controller", "kube-ovn-controller", "10660")
 	})
 
 	framework.ConformanceIt("kube-ovn-monitor should listen on specified addresses", func() {
-		checkDeployment(f, "kube-ovn-monitor", "kube-ovn-monitor")
+		checkDeployment(f, "kube-ovn-monitor", "kube-ovn-monitor", "10661")
 	})
 
 	framework.ConformanceIt("kube-ovn-cni should listen on specified addresses", func() {
@@ -158,6 +160,6 @@ var _ = framework.Describe("[group:security]", func() {
 			pods = append(pods, *pod)
 		}
 
-		checkPods(f, pods, "kube-ovn-daemon")
+		checkPods(f, pods, "kube-ovn-daemon", "10665")
 	})
 })

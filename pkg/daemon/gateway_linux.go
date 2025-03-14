@@ -642,14 +642,11 @@ func (c *Controller) setIptables() error {
 			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 	)
-	protocols := make([]string, 2)
-	isDual := false
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
-		isDual = true
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -837,7 +834,7 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
+		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -868,7 +865,7 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) error {
+func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	if !c.config.EnableTProxy {
 		return nil
 	}
@@ -902,19 +899,13 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 		}
 
 		for _, probePort := range ports.SortedList() {
-			hostIP := pod.Status.HostIP
+			hostIP := c.config.NodeIPv4
 			prefixLen := 32
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				prefixLen = 128
+				hostIP = c.config.NodeIPv6
 			}
 
-			if isDual || os.Getenv("ENABLE_BIND_LOCAL_IP") == "false" {
-				if protocol == kubeovnv1.ProtocolIPv4 {
-					hostIP = "0.0.0.0"
-				} else if protocol == kubeovnv1.ProtocolIPv6 {
-					hostIP = "::"
-				}
-			}
 			tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP, prefixLen, probePort, tProxyOutputMarkMask))})
 			tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, prefixLen, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
 		}

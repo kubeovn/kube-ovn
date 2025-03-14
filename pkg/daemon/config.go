@@ -49,6 +49,8 @@ type Configuration struct {
 	KubeClient                kubernetes.Interface
 	KubeOvnClient             clientset.Interface
 	NodeName                  string
+	NodeIPv4                  string
+	NodeIPv6                  string
 	ServiceClusterIPRange     string
 	ClusterRouter             string
 	NodeSwitch                string
@@ -213,6 +215,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		klog.Errorf("Failed to find node info, err: %v", err)
 		return err
 	}
+	config.NodeIPv4, config.NodeIPv6 = util.GetNodeInternalIP(*node)
 	if nodeTunnelName := node.GetAnnotations()[util.TunnelInterfaceAnnotation]; nodeTunnelName != "" {
 		config.Iface = nodeTunnelName
 		klog.Infof("Find node tunnel interface name: %v", nodeTunnelName)
