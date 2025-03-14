@@ -61,8 +61,8 @@ require (
 	k8s.io/pod-security-admission v0.32.3
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.75
-	kubevirt.io/api v1.4.0
-	kubevirt.io/client-go v1.4.0
+	kubevirt.io/api v1.5.0
+	kubevirt.io/client-go v1.5.0
 	sigs.k8s.io/controller-runtime v0.20.3
 	sigs.k8s.io/network-policy-api v0.1.5
 )
@@ -255,7 +255,7 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/net v0.37.0 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/term v0.30.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
@@ -285,8 +285,8 @@ require (
 	k8s.io/kubelet v0.32.3 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.75 // indirect
-	kubevirt.io/containerized-data-importer-api v1.61.1 // indirect
-	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
+	kubevirt.io/containerized-data-importer-api v1.61.2 // indirect
+	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kustomize/api v0.19.0 // indirect
@@ -329,5 +329,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.32.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.32.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.32.3
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20241213030551-6db0aaa1c92e
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20250314014734-ea4c2111cf66
 )
