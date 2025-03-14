@@ -30,7 +30,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 FRR_VERSION = 9.1.3
 FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
-CLAB_IMAGE = ghcr.io/srl-labs/clab:0.64.0
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.66.0
 
 MULTUS_VERSION = v4.1.4
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
@@ -41,7 +41,7 @@ METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
 
-KUBEVIRT_VERSION = v1.4.0
+KUBEVIRT_VERSION = v1.5.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -50,16 +50,16 @@ KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
-CILIUM_VERSION = 1.17.0
+CILIUM_VERSION = 1.17.1
 CILIUM_IMAGE_REPO = quay.io/cilium
 
-CERT_MANAGER_VERSION = v1.17.0
+CERT_MANAGER_VERSION = v1.17.1
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
-SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.19.2})
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.19.3})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
 SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
 SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
