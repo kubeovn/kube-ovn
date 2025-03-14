@@ -93,7 +93,7 @@ func getProbePorts(pod *corev1.Pod) set.Set[int32] {
 	}
 
 	ports.Delete(0)
-	klog.Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
+	klog.V(3).Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
 	return ports
 }
 

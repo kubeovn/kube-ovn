@@ -902,19 +902,13 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 		}
 
 		for _, probePort := range ports.SortedList() {
-			hostIP := pod.Status.HostIP
+			hostIP := c.config.NodeIPv4
 			prefixLen := 32
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				prefixLen = 128
+				hostIP = c.config.NodeIPv6
 			}
 
-			if isDual || os.Getenv("ENABLE_BIND_LOCAL_IP") == "false" {
-				if protocol == kubeovnv1.ProtocolIPv4 {
-					hostIP = "0.0.0.0"
-				} else if protocol == kubeovnv1.ProtocolIPv6 {
-					hostIP = "::"
-				}
-			}
 			tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP, prefixLen, probePort, tProxyOutputMarkMask))})
 			tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, prefixLen, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
 		}
