@@ -447,11 +447,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
 	})
 
-	framework.ConformanceIt("should be able to detect IPv4 address conflict", func() {
-		if !f.IsIPv4() {
-			ginkgo.Skip("Address conflict detection only supports IPv4")
+	framework.ConformanceIt("should be able to detect duplicate address", func() {
+		f.SkipVersionPriorTo(1, 9, "Duplicate address detection was introduced in v1.9")
+		if !f.HasIPv4() {
+			f.SkipVersionPriorTo(1, 14, "Duplicate address detection for IPv6 was introduced in v1.14")
 		}
-		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
@@ -463,7 +463,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		containerName := "container-" + framework.RandomSuffix()
 		ginkgo.By("Creating container " + containerName)
-		cmd := []string{"sh", "-c", "sleep 600"}
+		cmd := []string{"sleep", "infinity"}
 		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
@@ -473,35 +473,67 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		_ = vlanClient.Create(vlan)
 
 		ginkgo.By("Creating subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
-		for _, config := range dockerNetwork.IPAM.Config {
-			if util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
-				cidr = append(cidr, config.Subnet)
-				gateway = append(gateway, config.Gateway)
-				break
-			}
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" {
+			if f.HasIPv4() && container.IPv4Address != "" {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if f.HasIPv6() && container.IPv6Address != "" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
-		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
-		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
+		networkInfo := containerInfo.NetworkSettings.Networks[dockerNetworkName]
+		ips := make([]string, 0, 2)
+		if f.HasIPv4() {
+			ips = append(ips, networkInfo.IPAddress)
+		}
+		if f.HasIPv6() {
+			ips = append(ips, networkInfo.GlobalIPv6Address)
+		}
+		ip := strings.Join(ips, ",")
+		mac := networkInfo.MacAddress
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
 		annotations := map[string]string{util.IPAddressAnnotation: ip}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Waiting for pod events")
 		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
+		var message string
+		if f.HasIPv4() {
+			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
+		} else {
+			message = "dadfailed"
+		}
 		var found bool
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {
