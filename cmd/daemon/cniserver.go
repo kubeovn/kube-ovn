@@ -8,6 +8,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,24 +100,25 @@ func main() {
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
 
-	addr := util.GetDefaultListenAddr()
+	addrs := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
-		go func() {
-			connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
-			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
-				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
-			}
-		}()
-
-		go func() {
-			connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
-			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
-				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
-			}
-		}()
+		for _, addr := range addrs {
+			go func() {
+				connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
+				if err := util.TCPConnectivityListen(connListenaddr); err != nil {
+					util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
+				}
+			}()
+			go func() {
+				connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
+				if err := util.UDPConnectivityListen(connListenaddr); err != nil {
+					util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
+				}
+			}()
+		}
 	}
 
-	servePprofInMetricsServer := config.EnableMetrics && addr == "0.0.0.0"
+	servePprofInMetricsServer := config.EnableMetrics && slices.Contains(addrs, "0.0.0.0")
 	if config.EnablePprof && !servePprofInMetricsServer {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -149,15 +151,19 @@ func main() {
 	if config.EnableMetrics {
 		daemon.InitMetrics()
 		metrics.InitKlogMetrics()
-		listenAddr := util.JoinHostPort(addr, config.PprofPort)
-		if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
-			util.LogFatalAndExit(err, "failed to run metrics server")
+		for _, addr := range addrs {
+			listenAddr := util.JoinHostPort(addr, config.PprofPort)
+			go func() {
+				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
+					util.LogFatalAndExit(err, "failed to run metrics server")
+				}
+			}()
 		}
 	} else {
 		klog.Info("metrics server is disabled")
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addr), Port: int(config.PprofPort)})
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addrs[0]), Port: int(config.PprofPort)})
 		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(addr, config.PprofPort))
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(addrs[0], config.PprofPort))
 		}
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)

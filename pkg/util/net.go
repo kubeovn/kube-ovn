@@ -692,13 +692,15 @@ func UDPConnectivityListen(endpoint string) error {
 	return nil
 }
 
-func GetDefaultListenAddr() string {
+func GetDefaultListenAddr() []string {
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		if ips := strings.Split(os.Getenv("POD_IPS"), ","); len(ips) == 1 {
-			return ips[0]
+		if podIPs := os.Getenv("POD_IPS"); podIPs != "" {
+			return strings.Split(podIPs, ",")
 		}
+		klog.Error("environment variable POD_IPS is not set, cannot bind to local ip")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
-	return "0.0.0.0"
+	return []string{"0.0.0.0"}
 }
 
 func ContainsUppercase(s string) bool {
