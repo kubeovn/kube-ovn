@@ -642,14 +642,11 @@ func (c *Controller) setIptables() error {
 			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 	)
-	protocols := make([]string, 2)
-	isDual := false
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
-		isDual = true
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -837,7 +834,7 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
+		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -868,7 +865,7 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) error {
+func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	if !c.config.EnableTProxy {
 		return nil
 	}
