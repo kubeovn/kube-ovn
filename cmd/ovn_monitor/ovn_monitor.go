@@ -33,7 +33,7 @@ func CmdMain() {
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 
-	metricsAddr := util.GetDefaultListenAddr()
+	metricsAddrs := util.GetDefaultListenAddr()
 	if config.EnableMetrics {
 		exporter := ovn.NewExporter(config)
 		if err = exporter.StartConnection(); err != nil {
@@ -41,15 +41,19 @@ func CmdMain() {
 			go exporter.TryClientConnection()
 		}
 		exporter.StartOvnMetrics()
-		addr := util.JoinHostPort(metricsAddr, config.MetricsPort)
-		if err = metrics.Run(ctx, nil, addr, config.SecureServing, false); err != nil {
-			util.LogFatalAndExit(err, "failed to run metrics server")
+		for _, metricsAddr := range metricsAddrs {
+			addr := util.JoinHostPort(metricsAddr, config.MetricsPort)
+			go func() {
+				if err := metrics.Run(ctx, nil, addr, config.SecureServing, false); err != nil {
+					util.LogFatalAndExit(err, "failed to run metrics server")
+				}
+			}()
 		}
 	} else {
 		klog.Info("metrics server is disabled")
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(util.GetDefaultListenAddr()), Port: int(config.MetricsPort)})
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.MetricsPort)})
 		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddr, config.MetricsPort))
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddrs[0], config.MetricsPort))
 		}
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)

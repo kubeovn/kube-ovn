@@ -1390,14 +1390,21 @@ func TestUDPConnectivityCheck(t *testing.T) {
 }
 
 func TestGetDefaultListenAddr(t *testing.T) {
-	addr := GetDefaultListenAddr()
-	require.Equal(t, addr, "0.0.0.0")
+	require.Equal(t, GetDefaultListenAddr(), []string{"0.0.0.0"})
 	err := os.Setenv("ENABLE_BIND_LOCAL_IP", "true")
 	require.NoError(t, err)
 	err = os.Setenv("POD_IPS", "10.10.10.10")
 	require.NoError(t, err)
-	addr = GetDefaultListenAddr()
-	require.Equal(t, addr, "10.10.10.10")
+	require.Equal(t, GetDefaultListenAddr(), []string{"10.10.10.10"})
+	err = os.Setenv("POD_IPS", "fd00::1")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"fd00::1"})
+	err = os.Setenv("POD_IPS", "10.10.10.10,fd00::1")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"10.10.10.10", "fd00::1"})
+	err = os.Setenv("ENABLE_BIND_LOCAL_IP", "false")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"0.0.0.0"})
 }
 
 func TestContainsUppercase(t *testing.T) {
