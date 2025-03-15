@@ -179,6 +179,163 @@ func (mr *MockNBGlobalMockRecorder) UpdateNbGlobal(nbGlobal any, fields ...any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNbGlobal", reflect.TypeOf((*MockNBGlobal)(nil).UpdateNbGlobal), varargs...)
 }
 
+// MockChassisTemplateVar is a mock of ChassisTemplateVar interface.
+type MockChassisTemplateVar struct {
+	ctrl     *gomock.Controller
+	recorder *MockChassisTemplateVarMockRecorder
+	isgomock struct{}
+}
+
+// MockChassisTemplateVarMockRecorder is the mock recorder for MockChassisTemplateVar.
+type MockChassisTemplateVarMockRecorder struct {
+	mock *MockChassisTemplateVar
+}
+
+// NewMockChassisTemplateVar creates a new mock instance.
+func NewMockChassisTemplateVar(ctrl *gomock.Controller) *MockChassisTemplateVar {
+	mock := &MockChassisTemplateVar{ctrl: ctrl}
+	mock.recorder = &MockChassisTemplateVarMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockChassisTemplateVar) EXPECT() *MockChassisTemplateVarMockRecorder {
+	return m.recorder
+}
+
+// CreateChassisTemplateVar mocks base method.
+func (m *MockChassisTemplateVar) CreateChassisTemplateVar(node, chassis string, variables map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateChassisTemplateVar", node, chassis, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateChassisTemplateVar indicates an expected call of CreateChassisTemplateVar.
+func (mr *MockChassisTemplateVarMockRecorder) CreateChassisTemplateVar(node, chassis, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateChassisTemplateVar", reflect.TypeOf((*MockChassisTemplateVar)(nil).CreateChassisTemplateVar), node, chassis, variables)
+}
+
+// DeleteChassisTemplateVar mocks base method.
+func (m *MockChassisTemplateVar) DeleteChassisTemplateVar(chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVar", chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVar indicates an expected call of DeleteChassisTemplateVar.
+func (mr *MockChassisTemplateVarMockRecorder) DeleteChassisTemplateVar(chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVar", reflect.TypeOf((*MockChassisTemplateVar)(nil).DeleteChassisTemplateVar), chassis)
+}
+
+// DeleteChassisTemplateVarByNodeName mocks base method.
+func (m *MockChassisTemplateVar) DeleteChassisTemplateVarByNodeName(node string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVarByNodeName", node)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVarByNodeName indicates an expected call of DeleteChassisTemplateVarByNodeName.
+func (mr *MockChassisTemplateVarMockRecorder) DeleteChassisTemplateVarByNodeName(node any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVarByNodeName", reflect.TypeOf((*MockChassisTemplateVar)(nil).DeleteChassisTemplateVarByNodeName), node)
+}
+
+// DeleteChassisTemplateVarVariables mocks base method.
+func (m *MockChassisTemplateVar) DeleteChassisTemplateVarVariables(variables ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{}
+	for _, a := range variables {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVarVariables", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVarVariables indicates an expected call of DeleteChassisTemplateVarVariables.
+func (mr *MockChassisTemplateVarMockRecorder) DeleteChassisTemplateVarVariables(variables ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVarVariables", reflect.TypeOf((*MockChassisTemplateVar)(nil).DeleteChassisTemplateVarVariables), variables...)
+}
+
+// GetChassisTemplateVar mocks base method.
+func (m *MockChassisTemplateVar) GetChassisTemplateVar(chassis string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisTemplateVar", chassis, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisTemplateVar indicates an expected call of GetChassisTemplateVar.
+func (mr *MockChassisTemplateVarMockRecorder) GetChassisTemplateVar(chassis, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisTemplateVar", reflect.TypeOf((*MockChassisTemplateVar)(nil).GetChassisTemplateVar), chassis, ignoreNotFound)
+}
+
+// GetChassisTemplateVarByNodeName mocks base method.
+func (m *MockChassisTemplateVar) GetChassisTemplateVarByNodeName(node string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisTemplateVarByNodeName", node, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisTemplateVarByNodeName indicates an expected call of GetChassisTemplateVarByNodeName.
+func (mr *MockChassisTemplateVarMockRecorder) GetChassisTemplateVarByNodeName(node, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisTemplateVarByNodeName", reflect.TypeOf((*MockChassisTemplateVar)(nil).GetChassisTemplateVarByNodeName), node, ignoreNotFound)
+}
+
+// ListChassisTemplateVar mocks base method.
+func (m *MockChassisTemplateVar) ListChassisTemplateVar() ([]ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChassisTemplateVar")
+	ret0, _ := ret[0].([]ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChassisTemplateVar indicates an expected call of ListChassisTemplateVar.
+func (mr *MockChassisTemplateVarMockRecorder) ListChassisTemplateVar() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChassisTemplateVar", reflect.TypeOf((*MockChassisTemplateVar)(nil).ListChassisTemplateVar))
+}
+
+// UpdateChassisTemplateVar mocks base method.
+func (m *MockChassisTemplateVar) UpdateChassisTemplateVar(node, chassis string, variables map[string]*string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateChassisTemplateVar", node, chassis, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassisTemplateVar indicates an expected call of UpdateChassisTemplateVar.
+func (mr *MockChassisTemplateVarMockRecorder) UpdateChassisTemplateVar(node, chassis, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTemplateVar", reflect.TypeOf((*MockChassisTemplateVar)(nil).UpdateChassisTemplateVar), node, chassis, variables)
+}
+
+// UpdateChassisTemplateVarVariables mocks base method.
+func (m *MockChassisTemplateVar) UpdateChassisTemplateVarVariables(variable string, nodeValues map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateChassisTemplateVarVariables", variable, nodeValues)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassisTemplateVarVariables indicates an expected call of UpdateChassisTemplateVarVariables.
+func (mr *MockChassisTemplateVarMockRecorder) UpdateChassisTemplateVarVariables(variable, nodeValues any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTemplateVarVariables", reflect.TypeOf((*MockChassisTemplateVar)(nil).UpdateChassisTemplateVarVariables), variable, nodeValues)
+}
+
 // MockLogicalRouter is a mock of LogicalRouter interface.
 type MockLogicalRouter struct {
 	ctrl     *gomock.Controller
@@ -1352,17 +1509,17 @@ func (m *MockLoadBalancer) EXPECT() *MockLoadBalancerMockRecorder {
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol, selectFields string, template bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields, template)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields, template any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), lbName, protocol, selectFields, template)
 }
 
 // DeleteLoadBalancers mocks base method.
@@ -3072,6 +3229,20 @@ func (mr *MockNbClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBareLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateBareLogicalSwitchPort), lsName, lspName, ip, mac)
 }
 
+// CreateChassisTemplateVar mocks base method.
+func (m *MockNbClient) CreateChassisTemplateVar(node, chassis string, variables map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateChassisTemplateVar", node, chassis, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateChassisTemplateVar indicates an expected call of CreateChassisTemplateVar.
+func (mr *MockNbClientMockRecorder) CreateChassisTemplateVar(node, chassis, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateChassisTemplateVar", reflect.TypeOf((*MockNbClient)(nil).CreateChassisTemplateVar), node, chassis, variables)
+}
+
 // CreateGatewayACL mocks base method.
 func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
 	m.ctrl.T.Helper()
@@ -3120,17 +3291,17 @@ func (mr *MockNbClientMockRecorder) CreateHAChassisGroup(name, chassises, extern
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockNbClient) CreateLoadBalancer(lbName, protocol, selectFields string, template bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields, template)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields, template any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), lbName, protocol, selectFields, template)
 }
 
 // CreateLoadBalancerHealthCheck mocks base method.
@@ -3426,6 +3597,52 @@ func (m *MockNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 func (mr *MockNbClientMockRecorder) DeleteBFDByDstIP(lrpName, dstIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFDByDstIP", reflect.TypeOf((*MockNbClient)(nil).DeleteBFDByDstIP), lrpName, dstIP)
+}
+
+// DeleteChassisTemplateVar mocks base method.
+func (m *MockNbClient) DeleteChassisTemplateVar(chassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVar", chassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVar indicates an expected call of DeleteChassisTemplateVar.
+func (mr *MockNbClientMockRecorder) DeleteChassisTemplateVar(chassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVar", reflect.TypeOf((*MockNbClient)(nil).DeleteChassisTemplateVar), chassis)
+}
+
+// DeleteChassisTemplateVarByNodeName mocks base method.
+func (m *MockNbClient) DeleteChassisTemplateVarByNodeName(node string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVarByNodeName", node)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVarByNodeName indicates an expected call of DeleteChassisTemplateVarByNodeName.
+func (mr *MockNbClientMockRecorder) DeleteChassisTemplateVarByNodeName(node any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVarByNodeName", reflect.TypeOf((*MockNbClient)(nil).DeleteChassisTemplateVarByNodeName), node)
+}
+
+// DeleteChassisTemplateVarVariables mocks base method.
+func (m *MockNbClient) DeleteChassisTemplateVarVariables(variables ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{}
+	for _, a := range variables {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVarVariables", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVarVariables indicates an expected call of DeleteChassisTemplateVarVariables.
+func (mr *MockNbClientMockRecorder) DeleteChassisTemplateVarVariables(variables ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVarVariables", reflect.TypeOf((*MockNbClient)(nil).DeleteChassisTemplateVarVariables), variables...)
 }
 
 // DeleteDHCPOptions mocks base method.
@@ -3801,6 +4018,36 @@ func (mr *MockNbClientMockRecorder) FindBFD(externalIDs any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindBFD", reflect.TypeOf((*MockNbClient)(nil).FindBFD), externalIDs)
 }
 
+// GetChassisTemplateVar mocks base method.
+func (m *MockNbClient) GetChassisTemplateVar(chassis string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisTemplateVar", chassis, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisTemplateVar indicates an expected call of GetChassisTemplateVar.
+func (mr *MockNbClientMockRecorder) GetChassisTemplateVar(chassis, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisTemplateVar", reflect.TypeOf((*MockNbClient)(nil).GetChassisTemplateVar), chassis, ignoreNotFound)
+}
+
+// GetChassisTemplateVarByNodeName mocks base method.
+func (m *MockNbClient) GetChassisTemplateVarByNodeName(node string, ignoreNotFound bool) (*ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisTemplateVarByNodeName", node, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisTemplateVarByNodeName indicates an expected call of GetChassisTemplateVarByNodeName.
+func (mr *MockNbClientMockRecorder) GetChassisTemplateVarByNodeName(node, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisTemplateVarByNodeName", reflect.TypeOf((*MockNbClient)(nil).GetChassisTemplateVarByNodeName), node, ignoreNotFound)
+}
+
 // GetEntityInfo mocks base method.
 func (m *MockNbClient) GetEntityInfo(entity any) error {
 	m.ctrl.T.Helper()
@@ -4024,6 +4271,21 @@ func (m *MockNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
 func (mr *MockNbClientMockRecorder) ListBFDs(lrpName, dstIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFDs", reflect.TypeOf((*MockNbClient)(nil).ListBFDs), lrpName, dstIP)
+}
+
+// ListChassisTemplateVar mocks base method.
+func (m *MockNbClient) ListChassisTemplateVar() ([]ovnnb.ChassisTemplateVar, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChassisTemplateVar")
+	ret0, _ := ret[0].([]ovnnb.ChassisTemplateVar)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChassisTemplateVar indicates an expected call of ListChassisTemplateVar.
+func (mr *MockNbClientMockRecorder) ListChassisTemplateVar() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChassisTemplateVar", reflect.TypeOf((*MockNbClient)(nil).ListChassisTemplateVar))
 }
 
 // ListDHCPOptions mocks base method.
@@ -5039,6 +5301,34 @@ func (mr *MockNbClientMockRecorder) UpdateBFD(bfd any, fields ...any) *gomock.Ca
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{bfd}, fields...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateBFD", reflect.TypeOf((*MockNbClient)(nil).UpdateBFD), varargs...)
+}
+
+// UpdateChassisTemplateVar mocks base method.
+func (m *MockNbClient) UpdateChassisTemplateVar(node, chassis string, variables map[string]*string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateChassisTemplateVar", node, chassis, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassisTemplateVar indicates an expected call of UpdateChassisTemplateVar.
+func (mr *MockNbClientMockRecorder) UpdateChassisTemplateVar(node, chassis, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTemplateVar", reflect.TypeOf((*MockNbClient)(nil).UpdateChassisTemplateVar), node, chassis, variables)
+}
+
+// UpdateChassisTemplateVarVariables mocks base method.
+func (m *MockNbClient) UpdateChassisTemplateVarVariables(variable string, nodeValues map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateChassisTemplateVarVariables", variable, nodeValues)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateChassisTemplateVarVariables indicates an expected call of UpdateChassisTemplateVarVariables.
+func (mr *MockNbClientMockRecorder) UpdateChassisTemplateVarVariables(variable, nodeValues any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTemplateVarVariables", reflect.TypeOf((*MockNbClient)(nil).UpdateChassisTemplateVarVariables), variable, nodeValues)
 }
 
 // UpdateDHCPOptions mocks base method.
