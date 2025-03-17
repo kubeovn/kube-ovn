@@ -2067,7 +2067,6 @@ jobs:
       - installation-compatibility-test
       - no-ovn-lb-test
       - no-np-test
-      - cilium-chaining-e2e
       - kube-ovn-ha-e2e
       - kube-ovn-submariner-conformance-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
