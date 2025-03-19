@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.13.5 (2025-03-19)
+
+ * [d3f2e8fd5](https://github.com/kubeovn/kube-ovn/commit/d3f2e8fd5bce24139bd228951479d165edb1662b) release v1.13.5
+ * [c8275136f](https://github.com/kubeovn/kube-ovn/commit/c8275136f77a833ba8c2275edd25cb0aff243c05) build(deps): bump github.com/containerd/containerd from 1.7.26 to 1.7.27 (#5085)
+ * [17d80d58c](https://github.com/kubeovn/kube-ovn/commit/17d80d58c4c4052f7eab8b7a20a68f1910d33690) build(deps): bump aquasecurity/trivy-action from 0.29.0 to 0.30.0 (#5081)
+ * [c248c0da2](https://github.com/kubeovn/kube-ovn/commit/c248c0da272ac18683bc2d556419b417bdbf514f) bind to pod ips when env variable ENABLE_BIND_LOCAL_IP is set to true (#5049)
+ * [217788c8f](https://github.com/kubeovn/kube-ovn/commit/217788c8f1a97c2921c1b3023bea91874cd24146) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * dependabot[bot]
+ * 张祖建
+
 ## v1.13.4 (2025-03-13)
 
  * [0284f481a](https://github.com/kubeovn/kube-ovn/commit/0284f481a32e6952dd4aa334f65a0ee9548d711e) release v1.13.4
