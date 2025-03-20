@@ -419,6 +419,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 				if len(allows) != 0 || len(excepts) != 0 {
 					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx, namedPortMap)
+				} else {
+					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, egressAclCmd, idx, namedPortMap)
 				}
 			}
 			if len(np.Spec.Egress) == 0 {
