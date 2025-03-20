@@ -324,15 +324,18 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
+				npp := []netv1.NetworkPolicyPort{}
 				if len(allows) != 0 || len(excepts) != 0 {
-					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, namedPortMap)
-					if err != nil {
-						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
-						return err
-					}
-
-					egressACLOps = append(egressACLOps, ops...)
+					npp = npr.Ports
 				}
+
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				if err != nil {
+					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
+					return err
+				}
+
+				egressACLOps = append(egressACLOps, ops...)
 			}
 			if len(np.Spec.Egress) == 0 {
 				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
