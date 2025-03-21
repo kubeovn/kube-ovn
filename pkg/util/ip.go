@@ -22,3 +22,13 @@ func Uint32ToIPv6(n [4]uint32) string {
 		n[3]>>16, n[3]&0xffff,
 	)
 }
+
+func IP2Hex(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		return fmt.Sprintf("%08x", []byte(ip4))
+	}
+	return fmt.Sprintf("%032x", []byte(ip.To16()))
+}

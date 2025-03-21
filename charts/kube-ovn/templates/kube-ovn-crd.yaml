@@ -2078,6 +2078,18 @@ spec:
                   type: string
                 sctpSessionLoadBalancer:
                   type: string
+                localTCPLoadBalancer:
+                  type: string
+                localTCPSessionLoadBalancer:
+                  type: string
+                localUDPLoadBalancer:
+                  type: string
+                localUDPSessionLoadBalancer:
+                  type: string
+                localSCTPLoadBalancer:
+                  type: string
+                localSCTPSessionLoadBalancer:
+                  type: string
                 bfdPort:
                   type: object
                   properties:
