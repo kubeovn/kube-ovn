@@ -28,7 +28,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.21.0
 	github.com/onsi/gomega v1.35.1
-	github.com/osrg/gobgp/v3 v3.34.0
+	github.com/osrg/gobgp/v3 v3.35.0
 	github.com/ovn-org/libovsdb v0.7.0
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.4.1
@@ -48,7 +48,7 @@ require (
 	k8s.io/apimachinery v0.31.1
 	k8s.io/client-go v1.5.2
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubernetes v1.30.9
+	k8s.io/kubernetes v1.30.10
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	kubevirt.io/client-go v1.3.0
 	sigs.k8s.io/controller-runtime v0.18.5
