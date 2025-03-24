@@ -1122,8 +1122,6 @@ github.com/openshift/client-go v0.0.1/go.mod h1:I8qTI1lgErsWc6CVukSjP1PYqpafE7fu
 github.com/openshift/custom-resource-status v1.1.2 h1:C3DL44LEbvlbItfd8mT5jWrqPfHnSOQoQf/sypqA6A4=
 github.com/openshift/custom-resource-status v1.1.2/go.mod h1:DB/Mf2oTeiAmVVX1gN+NEqweonAPY0TKUwADizj8+ZA=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
-github.com/osrg/gobgp/v3 v3.34.0 h1:DDIWsAIE7j1dwhSV3tGsTKs9OO8MTOS4atErebZxTtA=
-github.com/osrg/gobgp/v3 v3.34.0/go.mod h1:l2nPaHaLmIoKbFxMUzKon/h6c9BTzCp5zJI9Dhnrx5c=
 github.com/osrg/gobgp/v3 v3.35.0 h1:8HQyCCoByAJyXiSzTFBl77wuOyVdDXozPdXX+tjYyHQ=
 github.com/osrg/gobgp/v3 v3.35.0/go.mod h1:l2nPaHaLmIoKbFxMUzKon/h6c9BTzCp5zJI9Dhnrx5c=
 github.com/parnurzeal/gorequest v0.3.0 h1:SoFyqCDC9COr1xuS6VA8fC8RU7XyrJZN2ona1kEX7FI=
@@ -2098,8 +2096,6 @@ k8s.io/klog/v2 v2.130.1 h1:n9Xl7H1Xvksem4KFG4PYbdQCQxqc/tTUyrgXaOhHSzk=
 k8s.io/klog/v2 v2.130.1/go.mod h1:3Jpz1GvMt720eyJH1ckRHK1EDfpxISzJ7I9OYgaDtPE=
 k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f h1:0LQagt0gDpKqvIkAMPaRGcXawNMouPECM1+F9BVxEaM=
 k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f/go.mod h1:S9tOR0FxgyusSNR+MboCuiDpVWkAifZvaYI1Q2ubgro=
-k8s.io/kubernetes v1.30.9 h1:wo56bPk/+zZcqjiMTWpPuHPyh5vKY/bl75fEKIizneA=
-k8s.io/kubernetes v1.30.9/go.mod h1:hV3c+sqOEO0eVqgSo0KW5dOJ6UjGJ2l3Pd9+Qvft8UI=
 k8s.io/kubernetes v1.30.10 h1:/x/z+MTfPkKuEjMJwWdRVxNx7xB54GlGWpcFM6KDwZc=
 k8s.io/kubernetes v1.30.10/go.mod h1:DGWYRXHx5NhImLiR9FvIVBsOKxwKZOX6bPF/YP7TqHY=
 k8s.io/utils v0.0.0-20230726121419-3b25d923346b/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
