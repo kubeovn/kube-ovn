@@ -74,7 +74,7 @@ jobs:
   build-ovs-and-ovn:
     name: Build OVS and OVN
     needs: filter
-    runs-on: windows-2019
+    runs-on: windows-2022
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-ovs-ovn == 'true'
     steps:
       - name: Check out PTHREADS4W
@@ -129,7 +129,7 @@ jobs:
         working-directory: pthreads4w\code
         shell: cmd
         run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           nmake all install
 
       - name: Build OVS and OVN
@@ -145,10 +145,10 @@ jobs:
           FOR /F "tokens=* USEBACKQ" %%F IN (`C:\msys64\usr\bin\cygpath.exe -u "%CD%\ovn"`) DO (
             SET _ovn_dir=%%F
           )
-          CALL "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          CALL "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           SET _vs_path=
           FOR %%d IN ("%PATH:;=";"%") DO (
-            echo %%~d | findstr /C:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise" > nul && set _vs_path=!_vs_path!;%%~d
+            echo %%~d | findstr /C:"C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise" > nul && set _vs_path=!_vs_path!;%%~d
           )
           SET PATH="%_vs_path%;%PATH%"
           C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm python-pip libtool autoconf automake-wrapper"
@@ -178,7 +178,7 @@ jobs:
   build-kube-ovn:
     name: Build Kube-OVN
     needs: filter
-    runs-on: windows-2019
+    runs-on: windows-2022
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
       - uses: actions/checkout@v4
@@ -230,7 +230,7 @@ jobs:
     needs:
       - build-ovs-and-ovn
       - build-kube-ovn
-    runs-on: windows-2019
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
