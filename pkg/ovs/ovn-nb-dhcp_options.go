@@ -26,7 +26,7 @@ func (c *OVNNbClient) CreateDHCPOptions(lsName, cidr, options string) error {
 		return err
 	}
 
-	op, err := c.ovsDbClient.Create(dhcpOpt)
+	op, err := c.Create(dhcpOpt)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %w", cidr, options, err)

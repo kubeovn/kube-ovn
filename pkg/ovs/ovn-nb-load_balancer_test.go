@@ -296,7 +296,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 			Name:     lbName,
 			Protocol: &ovnnb.LoadBalancerProtocolTCP,
 		}
-		ops, err := nbClient.ovsDbClient.Create(lb1)
+		ops, err := nbClient.Create(lb1)
 		require.NoError(t, err)
 		require.NotNil(t, ops)
 		err = nbClient.Transact("lb-add", ops)
@@ -307,7 +307,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 			Name:     lbName,
 			Protocol: &ovnnb.LoadBalancerProtocolTCP,
 		}
-		ops, err = nbClient.ovsDbClient.Create(lb2)
+		ops, err = nbClient.Create(lb2)
 		require.NoError(t, err)
 		require.NotNil(t, ops)
 		err = nbClient.Transact("lb-add", ops)
@@ -368,7 +368,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 				Name:     lbName,
 				Protocol: &ovnnb.LoadBalancerProtocolTCP,
 			}
-			ops, err := nbClient.ovsDbClient.Create(lb1)
+			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
 			require.NotNil(t, ops)
 			err = nbClient.Transact("lb-add", ops)
@@ -379,7 +379,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 				Name:     lbName,
 				Protocol: &ovnnb.LoadBalancerProtocolTCP,
 			}
-			ops, err = nbClient.ovsDbClient.Create(lb2)
+			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
 			require.NotNil(t, ops)
 			err = nbClient.Transact("lb-add", ops)
@@ -510,7 +510,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 				Name:     lbName,
 				Protocol: &ovnnb.LoadBalancerProtocolTCP,
 			}
-			ops, err := nbClient.ovsDbClient.Create(lb1)
+			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
 			require.NotNil(t, ops)
 			err = nbClient.Transact("lb-add", ops)
@@ -521,7 +521,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 				Name:     lbName,
 				Protocol: &ovnnb.LoadBalancerProtocolTCP,
 			}
-			ops, err = nbClient.ovsDbClient.Create(lb2)
+			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
 			require.NotNil(t, ops)
 			err = nbClient.Transact("lb-add", ops)
@@ -596,7 +596,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		Name:     lbName,
 		Protocol: &ovnnb.LoadBalancerProtocolTCP,
 	}
-	ops, err := nbClient.ovsDbClient.Create(lb1)
+	ops, err := nbClient.Create(lb1)
 	require.NoError(t, err)
 	require.NotNil(t, ops)
 	err = nbClient.Transact("lb-add", ops)
@@ -607,7 +607,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		Name:     lbName,
 		Protocol: &ovnnb.LoadBalancerProtocolTCP,
 	}
-	ops, err = nbClient.ovsDbClient.Create(lb2)
+	ops, err = nbClient.Create(lb2)
 	require.NoError(t, err)
 	require.NotNil(t, ops)
 	err = nbClient.Transact("lb-add", ops)

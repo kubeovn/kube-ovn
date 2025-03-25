@@ -91,10 +91,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}()
 
-	logEnable := false
-	if np.Annotations[util.NetworkPolicyLogAnnotation] == "true" {
-		logEnable = true
-	}
+	logEnable := np.Annotations[util.NetworkPolicyLogAnnotation] == "true"
+
 	var logActions []string
 	if np.Annotations[util.ACLActionsLogAnnotation] != "" {
 		logActions = strings.Split(np.Annotations[util.ACLActionsLogAnnotation], ",")

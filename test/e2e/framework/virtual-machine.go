@@ -72,7 +72,7 @@ func (c *VMClient) Start(name string) *v1.VirtualMachine {
 
 	running := true
 	vm.Spec.Running = &running
-	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm, metav1.UpdateOptions{})
+	_, err := c.Update(context.TODO(), vm, metav1.UpdateOptions{})
 	ExpectNoError(err, "failed to update vm %s", name)
 	return c.Get(name)
 }
@@ -97,7 +97,7 @@ func (c *VMClient) Stop(name string) *v1.VirtualMachine {
 
 	running := false
 	vm.Spec.Running = &running
-	_, err := c.VirtualMachineInterface.Update(context.TODO(), vm, metav1.UpdateOptions{})
+	_, err := c.Update(context.TODO(), vm, metav1.UpdateOptions{})
 	ExpectNoError(err, "failed to update vm %s", name)
 	return c.Get(name)
 }

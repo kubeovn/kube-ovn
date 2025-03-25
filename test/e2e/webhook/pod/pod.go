@@ -103,7 +103,7 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		ipCR := podName + "." + namespaceName
 
 		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
-			checkPod, err := podClient.PodInterface.Get(ctx, podName, metav1.GetOptions{})
+			checkPod, err := podClient.Get(ctx, podName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			return checkPod.Annotations[util.RoutedAnnotation] == "true", nil
 		}, fmt.Sprintf("pod's annotation %s is true", util.RoutedAnnotation))

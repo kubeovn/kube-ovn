@@ -63,7 +63,7 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 		}
 	}
 
-	createNatsOp, err := c.ovsDbClient.Create(models...)
+	createNatsOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating nats: %w", err)

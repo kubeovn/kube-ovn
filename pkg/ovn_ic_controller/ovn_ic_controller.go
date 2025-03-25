@@ -185,11 +185,7 @@ func (c *Controller) resyncInterConnection() {
 		return
 	}
 
-	autoRoute := false
-	if cm.Data["auto-route"] == "true" {
-		autoRoute = true
-	}
-	c.setAutoRoute(autoRoute)
+	c.setAutoRoute(cm.Data["auto-route"] == "true")
 
 	switch c.getICState(cm.Data, lastIcCm) {
 	case icNoAction:

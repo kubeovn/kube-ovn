@@ -95,7 +95,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.ovsDbClient.Create(ls)
+	op, err := c.Create(ls)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %w", lsName, err)

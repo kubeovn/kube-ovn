@@ -146,7 +146,7 @@ func (c *OVNNbClient) CreateLogicalRouterPolicies(lrName string, policies ...*ov
 		}
 	}
 
-	createPoliciesOp, err := c.ovsDbClient.Create(models...)
+	createPoliciesOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating policies: %w", err)

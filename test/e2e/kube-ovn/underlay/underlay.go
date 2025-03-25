@@ -304,9 +304,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 						Dev:     route.Dev,
 						Flags:   route.Flags,
 					}
-					if route.Dev == linkNameMap[node.ID] {
+					switch route.Dev {
+					case linkNameMap[node.ID]:
 						portRoutes = append(portRoutes, r)
-					} else if route.Dev == bridgeName {
+					case bridgeName:
 						r.Dev = linkMap[node.ID].IfName
 						bridgeRoutes = append(bridgeRoutes, r)
 					}
@@ -1059,12 +1060,12 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		}
 	}
 
-	switch {
-	case subnet.Spec.Protocol == apiv1.ProtocolIPv4:
+	switch subnet.Spec.Protocol {
+	case apiv1.ProtocolIPv4:
 		framework.ExpectTrue(isV4DefaultRouteExist)
-	case subnet.Spec.Protocol == apiv1.ProtocolIPv6:
+	case apiv1.ProtocolIPv6:
 		framework.ExpectTrue(isV6DefaultRouteExist)
-	case subnet.Spec.Protocol == apiv1.ProtocolDual:
+	case apiv1.ProtocolDual:
 		framework.ExpectTrue(isV4DefaultRouteExist)
 		framework.ExpectTrue(isV6DefaultRouteExist)
 	}

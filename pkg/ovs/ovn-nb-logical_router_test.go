@@ -18,7 +18,7 @@ import (
 
 // createLogicalRouter delete logical router in ovn
 func createLogicalRouter(c *OVNNbClient, lr *ovnnb.LogicalRouter) error {
-	op, err := c.ovsDbClient.Create(lr)
+	op, err := c.Create(lr)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -360,7 +360,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
 			Name:     name,
 			Protocol: &protocol,
 		}
-		ops, err := nbClient.ovsDbClient.Create(lb)
+		ops, err := nbClient.Create(lb)
 		require.NoError(t, err)
 		require.NotNil(t, ops)
 		err = nbClient.Transact("lb-add", ops)

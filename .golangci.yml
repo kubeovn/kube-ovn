@@ -1,57 +1,69 @@
-run:
-  timeout: 15m
-
-output:
-  sort-results: true
-
+version: "2"
 linters:
   enable:
+    - errorlint
     - gocritic
-    - gofumpt
-    - goimports
+    - gosec
+    - loggercheck
     - misspell
+    - perfsprint
     - predeclared
     - revive
     - unconvert
-    - unused
-    - errcheck
-    - gosec
-    - govet
-    - perfsprint
     - usestdlibvars
-    - loggercheck
     - whitespace
-    - errorlint
-
+  settings:
+    errorlint:
+      asserts: false
+    perfsprint:
+      strconcat: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gocritic
+        text: appendAssign
+      - linters:
+          - revive
+        text: don't use an underscore in package name
+      - linters:
+          - revive
+        text: VpcDns should be VpcDNS
+      - linters:
+          - revive
+        text: VpcDnsList should be VpcDNSList
+      # Exclude gosec from running on tests files.
+      - linters:
+          - gosec
+        path: _test\.go
+      # Exclude gosec from running on tests files.
+      - linters:
+          - gosec
+        path: test/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-same-issues: 0
-  exclude-rules:
-    - linters:
-        - gocritic
-      text: "appendAssign"
-    - linters:
-        - revive
-      text: "don't use an underscore in package name" # package name not change
-    - linters:
-        - revive
-      text: "VpcDns should be VpcDNS"  # api param not change
-    - linters:
-        - revive
-      text: "VpcDnsList should be VpcDNSList" # api param not change
-    - linters:
-        - gosec
-      path: _test\.go
-    - linters:
-        - gosec
-      path: test/
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/kubeovn/kube-ovn
-  gofumpt:
-    extra-rules: true
-  perfsprint:
-    strconcat: false
-  errorlint:
-    asserts: false
-
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/kubeovn/kube-ovn
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

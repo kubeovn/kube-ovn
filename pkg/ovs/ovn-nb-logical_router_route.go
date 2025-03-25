@@ -46,7 +46,7 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 		}
 	}
 
-	createRoutesOp, err := c.ovsDbClient.Create(models...)
+	createRoutesOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating static routes: %w", err)

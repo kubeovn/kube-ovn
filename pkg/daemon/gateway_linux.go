@@ -1011,9 +1011,10 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, ovnNatPolicySubnetChainName))})
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			var markCode string
-			if rule.Action == util.NatPolicyRuleActionNat {
+			switch rule.Action {
+			case util.NatPolicyRuleActionNat:
 				markCode = OnOutGoingNatMark
-			} else if rule.Action == util.NatPolicyRuleActionForward {
+			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
 			}
 

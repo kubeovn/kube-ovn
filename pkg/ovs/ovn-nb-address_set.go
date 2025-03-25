@@ -38,7 +38,7 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovsDbClient.Create(as)
+	ops, err := c.Create(as)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating address set %s: %w", asName, err)
@@ -125,7 +125,7 @@ func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
 		return nil
 	}
 
-	var modelList []model.Model = make([]model.Model, len(delList))
+	modelList := make([]model.Model, len(delList))
 	for i, as := range delList {
 		modelList[i] = as
 	}
@@ -165,7 +165,7 @@ func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
 		return nil
 	}
 
-	var modelList []model.Model = make([]model.Model, 0, len(asList))
+	modelList := make([]model.Model, 0, len(asList))
 	for _, as := range asList {
 		modelList = append(modelList, &as)
 	}
@@ -209,7 +209,7 @@ func (c *OVNNbClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.
 	defer cancel()
 
 	as := &ovnnb.AddressSet{Name: asName}
-	if err := c.ovsDbClient.Get(ctx, as); err != nil {
+	if err := c.Get(ctx, as); err != nil {
 		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}
