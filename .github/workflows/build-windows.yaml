@@ -155,11 +155,11 @@ jobs:
           C:\msys64\usr\bin\bash.exe -lc "python3 -m pip install pypiwin32"
           C:\msys64\usr\bin\bash.exe -lc "rm -f `which link`"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./boot.sh"
-          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/openvswitch/usr' --localstatedir='C:/openvswitch/var' --sysconfdir='C:/openvswitch/etc' --with-pthread='%_p4w_dir%' --disable-ssl"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/openvswitch/usr' --localstatedir='C:/openvswitch/var' --sysconfdir='C:/openvswitch/etc' --with-pthread='%_p4w_dir%' --disable-ssl; cat config.log"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && make -j"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && make windows_installer"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./boot.sh"
-          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/ovn/usr' --localstatedir='C:/ovn/var' --sysconfdir='C:/ovn/etc' --with-pthread='%_p4w_dir%' --disable-ssl --with-ovs-source='../ovs'"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/ovn/usr' --localstatedir='C:/ovn/var' --sysconfdir='C:/ovn/etc' --with-pthread='%_p4w_dir%' --disable-ssl --with-ovs-source='../ovs'; cat config.log"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make -j"
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make install"
 
