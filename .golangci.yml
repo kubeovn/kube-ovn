@@ -37,9 +37,11 @@ linters:
       - linters:
           - revive
         text: VpcDnsList should be VpcDNSList
+      # Exclude gosec from running on tests files.
       - linters:
           - gosec
         path: _test\.go
+      # Exclude gosec from running on tests files.
       - linters:
           - gosec
         path: test/

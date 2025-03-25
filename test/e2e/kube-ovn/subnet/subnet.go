@@ -1437,9 +1437,10 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 
 		for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
 			markCode := ""
-			if natPolicyRule.Action == util.NatPolicyRuleActionNat {
+			switch natPolicyRule.Action {
+			case util.NatPolicyRuleActionNat:
 				markCode = "0x90001/0x90001"
-			} else if natPolicyRule.Action == util.NatPolicyRuleActionForward {
+			case util.NatPolicyRuleActionForward:
 				markCode = "0x90002/0x90002"
 			}
 

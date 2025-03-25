@@ -38,7 +38,7 @@ func (f *Framework) PodClientNS(namespace string) *PodClient {
 
 func (c *PodClient) GetPod(name string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
-	pod, err := c.PodInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	pod, err := c.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pod
 }

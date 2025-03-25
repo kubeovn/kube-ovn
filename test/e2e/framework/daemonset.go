@@ -169,7 +169,7 @@ func (c *DaemonSetClient) Restart(ds *appsv1.DaemonSet) *appsv1.DaemonSet {
 	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, ds)
 	ExpectNoError(err)
 
-	ds, err = c.DaemonSetInterface.Update(context.TODO(), ds, metav1.UpdateOptions{})
+	ds, err = c.Update(context.TODO(), ds, metav1.UpdateOptions{})
 	ExpectNoError(err)
 
 	return ds.DeepCopy()

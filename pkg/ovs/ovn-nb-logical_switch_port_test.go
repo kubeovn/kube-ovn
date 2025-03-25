@@ -1571,11 +1571,12 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPortsWithLegacyExternalIDs
 		foundLsp1 := false
 		foundLsp2 := false
 		for _, lsp := range lspList {
-			if lsp.Name == lspName1 {
+			switch lsp.Name {
+			case lspName1:
 				foundLsp1 = true
 				require.Equal(t, "", lsp.ExternalIDs[logicalSwitchKey])
 				require.Equal(t, "some-vendor", lsp.ExternalIDs["vendor"])
-			} else if lsp.Name == lspName2 {
+			case lspName2:
 				foundLsp2 = true
 				require.Equal(t, "some-value", lsp.ExternalIDs[logicalSwitchKey])
 				require.Equal(t, "", lsp.ExternalIDs["vendor"])

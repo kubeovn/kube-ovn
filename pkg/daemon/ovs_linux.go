@@ -207,7 +207,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
 	// Only for SRIOV case, we'd need to move the VF from container namespace back to the host namespace
-	if !(nicType == util.OffloadType && deviceID != "") {
+	if nicType != util.OffloadType || deviceID == "" {
 		return nil
 	}
 	podDesc := fmt.Sprintf("for pod %s/%s", podNamespace, podName)

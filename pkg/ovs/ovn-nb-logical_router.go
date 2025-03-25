@@ -33,7 +33,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.ovsDbClient.Create(lr)
+	op, err := c.Create(lr)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical router %s: %w", lrName, err)

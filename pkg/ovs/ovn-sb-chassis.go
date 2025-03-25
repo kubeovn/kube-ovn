@@ -61,7 +61,7 @@ func (c *OVNSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovns
 		return nil, err
 	}
 	chassis := &ovnsb.Chassis{Name: chassisName}
-	if err := c.ovsDbClient.Get(ctx, chassis); err != nil {
+	if err := c.Get(ctx, chassis); err != nil {
 		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}
@@ -78,7 +78,7 @@ func (c *OVNSbClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	defer cancel()
 
 	css := []ovnsb.Chassis{}
-	if err := c.ovsDbClient.List(ctx, &css); err != nil {
+	if err := c.List(ctx, &css); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list Chassis: %w", err)
 	}

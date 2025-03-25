@@ -68,10 +68,8 @@ LOOP:
 }
 
 func ping(config *Configuration, withMetrics bool) error {
-	errHappens := false
-	if checkAPIServer(config, withMetrics) != nil {
-		errHappens = true
-	}
+	errHappens := checkAPIServer(config, withMetrics) != nil
+
 	if pingPods(config, withMetrics) != nil {
 		errHappens = true
 	}

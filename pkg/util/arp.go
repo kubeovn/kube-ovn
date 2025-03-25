@@ -164,11 +164,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	go func() {
 		defer wg.Done()
 
-		for {
-			if time.Now().After(deadline) {
-				break
-			}
-
+		for !time.Now().After(deadline) {
 			if readErr = client.SetReadDeadline(deadline); readErr != nil {
 				klog.Error(readErr)
 				return

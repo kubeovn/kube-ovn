@@ -10,7 +10,7 @@ type BigInt struct {
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
-	n.Int.FillBytes(b.Int.Bytes())
+	n.FillBytes(b.Bytes())
 }
 
 func (b BigInt) Equal(n BigInt) bool {
