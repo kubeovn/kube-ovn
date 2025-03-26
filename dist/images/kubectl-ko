@@ -501,7 +501,6 @@ getTestNodePortServiceIPPorts() {
   echo "$targetIPPorts"
 }
 
-
 diagnose(){
   gcCommands=()
   kubectl get crd vpcs.kubeovn.io
@@ -1400,7 +1399,6 @@ getPodRecoverTime(){
   elapsed_time=$(echo "$end_time - $start_time" | bc)
   addHeaderDecoration "OVN $component_name Recovery takes $elapsed_time s"
 }
-
 
 
 if [ $# -lt 1 ]; then
