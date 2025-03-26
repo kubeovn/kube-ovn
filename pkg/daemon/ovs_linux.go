@@ -20,6 +20,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
@@ -782,6 +783,93 @@ func (c *Controller) loopTunnelCheck() {
 			klog.Errorf("fail to bring up nic: %s, %v", tunnelNic, err)
 		}
 	}
+}
+
+// This method checks the tunnel and ovs vlan id, and record it in the node label
+// kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
+func (c *Controller) loopCheckVlan() {
+	// ovs use vlans = provider network vlan + 1 tunnel vlan
+	// node use vlan = provider network port bond nic vlan + tunnel bond nic vlan
+	// so we need to check if these two vlan set is conflict
+	// 先实现，再把一部分逻辑分拆到 init provider，以及 init tunnel
+	// patch tunnel vlan id to node label
+	if !c.config.EnableCheckVlanConflicts {
+		return
+	}
+	klog.Info("start to check vlan conflicts")
+	tunnelVlanID, err := c.getTunnelVLAN()
+	if err != nil || tunnelVlanID == -1 {
+		klog.Errorf("failed to get tunnel vlan id: %v", err)
+		return
+	}
+	pns, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list provider network: %v", err)
+		return
+	}
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlan: %v", err)
+		return
+	}
+	// local node ovs vlan set
+	localVlanSet := strset.NewWithSize(len(vlans))
+	for _, pn := range pns {
+		for _, vlanName := range pn.Status.Vlans {
+			vlan, err := c.vlansLister.Get(vlanName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					klog.Infof("vlan %s not found", vlanName)
+					continue
+				}
+				klog.Errorf("failed to get vlan %q: %v", vlanName, err)
+				return
+			}
+			localVlanSet.Add(strconv.Itoa(vlan.Spec.ID))
+		}
+	}
+
+	if localVlanSet.Has(strconv.Itoa(tunnelVlanID)) {
+		err := fmt.Errorf("tunnel vlan id %d conflict with provider network vlan set %v", tunnelVlanID, localVlanSet)
+		klog.Error(err)
+		return
+	}
+
+	// todo:// get other vlan id from tunnel nic and provider network nic
+
+	// todo:// patch node tunnel id to tell kube-ovn-controller check vlan conflict
+	// do this in init node tunnel nic for once
+	// node, err := c.nodesLister.Get(c.config.NodeName)
+	// if err != nil {
+	// 	klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+	// 	return
+	// }
+	// if node.Labels == nil {
+	// 	node.Labels = make(map[string]string)
+	// }
+	// node.Labels[util.TunnelVlanIDLabel] = strconv.Itoa(tunnelVlanID)
+	// if _, err := c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
+	// 	klog.Errorf("failed to update node %s: %v", c.config.NodeName, err)
+	// 	return
+	// }
+
+}
+
+func (c *Controller) getTunnelVLAN() (int, error) {
+	// -1 means no vlan
+	tunnelVlanID := -1
+	tunnelNic := c.config.tunnelIface
+	// get tunnel vlan id
+	link, err := netlink.LinkByName(tunnelNic)
+	if err != nil || link == nil {
+		return -1, fmt.Errorf("failed to get tunnel nic %s: %v", tunnelNic, err)
+	}
+	if vlan, ok := link.(*netlink.Vlan); ok {
+		tunnelVlanID = vlan.VlanId
+		klog.Infof("tunnel nic %s vlan id: %d", tunnelNic, tunnelVlanID)
+		return tunnelVlanID, nil
+	}
+	return -1, nil
 }
 
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {

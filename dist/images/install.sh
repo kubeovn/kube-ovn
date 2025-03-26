@@ -4924,6 +4924,7 @@ spec:
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
+          - --enable-check-vlan-conflicts=true
         securityContext:
           runAsUser: 0
           privileged: false
