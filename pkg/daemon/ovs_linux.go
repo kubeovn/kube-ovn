@@ -793,7 +793,7 @@ func (c *Controller) loopCheckVlan() {
 	// so we need to check if these two vlan set is conflict
 	// 先实现，再把一部分逻辑分拆到 init provider，以及 init tunnel
 	// patch tunnel vlan id to node label
-	if !c.config.EnableCheckVlanConflicts {
+	if !c.config.EnableCheckVlanConflict {
 		return
 	}
 	klog.Info("start to check vlan conflicts")
