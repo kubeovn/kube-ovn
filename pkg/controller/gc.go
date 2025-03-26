@@ -968,8 +968,17 @@ func (c *Controller) getVMLsps() []string {
 			continue
 		}
 		for _, vm := range vms.Items {
-			vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
-			vmLsps = append(vmLsps, vmLsp)
+			defaultMultus := false
+			for _, network := range vm.Spec.Template.Spec.Networks {
+				if network.Multus != nil && network.Multus.Default {
+					defaultMultus = true
+					break
+				}
+			}
+			if !defaultMultus {
+				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
+				vmLsps = append(vmLsps, vmLsp)
+			}
 
 			attachNets, err := nadutils.ParseNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot], vm.Namespace)
 			if err != nil {
