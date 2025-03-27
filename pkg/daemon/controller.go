@@ -290,6 +290,13 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 			klog.Errorf("failed to get vlan %q: %v", vlanName, err)
 			return err
 		}
+		if c.config.IfaceVlanID > 0 && vlan.Spec.ID == c.config.IfaceVlanID {
+			err = fmt.Errorf("vlan %d is already used by tunnel interface", vlan.Spec.ID)
+			klog.Error(err)
+			c.recordProviderNetworkErr(pn.Name, err.Error())
+			// tunnel interface using, so can not use this vlan
+			continue
+		}
 		vlans.Add(strconv.Itoa(vlan.Spec.ID))
 	}
 	// always add trunk 0 so that the ovs bridge can communicate with the external network
@@ -310,9 +317,6 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
 	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
 	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
-	if c.config.IfaceVlanID > 0 {
-		patch[util.TunnelVlanIDLabel] = strconv.Itoa(c.config.IfaceVlanID)
-	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
@@ -572,7 +576,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
-	go wait.Until(c.loopCheckVlan, 60*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
@@ -612,6 +615,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		if err := c.StopAndClearIPSecResouce(); err != nil {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
+	}
+
+	if c.config.EnableCheckVlanConflict {
+		if err := c.patchNodeTunnelVlanLabel(); err != nil {
+			util.LogFatalAndExit(err, "failed to patch node tunnel vlan label")
+		}
+		go wait.Until(c.loopCheckVlanConflict, 60*time.Second, stopCh)
 	}
 
 	<-stopCh

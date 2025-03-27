@@ -787,7 +787,7 @@ func (c *Controller) loopTunnelCheck() {
 
 // This method checks the tunnel and ovs vlan id, and record it in the node label
 // kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
-func (c *Controller) loopCheckVlan() {
+func (c *Controller) loopCheckVlanConflict() {
 	// ovs use vlans = provider network vlan + 1 tunnel vlan
 	// node use vlan = provider network port bond nic vlan + tunnel bond nic vlan
 	// so we need to check if these two vlan set is conflict
@@ -1149,6 +1149,26 @@ func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) patchNodeTunnelVlanLabel() error {
+	if c.config.IfaceVlanID < 0 {
+		klog.Infof("tunnel nic %s not use vlan", c.config.tunnelIface)
+		return nil
+	}
+
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+		return err
+	}
+
+	patch := util.KVPatch{util.TunnelVlanIDLabel: strconv.Itoa(c.config.IfaceVlanID)}
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to update tunnel vlan id lable for node %s: %v", node.Name, err)
+		return err
+	}
 	return nil
 }
 
