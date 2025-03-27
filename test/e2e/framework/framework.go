@@ -28,6 +28,11 @@ const (
 )
 
 const (
+	Overlay  = "overlay"
+	Underlay = "underlay"
+)
+
+const (
 	// poll is how often to Poll resources.
 	poll = 2 * time.Second
 
@@ -171,6 +176,14 @@ func (f *Framework) HasIPv4() bool {
 
 func (f *Framework) HasIPv6() bool {
 	return !f.IsIPv4()
+}
+
+func (f *Framework) IsOverlay() bool {
+	return f.ClusterNetworkMode == Overlay
+}
+
+func (f *Framework) IsUnderlay() bool {
+	return f.ClusterNetworkMode == Underlay
 }
 
 // BeforeEach gets a kube-ovn client
