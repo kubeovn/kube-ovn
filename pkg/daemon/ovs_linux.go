@@ -1153,18 +1153,25 @@ func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 }
 
 func (c *Controller) patchNodeTunnelVlanLabel() error {
-	if c.config.IfaceVlanID < 0 {
-		klog.Infof("tunnel nic %s not use vlan", c.config.tunnelIface)
-		return nil
-	}
-
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return err
 	}
-
-	patch := util.KVPatch{util.TunnelVlanIDLabel: strconv.Itoa(c.config.IfaceVlanID)}
+	patch := util.KVPatch{}
+	if c.config.IfaceVlanID > 0 {
+		klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
+		patch = util.KVPatch{
+			util.TunnelUseVlanLabel: "true",
+			util.TunnelVlanIDLabel:  strconv.Itoa(c.config.IfaceVlanID),
+		}
+	} else {
+		klog.Infof("removing tunnel vlan id from node %s", node.Name)
+		patch = util.KVPatch{
+			util.TunnelUseVlanLabel: nil,
+			util.TunnelVlanIDLabel:  nil,
+		}
+	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to update tunnel vlan id lable for node %s: %v", node.Name, err)
 		return err

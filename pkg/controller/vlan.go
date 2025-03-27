@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +56,30 @@ func (c *Controller) handleAddVlan(key string) error {
 			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 			return err
 		}
+	}
+
+	nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+	conflict := false
+	for _, node := range nodes {
+		if node.Labels[util.TunnelVlanIDLabel] == strconv.Itoa(vlan.Spec.ID) {
+			conflict = true
+			err = fmt.Errorf("vlan %s conflict with node %s tunnel vlan", vlan.Name, node.Name)
+			klog.Error(err)
+			continue
+		}
+	}
+	if conflict {
+		vlan.Status.Conflict = true
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
+			return err
+		}
+		return err
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
