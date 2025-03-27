@@ -316,25 +316,35 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Checking trace output")
+		var traceService bool
 		subCmd := "ovn-trace"
 		if f.VersionPriorTo(1, 12) {
 			subCmd = "trace"
 		}
-		outputMatch := fmt.Sprintf("output to %q", ovs.PodNameToPortName(pod2Name, pod2.Namespace, util.OvnProvider))
+		matchPod := fmt.Sprintf("output to %q", ovs.PodNameToPortName(pod2Name, pod2.Namespace, util.OvnProvider))
+		matchLocalnet := fmt.Sprintf("output to %q", fmt.Sprintf("localnet.%s", util.DefaultSubnet))
 		checkFunc := func(output string) {
 			ginkgo.GinkgoHelper()
+			var match string
+			if traceService && f.VersionPriorTo(1, 11) && f.IsUnderlay() {
+				match = matchLocalnet
+			} else {
+				match = matchPod
+			}
 			if subCmd == "ovn-trace" {
 				lines := strings.Split(strings.TrimSpace(output), "\n")
-				framework.ExpectContainSubstring(lines[len(lines)-1], outputMatch)
+				framework.ExpectContainSubstring(lines[len(lines)-1], match)
 			} else {
-				framework.ExpectContainSubstring(output, outputMatch)
+				framework.ExpectContainSubstring(output, match)
 			}
 		}
 		for protocol, port := range map[corev1.Protocol]int32{corev1.ProtocolTCP: tcpPort, corev1.ProtocolUDP: udpPort} {
 			proto := strings.ToLower(string(protocol))
+			traceService = false
 			for _, ip := range pod2.Status.PodIPs {
 				execOrDie(fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip.IP, proto, port), checkFunc)
 			}
+			traceService = true
 			for _, ip := range service.Spec.ClusterIPs {
 				execOrDie(fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip, proto, port), checkFunc)
 			}
