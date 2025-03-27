@@ -798,8 +798,10 @@ func (c *Controller) loopCheckVlan() {
 	}
 	klog.Info("start to check vlan conflicts")
 	tunnelVlanID, err := c.getTunnelVLAN()
-	if err != nil || tunnelVlanID == -1 {
-		klog.Errorf("failed to get tunnel vlan id: %v", err)
+	if tunnelVlanID == -1 {
+		if err != nil {
+			klog.Errorf("failed to get tunnel vlan id: %v", err)
+		}
 		return
 	}
 	pns, err := c.providerNetworksLister.List(labels.Everything())
@@ -868,6 +870,7 @@ func (c *Controller) getTunnelVLAN() (int, error) {
 		klog.Infof("tunnel nic %s vlan id: %d", c.config.Iface, tunnelVlanID)
 		return tunnelVlanID, nil
 	}
+	klog.Infof("tunnel nic %s is not vlan nic", c.config.Iface)
 	return -1, nil
 }
 
