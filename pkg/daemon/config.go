@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -288,6 +287,14 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		klog.Infof("tunnel nic %s use %s as tunnel address", iface.Name, encapIP)
 		mtu = iface.MTU
 		config.tunnelIface = iface.Name
+		if config.EnableCheckVlanConflict {
+			// cache the tunnel nic vlan id
+			config.IfaceVlanID, err = config.getVLAN(config.tunnelIface)
+			if err != nil {
+				klog.Errorf("failed to get vlan id for tunnel iface %s: %v", config.tunnelIface, err)
+				return err
+			}
+		}
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
@@ -329,24 +336,6 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	if err := setEncapIP(encapIP); err != nil {
 		klog.Errorf("failed to set encap ip %s: %v", encapIP, err)
 		return err
-	}
-	if config.EnableCheckVlanConflict {
-		config.IfaceVlanID, err = config.getVLAN(config.tunnelIface)
-		if err != nil {
-			klog.Errorf("failed to get vlan id for tunel iface %s: %v", config.tunnelIface, err)
-			return err
-		}
-		if config.IfaceVlanID != -1 && node.Labels[util.TunnelVlanIDLabel] != strconv.Itoa(config.IfaceVlanID) {
-			// kube-ovn-controller make sure vlan not conflict with tun
-			if node.Labels == nil {
-				node.Labels = make(map[string]string)
-			}
-			node.Labels[util.TunnelVlanIDLabel] = strconv.Itoa(config.IfaceVlanID)
-			if _, err := config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
-				klog.Errorf("failed to update tunnel vlan id lable for node %s: %v", config.NodeName, err)
-				return nil
-			}
-		}
 	}
 	return nil
 }

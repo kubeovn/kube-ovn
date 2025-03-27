@@ -310,6 +310,9 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
 	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
 	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if c.config.IfaceVlanID > 0 {
+		patch[util.TunnelVlanIDLabel] = strconv.Itoa(c.config.IfaceVlanID)
+	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
