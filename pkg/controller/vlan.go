@@ -15,6 +15,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/scylladb/go-set/strset"
 )
 
 func (c *Controller) enqueueAddVlan(obj interface{}) {
@@ -58,16 +59,38 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
+	// todo: check if vlan conflict in webhook
+	conflict := false
+	// check if vlan conflict with node tunnel vlan
 	nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	conflict := false
+	nodeTunVlanIDs := strset.New()
 	for _, node := range nodes {
-		if node.Labels[util.TunnelVlanIDLabel] == strconv.Itoa(vlan.Spec.ID) {
+		id := node.Labels[util.TunnelVlanIDLabel]
+		nodeTunVlanIDs.Add(id)
+		if id == strconv.Itoa(vlan.Spec.ID) {
 			conflict = true
-			err = fmt.Errorf("vlan %s conflict with node %s tunnel vlan", vlan.Name, node.Name)
+			err = fmt.Errorf("vlan %s id %s conflict with node %s tunnel nic vlan", vlan.Name, id, node.Name)
+			klog.Error(err)
+		}
+	}
+
+	if nodeTunVlanIDs.Size() > 1 {
+		klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunVlanIDs.List())
+	}
+	// check if new vlan conflict with other vlans
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlans: %v", err)
+		return err
+	}
+	for _, vlan := range vlans {
+		if vlan.Spec.ID == cachedVlan.Spec.ID && vlan.Name != cachedVlan.Name {
+			conflict = true
+			err = fmt.Errorf("new vlan %s conflict with vlan %s", cachedVlan.Name, vlan.Name)
 			klog.Error(err)
 			continue
 		}
@@ -76,7 +99,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		vlan.Status.Conflict = true
 		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
+			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
 			return err
 		}
 		return err
