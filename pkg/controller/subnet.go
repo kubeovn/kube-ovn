@@ -173,8 +173,14 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 	}
 
 	if subnet.Spec.Vlan != "" {
-		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+		if err != nil {
 			err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
+			klog.Error(err)
+			return nil, err
+		}
+		if vlan.Status.Conflict {
+			err = fmt.Errorf("subnet %s vlan %s is conflict in cluster", subnet.Name, vlan.Name)
 			klog.Error(err)
 			return nil, err
 		}
