@@ -16,6 +16,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -39,6 +40,7 @@ type Configuration struct {
 	tunnelIface               string
 	Iface                     string
 	DPDKTunnelIface           string
+	IfaceVlanID               int
 	MTU                       int
 	MSS                       int
 	EnableMirror              bool
@@ -282,9 +284,17 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}
 
-		klog.Infof("use %s on %s as tunnel address", encapIP, iface.Name)
+		klog.Infof("tunnel nic %s use %s as tunnel address", iface.Name, encapIP)
 		mtu = iface.MTU
 		config.tunnelIface = iface.Name
+
+		if config.EnableCheckVlanConflict {
+			config.IfaceVlanID, err = config.getVLAN(iface.Name)
+			if err != nil {
+				klog.Errorf("failed to get vlan id for tunel iface %s: %v", iface.Name, err)
+				return err
+			}
+		}
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
@@ -426,4 +436,21 @@ func setChecksum(encapChecksum bool) error {
 		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
 	}
 	return nil
+}
+
+func (config *Configuration) getVLAN(iface string) (int, error) {
+	// -1 means no vlan id
+	tunnelVlanID := -1
+	// get iface vlan id
+	link, err := netlink.LinkByName(iface)
+	if err != nil || link == nil {
+		return -1, fmt.Errorf("failed to get iface %s: %v", iface, err)
+	}
+	if vlan, ok := link.(*netlink.Vlan); ok {
+		tunnelVlanID = vlan.VlanId
+		klog.Infof("iface %s vlan id is: %d", iface, tunnelVlanID)
+		return tunnelVlanID, nil
+	}
+	klog.Infof("iface %s has no vlan", iface)
+	return -1, nil
 }
