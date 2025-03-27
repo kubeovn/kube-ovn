@@ -791,14 +791,13 @@ func (c *Controller) loopCheckVlan() {
 	// ovs use vlans = provider network vlan + 1 tunnel vlan
 	// node use vlan = provider network port bond nic vlan + tunnel bond nic vlan
 	// so we need to check if these two vlan set is conflict
-	// 先实现，再把一部分逻辑分拆到 init provider，以及 init tunnel
-	// patch tunnel vlan id to node label
+	// 先实现，再把一部分逻辑分拆到 init provider
+	// todo:// get other vlan id from tunnel nic and provider network nic
 	if !c.config.EnableCheckVlanConflict {
 		return
 	}
 	klog.Info("start to check vlan conflicts")
 	tunnelVlanID := c.config.IfaceVlanID
-	klog.Infof("tunnel nic %s vlan id: %d", c.config.Iface, tunnelVlanID)
 	if tunnelVlanID == -1 {
 		klog.Infof("tunnel nic %s not use vlan", c.config.Iface)
 		return
@@ -835,25 +834,6 @@ func (c *Controller) loopCheckVlan() {
 		klog.Error(err)
 		return
 	}
-
-	// todo:// get other vlan id from tunnel nic and provider network nic
-
-	// todo:// patch node tunnel id to tell kube-ovn-controller check vlan conflict
-	// do this in init node tunnel nic for once
-	// node, err := c.nodesLister.Get(c.config.NodeName)
-	// if err != nil {
-	// 	klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
-	// 	return
-	// }
-	// if node.Labels == nil {
-	// 	node.Labels = make(map[string]string)
-	// }
-	// node.Labels[util.TunnelVlanIDLabel] = strconv.Itoa(tunnelVlanID)
-	// if _, err := c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
-	// 	klog.Errorf("failed to update node %s: %v", c.config.NodeName, err)
-	// 	return
-	// }
-
 }
 
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
