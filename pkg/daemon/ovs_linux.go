@@ -856,17 +856,16 @@ func (c *Controller) loopCheckVlan() {
 }
 
 func (c *Controller) getTunnelVLAN() (int, error) {
-	// -1 means no vlan
+	// -1 means no vlan id
 	tunnelVlanID := -1
-	tunnelNic := c.config.tunnelIface
 	// get tunnel vlan id
-	link, err := netlink.LinkByName(tunnelNic)
+	link, err := netlink.LinkByName(c.config.Iface)
 	if err != nil || link == nil {
-		return -1, fmt.Errorf("failed to get tunnel nic %s: %v", tunnelNic, err)
+		return -1, fmt.Errorf("failed to get tunnel nic %s: %v", c.config.Iface, err)
 	}
 	if vlan, ok := link.(*netlink.Vlan); ok {
 		tunnelVlanID = vlan.VlanId
-		klog.Infof("tunnel nic %s vlan id: %d", tunnelNic, tunnelVlanID)
+		klog.Infof("tunnel nic %s vlan id: %d", c.config.Iface, tunnelVlanID)
 		return tunnelVlanID, nil
 	}
 	return -1, nil
