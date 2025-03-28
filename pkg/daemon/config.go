@@ -455,6 +455,6 @@ func (config *Configuration) getVLAN(iface string) (int, error) {
 		klog.Infof("iface %s vlan id is: %d", iface, tunnelVlanID)
 		return tunnelVlanID, nil
 	}
-	klog.Infof("iface %s has no vlan", iface)
+	klog.Infof("iface %s not use vlan", iface)
 	return -1, nil
 }

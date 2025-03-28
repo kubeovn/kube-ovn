@@ -290,11 +290,11 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 			klog.Errorf("failed to get vlan %q: %v", vlanName, err)
 			return err
 		}
-		if c.config.IfaceVlanID > 0 && vlan.Spec.ID == c.config.IfaceVlanID {
-			err = fmt.Errorf("vlan %d is already used by tunnel interface", vlan.Spec.ID)
+		if c.config.EnableCheckVlanConflict && c.config.IfaceVlanID > 0 && vlan.Spec.ID == c.config.IfaceVlanID {
+			err = fmt.Errorf("vlan %d is already used by tunnel interface on node %s", vlan.Spec.ID, node.Name)
 			klog.Error(err)
 			c.recordProviderNetworkErr(pn.Name, err.Error())
-			// tunnel interface using, so can not use this vlan
+			// tunnel interface using, so ovs can not use this vlan
 			continue
 		}
 		vlans.Add(strconv.Itoa(vlan.Spec.ID))

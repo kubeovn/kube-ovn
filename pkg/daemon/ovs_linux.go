@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -788,20 +789,8 @@ func (c *Controller) loopTunnelCheck() {
 // This method checks the tunnel and ovs vlan id, and record it in the node label
 // kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
 func (c *Controller) loopCheckVlanConflict() {
-	// ovs use vlans = provider network vlan + 1 tunnel vlan
-	// node use vlan = provider network port bond nic vlan + tunnel bond nic vlan
-	// so we need to check if these two vlan set is conflict
-	// 先实现，再把一部分逻辑分拆到 init provider
-	// todo:// get other vlan id from tunnel nic and provider network nic
-	if !c.config.EnableCheckVlanConflict {
-		return
-	}
-	klog.Info("start to check vlan conflicts")
+	klog.Info("start to check if tunnel vlan conflict with ovs vlan")
 	tunnelVlanID := c.config.IfaceVlanID
-	if tunnelVlanID == -1 {
-		klog.Infof("tunnel nic %s not use vlan", c.config.Iface)
-		return
-	}
 	pns, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list provider network: %v", err)
@@ -813,26 +802,67 @@ func (c *Controller) loopCheckVlanConflict() {
 		return
 	}
 	// local node ovs vlan set
-	localVlanSet := strset.NewWithSize(len(vlans))
+	ovsLocalVlans := strset.NewWithSize(len(vlans))
+	pnNics := strset.NewWithSize(len(pns))
+	ovsVlanPNs := make(map[string]string)
 	for _, pn := range pns {
+		if slices.Contains(pn.Spec.ExcludeNodes, c.config.NodeName) {
+			continue
+		}
 		for _, vlanName := range pn.Status.Vlans {
 			vlan, err := c.vlansLister.Get(vlanName)
 			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					klog.Infof("vlan %s not found", vlanName)
-					continue
-				}
 				klog.Errorf("failed to get vlan %q: %v", vlanName, err)
-				return
+				continue
 			}
-			localVlanSet.Add(strconv.Itoa(vlan.Spec.ID))
+			id := strconv.Itoa(vlan.Spec.ID)
+			ovsLocalVlans.Add(id)
+			ovsVlanPNs[id] = pn.Name
+			pnNics.Add(pn.Spec.DefaultInterface)
 		}
 	}
 
-	if localVlanSet.Has(strconv.Itoa(tunnelVlanID)) {
-		err := fmt.Errorf("tunnel vlan id %d conflict with provider network vlan set %v", tunnelVlanID, localVlanSet)
+	klog.Infof("get ovs local vlan ids: %v", ovsLocalVlans)
+	if tunnelVlanID > 0 && ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
+		// tunnel interface using, so ovs can not use this vlan
+		err := fmt.Errorf("vlan %s conflict with tunnel vlan id", tunnelVlanID)
 		klog.Error(err)
+	}
+	// check if ovs local vlan conflict with os local vlan
+	klog.Infof("get os vlan ids for provider network nic: %v", pnNics)
+	osLocalVlans := strset.New()
+	links, err := netlink.LinkList()
+	if err != nil {
+		klog.Errorf("failed to list links: %v", err)
 		return
+	}
+	for _, link := range links {
+		if link.Attrs().MasterIndex != 0 {
+			// check if slave interface master is provider network nic
+			masterLink, err := netlink.LinkByIndex(link.Attrs().MasterIndex)
+			if err == nil && pnNics.Has(masterLink.Attrs().Name) {
+				id, err := c.config.getVLAN(link.Attrs().Name)
+				if err != nil {
+					klog.Errorf("failed to get vlan id for %s: %v", link.Attrs().Name, err)
+					continue
+				}
+				if id > 0 {
+					osLocalVlans.Add(strconv.Itoa(id))
+				}
+			}
+		}
+	}
+	if osLocalVlans.IsEmpty() {
+		return
+	}
+	klog.Infof("get os local vlan ids: %v", osLocalVlans)
+	for _, vlan := range osLocalVlans.List() {
+		if ovsLocalVlans.Has(vlan) {
+			pnName := ovsVlanPNs[vlan]
+			err := fmt.Errorf("vlan %s conflict with os vlan on node %s in providernetwork %s", vlan, c.config.NodeName, pnName)
+			c.recordProviderNetworkErr(pnName, err.Error())
+			continue
+		}
 	}
 }
 
