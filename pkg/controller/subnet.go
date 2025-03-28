@@ -179,12 +179,10 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 			klog.Error(err)
 			return nil, err
 		}
-		if c.config.EnableCheckVlanConflict {
-			if vlan.Status.Conflict {
-				err = fmt.Errorf("subnet %s vlan %s is conflict in cluster", subnet.Name, vlan.Name)
-				klog.Error(err)
-				return nil, err
-			}
+		if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
+			err = fmt.Errorf("subnet %s vlan %s is conflict, please see vlan provider network for more details", subnet.Name, vlan.Name)
+			klog.Error(err)
+			return nil, err
 		}
 	}
 

@@ -295,7 +295,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 			klog.Error(err)
 			c.recordProviderNetworkErr(pn.Name, err.Error())
 			// tunnel interface using, so ovs can not use this vlan
-			continue
+			return err
 		}
 		vlans.Add(strconv.Itoa(vlan.Spec.ID))
 	}
