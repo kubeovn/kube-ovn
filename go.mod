@@ -12,6 +12,7 @@ require (
 	github.com/containerd/containerd v1.7.27
 	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.6.2
+	github.com/digitalocean/go-openvswitch v0.0.0-20241021184246-19e734367535
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.2
 	github.com/evanphx/json-patch/v5 v5.9.11
@@ -42,6 +43,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.1-0.20250303224720-0e7078ed04c8
 	go.uber.org/mock v0.5.0
+	go.universe.tf/metallb v0.14.9
 	golang.org/x/mod v0.24.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/time v0.11.0

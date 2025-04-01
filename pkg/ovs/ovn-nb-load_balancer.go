@@ -228,6 +228,43 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	return nil
 }
 
+// SetLoadBalancerPreferLocalBackend sets the LB's affinity timeout in seconds
+func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if preferLocalBackend {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["prefer_local_backend"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	for k, v := range lb.Options {
+		options[k] = v
+	}
+	options["prefer_local_backend"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set prefer local backend of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
 // DeleteLoadBalancers delete several loadbalancer once
 func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
 	var (
