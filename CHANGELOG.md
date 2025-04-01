@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.13.6 (2025-04-01)
+
+ * [fb521c708](https://github.com/kubeovn/kube-ovn/commit/fb521c7081fb109c9808074e38faee22e225391b) release v1.13.6
+ * [0480e8db9](https://github.com/kubeovn/kube-ovn/commit/0480e8db9b2c579f0f280b10f878d15969a25488) base: update ovs patches (#5111)
+ * [3ec1a4c93](https://github.com/kubeovn/kube-ovn/commit/3ec1a4c9320717c236c06b406a06162beb926d4e) feat(controller): skip appending VM LSPs if default Multus network is present (#5106)
+ * [62bb1e5aa](https://github.com/kubeovn/kube-ovn/commit/62bb1e5aa3d079bb709f6a4df559f4d8a0b518b7) fix: egress network policy not work, when no pod hit matchlabel (#5088)
+ * [caedd0027](https://github.com/kubeovn/kube-ovn/commit/caedd0027c80eea887e05743fe5e8e7a3bb5d3c8) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * 张祖建
+
 ## v1.13.5 (2025-03-19)
 
  * [d3f2e8fd5](https://github.com/kubeovn/kube-ovn/commit/d3f2e8fd5bce24139bd228951479d165edb1662b) release v1.13.5
