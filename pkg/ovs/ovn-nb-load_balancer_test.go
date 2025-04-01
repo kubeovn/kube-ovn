@@ -23,7 +23,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-create-lb"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst", false)
 	require.NoError(t, err)
 
 	lb, err := nbClient.GetLoadBalancer(lbName, false)
@@ -34,7 +34,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	require.ElementsMatch(t, []string{"ip_dst"}, lb.SelectionFields)
 
 	// should no err create lb repeatedly
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst", false)
 	require.NoError(t, err)
 }
 
@@ -45,7 +45,7 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-update-lb"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst", false)
 	require.NoError(t, err)
 
 	lb, err := nbClient.GetLoadBalancer(lbName, false)
@@ -94,7 +94,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancers() {
 
 	for i := 0; i < 5; i++ {
 		lbName := fmt.Sprintf("%s-%d", lbNamePrefix, i)
-		err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+		err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 		require.NoError(t, err)
 
 		lbNames = append(lbNames, lbName)
@@ -118,7 +118,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancer() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-del-lb"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	err = nbClient.DeleteLoadBalancer(lbName)
@@ -135,7 +135,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancer() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-get-lb"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	t.Run("should return no err when found load balancer", func(t *testing.T) {
@@ -171,7 +171,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 	for i := 0; i < 3; i++ {
 		for _, p := range protocol {
 			lbName := fmt.Sprintf("%s-%s-%d", lbNamePrefix, p, i)
-			err := nbClient.CreateLoadBalancer(lbName, p, "")
+			err := nbClient.CreateLoadBalancer(lbName, p, "", false)
 			require.NoError(t, err)
 
 			lbNames = append(lbNames, lbName)
@@ -249,7 +249,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-del-lb-op"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	lb, err := nbClient.GetLoadBalancer(lbName, false)
@@ -326,7 +326,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-set-lb-affinity-timeout"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	lb, err := nbClient.GetLoadBalancer(lbName, false)
@@ -403,7 +403,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 		err                error
 	)
 
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	_, err = nbClient.GetLoadBalancer(lbName, false)
@@ -476,7 +476,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 				"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 			}
 			// create load balancer
-			err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+			err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 			require.NoError(t, err)
 			for vip, backends := range vips {
 				backends := strings.Split(backends, ",")
@@ -527,7 +527,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			err = nbClient.Transact("lb-add", ops)
 			require.NoError(t, err)
 
-			err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+			err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 			require.ErrorContains(t, err, "more than one load balancer with same name")
 		},
 	)
@@ -546,7 +546,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		err         error
 	)
 
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	_, err = nbClient.GetLoadBalancer(lbName, false)
@@ -629,7 +629,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 		err            error
 	)
 
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	_, err = nbClient.GetLoadBalancer(lbName, false)
@@ -734,7 +734,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 		err            error
 	)
 
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	_, err = nbClient.GetLoadBalancer(lbName, false)
@@ -855,7 +855,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 		err            error
 	)
 
-	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	_, err = nbClient.GetLoadBalancer(lbName, false)
@@ -1001,7 +1001,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerOp() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-lb-op"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	t.Run("no mutations", func(t *testing.T) {
@@ -1088,7 +1088,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateHealthCheckOp() {
 	nbClient := suite.ovnNBClient
 	lbName := "test-lb-update-hc-op"
 
-	err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	err := nbClient.CreateLoadBalancer(lbName, "tcp", "", false)
 	require.NoError(t, err)
 
 	t.Run("empty lbhcUUIDs", func(t *testing.T) {
