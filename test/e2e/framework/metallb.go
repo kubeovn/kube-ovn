@@ -17,7 +17,7 @@ func NewMetallbClientSet(config *rest.Config) (*MetallbClientSet, error) {
 	if err := metallbv1beta1.AddToScheme(scheme.Scheme); err != nil {
 		return nil, err
 	}
-	config.ContentConfig.GroupVersion = &metallbv1beta1.GroupVersion
+	config.GroupVersion = &metallbv1beta1.GroupVersion
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 
