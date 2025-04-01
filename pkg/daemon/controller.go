@@ -58,6 +58,10 @@ type Controller struct {
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
 
+	servicesLister listerv1.ServiceLister
+	servicesSynced cache.InformerSynced
+	serviceQueue   workqueue.TypedRateLimitingInterface[*serviceEvent]
+
 	recorder record.EventRecorder
 
 	protocol string
@@ -82,13 +86,13 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events(v1.NamespaceAll)})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
-
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+	servicesInformer := nodeInformerFactory.Core().V1().Services()
 
 	controller := &Controller{
 		config: config,
@@ -115,6 +119,10 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
 
+		servicesLister: servicesInformer.Lister(),
+		servicesSynced: servicesInformer.Informer().HasSynced,
+		serviceQueue:   newTypedRateLimitingQueue[*serviceEvent]("Service", nil),
+
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
 	}
@@ -135,7 +143,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -158,6 +166,14 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	}); err != nil {
 		return nil, err
 	}
+	if _, err = servicesInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddService,
+		DeleteFunc: controller.enqueueDeleteService,
+		UpdateFunc: controller.enqueueUpdateService,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add service event handler")
+	}
+
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueuePod,
 	}); err != nil {
@@ -420,6 +436,10 @@ type subnetEvent struct {
 	oldObj, newObj interface{}
 }
 
+type serviceEvent struct {
+	oldObj, newObj interface{}
+}
+
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
@@ -437,6 +457,23 @@ func (c *Controller) runSubnetWorker() {
 	}
 }
 
+func (c *Controller) enqueueAddService(obj interface{}) {
+	c.serviceQueue.Add(&serviceEvent{newObj: obj})
+}
+
+func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+	c.serviceQueue.Add(&serviceEvent{oldObj: oldObj, newObj: newObj})
+}
+
+func (c *Controller) enqueueDeleteService(obj interface{}) {
+	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
+}
+
+func (c *Controller) runAddOrUpdateServicekWorker() {
+	for c.processNextServiceWorkItem() {
+	}
+}
+
 func (c *Controller) processNextSubnetWorkItem() bool {
 	obj, shutdown := c.subnetQueue.Get()
 	if shutdown {
@@ -450,6 +487,28 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
 		}
 		c.subnetQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextServiceWorkItem() bool {
+	obj, shutdown := c.serviceQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj *serviceEvent) error {
+		defer c.serviceQueue.Done(obj)
+		if err := c.reconcileServices(obj); err != nil {
+			c.serviceQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
+		}
+		c.serviceQueue.Forget(obj)
 		return nil
 	}(obj)
 	if err != nil {
@@ -555,6 +614,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.addOrUpdateProviderNetworkQueue.ShutDown()
 	defer c.deleteProviderNetworkQueue.ShutDown()
 	defer c.subnetQueue.ShutDown()
+	defer c.serviceQueue.ShutDown()
 	defer c.podQueue.ShutDown()
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
@@ -570,6 +630,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
+	go wait.Until(c.runAddOrUpdateServicekWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)

@@ -25,6 +25,10 @@ func (c *Controller) initRuntime() error {
 	return nil
 }
 
+func (c *Controller) reconcileServices(_ *serviceEvent) error {
+	return nil
+}
+
 func (c *Controller) reconcileRouters(_ *subnetEvent) error {
 	klog.Info("reconcile routes")
 	node, err := c.nodesLister.Get(c.config.NodeName)

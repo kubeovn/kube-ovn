@@ -2564,6 +2564,8 @@ spec:
                   type: boolean
                 enableMulticastSnoop:
                   type: boolean
+                enableExternalLBAddress:
+                  type: boolean
                 routeTable:
                   type: string
                 namespaceSelectors:

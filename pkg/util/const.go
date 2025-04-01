@@ -118,6 +118,8 @@ const (
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
+	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
+
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
 	ProtocolSCTP = "sctp"
@@ -323,4 +325,11 @@ const (
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
 	SignerName = "kubeovn.io/signer"
+
+	UnderlaySvcLocalOpenFlowPriority = 10000
+	UnderlaySvcLocalOpenFlowCookieV4 = 0x1000
+	UnderlaySvcLocalOpenFlowCookieV6 = 0x1001
+
+	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
+	MasqueradeCheckIP             = "0.0.0.0"
 )
