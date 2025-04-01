@@ -171,6 +171,24 @@ endef
 check-kube-ovn-pod-restarts:
 	bash hack/ci-check-crash.sh
 
+.PHONY: install-chart
+install-chart: untaint-control-plane
+	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
+	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
+	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
+	helm install kubeovn ./charts/kube-ovn --wait \
+		--set global.images.kubeovn.tag=$(VERSION) \
+		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
+		--set OPENVSWITCH_DIR=$(shell echo $${OPENVSWITCH_DIR:-/etc/origin/openvswitch}) \
+		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
+		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
+		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
+		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
+		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
+		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
