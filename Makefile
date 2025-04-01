@@ -3,6 +3,7 @@ SHELL = /bin/bash
 include build.mk
 include ut.mk
 include kind.mk
+include talos.mk
 include e2e.mk
 
 REGISTRY = kubeovn
