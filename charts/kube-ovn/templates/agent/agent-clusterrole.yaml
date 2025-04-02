@@ -30,7 +30,9 @@ rules:
       - ovn-eips
       - ovn-eips/status
       - nodes
+      - nodes/status
       - pods
+      - services
     verbs:
       - get
       - list
