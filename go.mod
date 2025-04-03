@@ -1,6 +1,7 @@
 module github.com/kubeovn/kube-ovn
 
 go 1.24.2
+
 require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/Microsoft/hcsshim v0.12.9
@@ -40,7 +41,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
-	github.com/vishvananda/netlink v1.3.1-0.20250303224720-0e7078ed04c8
+	github.com/vishvananda/netlink v1.3.1-0.20250328051554-cb48698f2590
 	go.uber.org/mock v0.5.0
 	go.universe.tf/metallb v0.14.9
 	golang.org/x/mod v0.24.0
