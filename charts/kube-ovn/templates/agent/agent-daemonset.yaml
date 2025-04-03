@@ -51,11 +51,7 @@ spec:
         command:
           - sh
           - -xec
-          - |
-            chown -R nobody: /var/log/kube-ovn
-            chmod g+r /run/xtables.lock
-            chmod g+w /var/run/netns
-            iptables -V
+          - iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
