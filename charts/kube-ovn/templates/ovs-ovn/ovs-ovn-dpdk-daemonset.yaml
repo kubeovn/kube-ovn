@@ -34,6 +34,10 @@ spec:
         {{- with .Values.ovsOvn.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        # Legacy labels
+        app: ovs-dpdk
+        component: network
+        type: infra
     spec:
       tolerations:
       - operator: Exists

@@ -34,6 +34,10 @@ spec:
         {{- with .Values.controller.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        # Legacy labels
+        app: kube-ovn-controller
+        component: network
+        type: infra
     spec:
       tolerations:
         - effect: NoSchedule

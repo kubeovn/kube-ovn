@@ -33,6 +33,10 @@ spec:
         {{- with .Values.ovsOvn.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        # Legacy labels
+        app: ovs
+        component: network
+        type: infra
     spec:
       tolerations:
         - effect: NoSchedule

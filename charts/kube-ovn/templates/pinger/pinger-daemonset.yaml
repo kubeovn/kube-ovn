@@ -30,6 +30,10 @@ spec:
         {{- with .Values.pinger.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        # Legacy labels
+        app: kube-ovn-pinger
+        component: network
+        type: infra
     spec:
       priorityClassName: system-node-critical
       tolerations:
