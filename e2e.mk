@@ -1,3 +1,5 @@
+# Makefile for running end-to-end tests
+
 E2E_BUILD_FLAGS = -ldflags "-w -s"
 
 KUBECONFIG = $(shell echo $${KUBECONFIG:-$(HOME)/.kube/config})
