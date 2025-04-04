@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.13.7 (2025-04-04)
+
+ * [4ee4e2e84](https://github.com/kubeovn/kube-ovn/commit/4ee4e2e8473b95fef7c674f576be2e962825bea6) release v1.13.7
+ * [1af3b7396](https://github.com/kubeovn/kube-ovn/commit/1af3b7396ce56932732d296f6491222119a8147b) gc: consider whether the sts pod is alive during lsp gc (#5122)
+ * [feea276fa](https://github.com/kubeovn/kube-ovn/commit/feea276fa31229fde4bc468fea8901654d177a7b) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.13.6 (2025-04-01)
 
  * [fb521c708](https://github.com/kubeovn/kube-ovn/commit/fb521c7081fb109c9808074e38faee22e225391b) release v1.13.6
