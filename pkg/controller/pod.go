@@ -911,8 +911,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	var keepIPCR bool
 	if ok, stsName, stsUID := isStatefulSetPod(pod); ok {
-		if pod.DeletionTimestamp != nil {
-			klog.Infof("handle deletion of sts pod %s", podName)
+		if !pod.DeletionTimestamp.IsZero() {
+			klog.Infof("handle deletion of sts pod %s", podKey)
 			toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUID)
 			if !toDel {
 				klog.Infof("try keep ip for sts pod %s", podKey)
@@ -935,7 +935,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	if isVMPod && c.config.EnableKeepVMIP {
 		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
 		if err != nil {
-			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
 			return err
 		}
 		for _, port := range ports {
@@ -946,7 +946,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if pod.DeletionTimestamp != nil {
-			klog.Infof("handle deletion of vm pod %s", podName)
+			klog.Infof("handle deletion of vm pod %s", podKey)
 			vmToBeDel := c.isVMToDel(pod, vmName)
 			if !vmToBeDel {
 				klog.Infof("try keep ip for vm pod %s", podKey)
@@ -968,12 +968,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
+		klog.Errorf("failed to get kube-ovn nets of pod %s: %v", podKey, err)
 	}
 	if !keepIPCR {
 		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
 		if err != nil {
-			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+			klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
 			return err
 		}
 
@@ -1259,16 +1259,20 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 	if err != nil {
 		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
-			klog.Infof("statefulset %s is deleted", statefulSetName)
+			klog.Infof("statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
 			return true
 		}
-		klog.Errorf("failed to get statefulset %v", err)
+		klog.Errorf("failed to get statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
 		return false
 	}
 
 	// statefulset is being deleted, or it's a newly created one
-	if !sts.DeletionTimestamp.IsZero() || sts.UID != statefulSetUID {
-		klog.Infof("statefulset %s is being deleted", statefulSetName)
+	if !sts.DeletionTimestamp.IsZero() {
+		klog.Infof("statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
+		return true
+	}
+	if sts.UID != statefulSetUID {
+		klog.Infof("statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
 		return true
 	}
 
@@ -1286,9 +1290,66 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		startOrdinal = int64(sts.Spec.Ordinals.Start)
 	}
 	if index >= startOrdinal+int64(*sts.Spec.Replicas) {
-		klog.Infof("statefulset %s is down scaled", statefulSetName)
+		klog.Infof("statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
 		return true
 	}
+	return false
+}
+
+// only gc statefulset pod lsp when:
+// 1. the statefulset has been deleted or is being deleted
+// 2. the statefulset has been deleted and recreated
+// 3. the statefulset is down scaled and the pod is not alive
+func isStatefulSetPodToGC(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	sts, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
+	if err != nil {
+		// the statefulset has been deleted
+		if k8serrors.IsNotFound(err) {
+			klog.Infof("statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
+			return true
+		}
+		klog.Errorf("failed to get statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return false
+	}
+
+	// statefulset is being deleted
+	if !sts.DeletionTimestamp.IsZero() {
+		klog.Infof("statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
+		return true
+	}
+	// the statefulset has been deleted and recreated
+	if sts.UID != statefulSetUID {
+		klog.Infof("statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
+		return true
+	}
+
+	// the statefulset is down scaled and the pod is not alive
+
+	tempStrs := strings.Split(pod.Name, "-")
+	numStr := tempStrs[len(tempStrs)-1]
+	index, err := strconv.ParseInt(numStr, 10, 0)
+	if err != nil {
+		klog.Errorf("failed to parse %s to int", numStr)
+		return false
+	}
+	// down scaled
+	var startOrdinal int64
+	if sts.Spec.Ordinals != nil {
+		startOrdinal = int64(sts.Spec.Ordinals.Start)
+	}
+	if index >= startOrdinal+int64(*sts.Spec.Replicas) {
+		klog.Infof("statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
+		if !isPodAlive(pod) {
+			// we must check whether the pod is alive because we have to consider the following case:
+			// 1. the statefulset is down scaled to zero
+			// 2. the lsp gc is triggered
+			// 3. gc interval, e.g. 90s, is passed and the second gc is triggered
+			// 4. the sts is up scaled to the original replicas
+			// 5. the pod is still running and it will not be recreated
+			return true
+		}
+	}
+
 	return false
 }
 
