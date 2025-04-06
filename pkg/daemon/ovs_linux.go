@@ -2010,16 +2010,17 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 
 			globalIPv6Found = true
 			// Check if the address is in a bad state
-			if (addr.Flags & unix.IFA_F_DEPRECATED) != 0 {
+			switch {
+			case (addr.Flags & unix.IFA_F_DEPRECATED) != 0:
 				badStateIPv6Found = true
 				klog.Warningf("IPv6 address %s on interface %s is deprecated", addr.IP.String(), interfaceName)
-			} else if (addr.Flags & unix.IFA_F_DADFAILED) != 0 {
+			case (addr.Flags & unix.IFA_F_DADFAILED) != 0:
 				badStateIPv6Found = true
 				klog.Warningf("IPv6 address %s on interface %s has failed duplicate address detection (DAD)", addr.IP.String(), interfaceName)
-			} else if (addr.Flags & unix.IFA_F_TENTATIVE) != 0 {
+			case (addr.Flags & unix.IFA_F_TENTATIVE) != 0:
 				badStateIPv6Found = true
 				klog.Warningf("IPv6 address %s on interface %s is in tentative state (DAD in progress)", addr.IP.String(), interfaceName)
-			} else {
+			default:
 				klog.Infof("IPv6 address %s on interface %s is in preferred state", addr.IP.String(), interfaceName)
 			}
 		}
