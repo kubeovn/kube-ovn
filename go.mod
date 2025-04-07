@@ -45,7 +45,7 @@ require (
 	go.uber.org/mock v0.5.0
 	go.universe.tf/metallb v0.14.9
 	golang.org/x/mod v0.24.0
-	golang.org/x/sys v0.31.0
+	golang.org/x/sys v0.32.0
 	golang.org/x/time v0.11.0
 	golang.org/x/tools v0.31.0
 	google.golang.org/grpc v1.71.1
