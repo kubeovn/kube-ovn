@@ -510,11 +510,10 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				interfaceName = ifName
 			}
 
-			// Check if IPv6 is being used
 			if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual {
-				// Wait for IPv6 address to be in preferred state
 				if err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond); err != nil {
 					klog.Warningf("Some IPv6 addresses might not be in preferred state: %v", err)
+					return err
 				}
 			}
 
