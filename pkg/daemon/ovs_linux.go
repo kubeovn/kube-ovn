@@ -825,7 +825,7 @@ func (c *Controller) loopCheckVlanConflict() {
 	klog.Infof("get ovs local vlan ids: %v", ovsLocalVlans)
 	if tunnelVlanID > 0 && ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
 		// tunnel interface using, so ovs can not use this vlan
-		err := fmt.Errorf("vlan %s conflict with tunnel vlan id", tunnelVlanID)
+		err := fmt.Errorf("vlan %d conflict with tunnel vlan id", tunnelVlanID)
 		klog.Error(err)
 	}
 	// check if ovs local vlan conflict with os local vlan
