@@ -444,16 +444,13 @@ func setChecksum(encapChecksum bool) error {
 
 func (config *Configuration) getVLAN(iface string) (int, error) {
 	// -1 means no vlan id
-	tunnelVlanID := -1
-	// get iface vlan id
 	link, err := netlink.LinkByName(iface)
 	if err != nil || link == nil {
-		return -1, fmt.Errorf("failed to get iface %s: %v", iface, err)
+		return -1, fmt.Errorf("failed to get iface %s: %w", iface, err)
 	}
 	if vlan, ok := link.(*netlink.Vlan); ok {
-		tunnelVlanID = vlan.VlanId
-		klog.Infof("iface %s vlan id is: %d", iface, tunnelVlanID)
-		return tunnelVlanID, nil
+		klog.Infof("iface %s vlan id is: %d", iface, vlan.VlanId)
+		return vlan.VlanId, nil
 	}
 	klog.Infof("iface %s not use vlan", iface)
 	return -1, nil

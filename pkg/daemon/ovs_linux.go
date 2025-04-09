@@ -1188,7 +1188,7 @@ func (c *Controller) patchNodeTunnelVlanLabel() error {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return err
 	}
-	patch := util.KVPatch{}
+	var patch util.KVPatch
 	if c.config.IfaceVlanID > 0 {
 		klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
 		patch = util.KVPatch{
