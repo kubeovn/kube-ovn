@@ -89,20 +89,20 @@ spec:
           - /kube-ovn/start-controller.sh
           - --default-ls={{ .Values.networking.DEFAULT_SUBNET }}
           - --default-cidr=
-          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.POD_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.POD_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.POD_CIDR }}
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.pods.cidr.v4 }},{ .Values.networking.pods.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          { .Values.networking.pods.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          { .Values.networking.pods.cidr.v6 }}
           {{- end }}
           - --default-gateway=
-          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.POD_GATEWAY }}
-          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.POD_GATEWAY }}
-          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.POD_GATEWAY }}
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.pods.gateways.v4 }},{{ .Values.networking.pods.gateways.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.pods.gateways.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.pods.gateways.v6 }}
           {{- end }}
           - --default-gateway-check={{- .Values.func.CHECK_GATEWAY }}
           - --default-logical-gateway={{- .Values.func.LOGICAL_GATEWAY }}
@@ -111,20 +111,20 @@ spec:
           - --cluster-router={{ .Values.networking.DEFAULT_VPC }}
           - --node-switch={{ .Values.networking.NODE_SUBNET }}
           - --node-switch-cidr=
-          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.JOIN_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.JOIN_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.JOIN_CIDR }}
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.join.cidr.v4 }},{{ .Values.networking.join.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.join.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.join.cidr.v6 }}
           {{- end }}
           - --service-cluster-ip-range=
-          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.SVC_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.SVC_CIDR }}
-          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.SVC_CIDR }}
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.join.cidr.v4 }},{{ .Values.networking.join.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.join.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.join.cidr.v6 }}
           {{- end }}
           - --network-type={{- .Values.networking.NETWORK_TYPE }}
           - --default-provider-name={{ .Values.networking.vlan.PROVIDER_NAME }}

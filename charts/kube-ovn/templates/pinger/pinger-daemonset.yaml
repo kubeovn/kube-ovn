@@ -71,11 +71,11 @@ spec:
           args:
           - --external-address=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          "{{ .Values.pinger.targets.externalAddresses.v4 }},{{ .Values.pinger.targets.externalAddresses.v6 }}"
+          {{ .Values.pinger.targets.externalAddresses.v4 }},{{ .Values.pinger.targets.externalAddresses.v6 }}
           {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          "{{ .Values.pinger.targets.externalAddresses.v4 }}"
+          {{ .Values.pinger.targets.externalAddresses.v4 }}
           {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          "{{ .Values.pinger.targets.externalAddresses.v6 }}"
+          {{ .Values.pinger.targets.externalAddresses.v6 }}
           {{- end }}
           - --external-dns=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
