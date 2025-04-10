@@ -29,6 +29,11 @@ TALOS_K8S_VERSION ?= 1.32.3
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT = 1
 
+TALOS_TUNNEL_TYPE ?= vxlan
+ifeq ($(shell echo $${CI:-false}),true)
+TALOS_TUNNEL_TYPE = geneve
+endif
+
 .PHONY: talos-registry-mirror
 talos-registry-mirror:
 	@if [ -z $$(docker ps -a -q -f name="^$(TALOS_REGISTRY_MIRROR_NAME)$$") ]; then \
@@ -174,6 +179,7 @@ talos-install-chart: talos-install-prepare
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
 		DISABLE_MODULES_MANAGEMENT=true \
 		MOUNT_LOCAL_BIN_DIR=false \
+		TUNNEL_TYPE=$(TALOS_TUNNEL_TYPE) \
 		$(MAKE) install-chart
 
 .PHONY: talos-install-chart-%
