@@ -37,13 +37,13 @@ RUN cd /usr/src/ && \
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/4b2d0bffda64fcfca876fe62a02486d7927c1162.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/e490f5ac0b644101913c2a3db8e03d85e859deff.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/3dbceb75c5e23d8d5b555e5d87238d40cb557424.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/6bf6df6da5d6fefae742856e6f43dd672360e48d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/5593e614e51a5dce28941e5bf760f9ee5397cede.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/5fd40530728f98011d2cd852d09ee16d4907cc1d.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/f9e97031b56ab5747b5d73629198331a6daacdfd.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
