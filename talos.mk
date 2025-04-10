@@ -31,6 +31,8 @@ TALOS_WORKER_COUNT = 1
 
 TALOS_API_PORT ?= 50000
 
+# geneve causes kernel panic on my local libvirt virtual machines
+# use vxlan instead
 TALOS_TUNNEL_TYPE = vxlan
 ifeq ($(shell echo $${CI:-false}),true)
 TALOS_TUNNEL_TYPE = geneve
@@ -147,15 +149,16 @@ talos-init: talos-libvirt-init talos-prepare-images
 		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
-	@echo ">>> Waiting for Talos api server to be ready..."
+	@echo ">>> Waiting for Talos machines to be booting or running..."
 	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read node; do \
 		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 		while true; do \
-			if nc -v -z -w 1 $${ip} $(TALOS_API_PORT) &>/dev/null; then \
-				echo ">>> Talos api server on $${node} is ready."; \
+			stage=$$(talosctl --endpoints $${ip} --nodes $${ip} get machinestatus -o jsonpath='{.spec.stage}' 2>/dev/null); \
+			if [ "$${stage}" = "booting" -o "$${stage}" = "running" ]; then \
+				echo ">>> Talos machine $${node} is $${stage}."; \
 				break; \
 			fi; \
-			echo ">>> Waiting for Talos api server on $${node}..."; \
+			echo ">>> Waiting for Talos machine $${node}..."; \
 			sleep 2; \
 		done; \
 	done
