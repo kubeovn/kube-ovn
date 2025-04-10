@@ -172,7 +172,7 @@ spec:
             path: {{ .Values.ovsOvn.ovnDirectory }}
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: {{ .Values.logging.directory }}/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime

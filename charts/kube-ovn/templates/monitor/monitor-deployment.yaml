@@ -168,7 +168,7 @@ spec:
             path: {{ .Values.ovsOvn.ovnDirectory }}
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: {{ .Values.logging.directory }}/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -178,4 +178,4 @@ spec:
             secretName: kube-ovn-tls
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: {{ .Values.logging.directory }}/kube-ovn

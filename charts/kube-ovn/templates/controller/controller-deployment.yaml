@@ -142,8 +142,8 @@ spec:
           - --enable-ecmp={{- .Values.networking.ENABLE_ECMP }}
           - --logtostderr=false
           - --alsologtostderr=true
-          - --gc-interval={{- .Values.performance.GC_INTERVAL }}
-          - --inspect-interval={{- .Values.performance.INSPECT_INTERVAL }}
+          - --gc-interval={{- .Values.performance.gcInterval }}
+          - --inspect-interval={{- .Values.performance.inspectInterval }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
@@ -235,10 +235,10 @@ spec:
             path: /etc/localtime
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: {{ .Values.logging.directory }}/kube-ovn
         - name: ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: {{ .Values.logging.directory }}/ovn
         - name: kube-ovn-tls
           secret:
             optional: true

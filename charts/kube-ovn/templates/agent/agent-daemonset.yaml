@@ -99,8 +99,8 @@ spec:
           - bash
           - /kube-ovn/start-cniserver.sh
         args:
-          - --enable-mirror={{- .Values.debug.ENABLE_MIRROR }}
-          - --mirror-iface={{- .Values.debug.MIRROR_IFACE }}
+          - --enable-mirror={{- .Values.agent.mirroring.enabled }}
+          - --mirror-iface={{- .Values.agent.mirroring.interface }}
           - --node-switch={{ .Values.networking.NODE_SUBNET }}
           - --encap-checksum=true
           - --service-cluster-ip-range=
@@ -124,9 +124,9 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=200
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
-          - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
+          - --kubelet-dir={{ .Values.kubelet.directory }}
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
-          - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
+          - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
         securityContext:
@@ -178,7 +178,7 @@ spec:
             name: xtables-lock
             readOnly: false
           - name: shared-dir
-            mountPath: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
+            mountPath: {{ .Values.kubelet.directory }}/pods
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true
@@ -239,7 +239,7 @@ spec:
             type: FileOrCreate
         - name: shared-dir
           hostPath:
-            path: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
+            path: {{ .Values.kubelet.directory }}/pods
         - name: systemid
           hostPath:
             path: {{ .Values.ovsOvn.ovsDirectory }}
@@ -263,16 +263,16 @@ spec:
             path: /var/run/dbus
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: {{ .Values.logging.directory }}/kube-ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: {{ .Values.logging.directory }}/openvswitch
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: {{ .Values.logging.directory }}/ovn
         {{- if .Values.cni.mountToolingDirectory }}
         - name: local-bin
           hostPath:

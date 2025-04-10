@@ -156,13 +156,13 @@ spec:
             path: {{ .Values.ovsOvn.ovsDirectory }}
         - name: host-log-ovs
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/openvswitch
+            path: {{ .Values.logging.directory }}/openvswitch
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: {{ .Values.logging.directory }}/kube-ovn
         - name: host-log-ovn
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/ovn
+            path: {{ .Values.logging.directory }}/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime

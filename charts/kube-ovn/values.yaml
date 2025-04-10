@@ -104,23 +104,6 @@ dual_stack:
   PINGER_EXTERNAL_ADDRESS: "1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN: "google.com."
 
-performance:
-  GC_INTERVAL: 360
-  INSPECT_INTERVAL: 20
-  OVS_VSCTL_CONCURRENCY: 100
-
-debug:
-  ENABLE_MIRROR: false
-  MIRROR_IFACE: "mirror0"
-
-kubelet_conf:
-  KUBELET_DIR: "/var/lib/kubelet"
-
-log_conf:
-  LOG_DIR: "/var/log"
-
-OPENVSWITCH_DIR: "/etc/origin/openvswitch"
-OVN_DIR: "/etc/origin/ovn"
 
 nameOverride: ""
 fullnameOverride: ""
@@ -315,6 +298,8 @@ pinger:
     # -- Configure the port on which the kube-ovn-monitor service will serve metrics
     port: 8080
 
+
+
 # -- Configuration for kube-ovn-monitor, the agent monitoring and returning metrics for the northbound/southbound DBs and northd
 monitor:
   # -- Annotations to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
@@ -413,6 +398,30 @@ agent:
   metrics:
     # -- Configure the port on which the agent service will serve metrics
     port: 10665
+
+  # -- Mirroring of the traffic for debug or analysis
+  # https://kubeovn.github.io/docs/stable/en/guide/mirror/
+  mirroring:
+    # -- Enable mirroring of the traffic
+    enabled: false
+    # -- Interface on which to send the mirrored traffic
+    interface: mirror0
+
+# -- Kubelet configuration
+kubelet:
+  # -- Directory in which the kubelet operates
+  directory: "/var/lib/kubelet"
+
+# -- Logging configuration for all the daemons
+logging:
+  # -- Directory in which to write the logs
+  directory: "/var/log"
+
+# -- Performance tuning parameters
+performance:
+  gcInterval: 360
+  inspectInterval: 20
+  ovsVsctlConcurrency: 100
 
 # -- Array of extra K8s manifests to deploy
 ## Note: Supports use of custom Helm templates (Go templating)

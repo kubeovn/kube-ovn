@@ -163,7 +163,7 @@ spec:
       volumes:
         - name: kube-ovn-log
           hostPath:
-            path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+            path: {{ .Values.logging.directory }}/kube-ovn
         - name: kube-ovn-tls
           secret:
             optional: true
