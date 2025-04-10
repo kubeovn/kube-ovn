@@ -76,9 +76,9 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
-          - --cni-conf-dir={{ .Values.cni_conf.CNI_CONF_DIR }}
-          - --cni-conf-file={{ .Values.cni_conf.CNI_CONF_FILE }}
-          - --cni-conf-name={{- .Values.cni_conf.CNI_CONFIG_PRIORITY -}}-kube-ovn.conflist
+          - --cni-conf-dir={{ .Values.cni.configDirectory }}
+          - --cni-conf-file={{ .Values.cni.localConfigFile }}
+          - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
         securityContext:
           runAsUser: 0
           privileged: true
@@ -87,7 +87,7 @@ spec:
             name: cni-bin
           - mountPath: /etc/cni/net.d
             name: cni-conf
-          {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
+          {{- if .Values.cni.mountToolingDirectory }}
           - mountPath: /usr/local/bin
             name: local-bin
           {{- end }}
@@ -251,10 +251,10 @@ spec:
             path: /run/ovn
         - name: cni-conf
           hostPath:
-            path: {{ .Values.cni_conf.CNI_CONF_DIR }}
+            path: {{ .Values.cni.configDirectory }}
         - name: cni-bin
           hostPath:
-            path: {{ .Values.cni_conf.CNI_BIN_DIR }}
+            path: {{ .Values.cni.binaryDirectory }}
         - name: host-ns
           hostPath:
             path: /var/run/netns
@@ -273,8 +273,8 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn
-        {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
+        {{- if .Values.cni.mountToolingDirectory }}
         - name: local-bin
           hostPath:
-            path: {{ .Values.cni_conf.LOCAL_BIN_DIR }}
+            path: {{ .Values.cni.toolingDirectory }}
         {{- end }}
