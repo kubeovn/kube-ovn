@@ -181,6 +181,7 @@ install-chart: untaint-control-plane
 		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
 		--set OPENVSWITCH_DIR=$(shell echo $${OPENVSWITCH_DIR:-/etc/origin/openvswitch}) \
 		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
+		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(shell echo $${MOUNT_LOCAL_BIN_DIR:-true}) \
 		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
 		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \

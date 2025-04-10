@@ -8,7 +8,8 @@ TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
 TALOS_REGISTRY_MIRROR_NAME ?= talos-registry-mirror
-TALOS_REGISTRY_MIRROR_HOST ?= 172.99.99.1 # libvirt network gateway address
+# libvirt network gateway address
+TALOS_REGISTRY_MIRROR_HOST ?= 172.99.99.1
 TALOS_REGISTRY_MIRROR_PORT ?= 6000
 TALOS_REGISTRY_MIRROR = $(TALOS_REGISTRY_MIRROR_HOST):$(TALOS_REGISTRY_MIRROR_PORT)
 TALOS_REGISTRY_MIRROR_URL = http://$(TALOS_REGISTRY_MIRROR)
@@ -16,13 +17,16 @@ TALOS_REGISTRY_MIRROR_URL = http://$(TALOS_REGISTRY_MIRROR)
 TALOS_LIBVIRT_NETWORK_NAME ?= talos
 TALOS_LIBVIRT_NETWORK_XML ?= talos/libvirt-network.xml
 TALOS_LIBVIRT_IMAGES_DIR ?= /var/lib/libvirt/images
-TALOS_LIBVIRT_IMAGE_SIZE ?= 8G
+TALOS_LIBVIRT_IMAGE_SIZE ?= 20G
 TALOS_LIBVIRT_DOMAIN_XML_TEMPLATE ?= talos/libvirt-domain.xml.j2
 TALOS_LIBVIRT_DOMAIN_XML ?= talos/libvirt-domain.xml
 
 TALOS_CLUSTER_NAME ?= talos
+TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
+TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
 TALOS_K8S_VERSION ?= 1.32.3
-TALOS_CONTROL_PLANE_COUNT = 1 # DO NOT CHANGE THIS VALUE
+# DO NOT CHANGE CONTROL PLANE COUNT
+TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT = 1
 
 .PHONY: talos-registry-mirror
@@ -62,22 +66,20 @@ talos-libvirt-init: talos-libvirt-clean
 		echo ">>> Talos image downloaded."; \
 	fi
 	@echo ">>> Creating libvirt network $(TALOS_LIBVIRT_NETWORK_NAME)..."
-	@sudo virsh net-create --validate "$(TALOS_LIBVIRT_NETWORK_XML)"
+	sudo virsh net-create --validate "$(TALOS_LIBVIRT_NETWORK_XML)"
 	# create libvirt domains
-	@sudo mkdir -p "$(TALOS_LIBVIRT_IMAGES_DIR)"
-	@sudo chmod 777 "$(TALOS_LIBVIRT_IMAGES_DIR)"
+	sudo mkdir -p "$(TALOS_LIBVIRT_IMAGES_DIR)"
+	sudo chmod 777 "$(TALOS_LIBVIRT_IMAGES_DIR)"
 	@for ((i=1; i<=$(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT); i++)); do \
 		if [ $$i -le $(TALOS_CONTROL_PLANE_COUNT) ]; then \
-			if [ $(TALOS_CONTROL_PLANE_COUNT) -eq 1 ]; then \
-				name="$(TALOS_CLUSTER_NAME)-control-plane"; \
-			else \
-				name="$(TALOS_CLUSTER_NAME)-control-plane-$${i}"; \
+			name="$(TALOS_CONTROL_PLANE_NODE)"; \
+			if [ $(TALOS_CONTROL_PLANE_COUNT) -ne 1 ]; then \
+				name="$(TALOS_CONTROL_PLANE_NODE)-$${i}"; \
 			fi; \
 		else \
-			if [ $(TALOS_WORKER_COUNT) -eq 1 ]; then \
-				name="$(TALOS_CLUSTER_NAME)-worker"; \
-			else \
-				name="$(TALOS_CLUSTER_NAME)-worker-$$((i-$(TALOS_CONTROL_PLANE_COUNT)))"; \
+			name="$(TALOS_WORKER_NODE)"; \
+			if [ $(TALOS_WORKER_COUNT) -ne 1 ]; then \
+				name="$(TALOS_WORKER_NODE)-$$((i-$(TALOS_CONTROL_PLANE_COUNT)))"; \
 			fi; \
 		fi; \
 		disk=$(TALOS_LIBVIRT_IMAGES_DIR)/$${name}.qcow2; \
@@ -89,41 +91,67 @@ talos-libvirt-init: talos-libvirt-clean
 		echo ">>> Creating libvirt domain for $${name}..." && \
 		sudo virsh create --validate "$(TALOS_LIBVIRT_DOMAIN_XML)"; \
 	done
-	@echo ">>> Waiting for libvirt domains to obtain ip addresses..."
+	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read name; do \
+		echo ">>> Waiting for interface addresses of libvirt domain $${name}..."; \
+		while true; do \
+			ip=$$(sudo virsh domifaddr "$${name}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+			if [ -z "$${ip}" ]; then \
+				echo ">>> Waiting for IP address..."; \
+				sleep 2; \
+			else \
+				echo ">>> IP address $${ip} found."; \
+				break; \
+			fi; \
+		done; \
+	done
 
 .PHONY: talos-libvirt-clean
 talos-libvirt-clean:
 	@echo ">>> Cleaning up libvirt domains..."
-	@sudo virsh list --name --all | grep talos- | while read dom; do sudo virsh destroy $$dom; done
+	@sudo virsh list --name --all | grep '^$(TALOS_CLUSTER_NAME)-' | while read dom; do sudo virsh destroy $$dom; done
 	@echo ">>> Cleaning up libvirt network..."
 	@if sudo virsh net-list --name --all | grep -q '^$(TALOS_LIBVIRT_NETWORK_NAME)$$'; then sudo virsh net-destroy $(TALOS_LIBVIRT_NETWORK_NAME); fi
 
 .PHONY: talos-init
 talos-init: talos-libvirt-init talos-prepare-images
-	@talosctl gen config --force --install-disk /dev/vda \
+	$(eval TALOS_CONTROL_PLANE_IP = $(shell sudo virsh domifaddr "$(TALOS_CONTROL_PLANE_NODE)" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'))
+	$(eval TALOS_ENDPOINT = https://$(TALOS_CONTROL_PLANE_IP):6443)
+	@echo ">>> Generating Talos configuration..."
+	@echo ">>> Talos endpoint: $(TALOS_ENDPOINT)"
+	@echo ">>> Talos cluster name: $(TALOS_CLUSTER_NAME)"
+	talosctl gen config --force --install-disk /dev/vda \
 		--kubernetes-version "$(TALOS_K8S_VERSION)" \
 		--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
-		--config-patch @talos/cluster-patch.yaml "$(TALOS_CLUSTER_NAME)" https://172.99.99.223:6443
-
-	# @echo ">>> Creating Talos cluster..."
-	# @talosctl cluster create --name $(TALOS_CLUSTER_NAME) \
-	# 	--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
-	# 	--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
-	# 	--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
-	# 	--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
-	# 	--config-patch @yamls/talos-cluster-patch.yaml \
-	# 	--skip-k8s-node-readiness-check
-	# @echo ">>> Talos cluster created."
-	# @echo ">>> Downloading kubeconfig..."
-	# @talosctl kubeconfig -f --cluster $(TALOS_CLUSTER_NAME) -n $(TALOS_CLUSTER_NAME)-controlplane-1
-	# @echo ">>> Talos kubeconfig downloaded."
-	# @echo ">>> Getting all nodes..."
-	# @kubectl get nodes -o wide
-	# @echo ">>> Getting all pods..."
-	# @kubectl get pods -A -o wide
+		--config-patch @talos/cluster-patch.yaml "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
+	mv talosconfig ~/.talos/config
+	@echo ">>> Applying Talos node configuration..."
+	@sudo virsh list --name | grep '^$(TALOS_CONTROL_PLANE_NODE)' | while read node; do \
+		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
+		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		talosctl apply-config --insecure --mode reboot --nodes $${ip} --file controlplane.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
+	done
+	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
+		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
+		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		talosctl apply-config --insecure --mode reboot --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		echo ">>>>>> Talos worker configuration applied to $${node}."; \
+	done
+	@echo ">>> Bootstrapping Talos cluster..."
+	talosctl bootstrap --nodes "$(TALOS_CONTROL_PLANE_IP)" --endpoints "$(TALOS_CONTROL_PLANE_IP)"
+	@echo ">>> Talos cluster bootstrapped."
+	@echo ">>> Downloading Talos cluster kubeconfig..."
+	talosctl kubeconfig --force --nodes "$(TALOS_CONTROL_PLANE_IP)" --endpoints "$(TALOS_CONTROL_PLANE_IP)"
+	@echo ">>> Talos cluster kubeconfig downloaded."
+	@echo ">>> Waiting for kube-proxy to be ready..."
+	kubectl -n kube-system rollout status ds kube-proxy
+	@echo ">>> Getting all nodes..."
+	@kubectl get nodes -o wide
+	@echo ">>> Getting all pods..."
+	@kubectl get pods -A -o wide
 
 .PHONY: talos-clean
 talos-clean: talos-libvirt-clean
@@ -133,17 +161,19 @@ talos-clean: talos-libvirt-clean
 
 .PHONY: talos-install-prepare
 talos-install-prepare:
+	$(eval IMAGE_REPO = 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION))
 	@echo ">>> Installing Kube-OVN with version $(VERSION)..."
 	@echo ">>>>> Tagging Kube-OVN image..."
-	@docker tag $(REGISTRY)/kube-ovn:$(VERSION) 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION)
+	@docker tag "$(REGISTRY)/kube-ovn:$(VERSION)" "$(IMAGE_REPO)"
 	@echo ">>>>> Pushing Kube-OVN image..."
-	@docker push 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION)
+	@docker push "$(IMAGE_REPO)"
 
 .PHONY: talos-install-chart
 talos-install-chart: talos-install-prepare
 	@OVN_DIR=/var/lib/ovn \
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
 		DISABLE_MODULES_MANAGEMENT=true \
+		MOUNT_LOCAL_BIN_DIR=false \
 		$(MAKE) install-chart
 
 .PHONY: talos-install-chart-%
