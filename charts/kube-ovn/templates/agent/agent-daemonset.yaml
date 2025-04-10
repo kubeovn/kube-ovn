@@ -242,7 +242,7 @@ spec:
             path: {{ .Values.kubelet_conf.KUBELET_DIR }}/pods
         - name: systemid
           hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
+            path: {{ .Values.ovsOvn.ovsDirectory }}
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch

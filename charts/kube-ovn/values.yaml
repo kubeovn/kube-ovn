@@ -217,6 +217,11 @@ ovsOvn:
   # If this is disabled, you will have to enable the Open vSwitch kernel module yourself
   disableModulesManagement: false
 
+  # -- Directory on the node where Open vSwitch (OVS) lives
+  ovsDirectory: "/etc/origin/openvswitch"
+  # -- Directory on the node where Open Virtual Network (OVN) lives
+  ovnDirectory: "/etc/origin/ovn"
+
   # -- DPDK support for OVS
   # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
   dpdk:

@@ -229,7 +229,7 @@ spec:
             path: /run/ovn
         - name: host-config-openvswitch
           hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
+            path: {{ .Values.ovsOvn.ovsDirectory }}
         - name: host-log-ovs
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/openvswitch

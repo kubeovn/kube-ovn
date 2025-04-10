@@ -155,10 +155,10 @@ spec:
             path: /sys
         - name: host-config-openvswitch
           hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
+            path: {{ .Values.ovsOvn.ovsDirectory }}
         - name: host-config-ovn
           hostPath:
-            path: {{ .Values.OVN_DIR }}
+            path: {{ .Values.ovsOvn.ovnDirectory }}
         - name: host-log-ovs
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/openvswitch

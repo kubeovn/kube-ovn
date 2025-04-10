@@ -169,7 +169,7 @@ spec:
             path: /run/ovn
         - name: host-config-ovn
           hostPath:
-            path: {{ .Values.OVN_DIR }}
+            path: {{ .Values.ovsOvn.ovnDirectory }}
         - name: host-log-ovn
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn
