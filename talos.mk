@@ -19,7 +19,9 @@ talos-registry-mirror:
 	fi
 
 .PHONY: talos-prepare-images
-talos-prepare-images: talos-registry-mirror
+talos-prepare-images:
+ifneq ($(CI),true)
+	@$(MAKE) talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
 		if [ -z $$(docker images -q $$image) ]; then \
@@ -34,6 +36,7 @@ talos-prepare-images: talos-registry-mirror
 		echo ">>>>> Pushing $$img to registry mirror..."; \
 		docker push $$img; \
 	done
+endif
 
 .PHONY: talos-init
 talos-init: talos-clean talos-prepare-images
