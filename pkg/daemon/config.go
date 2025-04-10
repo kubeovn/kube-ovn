@@ -38,6 +38,7 @@ type Configuration struct {
 	// interface being used for tunnel
 	tunnelIface               string
 	Iface                     string
+	HostTunnelSrc             bool
 	DPDKTunnelIface           string
 	MTU                       int
 	MSS                       int
@@ -87,7 +88,7 @@ func ParseFlags() *Configuration {
 
 		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
-argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed")
+                argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
@@ -259,11 +260,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		for _, addr := range addrs {
 			_, ipCidr, err := net.ParseCIDR(addr.String())
 			if err != nil {
-klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
+			        klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
 				continue
 			}
 			// exclude the vip as encap ip unless host-tunnel-src is true
-if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
+                        if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
 				klog.Infof("Skip address %s", ipCidr.String())
 				continue
 			}
