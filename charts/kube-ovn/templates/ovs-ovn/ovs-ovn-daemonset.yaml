@@ -63,7 +63,7 @@ spec:
             - |
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
               iptables -V
-              {{- if not .Values.DISABLE_MODULES_MANAGEMENT }}
+              {{- if not .Values.ovsOvn.disableModulesManagement }}
               /usr/share/openvswitch/scripts/ovs-ctl load-kmod
               {{- else }}
               ln -sf /bin/true /usr/local/sbin/modprobe

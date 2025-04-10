@@ -113,6 +113,18 @@ debug:
   ENABLE_MIRROR: false
   MIRROR_IFACE: "mirror0"
 
+kubelet_conf:
+  KUBELET_DIR: "/var/lib/kubelet"
+
+log_conf:
+  LOG_DIR: "/var/log"
+
+OPENVSWITCH_DIR: "/etc/origin/openvswitch"
+OVN_DIR: "/etc/origin/ovn"
+
+nameOverride: ""
+fullnameOverride: ""
+
 # CNI binary/configuration injected on the nodes
 cni:
   # -- Location of the CNI configuration on the node
@@ -129,21 +141,8 @@ cni:
   # Should be a string representing a double-digit integer
   configPriority: "01"
 
-kubelet_conf:
-  KUBELET_DIR: "/var/lib/kubelet"
-
-log_conf:
-  LOG_DIR: "/var/log"
-
-OPENVSWITCH_DIR: "/etc/origin/openvswitch"
-OVN_DIR: "/etc/origin/ovn"
-DISABLE_MODULES_MANAGEMENT: false
-  
-nameOverride: ""
-fullnameOverride: ""
-
 # -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
-# Make sure cert-manager is installed for the generation of certificates for the webhook.
+# Make sure cert-manager is installed for the generation of certificates for the webhook
 # See https://kubeovn.github.io/docs/stable/en/guide/webhook/
 validatingWebhook:
   # -- Enable the deployment of the validating webhook
@@ -157,11 +156,11 @@ validatingWebhook:
   # -- Labels to be added to kube-ovn-webhook pods
   podLabels: {}
 
-# -- Configuration for the NAT gateway
+# -- Configuration for the NAT gateways
 natGw:
   # -- Prefix appended to the name of the NAT gateways when generating the Pods
   # If this value is changed after NAT GWs have been provisioned, every NAT gateway will need to be
-  # manually destroyed and recreated.
+  # manually destroyed and recreated
   namePrefix: "vpc-nat-gw"
   # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode
   bgpSpeaker:
@@ -171,7 +170,7 @@ natGw:
       tag: v1.14.0
       pullPolicy: IfNotPresent
     # -- Network attachment definition used to reach the API server when running on BGP mode
-    # By default, equals the value set at .apiNad.provider
+    # By default, equals the value set at ".apiNad.provider", you will need to set ".apiNad.enabled" to true
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
 
@@ -193,7 +192,7 @@ apiNad:
     # -- CIDR block used by the API subnet
     cidrBlock: 100.100.0.0/16,fd00:100:100::/112
 
-# -- Configuration for ovs-ovn, the Open vSwitch daemon
+# -- Configuration for ovs-ovn, the Open vSwitch/Open Virtual Network daemons
 ovsOvn:
   # -- Annotations to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
   annotations: {}
@@ -213,6 +212,10 @@ ovsOvn:
     limits:
       cpu: "2"
       memory: "1000Mi"
+
+  # -- Disable auto-loading of kernel modules by OVS
+  # If this is disabled, you will have to enable the Open vSwitch kernel module yourself
+  disableModulesManagement: false
 
   # -- DPDK support for OVS
   # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
