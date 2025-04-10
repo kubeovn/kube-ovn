@@ -2073,6 +2073,7 @@ jobs:
 
       - name: Create Talos cluster
         run: |
+          pipx install jinjanator
           make talos-init
 
       - name: Install Kube-OVN
