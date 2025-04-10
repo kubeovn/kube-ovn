@@ -80,11 +80,15 @@ talos-install-chart: talos-install-prepare
 
 .PHONY: talos-install-chart-%
 talos-install-chart-%:
-	@$(MAKE) NET_STACK=$* talos-install-chart
+	@NET_STACK=$* $(MAKE) talos-install-chart
 
 .PHONY: talos-install
 talos-install: talos-install-chart
 
 .PHONY: talos-install-%
 talos-install-%:
-	@$(MAKE) NET_STACK=$* talos-install
+	@NET_STACK=$* $(MAKE) talos-install
+
+.PHONY: talos-install-dev-%
+talos-install-dev-%:
+	@VERSION=$(DEV_TAG) $(MAKE) talos-install-$*
