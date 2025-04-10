@@ -71,19 +71,19 @@ spec:
           args:
           - --external-address=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.PINGER_EXTERNAL_ADDRESS }}
+          "{{ .Values.pinger.targets.externalAddresses.v4 }},{{ .Values.pinger.targets.externalAddresses.v6 }}"
           {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.PINGER_EXTERNAL_ADDRESS }}
+          "{{ .Values.pinger.targets.externalAddresses.v4 }}"
           {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.PINGER_EXTERNAL_ADDRESS }}
+          "{{ .Values.pinger.targets.externalAddresses.v6 }}"
           {{- end }}
           - --external-dns=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
-          {{ .Values.dual_stack.PINGER_EXTERNAL_DOMAIN }}
+          "{{ .Values.pinger.targets.externalDomain.v6 }}"
           {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
-          {{ .Values.ipv4.PINGER_EXTERNAL_DOMAIN }}
+          "{{ .Values.pinger.targets.externalDomain.v4 }}"
           {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
-          {{ .Values.ipv6.PINGER_EXTERNAL_DOMAIN }}
+          "{{ .Values.pinger.targets.externalDomain.v6 }}"
           {{- end }}
           - --ds-namespace={{ .Values.namespace }}
           - --logtostderr=false
