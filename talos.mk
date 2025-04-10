@@ -29,7 +29,9 @@ TALOS_K8S_VERSION ?= 1.32.3
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT = 1
 
-TALOS_TUNNEL_TYPE ?= vxlan
+TALOS_API_PORT ?= 50000
+
+TALOS_TUNNEL_TYPE = vxlan
 ifeq ($(shell echo $${CI:-false}),true)
 TALOS_TUNNEL_TYPE = geneve
 endif
@@ -145,12 +147,42 @@ talos-init: talos-libvirt-init talos-prepare-images
 		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
+	@echo ">>> Waiting for Talos api server to be ready..."
+	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read node; do \
+		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		while true; do \
+			if nc -v -z -w 1 $${ip} $(TALOS_API_PORT) &>/dev/null; then \
+				echo ">>> Talos api server on $${node} is ready."; \
+				break; \
+			fi; \
+			echo ">>> Waiting for Talos api server on $${node}..."; \
+			sleep 2; \
+		done; \
+	done
 	@echo ">>> Bootstrapping Talos cluster..."
 	talosctl bootstrap --nodes "$(TALOS_CONTROL_PLANE_IP)" --endpoints "$(TALOS_CONTROL_PLANE_IP)"
 	@echo ">>> Talos cluster bootstrapped."
 	@echo ">>> Downloading Talos cluster kubeconfig..."
 	talosctl kubeconfig --force --nodes "$(TALOS_CONTROL_PLANE_IP)" --endpoints "$(TALOS_CONTROL_PLANE_IP)"
 	@echo ">>> Talos cluster kubeconfig downloaded."
+	@echo ">>> Waiting for k8s endpoint to be ready..."
+	@while true; do \
+		if kubectl get nodes &>/dev/null; then \
+			echo ">>> K8s endpoint is ready."; \
+			break; \
+		fi; \
+		echo ">>> Waiting for k8s endpoint..."; \
+		sleep 2; \
+	done
+	@echo ">>> Waiting for all k8s nodes to be present..."
+	@while true; do \
+		if [ $$(kubectl get nodes -o name | wc -l) -eq $$(($(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT))) ]; then \
+			echo ">>> K8s nodes are present."; \
+			break; \
+		fi; \
+		echo ">>> Waiting for all k8s nodes to be present..."; \
+		sleep 2; \
+	done
 	@echo ">>> Waiting for kube-proxy to be ready..."
 	kubectl -n kube-system rollout status ds kube-proxy
 	@echo ">>> Getting all nodes..."
