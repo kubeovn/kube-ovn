@@ -205,19 +205,7 @@ kind-load-image:
 kind-untaint-control-plane: untaint-control-plane
 
 .PHONY: kind-install-chart
-kind-install-chart: kind-load-image kind-untaint-control-plane
-	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
-	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
-	helm install kubeovn ./charts/kube-ovn --wait \
-		--set global.images.kubeovn.tag=$(VERSION) \
-		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
-		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
-		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false}) \
-		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
+kind-install-chart: kind-load-image install-chart
 
 .PHONY: kind-install-chart-ssl
 kind-install-chart-ssl:

@@ -19,9 +19,7 @@ talos-registry-mirror:
 	fi
 
 .PHONY: talos-prepare-images
-talos-prepare-images:
-ifneq ($(CI),true)
-	@$(MAKE) talos-registry-mirror
+talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
 		if [ -z $$(docker images -q $$image) ]; then \
@@ -36,7 +34,6 @@ ifneq ($(CI),true)
 		echo ">>>>> Pushing $$img to registry mirror..."; \
 		docker push $$img; \
 	done
-endif
 
 .PHONY: talos-init
 talos-init: talos-clean talos-prepare-images
@@ -62,26 +59,32 @@ talos-clean:
 	@echo ">>> Deleting Talos cluster..."
 	@talosctl cluster destroy --name $(TALOS_CLUSTER_NAME)
 	@echo ">>> Talos cluster deleted."
+	@echo ">>> Deleting Talos registry mirror..."
+	@docker rm -f $(TALOS_REGISTRY_MIRROR_NAME)
+	@echo ">>> Talos registry mirror deleted."
 
-.PHONY: talos-install
-talos-install: untaint-control-plane
+.PHONY: talos-install-prepare
+talos-install-prepare: untaint-control-plane
 	@echo ">>> Installing Kube-OVN with version $(VERSION)..."
 	@echo ">>>>> Tagging Kube-OVN image..."
 	@docker tag $(REGISTRY)/kube-ovn:$(VERSION) 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION)
 	@echo ">>>>> Pushing Kube-OVN image..."
 	@docker push 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION)
-	@echo ">>>>> Updating node labels..."
-	@kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
-	@kubectl label node --overwrite -l ovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel
-	@echo ">>>>> Installing Kube-OVN..."
-	@helm install kubeovn ./charts/kube-ovn --wait \
-		--set global.images.kubeovn.tag=$(VERSION) \
-		--set OPENVSWITCH_DIR=/var/lib/openvswitch \
-		--set OVN_DIR=/var/lib/ovn \
-		--set DISABLE_MODULES_MANAGEMENT=true \
-		--set networking.NET_STACK=ipv4 \
-		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false}) \
-		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
+
+.PHONY: talos-install-chart
+talos-install-chart: talos-install-prepare
+	@OVN_DIR=/var/lib/ovn \
+		OPENVSWITCH_DIR=/var/lib/openvswitch \
+		DISABLE_MODULES_MANAGEMENT=true \
+		$(MAKE) install-chart
+
+.PHONY: talos-install-chart-%
+talos-install-chart-%:
+	@$(MAKE) NET_STACK=$* talos-install-chart
+
+.PHONY: talos-install
+talos-install: talos-install-chart
+
+.PHONY: talos-install-%
+talos-install-%:
+	@$(MAKE) NET_STACK=$* talos-install
