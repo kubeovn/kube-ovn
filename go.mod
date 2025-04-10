@@ -24,7 +24,7 @@ require (
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
-	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230905082151-e28c4d73a589
+	github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410050455-ce7c8d9ddfb1
 	github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.7.2
@@ -162,6 +162,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
+	github.com/kubeovn/dbus/v5 v5.0.0-20250410044920-11a753c7a13f // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/libopenstorage/openstorage v1.0.0 // indirect

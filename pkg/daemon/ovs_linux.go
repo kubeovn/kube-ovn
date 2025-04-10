@@ -689,7 +689,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	}
 
 	// ping ovn0 gw to activate the flow
-	klog.Infof("wait ovn0 gw ready")
+	klog.Infof("wait %s gw ready", util.NodeNic)
 	status := corev1.ConditionFalse
 	reason := "JoinSubnetGatewayReachable"
 	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
