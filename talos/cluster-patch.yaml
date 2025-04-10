@@ -8,3 +8,7 @@ cluster:
 machine:
   install:
     wipe: true
+  kubelet:
+    nodeIP:
+      validSubnets:
+        - 172.99.99.0/24

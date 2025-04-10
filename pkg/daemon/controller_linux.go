@@ -149,8 +149,8 @@ func (c *Controller) initRuntime() error {
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
 	}
 
-	c.nmSyncer = newNetworkManagerSyncer()
-	c.nmSyncer.Run(c.transferAddrsAndRoutes)
+	// c.nmSyncer = newNetworkManagerSyncer()
+	// c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
 	return nil
 }
