@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kubeovn/gonetworkmanager/v2"
+	"github.com/kubeovn/gonetworkmanager/v3"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/mod/semver"
