@@ -39,29 +39,29 @@ RUN cd /usr/src/ && \
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/61ece99b63e88bb12c030c34b46716b01e242c92.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/e490f5ac0b644101913c2a3db8e03d85e859deff.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/cecf1515de299b3ec6b30ed8a167748e879188a6.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/eb935585bdeecdaa3fba8ff2c46ef394ce8d2424.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/5593e614e51a5dce28941e5bf760f9ee5397cede.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/8236ec78aedd114b3ce22158a9e0282337787259.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/f9e97031b56ab5747b5d73629198331a6daacdfd.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/6fbe060936bb1f843c7997f5e66075ce75c62772.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/625825ef939e543128b6cf48eee9eb79f805713c.patch | git apply && \
     # add support for conditionally skipping conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/c6ea5e214a4a20eccdf8cd18c232284edc5ce951.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/44229317de74d1e97f7499b371a86c015be6b7a6.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
-    curl -s https://github.com/kubeovn/ovn/commit/d8ce6dc8e512b703903c53e344b1dce1a0c61d2e.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/786756870f12ac69a5d7bc498693574c6591c5e9.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/baf2d74f0f2d746c01c22002ea72426d75cfc79a.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch | git apply && \
     # direct output to lsp for dnat packets in logical switch ingress pipelines
-    curl -s https://github.com/kubeovn/ovn/commit/51fdeada788d7249df00c140e9496f4b753e7178.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/ca5ccf3c8ac67bcc005110c8c62214d2684e7e41.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b3af07690e7b2328c02318b1bd812c5665c0632b.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/1ba3263940c1e2e87e61cb011dcf942a0456224d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch | git apply && \
     # skip node local dns ip conntrack when set acl
     curl -s https://github.com/kubeovn/ovn/commit/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch | git apply
 
