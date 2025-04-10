@@ -57,3 +57,7 @@ ovn-req.pem
 ovn-cert.pem
 ovn-privkey.pem
 anp-test-report.yaml
+talosconfig
+controlplane.yaml
+worker.yaml
+talos/libvirt-domain.xml

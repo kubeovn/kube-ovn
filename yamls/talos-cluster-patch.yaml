@@ -1,4 +1,10 @@
 cluster:
+  allowSchedulingOnControlPlanes: true
   network:
+    podSubnets:
+      - 10.16.0.0/16
     cni:
       name: none
+machine:
+  install:
+    wipe: true
