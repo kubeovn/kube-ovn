@@ -212,17 +212,7 @@ kind-install-chart-ssl:
 	@ENABLE_SSL=true $(MAKE) kind-install-chart
 
 .PHONY: kind-upgrade-chart
-kind-upgrade-chart: kind-load-image
-	helm upgrade kubeovn ./charts/kube-ovn --wait \
-		--set global.images.kubeovn.tag=$(VERSION) \
-		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
-		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
-		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false}) \
-		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)
-	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
+kind-upgrade-chart: kind-load-image upgrade-chart
 
 .PHONY: kind-uninstall-chart
 kind-uninstall-chart:

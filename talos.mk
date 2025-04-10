@@ -196,3 +196,6 @@ talos-install-%:
 .PHONY: talos-install-dev-%
 talos-install-dev-%:
 	@VERSION=$(DEV_TAG) $(MAKE) talos-install-$*
+
+.PHONY: talos-install-dev
+talos-install-dev: talos-install-dev-ipv4

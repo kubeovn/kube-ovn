@@ -191,6 +191,24 @@ install-chart: untaint-control-plane
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
 		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
 
+.PHONY: upgrade-chart
+upgrade-chart:
+	helm upgrade kubeovn ./charts/kube-ovn --wait \
+		--set global.images.kubeovn.tag=$(VERSION) \
+		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
+		--set OPENVSWITCH_DIR=$(shell echo $${OPENVSWITCH_DIR:-/etc/origin/openvswitch}) \
+		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
+		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(shell echo $${MOUNT_LOCAL_BIN_DIR:-true}) \
+		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
+		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
+		--set networking.TUNNEL_TYPE=$(shell echo $${TUNNEL_TYPE:-geneve}) \
+		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
+		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
+		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
+	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
