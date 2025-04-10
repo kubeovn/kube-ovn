@@ -87,6 +87,7 @@ func ParseFlags() *Configuration {
 
 		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
+		argHostTunnelSrc         = pflag.String("host-tunnel-src", false, "Enable /32 address selection for the tunnel source")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
@@ -147,6 +148,7 @@ func ParseFlags() *Configuration {
 		CniConfFile:               *argCniConfFile,
 		CniConfName:               *argsCniConfName,
 		Iface:                     *argIface,
+		HostTunnelSrc:             *argHostTunnelSrc,
 		DPDKTunnelIface:           *argDPDKTunnelIface,
 		MTU:                       *argMTU,
 		EnableMirror:              *argEnableMirror,
@@ -260,14 +262,16 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 				klog.Errorf("Failed to parse CIDR address %s: %v", addr.String(), err)
 				continue
 			}
-			// exclude the vip as encap ip
-			if ones, bits := ipCidr.Mask.Size(); ones == bits {
+			// exclude the vip as encap ip unless host-tunnel-src is true
+			if ones, bits := ipCidr.Mask.Size(); ones == bits && !host-tunnel-src {
 				klog.Infof("Skip address %s", ipCidr.String())
 				continue
 			}
 
+			// exclude link-local and localhost addresses
 			ipStr := strings.Split(addr.String(), "/")[0]
-			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
+			_, localhost, _ := net.ParseCIDR("127.0.0.0/8")
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || localhost.Contains(ip) {
 				continue
 			}
 			if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
