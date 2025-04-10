@@ -263,7 +263,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 				continue
 			}
 			// exclude the vip as encap ip unless host-tunnel-src is true
-			if ones, bits := ipCidr.Mask.Size(); ones == bits && !host-tunnel-src {
+if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
 				klog.Infof("Skip address %s", ipCidr.String())
 				continue
 			}
