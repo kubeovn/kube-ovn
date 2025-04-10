@@ -90,7 +90,7 @@ spec:
           - --default-ls={{ .Values.networking.DEFAULT_SUBNET }}
           - --default-cidr=
           {{- if eq .Values.networking.stack "Dual" -}}
-          {{ .Values.networking.pods.cidr.v4 }},{ .Values.networking.pods.cidr.v6 }}
+          {{ .Values.networking.pods.cidr.v4 }},{{ .Values.networking.pods.cidr.v6 }}
           {{- else if eq .Values.networking.stack "IPv4" -}}
           { .Values.networking.pods.cidr.v4 }}
           {{- else if eq .Values.networking.stack "IPv6" -}}
