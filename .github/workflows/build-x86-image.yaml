@@ -2080,9 +2080,6 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: Cleanup
-        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
-
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
     needs:
