@@ -8,7 +8,7 @@ TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
 TALOS_REGISTRY_MIRROR_NAME ?= talos-registry-mirror
-TALOS_REGISTRY_MIRROR_HOST ?= 10.5.0.1
+TALOS_REGISTRY_MIRROR_HOST ?= 172.99.99.1 # libvirt network gateway address
 TALOS_REGISTRY_MIRROR_PORT ?= 6000
 TALOS_REGISTRY_MIRROR = $(TALOS_REGISTRY_MIRROR_HOST):$(TALOS_REGISTRY_MIRROR_PORT)
 TALOS_REGISTRY_MIRROR_URL = http://$(TALOS_REGISTRY_MIRROR)
@@ -22,6 +22,8 @@ TALOS_LIBVIRT_DOMAIN_XML ?= talos/libvirt-domain.xml
 
 TALOS_CLUSTER_NAME ?= talos
 TALOS_K8S_VERSION ?= 1.32.3
+TALOS_CONTROL_PLANE_COUNT = 1 # DO NOT CHANGE THIS VALUE
+TALOS_WORKER_COUNT = 1
 
 .PHONY: talos-registry-mirror
 talos-registry-mirror:
@@ -64,18 +66,30 @@ talos-libvirt-init: talos-libvirt-clean
 	# create libvirt domains
 	@sudo mkdir -p "$(TALOS_LIBVIRT_IMAGES_DIR)"
 	@sudo chmod 777 "$(TALOS_LIBVIRT_IMAGES_DIR)"
-	@index=0; for name in control-plane worker; do \
-		node="talos-$${name}"; \
-		disk=$(TALOS_LIBVIRT_IMAGES_DIR)/$${node}.qcow2; \
+	@for ((i=1; i<=$(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT); i++)); do \
+		if [ $$i -le $(TALOS_CONTROL_PLANE_COUNT) ]; then \
+			if [ $(TALOS_CONTROL_PLANE_COUNT) -eq 1 ]; then \
+				name="$(TALOS_CLUSTER_NAME)-control-plane"; \
+			else \
+				name="$(TALOS_CLUSTER_NAME)-control-plane-$${i}"; \
+			fi; \
+		else \
+			if [ $(TALOS_WORKER_COUNT) -eq 1 ]; then \
+				name="$(TALOS_CLUSTER_NAME)-worker"; \
+			else \
+				name="$(TALOS_CLUSTER_NAME)-worker-$$((i-$(TALOS_CONTROL_PLANE_COUNT)))"; \
+			fi; \
+		fi; \
+		disk=$(TALOS_LIBVIRT_IMAGES_DIR)/$${name}.qcow2; \
 		sudo rm -rf "$${disk}" && \
-		echo ">>> Creating disk image for $${node}..." && \
+		echo ">>> Creating disk image for $${name}..." && \
 		qemu-img create -f qcow2 "$${disk}" $(TALOS_LIBVIRT_IMAGE_SIZE) && \
-		echo ">>> Generating libvirt domain xml for $${node}..." && \
-		name=$${node} index=$${index} image="$(TALOS_IMAGE_PATH)" disk="$${disk}" jinjanate "$(TALOS_LIBVIRT_DOMAIN_XML_TEMPLATE)" -o "$(TALOS_LIBVIRT_DOMAIN_XML)" && \
-		echo ">>> Creating libvirt domain for $${node}..." && \
-		sudo virsh create --validate "$(TALOS_LIBVIRT_DOMAIN_XML)" && \
-		index=$$((index + 1)); \
+		echo ">>> Generating libvirt domain xml for $${name}..." && \
+		name=$${name} index=$$i image="$(TALOS_IMAGE_PATH)" disk="$${disk}" jinjanate "$(TALOS_LIBVIRT_DOMAIN_XML_TEMPLATE)" -o "$(TALOS_LIBVIRT_DOMAIN_XML)" && \
+		echo ">>> Creating libvirt domain for $${name}..." && \
+		sudo virsh create --validate "$(TALOS_LIBVIRT_DOMAIN_XML)"; \
 	done
+	@echo ">>> Waiting for libvirt domains to obtain ip addresses..."
 
 .PHONY: talos-libvirt-clean
 talos-libvirt-clean:
@@ -87,29 +101,29 @@ talos-libvirt-clean:
 .PHONY: talos-init
 talos-init: talos-libvirt-init talos-prepare-images
 	@talosctl gen config --force --install-disk /dev/vda \
-		--kubernetes-version $(TALOS_K8S_VERSION) \
-		--registry-mirror docker.io=http://172.99.99.1:6000 \
-		--registry-mirror gcr.io=http://172.99.99.1:6000 \
-		--registry-mirror ghcr.io=http://172.99.99.1:6000 \
-		--registry-mirror registry.k8s.io=http://172.99.99.1:6000 \
-		--config-patch @talos/cluster-patch.yaml talos https://172.99.99.223:6443
-
-	@echo ">>> Creating Talos cluster..."
-	@talosctl cluster create --name $(TALOS_CLUSTER_NAME) \
+		--kubernetes-version "$(TALOS_K8S_VERSION)" \
 		--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
-		--config-patch @yamls/talos-cluster-patch.yaml \
-		--skip-k8s-node-readiness-check
-	@echo ">>> Talos cluster created."
-	@echo ">>> Downloading kubeconfig..."
-	@talosctl kubeconfig -f --cluster $(TALOS_CLUSTER_NAME) -n $(TALOS_CLUSTER_NAME)-controlplane-1
-	@echo ">>> Talos kubeconfig downloaded."
-	@echo ">>> Getting all nodes..."
-	@kubectl get nodes -o wide
-	@echo ">>> Getting all pods..."
-	@kubectl get pods -A -o wide
+		--config-patch @talos/cluster-patch.yaml "$(TALOS_CLUSTER_NAME)" https://172.99.99.223:6443
+
+	# @echo ">>> Creating Talos cluster..."
+	# @talosctl cluster create --name $(TALOS_CLUSTER_NAME) \
+	# 	--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
+	# 	--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
+	# 	--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
+	# 	--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
+	# 	--config-patch @yamls/talos-cluster-patch.yaml \
+	# 	--skip-k8s-node-readiness-check
+	# @echo ">>> Talos cluster created."
+	# @echo ">>> Downloading kubeconfig..."
+	# @talosctl kubeconfig -f --cluster $(TALOS_CLUSTER_NAME) -n $(TALOS_CLUSTER_NAME)-controlplane-1
+	# @echo ">>> Talos kubeconfig downloaded."
+	# @echo ">>> Getting all nodes..."
+	# @kubectl get nodes -o wide
+	# @echo ">>> Getting all pods..."
+	# @kubectl get pods -A -o wide
 
 .PHONY: talos-clean
 talos-clean: talos-libvirt-clean
