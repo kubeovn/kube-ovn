@@ -136,13 +136,13 @@ talos-init: talos-libvirt-init talos-prepare-images
 	@sudo virsh list --name | grep '^$(TALOS_CONTROL_PLANE_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		talosctl apply-config --insecure --mode reboot --nodes $${ip} --file controlplane.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		talosctl apply-config --insecure --nodes $${ip} --file controlplane.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
 		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		talosctl apply-config --insecure --mode reboot --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
 	@echo ">>> Bootstrapping Talos cluster..."
