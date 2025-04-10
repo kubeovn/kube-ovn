@@ -274,7 +274,7 @@ spec:
         {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
         - name: local-bin
           hostPath:
-            path: {{ .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
+            path: {{ .Values.cni_conf.LOCAL_BIN_DIR }}
         {{- end }}
         {{- if .Values.func.ENABLE_OVN_IPSEC }}
         - name: ovs-ipsec-keys
