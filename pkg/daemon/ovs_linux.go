@@ -507,6 +507,14 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 
 		if gwCheckMode != gatewayCheckModeDisabled {
 			underlayGateway := gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
+
+			if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual {
+				if err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, checkIPv6DAD); err != nil {
+					klog.Errorf("Some IPv6 addresses might not be in preferred state: %v", err)
+					return err
+				}
+			}
+
 			if u2oInterconnectionIP != "" {
 				if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
 					klog.Error(err)
@@ -516,24 +524,6 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true); err != nil {
 				klog.Error(err)
 				return err
-			}
-		}
-
-		if checkIPv6DAD {
-			// check whether the ipv6 address has a dadfailed flag
-			addresses, err := netlink.AddrList(containerLink, netlink.FAMILY_V6)
-			if err != nil {
-				err = fmt.Errorf("failed to get ipv6 addresses of link %s: %w", interfaceName, err)
-				klog.Error(err)
-				return err
-			}
-
-			for _, addr := range addresses {
-				if addr.Flags&syscall.IFA_F_DADFAILED != 0 {
-					err = fmt.Errorf("IPv6 address %s has a dadfailed flag, please check whether it has been used by another host", addr.IP.String())
-					klog.Error(err)
-					return err
-				}
 			}
 		}
 
@@ -1993,4 +1983,68 @@ func rollBackVethPair(nicName string) error {
 	}
 	klog.Infof("rollback veth success %s", nicName)
 	return nil
+}
+
+func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval time.Duration, checkIPv6DAD bool) error {
+	var retry int
+	for retry < maxRetry {
+		link, err := netlink.LinkByName(interfaceName)
+		if err != nil {
+			klog.Errorf("failed to get link %s: %v", interfaceName, err)
+			return err
+		}
+
+		addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		if err != nil {
+			klog.Errorf("failed to get IPv6 addresses on interface %s: %v", interfaceName, err)
+			return err
+		}
+
+		var globalIPv6Found bool
+		var badStateIPv6Found bool
+
+		for _, addr := range addrs {
+			// Skip link-local addresses
+			if addr.IP.IsLinkLocalUnicast() {
+				continue
+			}
+
+			globalIPv6Found = true
+			// Check if the address is in a bad state
+			switch {
+			case (addr.Flags & unix.IFA_F_DEPRECATED) != 0:
+				badStateIPv6Found = true
+				klog.Warningf("IPv6 address %s on interface %s is deprecated", addr.IP.String(), interfaceName)
+			case (addr.Flags & unix.IFA_F_DADFAILED) != 0:
+				if !checkIPv6DAD {
+					continue
+				}
+				badStateIPv6Found = true
+				klog.Warningf("IPv6 address %s on interface %s has failed duplicate address detection (DAD)", addr.IP.String(), interfaceName)
+			case (addr.Flags & unix.IFA_F_TENTATIVE) != 0:
+				badStateIPv6Found = true
+				klog.Warningf("IPv6 address %s on interface %s is in tentative state (DAD in progress)", addr.IP.String(), interfaceName)
+			default:
+				klog.Infof("IPv6 address %s on interface %s is in preferred state", addr.IP.String(), interfaceName)
+			}
+		}
+
+		if globalIPv6Found && !badStateIPv6Found {
+			klog.Infof("All non-link-local IPv6 addresses on interface %s are in preferred state", interfaceName)
+			return nil
+		}
+
+		if !globalIPv6Found {
+			klog.Warningf("No non-link-local IPv6 addresses found on interface %s, retry %d/%d", interfaceName, retry+1, maxRetry)
+		} else {
+			klog.Warningf("Some IPv6 addresses on interface %s are in bad state (deprecated, tentative, or DAD failed), retry %d/%d", interfaceName, retry+1, maxRetry)
+		}
+
+		retry++
+		if retry < maxRetry {
+			time.Sleep(retryInterval)
+		}
+	}
+
+	return fmt.Errorf("failed to find non-link-local IPv6 addresses in preferred state on interface %s after %d retries", interfaceName, maxRetry)
 }
