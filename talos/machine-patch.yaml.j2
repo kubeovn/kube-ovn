@@ -1,0 +1,40 @@
+{%- if ip_family is not defined -%}
+  {%- set ip_family = "ipv4" -%}
+{%- endif -%}
+machine:
+  install:
+    disk: /dev/vda
+    wipe: true
+  kernel:
+    modules:
+      # the following kernel modules configuration may be unnecessary
+      - name: openvswitch
+      - name: geneve
+      - name: vxlan
+  network:
+    hostname: {{ node }}
+    disableSearchDomain: true
+    interfaces:
+      - deviceSelector:
+          busPath: 0000:00:05.0
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          ipv4: true
+          ipv6: true
+      - deviceSelector:
+          busPath: 0000:00:05.1
+        mtu: 1500
+        dhcp: false
+  kubelet:
+    nodeIP:
+      validSubnets:
+        # subnets MUST match the libvirt network CIDRs
+        {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
+        - 172.99.99.0/24
+        {%- endif %}
+        {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
+        - 2001:db8:99:99::/120
+        {%- endif %}
+    extraArgs:
+      provider-id: talos://libvirt/{{ cluster }}/{{ node }}
