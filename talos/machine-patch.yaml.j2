@@ -1,0 +1,19 @@
+machine:
+  install:
+    wipe: true
+  # the following kernel modules configuration may be unnecessary
+  kernel:
+    modules:
+      - name: openvswitch
+      - name: geneve
+      - name: vxlan
+  network:
+    hostname: {{ node }}
+  kubelet:
+    nodeIP:
+      validSubnets:
+        # this subnet MUST match the libvirt network IPv4 CIDR
+        - 172.99.99.0/24
+        # TODO: add IPv6 support
+    extraArgs:
+      provider-id: talos://libvirt/{{ cluster }}/{{ node }}

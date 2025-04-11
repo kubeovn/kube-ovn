@@ -117,7 +117,10 @@ talos-libvirt-init: talos-libvirt-clean
 .PHONY: talos-libvirt-clean
 talos-libvirt-clean:
 	@echo ">>> Cleaning up libvirt domains..."
-	@sudo virsh list --name --all | grep '^$(TALOS_CLUSTER_NAME)-' | while read dom; do sudo virsh destroy $$dom; done
+	@sudo virsh list --name --all | grep '^$(TALOS_CLUSTER_NAME)-' | while read dom; do \
+		sudo rm -rfv "$(TALOS_LIBVIRT_IMAGES_DIR)/$${dom}.qcow2" && \
+		sudo virsh destroy $$dom; \
+	done
 	@echo ">>> Cleaning up libvirt network..."
 	@if sudo virsh net-list --name --all | grep -q '^$(TALOS_LIBVIRT_NETWORK_NAME)$$'; then sudo virsh net-destroy $(TALOS_LIBVIRT_NETWORK_NAME); fi
 
@@ -134,19 +137,21 @@ talos-init: talos-libvirt-init talos-prepare-images
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
-		--config-patch @talos/cluster-patch.yaml "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
+		--config-patch "@talos/cluster-patch.yaml" "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
 	mv talosconfig ~/.talos/config
 	@echo ">>> Applying Talos node configuration..."
 	@sudo virsh list --name | grep '^$(TALOS_CONTROL_PLANE_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		talosctl apply-config --insecure --nodes $${ip} --file controlplane.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
+		talosctl apply-config --insecure --nodes $${ip} --file controlplane.yaml --config-patch "@talos/machine-patch.yaml"; \
 		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "'$${node}'"}]'; \
+		cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
+		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch "@talos/machine-patch.yaml"; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
 	@echo ">>> Waiting for Talos machines to be booting or running..."

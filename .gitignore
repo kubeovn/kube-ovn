@@ -60,4 +60,5 @@ anp-test-report.yaml
 talosconfig
 controlplane.yaml
 worker.yaml
+machine-patch.yaml
 talos/libvirt-domain.xml

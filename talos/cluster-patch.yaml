@@ -5,18 +5,3 @@ cluster:
       - 10.16.0.0/16
     cni:
       name: none
-machine:
-  install:
-    wipe: true
-  # the following kernel modules configuration may be unnecessary
-  kernel:
-    modules:
-      - name: openvswitch
-      - name: geneve
-      - name: vxlan
-  kubelet:
-    nodeIP:
-      validSubnets:
-        # this subnet MUST match the libvirt network IPv4 CIDR
-        - 172.99.99.0/24
-        # TODO: add IPv6 support
