@@ -170,6 +170,16 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		return err
 	}
 
+	// we add the finalizer **before** we run "createFipInPod". This is because if we
+	// added the finalizer after, then it is possible that the FIP is deleted after
+	// we run createFipInPod but before the finalizer is created, and
+	// then we can be left with IPtables rules in the VPC Nat
+	// Gateway pod which are unmanaged.
+	if err = c.handleAddIptablesFipFinalizer(key); err != nil {
+		klog.Errorf("failed to handle add finalizer for fip, %v", err)
+		return err
+	}
+
 	// create fip nat
 	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIP); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
@@ -182,10 +192,6 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	// label too long cause error
 	if err = c.patchFipLabel(key, eip); err != nil {
 		klog.Errorf("failed to update label for fip %s, %v", key, err)
-		return err
-	}
-	if err = c.handleAddIptablesFipFinalizer(key); err != nil {
-		klog.Errorf("failed to handle add finalizer for fip, %v", err)
 		return err
 	}
 	if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
