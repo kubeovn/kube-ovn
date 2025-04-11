@@ -1,0 +1,33 @@
+{%- if ip_family is not defined -%}
+  {%- set ip_family = "ipv4" -%}
+{%- endif -%}
+cluster:
+  allowSchedulingOnControlPlanes: true
+  controllerManager:
+    extraArgs:
+      {%- if ip_family is equalto "ipv4" %}
+      node-cidr-mask-size: 24
+      {%- elif ip_family is equalto "ipv6" %}
+      node-cidr-mask-size: 120
+      {%- else %}
+      node-cidr-mask-size-ipv4: 24
+      node-cidr-mask-size-ipv6: 120
+      {%- endif %}
+  network:
+    cni:
+      name: none
+    podSubnets:
+      {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
+      - 10.16.0.0/16
+      {%- endif %}
+      {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
+      - fd00:10:96::/108
+      {%- endif %}
+    serviceSubnets:
+      {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
+      - 10.96.0.0/12
+      {%- endif %}
+      {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
+      - fd00:10:96::/108
+      {%- endif %}
+

@@ -1,0 +1,15 @@
+<network>
+  <name>talos</name>
+  <forward mode='nat'/>
+  <bridge name='talos-virbr0' stp='on' delay='0'/>
+  <ip address='172.99.99.1' prefix='24'>
+    <dhcp>
+      <range start='172.99.99.11' end='172.99.99.99'/>
+    </dhcp>
+  </ip>
+  <ip family='ipv6' address='2001:db8:99:99::1' prefix='120'>
+    <dhcp>
+      <range start='2001:db8:99:99::11' end='2001:db8:99:99::99'/>
+    </dhcp>
+  </ip>
+</network>
