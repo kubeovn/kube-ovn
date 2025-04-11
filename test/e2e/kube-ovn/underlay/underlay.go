@@ -1004,7 +1004,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting node IPv6 addresses")
 		nodes, err := kind.ListNodes(clusterName, "")
