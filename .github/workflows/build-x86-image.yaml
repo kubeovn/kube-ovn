@@ -2044,6 +2044,13 @@ jobs:
     needs: build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -2074,11 +2081,14 @@ jobs:
       - name: Create Talos cluster
         run: |
           pipx install jinjanator
-          make talos-init
+          make talos-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
-        run: make talos-install
+        run: |
+          make talos-install-${{ matrix.ip-family }}
+          kubectl -n kube-system rollout status ds/kube-ovn-pinger
+          kubectl get po -o wide -A
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
