@@ -27,7 +27,7 @@ TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
 TALOS_K8S_VERSION ?= 1.32.3
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
-TALOS_WORKER_COUNT = 1
+TALOS_WORKER_COUNT ?= 1
 
 TALOS_API_PORT ?= 50000
 
@@ -53,16 +53,16 @@ talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
 		if [ -z $$(docker images -q $$image) ]; then \
-			echo ">>>> Pulling $$image..."; \
+			echo ">>> Pulling $$image..."; \
 			docker pull $$image; \
 		else \
-			echo ">>>> Image $$image already exists."; \
+			echo ">>> Image $$image already exists."; \
 		fi; \
-		echo ">>>>> Tagging $$image..."; \
+		echo ">>>>>> Tagging $$image..."; \
 		img=$$(echo $$image | sed -E 's#^[^/]+/#127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/#'); \
 		docker tag $$image $$img; \
-		echo ">>>>> Pushing $$img to registry mirror..."; \
-		docker push $$img; \
+		echo ">>>>>> Pushing $$img to registry mirror..."; \
+		docker push --quiet $$img; \
 	done
 
 .PHONY: talos-libvirt-init
@@ -96,14 +96,15 @@ talos-libvirt-init: talos-libvirt-clean
 		echo ">>> Creating disk image for $${name}..." && \
 		qemu-img create -f qcow2 "$${disk}" $(TALOS_LIBVIRT_IMAGE_SIZE) && \
 		echo ">>> Generating libvirt domain xml for $${name}..." && \
-		name=$${name} index=$$i image="$(TALOS_IMAGE_PATH)" disk="$${disk}" jinjanate "$(TALOS_LIBVIRT_DOMAIN_XML_TEMPLATE)" -o "$(TALOS_LIBVIRT_DOMAIN_XML)" && \
+		name=$${name} index=$$i image="$(TALOS_IMAGE_PATH)" disk="$${disk}" \
+			jinjanate "$(TALOS_LIBVIRT_DOMAIN_XML_TEMPLATE)" -o "$(TALOS_LIBVIRT_DOMAIN_XML)" && \
 		echo ">>> Creating libvirt domain for $${name}..." && \
 		sudo virsh create --validate "$(TALOS_LIBVIRT_DOMAIN_XML)"; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read name; do \
 		echo ">>> Waiting for interface addresses of libvirt domain $${name}..."; \
 		while true; do \
-			ip=$$(sudo virsh domifaddr "$${name}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+			ip=$$(sudo virsh domifaddr --full "$${name}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 			if [ -z "$${ip}" ]; then \
 				echo ">>> Waiting for IP address..."; \
 				sleep 2; \
@@ -118,20 +119,21 @@ talos-libvirt-init: talos-libvirt-clean
 talos-libvirt-clean:
 	@echo ">>> Cleaning up libvirt domains..."
 	@sudo virsh list --name --all | grep '^$(TALOS_CLUSTER_NAME)-' | while read dom; do \
-		sudo rm -rfv "$(TALOS_LIBVIRT_IMAGES_DIR)/$${dom}.qcow2" && \
-		sudo virsh destroy $$dom; \
+		sudo virsh destroy $$dom && \
+		sudo rm -rfv "$(TALOS_LIBVIRT_IMAGES_DIR)/$${dom}.qcow2"; \
 	done
 	@echo ">>> Cleaning up libvirt network..."
-	@if sudo virsh net-list --name --all | grep -q '^$(TALOS_LIBVIRT_NETWORK_NAME)$$'; then sudo virsh net-destroy $(TALOS_LIBVIRT_NETWORK_NAME); fi
+	@if sudo virsh net-list --name --all | grep -q '^$(TALOS_LIBVIRT_NETWORK_NAME)$$'; then \
+		sudo virsh net-destroy $(TALOS_LIBVIRT_NETWORK_NAME); \
+	fi
 
-.PHONY: talos-init
-talos-init: talos-libvirt-init talos-prepare-images
-	$(eval TALOS_CONTROL_PLANE_IP = $(shell sudo virsh domifaddr "$(TALOS_CONTROL_PLANE_NODE)" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'))
+.PHONY: talos-init-%
+talos-init-%: talos-libvirt-init talos-prepare-images
+	$(eval TALOS_CONTROL_PLANE_IP = $(shell sudo virsh domifaddr --full "$(TALOS_CONTROL_PLANE_NODE)" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'))
 	$(eval TALOS_ENDPOINT = https://$(TALOS_CONTROL_PLANE_IP):6443)
 	@echo ">>> Generating Talos configuration..."
-	@echo ">>> Talos endpoint: $(TALOS_ENDPOINT)"
-	@echo ">>> Talos cluster name: $(TALOS_CLUSTER_NAME)"
-	talosctl gen config --force --install-disk /dev/vda \
+	ip_family=$* jinjanate talos/cluster-patch.yaml.j2 -o talos/cluster-patch.yaml
+	talosctl gen config --force \
 		--kubernetes-version "$(TALOS_K8S_VERSION)" \
 		--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
@@ -142,28 +144,49 @@ talos-init: talos-libvirt-init talos-prepare-images
 	@echo ">>> Applying Talos node configuration..."
 	@sudo virsh list --name | grep '^$(TALOS_CONTROL_PLANE_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
-		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
+		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
 		talosctl apply-config --insecure --nodes $${ip} --file controlplane.yaml --config-patch "@talos/machine-patch.yaml"; \
 		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
-		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
+		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
 		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch "@talos/machine-patch.yaml"; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
-	@echo ">>> Waiting for Talos machines to be booting or running..."
+	@echo ">>> Waiting for Talos machines to be ready for bootstrapping..."
 	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read node; do \
-		ip=$$(sudo virsh domifaddr "$${node}" | grep vnet | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		echo ">>>>>> Machine $${node} has an ip address $${ip}."; \
 		while true; do \
 			stage=$$(talosctl --endpoints $${ip} --nodes $${ip} get machinestatus -o jsonpath='{.spec.stage}' 2>/dev/null); \
-			if [ "$${stage}" = "booting" -o "$${stage}" = "running" ]; then \
-				echo ">>> Talos machine $${node} is $${stage}."; \
+			if [ $$? -ne 0 ]; then \
+				echo ">>>>>> Talos api on machine $${node} is not reachable..."; \
+				sleep 2; \
+				continue; \
+			fi; \
+			if [ "$${stage}" = "running" ]; then \
+				echo ">>>>>> Talos machine $${node} is $${stage}."; \
 				break; \
 			fi; \
-			echo ">>> Waiting for Talos machine $${node}..."; \
+			if echo "$${node}" | grep -q '^$(TALOS_WORKER_NODE)'; then \
+				echo ">>>>>> Machine stage of $${node} is $${stage}, waiting for it to be running..."; \
+				sleep 2; \
+				continue; \
+			fi; \
+			if [ "$${stage}" != "booting" ]; then \
+				echo ">>>>>> Machine stage of $${node} is $${stage}, waiting for it to be booting..."; \
+				sleep 2; \
+				continue; \
+			fi; \
+			status=$$(talosctl --endpoints $${ip} --nodes $${ip} service etcd status | grep -iw '^STATE' | awk '{print $$NF}' | tr 'A-Z' 'a-z'); \
+			if [ "$${status}" = "preparing" ]; then \
+				echo ">>>>>> Talos machine $${node} etcd is $${status}."; \
+				break; \
+			fi; \
+			echo ">>>>>> Talos machine $${node} etcd is $${status}, waiting for it to be preparing..."; \
 			sleep 2; \
 		done; \
 	done
@@ -176,19 +199,19 @@ talos-init: talos-libvirt-init talos-prepare-images
 	@echo ">>> Waiting for k8s endpoint to be ready..."
 	@while true; do \
 		if kubectl get nodes &>/dev/null; then \
-			echo ">>> K8s endpoint is ready."; \
+			echo ">>>>>> K8s endpoint is ready."; \
 			break; \
 		fi; \
-		echo ">>> Waiting for k8s endpoint..."; \
+		echo ">>>>>> Waiting for k8s endpoint..."; \
 		sleep 2; \
 	done
 	@echo ">>> Waiting for all k8s nodes to be present..."
 	@while true; do \
 		if [ $$(kubectl get nodes -o name | wc -l) -eq $$(($(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT))) ]; then \
-			echo ">>> K8s nodes are present."; \
+			echo ">>>>>> K8s nodes are present."; \
 			break; \
 		fi; \
-		echo ">>> Waiting for all k8s nodes to be present..."; \
+		echo ">>>>>> Waiting for all k8s nodes to be present..."; \
 		sleep 2; \
 	done
 	@echo ">>> Waiting for kube-proxy to be ready..."
@@ -197,6 +220,9 @@ talos-init: talos-libvirt-init talos-prepare-images
 	@kubectl get nodes -o wide
 	@echo ">>> Getting all pods..."
 	@kubectl get pods -A -o wide
+
+.PHONY: talos-init
+talos-init: talos-init-ipv4
 
 .PHONY: talos-clean
 talos-clean: talos-libvirt-clean
@@ -208,13 +234,13 @@ talos-clean: talos-libvirt-clean
 talos-install-prepare:
 	$(eval IMAGE_REPO = 127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/$(REGISTRY)/kube-ovn:$(VERSION))
 	@echo ">>> Installing Kube-OVN with version $(VERSION)..."
-	@echo ">>>>> Tagging Kube-OVN image..."
+	@echo ">>>>>> Tagging Kube-OVN image..."
 	@docker tag "$(REGISTRY)/kube-ovn:$(VERSION)" "$(IMAGE_REPO)"
-	@echo ">>>>> Pushing Kube-OVN image..."
-	@docker push "$(IMAGE_REPO)"
+	@echo ">>>>>> Pushing Kube-OVN image..."
+	@docker push --quiet "$(IMAGE_REPO)"
 
-.PHONY: talos-install-chart
-talos-install-chart: talos-install-prepare
+.PHONY: talos-install
+talos-install: talos-install-prepare
 	@OVN_DIR=/var/lib/ovn \
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
 		DISABLE_MODULES_MANAGEMENT=true \
@@ -222,20 +248,13 @@ talos-install-chart: talos-install-prepare
 		TUNNEL_TYPE=$(TALOS_TUNNEL_TYPE) \
 		$(MAKE) install-chart
 
-.PHONY: talos-install-chart-%
-talos-install-chart-%:
-	@NET_STACK=$* $(MAKE) talos-install-chart
-
-.PHONY: talos-install
-talos-install: talos-install-chart
-
 .PHONY: talos-install-%
 talos-install-%:
 	@NET_STACK=$* $(MAKE) talos-install
 
+.PHONY: talos-install-dev
+talos-install-dev: talos-install-dev-ipv4
+
 .PHONY: talos-install-dev-%
 talos-install-dev-%:
 	@VERSION=$(DEV_TAG) $(MAKE) talos-install-$*
-
-.PHONY: talos-install-dev
-talos-install-dev: talos-install-dev-ipv4
