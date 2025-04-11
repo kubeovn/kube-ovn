@@ -193,7 +193,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle reset ovn eip %s", cachedEip.Name)
-	if err := c.patchOvnEipStatus(key, true); err != nil {
+	if err := c.patchOvnEipStatus(key, false); err != nil {
 		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
 	}
