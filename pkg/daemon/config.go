@@ -260,7 +260,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		for _, addr := range addrs {
 			_, ipCidr, err := net.ParseCIDR(addr.String())
 			if err != nil {
-			        klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
+				klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
 				continue
 			}
 			// exclude the vip as encap ip unless host-tunnel-src is true
