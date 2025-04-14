@@ -10,16 +10,16 @@ $ kubectl label node -lnode-role.kubernetes.io/control-plane  kube-ovn/role=mast
 $ kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
 
 # standard install 
-$ helm install --debug kubeovn ./charts/kube-ovn --set MASTER_NODES=${Node0}
+$ helm install --debug kubeovn ./charts/kube-ovn-v2 --set masterNodes=${Node0}
 
 # high availability install
-$ helm install --debug kubeovn ./charts/kube-ovn --set MASTER_NODES=${Node0},${Node1},${Node2}
+$ helm install --debug kubeovn ./charts/kube-ovn-v2 --set masterNodes=${Node0},${Node1},${Node2}
 
 # upgrade to this version
-$ helm upgrade --debug kubeovn ./charts/kube-ovn --set MASTER_NODES=${Node0},${Node1},${Node2}
+$ helm upgrade --debug kubeovn ./charts/kube-ovn-v2 --set masterNodes=${Node0},${Node1},${Node2}
 ```
 
-If `MASTER_NODES` unspecified Helm will take internal IPs of nodes with `kube-ovn/role=master` label
+If `masterNodes` is unspecified Helm will take internal IPs of nodes with `kube-ovn/role=master` label
 
 ### Talos Linux
 
@@ -35,8 +35,7 @@ machine:
 and use the following options to install this Helm-chart:
 
 ```
---set cni_conf.MOUNT_LOCAL_BIN_DIR=false
---set OPENVSWITCH_DIR=/var/lib/openvswitch
---set OVN_DIR=/var/lib/ovn
---set DISABLE_MODULES_MANAGEMENT=true
+--set ovsOvn.ovsDirectory=/var/lib/openvswitch
+--set ovsOvn.ovnDirectory=/var/lib/ovn
+--set ovsOvn.disableModulesManagement=true
 ```
