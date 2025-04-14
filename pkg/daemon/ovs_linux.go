@@ -2057,5 +2057,5 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 	if len(errorMessages) > 0 {
 		finalMsg = fmt.Sprintf("%s. Errors: %s", finalMsg, strings.Join(errorMessages, "; "))
 	}
-	return fmt.Errorf(finalMsg)
+	return errors.New(finalMsg)
 }
