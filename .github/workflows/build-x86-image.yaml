@@ -2051,6 +2051,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        mode:
+          - overlay
+          - underlay
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -2089,11 +2092,16 @@ jobs:
       - name: Install Kube-OVN
         id: install
         run: |
-          make talos-install-${{ matrix.ip-family }}
+          make talos-install-${{ matrix.mode }}-${{ matrix.ip-family }}
           kubectl -n kube-system rollout status ds/kube-ovn-pinger
           kubectl -n kube-system rollout status deploy/coredns
           kubectl get pod -o wide -A
           kubectl get endpointslice -A
+          kubectl get subnet -o wide
+          if [ "${{ matrix.mode }}" = "underlay" ]; then
+            kubectl get provider-network -o wide
+            kubectl get vlan -o wide
+          fi
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}

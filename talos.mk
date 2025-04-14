@@ -31,6 +31,16 @@ TALOS_WORKER_COUNT ?= 1
 
 TALOS_API_PORT ?= 50000
 
+TALOS_UNDERLAY_CIDR_IPV4 = 172.99.99.0/24
+TALOS_UNDERLAY_CIDR_IPV6 = 2001:db8:99:99::1/120
+TALOS_UNDERLAY_CIDR_DUAL = $(TALOS_UNDERLAY_CIDR_IPV4),$(TALOS_UNDERLAY_CIDR_IPV6)
+TALOS_UNDERLAY_GATEWAY_IPV4 = 172.99.99.1
+TALOS_UNDERLAY_GATEWAY_IPV6 = 2001:db8:99:99::1
+TALOS_UNDERLAY_GATEWAY_DUAL = $(TALOS_UNDERLAY_GATEWAY_IPV4),$(TALOS_UNDERLAY_GATEWAY_IPV6)
+TALOS_UNDERLAY_EXCLUDE_IPS_IPV4 = 172.99.99.11..172.99.99.99
+TALOS_UNDERLAY_EXCLUDE_IPS_IPV6 = 2001:db8:99:99::11..2001:db8:99:99::99
+TALOS_UNDERLAY_EXCLUDE_IPS_DUAL = $(TALOS_UNDERLAY_EXCLUDE_IPS_IPV4),$(TALOS_UNDERLAY_EXCLUDE_IPS_IPV6)
+
 # geneve causes kernel panic on my local libvirt virtual machines
 # use vxlan instead
 TALOS_TUNNEL_TYPE = vxlan
@@ -71,7 +81,7 @@ talos-libvirt-init: talos-libvirt-clean
 		sudo mkdir -p "$(TALOS_IMAGE_DIR)" && \
 		sudo chmod 777 "$(TALOS_IMAGE_DIR)" && \
 		echo ">>> Downloading Talos image $(TALOS_IMAGE_ISO) into $(TALOS_IMAGE_DIR)..." && \
-		wget "$(TALOS_IMAGE_URL)" -O "$(TALOS_IMAGE_PATH)" && \
+		wget "$(TALOS_IMAGE_URL)" --quiet -O "$(TALOS_IMAGE_PATH)" && \
 		echo ">>> Talos image downloaded."; \
 	fi
 	@echo ">>> Creating libvirt network $(TALOS_LIBVIRT_NETWORK_NAME)..."
@@ -199,19 +209,20 @@ talos-init-%: talos-libvirt-init talos-prepare-images
 	@echo ">>> Waiting for k8s endpoint to be ready..."
 	@while true; do \
 		if kubectl get nodes &>/dev/null; then \
-			echo ">>>>>> K8s endpoint is ready."; \
+			echo ">>> K8s endpoint is ready."; \
 			break; \
 		fi; \
 		echo ">>>>>> Waiting for k8s endpoint..."; \
 		sleep 2; \
 	done
-	@echo ">>> Waiting for all k8s nodes to be present..."
+	@echo ">>> Waiting for all k8s nodes to be registered..."
 	@while true; do \
-		if [ $$(kubectl get nodes -o name | wc -l) -eq $$(($(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT))) ]; then \
-			echo ">>>>>> K8s nodes are present."; \
+		count=$$(kubectl get nodes -o name | wc -l); \
+		echo ">>>>>> $${count} node(s) are registered..."; \
+		if [ $${count} -eq $$(($(TALOS_CONTROL_PLANE_COUNT)+$(TALOS_WORKER_COUNT))) ]; then \
+			echo ">>> All k8s nodes are registered."; \
 			break; \
 		fi; \
-		echo ">>>>>> Waiting for all k8s nodes to be present..."; \
 		sleep 2; \
 	done
 	@echo ">>> Waiting for kube-proxy to be ready..."
@@ -249,8 +260,7 @@ talos-install: talos-install-prepare
 		$(MAKE) install-chart
 
 .PHONY: talos-install-%
-talos-install-%:
-	@NET_STACK=$* $(MAKE) talos-install
+talos-install-%: talos-install-overlay-$*
 
 .PHONY: talos-install-dev
 talos-install-dev: talos-install-dev-ipv4
@@ -258,3 +268,22 @@ talos-install-dev: talos-install-dev-ipv4
 .PHONY: talos-install-dev-%
 talos-install-dev-%:
 	@VERSION=$(DEV_TAG) $(MAKE) talos-install-$*
+
+.PHONY: talos-install-overlay
+talos-install-overlay: talos-install-overlay-ipv4
+
+.PHONY: talos-install-overlay-%
+talos-install-overlay-%:
+	@NET_STACK=$* $(MAKE) talos-install
+
+.PHONY: talos-install-underlay
+talos-install-underlay: talos-install-underlay-ipv4
+
+.PHONY: talos-install-underlay-%
+talos-install-underlay-%:
+	@$(eval UNDERLAY_VAR_SUFFIX = $(shell echo $* | tr 'a-z' 'A-Z'))
+	@NET_STACK=$* NETWORK_TYPE=vlan VLAN_INTERFACE_NAME=enp0s5f1 VLAN_ID=0 \
+		POD_CIDR=$(TALOS_UNDERLAY_CIDR_$(UNDERLAY_VAR_SUFFIX)) \
+		POD_GATEWAY=$(TALOS_UNDERLAY_GATEWAY_$(UNDERLAY_VAR_SUFFIX)) \
+		EXCLUDE_IPS=$(TALOS_UNDERLAY_EXCLUDE_IPS_$(UNDERLAY_VAR_SUFFIX)) \
+		$(MAKE) talos-install
