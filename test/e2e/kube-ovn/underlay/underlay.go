@@ -1035,11 +1035,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By(fmt.Sprintf("Creating pod %s that pings IPv6 node IP %s on node %s", podName, ipv6Addr, selectedNode.Name()))
 		// Use ping6 with one attempt and 1s timeout, checking the return code
-		pingCmd := []string{"sh", "-c", fmt.Sprintf("ping6 -c1 -W1 %s && sleep 600 || exit $?", ipv6Addr)}
+		pingCmd := []string{"sh", "-c", fmt.Sprintf("ping6 -c 1 -w 1 %s && sleep 600 || exit $?", ipv6Addr)}
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, pingCmd, nil)
+
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, pingCmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("If pod is running, the ping was successful")
