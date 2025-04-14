@@ -2068,7 +2068,9 @@ jobs:
         run: curl -sL https://talos.dev/install | sh
 
       - name: Install KVM and libvirt
-        run: sudo apt install qemu-kvm libvirt-daemon-system
+        run: |
+          sudo apt update
+          sudo apt install qemu-kvm libvirt-daemon-system
 
       - name: Download image
         uses: actions/download-artifact@v4
