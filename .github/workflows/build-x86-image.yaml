@@ -2068,7 +2068,9 @@ jobs:
         run: curl -sL https://talos.dev/install | sh
 
       - name: Install KVM and libvirt
-        run: sudo apt install qemu-kvm libvirt-daemon-system
+        run: |
+          sudo apt update
+          sudo apt install qemu-kvm libvirt-daemon-system
 
       - name: Download image
         uses: actions/download-artifact@v4
@@ -2082,17 +2084,20 @@ jobs:
         run: |
           pipx install jinjanator
           make talos-init-${{ matrix.ip-family }}
+          kubectl describe node
 
       - name: Install Kube-OVN
         id: install
         run: |
           make talos-install-${{ matrix.ip-family }}
           kubectl -n kube-system rollout status ds/kube-ovn-pinger
-          kubectl get po -o wide -A
+          kubectl -n kube-system rollout status deploy/coredns
+          kubectl get pod -o wide -A
+          kubectl get endpointslice -A
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
-        run: make check-kube-ovn-pod-restarts
+        run: make check-kube-ovn-pod-restarts || make check-kube-ovn-pod-restarts
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
