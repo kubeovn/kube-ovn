@@ -1987,6 +1987,8 @@ func rollBackVethPair(nicName string) error {
 
 func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval time.Duration, checkIPv6DAD bool) error {
 	var retry int
+	var errorMessages []string
+
 	for retry < maxRetry {
 		link, err := netlink.LinkByName(interfaceName)
 		if err != nil {
@@ -2014,16 +2016,19 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 			switch {
 			case (addr.Flags & unix.IFA_F_DEPRECATED) != 0:
 				badStateIPv6Found = true
-				klog.Warningf("IPv6 address %s on interface %s is deprecated", addr.IP.String(), interfaceName)
+				errorMsg := fmt.Sprintf("IPv6 address %s on interface %s is deprecated", addr.IP.String(), interfaceName)
+				errorMessages = append(errorMessages, errorMsg)
 			case (addr.Flags & unix.IFA_F_DADFAILED) != 0:
 				if !checkIPv6DAD {
 					continue
 				}
 				badStateIPv6Found = true
-				klog.Warningf("IPv6 address %s on interface %s has failed duplicate address detection (DAD)", addr.IP.String(), interfaceName)
+				errorMsg := fmt.Sprintf("IPv6 address %s has a dadfailed flag, please check whether it has been used by another host", addr.IP.String())
+				errorMessages = append(errorMessages, errorMsg)
 			case (addr.Flags & unix.IFA_F_TENTATIVE) != 0:
 				badStateIPv6Found = true
-				klog.Warningf("IPv6 address %s on interface %s is in tentative state (DAD in progress)", addr.IP.String(), interfaceName)
+				errorMsg := fmt.Sprintf("IPv6 address %s on interface %s is in tentative state (DAD in progress)", addr.IP.String(), interfaceName)
+				errorMessages = append(errorMessages, errorMsg)
 			default:
 				klog.Infof("IPv6 address %s on interface %s is in preferred state", addr.IP.String(), interfaceName)
 			}
@@ -2035,9 +2040,11 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 		}
 
 		if !globalIPv6Found {
-			klog.Warningf("No non-link-local IPv6 addresses found on interface %s, retry %d/%d", interfaceName, retry+1, maxRetry)
+			errorMsg := fmt.Sprintf("No non-link-local IPv6 addresses found on interface %s, retry %d/%d", interfaceName, retry+1, maxRetry)
+			errorMessages = append(errorMessages, errorMsg)
 		} else {
-			klog.Warningf("Some IPv6 addresses on interface %s are in bad state (deprecated, tentative, or DAD failed), retry %d/%d", interfaceName, retry+1, maxRetry)
+			errorMsg := fmt.Sprintf("Some IPv6 addresses on interface %s are in bad state (deprecated, tentative, or DAD failed), retry %d/%d", interfaceName, retry+1, maxRetry)
+			errorMessages = append(errorMessages, errorMsg)
 		}
 
 		retry++
@@ -2046,5 +2053,9 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 		}
 	}
 
-	return fmt.Errorf("failed to find non-link-local IPv6 addresses in preferred state on interface %s after %d retries", interfaceName, maxRetry)
+	finalMsg := fmt.Sprintf("failed to find non-link-local IPv6 addresses in preferred state on interface %s after %d retries", interfaceName, maxRetry)
+	if len(errorMessages) > 0 {
+		finalMsg = fmt.Sprintf("%s. Errors: %s", finalMsg, strings.Join(errorMessages, "; "))
+	}
+	return fmt.Errorf(finalMsg)
 }
