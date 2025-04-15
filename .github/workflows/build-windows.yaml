@@ -28,7 +28,7 @@ env:
 jobs:
   filter:
     name: Path Filter
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       build-ovs-ovn: ${{ steps.filter.outputs.windows-ovs-ovn }}
       build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}

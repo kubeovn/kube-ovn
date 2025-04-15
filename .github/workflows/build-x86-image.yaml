@@ -27,7 +27,7 @@ env:
 jobs:
   build-kube-ovn-base:
     name: Build kube-ovn-base
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       build-base: ${{ steps.build.outputs.build-base }}
     steps:
@@ -87,7 +87,7 @@ jobs:
 
   build-kube-ovn:
     name: Build kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs:
     - build-kube-ovn-base
     steps:
@@ -242,7 +242,7 @@ jobs:
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -270,7 +270,7 @@ jobs:
 
   build-e2e-binaries:
     name: Build E2E Binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -349,7 +349,7 @@ jobs:
   netpol-path-filter:
     name: Network Policy Path Filter
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
@@ -386,7 +386,7 @@ jobs:
     needs:
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -537,7 +537,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
       - netpol-path-filter
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -693,7 +693,7 @@ jobs:
     needs:
       - build-kube-ovn
       - netpol-path-filter
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -822,7 +822,7 @@ jobs:
     needs:
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -970,7 +970,7 @@ jobs:
     needs:
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1060,7 +1060,7 @@ jobs:
   chart-installation-test:
     name: Chart Installation Test
     needs: build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1106,7 +1106,7 @@ jobs:
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     needs: build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1152,7 +1152,7 @@ jobs:
   no-ovn-lb-test:
     name: Disable OVN LB Test
     needs: build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1200,7 +1200,7 @@ jobs:
   no-np-test:
     name: Disable Network Policy Test
     needs: build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1251,7 +1251,7 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1350,7 +1350,7 @@ jobs:
   installation-compatibility-test:
     name: Installation Compatibility Test
     needs: build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1398,7 +1398,7 @@ jobs:
     needs:
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -1504,7 +1504,7 @@ jobs:
     needs:
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1631,7 +1631,7 @@ jobs:
       - cilium-chaining-e2e
       - kube-ovn-ha-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
