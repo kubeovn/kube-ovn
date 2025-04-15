@@ -478,8 +478,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -626,8 +625,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -758,8 +756,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -909,8 +906,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1044,8 +1040,7 @@ jobs:
 
       - name: Create kind clusters
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1091,8 +1086,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1137,8 +1131,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1183,8 +1176,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1231,8 +1223,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1332,8 +1323,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1381,8 +1371,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.17 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1480,8 +1469,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
@@ -1591,8 +1579,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
+          pipx install jinjanator
           sudo PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
