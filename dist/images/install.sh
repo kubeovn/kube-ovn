@@ -5193,6 +5193,18 @@ spec:
             limits:
               cpu: 200m
               memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
