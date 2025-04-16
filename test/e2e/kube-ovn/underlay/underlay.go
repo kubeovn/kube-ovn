@@ -462,18 +462,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
-		containerName := "container-" + framework.RandomSuffix()
-		ginkgo.By("Creating container " + containerName)
-		cmd := []string{"sleep", "infinity"}
-		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
-		framework.ExpectNoError(err)
-		containerID = containerInfo.ID
-
-		ginkgo.By("Creating vlan " + vlanName)
-		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
-
-		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
@@ -489,6 +477,22 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				}
 			}
 		}
+
+		containerName := "container-" + framework.RandomSuffix()
+		ginkgo.By("Creating container " + containerName)
+		cmd := []string{"sleep", "infinity"}
+		if !f.HasIPv4() {
+			cmd = []string{"sh", "-c", fmt.Sprintf("while true; do ping6 -n -c1 -w1 %s; sleep 1; done", gatewayV6)}
+		}
+		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
+		framework.ExpectNoError(err)
+		containerID = containerInfo.ID
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating subnet " + subnetName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		if f.HasIPv4() {
