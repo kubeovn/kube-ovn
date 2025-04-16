@@ -14,6 +14,6 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: ovn-vpc-nat-gw-config
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 data:
   enable-vpc-nat-gw: "{{ .Values.func.ENABLE_NAT_GW }}"
