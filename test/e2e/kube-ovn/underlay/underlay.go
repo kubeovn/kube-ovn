@@ -950,6 +950,103 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectEmpty(lrpIPv6)
 		}
 	})
+
+	framework.ConformanceIt(`should support IPv6 connectivity to node IPs when pod start immediately`, func() {
+		if !f.HasIPv6() {
+			ginkgo.Skip("This test requires IPv6 support")
+		}
+
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13.8")
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				cidrV6 = config.Subnet
+				gatewayV6 = config.Gateway
+			}
+		}
+
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		underlayCidr = append(underlayCidr, cidrV6)
+		gateway = append(gateway, gatewayV6)
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Getting node IPv6 addresses")
+		nodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+
+		// Find a node with IPv6 address
+		var nodeIPv6 string
+		var selectedNode kind.Node
+		for _, n := range nodes {
+			for _, link := range linkMap {
+				for _, addr := range link.NonLinkLocalAddresses() {
+					if util.CheckProtocol(addr) == apiv1.ProtocolIPv6 {
+						nodeIPv6 = addr
+						selectedNode = n
+						break
+					}
+				}
+				if nodeIPv6 != "" {
+					break
+				}
+			}
+			if nodeIPv6 != "" {
+				break
+			}
+		}
+		framework.ExpectNotEmpty(nodeIPv6, "No node with IPv6 address found")
+		ipv6Addr := strings.Split(nodeIPv6, "/")[0]
+
+		ginkgo.By(fmt.Sprintf("Creating pod %s that pings IPv6 node IP %s on node %s", podName, ipv6Addr, selectedNode.Name()))
+		// Use ping6 with one attempt and 1s timeout, checking the return code
+		pingCmd := []string{"sh", "-c", fmt.Sprintf("ping6 -c 1 -w 1 %s && sleep 600 || exit $?", ipv6Addr)}
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, pingCmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("If pod is running, the ping was successful")
+		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning, "Pod should be in Running state, indicating successful ping with 1s timeout")
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
