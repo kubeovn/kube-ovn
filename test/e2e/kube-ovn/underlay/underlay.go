@@ -17,6 +17,7 @@ import (
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -549,6 +550,20 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				framework.Logf("Found pod event: %s", event.Message)
 				break
 			}
+		}
+
+		if !found {
+			ginkgo.By("Getting ip addresses and routes of container " + containerName)
+			links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
+				return docker.Exec(containerID, nil, cmd...)
+			})
+			framework.ExpectNoError(err)
+			framework.Logf("addresses of container:\n%s", format.Object(links, 2))
+			routes, err := iproute.RouteShow("eth0", "", func(cmd ...string) ([]byte, []byte, error) {
+				return docker.Exec(containerID, nil, cmd...)
+			})
+			framework.ExpectNoError(err)
+			framework.Logf("routes of container:\n%s", format.Object(routes, 2))
 		}
 		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
