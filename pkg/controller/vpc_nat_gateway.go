@@ -660,7 +660,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 // setNatGwAPIAccess adds an interface with API access to the NAT gateway and attaches the standard externalNetwork to the gateway.
 // This interface is backed by a NetworkAttachmentDefinition (NAD) with a provider corresponding
 // to one that is configured on a subnet part of the default VPC (the K8S apiserver runs in the default VPC)
-func (c *Controller) setNatGwAPIAccess(annotations map[string]string, externalNetwork string) error {
+func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
 	// Check the NetworkAttachmentDefinition provider exists, must be user-configured
 	if vpcNatAPINadProvider == "" {
 		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
@@ -676,12 +676,12 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string, externalNe
 	name, namespace := providerSplit[0], providerSplit[1]
 
 	// Craft the name of the NAD for the externalNetwork and the apiNetwork
-	externalNetworkAttachment := fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork)
-	apiNetworkAttachment := fmt.Sprintf("%s/%s", namespace, name)
-
+	networkAttachments := []string{fmt.Sprintf("%s/%s", namespace, name)}
+	if externalNetworkAttachment, ok := annotations[nadv1.NetworkAttachmentAnnot]; ok {
+		networkAttachments = append([]string{externalNetworkAttachment}, networkAttachments...)
+	}
 	// Attach the NADs to the Pod by adding them to the special annotation
-	attachmentAnnotation := fmt.Sprintf("%s, %s", externalNetworkAttachment, apiNetworkAttachment)
-	annotations[nadv1.NetworkAttachmentAnnot] = attachmentAnnotation
+	annotations[nadv1.NetworkAttachmentAnnot] = strings.Join(networkAttachments, ",")
 
 	// Set the network route to the API, so we can reach it
 	return c.setNatGwAPIRoute(annotations, namespace, name)
@@ -734,11 +734,17 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		annotations = maps.Clone(oldSts.Annotations)
 	}
-
-	externalNetworkNad := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
+	externalNadNamespace := c.config.PodNamespace
+	externalNadName := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
+	if externalSubnet, err := c.subnetsLister.Get(externalNadName); err == nil {
+		if name, namespace, ok := util.GetNadBySubnetProvider(externalSubnet.Spec.Provider); ok {
+			externalNadName = name
+			externalNadNamespace = namespace
+		}
+	}
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation: gw.Name,
-		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetworkNad),
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName),
 		util.LogicalSwitchAnnotation: gw.Spec.Subnet,
 		util.IPAddressAnnotation:     gw.Spec.LanIP,
 	}
@@ -752,7 +758,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
 	if gw.Spec.BgpSpeaker.Enabled {
-		if err := c.setNatGwAPIAccess(podAnnotations, externalNetworkNad); err != nil {
+		if err := c.setNatGwAPIAccess(podAnnotations); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -799,7 +805,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, externalNetworkNad, subnets)
+	subnet, err := c.findSubnetByNetworkAttachmentDefinition(externalNadNamespace, externalNadName, subnets)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
