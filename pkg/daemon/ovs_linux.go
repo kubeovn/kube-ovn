@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -512,6 +513,65 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				if err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, checkIPv6DAD); err != nil {
 					klog.Errorf("Some IPv6 addresses might not be in preferred state: %v", err)
 					return err
+				}
+				if strings.HasPrefix(ipAddr, "fc00:adb1:b29b:608d") {
+					klog.Errorf("IPv6 address %s should not in preferred state", ipAddr)
+					addrs, err := netlink.AddrList(containerLink, netlink.FAMILY_V6)
+					if err != nil {
+						klog.Errorf("failed to list ipv6 addresses on interface %s: %v", interfaceName, err)
+						return err
+					}
+					var flags []string
+					for _, addr := range addrs {
+						if addr.Flags&unix.IFA_F_DADFAILED != 0 {
+							flags = append(flags, "DADFAILED")
+						}
+						if addr.Flags&unix.IFA_F_TENTATIVE != 0 {
+							flags = append(flags, "TENTATIVE")
+						}
+						if addr.Flags&unix.IFA_F_DEPRECATED != 0 {
+							flags = append(flags, "DEPRECATED")
+						}
+						if addr.Flags&unix.IFA_F_SECONDARY != 0 {
+							flags = append(flags, "SECONDARY")
+						}
+						if addr.Flags&unix.IFA_F_PERMANENT != 0 {
+							flags = append(flags, "PERMANENT")
+						}
+						if addr.Flags&unix.IFA_F_HOMEADDRESS != 0 {
+							flags = append(flags, "HOMEADDRESS")
+						}
+						if addr.Flags&unix.IFA_F_OPTIMISTIC != 0 {
+							flags = append(flags, "OPTIMISTIC")
+						}
+						if addr.Flags&unix.IFA_F_MANAGETEMPADDR != 0 {
+							flags = append(flags, "MANAGETEMPADDR")
+						}
+						if addr.Flags&unix.IFA_F_STABLE_PRIVACY != 0 {
+							flags = append(flags, "STABLE_PRIVACY")
+						}
+						if addr.Flags&unix.IFA_F_NOPREFIXROUTE != 0 {
+							flags = append(flags, "NOPREFIXROUTE")
+						}
+						if addr.Flags&unix.IFA_F_NODAD != 0 {
+							flags = append(flags, "NODAD")
+						}
+						if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0 {
+							flags = append(flags, "MCAUTOJOIN")
+						}
+						if addr.Flags&unix.IFA_F_TEMPORARY != 0 {
+							flags = append(flags, "TEMPORARY")
+						}
+						klog.Infof("ipv6 address %s flags: %s", addr.IPNet.String(), strings.Join(flags, ","))
+					}
+
+					routes, err := netlink.RouteGet(net.ParseIP("2606:4700:4700::1111"))
+					if err != nil {
+						klog.Errorf("failed to get route for ipv6 address 2606:4700:4700::1111: %v", err)
+						return err
+					}
+					buf, _ := json.MarshalIndent(routes, "", "  ")
+					klog.Infof("route to ipv6 address 2606:4700:4700::1111: %s", string(buf))
 				}
 			}
 
