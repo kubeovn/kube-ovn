@@ -238,14 +238,15 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	var macPointer *string
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
-	if ipStr != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr)
+	if ipStr != "" || vip.Spec.MacAddress != "" {
+		macPointer = &vip.Spec.MacAddress
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
 	} else {
 		// Random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
-
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -288,9 +289,24 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		parentV6ip = vip.Spec.ParentV6ip
 		parentMac = vip.Spec.ParentMac
 	}
+	if vip.Spec.Type == util.KubeHostVMVip {
+		// k8s host network pod vm use vip for its nic ip
+		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
+		ipStr := util.GetStringIP(v4ip, v6ip)
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
+			klog.Error(err)
+			return err
+		}
+	}
 	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
+	}
+	if vip.Spec.Type == util.KubeHostVMVip {
+		// vm use the vip as its real ip
+		klog.Infof("created host network pod vm ip %s", key)
+		return nil
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
 		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
@@ -365,14 +381,14 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	klog.Infof("handle delete vip %s", vip.Name)
 	// TODO:// clean vip in its parent port aap list
-	if vip.Spec.Type == util.SwitchLBRuleVip {
+	if vip.Spec.Type != "" {
 		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
 			return err
 		}
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-		klog.Infof("delete vip arp proxy lsp %s", portName)
+		klog.Infof("delete vip lsp %s", portName)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 			klog.Error(err)
@@ -397,6 +413,11 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if cachedVip.Spec.Type == util.KubeHostVMVip {
+		// vm use the vip as its real ip
+		klog.Infof("created host network pod vm ip %s", key)
+		return nil
 	}
 	// only pods in the same namespace as vip are allowed to use aap
 	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
