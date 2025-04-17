@@ -301,14 +301,14 @@ jobs:
           fi
           make tar-kube-ovn
 
-      - name: Build dpdk
-        run: |
-          if [ ${{ needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base || 0 }} = 1 ]; then
-            make build-kube-ovn-dpdk
-          else
-            make image-kube-ovn-dpdk
-          fi
-          make tar-kube-ovn-dpdk
+      # - name: Build dpdk
+      #   run: |
+      #     if [ ${{ needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base || 0 }} = 1 ]; then
+      #       make build-kube-ovn-dpdk
+      #     else
+      #       make image-kube-ovn-dpdk
+      #     fi
+      #     make tar-kube-ovn-dpdk
 
       - name: Upload images to artifact
         uses: actions/upload-artifact@v4
@@ -316,12 +316,12 @@ jobs:
           name: kube-ovn
           path: kube-ovn.tar
 
-      - name: Upload dpdk images to artifact
-        uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
-        with:
-          name: kube-ovn-dpdk
-          path: kube-ovn-dpdk.tar
+      # - name: Upload dpdk images to artifact
+      #   uses: actions/upload-artifact@v4
+      #   if: github.event_name != 'pull_request'
+      #   with:
+      #     name: kube-ovn-dpdk
+      #     path: kube-ovn-dpdk.tar
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
