@@ -368,6 +368,18 @@ func (c *Controller) markAndCleanLSP() error {
 	// The lsp for vm pod should not be deleted if vm still exists
 	ipMap.Add(c.getVMLsps()...)
 
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list virtual ip, %v", err)
+		return err
+	}
+	vipsMap := strset.NewWithSize(len(vips))
+	for _, vip := range vips {
+		if vip.Spec.Type != "" {
+			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, util.OvnProvider)
+			vipsMap.Add(portName)
+		}
+	}
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
@@ -381,9 +393,8 @@ func (c *Controller) markAndCleanLSP() error {
 		if ipMap.Has(lsp.Name) {
 			continue
 		}
-
-		if lsp.Options != nil && lsp.Options["arp_proxy"] == "true" {
-			// arp_proxy lsp is a type of vip crd which should not gc
+		if vipsMap.Has(lsp.Name) {
+			// skip gc lsp for k8s host network vm pod or switch lb rule
 			continue
 		}
 		if !lastNoPodLSP.Has(lsp.Name) {
