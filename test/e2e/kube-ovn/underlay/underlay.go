@@ -484,7 +484,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating container " + containerName)
 		cmd := []string{"sleep", "infinity"}
 		if !f.HasIPv4() {
-			cmd = []string{"sh", "-c", fmt.Sprintf("while true; do ping6 -n -c1 -w1 %s; sleep 1; done", gatewayV6)}
+			cmd = []string{
+				"sh", "-xc",
+				"addr=$(ip addr show dev eth0 | grep -w inet6 | grep -w global | awk '{print $2}'); ip addr replace $addr dev eth0; sleep infinity",
+			}
 		}
 		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
