@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.13.9 (2025-04-18)
+
+ * [4afa60ad8](https://github.com/kubeovn/kube-ovn/commit/4afa60ad8260e7d029c6505af953e13ad667ba36) release v1.13.9
+ * [765125723](https://github.com/kubeovn/kube-ovn/commit/76512572373927573247f886527a8707db76402c) chart: fix ovs ipsec keys host path (#5137)
+ * [f614eaa40](https://github.com/kubeovn/kube-ovn/commit/f614eaa409e2a3e4d6d9ad4e4007c1d699da8246) Add Finalizer to FIP before programming FIP into the VPC NT Gateway (#5142)
+ * [c3ded819c](https://github.com/kubeovn/kube-ovn/commit/c3ded819c2fddd737abe5e01a24d50febc866b01) Support multiple IPPools in the namespace (#4777)
+ * [29aa6bee7](https://github.com/kubeovn/kube-ovn/commit/29aa6bee7d4544bb5ce97daee7711edfadbed582) fix dbus/NetworkManager connection in Talos (#5140)
+ * [588937f3d](https://github.com/kubeovn/kube-ovn/commit/588937f3daacbf0f601acbc46333d6ff52386516) bump go to 1.23.8 (#5138)
+ * [6bdf5a5e5](https://github.com/kubeovn/kube-ovn/commit/6bdf5a5e5bddb07db119703c67cc0f223cda68b5) chart: fix local bin directory host path (#5136)
+ * [51c8ad2cc](https://github.com/kubeovn/kube-ovn/commit/51c8ad2cc4075316b6fce5e9c7ec025bfcd6d747) base: update ovn patches (#5139)
+ * [8174aaf6c](https://github.com/kubeovn/kube-ovn/commit/8174aaf6c082c05993b9a460d55a5e167b430206) when dad state not ready should return err (#5129)
+ * [4d62df4e8](https://github.com/kubeovn/kube-ovn/commit/4d62df4e8336c31cde1f8ea6af6a4d5c15944a0d) prepare for next release
+
+### Contributors
+
+ * Karol Szwaj
+ * Mengxin Liu
+ * andrewlee1089
+ * changluyi
+ * 张祖建
+
 ## v1.13.8 (2025-04-06)
 
  * [caed342ae](https://github.com/kubeovn/kube-ovn/commit/caed342aeb255c0d9dda9557efd84e14b4fd2823) release v1.13.8
