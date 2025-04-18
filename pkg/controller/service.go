@@ -34,7 +34,7 @@ type updateSvcObject struct {
 	newPorts []v1.ServicePort
 }
 
-func (c *Controller) enqueueAddService(obj interface{}) {
+func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 	klog.V(3).Infof("enqueue add endpoint %s", key)
@@ -58,7 +58,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteService(obj interface{}) {
+func (c *Controller) enqueueDeleteService(obj any) {
 	svc := obj.(*v1.Service)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
@@ -102,7 +102,7 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
@@ -487,7 +487,7 @@ func (c *Controller) handleAddService(key string) error {
 
 	// compatible with IPv4 and IPv6 dual stack subnet.
 	var ingress []v1.LoadBalancerIngress
-	for _, ip := range strings.Split(loadBalancerIP, ",") {
+	for ip := range strings.SplitSeq(loadBalancerIP, ",") {
 		if ip != "" && net.ParseIP(ip) != nil {
 			ingress = append(ingress, v1.LoadBalancerIngress{IP: ip})
 		}

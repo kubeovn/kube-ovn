@@ -284,8 +284,8 @@ func OrderedDescribe(text string, body func()) bool {
 	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), ginkgo.Ordered, body)
 }
 
-var ConformanceIt func(args ...interface{}) bool = framework.ConformanceIt
+var ConformanceIt func(args ...any) bool = framework.ConformanceIt
 
-func DisruptiveIt(text string, body interface{}) bool {
+func DisruptiveIt(text string, body any) bool {
 	return framework.It(text, ginkgo.Offset(1), body, framework.WithDisruptive())
 }

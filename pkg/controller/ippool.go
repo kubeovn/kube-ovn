@@ -17,19 +17,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIPPool(obj interface{}) {
+func (c *Controller) enqueueAddIPPool(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IPPool)).String()
 	klog.V(3).Infof("enqueue add ippool %s", key)
 	c.addOrUpdateIPPoolQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
+func (c *Controller) enqueueDeleteIPPool(obj any) {
 	ippool := obj.(*kubeovnv1.IPPool)
 	klog.V(3).Infof("enqueue delete ippool %s", cache.MetaObjectToName(ippool).String())
 	c.deleteIPPoolQueue.Add(ippool)
 }
 
-func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	oldIPPool := oldObj.(*kubeovnv1.IPPool)
 	newIPPool := newObj.(*kubeovnv1.IPPool)
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||

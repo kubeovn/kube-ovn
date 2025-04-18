@@ -33,10 +33,10 @@ type SubnetList struct {
 // +genclient:nonNamespaced
 type Subnet struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   SubnetSpec   `json:"spec"`
-	Status SubnetStatus `json:"status,omitempty"`
+	Status SubnetStatus `json:"status"`
 }
 
 type SubnetSpec struct {

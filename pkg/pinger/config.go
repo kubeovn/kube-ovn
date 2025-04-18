@@ -154,7 +154,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	podName := os.Getenv("POD_NAME")
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		pod, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get self pod %s/%s: %v", config.DaemonSetNamespace, podName, err)

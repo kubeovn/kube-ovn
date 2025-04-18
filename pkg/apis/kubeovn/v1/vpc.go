@@ -38,10 +38,10 @@ type VpcList struct {
 // +genclient:nonNamespaced
 type Vpc struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VpcSpec   `json:"spec"`
-	Status VpcStatus `json:"status,omitempty"`
+	Status VpcStatus `json:"status"`
 }
 
 type VpcSpec struct {

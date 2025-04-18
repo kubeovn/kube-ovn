@@ -43,19 +43,19 @@ type AdminNetworkPolicyChangedDelta struct {
 	field     ChangedField
 }
 
-func (c *Controller) enqueueAddAnp(obj interface{}) {
+func (c *Controller) enqueueAddAnp(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1alpha1.AdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add anp %s", key)
 	c.addAnpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteAnp(obj interface{}) {
+func (c *Controller) enqueueDeleteAnp(obj any) {
 	anp := obj.(*v1alpha1.AdminNetworkPolicy)
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
 }
 
-func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	oldAnpObj := oldObj.(*v1alpha1.AdminNetworkPolicy)
 	newAnpObj := newObj.(*v1alpha1.AdminNetworkPolicy)
 
@@ -556,8 +556,8 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 					ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 
 					podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-					podIPs := strings.Split(podIPAnnotation, ",")
-					for _, podIP := range podIPs {
+					podIPs := strings.SplitSeq(podIPAnnotation, ",")
+					for podIP := range podIPs {
 						switch util.CheckProtocol(podIP) {
 						case kubeovnv1.ProtocolIPv4:
 							v4Addresses = append(v4Addresses, podIP)

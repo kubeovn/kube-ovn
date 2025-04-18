@@ -322,7 +322,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 			subCmd = "trace"
 		}
 		matchPod := fmt.Sprintf("output to %q", ovs.PodNameToPortName(pod2Name, pod2.Namespace, util.OvnProvider))
-		matchLocalnet := fmt.Sprintf("output to %q", fmt.Sprintf("localnet.%s", util.DefaultSubnet))
+		matchLocalnet := fmt.Sprintf("output to %q", "localnet."+util.DefaultSubnet)
 		checkFunc := func(output string) {
 			ginkgo.GinkgoHelper()
 			var match string
@@ -355,7 +355,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		components := [...]string{"kube-ovn", "ovn", "ovs", "linux", "all"}
 		for _, component := range components {
-			execOrDie(fmt.Sprintf("ko log %s", component))
+			execOrDie("ko log " + component)
 		}
 	})
 

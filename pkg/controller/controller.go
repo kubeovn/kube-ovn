@@ -365,10 +365,7 @@ func Run(ctx context.Context, config *Configuration) {
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 
-	numKeyLocks := runtime.NumCPU() * 2
-	if numKeyLocks < config.WorkerNum*2 {
-		numKeyLocks = config.WorkerNum * 2
-	}
+	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
 		config:             config,
 		deletingPodObjMap:  xsync.NewMapOf[string, *corev1.Pod](),
@@ -1161,7 +1158,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("ports for security group", c.syncSgPortsQueue, c.syncSgLogicalPort), time.Second, ctx.Done())
 
 	// run node worker before handle any pods
-	for i := 0; i < c.config.WorkerNum; i++ {
+	for range c.config.WorkerNum {
 		go wait.Until(runWorker("add node", c.addNodeQueue, c.handleAddNode), time.Second, ctx.Done())
 		go wait.Until(runWorker("update node", c.updateNodeQueue, c.handleUpdateNode), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete node", c.deleteNodeQueue, c.handleDeleteNode), time.Second, ctx.Done())
@@ -1201,7 +1198,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, 5*time.Second, ctx.Done())
 	}
 
-	for i := 0; i < c.config.WorkerNum; i++ {
+	for range c.config.WorkerNum {
 		go wait.Until(runWorker("delete pod", c.deletePodQueue, c.handleDeletePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update pod", c.addOrUpdatePodQueue, c.handleAddOrUpdatePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())

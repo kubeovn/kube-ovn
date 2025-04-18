@@ -109,7 +109,7 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 }
 
 // UpdateBFD update BFD
-func (c *OVNNbClient) UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateBFD(bfd *ovnnb.BFD, fields ...any) error {
 	op, err := c.ovsDbClient.Where(bfd).Update(bfd, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate bfd update operations for lrp %s with fields %v: %w", bfd.LogicalPort, fields, err)

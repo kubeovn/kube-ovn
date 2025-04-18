@@ -26,7 +26,7 @@ func NewIPRangeList(ips ...IP) (*IPRangeList, error) {
 	}
 
 	ret := &IPRangeList{make([]*IPRange, len(ips)/2)}
-	for i := 0; i < len(ips)/2; i++ {
+	for i := range len(ips) / 2 {
 		ret.ranges[i] = NewIPRange(ips[i*2], ips[i*2+1])
 	}
 	return ret, nil
@@ -197,7 +197,7 @@ func (r *IPRangeList) Equal(x *IPRangeList) bool {
 		return false
 	}
 
-	for i := 0; i < r.Len(); i++ {
+	for i := range r.Len() {
 		if !r.At(i).Start().Equal(x.At(i).Start()) || !r.At(i).End().Equal(x.At(i).End()) {
 			return false
 		}
@@ -274,7 +274,7 @@ func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
 	for i := 0; i < ret.Len()-1; i++ {
 		if ret.ranges[i].End().Add(1).Equal(ret.ranges[i+1].Start()) {
 			ret.ranges[i].end = ret.ranges[i+1].end
-			ret.ranges = append(ret.ranges[:i+1], ret.ranges[i+2:]...)
+			ret.ranges = slices.Delete(ret.ranges, i+1, i+2)
 			i--
 		}
 	}
@@ -294,7 +294,7 @@ func (r *IPRangeList) Intersect(x *IPRangeList) *IPRangeList {
 
 func (r *IPRangeList) String() string {
 	s := make([]string, 0, r.Len())
-	for i := 0; i < r.Len(); i++ {
+	for i := range r.Len() {
 		s = append(s, r.At(i).String())
 	}
 	return strings.Join(s, ",")

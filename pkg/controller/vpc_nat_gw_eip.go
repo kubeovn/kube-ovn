@@ -22,13 +22,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
+func (c *Controller) enqueueAddIptablesEip(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesEIP)).String()
 	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 	oldEip := oldObj.(*kubeovnv1.IptablesEIP)
 	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
@@ -42,7 +42,7 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
-func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
+func (c *Controller) enqueueDelIptablesEip(obj any) {
 	eip := obj.(*kubeovnv1.IptablesEIP)
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
@@ -479,7 +479,7 @@ func (c *Controller) acquireStaticEip(name, _, nicName, ip, externalSubnet strin
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse eip ip %s", ipStr)
 		}

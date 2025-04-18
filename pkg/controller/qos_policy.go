@@ -21,7 +21,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddQoSPolicy(obj interface{}) {
+func (c *Controller) enqueueAddQoSPolicy(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
 	klog.V(3).Infof("enqueue add qos policy %s", key)
 	c.addQoSPolicyQueue.Add(key)
@@ -38,7 +38,7 @@ func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandw
 	return reflect.DeepEqual(oldObj, newObj)
 }
 
-func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj any) {
 	oldQos := oldObj.(*kubeovnv1.QoSPolicy)
 	newQos := newObj.(*kubeovnv1.QoSPolicy)
 	key := cache.MetaObjectToName(newQos).String()
@@ -57,7 +57,7 @@ func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelQoSPolicy(obj interface{}) {
+func (c *Controller) enqueueDelQoSPolicy(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
 	klog.V(3).Infof("enqueue delete qos policy %s", key)
 	c.delQoSPolicyQueue.Add(key)

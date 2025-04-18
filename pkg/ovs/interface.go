@@ -14,7 +14,7 @@ import (
 )
 
 type NBGlobal interface {
-	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error
+	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) error
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
 	SetICAutoRoute(enable bool, blackList []string) error
@@ -27,7 +27,7 @@ type NBGlobal interface {
 
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
-	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error
+	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error
 	DeleteLogicalRouter(lrName string) error
 	LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error
 	GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error)
@@ -59,7 +59,7 @@ type HAChassisGroup interface {
 }
 
 type GatewayChassis interface {
-	UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...interface{}) error
+	UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error
 }
 
 type BFD interface {
@@ -70,7 +70,7 @@ type BFD interface {
 	ListDownBFDs(dstIP string) ([]ovnnb.BFD, error)
 	ListUpBFDs(dstIP string) ([]ovnnb.BFD, error)
 	FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error)
-	UpdateBFD(bfd *ovnnb.BFD, fields ...interface{}) error
+	UpdateBFD(bfd *ovnnb.BFD, fields ...any) error
 	MonitorBFD()
 }
 
@@ -181,7 +181,7 @@ type AddressSet interface {
 
 type LogicalRouterStaticRoute interface {
 	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error
-	UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error
+	UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...any) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 	DeleteLogicalRouterStaticRouteByUUID(lrName, uuid string) error
@@ -202,7 +202,7 @@ type LogicalRouterPolicy interface {
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error)
-	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...interface{}) error
+	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error
 	BatchAddLogicalRouterPolicy(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error
 	BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidList ...string) error
 	BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error
@@ -259,7 +259,7 @@ type SbClient interface {
 
 type Common interface {
 	Transact(method string, operations []ovsdb.Operation) error
-	GetEntityInfo(entity interface{}) error
+	GetEntityInfo(entity any) error
 }
 
 type Chassis interface {
@@ -269,6 +269,6 @@ type Chassis interface {
 	GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
 	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
 	UpdateChassisTag(chassisName, nodeName string) error
-	UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error
+	UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error
 	ListChassis() (*[]ovnsb.Chassis, error)
 }

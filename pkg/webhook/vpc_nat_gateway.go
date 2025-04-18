@@ -135,7 +135,7 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		snatList := ovnv1.IptablesSnatRuleList{}
 		dnatList := ovnv1.IptablesDnatRuleList{}
 
-		for _, natType := range strings.Split(eip.Status.Nat, ",") {
+		for natType := range strings.SplitSeq(eip.Status.Nat, ",") {
 			switch natType {
 			case util.FipUsingEip:
 				err = v.cache.List(ctx, &fipList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})

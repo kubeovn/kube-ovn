@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/ovn-org/libovsdb/client"
 	"k8s.io/klog/v2"
@@ -14,7 +15,7 @@ import (
 
 var ErrOneNodeMultiChassis = errors.New("OneNodeMultiChassis")
 
-func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error {
 	op, err := c.ovsDbClient.Where(chassis).Update(chassis, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate update operations for chassis: %w", err)
@@ -154,9 +155,7 @@ func (c *OVNSbClient) UpdateChassisTag(chassisName, nodeName string) error {
 	}
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
 		externalIDs := make(map[string]string, len(chassis.ExternalIDs)+2)
-		for k, v := range chassis.ExternalIDs {
-			externalIDs[k] = v
-		}
+		maps.Copy(externalIDs, chassis.ExternalIDs)
 		externalIDs["vendor"] = util.CniTypeName
 		// externalIDs["node"] = nodeName
 		// not need filter chassis by node name if we use libovsdb

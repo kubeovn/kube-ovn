@@ -21,13 +21,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddOvnFip(obj interface{}) {
+func (c *Controller) enqueueAddOvnFip(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
 	klog.Infof("enqueue add ovn fip %s", key)
 	c.addOvnFipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj any) {
 	newFip := newObj.(*kubeovnv1.OvnFip)
 	key := cache.MetaObjectToName(newFip).String()
 	if !newFip.DeletionTimestamp.IsZero() {
@@ -53,7 +53,7 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelOvnFip(obj interface{}) {
+func (c *Controller) enqueueDelOvnFip(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
 	klog.Infof("enqueue del ovn fip %s", key)
 	c.delOvnFipQueue.Add(key)

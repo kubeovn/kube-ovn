@@ -16,19 +16,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddBanp(obj interface{}) {
+func (c *Controller) enqueueAddBanp(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1alpha1.BaselineAdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add banp %s", key)
 	c.addBanpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteBanp(obj interface{}) {
+func (c *Controller) enqueueDeleteBanp(obj any) {
 	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
 	klog.V(3).Infof("enqueue delete banp %s", cache.MetaObjectToName(banp).String())
 	c.deleteBanpQueue.Add(banp)
 }
 
-func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 	oldBanp := oldObj.(*v1alpha1.BaselineAdminNetworkPolicy)
 	newBanp := newObj.(*v1alpha1.BaselineAdminNetworkPolicy)
 

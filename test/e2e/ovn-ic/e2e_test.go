@@ -360,7 +360,7 @@ func checkECMPCount(expectCount int) {
 		framework.ExpectNoError(err, "failed to switch kubectl config context to %s", clusterName)
 
 		ginkgo.By("Checking logical router route count")
-		for i := 0; i < maxRetryTimes; i++ {
+		for range maxRetryTimes {
 			time.Sleep(3 * time.Second)
 			cmd := "ovn-nbctl lr-route-list " + util.DefaultVpc
 			output, _, err := framework.NBExec(cmd)

@@ -22,10 +22,10 @@ type IptablesEIPList struct {
 // +resourceName=iptables-eips
 type IptablesEIP struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   IptablesEIPSpec   `json:"spec"`
-	Status IptablesEIPStatus `json:"status,omitempty"`
+	Status IptablesEIPStatus `json:"status"`
 }
 type IptablesEIPSpec struct {
 	V4ip           string `json:"v4ip"`

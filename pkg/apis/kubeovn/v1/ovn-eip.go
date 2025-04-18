@@ -22,10 +22,10 @@ type OvnEipList struct {
 // +resourceName=ovn-eips
 type OvnEip struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   OvnEipSpec   `json:"spec"`
-	Status OvnEipStatus `json:"status,omitempty"`
+	Status OvnEipStatus `json:"status"`
 }
 type OvnEipSpec struct {
 	ExternalSubnet string `json:"externalSubnet"`

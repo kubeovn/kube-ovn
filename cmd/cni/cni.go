@@ -29,7 +29,7 @@ func main() {
 		Add: cmdAdd,
 		Del: cmdDel,
 	}
-	about := fmt.Sprintf("CNI kube-ovn plugin %s", versions.VERSION)
+	about := "CNI kube-ovn plugin " + versions.VERSION
 	skel.PluginMainFuncs(funcs, version.All, about)
 }
 
@@ -111,7 +111,7 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 		var netMask *net.IPNet
 		var gwStr string
 		addRoutes := len(result.Routes) == 0
-		for _, cidrBlock := range strings.Split(cniResponse.CIDR, ",") {
+		for cidrBlock := range strings.SplitSeq(cniResponse.CIDR, ",") {
 			_, netMask, _ = net.ParseCIDR(cidrBlock)
 			gwStr = ""
 			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4 {
@@ -227,16 +227,16 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	if argString == "" {
 		return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", "CNI_ARGS is required")
 	}
-	args := strings.Split(argString, ";")
-	for _, arg := range args {
-		if strings.HasPrefix(arg, fmt.Sprintf("%s=", key)) {
-			value := strings.TrimPrefix(arg, fmt.Sprintf("%s=", key))
+	args := strings.SplitSeq(argString, ";")
+	for arg := range args {
+		if strings.HasPrefix(arg, key+"=") {
+			value := strings.TrimPrefix(arg, key+"=")
 			if len(value) > 0 {
 				return value, nil
 			}
 		}
 	}
-	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", fmt.Sprintf("%s is required in CNI_ARGS", key))
+	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", key+" is required in CNI_ARGS")
 }
 
 func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {

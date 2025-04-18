@@ -108,8 +108,8 @@ func checkOvsBindings() ([]string, error) {
 		return nil, err
 	}
 	result := make([]string, 0, len(strings.Split(string(output), "\n")))
-	for _, line := range strings.Split(string(output), "\n") {
-		for _, id := range strings.Split(line, " ") {
+	for line := range strings.SplitSeq(string(output), "\n") {
+		for id := range strings.SplitSeq(line, " ") {
 			if strings.Contains(id, "iface-id") {
 				result = append(result, strings.TrimPrefix(id, "iface-id="))
 				break

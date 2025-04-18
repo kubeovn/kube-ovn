@@ -63,7 +63,7 @@ func GenerateStrategicMergePatchPayload(original, modified runtime.Object) ([]by
 	return data, nil
 }
 
-func createStrategicMergePatch(originalJSON, modifiedJSON []byte, dataStruct interface{}) ([]byte, error) {
+func createStrategicMergePatch(originalJSON, modifiedJSON []byte, dataStruct any) ([]byte, error) {
 	return strategicpatch.CreateTwoWayMergePatch(originalJSON, modifiedJSON, dataStruct)
 }
 
@@ -88,6 +88,6 @@ func GenerateMergePatchPayload(original, modified runtime.Object) ([]byte, error
 	return data, nil
 }
 
-func createMergePatch(originalJSON, modifiedJSON []byte, _ interface{}) ([]byte, error) {
+func createMergePatch(originalJSON, modifiedJSON []byte, _ any) ([]byte, error) {
 	return jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
 }

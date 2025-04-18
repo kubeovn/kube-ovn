@@ -183,19 +183,19 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	return controller, nil
 }
 
-func (c *Controller) enqueueAddProviderNetwork(obj interface{}) {
+func (c *Controller) enqueueAddProviderNetwork(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue add provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateProviderNetwork(_, newObj interface{}) {
+func (c *Controller) enqueueUpdateProviderNetwork(_, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue update provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteProviderNetwork(obj interface{}) {
+func (c *Controller) enqueueDeleteProviderNetwork(obj any) {
 	pn := obj.(*kubeovnv1.ProviderNetwork)
 	key := cache.MetaObjectToName(pn).String()
 	klog.V(3).Infof("enqueue delete provider network %s", key)
@@ -340,7 +340,7 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	if c.localPodName == "" {
 		pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{
 			LabelSelector: "app=kube-ovn-cni",
-			FieldSelector: fmt.Sprintf("spec.nodeName=%s", c.config.NodeName),
+			FieldSelector: "spec.nodeName=" + c.config.NodeName,
 		})
 		if err != nil {
 			klog.Errorf("failed to list pod: %v", err)
@@ -423,7 +423,7 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 	return nil
 }
 
-func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	oldVlan := oldObj.(*kubeovnv1.Vlan)
 	newVlan := newObj.(*kubeovnv1.Vlan)
 	if oldVlan.Spec.ID != newVlan.Spec.ID {
@@ -433,22 +433,22 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
 }
 
 type subnetEvent struct {
-	oldObj, newObj interface{}
+	oldObj, newObj any
 }
 
 type serviceEvent struct {
-	oldObj, newObj interface{}
+	oldObj, newObj any
 }
 
-func (c *Controller) enqueueAddSubnet(obj interface{}) {
+func (c *Controller) enqueueAddSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
 
-func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	c.subnetQueue.Add(&subnetEvent{oldObj: oldObj, newObj: newObj})
 }
 
-func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
+func (c *Controller) enqueueDeleteSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{oldObj: obj})
 }
 
@@ -457,15 +457,15 @@ func (c *Controller) runSubnetWorker() {
 	}
 }
 
-func (c *Controller) enqueueAddService(obj interface{}) {
+func (c *Controller) enqueueAddService(obj any) {
 	c.serviceQueue.Add(&serviceEvent{newObj: obj})
 }
 
-func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	c.serviceQueue.Add(&serviceEvent{oldObj: oldObj, newObj: newObj})
 }
 
-func (c *Controller) enqueueDeleteService(obj interface{}) {
+func (c *Controller) enqueueDeleteService(obj any) {
 	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
 }
 
@@ -518,7 +518,7 @@ func (c *Controller) processNextServiceWorkItem() bool {
 	return true
 }
 
-func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
+func (c *Controller) enqueuePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	key := cache.MetaObjectToName(newPod).String()

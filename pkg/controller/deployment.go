@@ -29,7 +29,7 @@ func init() {
 	vpcEgressGatewayKind = gvk.Kind
 }
 
-func (c *Controller) enqueueAddDeployment(obj interface{}) {
+func (c *Controller) enqueueAddDeployment(obj any) {
 	deploy := obj.(*appsv1.Deployment)
 	for _, ref := range deploy.OwnerReferences {
 		if ref.APIVersion == vpcEgressGatewayGroupVersion && ref.Kind == vpcEgressGatewayKind {
@@ -41,6 +41,6 @@ func (c *Controller) enqueueAddDeployment(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateDeployment(_, newObj interface{}) {
+func (c *Controller) enqueueUpdateDeployment(_, newObj any) {
 	c.enqueueAddDeployment(newObj)
 }

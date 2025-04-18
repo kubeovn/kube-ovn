@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -75,7 +76,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		newArgs := modifyDs.Spec.Template.Spec.Containers[0].Args
 		for index, arg := range newArgs {
 			if arg == "--enable-tproxy=false" {
-				newArgs = append(newArgs[:index], newArgs[index+1:]...)
+				newArgs = slices.Delete(newArgs, index, index+1)
 			}
 		}
 		newArgs = append(newArgs, "--enable-tproxy=true")

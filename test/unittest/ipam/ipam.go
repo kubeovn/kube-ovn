@@ -373,13 +373,13 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 		ginkgo.Context("[DualStack]", func() {
 			ginkgo.It("invalid subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.1.1/64,%s", ipv6CIDR), dualGw, nil)
+				err := im.AddOrUpdateSubnet(subnetName, "1.1.1.1/64,"+ipv6CIDR, dualGw, nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.256.1/24,%s", ipv6CIDR), dualGw, nil)
+				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1/24,"+ipv6CIDR, dualGw, nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::/130", ipv4CIDR), dualGw, nil)
+				err = im.AddOrUpdateSubnet(subnetName, ipv4CIDR+",fd00::/130", dualGw, nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::g/120", ipv4CIDR), dualGw, nil)
+				err = im.AddOrUpdateSubnet(subnetName, ipv4CIDR+",fd00::g/120", dualGw, nil)
 				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrInvalidCIDR))
 			})
 

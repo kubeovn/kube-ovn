@@ -94,19 +94,19 @@ func (c *Controller) resyncVpcNatGwConfig() {
 	klog.Info("finish establishing vpc-nat-gateway")
 }
 
-func (c *Controller) enqueueAddVpcNatGw(obj interface{}) {
+func (c *Controller) enqueueAddVpcNatGw(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcNatGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcNatGw(_, newObj interface{}) {
+func (c *Controller) enqueueUpdateVpcNatGw(_, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcNatGateway)).String()
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteVpcNatGw(obj interface{}) {
+func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcNatGateway)).String()
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
@@ -487,7 +487,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err error) {
 	operation := getIptablesVersion
-	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
+	cmd := "bash /kube-ovn/nat-gateway.sh " + operation
 	klog.V(3).Info(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
@@ -694,9 +694,9 @@ func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespac
 	if !strings.ContainsRune(dst, '/') {
 		switch protocol {
 		case kubeovnv1.ProtocolIPv4:
-			dst = fmt.Sprintf("%s/32", dst)
+			dst += "/32"
 		case kubeovnv1.ProtocolIPv6:
-			dst = fmt.Sprintf("%s/128", dst)
+			dst += "/128"
 		}
 	}
 
@@ -713,7 +713,7 @@ func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespac
 	}
 
 	// Craft the route to reach the API from the subnet we've just retrieved
-	for _, gw := range strings.Split(apiSubnet.Spec.Gateway, ",") {
+	for gw := range strings.SplitSeq(apiSubnet.Spec.Gateway, ",") {
 		if util.CheckProtocol(gw) == protocol {
 			routes := []request.Route{{Destination: dst, Gateway: gw}}
 			buf, err := json.Marshal(routes)
@@ -764,9 +764,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
-	for key, value := range podAnnotations {
-		annotations[key] = value
-	}
+	maps.Copy(annotations, podAnnotations)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -895,11 +893,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		speakerParams := gw.Spec.BgpSpeaker
 
 		if speakerParams.RouterID != "" { // Override default auto-selected RouterID
-			args = append(args, fmt.Sprintf("--router-id=%s", speakerParams.RouterID))
+			args = append(args, "--router-id="+speakerParams.RouterID)
 		}
 
 		if speakerParams.Password != "" { // Password for TCP MD5 BGP
-			args = append(args, fmt.Sprintf("--auth-password=%s", speakerParams.Password))
+			args = append(args, "--auth-password="+speakerParams.Password)
 		}
 
 		if speakerParams.EnableGracefulRestart { // Enable graceful restart
@@ -907,7 +905,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 
 		if speakerParams.HoldTime != (metav1.Duration{}) { // Hold time
-			args = append(args, fmt.Sprintf("--holdtime=%s", speakerParams.HoldTime.Duration.String()))
+			args = append(args, "--holdtime="+speakerParams.HoldTime.Duration.String())
 		}
 
 		if speakerParams.ASN == 0 { // The ASN we use to speak
@@ -940,8 +938,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 		argNeighIPv4 := strings.Join(neighIPv4, ",")
 		argNeighIPv6 := strings.Join(neighIPv6, ",")
-		argNeighIPv4 = fmt.Sprintf("--neighbor-address=%s", argNeighIPv4)
-		argNeighIPv6 = fmt.Sprintf("--neighbor-ipv6-address=%s", argNeighIPv6)
+		argNeighIPv4 = "--neighbor-address=" + argNeighIPv4
+		argNeighIPv6 = "--neighbor-ipv6-address=" + argNeighIPv6
 
 		if len(neighIPv4) > 0 {
 			args = append(args, argNeighIPv4)

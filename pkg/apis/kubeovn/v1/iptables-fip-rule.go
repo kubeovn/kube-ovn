@@ -22,10 +22,10 @@ type IptablesFIPRuleList struct {
 // +resourceName=iptables-fip-rules
 type IptablesFIPRule struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   IptablesFIPRuleSpec   `json:"spec"`
-	Status IptablesFIPRuleStatus `json:"status,omitempty"`
+	Status IptablesFIPRuleStatus `json:"status"`
 }
 type IptablesFIPRuleSpec struct {
 	EIP        string `json:"eip"`

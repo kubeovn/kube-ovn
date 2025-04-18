@@ -257,7 +257,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			framework.ExpectTrue(found[i], "Route for cidr "+cidr+" not found on "+util.NodeNic)
 		}
 
-		for _, cidr := range strings.Split(join.Spec.CIDRBlock, ",") {
+		for cidr := range strings.SplitSeq(join.Spec.CIDRBlock, ",") {
 			ginkgo.By("Deleting route for " + cidr + " on node " + node.Name)
 			err = iproute.RouteDel("", cidr, execFunc)
 			framework.ExpectNoError(err)

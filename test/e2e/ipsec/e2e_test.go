@@ -43,7 +43,7 @@ func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
 	framework.ExpectNoError(err)
 
 	var count int
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if line == fmt.Sprintf("src %s dst %s", node1IP, node2IP) {
 			count++
 		}

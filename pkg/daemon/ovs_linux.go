@@ -56,12 +56,12 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
 		"set", "interface", hostNicName,
 		"type=dpdkvhostuserclient",
-		fmt.Sprintf("options:vhost-server-path=%s", vhostServerPath),
-		fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
-		fmt.Sprintf("external_ids:pod_name=%s", podName),
-		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", ipStr),
-		fmt.Sprintf("external_ids:pod_netns=%s", netns))
+		"options:vhost-server-path="+vhostServerPath,
+		"external_ids:iface-id="+ifaceID,
+		"external_ids:pod_name="+podName,
+		"external_ids:pod_namespace="+podNamespace,
+		"external_ids:ip="+ipStr,
+		"external_ids:pod_netns="+netns)
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 	}
@@ -104,24 +104,24 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			"set", "interface", hostNicName, "type=dpdk",
 			fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", pfPci, vfID),
 			fmt.Sprintf("mtu_request=%d", mtu),
-			fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
-			fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
-			fmt.Sprintf("external_ids:pod_name=%s", podName),
-			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-			fmt.Sprintf("external_ids:ip=%s", ipStr),
-			fmt.Sprintf("external_ids:pod_netns=%s", netns))
+			"external_ids:iface-id="+ifaceID,
+			"external_ids:vendor="+util.CniTypeName,
+			"external_ids:pod_name="+podName,
+			"external_ids:pod_namespace="+podNamespace,
+			"external_ids:ip="+ipStr,
+			"external_ids:pod_netns="+netns)
 		if err != nil {
 			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		}
 	} else {
 		// Add veth pair host end to ovs port
 		output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
-			fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
-			fmt.Sprintf("external_ids:pod_name=%s", podName),
-			fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-			fmt.Sprintf("external_ids:ip=%s", ipStr),
-			fmt.Sprintf("external_ids:pod_netns=%s", netns))
+			"set", "interface", hostNicName, "external_ids:iface-id="+ifaceID,
+			"external_ids:vendor="+util.CniTypeName,
+			"external_ids:pod_name="+podName,
+			"external_ids:pod_namespace="+podNamespace,
+			"external_ids:ip="+ipStr,
+			"external_ids:pod_netns="+netns)
 		if err != nil {
 			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		}
@@ -352,7 +352,7 @@ func (csh cniServerHandler) rollbackOvsPort(hostNicName, containerNicName, nicTy
 
 func generateNicName(containerID, ifname string) (string, string) {
 	if ifname == "eth0" {
-		return fmt.Sprintf("%s_h", containerID[0:12]), fmt.Sprintf("%s_c", containerID[0:12])
+		return containerID[0:12] + "_h", containerID[0:12] + "_c"
 	}
 	// The nic name is 14 length and have prefix pod in the Kubevirt v1.0.0
 	if strings.HasPrefix(ifname, "pod") && len(ifname) == 14 {
@@ -438,7 +438,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				containerGw = u2oInterconnectionIP
 			}
 
-			for _, gw := range strings.Split(containerGw, ",") {
+			for gw := range strings.SplitSeq(containerGw, ",") {
 				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
@@ -605,8 +605,8 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	ipStr := util.GetIPWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
-		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
-		fmt.Sprintf("external_ids:ip=%s", ipStr))
+		"set", "interface", util.NodeNic, "external_ids:iface-id="+portName,
+		"external_ids:ip="+ipStr)
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
 		return errors.New(raw)
@@ -634,7 +634,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	}
 
 	var toAdd []netlink.Route
-	for _, c := range strings.Split(joinCIDR, ",") {
+	for c := range strings.SplitSeq(joinCIDR, ",") {
 		found := false
 		for _, r := range nodeNicRoutes {
 			if r.Dst.String() == c {
@@ -647,7 +647,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 			var src net.IP
 			var priority int
 			if protocol == kubeovnv1.ProtocolIPv4 {
-				for _, ip := range strings.Split(ipStr, ",") {
+				for ip := range strings.SplitSeq(ipStr, ",") {
 					if util.CheckProtocol(ip) == protocol {
 						src = net.ParseIP(ip)
 						break
@@ -839,9 +839,9 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	ipStr := util.GetIPWithoutMask(ip)
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeGwNic, "--",
 		"set", "interface", util.NodeGwNic, "type=internal", "--",
-		"set", "interface", util.NodeGwNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
-		fmt.Sprintf("external_ids:ip=%s", ipStr),
-		fmt.Sprintf("external_ids:pod_netns=%s", util.NodeGwNsPath))
+		"set", "interface", util.NodeGwNic, "external_ids:iface-id="+portName,
+		"external_ids:ip="+ipStr,
+		"external_ids:pod_netns="+util.NodeGwNsPath)
 	if err != nil {
 		klog.Errorf("failed to configure node external nic %s: %v, %q", portName, err, output)
 		return errors.New(output)
@@ -1193,7 +1193,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 		}
 	}
 
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		// Do not reassign same address for link
 		if _, ok := ipDelMap[ipStr]; ok {
 			delete(ipDelMap, ipStr)
@@ -1746,12 +1746,12 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	// Add container iface to ovs port as internal port
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", containerNicName, "--",
 		"set", "interface", containerNicName, "type=internal", "--",
-		"set", "interface", containerNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
-		fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
-		fmt.Sprintf("external_ids:pod_name=%s", podName),
-		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", ipStr),
-		fmt.Sprintf("external_ids:pod_netns=%s", netns))
+		"set", "interface", containerNicName, "external_ids:iface-id="+ifaceID,
+		"external_ids:vendor="+util.CniTypeName,
+		"external_ids:pod_name="+podName,
+		"external_ids:pod_namespace="+podNamespace,
+		"external_ids:ip="+ipStr,
+		"external_ids:pod_netns="+netns)
 	if err != nil {
 		err := fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		klog.Error(err)
@@ -1845,7 +1845,7 @@ func configureAdditionalNic(link, ip string) error {
 		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		// Do not reassign same address for link
 		if _, ok := ipDelMap[ipStr]; ok {
 			delete(ipDelMap, ipStr)

@@ -246,7 +246,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 
 		t.Run("with options", func(t *testing.T) {
 			lsName := "test-update-v6-dhcp-opt-ls-with-opt"
-			options := fmt.Sprintf("server_id=%s", "00:00:00:55:22:33")
+			options := "server_id=" + "00:00:00:55:22:33"
 			uuid, err := nbClient.updateDHCPv6Options(lsName, cidr, options)
 			require.NoError(t, err)
 
@@ -286,7 +286,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
-		options := fmt.Sprintf("server_id=%s", "00:00:00:55:22:33")
+		options := "server_id=" + "00:00:00:55:22:33"
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 

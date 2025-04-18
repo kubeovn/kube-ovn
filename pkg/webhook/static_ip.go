@@ -172,7 +172,7 @@ func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map
 
 func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipList []ovnv1.IP) error {
 	var ipAddr net.IP
-	for _, ip := range strings.Split(ipAddress, ",") {
+	for ip := range strings.SplitSeq(ipAddress, ",") {
 		if strings.Contains(ip, "/") {
 			ipAddr, _, _ = net.ParseCIDR(ip)
 		} else {

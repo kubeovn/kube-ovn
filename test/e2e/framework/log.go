@@ -27,18 +27,18 @@ func nowStamp() string {
 	return time.Now().Format(time.StampMilli)
 }
 
-func log(level, format string, args ...interface{}) {
+func log(level, format string, args ...any) {
 	fmt.Fprintf(ginkgo.GinkgoWriter, nowStamp()+": "+level+": "+format+"\n", args...)
 }
 
 // Logf logs the info.
-func Logf(format string, args ...interface{}) {
+func Logf(format string, args ...any) {
 	log("INFO", format, args...)
 }
 
 // Failf logs the fail info, including a stack trace starts with its direct caller
 // (for example, for call chain f -> g -> Failf("foo", ...) error would be logged for "g").
-func Failf(format string, args ...interface{}) {
+func Failf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	skip := 1
 	log("FAIL", "%s\n\nFull Stack Trace\n%s", msg, PrunedStack(skip))
@@ -87,7 +87,7 @@ func PrunedStack(skip int) []byte {
 		stack = stack[2*skip:]
 	}
 	n := 0
-	for i := 0; i < len(stack)/2; i++ {
+	for i := range len(stack) / 2 {
 		// We filter out based on the source code file name.
 		if !codeFilterRE.Match(stack[i*2+1]) {
 			stack[n] = stack[i*2]

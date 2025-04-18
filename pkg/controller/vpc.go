@@ -28,7 +28,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVpc(obj interface{}) {
+func (c *Controller) enqueueAddVpc(obj any) {
 	vpc := obj.(*kubeovnv1.Vpc)
 	key := cache.MetaObjectToName(vpc).String()
 	if _, ok := vpc.Labels[util.VpcExternalLabel]; !ok {
@@ -47,7 +47,7 @@ func vpcBFDPortChanged(oldObj, newObj *kubeovnv1.BFDPort) bool {
 	return oldObj.Enabled != newObj.Enabled || oldObj.IP != newObj.IP || !reflect.DeepEqual(oldObj.NodeSelector, newObj.NodeSelector)
 }
 
-func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 	oldVpc := oldObj.(*kubeovnv1.Vpc)
 	newVpc := newObj.(*kubeovnv1.Vpc)
 
@@ -75,7 +75,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelVpc(obj interface{}) {
+func (c *Controller) enqueueDelVpc(obj any) {
 	vpc := obj.(*kubeovnv1.Vpc)
 	if _, ok := vpc.Labels[util.VpcExternalLabel]; !vpc.Status.Default || !ok {
 		klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
@@ -1090,7 +1090,7 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 			}
 		} else {
 			// ecmp policy route may reroute to multiple next hop ips
-			for _, ipStr := range strings.Split(route.NextHopIP, ",") {
+			for ipStr := range strings.SplitSeq(route.NextHopIP, ",") {
 				if ip := net.ParseIP(ipStr); ip == nil {
 					err := fmt.Errorf("invalid next hop ips: %s", route.NextHopIP)
 					klog.Error(err)

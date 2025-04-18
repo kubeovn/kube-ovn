@@ -25,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIP(obj interface{}) {
+func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
@@ -42,7 +42,7 @@ func (c *Controller) enqueueAddIP(obj interface{}) {
 	c.addIPQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	oldIP := oldObj.(*kubeovnv1.IP)
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
@@ -89,7 +89,7 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelIP(obj interface{}) {
+func (c *Controller) enqueueDelIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
@@ -348,7 +348,7 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
 		}

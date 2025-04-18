@@ -204,7 +204,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	}()
 
 	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	for i := 0; i < probeNum; i++ {
+	for i := range probeNum {
 		time.Sleep(durations[i])
 
 		select {
@@ -272,7 +272,7 @@ func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, a
 	}
 
 	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	for i := 0; i < announceNum; i++ {
+	for i := range announceNum {
 		c := time.NewTimer(announceInterval)
 		if err = client.SetDeadline(time.Now().Add(announceInterval)); err != nil {
 			klog.Error(err)

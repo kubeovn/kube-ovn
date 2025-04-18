@@ -35,7 +35,7 @@ func InitOVSBridges() (map[string]string, error) {
 		}
 
 		if output != "" {
-			for _, port := range strings.Split(output, "\n") {
+			for port := range strings.SplitSeq(output, "\n") {
 				ok, err := ovs.ValidatePortVendor(port)
 				if err != nil {
 					return nil, fmt.Errorf("failed to check vendor of port %s: %w", port, err)
@@ -174,7 +174,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 
 		// remove host nic from the external bridge
 		if output != "" {
-			for _, port := range strings.Split(output, "\n") {
+			for port := range strings.SplitSeq(output, "\n") {
 				// patch port created by ovn-controller has an external ID ovn-localnet-port=localnet.<SUBNET>
 				if output, err = ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`); err != nil {
 					klog.Errorf("failed to find ovs port %s, %v: %q", port, err, output)

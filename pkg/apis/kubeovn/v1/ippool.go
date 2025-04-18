@@ -24,10 +24,10 @@ type IPPoolList struct {
 // +genclient:nonNamespaced
 type IPPool struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   IPPoolSpec   `json:"spec"`
-	Status IPPoolStatus `json:"status,omitempty"`
+	Status IPPoolStatus `json:"status"`
 }
 
 type IPPoolSpec struct {

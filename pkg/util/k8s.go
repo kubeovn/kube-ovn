@@ -56,7 +56,7 @@ func DialTCP(host string, timeout time.Duration, verbose bool) error {
 
 func DialAPIServer(host string, interval time.Duration, retry int) error {
 	timer := time.NewTimer(interval)
-	for i := 0; i < retry; i++ {
+	for range retry {
 		err := DialTCP(host, interval, true)
 		if err == nil {
 			return nil

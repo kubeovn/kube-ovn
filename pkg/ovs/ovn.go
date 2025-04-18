@@ -174,7 +174,7 @@ func ConstructWaitForNameNotExistsOperation(name, table string) ovsdb.Operation 
 	return ConstructWaitForUniqueOperation(table, "name", name)
 }
 
-func ConstructWaitForUniqueOperation(table, column string, value interface{}) ovsdb.Operation {
+func ConstructWaitForUniqueOperation(table, column string, value any) ovsdb.Operation {
 	timeout := OVSDBWaitTimeout
 	return ovsdb.Operation{
 		Op:      ovsdb.OperationWait,
@@ -235,7 +235,7 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 // GetEntityInfo get entity info by column which is the index,
 // reference to ovn-nb.ovsschema(ovsdb-client get-schema unix:/var/run/ovn/ovnnb_db.sock OVN_Northbound) for more information,
 // UUID is index
-func (c *ovsDbClient) GetEntityInfo(entity interface{}) error {
+func (c *ovsDbClient) GetEntityInfo(entity any) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 

@@ -31,7 +31,7 @@ const (
 )
 
 func genLbSvcDpName(name string) string {
-	return fmt.Sprintf("lb-svc-%s", name)
+	return "lb-svc-" + name
 }
 
 func getAttachNetworkProvider(svc *corev1.Service) string {

@@ -125,7 +125,7 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 }
 
 // UpdateLogicalRouterStaticRoute update logical router static route
-func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...any) error {
 	if route == nil {
 		return errors.New("route is nil")
 	}

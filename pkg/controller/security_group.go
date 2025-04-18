@@ -24,13 +24,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddSg(obj interface{}) {
+func (c *Controller) enqueueAddSg(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.SecurityGroup)).String()
 	klog.V(3).Infof("enqueue add securityGroup %s", key)
 	c.addOrUpdateSgQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSg(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateSg(oldObj, newObj any) {
 	oldSg := oldObj.(*kubeovnv1.SecurityGroup)
 	newSg := newObj.(*kubeovnv1.SecurityGroup)
 	if !reflect.DeepEqual(oldSg.Spec, newSg.Spec) {
@@ -40,7 +40,7 @@ func (c *Controller) enqueueUpdateSg(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteSg(obj interface{}) {
+func (c *Controller) enqueueDeleteSg(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.SecurityGroup)).String()
 	klog.V(3).Infof("enqueue delete securityGroup %s", key)
 	c.delSgQueue.Add(key)
@@ -320,7 +320,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
-	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{fmt.Sprintf("associated_sg_%s", key): "true"}, nil)
+	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
@@ -415,7 +415,7 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 			needAssociated = "true"
 		}
 
-		if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{fmt.Sprintf("associated_sg_%s", sgName): needAssociated}); err != nil {
+		if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{"associated_sg_" + sgName: needAssociated}); err != nil {
 			klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 			return err
 		}

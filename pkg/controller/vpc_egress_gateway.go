@@ -30,19 +30,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVpcEgressGateway(obj interface{}) {
+func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj interface{}) {
+func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteVpcEgressGateway(obj interface{}) {
+func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)

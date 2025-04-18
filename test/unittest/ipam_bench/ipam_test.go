@@ -162,7 +162,7 @@ func BenchmarkPerformanceIPAMRandomIPv4AllocAddr(b *testing.B) {
 }
 
 func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		if !addIPAMSubnet(b, im, n, protocol) {
 			b.Errorf("ERROR: add %s subnet with index %d", protocol, n)
 			return
@@ -171,7 +171,7 @@ func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 }
 
 func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		delIPAMSubnet(im, n)
 	}
 }
@@ -183,7 +183,7 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 		return
 	}
 
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
 		if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
@@ -203,7 +203,7 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeT
 	step := 10000
 	ipSet := getDefaultSubnetRandomIps(b, protocol, b.N)
 	startTime := time.Now().Unix()
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
 		ip, ok := ipSet.Pop()
@@ -227,7 +227,7 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeT
 func delPodAddressCapacity(b *testing.B, im *ipam.IPAM, isTimeTrace bool) {
 	step := 10000
 	startTime := time.Now().Unix()
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		if isTimeTrace && (n+1)%step == 0 {
 			currentTime := time.Now().Unix()
@@ -285,12 +285,12 @@ func benchmarkAddDelSubnetParallel(b *testing.B, subnetNumber int, protocol stri
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			for n := 0; n < subnetNumber; n++ {
+			for n := range subnetNumber {
 				if !addIPAMSubnet(b, im, n, protocol) {
 					return
 				}
 			}
-			for n := 0; n < subnetNumber; n++ {
+			for n := range subnetNumber {
 				delIPAMSubnet(im, n)
 			}
 		}
@@ -309,7 +309,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 		for pb.Next() {
 			key := getRandomInt()
 			ipSet := getDefaultSubnetRandomIps(b, protocol, podNumber)
-			for n := 0; n < podNumber; n++ {
+			for n := range podNumber {
 				podName := fmt.Sprintf("pod%d_%d", key, n)
 				nicName := fmt.Sprintf("nic%d_%d", key, n)
 				if key%2 == 1 {
@@ -330,7 +330,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 					}
 				}
 			}
-			for n := 0; n < podNumber; n++ {
+			for n := range podNumber {
 				podName := fmt.Sprintf("pod%d_%d", key, n)
 				im.ReleaseAddressByPod(podName, "")
 			}

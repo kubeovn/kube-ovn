@@ -258,7 +258,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		if f.HasIPv4() {
 			underlayCidr = append(underlayCidr, cidrV4)
 			gateway = append(gateway, gatewayV4)
-			for index := 0; index < 5; index++ {
+			for index := range 5 {
 				startIP := strings.Split(cidrV4, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv4s = append(metallbVIPv4s, ip.Add(100+int64(index)).String())
@@ -268,7 +268,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		if f.HasIPv6() {
 			underlayCidr = append(underlayCidr, cidrV6)
 			gateway = append(gateway, gatewayV6)
-			for index := 0; index < 5; index++ {
+			for index := range 5 {
 				startIP := strings.Split(cidrV6, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv6s = append(metallbVIPv6s, ip.Add(100+int64(index)).String())
@@ -383,7 +383,7 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	backendPodName := strings.TrimSpace(string(output))
 	framework.Logf("Packet reached backend: %s", backendPodName)
 
-	cmd = strings.Fields(fmt.Sprintf("ip neigh show %s", targetIP))
+	cmd = strings.Fields("ip neigh show " + targetIP)
 	output, _, err = docker.Exec(containerID, nil, cmd...)
 	framework.ExpectNoError(err)
 	framework.Logf("ip neigh: %s", string(output))

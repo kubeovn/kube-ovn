@@ -110,7 +110,7 @@ func (c *OVNNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, 
 }
 
 // UpdateLoadBalancerHealthCheck update lb
-func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHealthCheck, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHealthCheck, fields ...any) error {
 	var (
 		op  []ovsdb.Operation
 		err error

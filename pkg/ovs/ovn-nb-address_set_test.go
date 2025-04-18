@@ -206,7 +206,7 @@ func (suite *OvnClientTestSuite) testDeleteAddressSets() {
 	asPrefix := "test_del_ass"
 	externalIDs := map[string]string{sgKey: pgName}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		asName := fmt.Sprintf("%s_%d", asPrefix, i)
 		err := nbClient.CreateAddressSet(asName, externalIDs)
 		require.NoError(t, err)

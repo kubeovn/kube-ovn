@@ -151,7 +151,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 
 func (c *Controller) getServicesCIDR(protocol string) []string {
 	ret := make([]string, 0)
-	for _, cidr := range strings.Split(c.config.ServiceClusterIPRange, ",") {
+	for cidr := range strings.SplitSeq(c.config.ServiceClusterIPRange, ",") {
 		if util.CheckProtocol(cidr) == protocol {
 			ret = append(ret, cidr)
 		}
@@ -208,7 +208,7 @@ func getCidrByProtocol(cidr, protocol string) (string, error) {
 		return "", err
 	}
 
-	for _, cidr := range strings.Split(cidr, ",") {
+	for cidr := range strings.SplitSeq(cidr, ",") {
 		if util.CheckProtocol(cidr) == protocol {
 			return cidr, nil
 		}
@@ -235,8 +235,8 @@ func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, e
 		}
 
 		// only check format like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3'
-		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+		for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+			for gw := range strings.SplitSeq(subnet.Spec.GatewayNode, ",") {
 				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
 					if subnet.Spec.EnableEcmp {
 						subnetsNatIP[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])

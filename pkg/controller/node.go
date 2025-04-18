@@ -34,7 +34,7 @@ func (e *ErrChassisNotFound) Error() string {
 	return fmt.Sprintf("chassis %s not found for node %s", e.Chassis, e.Node)
 }
 
-func (c *Controller) enqueueAddNode(obj interface{}) {
+func (c *Controller) enqueueAddNode(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1.Node)).String()
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
@@ -53,7 +53,7 @@ func nodeReady(node *v1.Node) bool {
 	return ready && !networkUnavailable
 }
 
-func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 
@@ -70,7 +70,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteNode(obj interface{}) {
+func (c *Controller) enqueueDeleteNode(obj any) {
 	node := obj.(*v1.Node)
 	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue delete node %s", key)
@@ -153,7 +153,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	for _, ip := range strings.Split(ipStr, ",") {
+	for ip := range strings.SplitSeq(ipStr, ",") {
 		if ip == "" {
 			continue
 		}
@@ -561,7 +561,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 			continue
 		}
 
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 			nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
 			if err != nil {
 				klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
@@ -569,7 +569,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 			}
 			for _, node := range nodes {
 				ipStr := node.Annotations[util.IPAddressAnnotation]
-				for _, ip := range strings.Split(ipStr, ",") {
+				for ip := range strings.SplitSeq(ipStr, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
 						continue
 					}
@@ -825,8 +825,8 @@ func (c *Controller) addNodeGatewayStaticRoute() error {
 		}
 	}
 	dstCidr := "0.0.0.0/0,::/0"
-	for _, cidrBlock := range strings.Split(dstCidr, ",") {
-		for _, nextHop := range strings.Split(c.config.NodeSwitchGateway, ",") {
+	for cidrBlock := range strings.SplitSeq(dstCidr, ",") {
+		for nextHop := range strings.SplitSeq(c.config.NodeSwitchGateway, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
@@ -905,7 +905,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			if subnet.Spec.EnableEcmp {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
@@ -965,8 +965,8 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 				continue
 			}
 
-			for _, nextHop := range strings.Split(nodeIP, ",") {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			for nextHop := range strings.SplitSeq(nodeIP, ",") {
+				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 						continue
 					}

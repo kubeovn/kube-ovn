@@ -22,13 +22,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddCsr(obj interface{}) {
+func (c *Controller) enqueueAddCsr(obj any) {
 	key := cache.MetaObjectToName(obj.(*csrv1.CertificateSigningRequest)).String()
 	klog.V(3).Infof("enqueue add csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateCsr(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
 	oldCsr := oldObj.(*csrv1.CertificateSigningRequest)
 	newCsr := newObj.(*csrv1.CertificateSigningRequest)
 	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
