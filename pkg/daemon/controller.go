@@ -306,6 +306,13 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 			klog.Errorf("failed to get vlan %q: %v", vlanName, err)
 			return err
 		}
+		if c.config.EnableCheckVlanConflict && c.config.IfaceVlanID > 0 && vlan.Spec.ID == c.config.IfaceVlanID {
+			err = fmt.Errorf("vlan %d is already used by tunnel interface on node %s", vlan.Spec.ID, node.Name)
+			klog.Error(err)
+			c.recordProviderNetworkErr(pn.Name, err.Error())
+			// tunnel interface using, so ovs can not use this vlan
+			return err
+		}
 		vlans.Add(strconv.Itoa(vlan.Spec.ID))
 	}
 	// always add trunk 0 so that the ovs bridge can communicate with the external network
@@ -669,6 +676,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		if err := c.StopAndClearIPSecResouce(); err != nil {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
+	}
+
+	if c.config.EnableCheckVlanConflict {
+		if err := c.patchNodeTunnelVlanLabel(); err != nil {
+			util.LogFatalAndExit(err, "failed to patch node tunnel vlan label")
+		}
+		go wait.Until(c.loopCheckVlanConflict, 60*time.Second, stopCh)
 	}
 
 	<-stopCh
