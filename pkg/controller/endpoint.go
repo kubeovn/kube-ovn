@@ -17,13 +17,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddEndpoint(obj interface{}) {
+func (c *Controller) enqueueAddEndpoint(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1.Endpoints)).String()
 	klog.V(3).Infof("enqueue add endpoint %s", key)
 	c.addOrUpdateEndpointQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj any) {
 	oldEp := oldObj.(*v1.Endpoints)
 	newEp := newObj.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {

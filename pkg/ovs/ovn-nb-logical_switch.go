@@ -42,7 +42,7 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 			Name:     lrpName,
 			Networks: strings.Split(networks, ","),
 		}
-		fields := []interface{}{&lrp.Networks}
+		fields := []any{&lrp.Networks}
 		if gatewayMAC != "" {
 			lrp.MAC = gatewayMAC
 			fields = append(fields, &lrp.MAC)

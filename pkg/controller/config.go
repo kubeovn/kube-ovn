@@ -325,7 +325,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}
 
-	for _, ip := range strings.Split(*argNodeLocalDNSIP, ",") {
+	for ip := range strings.SplitSeq(*argNodeLocalDNSIP, ",") {
 		if err := util.CheckNodeDNSIP(ip); err != nil {
 			klog.Error(err)
 			return nil, err

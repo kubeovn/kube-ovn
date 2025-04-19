@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"sort"
@@ -61,7 +62,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 }
 
 // UpdateLoadBalancer update load balancer
-func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -215,9 +216,7 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	}
 
 	options = make(map[string]string, len(lb.Options)+1)
-	for k, v := range lb.Options {
-		options[k] = v
-	}
+	maps.Copy(options, lb.Options)
 	options["affinity_timeout"] = value
 
 	lb.Options = options
@@ -252,9 +251,7 @@ func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLoc
 	}
 
 	options = make(map[string]string, len(lb.Options)+1)
-	for k, v := range lb.Options {
-		options[k] = v
-	}
+	maps.Copy(options, lb.Options)
 	options["prefer_local_backend"] = value
 
 	lb.Options = options

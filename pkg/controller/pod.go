@@ -184,7 +184,7 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 	return true
 }
 
-func (c *Controller) enqueueAddPod(obj interface{}) {
+func (c *Controller) enqueueAddPod(obj any) {
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -235,7 +235,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeletePod(obj interface{}) {
+func (c *Controller) enqueueDeletePod(obj any) {
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -259,7 +259,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	c.deletePodQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 
@@ -572,7 +572,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
-			for _, ip := range strings.Split(vips, ",") {
+			for ip := range strings.SplitSeq(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
 					klog.Errorf("invalid vip address '%s' for pod %s", ip, name)
 					vips = ""
@@ -749,7 +749,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 					subnet.Spec.Vpc,
 					&kubeovnv1.PolicyRoute{
 						Priority:  util.NorthGatewayRoutePolicyPriority,
-						Match:     fmt.Sprintf("ip4.src == %s", podIP),
+						Match:     "ip4.src == " + podIP,
 						Action:    kubeovnv1.PolicyRouteActionReroute,
 						NextHopIP: nextHop,
 					},
@@ -778,7 +778,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 					var added bool
 
 					for _, nodeAddr := range nodeTunlIPAddr {
-						for _, podAddr := range strings.Split(podIP, ",") {
+						for podAddr := range strings.SplitSeq(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
@@ -798,7 +798,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
-					for _, podAddr := range strings.Split(pod.Annotations[util.IPAddressAnnotation], ",") {
+					for podAddr := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
 						if util.CheckProtocol(podAddr) != util.CheckProtocol(pod.Annotations[util.NorthGatewayAnnotation]) {
 							continue
 						}
@@ -839,7 +839,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			}
 
 			if c.config.EnableEipSnat {
-				for _, ipStr := range strings.Split(podIP, ",") {
+				for ipStr := range strings.SplitSeq(podIP, ",") {
 					if eip := pod.Annotations[util.EipAnnotation]; eip == "" {
 						if err = c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
@@ -910,7 +910,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	}
 
 	if aaps := pod.Annotations[util.AAPsAnnotation]; aaps != "" {
-		for _, vipName := range strings.Split(aaps, ",") {
+		for vipName := range strings.SplitSeq(aaps, ",") {
 			if vip, err := c.virtualIpsLister.Get(vipName); err == nil {
 				if vip.Spec.Namespace != pod.Namespace {
 					continue
@@ -1082,7 +1082,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		if securityGroupAnnotation != "" {
 			securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
-			for _, sgName := range strings.Split(securityGroups, ",") {
+			for sgName := range strings.SplitSeq(securityGroups, ",") {
 				if sgName != "" {
 					c.syncSgPortsQueue.Add(sgName)
 				}
@@ -1143,7 +1143,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		var securityGroups string
 		if securityGroupAnnotation != "" {
 			securityGroups = strings.ReplaceAll(securityGroupAnnotation, " ", "")
-			for _, sgName := range strings.Split(securityGroups, ",") {
+			for sgName := range strings.SplitSeq(securityGroups, ",") {
 				if sgName != "" {
 					c.syncSgPortsQueue.Add(sgName)
 				}
@@ -1374,7 +1374,7 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 		return nil, errors.New("node has no tunnel ip annotation")
 	}
 
-	for _, ip := range strings.Split(nodeTunlIP, ",") {
+	for ip := range strings.SplitSeq(nodeTunlIP, ",") {
 		nodeTunlIPAddr = append(nodeTunlIPAddr, net.ParseIP(ip))
 	}
 	return nodeTunlIPAddr, nil
@@ -1505,7 +1505,7 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
-	for _, subnetName := range strings.Split(subnetNames, ",") {
+	for subnetName := range strings.SplitSeq(subnetNames, ",") {
 		if subnetName == "" {
 			err = fmt.Errorf("namespace %s default logical switch is not found", ns.Name)
 			klog.Error(err)
@@ -1753,7 +1753,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 		if len(ns.Annotations) != 0 {
 			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
-				for _, ipPoolName := range strings.Split(ipPoolList, ",") {
+				for ipPoolName := range strings.SplitSeq(ipPoolList, ",") {
 					ippool, err := c.ippoolLister.Get(ipPoolName)
 					if err != nil {
 						klog.Errorf("failed to get ippool %s: %v", ipPoolName, err)
@@ -1923,7 +1923,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, subnet string, liveMigration bool) (string, string, string, error) {
 	var v4IP, v6IP, macStr string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse IP %s", ipStr)
 		}
@@ -2118,7 +2118,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
-	for _, subnetName := range strings.Split(subnetNames, ",") {
+	for subnetName := range strings.SplitSeq(subnetNames, ",") {
 		if subnetName == "" || subnetName == podNet.Subnet.Name {
 			continue
 		}
@@ -2152,7 +2152,7 @@ func getPodType(pod *v1.Pod) string {
 func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[string]string {
 	vipsListMap := make(map[string][]string)
 	var vipNamesList []string
-	for _, vipName := range strings.Split(strings.TrimSpace(pod.Annotations[util.AAPsAnnotation]), ",") {
+	for vipName := range strings.SplitSeq(strings.TrimSpace(pod.Annotations[util.AAPsAnnotation]), ",") {
 		if vipName = strings.TrimSpace(vipName); vipName == "" {
 			continue
 		}
@@ -2200,7 +2200,7 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 			vipsList = []string{}
 		}
 
-		for _, vip := range strings.Split(vipStr, ",") {
+		for vip := range strings.SplitSeq(vipStr, ",") {
 			if util.IsValidIP(vip) && !slices.Contains(vipsList, vip) {
 				vipsList = append(vipsList, vip)
 			}

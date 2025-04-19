@@ -620,7 +620,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *apiv1.IptablesEIP) string {
 	ginkgo.GinkgoHelper()
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		command := fmt.Sprintf("iperf -e -p %s --reportstyle C -i 1 -c %s -t 10", iperf2Port, iperfServerEIP.Status.IP)
 		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, iperfClientPod.Namespace, iperfClientPod.Name, command)
 		framework.Logf("output from exec on client pod %s (eip %s)\n", iperfClientPod.Name, iperfServerEIP.Name)
@@ -1071,8 +1071,8 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 func validRateLimit(text string, limit int) bool {
 	maxValue := float64(limit) * 1024 * 1024 * 1.2
 	minValue := float64(limit) * 1024 * 1024 * 0.8
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(text, "\n")
+	for line := range lines {
 		if line == "" {
 			continue
 		}

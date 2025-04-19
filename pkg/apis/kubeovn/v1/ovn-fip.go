@@ -22,10 +22,10 @@ type OvnFipList struct {
 // +resourceName=ovn-fips
 type OvnFip struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   OvnFipSpec   `json:"spec"`
-	Status OvnFipStatus `json:"status,omitempty"`
+	Status OvnFipStatus `json:"status"`
 }
 type OvnFipSpec struct {
 	OvnEip string `json:"ovnEip"`

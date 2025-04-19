@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -72,16 +73,16 @@ func (l *Link) NonLinkLocalIPs() []string {
 }
 
 type Route struct {
-	Type     string        `json:"type"`
-	Dst      string        `json:"dst"`
-	Gateway  string        `json:"gateway,omitempty"`
-	Dev      string        `json:"dev"`
-	Protocol string        `json:"protocol"`
-	Scope    string        `json:"scope"`
-	Metric   int           `json:"metric"`
-	Flags    []interface{} `json:"flags"`
-	PrefSrc  string        `json:"prefsrc,omitempty"`
-	Pref     string        `json:"pref"`
+	Type     string `json:"type"`
+	Dst      string `json:"dst"`
+	Gateway  string `json:"gateway,omitempty"`
+	Dev      string `json:"dev"`
+	Protocol string `json:"protocol"`
+	Scope    string `json:"scope"`
+	Metric   int    `json:"metric"`
+	Flags    []any  `json:"flags"`
+	PrefSrc  string `json:"prefsrc,omitempty"`
+	Pref     string `json:"pref"`
 }
 
 type Rule struct {
@@ -99,14 +100,12 @@ type execer struct {
 	ignoredErrors []reflect.Type
 }
 
-func (e *execer) exec(cmd string, result interface{}) error {
+func (e *execer) exec(cmd string, result any) error {
 	stdout, stderr, err := e.fn(strings.Fields(cmd)...)
 	if err != nil {
 		t := reflect.TypeOf(err)
-		for _, err := range e.ignoredErrors {
-			if t == err {
-				return nil
-			}
+		if slices.Contains(e.ignoredErrors, t) {
+			return nil
 		}
 		return fmt.Errorf("failed to exec cmd %q: %w\nstdout:\n%s\nstderr:\n%s", cmd, err, stdout, stderr)
 	}

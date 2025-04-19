@@ -300,7 +300,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		gatewayNodes := make([]string, 0, n)
 		nodeIPs := make([]string, 0, n*2)
 		var ipv4, ipv6 string
-		for i := 0; i < n; i++ {
+		for i := range n {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 			if f.VersionPriorTo(1, 12) {
 				ipv4, ipv6 = util.SplitStringIP(nodes.Items[i].Annotations[util.IPAddressAnnotation])
@@ -401,7 +401,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		gatewayNodes := make([]string, 0, n)
 		nodeIPs := make([]string, 0, n*2)
 		var ipv4, ipv6 string
-		for i := 0; i < n; i++ {
+		for i := range n {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 			if f.VersionPriorTo(1, 12) {
 				ipv4, ipv6 = util.SplitStringIP(nodes.Items[i].Annotations[util.IPAddressAnnotation])
@@ -475,7 +475,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		gatewayNodes := make([]string, 0, n)
 		nodeIPs := make([]string, 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IPAddressAnnotation])
 		}
@@ -510,7 +510,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Validating active gateway")
-		nbctlCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy external_ids:subnet=%s", subnetName)
+		nbctlCmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy external_ids:subnet=" + subnetName
 		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 
@@ -532,7 +532,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		if check {
 			for _, nodeIP := range nodeIPs {
-				for _, strIP := range strings.Split(nodeIP, ",") {
+				for strIP := range strings.SplitSeq(nodeIP, ",") {
 					if util.CheckProtocol(strIP) != util.CheckProtocol(nextHops[0]) {
 						continue
 					}
@@ -684,7 +684,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		n := min(3, max(1, len(nodes.Items)-1))
 		gatewayNodes := make([]string, 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 		}
 		prPriority := 1000 + rand.IntN(1000)
@@ -1453,25 +1453,25 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 
 			var rule string
 			if protocol == apiv1.ProtocolIPv4 {
-				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s", util.GetTruncatedUID(string(subnet.UID)))
+				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
 				if natPolicyRule.Match.SrcIPs != "" {
 					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
 				}
 				if natPolicyRule.Match.DstIPs != "" {
 					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
 				}
-				rule += fmt.Sprintf(" -j MARK --set-xmark %s", markCode)
+				rule += " -j MARK --set-xmark " + markCode
 				expectV4Rules = append(expectV4Rules, rule)
 			}
 			if protocol == apiv1.ProtocolIPv6 {
-				rule = fmt.Sprintf("-A OVN-NAT-PSUBNET-%s", util.GetTruncatedUID(string(subnet.UID)))
+				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
 				if natPolicyRule.Match.SrcIPs != "" {
 					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
 				}
 				if natPolicyRule.Match.DstIPs != "" {
 					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
 				}
-				rule += fmt.Sprintf(" -j MARK --set-xmark %s", markCode)
+				rule += " -j MARK --set-xmark " + markCode
 				expectV6Rules = append(expectV6Rules, rule)
 			}
 		}

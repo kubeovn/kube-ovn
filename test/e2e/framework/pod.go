@@ -175,6 +175,6 @@ func CheckPodEgressRoutes(ns, pod string, ipv4, ipv6 bool, ttl int, expectedHops
 			lines := strings.Split(strings.TrimSpace(output), "\n")
 			fields := strings.Fields(lines[len(lines)-1])
 			return len(fields) > 2 && slices.Contains(expectedHops, fields[1]), nil
-		}, fmt.Sprintf("expected hops: %s", strings.Join(expectedHops, ", ")))
+		}, "expected hops: "+strings.Join(expectedHops, ", "))
 	}
 }

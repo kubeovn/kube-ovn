@@ -48,7 +48,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 }
 
 // UpdateLogicalRouter update logical router
-func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
 	op, err := c.UpdateLogicalRouterOp(lr, fields...)
 	if err != nil {
 		klog.Error(err)
@@ -210,7 +210,7 @@ func (c *OVNNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.M
 }
 
 // UpdateLogicalRouterOp generate operations which update logical router
-func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...interface{}) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...any) ([]ovsdb.Operation, error) {
 	if lr == nil {
 		return nil, errors.New("logical_router is nil")
 	}

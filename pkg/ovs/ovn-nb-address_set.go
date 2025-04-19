@@ -88,7 +88,7 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 }
 
 // UpdateAddressSet update address set
-func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...any) error {
 	if as == nil {
 		return errors.New("address_set is nil")
 	}

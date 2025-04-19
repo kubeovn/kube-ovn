@@ -175,7 +175,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 }
 
 // updateDHCPOptions update dhcp options
-func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...interface{}) error {
+func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...any) error {
 	if dhcpOpt == nil {
 		return errors.New("dhcp_options is nil")
 	}

@@ -18,10 +18,10 @@ type VpcDnsList struct {
 // +resourceName=vpc-dnses
 type VpcDns struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VpcDNSSpec   `json:"spec"`
-	Status VpcDNSStatus `json:"status,omitempty"`
+	Status VpcDNSStatus `json:"status"`
 }
 
 type VpcDNSSpec struct {

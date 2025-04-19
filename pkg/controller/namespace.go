@@ -16,7 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddNamespace(obj interface{}) {
+func (c *Controller) enqueueAddNamespace(obj any) {
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -27,7 +27,7 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 	c.addNamespaceQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
+func (c *Controller) enqueueDeleteNamespace(obj any) {
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -38,7 +38,7 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 	oldNs := oldObj.(*v1.Namespace)
 	newNs := newObj.(*v1.Namespace)
 	if oldNs.ResourceVersion == newNs.ResourceVersion {
@@ -108,13 +108,10 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	// check if subnet bind ns
 	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == key {
-				lss = append(lss, s.Name)
-				cidrs = append(cidrs, s.Spec.CIDRBlock)
-				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
-				break
-			}
+		if slices.Contains(s.Spec.Namespaces, key) {
+			lss = append(lss, s.Name)
+			cidrs = append(cidrs, s.Spec.CIDRBlock)
+			excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
 		}
 
 		// bind subnet with namespaceLabelSeletcor which select the namespace

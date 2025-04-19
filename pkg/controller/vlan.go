@@ -15,19 +15,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVlan(obj interface{}) {
+func (c *Controller) enqueueAddVlan(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue add vlan %s", key)
 	c.addVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVlan(_, newObj interface{}) {
+func (c *Controller) enqueueUpdateVlan(_, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
 	c.updateVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueDelVlan(obj interface{}) {
+func (c *Controller) enqueueDelVlan(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
 	c.delVlanQueue.Add(key)

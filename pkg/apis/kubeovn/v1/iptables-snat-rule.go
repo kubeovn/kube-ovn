@@ -22,10 +22,10 @@ type IptablesSnatRuleList struct {
 // +resourceName=iptables-snat-rules
 type IptablesSnatRule struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   IptablesSnatRuleSpec   `json:"spec"`
-	Status IptablesSnatRuleStatus `json:"status,omitempty"`
+	Status IptablesSnatRuleStatus `json:"status"`
 }
 
 type IptablesSnatRuleSpec struct {

@@ -51,7 +51,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	fakeNBServer, nbSock1 := newOVSDBServer(suite.T(), "fake-nb", emptyNbDBModel, nbClientSchema)
-	nbEndpoint1 := fmt.Sprintf("unix:%s", nbSock1)
+	nbEndpoint1 := "unix:" + nbSock1
 	require.FileExists(suite.T(), nbSock1)
 	failedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
 	require.NoError(suite.T(), err)
@@ -65,7 +65,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	_, nbSock := newOVSDBServer(suite.T(), "nb", nbClientDBModel, nbClientSchema)
-	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
+	nbEndpoint := "unix:" + nbSock
 	require.FileExists(suite.T(), nbSock)
 
 	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
@@ -78,7 +78,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	_, sbSock := newOVSDBServer(suite.T(), "sb", sbClientDBModel, sbClientSchema)
-	sbEndpoint := fmt.Sprintf("unix:%s", sbSock)
+	sbEndpoint := "unix:" + sbSock
 	require.FileExists(suite.T(), sbSock)
 
 	ovnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint, 10)
@@ -1365,7 +1365,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithLogger(&logger),
 	}
 
-	for _, ep := range strings.Split(addr, ",") {
+	for ep := range strings.SplitSeq(addr, ",") {
 		options = append(options, client.WithEndpoint(ep))
 	}
 
@@ -1438,7 +1438,7 @@ func newSbClient(addr string, timeout int) (client.Client, error) {
 		client.WithLogger(&logger),
 	}
 
-	for _, ep := range strings.Split(addr, ",") {
+	for ep := range strings.SplitSeq(addr, ",") {
 		options = append(options, client.WithEndpoint(ep))
 	}
 

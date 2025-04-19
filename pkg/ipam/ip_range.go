@@ -21,7 +21,7 @@ func NewIPRange(start, end IP) *IPRange {
 func NewIPRangeFromCIDR(cidr net.IPNet) *IPRange {
 	start, _ := NewIP(cidr.IP.Mask(cidr.Mask).String())
 	end := make(IP, len(start))
-	for i := 0; i < len(end); i++ {
+	for i := range end {
 		end[i] = start[i] | ^cidr.Mask[i]
 	}
 

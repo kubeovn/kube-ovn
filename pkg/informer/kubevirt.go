@@ -135,7 +135,7 @@ func (f *kubeInformerFactory) Namespace() cache.SharedIndexInformer {
 			&k8sv1.Namespace{},
 			f.defaultResync,
 			cache.Indexers{
-				"namespace_name": func(obj interface{}) ([]string, error) {
+				"namespace_name": func(obj any) ([]string, error) {
 					return []string{obj.(*k8sv1.Namespace).GetName()}, nil
 				},
 			},

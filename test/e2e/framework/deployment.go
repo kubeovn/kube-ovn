@@ -162,7 +162,7 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
 	ExpectNoError(err)
 
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	err = json.Unmarshal(buf, &m)
 	ExpectNoError(err)
 

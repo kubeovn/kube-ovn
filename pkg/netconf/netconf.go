@@ -35,7 +35,7 @@ func (c *NetConf) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	fixupObj := make(map[string]interface{})
+	fixupObj := make(map[string]any)
 	if err := json.Unmarshal(bytes, &fixupObj); err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (c *NetConf) MarshalJSON() ([]byte, error) {
 		if bytes, err = json.Marshal(c.IPAM); err != nil {
 			return nil, err
 		}
-		ipamObj := make(map[string]interface{})
+		ipamObj := make(map[string]any)
 		if err := json.Unmarshal(bytes, &ipamObj); err != nil {
 			return nil, err
 		}

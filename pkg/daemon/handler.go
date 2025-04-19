@@ -94,7 +94,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %w", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -382,7 +382,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip string) error {
 	ipCRName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		ipCR, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCRName, metav1.GetOptions{})
 		if err != nil {
 			err = fmt.Errorf("failed to get ip crd for %s, %w", ip, err)

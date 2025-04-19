@@ -398,7 +398,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -417,7 +417,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -467,7 +467,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 				Column:  "policies",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -486,7 +486,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 				Column:  "policies",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -530,7 +530,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 				Column:  "nat",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -549,7 +549,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 				Column:  "nat",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -586,7 +586,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateStaticRouteOp() {
 				Column:  "static_routes",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -605,7 +605,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateStaticRouteOp() {
 				Column:  "static_routes",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: uuid,
 						},
@@ -667,7 +667,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 			Column:  "ports",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lrpUUID,
 					},
@@ -678,7 +678,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 			Column:  "policies",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: policyUUID,
 					},

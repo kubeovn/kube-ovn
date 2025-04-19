@@ -218,8 +218,8 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		gwNodes = append(gwNodes, node.Name)
 	}
 	if config["type"] != kubeovnv1.GWDistributedType {
-		nodeNames := strings.Split(config["external-gw-nodes"], ",")
-		for _, name := range nodeNames {
+		nodeNames := strings.SplitSeq(config["external-gw-nodes"], ",")
+		for name := range nodeNames {
 			name = strings.TrimSpace(name)
 			if name == "" {
 				continue

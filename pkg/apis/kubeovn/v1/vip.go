@@ -21,10 +21,10 @@ type VipList struct {
 // +genclient:nonNamespaced
 type Vip struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VipSpec   `json:"spec"`
-	Status VipStatus `json:"status,omitempty"`
+	Status VipStatus `json:"status"`
 }
 
 type VipSpec struct {

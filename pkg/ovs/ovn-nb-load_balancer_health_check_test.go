@@ -135,7 +135,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthChecks() {
 		err          error
 	)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		lbName = fmt.Sprintf("%s-%d", lbNamePrefix, i)
 		vip = fmt.Sprintf(vipFormat, i+1)
 
@@ -381,7 +381,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerHealthCheckOp() {
 								Column:  "health_check",
 								Mutator: ovsdb.MutateOperationDelete,
 								Value: ovsdb.OvsSet{
-									GoSet: []interface{}{
+									GoSet: []any{
 										ovsdb.UUID{
 											GoUUID: lbhc.UUID,
 										},

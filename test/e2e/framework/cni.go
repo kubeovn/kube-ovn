@@ -27,7 +27,7 @@ type MacvlanNetConf struct {
 
 	RuntimeConfig struct {
 		Mac string `json:"mac,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
+	} `json:"runtimeConfig"`
 }
 
 func MakeMacvlanNetworkAttachmentDefinition(name, namespace, master, mode, provider string, routes []request.Route) *nadv1.NetworkAttachmentDefinition {

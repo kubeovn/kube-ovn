@@ -28,7 +28,7 @@ func (c *OVNNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, m
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
 	// delete old localnet lsp when upgrade before v1.12
-	oldLocalnetLspName := fmt.Sprintf("ln-%s", lsName)
+	oldLocalnetLspName := "ln-" + lsName
 	if err := c.DeleteLogicalSwitchPort(oldLocalnetLspName); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to delete old localnet %s: %w", oldLocalnetLspName, err)

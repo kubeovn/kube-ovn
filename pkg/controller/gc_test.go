@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/scylladb/go-set/strset"
@@ -33,7 +32,7 @@ func Test_logicalRouterPortFilter(t *testing.T) {
 	lrps := make([]*ovnnb.LogicalRouterPort, 0)
 	for _, lrpName := range lrpNames {
 		lrp := newLogicalRouterPort("", lrpName, "", nil)
-		peer := fmt.Sprintf("%s-peer", lrpName)
+		peer := lrpName + "-peer"
 		lrp.Peer = &peer
 		lrps = append(lrps, lrp)
 	}

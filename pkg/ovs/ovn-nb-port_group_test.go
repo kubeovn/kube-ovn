@@ -285,7 +285,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	t.Run("result should include all pg when externalIDs is empty", func(t *testing.T) {
 		prefix := "test-list-pg-all"
 
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			pgName := fmt.Sprintf("%s-%d", prefix, i)
 
 			err := nbClient.CreatePortGroup(pgName, map[string]string{sgKey: "sg", "type": "security_group", "key": "value"})
@@ -359,7 +359,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lspUUIDs[0],
 						},
@@ -382,7 +382,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lspUUIDs[0],
 						},
@@ -427,7 +427,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -450,7 +450,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -515,7 +515,7 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 			Column:  "ports",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lspUUID,
 					},
@@ -526,7 +526,7 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 			Column:  "acls",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: aclUUID,
 					},

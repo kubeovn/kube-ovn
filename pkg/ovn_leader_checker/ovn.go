@@ -137,7 +137,7 @@ func getCmdExitCode(cmd *exec.Cmd) int {
 func checkOvnIsAlive() bool {
 	components := [...]string{"northd", "ovnnb", "ovnsb"}
 	for _, component := range components {
-		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component)) // #nosec G204
+		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_"+component) // #nosec G204
 		if err := getCmdExitCode(cmd); err != 0 {
 			klog.Errorf("CheckOvnIsAlive: %s is not alive", component)
 			return false
@@ -153,13 +153,13 @@ func isDBLeader(dbName string, port int) bool {
 
 	var cmd []string
 	if os.Getenv(EnvSSL) == "false" {
-		cmd = []string{"query", fmt.Sprintf("tcp:%s", addr), query}
+		cmd = []string{"query", "tcp:" + addr, query}
 	} else {
 		cmd = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			"query", fmt.Sprintf("ssl:%s", addr), query,
+			"query", "ssl:" + addr, query,
 		}
 	}
 

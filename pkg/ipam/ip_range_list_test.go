@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -725,7 +725,7 @@ func TestNewIPRangeListFrom(t *testing.T) {
 			cidrList = append(cidrList, cidr)
 			cidrSet.Add(util.IPv4ToUint32(cidr.IP))
 			bcast := make(net.IP, len(cidr.IP))
-			for i := 0; i < len(bcast); i++ {
+			for i := range bcast {
 				bcast[i] = cidr.IP[i] | ^cidr.Mask[i]
 			}
 			cidrSet.Add(util.IPv4ToUint32(bcast))
@@ -751,7 +751,7 @@ func TestNewIPRangeListFrom(t *testing.T) {
 	set.Merge(cidrSet)
 
 	ints := set.List()
-	sort.Slice(ints, func(i, j int) bool { return ints[i] < ints[j] })
+	slices.Sort(ints)
 
 	ips := make([]string, 0, len(cidrList)+set.Size())
 	mergedInts := make([]uint32, 0, set.Size()*2)
@@ -800,7 +800,7 @@ func TestNewIPRangeListFrom(t *testing.T) {
 	}
 
 	mergedIPs := make([]string, len(mergedInts)/2)
-	for i := 0; i < len(mergedInts)/2; i++ {
+	for i := range len(mergedInts) / 2 {
 		if mergedInts[i*2] == mergedInts[i*2+1] {
 			mergedIPs[i] = util.Uint32ToIPv4(mergedInts[i*2])
 		} else {

@@ -146,7 +146,7 @@ func (c *OVNNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroup
 }
 
 // UpdateLogicalRouterPort update logical router port
-func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...any) error {
 	if lrp == nil {
 		return errors.New("logical_router_port is nil")
 	}

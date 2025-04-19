@@ -79,7 +79,7 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 	var err error
 	var ipAddr IP
 	var v4, v6, macStr string
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		ip, err := NewIP(ipStr)
 		if err != nil {
 			klog.Errorf("failed to parse ip %s", ipStr)
@@ -166,7 +166,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	var v4cidrStr, v6cidrStr, v4Gw, v6Gw string
 	var cidrs []*net.IPNet
-	for _, cidrBlock := range strings.Split(cidrStr, ",") {
+	for cidrBlock := range strings.SplitSeq(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
 		if err != nil {
 			klog.Errorf("subnet %s invalid cidr %s: %s", name, cidrStr, err)

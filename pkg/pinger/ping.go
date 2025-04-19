@@ -252,8 +252,8 @@ func pingExternal(config *Configuration, setMetrics bool) error {
 		return nil
 	}
 
-	addresses := strings.Split(config.ExternalAddress, ",")
-	for _, addr := range addresses {
+	addresses := strings.SplitSeq(config.ExternalAddress, ",")
+	for addr := range addresses {
 		if !slices.Contains(config.PodProtocols, util.CheckProtocol(addr)) {
 			continue
 		}
@@ -299,8 +299,8 @@ func checkAccessTargetIPPorts(config *Configuration) error {
 		return nil
 	}
 	var checkErr error
-	targetIPPorts := strings.Split(config.TargetIPPorts, ",")
-	for _, targetIPPort := range targetIPPorts {
+	targetIPPorts := strings.SplitSeq(config.TargetIPPorts, ",")
+	for targetIPPort := range targetIPPorts {
 		klog.Infof("checking targetIPPort %s", targetIPPort)
 		items := strings.Split(targetIPPort, "-")
 		if len(items) != 3 {

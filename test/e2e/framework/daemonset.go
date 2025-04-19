@@ -161,7 +161,7 @@ func (c *DaemonSetClient) Restart(ds *appsv1.DaemonSet) *appsv1.DaemonSet {
 	buf, err := polymorphichelpers.ObjectRestarterFn(ds)
 	ExpectNoError(err)
 
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	err = json.Unmarshal(buf, &m)
 	ExpectNoError(err)
 

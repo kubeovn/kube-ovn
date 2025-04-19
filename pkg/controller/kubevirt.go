@@ -16,13 +16,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
+func (c *Controller) enqueueAddVMIMigration(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachineInstanceMigration)).String()
 	klog.Infof("enqueue add VMI migration %s", key)
 	c.addOrUpdateVMIMigrationQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 	oldVmi := oldObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 	newVmi := newObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 

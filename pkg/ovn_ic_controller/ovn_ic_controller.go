@@ -369,18 +369,18 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	// #nosec G204
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
-		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
-		fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
-		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
+		"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),
+		"--ovn-ic-sb-db="+genHostAddress(icHost, icSbPort),
+		"--ovn-northd-nb-db="+c.config.OvnNbAddr,
+		"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 		"start_ic")
 	if os.Getenv("ENABLE_SSL") == "true" {
 		// #nosec G204
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-			fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
-			fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
-			fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
-			fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
+			"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),
+			"--ovn-ic-sb-db="+genHostAddress(icHost, icSbPort),
+			"--ovn-northd-nb-db="+c.config.OvnNbAddr,
+			"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 			"--ovn-ic-ssl-key=/var/run/tls/key",
 			"--ovn-ic-ssl-cert=/var/run/tls/cert",
 			"--ovn-ic-ssl-ca-cert=/var/run/tls/cacert",

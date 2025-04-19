@@ -160,7 +160,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
 			if routeDst != subnet.Spec.CIDRBlock {
 				break
@@ -376,7 +376,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
 			if routeDst != subnet.Spec.CIDRBlock {
 				break

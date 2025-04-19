@@ -499,7 +499,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lsp.UUID,
 						},
@@ -581,7 +581,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 				Column:  "load_balancer",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lbUUIDs[0],
 						},
@@ -606,7 +606,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 				Column:  "load_balancer",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lbUUIDs[0],
 						},
@@ -650,7 +650,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -673,7 +673,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -735,7 +735,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			Column:  "ports",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lspUUID,
 					},
@@ -746,7 +746,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			Column:  "load_balancer",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lbUUID,
 					},

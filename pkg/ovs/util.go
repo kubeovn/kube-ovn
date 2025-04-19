@@ -27,7 +27,7 @@ func PodNameToPortName(pod, namespace, provider string) string {
 }
 
 func GetLocalnetName(subnet string) string {
-	return fmt.Sprintf("localnet.%s", subnet)
+	return "localnet." + subnet
 }
 
 func trimCommandOutput(raw []byte) string {
@@ -46,7 +46,7 @@ func GetSgPortGroupName(sgName string) string {
 	if sgName == "" {
 		return ""
 	}
-	return strings.ReplaceAll(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".")
+	return strings.ReplaceAll("ovn.sg."+sgName, "-", ".")
 }
 
 func GetSgV4AssociatedName(sgName string) string {
@@ -75,8 +75,8 @@ func parseIpv6RaConfigs(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.Split(raw, ",")
-	for _, option := range options {
+	options := strings.SplitSeq(raw, ",")
+	for option := range options {
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
@@ -181,8 +181,8 @@ func parseDHCPOptions(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.Split(raw, ",")
-	for _, option := range options {
+	options := strings.SplitSeq(raw, ",")
+	for option := range options {
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {

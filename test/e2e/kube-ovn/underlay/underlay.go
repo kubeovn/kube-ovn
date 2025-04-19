@@ -734,7 +734,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("step7: Specify u2oInterconnectionIP")
 
 		// change u2o interconnection ip twice
-		for index := 0; index < 2; index++ {
+		for index := range 2 {
 			getAvailableIPs := func(subnet *apiv1.Subnet) string {
 				var availIPs []string
 				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
@@ -1069,7 +1069,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 				ginkgo.By("checking u2o dhcp gateway ip of underlay subnet " + subnet.Name)
 				v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock)
 				v4Gateway, _ := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
-				nbctlCmd := fmt.Sprintf("ovn-nbctl --bare --columns=options find Dhcp_Options cidr=%s", v4Cidr)
+				nbctlCmd := "ovn-nbctl --bare --columns=options find Dhcp_Options cidr=" + v4Cidr
 				output, _, err := framework.NBExec(nbctlCmd)
 				framework.ExpectNoError(err)
 				framework.ExpectContainElement(strings.Fields(string(output)), "router="+v4Gateway)
@@ -1087,8 +1087,8 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 	}
 
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
-	underlayCidr := strings.Split(subnet.Spec.CIDRBlock, ",")
-	for _, cidr := range underlayCidr {
+	underlayCidr := strings.SplitSeq(subnet.Spec.CIDRBlock, ",")
+	for cidr := range underlayCidr {
 		var protocolStr, gw string
 		if util.CheckProtocol(cidr) == apiv1.ProtocolIPv4 {
 			protocolStr = "ip4"
@@ -1112,16 +1112,16 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 
 		asName := strings.ReplaceAll(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".")
 		if !isU2OCustomVpc {
-			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
+			ginkgo.By("checking underlay subnet's policy1 route " + protocolStr)
 			hitPolicyStr := fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, protocolStr, cidr)
 			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 
-			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy2 route %s", protocolStr))
+			ginkgo.By("checking underlay subnet's policy2 route " + protocolStr)
 			hitPolicyStr = fmt.Sprintf("%d %s.dst == $%s && %s.src == %s reroute %s", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr, gw)
 			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 		}
 
-		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
+		ginkgo.By("checking underlay subnet's policy3 route " + protocolStr)
 		hitPolicyStr := fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, protocolStr, cidr, gw)
 		checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 	}
@@ -1229,7 +1229,7 @@ func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 			return false, err
 		}
 		outputStr := string(output)
-		for _, line := range strings.Split(outputStr, "\n") {
+		for line := range strings.SplitSeq(outputStr, "\n") {
 			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) == expectPolicyExist {
 				return true, nil
 			}
@@ -1259,7 +1259,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 			}
 
 			success := false
-			for attempt := 0; attempt < 3; attempt++ {
+			for range 3 {
 				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
 
@@ -1267,7 +1267,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 				if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
 					matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
 				} else {
-					matchStr = fmt.Sprintf("priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=%s", u2oIPs[index])
+					matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
 				}
 
 				framework.Logf("matchStr rule %s", matchStr)

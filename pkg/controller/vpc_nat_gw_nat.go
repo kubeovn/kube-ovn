@@ -20,13 +20,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
+func (c *Controller) enqueueAddIptablesFip(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
 	klog.V(3).Infof("enqueue add iptables fip %s", key)
 	c.addIptablesFipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj any) {
 	oldFip := oldObj.(*kubeovnv1.IptablesFIPRule)
 	newFip := newObj.(*kubeovnv1.IptablesFIPRule)
 	key := cache.MetaObjectToName(newFip).String()
@@ -49,19 +49,19 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
+func (c *Controller) enqueueDelIptablesFip(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
 	klog.V(3).Infof("enqueue delete iptables fip %s", key)
 	c.delIptablesFipQueue.Add(key)
 }
 
-func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
+func (c *Controller) enqueueAddIptablesDnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
 	klog.V(3).Infof("enqueue add iptables dnat %s", key)
 	c.addIptablesDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 	oldDnat := oldObj.(*kubeovnv1.IptablesDnatRule)
 	newDnat := newObj.(*kubeovnv1.IptablesDnatRule)
 	key := cache.MetaObjectToName(newDnat).String()
@@ -89,19 +89,19 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
+func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
 	klog.V(3).Infof("enqueue delete iptables dnat %s", key)
 	c.delIptablesDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
+func (c *Controller) enqueueAddIptablesSnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
 	klog.V(3).Infof("enqueue add iptables snat %s", key)
 	c.addIptablesSnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj any) {
 	oldSnat := oldObj.(*kubeovnv1.IptablesSnatRule)
 	newSnat := newObj.(*kubeovnv1.IptablesSnatRule)
 	key := cache.MetaObjectToName(newSnat).String()
@@ -124,7 +124,7 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelIptablesSnatRule(obj interface{}) {
+func (c *Controller) enqueueDelIptablesSnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
 	klog.V(3).Infof("enqueue delete iptables snat %s", key)
 	c.delIptablesSnatRuleQueue.Add(key)

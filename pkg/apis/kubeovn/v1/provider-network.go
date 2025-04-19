@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"slices"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -19,7 +21,7 @@ type ProviderNetworkList struct {
 // +resourceName=provider-networks
 type ProviderNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   ProviderNetworkSpec   `json:"spec"`
 	Status ProviderNetworkStatus `json:"status"`
@@ -201,7 +203,7 @@ func (s *ProviderNetworkStatus) RemoveNodeConditions(node string) bool {
 	for i := 0; i < len(s.Conditions); {
 		if s.Conditions[i].Node == node {
 			changed = true
-			s.Conditions = append(s.Conditions[:i], s.Conditions[i+1:]...)
+			s.Conditions = slices.Delete(s.Conditions, i, i+1)
 		} else {
 			i++
 		}

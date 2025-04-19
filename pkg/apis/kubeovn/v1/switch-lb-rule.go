@@ -18,10 +18,10 @@ type SwitchLBRuleList struct {
 // +resourceName=switch-lb-rules
 type SwitchLBRule struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   SwitchLBRuleSpec   `json:"spec"`
-	Status SwitchLBRuleStatus `json:"status,omitempty"`
+	Status SwitchLBRuleStatus `json:"status"`
 }
 
 type SwitchLBRuleSpec struct {

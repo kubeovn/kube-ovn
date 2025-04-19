@@ -47,7 +47,7 @@ type SecurityGroupList struct {
 // +resourceName=security-groups
 type SecurityGroup struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   SecurityGroupSpec   `json:"spec"`
 	Status SecurityGroupStatus `json:"status"`

@@ -33,10 +33,10 @@ type VpcEgressGatewayList struct {
 // vpc egress gateway is used to forward the egress traffic from the VPC to the external network
 type VpcEgressGateway struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VpcEgressGatewaySpec   `json:"spec"`
-	Status VpcEgressGatewayStatus `json:"status,omitempty"`
+	Status VpcEgressGatewayStatus `json:"status"`
 }
 
 // Ready returns true if the VpcEgressGateway has been processed successfully and is ready to serve traffic
@@ -68,7 +68,7 @@ type VpcEgressGatewaySpec struct {
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 
 	// BFD configuration
-	BFD VpcEgressGatewayBFDConfig `json:"bfd,omitempty"`
+	BFD VpcEgressGatewayBFDConfig `json:"bfd"`
 	// egress policies
 	// at least one policy must be specified
 	Policies []VpcEgressGatewayPolicy `json:"policies,omitempty"`
@@ -116,7 +116,7 @@ type VpcEgressGatewayStatus struct {
 	Conditions  Conditions `json:"conditions,omitempty"`
 
 	// workload information
-	Workload VpcEgressWorkload `json:"workload,omitempty"`
+	Workload VpcEgressWorkload `json:"workload"`
 }
 
 type VpcEgressWorkload struct {

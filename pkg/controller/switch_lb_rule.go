@@ -27,7 +27,7 @@ type SlrInfo struct {
 }
 
 func generateSvcName(name string) string {
-	return fmt.Sprintf("slr-%s", name)
+	return "slr-" + name
 }
 
 func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
@@ -48,13 +48,13 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
 	}
 }
 
-func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
+func (c *Controller) enqueueAddSwitchLBRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
 	klog.Infof("enqueue add SwitchLBRule %s", key)
 	c.addSwitchLBRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 	var (
 		oldSlr = oldObj.(*kubeovnv1.SwitchLBRule)
 		newSlr = newObj.(*kubeovnv1.SwitchLBRule)
@@ -74,7 +74,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj interface{}) {
 	c.updateSwitchLBRuleQueue.Add(info)
 }
 
-func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
+func (c *Controller) enqueueDeleteSwitchLBRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
 	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))

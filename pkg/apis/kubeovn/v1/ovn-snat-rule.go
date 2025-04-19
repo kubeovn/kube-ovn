@@ -22,10 +22,10 @@ type OvnSnatRuleList struct {
 // +resourceName=ovn-snat-rules
 type OvnSnatRule struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   OvnSnatRuleSpec   `json:"spec"`
-	Status OvnSnatRuleStatus `json:"status,omitempty"`
+	Status OvnSnatRuleStatus `json:"status"`
 }
 
 type OvnSnatRuleSpec struct {

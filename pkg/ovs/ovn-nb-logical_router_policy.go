@@ -436,7 +436,7 @@ func policyFilter(priority int, externalIDs map[string]string, ignoreExtIDEmptyV
 	}
 }
 
-func (c *OVNNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error {
 	ops, err := c.ovsDbClient.Where(policy).Update(policy, fields...)
 	if err != nil {
 		klog.Error(err)

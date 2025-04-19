@@ -15,7 +15,7 @@ import (
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
-	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -157,7 +157,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 			return "", err
 		}
 	} else {
-		queueCommandValues = append(queueCommandValues, fmt.Sprintf("external-ids:iface-id=%s", iface))
+		queueCommandValues = append(queueCommandValues, "external-ids:iface-id="+iface)
 		if podNamespace != "" && podName != "" {
 			queueCommandValues = append(queueCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
 		}
@@ -176,7 +176,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 // SetQosQueueBinding set qos related to queue record.
 func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, qosIfaceUIDMap map[string]string) error {
 	var qosCommandValues []string
-	qosCommandValues = append(qosCommandValues, fmt.Sprintf("queues:0=%s", queueUID))
+	qosCommandValues = append(qosCommandValues, "queues:0="+queueUID)
 
 	if qosUID, ok := qosIfaceUIDMap[iface]; !ok {
 		qosCommandValues = append(qosCommandValues, "type=linux-htb", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
@@ -188,7 +188,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 			klog.Error(err)
 			return err
 		}
-		err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos))
+		err = ovsSet("port", ifName, "qos="+qos)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -233,7 +233,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 	limitPkts, _ := strconv.Atoi(limit)
 	lossPercent, _ := strconv.ParseFloat(loss, 64)
 
-	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -272,7 +272,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 					return err
 				}
 
-				if err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos)); err != nil {
+				if err = ovsSet("port", ifName, "qos="+qos); err != nil {
 					klog.Error(err)
 					return err
 				}
@@ -315,7 +315,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 						return err
 					}
 
-					if err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos)); err != nil {
+					if err = ovsSet("port", ifName, "qos="+qos); err != nil {
 						klog.Errorf("failed to set netem qos to port: %v", err)
 						return err
 					}
@@ -345,8 +345,8 @@ func getNetemQosConfig(qosID string) (string, string, string, string, error) {
 		return latency, loss, limit, jitter, nil
 	}
 
-	values := strings.Split(strings.Trim(config, "{}"), ",")
-	for _, value := range values {
+	values := strings.SplitSeq(strings.Trim(config, "{}"), ",")
+	for value := range values {
 		records := strings.Split(value, "=")
 		switch strings.TrimSpace(records[0]) {
 		case "latency":

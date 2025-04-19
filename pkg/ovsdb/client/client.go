@@ -64,8 +64,8 @@ func NewOvsDbClient(
 	}
 	klog.Infof("connecting to OVN %s server %s", db, addr)
 	var ssl bool
-	endpoints := strings.Split(addr, ",")
-	for _, ep := range endpoints {
+	endpoints := strings.SplitSeq(addr, ",")
+	for ep := range endpoints {
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
 		}

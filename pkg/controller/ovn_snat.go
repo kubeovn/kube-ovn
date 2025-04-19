@@ -19,13 +19,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
+func (c *Controller) enqueueAddOvnSnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnSnatRule)).String()
 	klog.Infof("enqueue add ovn snat %s", key)
 	c.addOvnSnatRuleQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj any) {
 	newSnat := newObj.(*kubeovnv1.OvnSnatRule)
 	key := cache.MetaObjectToName(newSnat).String()
 	if !newSnat.DeletionTimestamp.IsZero() {
@@ -51,7 +51,7 @@ func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelOvnSnatRule(obj interface{}) {
+func (c *Controller) enqueueDelOvnSnatRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnSnatRule)).String()
 	klog.Infof("enqueue del ovn snat %s", key)
 	c.delOvnSnatRuleQueue.Add(key)

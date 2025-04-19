@@ -49,16 +49,16 @@ const (
 )
 
 func genVpcDNSDpName(name string) string {
-	return fmt.Sprintf("vpc-dns-%s", name)
+	return "vpc-dns-" + name
 }
 
-func (c *Controller) enqueueAddVpcDNS(obj interface{}) {
+func (c *Controller) enqueueAddVpcDNS(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue add vpc-dns %s", key)
 	c.addOrUpdateVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj any) {
 	oldVPCDNS := oldObj.(*kubeovnv1.VpcDns)
 	newVPCDNS := newObj.(*kubeovnv1.VpcDns)
 	if oldVPCDNS.ResourceVersion != newVPCDNS.ResourceVersion &&
@@ -69,7 +69,7 @@ func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteVPCDNS(obj interface{}) {
+func (c *Controller) enqueueDeleteVPCDNS(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue delete vpc-dns %s", key)
 	c.delVpcDNSQueue.Add(key)
@@ -282,7 +282,7 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 
 	buffer := new(bytes.Buffer)
 	name := genVpcDNSDpName(vpcDNS.Name)
-	if err := tmp.Execute(buffer, map[string]interface{}{
+	if err := tmp.Execute(buffer, map[string]any{
 		"DeployName":   name,
 		"CorednsImage": corednsImage,
 	}); err != nil {
@@ -390,12 +390,12 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 	if !strings.ContainsRune(dst, '/') {
 		switch protocol {
 		case kubeovnv1.ProtocolIPv4:
-			dst = fmt.Sprintf("%s/32", dst)
+			dst += "/32"
 		case kubeovnv1.ProtocolIPv6:
-			dst = fmt.Sprintf("%s/128", dst)
+			dst += "/128"
 		}
 	}
-	for _, gw := range strings.Split(subnetGw, ",") {
+	for gw := range strings.SplitSeq(subnetGw, ",") {
 		if util.CheckProtocol(gw) == protocol {
 			routes := []request.Route{{Destination: dst, Gateway: gw}}
 			buf, err := json.Marshal(routes)

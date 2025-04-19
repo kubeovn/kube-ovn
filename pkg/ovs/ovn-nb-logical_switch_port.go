@@ -50,8 +50,8 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 	if len(securityGroups) != 0 {
 		lsp.ExternalIDs[sgsKey] = strings.ReplaceAll(securityGroups, ",", "/")
 
-		sgList := strings.Split(securityGroups, ",")
-		for _, sg := range sgList {
+		sgList := strings.SplitSeq(securityGroups, ",")
+		for sg := range sgList {
 			lsp.ExternalIDs[associatedSgKeyPrefix+sg] = "true"
 		}
 	}
@@ -475,9 +475,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortExternalIDs(lspName string, externalID
 		lsp.ExternalIDs = make(map[string]string)
 	}
 
-	for k, v := range externalIDs {
-		lsp.ExternalIDs[k] = v
-	}
+	maps.Copy(lsp.ExternalIDs, externalIDs)
 
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
 		klog.Error(err)
@@ -628,7 +626,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) er
 }
 
 // UpdateLogicalSwitchPort update logical switch port
-func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...any) error {
 	if lsp == nil {
 		err := errors.New("logical switch port is nil")
 		klog.Error(err)
@@ -842,7 +840,7 @@ func (c *OVNNbClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operati
 }
 
 // UpdateLogicalSwitchPortOp create operations which update logical switch port
-func (c *OVNNbClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fields ...any) ([]ovsdb.Operation, error) {
 	// not found, skip
 	if lsp == nil {
 		return nil, nil

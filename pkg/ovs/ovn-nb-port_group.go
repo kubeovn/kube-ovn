@@ -102,7 +102,7 @@ func (c *OVNNbClient) PortGroupSetPorts(pgName string, ports []string) error {
 }
 
 // UpdatePortGroup update port group
-func (c *OVNNbClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...interface{}) error {
+func (c *OVNNbClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...any) error {
 	op, err := c.Where(pg).Update(pg, fields...)
 	if err != nil {
 		klog.Error(err)

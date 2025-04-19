@@ -1,7 +1,6 @@
 package ovs
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -60,7 +59,7 @@ func (suite *OvnClientTestSuite) testNewOvnNbClient() {
 	require.NoError(suite.T(), err)
 
 	_, sock := newOVSDBServer(suite.T(), "test-nb-client", clientDBModel, clientSchema)
-	endpoint := fmt.Sprintf("unix:%s", sock)
+	endpoint := "unix:" + sock
 	require.FileExists(suite.T(), sock)
 
 	t.Run("successful client creation", func(t *testing.T) {
@@ -89,7 +88,7 @@ func (suite *OvnClientTestSuite) testNewOvnSbClient() {
 	require.NoError(suite.T(), err)
 
 	_, sock := newOVSDBServer(suite.T(), "test-sb-client", clientDBModel, clientSchema)
-	endpoint := fmt.Sprintf("unix:%s", sock)
+	endpoint := "unix:" + sock
 	require.FileExists(suite.T(), sock)
 
 	t.Run("successful client creation", func(t *testing.T) {

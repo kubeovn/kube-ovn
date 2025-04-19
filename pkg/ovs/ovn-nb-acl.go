@@ -243,7 +243,7 @@ func (c *OVNNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 		acls = append(acls, allowIngressACL, allowEgressACL)
 	}
 
-	for _, joinIP := range strings.Split(joinIPStr, ",") {
+	for joinIP := range strings.SplitSeq(joinIPStr, ",") {
 		if slices.Contains(nodeIPs, joinIP) {
 			continue
 		}
@@ -459,7 +459,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 	}
 
 	if allowEWTraffic {
-		for _, cidr := range strings.Split(cidrBlock, ",") {
+		for cidr := range strings.SplitSeq(cidrBlock, ",") {
 			protocol := util.CheckProtocol(cidr)
 
 			ipSuffix := "ip4"
@@ -508,7 +508,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 }
 
 // UpdateACL update acl
-func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 	if acl == nil {
 		return errors.New("address_set is nil")
 	}
@@ -555,7 +555,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	acls = append(acls, defaultDropACL)
 
 	nodeSubnetACLFunc := func(protocol, ipSuffix string) error {
-		for _, nodeCidr := range strings.Split(nodeSwitchCIDR, ",") {
+		for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
 			// skip different address family
 			if protocol != util.CheckProtocol(nodeCidr) {
 				continue
@@ -610,7 +610,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 		return nil
 	}
 
-	for _, cidr := range strings.Split(cidrBlock, ",") {
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
 		protocol := util.CheckProtocol(cidr)
 
 		ipSuffix := "ip4"

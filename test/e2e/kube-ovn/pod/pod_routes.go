@@ -113,7 +113,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Generating routes")
 		routes := make([]request.Route, 0, 4)
-		for _, s := range strings.Split(cidr, ",") {
+		for s := range strings.SplitSeq(cidr, ",") {
 			gw, err := util.LastIP(s)
 			framework.ExpectNoError(err)
 			var dst string

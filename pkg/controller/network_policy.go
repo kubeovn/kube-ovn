@@ -26,19 +26,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddNp(obj interface{}) {
+func (c *Controller) enqueueAddNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
 	c.updateNpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteNp(obj interface{}) {
+func (c *Controller) enqueueDeleteNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
 	c.deleteNpQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateNp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 	oldNp := oldObj.(*netv1.NetworkPolicy)
 	newNp := newObj.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
@@ -578,8 +578,8 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 			for _, podNet := range podNets {
 				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-				podIPs := strings.Split(podIPAnnotation, ",")
-				for _, podIP := range podIPs {
+				podIPs := strings.SplitSeq(podIPAnnotation, ",")
+				for podIP := range podIPs {
 					if podIP != "" && util.CheckProtocol(podIP) == protocol {
 						selectedAddresses = append(selectedAddresses, podIP)
 					}

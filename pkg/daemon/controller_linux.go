@@ -296,7 +296,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 			continue
 		}
 
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 			if _, ipNet, err := net.ParseCIDR(cidrBlock); err != nil {
 				klog.Errorf("%s is not a valid cidr block", cidrBlock)
 			} else {
@@ -392,26 +392,14 @@ func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Servi
 	}
 
 	for _, oldRule := range oldlbServiceRules {
-		found := false
-		for _, newRule := range newlbServiceRules {
-			if oldRule == newRule {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(newlbServiceRules, oldRule)
 		if !found {
 			lbServiceRulesToDel = append(lbServiceRulesToDel, oldRule)
 		}
 	}
 
 	for _, newRule := range newlbServiceRules {
-		found := false
-		for _, oldRule := range oldlbServiceRules {
-			if newRule == oldRule {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(oldlbServiceRules, newRule)
 		if !found {
 			lbServiceRulesToAdd = append(lbServiceRulesToAdd, newRule)
 		}
@@ -521,7 +509,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error) {
 	var routes, existRoutes []netlink.Route
 	var err error
-	for _, gw := range strings.Split(gateway, ",") {
+	for gw := range strings.SplitSeq(gateway, ",") {
 		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			routes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
 		} else {
@@ -544,13 +532,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			continue
 		}
 
-		found := false
-		for _, c := range cidrs {
-			if route.Dst.String() == c {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(cidrs, route.Dst.String())
 		if !found {
 			toDel = append(toDel, route)
 		}
@@ -957,7 +939,7 @@ func kernelModuleLoaded(module string) (bool, error) {
 		return false, err
 	}
 
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if fields := strings.Fields(line); len(fields) != 0 && fields[0] == module {
 			return true, nil
 		}

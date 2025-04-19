@@ -248,7 +248,7 @@ func IsValidIP(ip string) bool {
 }
 
 func CheckCidrs(cidr string) error {
-	for _, cidrBlock := range strings.Split(cidr, ",") {
+	for cidrBlock := range strings.SplitSeq(cidr, ",") {
 		if _, _, err := net.ParseCIDR(cidrBlock); err != nil {
 			klog.Error(err)
 			return errors.New("CIDRInvalid")
@@ -259,7 +259,7 @@ func CheckCidrs(cidr string) error {
 
 func GetGwByCidr(cidrStr string) (string, error) {
 	var gws []string
-	for _, cidr := range strings.Split(cidrStr, ",") {
+	for cidr := range strings.SplitSeq(cidrStr, ",") {
 		gw, err := FirstIP(cidr)
 		if err != nil {
 			klog.Error(err)
@@ -273,7 +273,7 @@ func GetGwByCidr(cidrStr string) (string, error) {
 
 func AppendGwByCidr(gateway, cidrStr string) (string, error) {
 	var gws []string
-	for _, cidr := range strings.Split(cidrStr, ",") {
+	for cidr := range strings.SplitSeq(cidrStr, ",") {
 		if CheckProtocol(gateway) == CheckProtocol(cidr) {
 			gws = append(gws, gateway)
 			continue
@@ -352,7 +352,7 @@ func GetIPAddrWithMask(ip, cidr string) (string, error) {
 
 func GetIPWithoutMask(ipStr string) string {
 	var ips []string
-	for _, ip := range strings.Split(ipStr, ",") {
+	for ip := range strings.SplitSeq(ipStr, ",") {
 		ips = append(ips, strings.Split(ip, "/")[0])
 	}
 	return strings.Join(ips, ",")
@@ -362,7 +362,7 @@ func SplitStringIP(ipStr string) (string, string) {
 	var v4IP, v6IP string
 	switch CheckProtocol(ipStr) {
 	case kubeovnv1.ProtocolDual:
-		for _, ipTmp := range strings.Split(ipStr, ",") {
+		for ipTmp := range strings.SplitSeq(ipStr, ",") {
 			if CheckProtocol(ipTmp) == kubeovnv1.ProtocolIPv4 {
 				v4IP = ipTmp
 			} else {
@@ -394,7 +394,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				continue
 			}
 
-			for _, cidrBlock := range strings.Split(cidr, ",") {
+			for cidrBlock := range strings.SplitSeq(cidr, ",") {
 				if CheckProtocol(cidrBlock) != CheckProtocol(parts[0]) {
 					continue
 				}
@@ -421,7 +421,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				}
 			}
 		} else {
-			for _, cidrBlock := range strings.Split(cidr, ",") {
+			for cidrBlock := range strings.SplitSeq(cidr, ",") {
 				// exclude ip should be the same protocol with cidr
 				if CheckProtocol(cidrBlock) == CheckProtocol(excludeIP) {
 					// exclude ip should be in the range of cidr and not cidr addr and broadcast addr
@@ -472,7 +472,7 @@ func CountIPNums(excludeIPs []string) float64 {
 
 func GatewayContains(gatewayNodeStr, gateway string) bool {
 	// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
-	for _, gw := range strings.Split(gatewayNodeStr, ",") {
+	for gw := range strings.SplitSeq(gatewayNodeStr, ",") {
 		if strings.Contains(gw, ":") {
 			gw = strings.TrimSpace(strings.Split(gw, ":")[0])
 		} else {
@@ -490,8 +490,8 @@ func JoinHostPort(host string, port int32) string {
 }
 
 func CIDROverlap(a, b string) bool {
-	for _, cidrA := range strings.Split(a, ",") {
-		for _, cidrB := range strings.Split(b, ",") {
+	for cidrA := range strings.SplitSeq(a, ",") {
+		for cidrB := range strings.SplitSeq(b, ",") {
 			if CheckProtocol(cidrA) != CheckProtocol(cidrB) {
 				continue
 			}
@@ -509,7 +509,7 @@ func CIDROverlap(a, b string) bool {
 }
 
 func CIDRGlobalUnicast(cidr string) error {
-	for _, cidrBlock := range strings.Split(cidr, ",") {
+	for cidrBlock := range strings.SplitSeq(cidr, ",") {
 		if CIDROverlap(cidrBlock, IPv4Broadcast) {
 			return fmt.Errorf("%s conflict with v4 broadcast cidr %s", cidr, IPv4Broadcast)
 		}

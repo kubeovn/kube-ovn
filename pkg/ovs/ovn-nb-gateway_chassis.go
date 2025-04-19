@@ -33,7 +33,7 @@ func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string
 }
 
 // UpdateGatewayChassis update gateway chassis
-func (c *OVNNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error {
 	op, err := c.ovsDbClient.Where(gwChassis).Update(gwChassis, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate operations for gateway chassis %s with fields %v: %w", gwChassis.ChassisName, fields, err)

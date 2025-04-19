@@ -131,7 +131,7 @@ func RandomExcludeIPs(cidr string, count int) []string {
 	var idx int
 	rangeLeft := rangeCount
 	ret := make([]string, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if rangeLeft != 0 && rand.IntN(count-i) < rangeLeft {
 			ret = append(ret, fmt.Sprintf("%s..%s", ips[idx], ips[idx+1]))
 			idx++
@@ -179,7 +179,7 @@ func RandomIPs(cidr, sep string, count int) string {
 	ipsV6 := randomSortedIPs(cidrV6, count, false)
 
 	dual := make([]string, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		ips := make([]string, 0, 2)
 		if i < len(ipsV4) {
 			ips = append(ips, ipsV4[i])

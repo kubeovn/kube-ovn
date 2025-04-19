@@ -576,7 +576,7 @@ func (c *Controller) setIptables() error {
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing policy rules
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j %s`, OvnNatOutGoingPolicy))},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields("-m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j " + OvnNatOutGoingPolicy)},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j %s`, OnOutGoingNatMark, OvnMasquerade))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j RETURN`, OnOutGoingForwardMark))},
 			// default nat outgoing rules
@@ -617,7 +617,7 @@ func (c *Controller) setIptables() error {
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing policy rules
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j %s`, OvnNatOutGoingPolicy))},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields("-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j " + OvnNatOutGoingPolicy)},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j %s`, OnOutGoingNatMark, OvnMasquerade))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j RETURN`, OnOutGoingForwardMark))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j ` + OvnMasquerade)},

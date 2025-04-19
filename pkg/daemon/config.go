@@ -413,7 +413,7 @@ func (config *Configuration) initKubeClient() error {
 func setEncapIP(ip string) error {
 	// #nosec G204
 	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-ip=%s", ip)).CombinedOutput()
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+ip).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
 	}

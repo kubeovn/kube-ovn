@@ -21,13 +21,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVirtualIP(obj interface{}) {
+func (c *Controller) enqueueAddVirtualIP(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vip)).String()
 	klog.Infof("enqueue add vip %s", key)
 	c.addVirtualIPQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 	oldVip := oldObj.(*kubeovnv1.Vip)
 	newVip := newObj.(*kubeovnv1.Vip)
 	key := cache.MetaObjectToName(newVip).String()
@@ -46,7 +46,7 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
+func (c *Controller) enqueueDelVirtualIP(obj any) {
 	vip := obj.(*kubeovnv1.Vip)
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)

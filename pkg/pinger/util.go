@@ -47,7 +47,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %w", err)
 	}
 
-	for _, kvPair := range strings.Split(string(output), "\n") {
+	for kvPair := range strings.SplitSeq(string(output), "\n") {
 		var datapathType, datapathName string
 		line := strings.TrimSpace(strings.TrimSuffix(kvPair, "\n"))
 		if strings.Contains(line, "@") {
@@ -74,7 +74,7 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 	}
 
 	var datapathPortCount float64
-	for _, kvPair := range strings.Split(string(output), "\n") {
+	for kvPair := range strings.SplitSeq(string(output), "\n") {
 		line := strings.TrimSpace(kvPair)
 		switch {
 		case strings.HasPrefix(line, "lookups:"):
