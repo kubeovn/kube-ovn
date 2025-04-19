@@ -122,7 +122,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
 		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
-		if err = c.patchOvnEipStatus(key, true); err != nil {
+		if err = c.patchOvnEipStatus(key, true, true); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
 			return err
 		}
@@ -193,7 +193,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle reset ovn eip %s", cachedEip.Name)
-	if err := c.patchOvnEipStatus(key, true); err != nil {
+	if err := c.patchOvnEipStatus(key, true, false); err != nil {
 		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
 	}
@@ -364,7 +364,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 	return nil
 }
 
-func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
+func (c *Controller) patchOvnEipStatus(key string, ready, changeReady bool) error {
 	cachedOvnEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
@@ -372,9 +372,11 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	}
 	ovnEip := cachedOvnEip.DeepCopy()
 	changed := false
-	if ovnEip.Status.Ready != ready {
-		ovnEip.Status.Ready = ready
-		changed = true
+	if changeReady {
+		if ovnEip.Status.Ready != ready {
+			ovnEip.Status.Ready = ready
+			changed = true
+		}
 	}
 	if ovnEip.Status.MacAddress == "" {
 		// not support change ip
