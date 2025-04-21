@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -24,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIP(obj interface{}) {
+func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
@@ -35,23 +36,13 @@ func (c *Controller) enqueueAddIP(obj interface{}) {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
 		c.updateSubnetStatusQueue.Add(as)
 	}
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+
+	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue add ip %s", key)
 	c.addIPQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	oldIP := oldObj.(*kubeovnv1.IP)
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
@@ -84,11 +75,12 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 		}
 	}
 	if !newIP.DeletionTimestamp.IsZero() {
+		key := cache.MetaObjectToName(newIP).String()
 		klog.V(3).Infof("enqueue update ip %s", key)
 		c.updateIPQueue.Add(key)
 		return
 	}
-	if !reflect.DeepEqual(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
+	if !slices.Equal(oldIP.Spec.AttachSubnets, newIP.Spec.AttachSubnets) {
 		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
 		for _, as := range newIP.Spec.AttachSubnets {
 			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
@@ -97,17 +89,13 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDelIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
+
+	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue del ip %s", key)
 	c.delIPQueue.Add(ipObj)
 }
@@ -356,17 +344,17 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 	}
 }
 
-func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
+func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string, macPointer *string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, nil, subnetName, checkConflict); err != nil {
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict); err != nil {
 		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}
@@ -464,7 +452,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if reflect.DeepEqual(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
+		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
 			return nil
 		}
 

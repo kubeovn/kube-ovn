@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -165,7 +166,7 @@ func TestBigInt2Ip(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := BigInt2Ip(c.ip); !reflect.DeepEqual(ans, c.expect) {
+			if ans := BigInt2Ip(c.ip); ans != c.expect {
 				t.Errorf("%v expected %v, but %v got",
 					c.ip, c.expect, ans)
 			}
@@ -187,7 +188,7 @@ func TestSubnetNumber(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := SubnetNumber(c.subnet); !reflect.DeepEqual(ans, c.expect) {
+			if ans := SubnetNumber(c.subnet); ans != c.expect {
 				t.Errorf("%v expected %v, but %v got",
 					c.subnet, c.expect, ans)
 			}
@@ -235,7 +236,7 @@ func TestSubnetBroadcast(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := SubnetBroadcast(c.subnet); !reflect.DeepEqual(ans, c.expect) {
+			if ans := SubnetBroadcast(c.subnet); ans != c.expect {
 				t.Errorf("%v expected %v, but %v got",
 					c.subnet, c.expect, ans)
 			}
@@ -295,7 +296,7 @@ func TestFirstIP(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 			ans, err := FirstIP(c.subnet)
-			if !reflect.DeepEqual(ans, c.expect) || !ErrorContains(err, c.err) {
+			if ans != c.expect || !ErrorContains(err, c.err) {
 				t.Errorf("%v expected %v, %v, but %v, %v got",
 					c.subnet, c.expect, c.err, ans, err)
 			}
@@ -344,7 +345,7 @@ func TestLastIP(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 			ans, err := LastIP(c.subnet)
-			if !reflect.DeepEqual(ans, c.expect) || !ErrorContains(err, c.err) {
+			if ans != c.expect || !ErrorContains(err, c.err) {
 				t.Errorf("%v expected %v, %v, but %v, %v got",
 					c.subnet, c.expect, c.err, ans, err)
 			}
@@ -874,7 +875,7 @@ func TestSplitIpsByProtocol(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 			ans4, ans6 := SplitIpsByProtocol(c.excl)
-			if reflect.DeepEqual(ans4, c.want4) && reflect.DeepEqual(ans6, c.want6) {
+			if slices.Equal(ans4, c.want4) && slices.Equal(ans6, c.want6) {
 				t.Errorf("%v expected %v, %v,  but %v, %v got",
 					c.excl, c.want4, c.want6, ans4, ans6)
 			}
@@ -1086,7 +1087,7 @@ func TestExpandExcludeIPs(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 			ans := ExpandExcludeIPs(c.excl, c.cidr)
-			if !reflect.DeepEqual(ans, c.want) {
+			if !slices.Equal(ans, c.want) {
 				t.Errorf("%v expected %v but %v got",
 					c.cidr, c.want, ans)
 			}
@@ -1389,14 +1390,21 @@ func TestUDPConnectivityCheck(t *testing.T) {
 }
 
 func TestGetDefaultListenAddr(t *testing.T) {
-	addr := GetDefaultListenAddr()
-	require.Equal(t, addr, "0.0.0.0")
+	require.Equal(t, GetDefaultListenAddr(), []string{"0.0.0.0"})
 	err := os.Setenv("ENABLE_BIND_LOCAL_IP", "true")
 	require.NoError(t, err)
 	err = os.Setenv("POD_IPS", "10.10.10.10")
 	require.NoError(t, err)
-	addr = GetDefaultListenAddr()
-	require.Equal(t, addr, "10.10.10.10")
+	require.Equal(t, GetDefaultListenAddr(), []string{"10.10.10.10"})
+	err = os.Setenv("POD_IPS", "fd00::1")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"fd00::1"})
+	err = os.Setenv("POD_IPS", "10.10.10.10,fd00::1")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"10.10.10.10", "fd00::1"})
+	err = os.Setenv("ENABLE_BIND_LOCAL_IP", "false")
+	require.NoError(t, err)
+	require.Equal(t, GetDefaultListenAddr(), []string{"0.0.0.0"})
 }
 
 func TestContainsUppercase(t *testing.T) {

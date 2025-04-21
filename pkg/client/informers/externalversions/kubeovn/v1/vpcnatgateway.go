@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // VpcNatGateways.
 type VpcNatGatewayInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VpcNatGatewayLister
+	Lister() kubeovnv1.VpcNatGatewayLister
 }
 
 type vpcNatGatewayInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredVpcNatGatewayInformer(client versioned.Interface, resyncPeriod t
 				return client.KubeovnV1().VpcNatGateways().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.VpcNatGateway{},
+		&apiskubeovnv1.VpcNatGateway{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *vpcNatGatewayInformer) defaultInformer(client versioned.Interface, resy
 }
 
 func (f *vpcNatGatewayInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.VpcNatGateway{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.VpcNatGateway{}, f.defaultInformer)
 }
 
-func (f *vpcNatGatewayInformer) Lister() v1.VpcNatGatewayLister {
-	return v1.NewVpcNatGatewayLister(f.Informer().GetIndexer())
+func (f *vpcNatGatewayInformer) Lister() kubeovnv1.VpcNatGatewayLister {
+	return kubeovnv1.NewVpcNatGatewayLister(f.Informer().GetIndexer())
 }

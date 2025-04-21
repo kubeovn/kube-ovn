@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IptablesFIPRuleLister helps list IptablesFIPRules.
@@ -30,19 +30,19 @@ import (
 type IptablesFIPRuleLister interface {
 	// List lists all IptablesFIPRules in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.IptablesFIPRule, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.IptablesFIPRule, err error)
 	// Get retrieves the IptablesFIPRule from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.IptablesFIPRule, error)
+	Get(name string) (*kubeovnv1.IptablesFIPRule, error)
 	IptablesFIPRuleListerExpansion
 }
 
 // iptablesFIPRuleLister implements the IptablesFIPRuleLister interface.
 type iptablesFIPRuleLister struct {
-	listers.ResourceIndexer[*v1.IptablesFIPRule]
+	listers.ResourceIndexer[*kubeovnv1.IptablesFIPRule]
 }
 
 // NewIptablesFIPRuleLister returns a new IptablesFIPRuleLister.
 func NewIptablesFIPRuleLister(indexer cache.Indexer) IptablesFIPRuleLister {
-	return &iptablesFIPRuleLister{listers.New[*v1.IptablesFIPRule](indexer, v1.Resource("iptablesfiprule"))}
+	return &iptablesFIPRuleLister{listers.New[*kubeovnv1.IptablesFIPRule](indexer, kubeovnv1.Resource("iptablesfiprule"))}
 }

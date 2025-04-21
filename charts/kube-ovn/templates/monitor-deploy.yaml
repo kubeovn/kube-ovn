@@ -67,6 +67,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file_max_size=200
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
@@ -125,22 +126,20 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls={{- .Values.func.SECURE_SERVING }}
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls={{- .Values.func.SECURE_SERVING }}
+            httpGet:
+              port: 10661
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.func.SECURE_SERVING }}'
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"

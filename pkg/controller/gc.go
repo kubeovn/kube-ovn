@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -25,6 +28,10 @@ import (
 var lastNoPodLSP = strset.New()
 
 func (c *Controller) gc() error {
+	if c.config.GCInterval == 0 {
+		klog.Infof("gc is disabled")
+		return nil
+	}
 	gcFunctions := []func() error{
 		c.gcNode,
 		c.gcChassis,
@@ -125,34 +132,35 @@ func (c *Controller) gcLogicalSwitch() error {
 		klog.Errorf("failed to list subnet, %v", err)
 		return err
 	}
-	subnetNames := strset.NewWithSize(len(subnets))
-	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
-	for _, s := range subnets {
-		subnetMap[s.Name] = s
-		subnetNames.Add(s.Name)
-	}
 
-	lss, err := c.OVNNbClient.ListLogicalSwitch(c.config.EnableExternalVpc, nil)
+	lss, err := c.OVNNbClient.ListLogicalSwitchNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
-		klog.Errorf("list logical switch: %v", err)
+		klog.Errorf("failed to list logical switch: %v", err)
 		return err
 	}
 
-	klog.Infof("ls in ovn %v", lss)
-	klog.Infof("subnet in kubernetes %v", subnetNames)
+	subnetNames := set.New[string]()
+	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
+	for _, s := range subnets {
+		subnetMap[s.Name] = s
+		subnetNames.Insert(s.Name)
+	}
+
+	klog.Infof("logical switch in ovn: %v", lss)
+	klog.Infof("subnet in kubernetes: %v", subnetNames)
 	for _, ls := range lss {
-		if ls.Name == util.InterconnectionSwitch ||
-			ls.Name == util.ExternalGatewaySwitch ||
-			ls.Name == c.config.ExternalGatewaySwitch {
+		if ls == util.InterconnectionSwitch ||
+			ls == util.ExternalGatewaySwitch ||
+			ls == c.config.ExternalGatewaySwitch {
 			continue
 		}
-		if s := subnetMap[ls.Name]; s != nil && isOvnSubnet(s) {
+		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
 			continue
 		}
 
-		klog.Infof("gc subnet %s", ls.Name)
-		if err := c.handleDeleteLogicalSwitch(ls.Name); err != nil {
-			klog.Errorf("failed to gc subnet %s, %v", ls.Name, err)
+		klog.Infof("gc logical switch %s", ls)
+		if err = c.handleDeleteLogicalSwitch(ls); err != nil {
+			klog.Errorf("failed to gc logical switch %q: %v", ls, err)
 			return err
 		}
 	}
@@ -186,30 +194,30 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		klog.Errorf("failed to list vpc, %v", err)
 		return err
 	}
-	vpcNames := make([]string, 0, len(vpcs))
-	for _, s := range vpcs {
-		vpcNames = append(vpcNames, s.Name)
-	}
 
-	lrs, err := c.OVNNbClient.ListLogicalRouter(c.config.EnableExternalVpc, nil)
+	lrs, err := c.OVNNbClient.ListLogicalRouterNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
 	}
 
-	klog.Infof("lr in ovn %v", lrs)
-	klog.Infof("vpc in kubernetes %v", vpcNames)
+	vpcNames := set.New[string]()
+	for _, v := range vpcs {
+		vpcNames.Insert(v.Name)
+	}
+
+	klog.Infof("lr in ovn: %v", lrs)
+	klog.Infof("vpc in kubernetes: %v", vpcNames)
 
 	for _, lr := range lrs {
-		if lr.Name == c.config.ClusterRouter {
+		if lr == c.config.ClusterRouter || vpcNames.Has(lr) {
 			continue
 		}
-		if !slices.Contains(vpcNames, lr.Name) {
-			klog.Infof("gc router %s", lr.Name)
-			if err := c.deleteVpcRouter(lr.Name); err != nil {
-				klog.Errorf("failed to delete router %s, %v", lr.Name, err)
-				return err
-			}
+
+		klog.Infof("gc logical router %s", lr)
+		if err = c.deleteVpcRouter(lr); err != nil {
+			klog.Errorf("failed to gc logical router %q: %v", lr, err)
+			return err
 		}
 	}
 	return nil
@@ -323,7 +331,7 @@ func (c *Controller) markAndCleanLSP() error {
 	ipMap := strset.NewWithSize(len(pods) + len(nodes))
 	for _, pod := range pods {
 		if isStsPod, stsName, stsUID := isStatefulSetPod(pod); isStsPod {
-			if isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUID) {
+			if isStatefulSetPodToGC(c.config.KubeClient, pod, stsName, stsUID) {
 				continue
 			}
 		} else if !isPodAlive(pod) {
@@ -360,6 +368,18 @@ func (c *Controller) markAndCleanLSP() error {
 	// The lsp for vm pod should not be deleted if vm still exists
 	ipMap.Add(c.getVMLsps()...)
 
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list virtual ip, %v", err)
+		return err
+	}
+	vipsMap := strset.NewWithSize(len(vips))
+	for _, vip := range vips {
+		if vip.Spec.Type != "" {
+			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, util.OvnProvider)
+			vipsMap.Add(portName)
+		}
+	}
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
@@ -373,9 +393,8 @@ func (c *Controller) markAndCleanLSP() error {
 		if ipMap.Has(lsp.Name) {
 			continue
 		}
-
-		if lsp.Options != nil && lsp.Options["arp_proxy"] == "true" {
-			// arp_proxy lsp is a type of vip crd which should not gc
+		if vipsMap.Has(lsp.Name) {
+			// skip gc lsp for k8s host network vm pod or switch lb rule
 			continue
 		}
 		if !lastNoPodLSP.Has(lsp.Name) {
@@ -656,7 +675,7 @@ func (c *Controller) gcAddressSet() error {
 	}
 
 	if err = c.OVNNbClient.DeleteAddressSet(asList...); err != nil {
-		klog.Errorf("failed to delete address set %v,%v", asList, err)
+		klog.Errorf("failed to delete address set %v: %v", asList, err)
 		return err
 	}
 
@@ -960,10 +979,19 @@ func (c *Controller) getVMLsps() []string {
 			continue
 		}
 		for _, vm := range vms.Items {
-			vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
-			vmLsps = append(vmLsps, vmLsp)
+			defaultMultus := false
+			for _, network := range vm.Spec.Template.Spec.Networks {
+				if network.Multus != nil && network.Multus.Default {
+					defaultMultus = true
+					break
+				}
+			}
+			if !defaultMultus {
+				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
+				vmLsps = append(vmLsps, vmLsp)
+			}
 
-			attachNets, err := util.ParsePodNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[util.AttachmentNetworkAnnotation], vm.Namespace)
+			attachNets, err := nadutils.ParseNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot], vm.Namespace)
 			if err != nil {
 				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
 				continue

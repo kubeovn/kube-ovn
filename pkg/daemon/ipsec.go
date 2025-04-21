@@ -96,7 +96,7 @@ func generateCSRCode() ([]byte, error) {
 	cmd = exec.Command("openssl", "req", "-new", "-text",
 		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
-		"-subj", fmt.Sprintf("/C=CN/O=kubeovn/OU=kind/CN=%s", cn),
+		"-subj", "/C=CN/O=kubeovn/OU=kind/CN="+cn,
 		"-key", ipsecPrivKeyPath,
 		"-out", ipsecReqPath) // #nosec
 	output, err = cmd.CombinedOutput()

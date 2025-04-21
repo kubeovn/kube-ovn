@@ -27,7 +27,7 @@ type MacvlanNetConf struct {
 
 	RuntimeConfig struct {
 		Mac string `json:"mac,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
+	} `json:"runtimeConfig"`
 }
 
 func MakeMacvlanNetworkAttachmentDefinition(name, namespace, master, mode, provider string, routes []request.Route) *nadv1.NetworkAttachmentDefinition {
@@ -36,8 +36,9 @@ func MakeMacvlanNetworkAttachmentDefinition(name, namespace, master, mode, provi
 	config := &MacvlanNetConf{
 		NetConf: netconf.NetConf{
 			NetConf: types.NetConf{
-				CNIVersion: CNIVersion,
-				Type:       "macvlan",
+				CNIVersion:   CNIVersion,
+				Type:         "macvlan",
+				Capabilities: map[string]bool{"mac": true},
 			},
 			IPAM: &netconf.IPAMConf{
 				Type:         util.CniTypeName,

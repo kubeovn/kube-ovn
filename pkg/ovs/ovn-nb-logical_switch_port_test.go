@@ -1118,7 +1118,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortsSecurityGroup() {
 	err := nbClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		lspName := fmt.Sprintf("%s-%d", lspNamePrefix, i)
 		err = nbClient.CreateBareLogicalSwitchPort(lsName, lspName, "unknown", "")
 		require.NoError(t, err)
@@ -1137,7 +1137,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortsSecurityGroup() {
 		err := nbClient.SetLogicalSwitchPortsSecurityGroup("sg2", "add")
 		require.NoError(t, err)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			lspName := fmt.Sprintf("%s-%d", lspNamePrefix, i)
 			lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 			require.NoError(t, err)
@@ -1155,7 +1155,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortsSecurityGroup() {
 		err := nbClient.SetLogicalSwitchPortsSecurityGroup("sg2", "remove")
 		require.NoError(t, err)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			lspName := fmt.Sprintf("%s-%d", lspNamePrefix, i)
 			lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 			require.NoError(t, err)
@@ -1571,11 +1571,12 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPortsWithLegacyExternalIDs
 		foundLsp1 := false
 		foundLsp2 := false
 		for _, lsp := range lspList {
-			if lsp.Name == lspName1 {
+			switch lsp.Name {
+			case lspName1:
 				foundLsp1 = true
 				require.Equal(t, "", lsp.ExternalIDs[logicalSwitchKey])
 				require.Equal(t, "some-vendor", lsp.ExternalIDs["vendor"])
-			} else if lsp.Name == lspName2 {
+			case lspName2:
 				foundLsp2 = true
 				require.Equal(t, "some-value", lsp.ExternalIDs[logicalSwitchKey])
 				require.Equal(t, "", lsp.ExternalIDs["vendor"])
@@ -1689,7 +1690,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 		require.Len(t, ops, 2)
 
 		require.Equal(t, ovsdb.OvsMap{
-			GoMap: map[interface{}]interface{}{
+			GoMap: map[any]any{
 				logicalSwitchKey: lsName,
 				"pod":            lspName,
 				"vendor":         "kube-ovn",
@@ -1701,7 +1702,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lsp.UUID,
 						},
@@ -1724,7 +1725,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 		require.Len(t, ops, 2)
 
 		require.Equal(t, ovsdb.OvsMap{
-			GoMap: map[interface{}]interface{}{
+			GoMap: map[any]any{
 				logicalSwitchKey: lsName,
 				"vendor":         "kube-ovn",
 			},
@@ -1735,7 +1736,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lsp.UUID,
 						},
@@ -1793,7 +1794,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lsp.UUID,
 						},
@@ -1889,7 +1890,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchPortFilter() {
 	// create one patch lsp
 	for ; i < 4; i++ {
 		lspName := fmt.Sprintf("%s-%d", prefix, i)
-		patchPort = fmt.Sprintf("%s-lrp", lspName)
+		patchPort = lspName + "-lrp"
 		lsp := &ovnnb.LogicalSwitchPort{
 			Name: lspName,
 			ExternalIDs: map[string]string{

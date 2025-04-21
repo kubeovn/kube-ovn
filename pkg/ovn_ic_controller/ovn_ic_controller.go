@@ -3,9 +3,10 @@ package ovn_ic_controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
-	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -123,12 +124,11 @@ func (c *Controller) DeleteICResources(azName string) error {
 }
 
 func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
-	isCMEqual := reflect.DeepEqual(cmData, lastcmData)
 	if icEnabled != "true" && len(lastcmData) == 0 && cmData["enable-ic"] == "true" {
 		return icFirstEstablish
 	}
 
-	if icEnabled == "true" && lastcmData != nil && isCMEqual {
+	if icEnabled == "true" && lastcmData != nil && maps.Equal(cmData, lastcmData) {
 		var err error
 		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cmData["ic-db-host"], cmData["ic-nb-port"])
 		curTSs, err = c.ovnLegacyClient.GetTs()
@@ -136,8 +136,7 @@ func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 			klog.Errorf("failed to get Transit_Switch, %v", err)
 			return icNoAction
 		}
-		isTsEqual := reflect.DeepEqual(lastTSs, curTSs)
-		if isTsEqual {
+		if slices.Equal(lastTSs, curTSs) {
 			return icNoAction
 		}
 	}
@@ -186,11 +185,7 @@ func (c *Controller) resyncInterConnection() {
 		return
 	}
 
-	autoRoute := false
-	if cm.Data["auto-route"] == "true" {
-		autoRoute = true
-	}
-	c.setAutoRoute(autoRoute)
+	c.setAutoRoute(cm.Data["auto-route"] == "true")
 
 	switch c.getICState(cm.Data, lastIcCm) {
 	case icNoAction:
@@ -242,8 +237,8 @@ func (c *Controller) removeInterConnection(azName string) error {
 		return err
 	}
 	for _, node := range nodes {
-		labels := map[string]any{util.ICGatewayLabel: "false"}
-		if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		patch := util.KVPatch{util.ICGatewayLabel: "false"}
+		if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 			klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
 			return err
 		}
@@ -305,8 +300,8 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 				klog.Errorf("failed to get gw node %q: %v", gw, err)
 				return err
 			}
-			labels := map[string]any{util.ICGatewayLabel: "true"}
-			if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+			patch := util.KVPatch{util.ICGatewayLabel: "true"}
+			if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 				klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
 				return err
 			}
@@ -374,18 +369,18 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	// #nosec G204
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
-		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
-		fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
-		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
+		"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),
+		"--ovn-ic-sb-db="+genHostAddress(icHost, icSbPort),
+		"--ovn-northd-nb-db="+c.config.OvnNbAddr,
+		"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 		"start_ic")
 	if os.Getenv("ENABLE_SSL") == "true" {
 		// #nosec G204
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-			fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
-			fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
-			fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
-			fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
+			"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),
+			"--ovn-ic-sb-db="+genHostAddress(icHost, icSbPort),
+			"--ovn-northd-nb-db="+c.config.OvnNbAddr,
+			"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 			"--ovn-ic-ssl-key=/var/run/tls/key",
 			"--ovn-ic-ssl-cert=/var/run/tls/cert",
 			"--ovn-ic-ssl-ca-cert=/var/run/tls/cacert",

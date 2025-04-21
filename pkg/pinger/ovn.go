@@ -108,8 +108,8 @@ func checkOvsBindings() ([]string, error) {
 		return nil, err
 	}
 	result := make([]string, 0, len(strings.Split(string(output), "\n")))
-	for _, line := range strings.Split(string(output), "\n") {
-		for _, id := range strings.Split(line, " ") {
+	for line := range strings.SplitSeq(string(output), "\n") {
+		for id := range strings.SplitSeq(line, " ") {
 			if strings.Contains(id, "iface-id") {
 				result = append(result, strings.TrimPrefix(id, "iface-id="))
 				break
@@ -153,7 +153,7 @@ func getChassis(hostname string) (string, error) {
 	}
 
 	if len(responses) == 0 || len(responses[0].Rows) == 0 || len(responses[0].Rows[0].UUID) < 2 {
-		return "", fmt.Errorf("No chassis found for hostname: %s", hostname)
+		return "", fmt.Errorf("no chassis found for hostname %q", hostname)
 	}
 	return responses[0].Rows[0].UUID[1], nil
 }
@@ -177,7 +177,7 @@ func getLogicalPort(chassis string) ([]string, error) {
 	}
 	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
 	if err != nil {
-		return nil, fmt.Errorf("Failed to query OVSDB: %w, %s", err, output)
+		return nil, fmt.Errorf("failed to query ovn sb Port_Binding: %w, %s", err, output)
 	}
 
 	// Parse the JSON output.
@@ -188,7 +188,7 @@ func getLogicalPort(chassis string) ([]string, error) {
 	}
 
 	if len(responses) == 0 || len(responses[0].Rows) == 0 {
-		return nil, fmt.Errorf("No logical port found for chassis: %s", chassis)
+		return nil, fmt.Errorf("no logical port found for chassis %q", chassis)
 	}
 
 	var ports []string

@@ -10,10 +10,12 @@ import (
 	"strconv"
 	"strings"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -28,34 +30,26 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVpcEgressGateway(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj any) {
+	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
 	c.addOrUpdateVpcEgressGatewayQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteVpcEgressGateway(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)
+}
+
+func vegWorkloadLabels(vegName string) map[string]string {
+	return map[string]string{"app": "vpc-egress-gateway", util.VpcEgressGatewayLabel: vegName}
 }
 
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
@@ -124,8 +118,11 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 
 	// reconcile the vpc egress gateway workload and get the route sources for later OVN resources reconciliation
 	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, vpc, bfdIP, bfdIPv4, bfdIPv6)
+	gw.Status.Replicas = gw.Spec.Replicas
+	gw.Status.LabelSelector = labels.FormatLabels(vegWorkloadLabels(gw.Name))
 	if err != nil {
 		klog.Error(err)
+		gw.Status.Replicas = 0
 		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "ReconcileWorkloadFailed", err.Error(), gw.Generation)
 		_, _ = c.updateVpcEgressGatewayStatus(gw)
 		return err
@@ -306,7 +303,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return attachmentNetworkName, nil, nil, nil, err
 	}
-	annotations[util.AttachmentNetworkAnnotation] = attachmentNetworkName
+	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
 	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
@@ -376,7 +373,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	initEnv = append(initEnv, ipv6Env...)
 
 	// generate workload
-	labels := map[string]string{util.VpcEgressGatewayLabel: gw.Name}
+	labels := vegWorkloadLabels(gw.Name)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gw.Spec.Prefix + gw.Name,
@@ -627,7 +624,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 		for nextHop, sources := range expected {
 			for _, src := range sources.UnsortedList() {
-				if err = c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, src, bfdMap[nextHop], nextHop); err != nil {
+				if err = c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, src, bfdMap[nextHop], externalIDs, nextHop); err != nil {
 					klog.Error(err)
 					return err
 				}

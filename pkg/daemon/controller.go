@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -58,6 +58,10 @@ type Controller struct {
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
 
+	servicesLister listerv1.ServiceLister
+	servicesSynced cache.InformerSynced
+	serviceQueue   workqueue.TypedRateLimitingInterface[*serviceEvent]
+
 	recorder record.EventRecorder
 
 	protocol string
@@ -80,15 +84,15 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events(v1.NamespaceAll)})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
-
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+	servicesInformer := nodeInformerFactory.Core().V1().Services()
 
 	controller := &Controller{
 		config: config,
@@ -115,6 +119,10 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
 
+		servicesLister: servicesInformer.Lister(),
+		servicesSynced: servicesInformer.Informer().HasSynced,
+		serviceQueue:   newTypedRateLimitingQueue[*serviceEvent]("Service", nil),
+
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
 	}
@@ -135,7 +143,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -158,6 +166,14 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	}); err != nil {
 		return nil, err
 	}
+	if _, err = servicesInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddService,
+		DeleteFunc: controller.enqueueDeleteService,
+		UpdateFunc: controller.enqueueUpdateService,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add service event handler")
+	}
+
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueuePod,
 	}); err != nil {
@@ -167,31 +183,22 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	return controller, nil
 }
 
-func (c *Controller) enqueueAddProviderNetwork(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+func (c *Controller) enqueueAddProviderNetwork(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue add provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateProviderNetwork(_, newObj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+func (c *Controller) enqueueUpdateProviderNetwork(_, newObj any) {
+	key := cache.MetaObjectToName(newObj.(*kubeovnv1.ProviderNetwork)).String()
 	klog.V(3).Infof("enqueue update provider network %s", key)
 	c.addOrUpdateProviderNetworkQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteProviderNetwork(obj interface{}) {
+func (c *Controller) enqueueDeleteProviderNetwork(obj any) {
 	pn := obj.(*kubeovnv1.ProviderNetwork)
-	klog.V(3).Infof("enqueue delete provider network %s", pn.Name)
+	key := cache.MetaObjectToName(pn).String()
+	klog.V(3).Infof("enqueue delete provider network %s", key)
 	c.deleteProviderNetworkQueue.Add(pn)
 }
 
@@ -281,7 +288,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		}
 	}
 
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
@@ -308,19 +315,19 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
-		delete(labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
-		if err1 := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err1 != nil {
-			klog.Errorf("failed to update annotations of node %s: %v", node.Name, err1)
+		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
+		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
+			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
 		}
 		c.recordProviderNetworkErr(pn.Name, err.Error())
 		return err
 	}
 
-	labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
-	labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
-	labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
+	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
+	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 	c.recordProviderNetworkErr(pn.Name, "")
@@ -331,9 +338,9 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	var currentPod *v1.Pod
 	var err error
 	if c.localPodName == "" {
-		pods, err := c.config.KubeClient.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
+		pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{
 			LabelSelector: "app=kube-ovn-cni",
-			FieldSelector: fmt.Sprintf("spec.nodeName=%s", c.config.NodeName),
+			FieldSelector: "spec.nodeName=" + c.config.NodeName,
 		})
 		if err != nil {
 			klog.Errorf("failed to list pod: %v", err)
@@ -358,23 +365,14 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 		}
 	}
 
-	newPod := currentPod.DeepCopy()
-	if newPod.Annotations == nil {
-		newPod.Annotations = make(map[string]string)
-	}
-	if newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
+	patch := util.KVPatch{}
+	if currentPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
 		if errMsg == "" {
-			delete(newPod.Annotations, fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork))
+			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = nil
 		} else {
-			newPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
+			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
 		}
-		patch, err := util.GenerateStrategicMergePatchPayload(currentPod, newPod)
-		if err != nil {
-			klog.Errorf("failed to gen patch payload pod %s: %v", c.localPodName, err)
-			return
-		}
-		if _, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Patch(context.Background(), c.localPodName,
-			types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(c.localNamespace), c.localPodName, patch); err != nil {
 			klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
 			return
 		}
@@ -382,14 +380,14 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 }
 
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   "true",
 	}
-	if err := util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	if err := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
@@ -411,21 +409,21 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		return nil
 	}
 
-	labels := map[string]any{
+	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
 	}
-	if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-		klog.Errorf("failed to update labels of node %s: %v", node.Name, err)
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	oldVlan := oldObj.(*kubeovnv1.Vlan)
 	newVlan := newObj.(*kubeovnv1.Vlan)
 	if oldVlan.Spec.ID != newVlan.Spec.ID {
@@ -435,23 +433,44 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj interface{}) {
 }
 
 type subnetEvent struct {
-	oldObj, newObj interface{}
+	oldObj, newObj any
 }
 
-func (c *Controller) enqueueAddSubnet(obj interface{}) {
+type serviceEvent struct {
+	oldObj, newObj any
+}
+
+func (c *Controller) enqueueAddSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
 
-func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	c.subnetQueue.Add(&subnetEvent{oldObj: oldObj, newObj: newObj})
 }
 
-func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
+func (c *Controller) enqueueDeleteSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{oldObj: obj})
 }
 
 func (c *Controller) runSubnetWorker() {
 	for c.processNextSubnetWorkItem() {
+	}
+}
+
+func (c *Controller) enqueueAddService(obj any) {
+	c.serviceQueue.Add(&serviceEvent{newObj: obj})
+}
+
+func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
+	c.serviceQueue.Add(&serviceEvent{oldObj: oldObj, newObj: newObj})
+}
+
+func (c *Controller) enqueueDeleteService(obj any) {
+	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
+}
+
+func (c *Controller) runAddOrUpdateServicekWorker() {
+	for c.processNextServiceWorkItem() {
 	}
 }
 
@@ -477,9 +496,32 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 	return true
 }
 
-func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
+func (c *Controller) processNextServiceWorkItem() bool {
+	obj, shutdown := c.serviceQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj *serviceEvent) error {
+		defer c.serviceQueue.Done(obj)
+		if err := c.reconcileServices(obj); err != nil {
+			c.serviceQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
+		}
+		c.serviceQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) enqueuePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	key := cache.MetaObjectToName(newPod).String()
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
@@ -488,16 +530,11 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 		oldPod.Annotations[util.NetemQosLimitAnnotation] != newPod.Annotations[util.NetemQosLimitAnnotation] ||
 		oldPod.Annotations[util.NetemQosLossAnnotation] != newPod.Annotations[util.NetemQosLossAnnotation] ||
 		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
 		c.podQueue.Add(key)
+		return
 	}
 
-	attachNets, err := util.ParsePodNetworkAnnotation(newPod.Annotations[util.AttachmentNetworkAnnotation], newPod.Namespace)
+	attachNets, err := nadutils.ParsePodNetworkAnnotation(newPod)
 	if err != nil {
 		return
 	}
@@ -511,12 +548,6 @@ func (c *Controller) enqueuePod(oldObj, newObj interface{}) {
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] {
-				var key string
-				var err error
-				if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-					utilruntime.HandleError(err)
-					return
-				}
 				c.podQueue.Add(key)
 			}
 		}
@@ -583,6 +614,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.addOrUpdateProviderNetworkQueue.ShutDown()
 	defer c.deleteProviderNetworkQueue.ShutDown()
 	defer c.subnetQueue.ShutDown()
+	defer c.serviceQueue.ShutDown()
 	defer c.podQueue.ShutDown()
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
@@ -598,6 +630,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
+	go wait.Until(c.runAddOrUpdateServicekWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)

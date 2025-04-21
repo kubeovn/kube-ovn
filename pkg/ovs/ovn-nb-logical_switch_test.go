@@ -8,8 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
-	"github.com/stretchr/testify/require"
 	"k8s.io/klog/v2"
+
+	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -418,30 +419,54 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 		require.NoError(t, err)
 		require.NotEmpty(t, lss)
 
-		count := 0
+		count, names := 0, make([]string, 0, 3)
 		for _, ls := range lss {
 			if strings.Contains(ls.Name, namePrefix) {
+				names = append(names, ls.Name)
 				count++
 			}
 		}
-		require.Equal(t, count, 3)
+		require.Equal(t, 3, count)
+
+		lsNames, err := nbClient.ListLogicalSwitchNames(true, nil)
+		require.NoError(t, err)
+
+		filterdNames := make([]string, 0, len(names))
+		for _, ls := range lsNames {
+			if strings.Contains(ls, namePrefix) {
+				filterdNames = append(filterdNames, ls)
+			}
+		}
+		require.ElementsMatch(t, filterdNames, names)
 	})
 
 	t.Run("has custom filter", func(t *testing.T) {
 		t.Parallel()
-		lss, err := nbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+		filter := func(ls *ovnnb.LogicalSwitch) bool {
 			return len(ls.ExternalIDs) == 0 || ls.ExternalIDs["vendor"] != util.CniTypeName
-		})
-
+		}
+		lss, err := nbClient.ListLogicalSwitch(false, filter)
 		require.NoError(t, err)
 
-		count := 0
+		count, names := 0, make([]string, 0, 4)
 		for _, ls := range lss {
 			if strings.Contains(ls.Name, namePrefix) {
+				names = append(names, ls.Name)
 				count++
 			}
 		}
-		require.Equal(t, count, 4)
+		require.Equal(t, 4, count)
+
+		lsNames, err := nbClient.ListLogicalSwitchNames(false, filter)
+		require.NoError(t, err)
+
+		filterdNames := make([]string, 0, len(names))
+		for _, ls := range lsNames {
+			if strings.Contains(ls, namePrefix) {
+				filterdNames = append(filterdNames, ls)
+			}
+		}
+		require.ElementsMatch(t, filterdNames, names)
 	})
 }
 
@@ -474,7 +499,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lsp.UUID,
 						},
@@ -556,7 +581,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 				Column:  "load_balancer",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lbUUIDs[0],
 						},
@@ -581,7 +606,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 				Column:  "load_balancer",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lbUUIDs[0],
 						},
@@ -625,7 +650,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -648,7 +673,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateACLOp() {
 				Column:  "acls",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: aclUUIDs[0],
 						},
@@ -710,7 +735,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			Column:  "ports",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lspUUID,
 					},
@@ -721,7 +746,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 			Column:  "load_balancer",
 			Mutator: ovsdb.MutateOperationInsert,
 			Value: ovsdb.OvsSet{
-				GoSet: []interface{}{
+				GoSet: []any{
 					ovsdb.UUID{
 						GoUUID: lbUUID,
 					},

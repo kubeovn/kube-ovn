@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // IptablesSnatRules.
 type IptablesSnatRuleInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.IptablesSnatRuleLister
+	Lister() kubeovnv1.IptablesSnatRuleLister
 }
 
 type iptablesSnatRuleInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredIptablesSnatRuleInformer(client versioned.Interface, resyncPerio
 				return client.KubeovnV1().IptablesSnatRules().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.IptablesSnatRule{},
+		&apiskubeovnv1.IptablesSnatRule{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *iptablesSnatRuleInformer) defaultInformer(client versioned.Interface, r
 }
 
 func (f *iptablesSnatRuleInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.IptablesSnatRule{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.IptablesSnatRule{}, f.defaultInformer)
 }
 
-func (f *iptablesSnatRuleInformer) Lister() v1.IptablesSnatRuleLister {
-	return v1.NewIptablesSnatRuleLister(f.Informer().GetIndexer())
+func (f *iptablesSnatRuleInformer) Lister() kubeovnv1.IptablesSnatRuleLister {
+	return kubeovnv1.NewIptablesSnatRuleLister(f.Informer().GetIndexer())
 }

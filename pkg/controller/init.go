@@ -251,6 +251,12 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		}
 	}
 
+	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
+	if err != nil {
+		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -318,9 +324,9 @@ func (c *Controller) InitIPAM() error {
 	}
 	subnetProviderMaps := make(map[string]string, len(subnets))
 	for _, subnet := range subnets {
-		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
-
 		klog.Infof("Init subnet %s", subnet.Name)
+
+		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
 
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
@@ -521,16 +527,15 @@ func (c *Controller) initDefaultProviderNetwork() error {
 
 	excludeAnno := fmt.Sprintf(util.ProviderNetworkExcludeTemplate, c.config.DefaultProviderName)
 	interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, c.config.DefaultProviderName)
-	newNodes := make([]*v1.Node, 0, len(nodes))
+	patchNodes := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		if len(node.Annotations) == 0 {
 			continue
 		}
 
-		var newNode *v1.Node
 		if node.Annotations[excludeAnno] == "true" {
 			pn.Spec.ExcludeNodes = append(pn.Spec.ExcludeNodes, node.Name)
-			newNode = node.DeepCopy()
+			patchNodes = append(patchNodes, node.Name)
 		} else if s := node.Annotations[interfaceAnno]; s != "" {
 			var index *int
 			for i := range pn.Spec.CustomInterfaces {
@@ -545,12 +550,7 @@ func (c *Controller) initDefaultProviderNetwork() error {
 				ci := kubeovnv1.CustomInterface{Interface: s, Nodes: []string{node.Name}}
 				pn.Spec.CustomInterfaces = append(pn.Spec.CustomInterfaces, ci)
 			}
-			newNode = node.DeepCopy()
-		}
-		if newNode != nil {
-			delete(newNode.Annotations, excludeAnno)
-			delete(newNode.Annotations, interfaceAnno)
-			newNodes = append(newNodes, newNode)
+			patchNodes = append(patchNodes, node.Name)
 		}
 	}
 
@@ -560,9 +560,10 @@ func (c *Controller) initDefaultProviderNetwork() error {
 		}
 
 		// update nodes only when provider network has been created successfully
-		for _, node := range newNodes {
-			if _, err := c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
-				klog.Errorf("failed to update node %s: %v", node.Name, err)
+		patch := util.KVPatch{excludeAnno: nil, interfaceAnno: nil}
+		for _, node := range patchNodes {
+			if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node, patch); err != nil {
+				klog.Errorf("failed to patch node %s: %v", node, err)
 			}
 		}
 	}()
@@ -780,57 +781,79 @@ func (c *Controller) syncVlanCR() error {
 	return nil
 }
 
-func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
-	// default vpc use static route in old version, migrate to policy route
+func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
+	start := time.Now()
+	addPolicies := make([]*kubeovnv1.PolicyRoute, 0)
+	delPolicies := make([]*kubeovnv1.PolicyRoute, 0)
+	staticRoutes := make([]*kubeovnv1.StaticRoute, 0)
+	externalIDsMap := make(map[string]map[string]string)
+	delAsNames := make([]string, 0)
+	for _, node := range nodes {
+		if node.Annotations[util.AllocatedAnnotation] != "true" {
+			continue
+		}
+		nodeName := node.Name
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IPAddressAnnotation])
+		if nodeIPv4 != "" && joinAddrV4 != "" {
+			buildNodeRoute(4, nodeName, joinAddrV4, nodeIPv4, &addPolicies, &delPolicies, &staticRoutes, externalIDsMap, &delAsNames)
+		}
+		if nodeIPv6 != "" && joinAddrV6 != "" {
+			buildNodeRoute(6, nodeName, joinAddrV6, nodeIPv6, &addPolicies, &delPolicies, &staticRoutes, externalIDsMap, &delAsNames)
+		}
+	}
+
+	if err := c.batchAddPolicyRouteToVpc(c.config.ClusterRouter, addPolicies, externalIDsMap); err != nil {
+		klog.Errorf("failed to batch add logical router policy for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
+		return err
+	}
+	if err := c.batchDeleteStaticRouteFromVpc(c.config.ClusterRouter, staticRoutes); err != nil {
+		klog.Errorf("failed to batch delete  obsolete logical router static route for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
+		return err
+	}
+	if err := c.batchDeletePolicyRouteFromVpc(c.config.ClusterRouter, delPolicies); err != nil {
+		klog.Errorf("failed to batch delete obsolete logical router policy for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
+		return err
+	}
+	if err := c.OVNNbClient.BatchDeleteAddressSetByNames(delAsNames); err != nil {
+		klog.Errorf("failed to batch delete obsolete address set for asNames %v nodes %d: %v", delAsNames, len(nodes), err)
+		return err
+	}
+	klog.V(3).Infof("take to %v batch migrate node route for router: %s priority: %d add policy len: %d extrenalID len: %d del policy len: %d del address set len: %d",
+		time.Since(start), c.config.ClusterRouter, util.NodeRouterPolicyPriority, len(addPolicies), len(externalIDsMap), len(delPolicies), len(delAsNames))
+
+	return nil
+}
+
+func buildNodeRoute(af int, nodeName, nexthop, ip string, addPolicies, delPolicies *[]*kubeovnv1.PolicyRoute, staticRoutes *[]*kubeovnv1.StaticRoute, externalIDsMap map[string]map[string]string, delAsNames *[]string) {
 	var (
 		match       = fmt.Sprintf("ip%d.dst == %s", af, ip)
 		action      = kubeovnv1.PolicyRouteActionReroute
 		externalIDs = map[string]string{
 			"vendor": util.CniTypeName,
-			"node":   node,
+			"node":   nodeName,
 		}
 	)
-	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, externalID %v",
-		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, action, nexthop, externalIDs)
-	if err := c.addPolicyRouteToVpc(
-		c.config.ClusterRouter,
-		&kubeovnv1.PolicyRoute{
-			Priority:  util.NodeRouterPolicyPriority,
-			Match:     match,
-			Action:    action,
-			NextHopIP: nexthop,
-		},
-		externalIDs,
-	); err != nil {
-		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
-		return err
-	}
-
-	if err := c.deleteStaticRouteFromVpc(
-		c.config.ClusterRouter,
-		util.MainRouteTable,
-		ip,
-		"",
-		kubeovnv1.PolicyDst,
-	); err != nil {
-		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
-		return err
-	}
-
-	asName := nodeUnderlayAddressSetName(node, af)
+	*addPolicies = append(*addPolicies, &kubeovnv1.PolicyRoute{
+		Priority:  util.NodeRouterPolicyPriority,
+		Match:     match,
+		Action:    action,
+		NextHopIP: nexthop,
+	})
+	externalIDsMap[buildExternalIDsMapKey(match, string(action), util.NodeRouterPolicyPriority)] = externalIDs
+	*staticRoutes = append(*staticRoutes, &kubeovnv1.StaticRoute{
+		Policy:     kubeovnv1.PolicyDst,
+		RouteTable: util.MainRouteTable,
+		NextHopIP:  "",
+		CIDR:       ip,
+	})
+	asName := nodeUnderlayAddressSetName(nodeName, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	klog.V(3).Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
-	if err := c.deletePolicyRouteFromVpc(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
-		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
-		return err
-	}
-
-	if err := c.OVNNbClient.DeleteAddressSet(asName); err != nil {
-		klog.Errorf("delete obsolete address set %s for node %s: %v", asName, node, err)
-		return err
-	}
-
-	return nil
+	*delPolicies = append(*delPolicies, &kubeovnv1.PolicyRoute{
+		Match:    obsoleteMatch,
+		Priority: util.NodeRouterPolicyPriority,
+	})
+	*delAsNames = append(*delAsNames, asName)
 }
 
 func (c *Controller) syncNodeRoutes() error {
@@ -839,22 +862,10 @@ func (c *Controller) syncNodeRoutes() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	for _, node := range nodes {
-		if node.Annotations[util.AllocatedAnnotation] != "true" {
-			continue
-		}
-		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IPAddressAnnotation])
-		if nodeIPv4 != "" && joinAddrV4 != "" {
-			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4); err != nil {
-				klog.Errorf("failed to migrate IPv4 route for node %s: %v", node.Name, err)
-			}
-		}
-		if nodeIPv6 != "" && joinAddrV6 != "" {
-			if err = c.migrateNodeRoute(6, node.Name, nodeIPv6, joinAddrV6); err != nil {
-				klog.Errorf("failed to migrate IPv6 route for node %s: %v", node.Name, err)
-			}
-		}
+
+	if err := c.batchMigrateNodeRoute(nodes); err != nil {
+		klog.Errorf("failed to batch migrate node routes: %v", err)
+		return err
 	}
 
 	if err := c.addNodeGatewayStaticRoute(); err != nil {

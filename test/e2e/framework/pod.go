@@ -38,7 +38,7 @@ func (f *Framework) PodClientNS(namespace string) *PodClient {
 
 func (c *PodClient) GetPod(name string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
-	pod, err := c.PodInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	pod, err := c.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return pod
 }
@@ -175,6 +175,6 @@ func CheckPodEgressRoutes(ns, pod string, ipv4, ipv6 bool, ttl int, expectedHops
 			lines := strings.Split(strings.TrimSpace(output), "\n")
 			fields := strings.Fields(lines[len(lines)-1])
 			return len(fields) > 2 && slices.Contains(expectedHops, fields[1]), nil
-		}, "")
+		}, "expected hops: "+strings.Join(expectedHops, ", "))
 	}
 }

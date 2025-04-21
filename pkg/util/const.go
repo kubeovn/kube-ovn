@@ -24,25 +24,27 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation          = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayInitAnnotation      = "ovn.kubernetes.io/vpc_nat_gw_init"
-	VpcNatGatewayActivatedAnnotation = "ovn.kubernetes.io/vpc_nat_gw_activated"
-	VpcEipsAnnotation                = "ovn.kubernetes.io/vpc_eips"
-	VpcFloatingIPMd5Annotation       = "ovn.kubernetes.io/vpc_floating_ips"
-	VpcDnatMd5Annotation             = "ovn.kubernetes.io/vpc_dnat_md5"
-	VpcSnatMd5Annotation             = "ovn.kubernetes.io/vpc_snat_md5"
-	VpcCIDRsAnnotation               = "ovn.kubernetes.io/vpc_cidrs"
-	VpcLbAnnotation                  = "ovn.kubernetes.io/vpc_lb"
-	VpcExternalLabel                 = "ovn.kubernetes.io/vpc_external"
-	VpcEipAnnotation                 = "ovn.kubernetes.io/vpc_eip"
-	VpcDnatEPortLabel                = "ovn.kubernetes.io/vpc_dnat_eport"
-	VpcNatAnnotation                 = "ovn.kubernetes.io/vpc_nat"
-	OvnEipTypeLabel                  = "ovn.kubernetes.io/ovn_eip_type"
-	EipV4IpLabel                     = "ovn.kubernetes.io/eip_v4_ip"
-	EipV6IpLabel                     = "ovn.kubernetes.io/eip_v6_ip"
+	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
+	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
+	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
+	VpcEipsAnnotation                       = "ovn.kubernetes.io/vpc_eips"
+	VpcFloatingIPMd5Annotation              = "ovn.kubernetes.io/vpc_floating_ips"
+	VpcDnatMd5Annotation                    = "ovn.kubernetes.io/vpc_dnat_md5"
+	VpcSnatMd5Annotation                    = "ovn.kubernetes.io/vpc_snat_md5"
+	VpcCIDRsAnnotation                      = "ovn.kubernetes.io/vpc_cidrs"
+	VpcLbAnnotation                         = "ovn.kubernetes.io/vpc_lb"
+	VpcExternalLabel                        = "ovn.kubernetes.io/vpc_external"
+	VpcEipAnnotation                        = "ovn.kubernetes.io/vpc_eip"
+	VpcDnatEPortLabel                       = "ovn.kubernetes.io/vpc_dnat_eport"
+	VpcNatAnnotation                        = "ovn.kubernetes.io/vpc_nat"
+	OvnEipTypeLabel                         = "ovn.kubernetes.io/ovn_eip_type"
+	EipV4IpLabel                            = "ovn.kubernetes.io/eip_v4_ip"
+	EipV6IpLabel                            = "ovn.kubernetes.io/eip_v6_ip"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
+	KubeHostVMVip              = "kube_host_vm_vip"
 	SwitchLBRuleSubnet         = "switch_lb_subnet"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
@@ -117,6 +119,8 @@ const (
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
+	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
+
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
 	ProtocolSCTP = "sctp"
@@ -171,7 +175,6 @@ const (
 	TCPIPHeaderLength  = 40
 
 	OvnProvider                         = "ovn"
-	AttachmentNetworkAnnotation         = "k8s.v1.cni.cncf.io/networks"
 	DefaultNetworkAnnotation            = "v1.multus-cni.io/default-network"
 	AttachNetworkResourceNameAnnotation = "k8s.v1.cni.cncf.io/resourceName"
 
@@ -323,4 +326,11 @@ const (
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
 	SignerName = "kubeovn.io/signer"
+
+	UnderlaySvcLocalOpenFlowPriority = 10000
+	UnderlaySvcLocalOpenFlowCookieV4 = 0x1000
+	UnderlaySvcLocalOpenFlowCookieV6 = 0x1001
+
+	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
+	MasqueradeCheckIP             = "0.0.0.0"
 )

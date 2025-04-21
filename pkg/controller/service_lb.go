@@ -31,7 +31,7 @@ const (
 )
 
 func genLbSvcDpName(name string) string {
-	return fmt.Sprintf("lb-svc-%s", name)
+	return "lb-svc-" + name
 }
 
 func getAttachNetworkProvider(svc *corev1.Service) string {
@@ -83,8 +83,8 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
 	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
+		attachSubnetAnnotation:       svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
@@ -99,6 +99,10 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 	if v, ok := nad.Annotations[util.AttachNetworkResourceNameAnnotation]; ok {
 		resources.Limits[corev1.ResourceName(v)] = resource.MustParse("1")
 		resources.Requests[corev1.ResourceName(v)] = resource.MustParse("1")
+	}
+	nodeSelector := c.getNodeSelectorFromCm()
+	if nodeSelector != nil {
+		klog.Infof("node selector for lb-svc deploy %s: %v", name, nodeSelector)
 	}
 
 	dp = &v1.Deployment{
@@ -129,6 +133,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 							Resources: resources,
 						},
 					},
+					NodeSelector:                  nodeSelector,
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				},
 			},
@@ -146,8 +151,8 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
 	attachIPAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
+		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
+		attachSubnetAnnotation:       svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
@@ -457,4 +462,30 @@ func (c *Controller) delDnatRules(pod *corev1.Pod, toDel []corev1.ServicePort, s
 		}
 	}
 	return nil
+}
+
+func (c *Controller) getNodeSelectorFromCm() map[string]string {
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	if err != nil {
+		err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
+		klog.Error(err)
+		return nil
+	}
+
+	if cm.Data["nodeSelector"] == "" {
+		klog.Error(errors.New("there's no nodeSelector field in ovn-vpc-nat-config"))
+		return nil
+	}
+	// nodeSelector used for lb-svc deployment
+	lines := strings.Split(cm.Data["nodeSelector"], "\n")
+
+	selectors := make(map[string]string, len(lines))
+	for _, line := range lines {
+		parts := strings.Split(strings.TrimSpace(line), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	return selectors
 }

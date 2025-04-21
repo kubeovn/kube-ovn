@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,25 +21,15 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddOvnEip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddOvnEip(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnEip)).String()
 	klog.Infof("enqueue add ovn eip %s", key)
 	c.addOvnEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 	newEip := newObj.(*kubeovnv1.OvnEip)
+	key := cache.MetaObjectToName(newEip).String()
 	if !newEip.DeletionTimestamp.IsZero() {
 		if len(newEip.GetFinalizers()) == 0 {
 			// avoid delete eip twice
@@ -64,13 +53,8 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDelOvnEip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDelOvnEip(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnEip)).String()
 	klog.Infof("enqueue del ovn eip %s", key)
 	c.delOvnEipQueue.Add(key)
 }
@@ -108,7 +92,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip, nil)
 	} else {
 		// random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, cachedEip.Name, portName)

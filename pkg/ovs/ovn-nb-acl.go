@@ -243,7 +243,7 @@ func (c *OVNNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 		acls = append(acls, allowIngressACL, allowEgressACL)
 	}
 
-	for _, joinIP := range strings.Split(joinIPStr, ",") {
+	for joinIP := range strings.SplitSeq(joinIPStr, ",") {
 		if slices.Contains(nodeIPs, joinIP) {
 			continue
 		}
@@ -459,7 +459,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 	}
 
 	if allowEWTraffic {
-		for _, cidr := range strings.Split(cidrBlock, ",") {
+		for cidr := range strings.SplitSeq(cidrBlock, ",") {
 			protocol := util.CheckProtocol(cidr)
 
 			ipSuffix := "ip4"
@@ -508,7 +508,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 }
 
 // UpdateACL update acl
-func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 	if acl == nil {
 		return errors.New("address_set is nil")
 	}
@@ -555,7 +555,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	acls = append(acls, defaultDropACL)
 
 	nodeSubnetACLFunc := func(protocol, ipSuffix string) error {
-		for _, nodeCidr := range strings.Split(nodeSwitchCIDR, ",") {
+		for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
 			// skip different address family
 			if protocol != util.CheckProtocol(nodeCidr) {
 				continue
@@ -610,7 +610,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 		return nil
 	}
 
-	for _, cidr := range strings.Split(cidrBlock, ",") {
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
 		protocol := util.CheckProtocol(cidr)
 
 		ipSuffix := "ip4"
@@ -714,7 +714,7 @@ func (c *OVNNbClient) CreateBareACL(parentName, direction, priority, match, acti
 		return fmt.Errorf("new acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
 	}
 
-	op, err := c.ovsDbClient.Create(acl)
+	op, err := c.Create(acl)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
@@ -1142,7 +1142,7 @@ func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 		}
 	}
 
-	createAclsOp, err := c.ovsDbClient.Create(models...)
+	createAclsOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating acls: %w", err)

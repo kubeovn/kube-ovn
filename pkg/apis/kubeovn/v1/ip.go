@@ -18,7 +18,7 @@ type IPList struct {
 // +genclient:nonNamespaced
 type IP struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec IPSpec `json:"spec"`
 }

@@ -246,7 +246,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 
 		t.Run("with options", func(t *testing.T) {
 			lsName := "test-update-v6-dhcp-opt-ls-with-opt"
-			options := fmt.Sprintf("server_id=%s", "00:00:00:55:22:33")
+			options := "server_id=" + "00:00:00:55:22:33"
 			uuid, err := nbClient.updateDHCPv6Options(lsName, cidr, options)
 			require.NoError(t, err)
 
@@ -286,7 +286,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
-		options := fmt.Sprintf("server_id=%s", "00:00:00:55:22:33")
+		options := "server_id=" + "00:00:00:55:22:33"
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 
@@ -638,45 +638,5 @@ func (suite *OvnClientTestSuite) testCreateDHCPOptions() {
 		cidr := "192.168.70.0/24"
 		err := nbClient.CreateDHCPOptions("", cidr, "")
 		require.Error(t, err)
-	})
-}
-
-func (suite *OvnClientTestSuite) testDHCPOptionsExists() {
-	t := suite.T()
-	t.Parallel()
-
-	nbClient := suite.ovnNBClient
-	lsName := "test-dhcp-opt-exists-ls"
-
-	t.Run("DHCP options exist", func(t *testing.T) {
-		cidr := "192.168.80.0/24"
-		err := nbClient.CreateDHCPOptions(lsName, cidr, "")
-		require.NoError(t, err)
-
-		exists, err := nbClient.DHCPOptionsExists(lsName, "IPv4")
-		require.NoError(t, err)
-		require.True(t, exists)
-	})
-
-	t.Run("DHCP options do not exist", func(t *testing.T) {
-		exists, err := nbClient.DHCPOptionsExists(lsName+"-1", "IPv4")
-		require.NoError(t, err)
-		require.False(t, exists)
-	})
-
-	t.Run("DHCP options exist for IPv6", func(t *testing.T) {
-		cidr := "fd00::c0a8:8001/120"
-		err := nbClient.CreateDHCPOptions(lsName, cidr, "")
-		require.NoError(t, err)
-
-		exists, err := nbClient.DHCPOptionsExists(lsName, "IPv6")
-		require.NoError(t, err)
-		require.True(t, exists)
-	})
-
-	t.Run("DHCP options do not exist for IPv6", func(t *testing.T) {
-		exists, err := nbClient.DHCPOptionsExists(lsName+"-1", "IPv6")
-		require.NoError(t, err)
-		require.False(t, exists)
 	})
 }

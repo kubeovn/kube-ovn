@@ -16,7 +16,7 @@ func CompareVersion(version1, version2 string) int {
 	for i := len(versionB); i < 4; i++ {
 		versionB = append(versionB, "0")
 	}
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		version1, _ := strconv.Atoi(versionA[i])
 		version2, _ := strconv.Atoi(versionB[i])
 

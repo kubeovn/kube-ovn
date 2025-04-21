@@ -68,7 +68,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		}
 	}
 
-	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 		// v6 ip address can not use upper case
 		if ContainsUppercase(subnet.Spec.CIDRBlock) {
 			err := fmt.Errorf("subnet cidr block %s v6 ip address can not contain upper case", subnet.Spec.CIDRBlock)
@@ -260,7 +260,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 	if ipAddress := annotations[IPAddressAnnotation]; ipAddress != "" {
 		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
-		for _, ip := range strings.Split(ipAddress, ",") {
+		for ip := range strings.SplitSeq(ipAddress, ",") {
 			if strings.Contains(ip, "/") {
 				if _, _, err := net.ParseCIDR(ip); err != nil {
 					klog.Error(err)
@@ -300,9 +300,9 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	ipPool := annotations[IPPoolAnnotation]
 	if ipPool != "" {
 		if strings.ContainsRune(ipPool, ';') || strings.ContainsRune(ipPool, ',') || net.ParseIP(ipPool) != nil {
-			for _, ips := range strings.Split(ipPool, ";") {
+			for ips := range strings.SplitSeq(ipPool, ";") {
 				found := false
-				for _, ip := range strings.Split(ips, ",") {
+				for ip := range strings.SplitSeq(ips, ",") {
 					if net.ParseIP(strings.TrimSpace(ip)) == nil {
 						errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IPPoolAnnotation))
 					}
@@ -349,14 +349,14 @@ func ValidatePodNetwork(annotations map[string]string) error {
 }
 
 func ValidateNetworkBroadcast(cidr, ip string) error {
-	for _, cidrBlock := range strings.Split(cidr, ",") {
-		for _, ipAddr := range strings.Split(ip, ",") {
+	for cidrBlock := range strings.SplitSeq(cidr, ",") {
+		for ipAddr := range strings.SplitSeq(ip, ",") {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {
 				continue
 			}
 			_, network, _ := net.ParseCIDR(cidrBlock)
 			if AddressCount(network) == 1 {
-				return fmt.Errorf("subnet %s is configured with /32 netmask", cidrBlock)
+				return fmt.Errorf("subnet %s is configured with /32 or /128 netmask", cidrBlock)
 			}
 
 			ipStr := IPToString(ipAddr)
@@ -420,7 +420,7 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 
 		if item.Action == kubeovnv1.PolicyRouteActionReroute {
 			// ecmp policy route may reroute to multiple next hop ips
-			for _, ipStr := range strings.Split(item.NextHopIP, ",") {
+			for ipStr := range strings.SplitSeq(item.NextHopIP, ",") {
 				if ip := net.ParseIP(ipStr); ip == nil {
 					return fmt.Errorf("invalid next hop ips: %s", item.NextHopIP)
 				}

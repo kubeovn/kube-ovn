@@ -304,9 +304,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 						Dev:     route.Dev,
 						Flags:   route.Flags,
 					}
-					if route.Dev == linkNameMap[node.ID] {
+					switch route.Dev {
+					case linkNameMap[node.ID]:
 						portRoutes = append(portRoutes, r)
-					} else if route.Dev == bridgeName {
+					case bridgeName:
 						r.Dev = linkMap[node.ID].IfName
 						bridgeRoutes = append(bridgeRoutes, r)
 					}
@@ -447,11 +448,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
 	})
 
-	framework.ConformanceIt("should be able to detect IPv4 address conflict", func() {
-		if !f.IsIPv4() {
-			ginkgo.Skip("Address conflict detection only supports IPv4")
+	framework.ConformanceIt("should be able to detect duplicate address", func() {
+		f.SkipVersionPriorTo(1, 9, "Duplicate address detection was introduced in v1.9")
+		if !f.HasIPv4() {
+			f.SkipVersionPriorTo(1, 14, "Duplicate address detection for IPv6 was introduced in v1.14")
 		}
-		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
@@ -463,7 +464,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		containerName := "container-" + framework.RandomSuffix()
 		ginkgo.By("Creating container " + containerName)
-		cmd := []string{"sh", "-c", "sleep 600"}
+		cmd := []string{"sleep", "infinity"}
 		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
@@ -473,35 +474,67 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		_ = vlanClient.Create(vlan)
 
 		ginkgo.By("Creating subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
-		for _, config := range dockerNetwork.IPAM.Config {
-			if util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
-				cidr = append(cidr, config.Subnet)
-				gateway = append(gateway, config.Gateway)
-				break
-			}
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" {
+			if f.HasIPv4() && container.IPv4Address != "" {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if f.HasIPv6() && container.IPv6Address != "" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
-		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
-		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
+		networkInfo := containerInfo.NetworkSettings.Networks[dockerNetworkName]
+		ips := make([]string, 0, 2)
+		if f.HasIPv4() {
+			ips = append(ips, networkInfo.IPAddress)
+		}
+		if f.HasIPv6() {
+			ips = append(ips, networkInfo.GlobalIPv6Address)
+		}
+		ip := strings.Join(ips, ",")
+		mac := networkInfo.MacAddress
 		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
 		annotations := map[string]string{util.IPAddressAnnotation: ip}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Waiting for pod events")
 		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
+		var message string
+		if f.HasIPv4() {
+			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
+		} else {
+			message = "dadfailed"
+		}
 		var found bool
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {
@@ -701,7 +734,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("step7: Specify u2oInterconnectionIP")
 
 		// change u2o interconnection ip twice
-		for index := 0; index < 2; index++ {
+		for index := range 2 {
 			getAvailableIPs := func(subnet *apiv1.Subnet) string {
 				var availIPs []string
 				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
@@ -917,6 +950,103 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectEmpty(lrpIPv6)
 		}
 	})
+
+	framework.ConformanceIt(`should support IPv6 connectivity to node IPs when pod start immediately`, func() {
+		if !f.HasIPv6() {
+			ginkgo.Skip("This test requires IPv6 support")
+		}
+
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13.8")
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				cidrV6 = config.Subnet
+				gatewayV6 = config.Gateway
+			}
+		}
+
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		underlayCidr = append(underlayCidr, cidrV6)
+		gateway = append(gateway, gatewayV6)
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Getting node IPv6 addresses")
+		nodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+
+		// Find a node with IPv6 address
+		var nodeIPv6 string
+		var selectedNode kind.Node
+		for _, n := range nodes {
+			for _, link := range linkMap {
+				for _, addr := range link.NonLinkLocalAddresses() {
+					if util.CheckProtocol(addr) == apiv1.ProtocolIPv6 {
+						nodeIPv6 = addr
+						selectedNode = n
+						break
+					}
+				}
+				if nodeIPv6 != "" {
+					break
+				}
+			}
+			if nodeIPv6 != "" {
+				break
+			}
+		}
+		framework.ExpectNotEmpty(nodeIPv6, "No node with IPv6 address found")
+		ipv6Addr := strings.Split(nodeIPv6, "/")[0]
+
+		ginkgo.By(fmt.Sprintf("Creating pod %s that pings IPv6 node IP %s on node %s", podName, ipv6Addr, selectedNode.Name()))
+		// Use ping6 with one attempt and 1s timeout, checking the return code
+		pingCmd := []string{"sh", "-c", fmt.Sprintf("ping6 -c 1 -w 1 %s && sleep 600 || exit $?", ipv6Addr)}
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, pingCmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("If pod is running, the ping was successful")
+		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning, "Pod should be in Running state, indicating successful ping with 1s timeout")
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
@@ -939,7 +1069,7 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 				ginkgo.By("checking u2o dhcp gateway ip of underlay subnet " + subnet.Name)
 				v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock)
 				v4Gateway, _ := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
-				nbctlCmd := fmt.Sprintf("ovn-nbctl --bare --columns=options find Dhcp_Options cidr=%s", v4Cidr)
+				nbctlCmd := "ovn-nbctl --bare --columns=options find Dhcp_Options cidr=" + v4Cidr
 				output, _, err := framework.NBExec(nbctlCmd)
 				framework.ExpectNoError(err)
 				framework.ExpectContainElement(strings.Fields(string(output)), "router="+v4Gateway)
@@ -957,8 +1087,8 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 	}
 
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
-	underlayCidr := strings.Split(subnet.Spec.CIDRBlock, ",")
-	for _, cidr := range underlayCidr {
+	underlayCidr := strings.SplitSeq(subnet.Spec.CIDRBlock, ",")
+	for cidr := range underlayCidr {
 		var protocolStr, gw string
 		if util.CheckProtocol(cidr) == apiv1.ProtocolIPv4 {
 			protocolStr = "ip4"
@@ -982,16 +1112,16 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 
 		asName := strings.ReplaceAll(fmt.Sprintf("%s.u2o_exclude_ip.%s", subnet.Name, protocolStr), "-", ".")
 		if !isU2OCustomVpc {
-			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy1 route %s", protocolStr))
+			ginkgo.By("checking underlay subnet's policy1 route " + protocolStr)
 			hitPolicyStr := fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, protocolStr, cidr)
 			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 
-			ginkgo.By(fmt.Sprintf("checking underlay subnet's policy2 route %s", protocolStr))
+			ginkgo.By("checking underlay subnet's policy2 route " + protocolStr)
 			hitPolicyStr = fmt.Sprintf("%d %s.dst == $%s && %s.src == %s reroute %s", util.SubnetRouterPolicyPriority, protocolStr, asName, protocolStr, cidr, gw)
 			checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 		}
 
-		ginkgo.By(fmt.Sprintf("checking underlay subnet's policy3 route %s", protocolStr))
+		ginkgo.By("checking underlay subnet's policy3 route " + protocolStr)
 		hitPolicyStr := fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, protocolStr, cidr, gw)
 		checkPolicy(hitPolicyStr, subnet.Spec.U2OInterconnection, subnet.Spec.Vpc)
 	}
@@ -1027,12 +1157,12 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		}
 	}
 
-	switch {
-	case subnet.Spec.Protocol == apiv1.ProtocolIPv4:
+	switch subnet.Spec.Protocol {
+	case apiv1.ProtocolIPv4:
 		framework.ExpectTrue(isV4DefaultRouteExist)
-	case subnet.Spec.Protocol == apiv1.ProtocolIPv6:
+	case apiv1.ProtocolIPv6:
 		framework.ExpectTrue(isV6DefaultRouteExist)
-	case subnet.Spec.Protocol == apiv1.ProtocolDual:
+	case apiv1.ProtocolDual:
 		framework.ExpectTrue(isV4DefaultRouteExist)
 		framework.ExpectTrue(isV6DefaultRouteExist)
 	}
@@ -1099,7 +1229,7 @@ func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 			return false, err
 		}
 		outputStr := string(output)
-		for _, line := range strings.Split(outputStr, "\n") {
+		for line := range strings.SplitSeq(outputStr, "\n") {
 			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) == expectPolicyExist {
 				return true, nil
 			}
@@ -1129,7 +1259,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 			}
 
 			success := false
-			for attempt := 0; attempt < 3; attempt++ {
+			for range 3 {
 				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
 
@@ -1137,7 +1267,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 				if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
 					matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
 				} else {
-					matchStr = fmt.Sprintf("priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=%s", u2oIPs[index])
+					matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
 				}
 
 				framework.Logf("matchStr rule %s", matchStr)

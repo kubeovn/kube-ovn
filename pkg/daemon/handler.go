@@ -94,7 +94,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %w", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -249,8 +249,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
+		var vmMigration bool
 		subnetHasVlan := podSubnet.Spec.Vlan != ""
-		detectIPConflict := csh.Config.EnableArpDetectIPConflict && subnetHasVlan
 		// skip ping check gateway for pods during live migration
 		if pod.Annotations[util.MigrationJobAnnotation] == "" {
 			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
@@ -267,8 +267,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				}
 			}
 		} else {
-			// do not perform ipv4 conflict detection during VM live migration
-			detectIPConflict = false
+			vmMigration = true
 		}
 		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podRequest.Provider)] != "" {
 			gatewayCheckMode = gatewayCheckModeDisabled
@@ -308,12 +307,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		podNicName = ifName
 		switch nicType {
 		case util.InternalType:
-			podNicName, routes, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
+			podNicName, routes, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		case util.DpdkType:
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:
-			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
@@ -383,7 +382,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip string) error {
 	ipCRName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		ipCR, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCRName, metav1.GetOptions{})
 		if err != nil {
 			err = fmt.Errorf("failed to get ip crd for %s, %w", ip, err)
@@ -456,7 +455,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	var vmName string
 
 	// If the Pod was found, process its annotations and labels.
-	if err == nil {
+	if pod != nil {
 		if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
 			subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 			if subnet != "" {

@@ -1,10 +1,10 @@
 package util
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
-
-	"k8s.io/klog/v2"
+	"slices"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
@@ -50,11 +50,16 @@ func (r PodRoutes) ToAnnotations() (map[string]string, error) {
 			continue
 		}
 
-		buf, err := json.Marshal(routes)
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
+		// sort routes to ensure the result is stable
+		slices.SortFunc(routes, func(a, b request.Route) int {
+			if n := cmp.Compare(a.Destination, b.Destination); n != 0 {
+				return n
+			}
+			return cmp.Compare(a.Gateway, b.Gateway)
+		})
+
+		// no error will be returned here
+		buf, _ := json.Marshal(routes)
 		annotations[fmt.Sprintf(RoutesAnnotationTemplate, provider)] = string(buf)
 	}
 	return annotations, nil

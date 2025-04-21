@@ -261,6 +261,21 @@ func (mr *MockLogicalRouterMockRecorder) ListLogicalRouter(needVendorFilter, fil
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).ListLogicalRouter), needVendorFilter, filter)
 }
 
+// ListLogicalRouterNames mocks base method.
+func (m *MockLogicalRouter) ListLogicalRouterNames(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterNames indicates an expected call of ListLogicalRouterNames.
+func (mr *MockLogicalRouterMockRecorder) ListLogicalRouterNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterNames", reflect.TypeOf((*MockLogicalRouter)(nil).ListLogicalRouterNames), needVendorFilter, filter)
+}
+
 // LogicalRouterExists mocks base method.
 func (m *MockLogicalRouter) LogicalRouterExists(name string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -872,6 +887,21 @@ func (m *MockLogicalSwitch) ListLogicalSwitch(needVendorFilter bool, filter func
 func (mr *MockLogicalSwitchMockRecorder) ListLogicalSwitch(needVendorFilter, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitch", reflect.TypeOf((*MockLogicalSwitch)(nil).ListLogicalSwitch), needVendorFilter, filter)
+}
+
+// ListLogicalSwitchNames mocks base method.
+func (m *MockLogicalSwitch) ListLogicalSwitchNames(needVendorFilter bool, filter func(*ovnnb.LogicalSwitch) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchNames indicates an expected call of ListLogicalSwitchNames.
+func (mr *MockLogicalSwitchMockRecorder) ListLogicalSwitchNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchNames", reflect.TypeOf((*MockLogicalSwitch)(nil).ListLogicalSwitchNames), needVendorFilter, filter)
 }
 
 // LogicalSwitchExists mocks base method.
@@ -1511,6 +1541,20 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAffinityTimeout(lbName, t
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
+// SetLoadBalancerPreferLocalBackend mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerPreferLocalBackend", lbName, preferLocalBackend)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerPreferLocalBackend indicates an expected call of SetLoadBalancerPreferLocalBackend.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
+}
+
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
 type MockLoadBalancerHealthCheck struct {
 	ctrl     *gomock.Controller
@@ -2058,6 +2102,20 @@ func (mr *MockAddressSetMockRecorder) AddressSetUpdateAddress(asName any, addres
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddressSetUpdateAddress", reflect.TypeOf((*MockAddressSet)(nil).AddressSetUpdateAddress), varargs...)
 }
 
+// BatchDeleteAddressSetByNames mocks base method.
+func (m *MockAddressSet) BatchDeleteAddressSetByNames(asNames []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteAddressSetByNames", asNames)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteAddressSetByNames indicates an expected call of BatchDeleteAddressSetByNames.
+func (mr *MockAddressSetMockRecorder) BatchDeleteAddressSetByNames(asNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteAddressSetByNames", reflect.TypeOf((*MockAddressSet)(nil).BatchDeleteAddressSetByNames), asNames)
+}
+
 // CreateAddressSet mocks base method.
 func (m *MockAddressSet) CreateAddressSet(asName string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
@@ -2144,9 +2202,9 @@ func (m *MockLogicalRouterStaticRoute) EXPECT() *MockLogicalRouterStaticRouteMoc
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
+func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID}
+	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -2156,10 +2214,24 @@ func (m *MockLogicalRouterStaticRoute) AddLogicalRouterStaticRoute(lrName, route
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID any, nexthops ...any) *gomock.Call {
+func (mr *MockLogicalRouterStaticRouteMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs any, nexthops ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID}, nexthops...)
+	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).AddLogicalRouterStaticRoute), varargs...)
+}
+
+// BatchDeleteLogicalRouterStaticRoute mocks base method.
+func (m *MockLogicalRouterStaticRoute) BatchDeleteLogicalRouterStaticRoute(lrName string, staticRoutes []*ovnnb.LogicalRouterStaticRoute) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterStaticRoute", lrName, staticRoutes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterStaticRoute indicates an expected call of BatchDeleteLogicalRouterStaticRoute.
+func (mr *MockLogicalRouterStaticRouteMockRecorder) BatchDeleteLogicalRouterStaticRoute(lrName, staticRoutes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterStaticRoute", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).BatchDeleteLogicalRouterStaticRoute), lrName, staticRoutes)
 }
 
 // ClearLogicalRouterStaticRoute mocks base method.
@@ -2318,6 +2390,58 @@ func (m *MockLogicalRouterPolicy) AddLogicalRouterPolicy(lrName string, priority
 func (mr *MockLogicalRouterPolicyMockRecorder) AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, bfdSessions, externalIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterPolicy", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).AddLogicalRouterPolicy), lrName, priority, match, action, nextHops, bfdSessions, externalIDs)
+}
+
+// BatchAddLogicalRouterPolicy mocks base method.
+func (m *MockLogicalRouterPolicy) BatchAddLogicalRouterPolicy(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrName}
+	for _, a := range policies {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchAddLogicalRouterPolicy", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchAddLogicalRouterPolicy indicates an expected call of BatchAddLogicalRouterPolicy.
+func (mr *MockLogicalRouterPolicyMockRecorder) BatchAddLogicalRouterPolicy(lrName any, policies ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrName}, policies...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchAddLogicalRouterPolicy", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).BatchAddLogicalRouterPolicy), varargs...)
+}
+
+// BatchDeleteLogicalRouterPolicy mocks base method.
+func (m *MockLogicalRouterPolicy) BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterPolicy", lrName, logicalRouteRolicies)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterPolicy indicates an expected call of BatchDeleteLogicalRouterPolicy.
+func (mr *MockLogicalRouterPolicyMockRecorder) BatchDeleteLogicalRouterPolicy(lrName, logicalRouteRolicies any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterPolicy", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).BatchDeleteLogicalRouterPolicy), lrName, logicalRouteRolicies)
+}
+
+// BatchDeleteLogicalRouterPolicyByUUID mocks base method.
+func (m *MockLogicalRouterPolicy) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidList ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrName}
+	for _, a := range uuidList {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterPolicyByUUID", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterPolicyByUUID indicates an expected call of BatchDeleteLogicalRouterPolicyByUUID.
+func (mr *MockLogicalRouterPolicyMockRecorder) BatchDeleteLogicalRouterPolicyByUUID(lrName any, uuidList ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrName}, uuidList...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterPolicyByUUID", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).BatchDeleteLogicalRouterPolicyByUUID), varargs...)
 }
 
 // ClearLogicalRouterPolicy mocks base method.
@@ -2732,9 +2856,9 @@ func (mr *MockNbClientMockRecorder) AddLogicalRouterPolicy(lrName, priority, mat
 }
 
 // AddLogicalRouterStaticRoute mocks base method.
-func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
+func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
 	m.ctrl.T.Helper()
-	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID}
+	varargs := []any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}
 	for _, a := range nexthops {
 		varargs = append(varargs, a)
 	}
@@ -2744,9 +2868,9 @@ func (m *MockNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, i
 }
 
 // AddLogicalRouterStaticRoute indicates an expected call of AddLogicalRouterStaticRoute.
-func (mr *MockNbClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID any, nexthops ...any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs any, nexthops ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID}, nexthops...)
+	varargs := append([]any{lrName, routeTable, policy, ipPrefix, bfdID, externalIDs}, nexthops...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalRouterStaticRoute", reflect.TypeOf((*MockNbClient)(nil).AddLogicalRouterStaticRoute), varargs...)
 }
 
@@ -2781,6 +2905,86 @@ func (mr *MockNbClientMockRecorder) AddressSetUpdateAddress(asName any, addresse
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{asName}, addresses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddressSetUpdateAddress", reflect.TypeOf((*MockNbClient)(nil).AddressSetUpdateAddress), varargs...)
+}
+
+// BatchAddLogicalRouterPolicy mocks base method.
+func (m *MockNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrName}
+	for _, a := range policies {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchAddLogicalRouterPolicy", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchAddLogicalRouterPolicy indicates an expected call of BatchAddLogicalRouterPolicy.
+func (mr *MockNbClientMockRecorder) BatchAddLogicalRouterPolicy(lrName any, policies ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrName}, policies...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchAddLogicalRouterPolicy", reflect.TypeOf((*MockNbClient)(nil).BatchAddLogicalRouterPolicy), varargs...)
+}
+
+// BatchDeleteAddressSetByNames mocks base method.
+func (m *MockNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteAddressSetByNames", asNames)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteAddressSetByNames indicates an expected call of BatchDeleteAddressSetByNames.
+func (mr *MockNbClientMockRecorder) BatchDeleteAddressSetByNames(asNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteAddressSetByNames", reflect.TypeOf((*MockNbClient)(nil).BatchDeleteAddressSetByNames), asNames)
+}
+
+// BatchDeleteLogicalRouterPolicy mocks base method.
+func (m *MockNbClient) BatchDeleteLogicalRouterPolicy(lrName string, logicalRouteRolicies []*ovnnb.LogicalRouterPolicy) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterPolicy", lrName, logicalRouteRolicies)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterPolicy indicates an expected call of BatchDeleteLogicalRouterPolicy.
+func (mr *MockNbClientMockRecorder) BatchDeleteLogicalRouterPolicy(lrName, logicalRouteRolicies any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterPolicy", reflect.TypeOf((*MockNbClient)(nil).BatchDeleteLogicalRouterPolicy), lrName, logicalRouteRolicies)
+}
+
+// BatchDeleteLogicalRouterPolicyByUUID mocks base method.
+func (m *MockNbClient) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidList ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrName}
+	for _, a := range uuidList {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterPolicyByUUID", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterPolicyByUUID indicates an expected call of BatchDeleteLogicalRouterPolicyByUUID.
+func (mr *MockNbClientMockRecorder) BatchDeleteLogicalRouterPolicyByUUID(lrName any, uuidList ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrName}, uuidList...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterPolicyByUUID", reflect.TypeOf((*MockNbClient)(nil).BatchDeleteLogicalRouterPolicyByUUID), varargs...)
+}
+
+// BatchDeleteLogicalRouterStaticRoute mocks base method.
+func (m *MockNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticRoutes []*ovnnb.LogicalRouterStaticRoute) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteLogicalRouterStaticRoute", lrName, staticRoutes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchDeleteLogicalRouterStaticRoute indicates an expected call of BatchDeleteLogicalRouterStaticRoute.
+func (mr *MockNbClientMockRecorder) BatchDeleteLogicalRouterStaticRoute(lrName, staticRoutes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteLogicalRouterStaticRoute", reflect.TypeOf((*MockNbClient)(nil).BatchDeleteLogicalRouterStaticRoute), lrName, staticRoutes)
 }
 
 // CleanLogicalSwitchPortMigrateOptions mocks base method.
@@ -3926,6 +4130,21 @@ func (mr *MockNbClientMockRecorder) ListLogicalRouter(needVendorFilter, filter a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).ListLogicalRouter), needVendorFilter, filter)
 }
 
+// ListLogicalRouterNames mocks base method.
+func (m *MockNbClient) ListLogicalRouterNames(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterNames indicates an expected call of ListLogicalRouterNames.
+func (mr *MockNbClientMockRecorder) ListLogicalRouterNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterNames", reflect.TypeOf((*MockNbClient)(nil).ListLogicalRouterNames), needVendorFilter, filter)
+}
+
 // ListLogicalRouterPolicies mocks base method.
 func (m *MockNbClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
@@ -3999,6 +4218,21 @@ func (m *MockNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(*ovn
 func (mr *MockNbClientMockRecorder) ListLogicalSwitch(needVendorFilter, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitch", reflect.TypeOf((*MockNbClient)(nil).ListLogicalSwitch), needVendorFilter, filter)
+}
+
+// ListLogicalSwitchNames mocks base method.
+func (m *MockNbClient) ListLogicalSwitchNames(needVendorFilter bool, filter func(*ovnnb.LogicalSwitch) bool) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchNames", needVendorFilter, filter)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchNames indicates an expected call of ListLogicalSwitchNames.
+func (mr *MockNbClientMockRecorder) ListLogicalSwitchNames(needVendorFilter, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchNames", reflect.TypeOf((*MockNbClient)(nil).ListLogicalSwitchNames), needVendorFilter, filter)
 }
 
 // ListLogicalSwitchPorts mocks base method.
@@ -4542,6 +4776,20 @@ func (m *MockNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int
 func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
+}
+
+// SetLoadBalancerPreferLocalBackend mocks base method.
+func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerPreferLocalBackend", lbName, preferLocalBackend)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerPreferLocalBackend indicates an expected call of SetLoadBalancerPreferLocalBackend.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
 }
 
 // SetLogicalRouterPortHAChassisGroup mocks base method.
@@ -5111,21 +5359,6 @@ func (mr *MockSbClientMockRecorder) DeleteChassisByHost(node any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByHost", reflect.TypeOf((*MockSbClient)(nil).DeleteChassisByHost), node)
 }
 
-// GetAllChassisByHost mocks base method.
-func (m *MockSbClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllChassisByHost", nodeName)
-	ret0, _ := ret[0].(*[]ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAllChassisByHost indicates an expected call of GetAllChassisByHost.
-func (mr *MockSbClientMockRecorder) GetAllChassisByHost(nodeName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllChassisByHost", reflect.TypeOf((*MockSbClient)(nil).GetAllChassisByHost), nodeName)
-}
-
 // GetChassis mocks base method.
 func (m *MockSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
@@ -5349,21 +5582,6 @@ func (m *MockChassis) DeleteChassisByHost(node string) error {
 func (mr *MockChassisMockRecorder) DeleteChassisByHost(node any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByHost", reflect.TypeOf((*MockChassis)(nil).DeleteChassisByHost), node)
-}
-
-// GetAllChassisByHost mocks base method.
-func (m *MockChassis) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAllChassisByHost", nodeName)
-	ret0, _ := ret[0].(*[]ovnsb.Chassis)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAllChassisByHost indicates an expected call of GetAllChassisByHost.
-func (mr *MockChassisMockRecorder) GetAllChassisByHost(nodeName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllChassisByHost", reflect.TypeOf((*MockChassis)(nil).GetAllChassisByHost), nodeName)
 }
 
 // GetChassis mocks base method.

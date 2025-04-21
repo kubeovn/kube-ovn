@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-ARG GO_VERSION=1.23.4
+ARG GO_VERSION=1.24.2
 
 FROM ubuntu:24.04 AS ovs-builder
 
@@ -14,56 +14,60 @@ RUN cd /usr/src/ && \
     git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
-    curl -s https://github.com/kubeovn/ovs/commit/8ff6820a3db1087a6ea4a28a1f743e079ea87315.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/4228eab1d722087ba795e310eadc9e25c4513ec1.patch | git apply && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/98e1f9081f107205edc40478f61ae79a43c83061.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch | git apply && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/f2ac94a5a1f382fc4b8e2d3d7725d98ebbef13e2.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/321868c6897b9ebcaad9ce3c012e664f84c99ee9.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/f627b7721ec282f2edaf798913b1559b939687f0.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/968b4eb4140b2944d75767aa9ae0625bdcc61596.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch | git apply && \
     # fix memory leak in qos
-    curl -s https://github.com/kubeovn/ovs/commit/fd25c5273eed96e8bc9efab46eecbc815e0ce22b.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch | git apply && \
     # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/32f907ae9a1f8efe58dfb58107f02b1442b18edc.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch | git apply && \
     # netdev: reduce cpu utilization for getting device addresses
-    curl -s https://github.com/kubeovn/ovs/commit/28d41977a26606f324eadd8d907a8fb2e18505d9.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch | git apply && \
     # ovs-router: skip getting source address for kube-ipvs0
-    curl -s https://github.com/kubeovn/ovs/commit/b7129150cb763d1fd081ee3c6f669da90d46b965.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/d088c5d8c263552c5a31d87813991aee30ab74de.patch | git apply && \
     # increase the default probe interval for large cluster
-    curl -s https://github.com/kubeovn/ovs/commit/7e894a0bda966e746f81b2ebe262a62cd91bf269.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/1b31f07dc60c016153fa35d936cdda0e02e58492.patch | git apply && \
     # update ovs-sandbox for docker run
     curl -s https://github.com/kubeovn/ovs/commit/54b767822916606dbb78335a3197983f435b5b8a.patch | git apply
 
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/61ece99b63e88bb12c030c34b46716b01e242c92.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/e490f5ac0b644101913c2a3db8e03d85e859deff.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/cecf1515de299b3ec6b30ed8a167748e879188a6.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/eb935585bdeecdaa3fba8ff2c46ef394ce8d2424.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/5593e614e51a5dce28941e5bf760f9ee5397cede.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/8236ec78aedd114b3ce22158a9e0282337787259.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/f9e97031b56ab5747b5d73629198331a6daacdfd.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/19bdf15ec5542005e3a1ef073dfe688c023d144c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/625825ef939e543128b6cf48eee9eb79f805713c.patch | git apply && \
     # add support for conditionally skipping conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/c6ea5e214a4a20eccdf8cd18c232284edc5ce951.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/44229317de74d1e97f7499b371a86c015be6b7a6.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
-    curl -s https://github.com/kubeovn/ovn/commit/d8ce6dc8e512b703903c53e344b1dce1a0c61d2e.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/786756870f12ac69a5d7bc498693574c6591c5e9.patch | git apply && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/baf2d74f0f2d746c01c22002ea72426d75cfc79a.patch | git apply && \
-    # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/63762db7a4c37185f4c87962c50b414d925b5d33.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch | git apply && \
+    # direct output to lsp for dnat packets in logical switch ingress pipelines
+    curl -s https://github.com/kubeovn/ovn/commit/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch | git apply && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/ca5ccf3c8ac67bcc005110c8c62214d2684e7e41.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b3af07690e7b2328c02318b1bd812c5665c0632b.patch | git apply && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/283930b627ffa843ebf0e7c3fa0cc70edacfdd12.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch | git apply && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/1160d956e49e8f3f1b19535dbf1b9a624a090717.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch | git apply && \
     # support dedicated BFD LRP
-    curl -s https://github.com/kubeovn/ovn/commit/40345aa35d03c93cde877ccfa8111346291ebc7c.patch | git apply
+    curl -s https://github.com/kubeovn/ovn/commit/b5e2975eb65f37315545300254fc0f58a9df52b1.patch | git apply && \
+    # skip node local dns ip conntrack when set acl
+    curl -s https://github.com/kubeovn/ovn/commit/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch | git apply && \
+    # select local backend first
+    curl -s https://github.com/kubeovn/ovn/commit/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch | git apply
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -113,9 +117,9 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_VERSION="v1.6.1"
-ENV KUBE_VERSION="v1.31.3"
-ENV GOBGP_VERSION="3.32.0"
+ENV CNI_PLUGINS_VERSION="v1.6.2"
+ENV KUBECTL_VERSION="v1.32.3"
+ENV GOBGP_VERSION="3.36.0"
 ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq

@@ -26,10 +26,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
-	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -271,7 +272,7 @@ type Controller struct {
 
 	vmiMigrationSynced           cache.InformerSynced
 	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
-	kubevirtInformerFactory      kubevirtController.KubeInformerFactory
+	kubevirtInformerFactory      informer.KubeVirtInformerFactory
 
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
@@ -328,7 +329,7 @@ func Run(ctx context.Context, config *Configuration) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
-	kubevirtInformerFactory := kubevirtController.NewKubeInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, util.KubevirtNamespace)
+	kubevirtInformerFactory := informer.NewKubeVirtInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, util.KubevirtNamespace)
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
@@ -364,10 +365,7 @@ func Run(ctx context.Context, config *Configuration) {
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 
-	numKeyLocks := runtime.NumCPU() * 2
-	if numKeyLocks < config.WorkerNum*2 {
-		numKeyLocks = config.WorkerNum * 2
-	}
+	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
 		config:             config,
 		deletingPodObjMap:  xsync.NewMapOf[string, *corev1.Pod](),
@@ -470,7 +468,7 @@ func Run(ctx context.Context, config *Configuration) {
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 			workqueue.TypedRateLimitingQueueConfig[string]{
 				Name:          "DeletePod",
-				DelayingQueue: workqueue.TypedNewDelayingQueue[string](),
+				DelayingQueue: workqueue.NewTypedDelayingQueue[string](),
 			},
 		),
 		updatePodSecurityQueue: newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil),
@@ -1160,7 +1158,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("ports for security group", c.syncSgPortsQueue, c.syncSgLogicalPort), time.Second, ctx.Done())
 
 	// run node worker before handle any pods
-	for i := 0; i < c.config.WorkerNum; i++ {
+	for range c.config.WorkerNum {
 		go wait.Until(runWorker("add node", c.addNodeQueue, c.handleAddNode), time.Second, ctx.Done())
 		go wait.Until(runWorker("update node", c.updateNodeQueue, c.handleUpdateNode), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete node", c.deleteNodeQueue, c.handleDeleteNode), time.Second, ctx.Done())
@@ -1200,7 +1198,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, 5*time.Second, ctx.Done())
 	}
 
-	for i := 0; i < c.config.WorkerNum; i++ {
+	for range c.config.WorkerNum {
 		go wait.Until(runWorker("delete pod", c.deletePodQueue, c.handleDeletePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update pod", c.addOrUpdatePodQueue, c.handleAddOrUpdatePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
@@ -1243,11 +1241,13 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		c.resyncVpcNatConfig()
 	}, time.Second, ctx.Done())
 
-	go wait.Until(func() {
-		if err := c.markAndCleanLSP(); err != nil {
-			klog.Errorf("gc lsp error: %v", err)
-		}
-	}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+	if c.config.GCInterval != 0 {
+		go wait.Until(func() {
+			if err := c.markAndCleanLSP(); err != nil {
+				klog.Errorf("gc lsp error: %v", err)
+			}
+		}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+	}
 
 	go wait.Until(func() {
 		if err := c.inspectPod(); err != nil {
@@ -1263,7 +1263,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
-	go wait.Until(c.CheckGatewayReady, 5*time.Second, ctx.Done())
+	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
 
 	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ovn eip", c.updateOvnEipQueue, c.handleUpdateOvnEip), time.Second, ctx.Done())
@@ -1408,7 +1408,7 @@ func getWorkItemKey(obj any) string {
 	case string:
 		return v
 	case *vpcService:
-		return fmt.Sprintf("%s/%s", v.Svc.Namespace, v.Svc.Name)
+		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
 		return v.key
 	case *SlrInfo:

@@ -33,7 +33,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.ovsDbClient.Create(lr)
+	op, err := c.Create(lr)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical router %s: %w", lrName, err)
@@ -48,7 +48,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 }
 
 // UpdateLogicalRouter update logical router
-func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
 	op, err := c.UpdateLogicalRouterOp(lr, fields...)
 	if err != nil {
 		klog.Error(err)
@@ -130,8 +130,7 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
-	lrList := make([]ovnnb.LogicalRouter, 0)
-
+	var lrList []ovnnb.LogicalRouter
 	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		if needVendorFilter && (len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
@@ -148,6 +147,21 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 	}
 
 	return lrList, nil
+}
+
+// ListLogicalRouterNames list logical router names
+func (c *OVNNbClient) ListLogicalRouterNames(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]string, error) {
+	lrList, err := c.ListLogicalRouter(needVendorFilter, filter)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	names := make([]string, 0, len(lrList))
+	for _, lr := range lrList {
+		names = append(names, lr.Name)
+	}
+	return names, nil
 }
 
 // LogicalRouterUpdateLoadBalancers add several lb to or from logical router once
@@ -196,7 +210,7 @@ func (c *OVNNbClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.M
 }
 
 // UpdateLogicalRouterOp generate operations which update logical router
-func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...interface{}) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...any) ([]ovsdb.Operation, error) {
 	if lr == nil {
 		return nil, errors.New("logical_router is nil")
 	}

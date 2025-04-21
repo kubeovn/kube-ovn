@@ -16,40 +16,27 @@ import (
 	csrv1 "k8s.io/api/certificates/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddCsr(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+func (c *Controller) enqueueAddCsr(obj any) {
+	key := cache.MetaObjectToName(obj.(*csrv1.CertificateSigningRequest)).String()
 	klog.V(3).Infof("enqueue add csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateCsr(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
 	oldCsr := oldObj.(*csrv1.CertificateSigningRequest)
 	newCsr := newObj.(*csrv1.CertificateSigningRequest)
 	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
 		return
 	}
 
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.V(3).Infof("update csr %s", key)
+	key := cache.MetaObjectToName(newCsr).String()
+	klog.V(3).Infof("enqueue update csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
 

@@ -22,6 +22,7 @@ ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
+ENABLE_METRICS=${ENABLE_METRICS:-true}
 # comma-separated string of nodelocal DNS ip addresses
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
@@ -45,6 +46,12 @@ SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
+ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+
+PROBE_HTTP_SCHEME="HTTP"
+if [ "$SECURE_SERVING" = "true" ]; then
+  PROBE_HTTP_SCHEME="HTTPS"
+fi
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -1124,12 +1131,24 @@ spec:
       storage: true
       subresources:
         status: {}
+        scale:
+          # specReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Spec.Replicas.
+          specReplicasPath: .spec.replicas
+          # statusReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Replicas.
+          statusReplicasPath: .status.replicas
+          # labelSelectorPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Selector.
+          labelSelectorPath: .status.labelSelector
       schema:
         openAPIV3Schema:
           type: object
           properties:
             status:
               properties:
+                replicas:
+                  type: integer
+                  format: int32
+                labelSelector:
+                  type: string
                 conditions:
                   items:
                     properties:
@@ -1223,6 +1242,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   default: 1
                   minimum: 1
                   maximum: 10
@@ -1270,12 +1290,15 @@ spec:
                       default: false
                     minRX:
                       type: integer
+                      format: int32
                       default: 1000
                     minTX:
                       type: integer
+                      format: int32
                       default: 1000
                     multiplier:
                       type: integer
+                      format: int32
                       default: 3
                 policies:
                   type: array
@@ -2793,6 +2816,8 @@ spec:
                   type: boolean
                 enableMulticastSnoop:
                   type: boolean
+                enableExternalLBAddress:
+                  type: boolean
                 routeTable:
                   type: string
                 namespaceSelectors:
@@ -3475,6 +3500,7 @@ rules:
       - get
       - list
       - update
+      - patch
       - create
       - delete
       - watch
@@ -3647,7 +3673,9 @@ rules:
       - ovn-eips
       - ovn-eips/status
       - nodes
+      - nodes/status
       - pods
+      - services
     verbs:
       - get
       - list
@@ -4702,6 +4730,7 @@ spec:
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
+          - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --secure-serving=${SECURE_SERVING}
@@ -4709,6 +4738,7 @@ spec:
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
+          - --enable-ovn-lb-prefer-local=$ENABLE_OVN_LB_PREFER_LOCAL
           - --image=$REGISTRY/kube-ovn:$VERSION
           securityContext:
             runAsUser: ${RUN_AS_USER}
@@ -4716,6 +4746,7 @@ spec:
             capabilities:
               add:
                 - NET_BIND_SERVICE
+                - NET_RAW
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -4759,19 +4790,17 @@ spec:
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10660
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: ${PROBE_HTTP_SCHEME}
             periodSeconds: 3
             timeoutSeconds: 5
           livenessProbe:
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10660
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10660
+              path: /livez
+              scheme: ${PROBE_HTTP_SCHEME}
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
@@ -4893,6 +4922,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
@@ -4978,21 +5008,19 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls=${SECURE_SERVING}
+          httpGet:
+            port: 10665
+            path: /livez
+            scheme: ${PROBE_HTTP_SCHEME}
           timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
           successThreshold: 1
-          exec:
-            command:
-              - /kube-ovn/kube-ovn-healthcheck
-              - --port=10665
-              - --tls=${SECURE_SERVING}
+          httpGet:
+            port: 10665
+            path: /readyz
+            scheme: ${PROBE_HTTP_SCHEME}
           timeoutSeconds: 5
         resources:
           requests:
@@ -5110,6 +5138,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: ${RUN_AS_USER}
@@ -5164,6 +5193,18 @@ spec:
             limits:
               cpu: 200m
               memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -5261,6 +5302,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
           securityContext:
             runAsUser: ${RUN_AS_USER}
             privileged: false
@@ -5319,22 +5361,20 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: ${PROBE_HTTP_SCHEME}
             timeoutSeconds: 5
           readinessProbe:
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
             successThreshold: 1
-            exec:
-              command:
-                - /kube-ovn/kube-ovn-healthcheck
-                - --port=10661
-                - --tls=${SECURE_SERVING}
+            httpGet:
+              port: 10661
+              path: /readyz
+              scheme: ${PROBE_HTTP_SCHEME}
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"

@@ -31,7 +31,7 @@ func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]stri
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovsDbClient.Create(pg)
+	ops, err := c.Create(pg)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating port group %s: %w", pgName, err)
@@ -102,7 +102,7 @@ func (c *OVNNbClient) PortGroupSetPorts(pgName string, ports []string) error {
 }
 
 // UpdatePortGroup update port group
-func (c *OVNNbClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...interface{}) error {
+func (c *OVNNbClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...any) error {
 	op, err := c.Where(pg).Update(pg, fields...)
 	if err != nil {
 		klog.Error(err)
@@ -170,7 +170,7 @@ func (c *OVNNbClient) DeletePortGroup(pgName ...string) error {
 		return nil
 	}
 
-	var modelList []model.Model = make([]model.Model, len(delList))
+	modelList := make([]model.Model, len(delList))
 	for i, pg := range delList {
 		modelList[i] = pg
 	}
@@ -195,7 +195,7 @@ func (c *OVNNbClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.P
 	defer cancel()
 
 	pg := &ovnnb.PortGroup{Name: pgName}
-	if err := c.ovsDbClient.Get(ctx, pg); err != nil {
+	if err := c.Get(ctx, pg); err != nil {
 		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}

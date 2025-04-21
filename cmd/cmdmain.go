@@ -11,8 +11,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/cmd/controller"
-	"github.com/kubeovn/kube-ovn/cmd/health_check"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -22,11 +20,9 @@ import (
 )
 
 const (
-	CmdController       = "kube-ovn-controller"
 	CmdMonitor          = "kube-ovn-monitor"
 	CmdSpeaker          = "kube-ovn-speaker"
 	CmdWebhook          = "kube-ovn-webhook"
-	CmdHealthCheck      = "kube-ovn-healthcheck"
 	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
 	CmdOvnICController  = "kube-ovn-ic-controller"
 )
@@ -91,9 +87,6 @@ func dumpProfile() {
 func main() {
 	cmd := filepath.Base(os.Args[0])
 	switch cmd {
-	case CmdController:
-		dumpProfile()
-		controller.CmdMain()
 	case CmdMonitor:
 		dumpProfile()
 		ovn_monitor.CmdMain()
@@ -102,8 +95,6 @@ func main() {
 		speaker.CmdMain()
 	case CmdWebhook:
 		webhook.CmdMain()
-	case CmdHealthCheck:
-		health_check.CmdMain()
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
 	case CmdOvnICController:

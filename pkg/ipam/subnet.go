@@ -44,7 +44,7 @@ type Subnet struct {
 
 func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	var cidrs []*net.IPNet
-	for _, cidrBlock := range strings.Split(cidrStr, ",") {
+	for cidrBlock := range strings.SplitSeq(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
 		if err != nil {
 			klog.Error(err)

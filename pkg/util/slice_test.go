@@ -1,7 +1,7 @@
 package util
 
 import (
-	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,9 +30,57 @@ func TestDiffStringSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if ret := DiffStringSlice(tt.slice1, tt.slice2); !reflect.DeepEqual(ret, tt.want) {
+			if ret := DiffStringSlice(tt.slice1, tt.slice2); !slices.Equal(ret, tt.want) {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
+		})
+	}
+}
+
+func TestUnionStringSlice(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		desc   string
+		slice1 []string
+		slice2 []string
+		want   []string
+	}{
+		{
+			desc:   "both slices nil",
+			slice1: nil,
+			slice2: nil,
+			want:   []string{},
+		},
+		{
+			desc:   "first slice nil",
+			slice1: nil,
+			slice2: []string{"a", "b", "c"},
+			want:   []string{"a", "b", "c"},
+		},
+		{
+			desc:   "second slice nil",
+			slice1: []string{"x", "y", "z"},
+			slice2: nil,
+			want:   []string{"x", "y", "z"},
+		},
+		{
+			desc:   "duplicate elements",
+			slice1: []string{"a", "b", "a", "c"},
+			slice2: []string{"b", "c", "c", "d"},
+			want:   []string{"a", "b", "c", "d"},
+		},
+		{
+			desc:   "empty slices",
+			slice1: []string{},
+			slice2: []string{},
+			want:   []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := UnionStringSlice(tt.slice1, tt.slice2)
+			require.ElementsMatch(t, tt.want, result)
 		})
 	}
 }
@@ -94,7 +142,7 @@ func TestRemoveString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if ret := RemoveString(tt.b, tt.a); !reflect.DeepEqual(ret, tt.want) {
+			if ret := RemoveString(tt.b, tt.a); !slices.Equal(ret, tt.want) {
 				t.Errorf("got %v, want %v", ret, tt.want)
 			}
 		})

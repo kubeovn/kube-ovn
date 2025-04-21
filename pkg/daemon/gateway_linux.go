@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -205,7 +205,7 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 		return
 	}
 
-	subnetCidrs := make([]string, 0)
+	subnetCidrs := make([]string, 0, len(subnets))
 	natPolicyRuleIDs := strset.New()
 	for _, subnet := range subnets {
 		cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
@@ -213,7 +213,9 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 			klog.Errorf("failed to get subnet %s CIDR block by protocol: %v", subnet.Name, err)
 			continue
 		}
-		subnetCidrs = append(subnetCidrs, cidrBlock)
+		if cidrBlock != "" {
+			subnetCidrs = append(subnetCidrs, cidrBlock)
+		}
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			if rule.RuleID == "" {
 				klog.Errorf("unexpected empty ID for NAT outgoing rule %q of subnet %s", rule.NatOutgoingPolicyRule, subnet.Name)
@@ -514,7 +516,7 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 
 	var added int
 	for i, rule := range rules {
-		if i-added < len(existingRules) && reflect.DeepEqual(existingRules[i-added], rule.Rule) {
+		if i-added < len(existingRules) && slices.Equal(existingRules[i-added], rule.Rule) {
 			klog.V(5).Infof("iptables rule %v already exists", rule.Rule)
 			continue
 		}
@@ -574,7 +576,7 @@ func (c *Controller) setIptables() error {
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing policy rules
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j %s`, OvnNatOutGoingPolicy))},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields("-m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j " + OvnNatOutGoingPolicy)},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j %s`, OnOutGoingNatMark, OvnMasquerade))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j RETURN`, OnOutGoingForwardMark))},
 			// default nat outgoing rules
@@ -615,7 +617,7 @@ func (c *Controller) setIptables() error {
 			// do not nat route traffic
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing policy rules
-			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j %s`, OvnNatOutGoingPolicy))},
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields("-m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j " + OvnNatOutGoingPolicy)},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j %s`, OnOutGoingNatMark, OvnMasquerade))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(fmt.Sprintf(`-m mark --mark %s -j RETURN`, OnOutGoingForwardMark))},
 			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j ` + OvnMasquerade)},
@@ -640,14 +642,11 @@ func (c *Controller) setIptables() error {
 			{Table: MANGLE, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m set --match-set ovn60subnets src -m tcp --tcp-flags RST RST -m state --state INVALID -j DROP`)},
 		}
 	)
-	protocols := make([]string, 2)
-	isDual := false
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
-		isDual = true
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -729,13 +728,16 @@ func (c *Controller) setIptables() error {
 				)
 			}
 		}
+
 		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			return err
 		}
 
+		subnetNames := set.New[string]()
 		for name, subnetCidr := range subnetCidrs {
+			subnetNames.Insert(name)
 			iptablesRules = append(iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -d %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
@@ -748,27 +750,31 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
+		pattern := fmt.Sprintf(`-m comment --comment "%s,`, util.OvnSubnetGatewayIptables)
 		for _, rule := range rules {
-			if !strings.Contains(rule, util.OvnSubnetGatewayIptables) {
+			if !strings.Contains(rule, pattern) {
+				continue
+			}
+			fields := util.DoubleQuotedFields(rule)
+			// -A FORWARD -d 10.16.0.0/16 -m comment --comment "ovn-subnet-gateway,ovn-default"
+			if len(fields) != 8 || fields[6] != "--comment" {
+				continue
+			}
+			commentFields := strings.Split(fields[7], ",")
+			if len(commentFields) != 2 {
+				continue
+			}
+			if subnetNames.Has(commentFields[1]) {
 				continue
 			}
 
-			var inUse bool
-			for name := range subnetCidrs {
-				if slices.Contains(util.DoubleQuotedFields(rule), fmt.Sprintf("%s,%s", util.OvnSubnetGatewayIptables, name)) {
-					inUse = true
-					break
-				}
-			}
-
-			if !inUse {
-				// rule[11:] skip "-A FORWARD "
-				if err = deleteIptablesRule(ipt, util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: util.DoubleQuotedFields(rule[11:])}); err != nil {
-					klog.Error(err)
-					return err
-				}
+			// use fields[2:] to skip prefix "-A FORWARD"
+			if err = deleteIptablesRule(ipt, util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: fields[2:]}); err != nil {
+				klog.Error(err)
+				return err
 			}
 		}
+
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
@@ -828,7 +834,7 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		if err = c.reconcileTProxyIPTableRules(protocol, isDual); err != nil {
+		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -859,7 +865,7 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) error {
+func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	if !c.config.EnableTProxy {
 		return nil
 	}
@@ -893,19 +899,13 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string, isDual bool) e
 		}
 
 		for _, probePort := range ports.SortedList() {
-			hostIP := pod.Status.HostIP
+			hostIP := c.config.NodeIPv4
 			prefixLen := 32
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				prefixLen = 128
+				hostIP = c.config.NodeIPv6
 			}
 
-			if isDual || os.Getenv("ENABLE_BIND_LOCAL_IP") == "false" {
-				if protocol == kubeovnv1.ProtocolIPv4 {
-					hostIP = "0.0.0.0"
-				} else if protocol == kubeovnv1.ProtocolIPv6 {
-					hostIP = "::"
-				}
-			}
 			tproxyOutputRules = append(tproxyOutputRules, util.IPTableRule{Table: MANGLE, Chain: OvnOutput, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j MARK --set-xmark %s`, podIP, prefixLen, probePort, tProxyOutputMarkMask))})
 			tproxyPreRoutingRules = append(tproxyPreRoutingRules, util.IPTableRule{Table: MANGLE, Chain: OvnPrerouting, Rule: strings.Fields(fmt.Sprintf(`-d %s/%d -p tcp -m tcp --dport %d -j TPROXY --on-port %d --on-ip %s --tproxy-mark %s`, podIP, prefixLen, probePort, util.TProxyListenPort, hostIP, tProxyPreRoutingMarkMask))})
 		}
@@ -1003,14 +1003,18 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			klog.Errorf("failed to get subnet %s cidr block with protocol: %v", subnet.Name, err)
 			continue
 		}
+		if cidrBlock == "" {
+			continue
+		}
 
 		ovnNatPolicySubnetChainName := OvnNatOutGoingPolicySubnet + util.GetTruncatedUID(string(subnet.GetUID()))
 		natPolicySubnetIptables = append(natPolicySubnetIptables, util.IPTableRule{Table: NAT, Chain: OvnNatOutGoingPolicy, Rule: strings.Fields(fmt.Sprintf(`-s %s -m comment --comment natPolicySubnet-%s -j %s`, cidrBlock, subnet.Name, ovnNatPolicySubnetChainName))})
 		for _, rule := range subnet.Status.NatOutgoingPolicyRules {
 			var markCode string
-			if rule.Action == util.NatPolicyRuleActionNat {
+			switch rule.Action {
+			case util.NatPolicyRuleActionNat:
 				markCode = OnOutGoingNatMark
-			} else if rule.Action == util.NatPolicyRuleActionForward {
+			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
 			}
 
@@ -1253,95 +1257,73 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 		}
 
 		for _, rule := range rules {
+			if !strings.Contains(rule, util.OvnSubnetGatewayIptables) {
+				continue
+			}
+
 			items := util.DoubleQuotedFields(rule)
-			cidr := ""
-			direction := ""
-			subnetName := ""
-			var currentPackets, currentPacketBytes int
-			if len(items) <= 10 {
+			if len(items) != 11 {
 				continue
 			}
-			for _, item := range items {
-				if strings.Contains(item, util.OvnSubnetGatewayIptables) {
-					cidr = items[3]
 
-					switch items[2] {
-					case "-s":
-						direction = "egress"
-					case "-d":
-						direction = "ingress"
-					default:
-						break
-					}
+			comments := strings.Split(items[7], ",")
+			if len(comments) != 2 || comments[0] != util.OvnSubnetGatewayIptables {
+				continue
+			}
+			subnetName := comments[1]
 
-					comments := strings.Split(items[7], ",")
-					if len(comments) != 2 {
-						break
-					}
-					subnetName = comments[1][:len(comments[1])-1]
-					currentPackets, err = strconv.Atoi(items[9])
-					if err != nil {
-						break
-					}
-					currentPacketBytes, err = strconv.Atoi(items[10])
-					if err != nil {
-						break
-					}
-				}
+			var direction string
+			switch items[2] {
+			case "-s":
+				direction = "egress"
+			case "-d":
+				direction = "ingress"
+			default:
+				continue
 			}
 
+			cidr := items[3]
 			proto := util.CheckProtocol(cidr)
-
-			if cidr == "" || direction == "" || subnetName == "" && proto != "" {
+			if proto == "" {
+				klog.Errorf("failed to get protocol from cidr %q", cidr)
 				continue
 			}
 
-			lastPacketBytes := 0
-			lastPackets := 0
-			diffPacketBytes := 0
-			diffPackets := 0
+			currentPackets, err := strconv.Atoi(items[9])
+			if err != nil {
+				klog.Errorf("failed to parse packets %q: %v", items[9], err)
+				continue
+			}
+			currentPacketBytes, err := strconv.Atoi(items[10])
+			if err != nil {
+				klog.Errorf("failed to parse packet bytes %q: %v", items[10], err)
+				continue
+			}
 
 			key := strings.Join([]string{subnetName, direction, proto}, "/")
-			if ret, ok := c.gwCounters[key]; ok {
-				lastPackets = ret.Packets
-				lastPacketBytes = ret.PacketBytes
-			} else {
-				c.gwCounters[key] = &util.GwIPtableCounters{
-					Packets:     lastPackets,
-					PacketBytes: lastPacketBytes,
-				}
+			if c.gwCounters[key] == nil {
+				c.gwCounters[key] = new(util.GwIPtableCounters)
 			}
+			lastPackets, lastPacketBytes := c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes
+			c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes = currentPackets, currentPacketBytes
 
-			if lastPacketBytes == 0 && lastPackets == 0 {
+			if lastPackets == 0 && lastPacketBytes == 0 {
 				// the gwCounters may just initialize don't cal the diff values,
 				// it may loss packets to calculate during a metric period
-				c.gwCounters[key].Packets = currentPackets
-				c.gwCounters[key].PacketBytes = currentPacketBytes
 				continue
 			}
-
-			if currentPackets >= lastPackets && currentPacketBytes >= lastPacketBytes {
-				diffPacketBytes = currentPacketBytes - lastPacketBytes
-				diffPackets = currentPackets - lastPackets
-			} else {
+			if currentPackets < lastPackets || currentPacketBytes < lastPacketBytes {
 				// if currentPacketBytes < lastPacketBytes, the reason is that iptables rule is reset ,
 				// it may loss packets to calculate during a metric period
-				c.gwCounters[key].Packets = currentPackets
-				c.gwCounters[key].PacketBytes = currentPacketBytes
 				continue
 			}
 
-			c.gwCounters[key].Packets = currentPackets
-			c.gwCounters[key].PacketBytes = currentPacketBytes
-
+			diffPackets := currentPackets - lastPackets
+			diffPacketBytes := currentPacketBytes - lastPacketBytes
 			klog.V(3).Infof(`hostname %s key %s cidr %s direction %s proto %s has diffPackets %d diffPacketBytes %d currentPackets %d currentPacketBytes %d lastPackets %d lastPacketBytes %d`,
 				hostname, key, cidr, direction, proto, diffPackets, diffPacketBytes, currentPackets, currentPacketBytes, lastPackets, lastPacketBytes)
-			if diffPackets > 0 {
-				metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
-			}
-			if diffPacketBytes > 0 {
-				metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
-			}
+			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
+			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
 		}
 	}
 }
@@ -1616,7 +1598,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			}
 			if meta.gateway != "" {
 				cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-				if err == nil {
+				if err == nil && cidrBlock != "" {
 					subnetsNeedPR[meta] = cidrBlock
 				}
 			}

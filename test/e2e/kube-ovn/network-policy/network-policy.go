@@ -102,7 +102,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		for _, podIP := range pod.Status.PodIPs {
 			ip := podIP.IP
 			protocol := strings.ToLower(util.CheckProtocol(ip))
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s", net.JoinHostPort(ip, port))
+			cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(ip, port)
 
 			var podSameNode *corev1.Pod
 			for _, hostPod := range pods {
@@ -174,7 +174,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Checking connection from pod " + podName + " to " + clusterIP + " via TCP")
 
-		cmd := fmt.Sprintf("curl -k -q -s --connect-timeout 2 https://%s", net.JoinHostPort(clusterIP, "443"))
+		cmd := "curl -k -q -s --connect-timeout 2 https://" + net.JoinHostPort(clusterIP, "443")
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 
 		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {

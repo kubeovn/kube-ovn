@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,38 +10,25 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	kubevirtController "kubevirt.io/kubevirt/pkg/controller"
 
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVMIMigration(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.Infof("enqueue add VMI migration %s ", key)
+func (c *Controller) enqueueAddVMIMigration(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachineInstanceMigration)).String()
+	klog.Infof("enqueue add VMI migration %s", key)
 	c.addOrUpdateVMIMigrationQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 	oldVmi := oldObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 	newVmi := newObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 
 	if !newVmi.DeletionTimestamp.IsZero() ||
-		!reflect.DeepEqual(oldVmi.Status.Phase, newVmi.Status.Phase) {
-		key, err := cache.MetaNamespaceKeyFunc(newObj)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		oldVmi.Status.Phase != newVmi.Status.Phase {
+		key := cache.MetaObjectToName(newVmi).String()
 		klog.Infof("enqueue update VMI migration %s", key)
 		c.addOrUpdateVMIMigrationQueue.Add(key)
 	}
@@ -61,7 +47,12 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 	if vmiMigration.Status.MigrationState == nil {
-		klog.Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
+		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
+		return nil
+	}
+
+	if vmiMigration.Status.MigrationState.Completed {
+		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is completed, skipping", key)
 		return nil
 	}
 
@@ -145,7 +136,7 @@ func (c *Controller) isVMIMigrationCRDInstalled() bool {
 	return true
 }
 
-func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory kubevirtController.KubeInformerFactory) {
+func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		defer ticker.Stop()

@@ -8,16 +8,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/pflag"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -140,7 +137,7 @@ func getCmdExitCode(cmd *exec.Cmd) int {
 func checkOvnIsAlive() bool {
 	components := [...]string{"northd", "ovnnb", "ovnsb"}
 	for _, component := range components {
-		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", fmt.Sprintf("status_%s", component)) // #nosec G204
+		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_"+component) // #nosec G204
 		if err := getCmdExitCode(cmd); err != 0 {
 			klog.Errorf("CheckOvnIsAlive: %s is not alive", component)
 			return false
@@ -156,13 +153,13 @@ func isDBLeader(dbName string, port int) bool {
 
 	var cmd []string
 	if os.Getenv(EnvSSL) == "false" {
-		cmd = []string{"query", fmt.Sprintf("tcp:%s", addr), query}
+		cmd = []string{"query", "tcp:" + addr, query}
 	} else {
 		cmd = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			"query", fmt.Sprintf("ssl:%s", addr), query,
+			"query", "ssl:" + addr, query,
 		}
 	}
 
@@ -251,23 +248,6 @@ func stealLock() {
 	}
 }
 
-func patchPodLabels(cfg *Configuration, cachedPod *corev1.Pod, labels map[string]string) error {
-	if reflect.DeepEqual(cachedPod.Labels, labels) {
-		return nil
-	}
-
-	pod := cachedPod.DeepCopy()
-	pod.Labels = labels
-	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, pod)
-	if err != nil {
-		klog.Errorf("failed to generate patch payload, %v", err)
-		return err
-	}
-	_, err = cfg.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
-	return err
-}
-
 func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 	_, err := cfg.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
 	if err != nil {
@@ -315,14 +295,6 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, epName string) bool {
 	return checkNorthdEpAvailable(eps.Subsets[0].Addresses[0].IP)
 }
 
-func updatePodLabels(labels map[string]string, key string, isLeader bool) {
-	if isLeader {
-		labels[key] = "true"
-	} else {
-		delete(labels, key)
-	}
-}
-
 func compactOvnDatabase(db string) {
 	command := []string{
 		"-t",
@@ -356,26 +328,15 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		return
 	}
 
-	cachedPod, err := cfg.KubeClient.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("get pod %v namespace %v error %v", podName, podNamespace, err)
-		return
-	}
-
-	labels := make(map[string]string, len(cachedPod.Labels))
-	for k, v := range cachedPod.Labels {
-		labels[k] = v
-	}
-
 	if !cfg.ISICDBServer {
-		nbLeader := isDBLeader("OVN_Northbound", 6641)
 		sbLeader := isDBLeader("OVN_Southbound", 6642)
-		northdLeader := checkNorthdActive()
-		updatePodLabels(labels, "ovn-nb-leader", nbLeader)
-		updatePodLabels(labels, "ovn-sb-leader", sbLeader)
-		updatePodLabels(labels, "ovn-northd-leader", northdLeader)
-		if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
-			klog.Errorf("patch label error %v", err)
+		patch := util.KVPatch{
+			"ovn-nb-leader":     strconv.FormatBool(isDBLeader("OVN_Northbound", 6641)),
+			"ovn-sb-leader":     strconv.FormatBool(sbLeader),
+			"ovn-northd-leader": strconv.FormatBool(checkNorthdActive()),
+		}
+		if err := util.PatchLabels(cfg.KubeClient.CoreV1().Pods(podNamespace), podName, patch); err != nil {
+			klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
 			return
 		}
 		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
@@ -391,11 +352,12 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		}
 	} else {
 		icNbLeader := isDBLeader("OVN_IC_Northbound", 6645)
-		icSbLeader := isDBLeader("OVN_IC_Southbound", 6646)
-		updatePodLabels(labels, "ovn-ic-nb-leader", icNbLeader)
-		updatePodLabels(labels, "ovn-ic-sb-leader", icSbLeader)
-		if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
-			klog.Errorf("patch label error %v", err)
+		patch := util.KVPatch{
+			"ovn-ic-nb-leader": strconv.FormatBool(icNbLeader),
+			"ovn-ic-sb-leader": strconv.FormatBool(isDBLeader("OVN_IC_Southbound", 6646)),
+		}
+		if err := util.PatchLabels(cfg.KubeClient.CoreV1().Pods(podNamespace), podName, patch); err != nil {
+			klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
 			return
 		}
 

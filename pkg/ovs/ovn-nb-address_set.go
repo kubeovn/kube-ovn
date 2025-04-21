@@ -38,7 +38,7 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 		ExternalIDs: externalIDs,
 	}
 
-	ops, err := c.ovsDbClient.Create(as)
+	ops, err := c.Create(as)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating address set %s: %w", asName, err)
@@ -88,7 +88,7 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 }
 
 // UpdateAddressSet update address set
-func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateAddressSet(as *ovnnb.AddressSet, fields ...any) error {
 	if as == nil {
 		return errors.New("address_set is nil")
 	}
@@ -125,7 +125,7 @@ func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
 		return nil
 	}
 
-	var modelList []model.Model = make([]model.Model, len(delList))
+	modelList := make([]model.Model, len(delList))
 	for i, as := range delList {
 		modelList[i] = as
 	}
@@ -137,6 +137,46 @@ func (c *OVNNbClient) DeleteAddressSet(asName ...string) error {
 	if err := c.Transact("as-del", op); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete address set %s: %w", asName, err)
+	}
+
+	return nil
+}
+
+// BatchDeleteAddressSetByAsName batch delete address set by names
+func (c *OVNNbClient) BatchDeleteAddressSetByNames(asNames []string) error {
+	asNameMap := make(map[string]struct{}, len(asNames))
+	for _, name := range asNames {
+		asNameMap[name] = struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	asList := make([]ovnnb.AddressSet, 0)
+	if err := c.ovsDbClient.WhereCache(func(as *ovnnb.AddressSet) bool {
+		_, exist := asNameMap[as.Name]
+		return exist
+	}).List(ctx, &asList); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("batch delete address set %d list failed: %w", len(asNames), err)
+	}
+
+	// not found, skip
+	if len(asList) == 0 {
+		return nil
+	}
+
+	modelList := make([]model.Model, 0, len(asList))
+	for _, as := range asList {
+		modelList = append(modelList, &as)
+	}
+	op, err := c.Where(modelList...).Delete()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("batch delete address set %d op failed: %w", len(asList), err)
+	}
+
+	if err := c.Transact("as-del", op); err != nil {
+		return fmt.Errorf("batch delete address set %d failed: %w", len(asList), err)
 	}
 
 	return nil
@@ -169,7 +209,7 @@ func (c *OVNNbClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.
 	defer cancel()
 
 	as := &ovnnb.AddressSet{Name: asName}
-	if err := c.ovsDbClient.Get(ctx, as); err != nil {
+	if err := c.Get(ctx, as); err != nil {
 		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}

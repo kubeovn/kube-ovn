@@ -357,7 +357,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPorts() {
 	require.NoError(t, err)
 
 	t.Run("normal delete logical router ports", func(t *testing.T) {
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			lrpName := fmt.Sprintf("%s-%d", prefix, i)
 			err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
 			require.NoError(t, err)
@@ -366,7 +366,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPorts() {
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			lrpName := fmt.Sprintf("%s-%d", prefix, i)
 			lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
 			require.NoError(t, err)
@@ -524,7 +524,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 		require.Equal(t, ovsdb.OvsMap{
-			GoMap: map[interface{}]interface{}{
+			GoMap: map[any]any{
 				logicalRouterKey: lrName,
 				"vendor":         util.CniTypeName,
 				"pod":            lrpName,
@@ -536,7 +536,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lrp.UUID,
 						},
@@ -559,7 +559,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 
 		require.Len(t, ops, 2)
 		require.Equal(t, ovsdb.OvsMap{
-			GoMap: map[interface{}]interface{}{
+			GoMap: map[any]any{
 				logicalRouterKey: lrName,
 				"vendor":         util.CniTypeName,
 			},
@@ -570,7 +570,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lrp.UUID,
 						},
@@ -621,7 +621,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 				Column:  "ports",
 				Mutator: ovsdb.MutateOperationDelete,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						ovsdb.UUID{
 							GoUUID: lrp.UUID,
 						},
@@ -668,7 +668,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {
 				Column:  "networks",
 				Mutator: ovsdb.MutateOperationInsert,
 				Value: ovsdb.OvsSet{
-					GoSet: []interface{}{
+					GoSet: []any{
 						"172.177.29.1/24",
 						"172.177.39.1/24",
 					},
@@ -906,7 +906,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterPorts() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		lrpName := fmt.Sprintf("%s-%d", prefix, i)
 		err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
 		require.NoError(t, err)

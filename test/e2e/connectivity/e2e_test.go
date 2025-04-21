@@ -267,7 +267,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		framework.ExpectNotNil(pod, "no ovs-ovn pod running on node "+suiteCtx.Node)
 		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning)
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
-		pod.ObjectMeta.ManagedFields = nil
+		pod.ManagedFields = nil
 		framework.Logf("new created ovs-ovn pod %s:\n%s", pod.Name, format.Object(pod, 2))
 	})
 
@@ -295,7 +295,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		framework.ExpectNoError(err)
 
 		for _, pod := range pods.Items {
-			pod.ObjectMeta.ManagedFields = nil
+			pod.ManagedFields = nil
 			framework.Logf("new created pod %s running on node %s:\n%s", pod.Name, pod.Spec.NodeName, format.Object(pod, 2))
 		}
 	})

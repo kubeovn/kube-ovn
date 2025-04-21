@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -48,7 +49,7 @@ func (c *Controller) resyncExternalGateway() {
 		return
 	}
 
-	if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
+	if exGwEnabled == "true" && lastExGwCM != nil && maps.Equal(cm.Data, lastExGwCM) {
 		return
 	}
 	klog.Infof("last external gw configmap: %v", lastExGwCM)
@@ -83,8 +84,8 @@ func (c *Controller) removeExternalGateway() error {
 		return err
 	}
 	for _, node := range nodes {
-		labels := map[string]any{util.ExGatewayLabel: "false"}
-		if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
+		patch := util.KVPatch{util.ExGatewayLabel: "false"}
+		if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 			klog.Errorf("failed to patch external gw node %s: %v", node.Name, err)
 			return err
 		}
@@ -217,8 +218,8 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		gwNodes = append(gwNodes, node.Name)
 	}
 	if config["type"] != kubeovnv1.GWDistributedType {
-		nodeNames := strings.Split(config["external-gw-nodes"], ",")
-		for _, name := range nodeNames {
+		nodeNames := strings.SplitSeq(config["external-gw-nodes"], ",")
+		for name := range nodeNames {
 			name = strings.TrimSpace(name)
 			if name == "" {
 				continue
@@ -234,9 +235,9 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
 			return nil, err
 		}
-		labels := map[string]any{util.ExGatewayLabel: "true"}
-		if err = util.UpdateNodeLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, labels); err != nil {
-			klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
+		patch := util.KVPatch{util.ExGatewayLabel: "true"}
+		if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err)
 			return nil, err
 		}
 

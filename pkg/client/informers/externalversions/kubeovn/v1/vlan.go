@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // Vlans.
 type VlanInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VlanLister
+	Lister() kubeovnv1.VlanLister
 }
 
 type vlanInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredVlanInformer(client versioned.Interface, resyncPeriod time.Durat
 				return client.KubeovnV1().Vlans().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.Vlan{},
+		&apiskubeovnv1.Vlan{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *vlanInformer) defaultInformer(client versioned.Interface, resyncPeriod 
 }
 
 func (f *vlanInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.Vlan{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.Vlan{}, f.defaultInformer)
 }
 
-func (f *vlanInformer) Lister() v1.VlanLister {
-	return v1.NewVlanLister(f.Informer().GetIndexer())
+func (f *vlanInformer) Lister() kubeovnv1.VlanLister {
+	return kubeovnv1.NewVlanLister(f.Informer().GetIndexer())
 }

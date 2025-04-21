@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -34,9 +35,7 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 		if len(nat.Options) == 0 {
 			nat.Options = make(map[string]string, len(options))
 		}
-		for k, v := range options {
-			nat.Options[k] = v
-		}
+		maps.Copy(nat.Options, options)
 	})
 	if err != nil {
 		klog.Errorf("failed to new nat: %v", err)
@@ -63,7 +62,7 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 		}
 	}
 
-	createNatsOp, err := c.ovsDbClient.Create(models...)
+	createNatsOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating nats: %w", err)
@@ -185,7 +184,7 @@ func (c *OVNNbClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, 
 }
 
 // UpdateNat update nat
-func (c *OVNNbClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateNat(nat *ovnnb.NAT, fields ...any) error {
 	if nat == nil {
 		return errors.New("nat is nil")
 	}

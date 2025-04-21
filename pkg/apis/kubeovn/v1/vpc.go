@@ -38,10 +38,10 @@ type VpcList struct {
 // +genclient:nonNamespaced
 type Vpc struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VpcSpec   `json:"spec"`
-	Status VpcStatus `json:"status,omitempty"`
+	Status VpcStatus `json:"status"`
 }
 
 type VpcSpec struct {
@@ -67,6 +67,10 @@ type BFDPort struct {
 	// optional node selector used to select the nodes where the BFD LRP will be hosted
 	// if not specified, at most 3 nodes will be selected
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+}
+
+func (p *BFDPort) IsEnabled() bool {
+	return p != nil && p.Enabled
 }
 
 type VpcPeering struct {
@@ -96,6 +100,14 @@ type BFDPortStatus struct {
 	Name  string   `json:"name,omitempty"`
 	IP    string   `json:"ip,omitempty"`
 	Nodes []string `json:"nodes,omitempty"`
+}
+
+func (s BFDPortStatus) IsEmpty() bool {
+	return s.Name == "" && s.IP == "" && len(s.Nodes) == 0
+}
+
+func (s *BFDPortStatus) Clear() {
+	s.Name, s.IP, s.Nodes = "", "", nil
 }
 
 type VpcStatus struct {

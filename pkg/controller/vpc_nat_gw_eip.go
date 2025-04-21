@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,29 +22,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddIptablesEip(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesEIP)).String()
 	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 	oldEip := oldObj.(*kubeovnv1.IptablesEIP)
 	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
+		key := cache.MetaObjectToName(newEip).String()
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
@@ -53,14 +42,9 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj interface{}) {
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
-func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDelIptablesEip(obj any) {
 	eip := obj.(*kubeovnv1.IptablesEIP)
+	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(key)
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
@@ -109,6 +93,13 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// make sure vpc nat gw pod is ready before eip allocation
+	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	var v4ip, v6ip, mac string
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, subnet.Spec.Provider)
 	if cachedEip.Spec.V4ip != "" {
@@ -488,7 +479,7 @@ func (c *Controller) acquireStaticEip(name, _, nicName, ip, externalSubnet strin
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse eip ip %s", ipStr)
 		}

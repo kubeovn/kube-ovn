@@ -33,10 +33,10 @@ type SubnetList struct {
 // +genclient:nonNamespaced
 type Subnet struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   SubnetSpec   `json:"spec"`
-	Status SubnetStatus `json:"status,omitempty"`
+	Status SubnetStatus `json:"status"`
 }
 
 type SubnetSpec struct {
@@ -80,11 +80,12 @@ type SubnetSpec struct {
 
 	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
 
-	U2OInterconnectionIP string `json:"u2oInterconnectionIP,omitempty"`
-	U2OInterconnection   bool   `json:"u2oInterconnection,omitempty"`
-	EnableLb             *bool  `json:"enableLb,omitempty"`
-	EnableEcmp           bool   `json:"enableEcmp,omitempty"`
-	EnableMulticastSnoop bool   `json:"enableMulticastSnoop,omitempty"`
+	U2OInterconnectionIP    string `json:"u2oInterconnectionIP,omitempty"`
+	U2OInterconnection      bool   `json:"u2oInterconnection,omitempty"`
+	EnableLb                *bool  `json:"enableLb,omitempty"`
+	EnableEcmp              bool   `json:"enableEcmp,omitempty"`
+	EnableMulticastSnoop    bool   `json:"enableMulticastSnoop,omitempty"`
+	EnableExternalLBAddress bool   `json:"enableExternalLBAddress,omitempty"`
 
 	RouteTable         string                 `json:"routeTable,omitempty"`
 	NamespaceSelectors []metav1.LabelSelector `json:"namespaceSelectors,omitempty"`

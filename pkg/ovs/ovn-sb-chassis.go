@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/ovn-org/libovsdb/client"
 	"k8s.io/klog/v2"
@@ -12,7 +13,9 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...interface{}) error {
+var ErrOneNodeMultiChassis = errors.New("OneNodeMultiChassis")
+
+func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error {
 	op, err := c.ovsDbClient.Where(chassis).Update(chassis, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate update operations for chassis: %w", err)
@@ -59,7 +62,7 @@ func (c *OVNSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovns
 		return nil, err
 	}
 	chassis := &ovnsb.Chassis{Name: chassisName}
-	if err := c.ovsDbClient.Get(ctx, chassis); err != nil {
+	if err := c.Get(ctx, chassis); err != nil {
 		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
 			return nil, nil
 		}
@@ -76,35 +79,11 @@ func (c *OVNSbClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	defer cancel()
 
 	css := []ovnsb.Chassis{}
-	if err := c.ovsDbClient.List(ctx, &css); err != nil {
+	if err := c.List(ctx, &css); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list Chassis: %w", err)
 	}
 	return &css, nil
-}
-
-func (c *OVNSbClient) GetAllChassisByHost(nodeName string) (*[]ovnsb.Chassis, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	chassisList := make([]ovnsb.Chassis, 0)
-	if err := c.ovsDbClient.WhereCache(func(chassis *ovnsb.Chassis) bool {
-		return chassis.Hostname == nodeName
-	}).List(ctx, &chassisList); err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %w", nodeName, err)
-	}
-	if len(chassisList) == 0 {
-		err := fmt.Errorf("failed to get Chassis with with host name=%s", nodeName)
-		klog.Error(err)
-		return nil, err
-	}
-	if len(chassisList) != 1 {
-		err := fmt.Errorf("found more than one Chassis with with host name=%s", nodeName)
-		klog.Error(err)
-		return nil, err
-	}
-	return &chassisList, nil
 }
 
 func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) {
@@ -121,17 +100,17 @@ func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) 
 		return chassis.Hostname == nodeName
 	}).List(ctx, &chassisList); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to list Chassis with host name=%s: %w", nodeName, err)
+		return nil, fmt.Errorf("failed to list Chassis with hostname=%s: %w", nodeName, err)
 	}
 	if len(chassisList) == 0 {
-		err := fmt.Errorf("failed to get Chassis with host name=%s", nodeName)
+		err := fmt.Errorf("failed to get Chassis with hostname=%s", nodeName)
 		klog.Error(err)
 		return nil, err
 	}
 	if len(chassisList) != 1 {
-		err := fmt.Errorf("found more than one Chassis with host name=%s", nodeName)
+		err := fmt.Errorf("found more than one Chassis with hostname=%s", nodeName)
 		klog.Error(err)
-		return nil, err
+		return nil, ErrOneNodeMultiChassis
 	}
 
 	// #nosec G602
@@ -148,7 +127,7 @@ func (c *OVNSbClient) DeleteChassisByHost(nodeName string) error {
 		return chassis.Hostname == nodeName || (chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName)
 	}).List(ctx, &chassisList); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("failed to list Chassis with host name=%s: %w", nodeName, err)
+		return fmt.Errorf("failed to list Chassis with hostname=%s: %w", nodeName, err)
 	}
 
 	for _, chassis := range chassisList {
@@ -176,9 +155,7 @@ func (c *OVNSbClient) UpdateChassisTag(chassisName, nodeName string) error {
 	}
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
 		externalIDs := make(map[string]string, len(chassis.ExternalIDs)+2)
-		for k, v := range chassis.ExternalIDs {
-			externalIDs[k] = v
-		}
+		maps.Copy(externalIDs, chassis.ExternalIDs)
 		externalIDs["vendor"] = util.CniTypeName
 		// externalIDs["node"] = nodeName
 		// not need filter chassis by node name if we use libovsdb

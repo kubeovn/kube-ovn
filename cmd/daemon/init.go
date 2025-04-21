@@ -9,11 +9,7 @@ import (
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
-)
-
-const (
-	geneveLinkName = "genev_sys_6081"
-	vxlanLinkName  = "vxlan_sys_4789"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func printCaps() {
@@ -22,27 +18,27 @@ func printCaps() {
 }
 
 func initForOS() error {
-	if _, err := netlink.LinkByName(geneveLinkName); err != nil {
+	if _, err := netlink.LinkByName(util.GeneveNic); err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil
 		}
-		klog.Errorf("failed to get link %s: %v", geneveLinkName, err)
+		klog.Errorf("failed to get link %s: %v", util.GeneveNic, err)
 		return err
 	}
 
 	// disable checksum for genev_sys_6081 as default
-	return daemon.TurnOffNicTxChecksum(geneveLinkName)
+	return daemon.TurnOffNicTxChecksum(util.GeneveNic)
 }
 
 func setVxlanNicTxOff() error {
-	if _, err := netlink.LinkByName(vxlanLinkName); err != nil {
+	if _, err := netlink.LinkByName(util.VxlanNic); err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil
 		}
-		klog.Errorf("failed to get link %s: %v", vxlanLinkName, err)
+		klog.Errorf("failed to get link %s: %v", util.VxlanNic, err)
 		return err
 	}
 
 	// disable checksum for vxlan_sys_4789 as default
-	return daemon.TurnOffNicTxChecksum(vxlanLinkName)
+	return daemon.TurnOffNicTxChecksum(util.VxlanNic)
 }

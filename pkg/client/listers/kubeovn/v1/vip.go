@@ -19,10 +19,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // VipLister helps list Vips.
@@ -30,19 +30,19 @@ import (
 type VipLister interface {
 	// List lists all Vips in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Vip, err error)
+	List(selector labels.Selector) (ret []*kubeovnv1.Vip, err error)
 	// Get retrieves the Vip from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.Vip, error)
+	Get(name string) (*kubeovnv1.Vip, error)
 	VipListerExpansion
 }
 
 // vipLister implements the VipLister interface.
 type vipLister struct {
-	listers.ResourceIndexer[*v1.Vip]
+	listers.ResourceIndexer[*kubeovnv1.Vip]
 }
 
 // NewVipLister returns a new VipLister.
 func NewVipLister(indexer cache.Indexer) VipLister {
-	return &vipLister{listers.New[*v1.Vip](indexer, v1.Resource("vip"))}
+	return &vipLister{listers.New[*kubeovnv1.Vip](indexer, kubeovnv1.Resource("vip"))}
 }

@@ -3,13 +3,13 @@ package controller
 import (
 	"context"
 	"reflect"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -17,33 +17,24 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddIPPool(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddIPPool(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.IPPool)).String()
 	klog.V(3).Infof("enqueue add ippool %s", key)
 	c.addOrUpdateIPPoolQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteIPPool(obj interface{}) {
+func (c *Controller) enqueueDeleteIPPool(obj any) {
 	ippool := obj.(*kubeovnv1.IPPool)
-	klog.V(3).Infof("enqueue delete ippool %s", ippool.Name)
+	klog.V(3).Infof("enqueue delete ippool %s", cache.MetaObjectToName(ippool).String())
 	c.deleteIPPoolQueue.Add(ippool)
 }
 
-func (c *Controller) enqueueUpdateIPPool(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	oldIPPool := oldObj.(*kubeovnv1.IPPool)
 	newIPPool := newObj.(*kubeovnv1.IPPool)
-	key, err := cache.MetaNamespaceKeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	if !reflect.DeepEqual(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
-		!reflect.DeepEqual(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
+	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
+		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
+		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
 	}

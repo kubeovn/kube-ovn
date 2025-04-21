@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,26 +21,16 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddVirtualIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddVirtualIP(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vip)).String()
 	klog.Infof("enqueue add vip %s", key)
 	c.addVirtualIPQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 	oldVip := oldObj.(*kubeovnv1.Vip)
 	newVip := newObj.(*kubeovnv1.Vip)
+	key := cache.MetaObjectToName(newVip).String()
 	if !newVip.DeletionTimestamp.IsZero() ||
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
@@ -52,21 +40,16 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj interface{}) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
-	if !reflect.DeepEqual(oldVip.Spec.Selector, newVip.Spec.Selector) {
+	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}
 }
 
-func (c *Controller) enqueueDelVirtualIP(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.Infof("enqueue del vip %s", key)
+func (c *Controller) enqueueDelVirtualIP(obj any) {
 	vip := obj.(*kubeovnv1.Vip)
+	key := cache.MetaObjectToName(vip).String()
+	klog.Infof("enqueue del vip %s", key)
 	c.delVirtualIPQueue.Add(vip)
 }
 
@@ -104,14 +87,15 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	var macPointer *string
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
-	if ipStr != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr)
+	if ipStr != "" || vip.Spec.MacAddress != "" {
+		macPointer = &vip.Spec.MacAddress
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
 	} else {
 		// Random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
-
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -154,16 +138,30 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		parentV6ip = vip.Spec.ParentV6ip
 		parentMac = vip.Spec.ParentMac
 	}
+	if vip.Spec.Type == util.KubeHostVMVip {
+		// k8s host network pod vm use vip for its nic ip
+		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
+		ipStr := util.GetStringIP(v4ip, v6ip)
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
+			klog.Error(err)
+			return err
+		}
+	}
 	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
+	}
+	if vip.Spec.Type == util.KubeHostVMVip {
+		// vm use the vip as its real ip
+		klog.Infof("created host network pod vm ip %s", key)
+		return nil
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
 		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
 		klog.Error(err)
 		return err
 	}
-	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
@@ -232,14 +230,14 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	klog.Infof("handle delete vip %s", vip.Name)
 	// TODO:// clean vip in its parent port aap list
-	if vip.Spec.Type == util.SwitchLBRuleVip {
+	if vip.Spec.Type != "" {
 		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
 			return err
 		}
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-		klog.Infof("delete vip arp proxy lsp %s", portName)
+		klog.Infof("delete vip lsp %s", portName)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 			klog.Error(err)
@@ -264,6 +262,11 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if cachedVip.Spec.Type == util.KubeHostVMVip {
+		// vm use the vip as its real ip
+		klog.Infof("created host network pod vm ip %s", key)
+		return nil
 	}
 	// only pods in the same namespace as vip are allowed to use aap
 	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
@@ -316,7 +319,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
 				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
-				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+				key := cache.MetaObjectToName(pod).String()
 				klog.Infof("enqueue update pod security for %s", key)
 				c.updatePodSecurityQueue.Add(key)
 				break
@@ -402,13 +405,9 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			}
 			needUpdateLabel = true
 		}
-		if vip.Labels[util.SubnetNameLabel] != subnet {
-			op = "replace"
-			vip.Labels[util.SubnetNameLabel] = subnet
-			needUpdateLabel = true
-		}
-		if _, ok := vip.Labels[util.IPReservedLabel]; !ok {
+		if _, ok := vip.Labels[util.SubnetNameLabel]; !ok {
 			op = "add"
+			vip.Labels[util.SubnetNameLabel] = subnet
 			vip.Labels[util.IPReservedLabel] = ""
 			needUpdateLabel = true
 		}
@@ -423,6 +422,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			}
 		}
 	}
+	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
 

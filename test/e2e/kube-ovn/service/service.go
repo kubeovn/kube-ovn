@@ -88,7 +88,7 @@ var _ = framework.Describe("[group:service]", func() {
 		}, "node port is allocated")
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
 		hostPod.Spec.HostNetwork = true
 		_ = podClient.CreateSync(hostPod)

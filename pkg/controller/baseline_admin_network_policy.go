@@ -7,33 +7,28 @@ import (
 
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddBanp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddBanp(obj any) {
+	key := cache.MetaObjectToName(obj.(*v1alpha1.BaselineAdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add banp %s", key)
 	c.addBanpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteBanp(obj interface{}) {
+func (c *Controller) enqueueDeleteBanp(obj any) {
 	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
-	klog.V(3).Infof("enqueue delete banp %s", banp.Name)
+	klog.V(3).Infof("enqueue delete banp %s", cache.MetaObjectToName(banp).String())
 	c.deleteBanpQueue.Add(banp)
 }
 
-func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 	oldBanp := oldObj.(*v1alpha1.BaselineAdminNetworkPolicy)
 	newBanp := newObj.(*v1alpha1.BaselineAdminNetworkPolicy)
 
@@ -106,6 +101,16 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj interface{}) {
 	if ruleChanged {
 		c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newBanp.Name, ruleNames: changedEgressRuleNames, field: ChangedEgressRule})
 	}
+}
+
+func banpACLAction(action v1alpha1.BaselineAdminNetworkPolicyRuleAction) ovnnb.ACLAction {
+	switch action {
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
+		return ovnnb.ACLActionAllowRelated
+	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
+		return ovnnb.ACLActionDrop
+	}
+	return ovnnb.ACLActionDrop
 }
 
 func (c *Controller) handleAddBanp(key string) (err error) {
@@ -191,7 +196,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		// use 1700-1800 for banp acl priority
 		aclPriority := util.BanpACLMaxPriority - index
-		aclAction := convertAction("", banpr.Action)
+		aclAction := banpACLAction(banpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if banpr.Ports != nil {
 			rulePorts = *banpr.Ports
@@ -258,7 +263,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		}
 
 		aclPriority := util.BanpACLMaxPriority - index
-		aclAction := convertAction("", banpr.Action)
+		aclAction := banpACLAction(banpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if banpr.Ports != nil {
 			rulePorts = *banpr.Ports

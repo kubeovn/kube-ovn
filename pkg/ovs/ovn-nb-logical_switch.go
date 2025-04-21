@@ -42,7 +42,7 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 			Name:     lrpName,
 			Networks: strings.Split(networks, ","),
 		}
-		fields := []interface{}{&lrp.Networks}
+		fields := []any{&lrp.Networks}
 		if gatewayMAC != "" {
 			lrp.MAC = gatewayMAC
 			fields = append(fields, &lrp.MAC)
@@ -95,7 +95,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.ovsDbClient.Create(ls)
+	op, err := c.Create(ls)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %w", lsName, err)
@@ -291,6 +291,21 @@ func (c *OVNNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *o
 	}
 
 	return lsList, nil
+}
+
+// ListLogicalSwitchNames list logical switch names
+func (c *OVNNbClient) ListLogicalSwitchNames(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]string, error) {
+	lsList, err := c.ListLogicalSwitch(needVendorFilter, filter)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	names := make([]string, 0, len(lsList))
+	for i := range lsList {
+		names = append(names, lsList[i].Name)
+	}
+	return names, nil
 }
 
 // LogicalSwitchUpdatePortOp create operations add port to or delete port from logical switch

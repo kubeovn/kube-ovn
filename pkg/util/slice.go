@@ -1,19 +1,19 @@
 package util
 
+import (
+	"slices"
+
+	"k8s.io/utils/set"
+)
+
 func DiffStringSlice(slice1, slice2 []string) []string {
 	var diff []string
 
 	// Loop two times, first to find slice1 strings not in slice2,
 	// second loop to find slice2 strings not in slice1
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		for _, s1 := range slice1 {
-			found := false
-			for _, s2 := range slice2 {
-				if s1 == s2 {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(slice2, s1)
 			// String not found. We add it to return slice
 			if !found {
 				diff = append(diff, s1)
@@ -27,13 +27,19 @@ func DiffStringSlice(slice1, slice2 []string) []string {
 	return diff
 }
 
+func UnionStringSlice(slices ...[]string) []string {
+	union := set.New[string]()
+	for _, s := range slices {
+		union.Insert(s...)
+	}
+	return union.UnsortedList()
+}
+
 // IsStringsOverlap check if two string slices are overlapped
 func IsStringsOverlap(a, b []string) bool {
 	for _, sa := range a {
-		for _, sb := range b {
-			if sa == sb {
-				return true
-			}
+		if slices.Contains(b, sa) {
+			return true
 		}
 	}
 	return false

@@ -17,9 +17,10 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
 	"github.com/ovn-org/libovsdb/server"
+	"k8s.io/klog/v2"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -50,7 +51,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	fakeNBServer, nbSock1 := newOVSDBServer(suite.T(), "fake-nb", emptyNbDBModel, nbClientSchema)
-	nbEndpoint1 := fmt.Sprintf("unix:%s", nbSock1)
+	nbEndpoint1 := "unix:" + nbSock1
 	require.FileExists(suite.T(), nbSock1)
 	failedOvnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint1, 10)
 	require.NoError(suite.T(), err)
@@ -64,7 +65,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	_, nbSock := newOVSDBServer(suite.T(), "nb", nbClientDBModel, nbClientSchema)
-	nbEndpoint := fmt.Sprintf("unix:%s", nbSock)
+	nbEndpoint := "unix:" + nbSock
 	require.FileExists(suite.T(), nbSock)
 
 	ovnNBClient, err := newOvnNbClient(suite.T(), nbEndpoint, 10)
@@ -77,7 +78,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	_, sbSock := newOVSDBServer(suite.T(), "sb", sbClientDBModel, sbClientSchema)
-	sbEndpoint := fmt.Sprintf("unix:%s", sbSock)
+	sbEndpoint := "unix:" + sbSock
 	require.FileExists(suite.T(), sbSock)
 
 	ovnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint, 10)
@@ -443,8 +444,16 @@ func (suite *OvnClientTestSuite) Test_ListBFD() {
 	suite.testListBFD()
 }
 
+func (suite *OvnClientTestSuite) Test_FindBFD() {
+	suite.testFindBFD()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteBFD() {
 	suite.testDeleteBFD()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteBFDByDstIP() {
+	suite.testDeleteBFDByDstIP()
 }
 
 func (suite *OvnClientTestSuite) Test_ListDownBFDs() {
@@ -685,6 +694,10 @@ func (suite *OvnClientTestSuite) Test_UpdateAddressSet() {
 	suite.testUpdateAddressSet()
 }
 
+func (suite *OvnClientTestSuite) Test_BatchDeleteAddressSetByNames() {
+	suite.testBatchDeleteAddressSetByNames()
+}
+
 /* acl unit test */
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
 	suite.testUpdateIngressACLOps()
@@ -839,8 +852,24 @@ func (suite *OvnClientTestSuite) Test_NewLogicalRouterPolicy() {
 	suite.testNewLogicalRouterPolicy()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPolicy() {
+	suite.testUpdateLogicalRouterPolicy()
+}
+
 func (suite *OvnClientTestSuite) Test_PolicyFilter() {
 	suite.testPolicyFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_BatchAddLogicalRouterPolicy() {
+	suite.testBatchAddLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_BatchDeleteLogicalRouterPolicyByUUID() {
+	suite.testBatchDeleteLogicalRouterPolicyByUUID()
+}
+
+func (suite *OvnClientTestSuite) Test_BatchDeleteLogicalRouterPolicy() {
+	suite.testBatchDeleteLogicalRouterPolicy()
 }
 
 /* nat unit test */
@@ -901,6 +930,14 @@ func (suite *OvnClientTestSuite) Test_AddLogicalRouterStaticRoute() {
 	suite.testAddLogicalRouterStaticRoute()
 }
 
+func (suite *OvnClientTestSuite) TestDeleteLogicalRouterStaticRouteByUUID() {
+	suite.testDeleteLogicalRouterStaticRouteByUUID()
+}
+
+func (suite *OvnClientTestSuite) TestDeleteLogicalRouterStaticRouteByExternalIDs() {
+	suite.testDeleteLogicalRouterStaticRouteByExternalIDs()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterStaticRoute() {
 	suite.testDeleteLogicalRouterStaticRoute()
 }
@@ -931,6 +968,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterStaticRoute() {
 
 func (suite *OvnClientTestSuite) Test_GetLogicalRouterStaticRouteEdgeCases() {
 	suite.testGetLogicalRouterStaticRouteEdgeCases()
+}
+
+func (suite *OvnClientTestSuite) Test_tBatchDeleteLogicalRouterStaticRoute() {
+	suite.testBatchDeleteLogicalRouterStaticRoute()
 }
 
 /* dhcp options unit test */
@@ -968,10 +1009,6 @@ func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
 
 func (suite *OvnClientTestSuite) Test_CreateDHCPOptions() {
 	suite.testCreateDHCPOptions()
-}
-
-func (suite *OvnClientTestSuite) Test_DHCPOptionsExists() {
-	suite.testDHCPOptionsExists()
 }
 
 /* mixed operations unit test */
@@ -1022,10 +1059,6 @@ func (suite *OvnClientTestSuite) Test_UpdateChassis() {
 
 func (suite *OvnClientTestSuite) Test_ListChassis() {
 	suite.testListChassis()
-}
-
-func (suite *OvnClientTestSuite) Test_GetAllChassisByHost() {
-	suite.testGetAllChassisByHost()
 }
 
 func (suite *OvnClientTestSuite) Test_GetChassisByHost() {
@@ -1210,10 +1243,6 @@ func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
 	suite.testOvsCleanDuplicatePort()
 }
 
-func (suite *OvnClientTestSuite) Test_OvsSetPortTag() {
-	suite.testOvsSetPortTag()
-}
-
 func (suite *OvnClientTestSuite) Test_ValidatePortVendor() {
 	suite.testValidatePortVendor()
 }
@@ -1318,6 +1347,13 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		return nil, err
 	}
 
+	dbModel.SetIndexes(map[string][]model.ClientIndex{
+		ovnnb.LogicalRouterPolicyTable: {{Columns: []model.ColumnKey{
+			{Column: "match"},
+			{Column: "priority"},
+		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
+	})
+
 	logger := stdr.New(log.New(os.Stderr, "", log.LstdFlags)).
 		WithName("libovsdb").
 		WithValues("database", dbModel.Name())
@@ -1329,7 +1365,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithLogger(&logger),
 	}
 
-	for _, ep := range strings.Split(addr, ",") {
+	for ep := range strings.SplitSeq(addr, ",") {
 		options = append(options, client.WithEndpoint(ep))
 	}
 
@@ -1402,7 +1438,7 @@ func newSbClient(addr string, timeout int) (client.Client, error) {
 		client.WithLogger(&logger),
 	}
 
-	for _, ep := range strings.Split(addr, ",") {
+	for ep := range strings.SplitSeq(addr, ",") {
 		options = append(options, client.WithEndpoint(ep))
 	}
 

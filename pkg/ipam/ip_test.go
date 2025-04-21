@@ -785,13 +785,13 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	subnetName = "dualInvalidSubnet"
 	ipv6CIDR = "fd00::/120"
 	dualGw := "fd00::1"
-	err = ipam.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.1.1/64,%s", ipv6CIDR), dualGw, nil)
+	err = ipam.AddOrUpdateSubnet(subnetName, "1.1.1.1/64,"+ipv6CIDR, dualGw, nil)
 	require.EqualError(t, err, ErrInvalidCIDR.Error())
-	err = ipam.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.256.1/24,%s", ipv6CIDR), dualGw, nil)
+	err = ipam.AddOrUpdateSubnet(subnetName, "1.1.256.1/24,"+ipv6CIDR, dualGw, nil)
 	require.EqualError(t, err, ErrInvalidCIDR.Error())
-	err = ipam.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::/130", ipv4CIDR), dualGw, nil)
+	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR+",fd00::/130", dualGw, nil)
 	require.EqualError(t, err, ErrInvalidCIDR.Error())
-	err = ipam.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::g/120", ipv4CIDR), dualGw, nil)
+	err = ipam.AddOrUpdateSubnet(subnetName, ipv4CIDR+",fd00::g/120", dualGw, nil)
 	require.EqualError(t, err, ErrInvalidCIDR.Error())
 
 	// normal dual subnet

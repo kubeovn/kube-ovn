@@ -146,7 +146,7 @@ func (c *OVNNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroup
 }
 
 // UpdateLogicalRouterPort update logical router port
-func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...any) error {
 	if lrp == nil {
 		return errors.New("logical_router_port is nil")
 	}
@@ -471,7 +471,7 @@ func (c *OVNNbClient) AddLogicalRouterPort(lr, name, mac, networks string) error
 	waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Router_Port")
 	ops := []ovsdb.Operation{waitOp}
 
-	createOps, err := c.ovsDbClient.Create(lrp)
+	createOps, err := c.Create(lrp)
 	if err != nil {
 		klog.Error(err)
 		return err

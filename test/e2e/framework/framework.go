@@ -8,14 +8,13 @@ import (
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
-
-	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -25,6 +24,11 @@ const (
 	IPv4 = "ipv4"
 	IPv6 = "ipv6"
 	Dual = "dual"
+)
+
+const (
+	Overlay  = "overlay"
+	Underlay = "underlay"
 )
 
 const (
@@ -50,6 +54,7 @@ type Framework struct {
 	*framework.Framework
 	KubeOVNClientSet  kubeovncs.Interface
 	KubeVirtClientSet kubecli.KubevirtClient
+	MetallbClientSet  *MetallbClientSet
 	AttachNetClient   nad.Interface
 	// master/release-1.10/...
 	ClusterVersion string
@@ -173,6 +178,14 @@ func (f *Framework) HasIPv6() bool {
 	return !f.IsIPv4()
 }
 
+func (f *Framework) IsOverlay() bool {
+	return f.ClusterNetworkMode == Overlay
+}
+
+func (f *Framework) IsUnderlay() bool {
+	return f.ClusterNetworkMode == Underlay
+}
+
 // BeforeEach gets a kube-ovn client
 func (f *Framework) BeforeEach() {
 	ginkgo.By("Setting kubernetes context")
@@ -208,6 +221,17 @@ func (f *Framework) BeforeEach() {
 		config.QPS = f.Options.ClientQPS
 		config.Burst = f.Options.ClientBurst
 		f.AttachNetClient, err = nad.NewForConfig(config)
+		ExpectNoError(err)
+	}
+
+	if f.MetallbClientSet == nil {
+		ginkgo.By("Creating a MetalLB client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.MetallbClientSet, err = NewMetallbClientSet(config)
 		ExpectNoError(err)
 	}
 
@@ -260,8 +284,8 @@ func OrderedDescribe(text string, body func()) bool {
 	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Offset(1), ginkgo.Ordered, body)
 }
 
-var ConformanceIt func(args ...interface{}) bool = framework.ConformanceIt
+var ConformanceIt func(args ...any) bool = framework.ConformanceIt
 
-func DisruptiveIt(text string, body interface{}) bool {
+func DisruptiveIt(text string, body any) bool {
 	return framework.It(text, ginkgo.Offset(1), body, framework.WithDisruptive())
 }

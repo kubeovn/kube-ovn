@@ -789,7 +789,7 @@ func (suite *OvnClientTestSuite) testNatFilter() {
 	}
 
 	// create three snat rule with different external-ids
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		nat := newNat("snat", externalIPs[0], logicalIPs[0])
 		nat.ExternalIDs = map[string]string{"k1": "v2"}
 		nats = append(nats, nat)

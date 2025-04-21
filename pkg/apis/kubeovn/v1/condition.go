@@ -41,10 +41,10 @@ type Condition struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Last time the condition was probed
 	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	LastUpdateTime metav1.Time `json:"lastUpdateTime"`
 	// Last time the condition transitioned from one status to another.
 	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
 }
 
 type Conditions []Condition

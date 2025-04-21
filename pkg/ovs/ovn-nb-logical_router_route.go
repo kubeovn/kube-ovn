@@ -12,6 +12,7 @@ import (
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -45,7 +46,7 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 		}
 	}
 
-	createRoutesOp, err := c.ovsDbClient.Create(models...)
+	createRoutesOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating static routes: %w", err)
@@ -70,7 +71,7 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 }
 
 // AddLogicalRouterStaticRoute add a logical router static route
-func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, nexthops ...string) error {
+func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
@@ -96,7 +97,7 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 	var toAdd []*ovnnb.LogicalRouterStaticRoute
 	for _, nexthop := range nexthops {
 		if !existing.Has(nexthop) {
-			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdID)
+			route, err := c.newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop, bfdID, externalIDs)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -104,7 +105,9 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 			toAdd = append(toAdd, route)
 		}
 	}
-	klog.Infof("logical router %s del static routes: %v", lrName, toDel)
+	if len(toDel) != 0 {
+		klog.Infof("logical router %s del static routes: %v", lrName, toDel)
+	}
 	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, toDel, ovsdb.MutateOperationDelete)
 	if err != nil {
 		klog.Error(err)
@@ -122,7 +125,7 @@ func (c *OVNNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 }
 
 // UpdateLogicalRouterStaticRoute update logical router static route
-func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...any) error {
 	if route == nil {
 		return errors.New("route is nil")
 	}
@@ -229,6 +232,58 @@ func (c *OVNNbClient) DeleteLogicalRouterStaticRouteByExternalIDs(lrName string,
 	uuids := make([]string, 0, len(routes))
 	for _, route := range routes {
 		uuids = append(uuids, route.UUID)
+	}
+
+	// remove static route from logical router
+	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, uuids, ovsdb.MutateOperationDelete)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for removing static routes %v from logical router %s: %w", uuids, lrName, err)
+	}
+	if err = c.Transact("lr-route-del", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("delete static routes %v from logical router %s: %w", uuids, lrName, err)
+	}
+
+	return nil
+}
+
+// BatchDeleteLogicalRouterStaticRoute batch delete a logical router static route
+func (c *OVNNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticRoutes []*ovnnb.LogicalRouterStaticRoute) error {
+	lr, err := c.GetLogicalRouter(lrName, true)
+	if lr == nil && err == nil {
+		return nil
+	}
+
+	staticRoutesMap := make(map[string]string, len(staticRoutes))
+	for _, route := range staticRoutes {
+		if route == nil {
+			continue
+		}
+		if route.Policy == nil {
+			route.Policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
+		}
+
+		staticRoutesMap[createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)] = route.Nexthop
+	}
+	routes, err := c.batchListLogicalRouterStaticRoutesForDelete(staticRoutesMap, lr.StaticRoutes)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// not found, skip
+	if len(routes) == 0 {
+		return nil
+	}
+
+	uuids := make([]string, 0, len(routes))
+	for _, route := range routes {
+		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)
+		nexthop, exits := staticRoutesMap[key]
+		if exits && (nexthop == "" || route.Nexthop == nexthop) {
+			uuids = append(uuids, route.UUID)
+		}
 	}
 
 	// remove static route from logical router
@@ -366,7 +421,7 @@ func (c *OVNNbClient) LogicalRouterStaticRouteExists(lrName, routeTable, policy,
 }
 
 // newLogicalRouterStaticRoute return logical router static route with basic information
-func (c *OVNNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, bfdID *string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *OVNNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop string, bfdID *string, externalIDs map[string]string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
 	if len(lrName) == 0 {
 		return nil, errors.New("the logical router name is required")
 	}
@@ -387,11 +442,12 @@ func (c *OVNNbClient) newLogicalRouterStaticRoute(lrName, routeTable, policy, ip
 	}
 
 	route := &ovnnb.LogicalRouterStaticRoute{
-		UUID:       ovsclient.NamedUUID(),
-		Policy:     &policy,
-		IPPrefix:   ipPrefix,
-		Nexthop:    nexthop,
-		RouteTable: routeTable,
+		UUID:        ovsclient.NamedUUID(),
+		Policy:      &policy,
+		IPPrefix:    ipPrefix,
+		Nexthop:     nexthop,
+		RouteTable:  routeTable,
+		ExternalIDs: externalIDs,
 	}
 	for _, option := range options {
 		option(route)
@@ -430,4 +486,32 @@ func (c *OVNNbClient) listLogicalRouterStaticRoutesByFilter(lrName string, filte
 	}
 
 	return routeList, nil
+}
+
+// batchListLogicalRouterStaticRoutesForDelete batch list route which match the given condition when need delete static route
+func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes map[string]string, lrStaticRoute []string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
+	lrStaticRouteSet := set.New(lrStaticRoute...)
+	fnFilter := func(route *ovnnb.LogicalRouterStaticRoute) bool {
+		if !lrStaticRouteSet.Has(route.UUID) {
+			return false
+		}
+		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)
+		_, exists := staticRoutes[key]
+		return exists
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0)
+	if err := c.ovsDbClient.WhereCache(fnFilter).List(ctx, &routeList); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("batch list logical staric router %v lr staric route %v route: %w", staticRoutes, lrStaticRoute, err)
+	}
+
+	return routeList, nil
+}
+
+func createStaticRouteKey(routeTable, policy, ipPrefix string) string {
+	return fmt.Sprintf("%s-%s-%s", routeTable, policy, ipPrefix)
 }

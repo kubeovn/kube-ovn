@@ -13,12 +13,12 @@ import (
 	"strings"
 	"text/template"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -49,44 +49,28 @@ const (
 )
 
 func genVpcDNSDpName(name string) string {
-	return fmt.Sprintf("vpc-dns-%s", name)
+	return "vpc-dns-" + name
 }
 
-func (c *Controller) enqueueAddVpcDNS(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddVpcDNS(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue add vpc-dns %s", key)
 	c.addOrUpdateVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
+func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj any) {
 	oldVPCDNS := oldObj.(*kubeovnv1.VpcDns)
 	newVPCDNS := newObj.(*kubeovnv1.VpcDns)
 	if oldVPCDNS.ResourceVersion != newVPCDNS.ResourceVersion &&
 		!reflect.DeepEqual(oldVPCDNS.Spec, newVPCDNS.Spec) {
+		key := cache.MetaObjectToName(newVPCDNS).String()
 		klog.V(3).Infof("enqueue update vpc-dns %s", key)
 		c.addOrUpdateVpcDNSQueue.Add(key)
 	}
 }
 
-func (c *Controller) enqueueDeleteVPCDNS(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDeleteVPCDNS(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
 	klog.V(3).Infof("enqueue delete vpc-dns %s", key)
 	c.delVpcDNSQueue.Add(key)
 }
@@ -298,7 +282,7 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 
 	buffer := new(bytes.Buffer)
 	name := genVpcDNSDpName(vpcDNS.Name)
-	if err := tmp.Execute(buffer, map[string]interface{}{
+	if err := tmp.Execute(buffer, map[string]any{
 		"DeployName":   name,
 		"CorednsImage": corednsImage,
 	}); err != nil {
@@ -323,7 +307,7 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 		dep.Spec.Template.Annotations = maps.Clone(oldDeploy.Annotations)
 	}
 
-	dep.ObjectMeta.Labels = map[string]string{
+	dep.Labels = map[string]string{
 		util.VpcDNSNameLabel: "true",
 	}
 
@@ -371,7 +355,7 @@ func (c *Controller) genVpcDNSSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 func setVpcDNSInterface(dp *v1.Deployment, subnetName string, defaultSubnet *kubeovnv1.Subnet) {
 	annotations := dp.Spec.Template.Annotations
 	annotations[util.LogicalSwitchAnnotation] = subnetName
-	annotations[util.AttachmentNetworkAnnotation] = fmt.Sprintf("%s/%s", corev1.NamespaceDefault, nadName)
+	annotations[nadv1.NetworkAttachmentAnnot] = fmt.Sprintf("%s/%s", corev1.NamespaceDefault, nadName)
 	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, nadProvider)] = util.DefaultSubnet
 
 	setVpcDNSRoute(dp, defaultSubnet.Spec.Gateway)
@@ -406,12 +390,12 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 	if !strings.ContainsRune(dst, '/') {
 		switch protocol {
 		case kubeovnv1.ProtocolIPv4:
-			dst = fmt.Sprintf("%s/32", dst)
+			dst += "/32"
 		case kubeovnv1.ProtocolIPv6:
-			dst = fmt.Sprintf("%s/128", dst)
+			dst += "/128"
 		}
 	}
-	for _, gw := range strings.Split(subnetGw, ",") {
+	for gw := range strings.SplitSeq(subnetGw, ",") {
 		if util.CheckProtocol(gw) == protocol {
 			routes := []request.Route{{Destination: dst, Gateway: gw}}
 			buf, err := json.Marshal(routes)

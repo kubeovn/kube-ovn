@@ -41,10 +41,10 @@ type QoSPolicyList struct {
 // +resourceName=qos-policies
 type QoSPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   QoSPolicySpec   `json:"spec"`
-	Status QoSPolicyStatus `json:"status,omitempty"`
+	Status QoSPolicyStatus `json:"status"`
 }
 type QoSPolicySpec struct {
 	BandwidthLimitRules QoSPolicyBandwidthLimitRules `json:"bandwidthLimitRules"`

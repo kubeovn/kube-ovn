@@ -162,7 +162,7 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
 	ExpectNoError(err)
 
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	err = json.Unmarshal(buf, &m)
 	ExpectNoError(err)
 
@@ -170,7 +170,7 @@ func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment
 	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, deploy)
 	ExpectNoError(err)
 
-	deploy, err = c.DeploymentInterface.Update(context.TODO(), deploy, metav1.UpdateOptions{})
+	deploy, err = c.Update(context.TODO(), deploy, metav1.UpdateOptions{})
 	ExpectNoError(err)
 
 	return deploy.DeepCopy()

@@ -34,19 +34,15 @@ type updateSvcObject struct {
 	newPorts []v1.ServicePort
 }
 
-func (c *Controller) enqueueAddService(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.addOrUpdateEndpointQueue.Add(key)
+func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
+	key := cache.MetaObjectToName(svc).String()
+	klog.V(3).Infof("enqueue add endpoint %s", key)
+	c.addOrUpdateEndpointQueue.Add(key)
 
 	if c.config.EnableNP {
-		var netpols []string
-		if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+		netpols, err := c.svcMatchNetworkPolicies(svc)
+		if err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
@@ -62,16 +58,15 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteService(obj interface{}) {
+func (c *Controller) enqueueDeleteService(obj any) {
 	svc := obj.(*v1.Service)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
-	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" || svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
 		if c.config.EnableNP {
-			var netpols []string
-			var err error
-			if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+			netpols, err := c.svcMatchNetworkPolicies(svc)
+			if err != nil {
 				utilruntime.HandleError(err)
 				return
 			}
@@ -84,6 +79,12 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 		ips := util.ServiceClusterIPs(*svc)
 		if ok {
 			ips = strings.Split(vip, ",")
+		}
+
+		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				ips = append(ips, ingress.IP)
+			}
 		}
 
 		for _, port := range svc.Spec.Ports {
@@ -101,17 +102,10 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
-		return
-	}
-
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-		utilruntime.HandleError(err)
 		return
 	}
 
@@ -124,6 +118,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 		}
 	}
 
+	key := cache.MetaObjectToName(newSvc).String()
 	klog.V(3).Infof("enqueue update service %s", key)
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
@@ -139,12 +134,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) handleDeleteService(service *vpcService) error {
-	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
-	if err != nil {
-		klog.Error(err)
-		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %w", service.Svc, err))
-		return nil
-	}
+	key := cache.MetaObjectToName(service.Svc).String()
 
 	c.svcKeyMutex.LockKey(key)
 	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
@@ -192,6 +182,13 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
+			}
+
+			if c.config.EnableOVNLBPreferLocal {
+				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
+					return err
+				}
 			}
 		}
 	}
@@ -341,6 +338,11 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		return err
 	}
 
+	if err := c.checkServiceLBIPBelongToSubnet(svc); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	if needUpdateEndpointQueue {
 		c.addOrUpdateEndpointQueue.Add(key)
 	}
@@ -485,7 +487,7 @@ func (c *Controller) handleAddService(key string) error {
 
 	// compatible with IPv4 and IPv6 dual stack subnet.
 	var ingress []v1.LoadBalancerIngress
-	for _, ip := range strings.Split(loadBalancerIP, ",") {
+	for ip := range strings.SplitSeq(loadBalancerIP, ",") {
 		if ip != "" && net.ParseIP(ip) != nil {
 			ingress = append(ingress, v1.LoadBalancerIngress{IP: ip})
 		}
@@ -508,6 +510,11 @@ func getVipIps(svc *v1.Service) []string {
 		ips = strings.Split(vip, ",")
 	} else {
 		ips = util.ServiceClusterIPs(*svc)
+		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				ips = append(ips, ingress.IP)
+			}
+		}
 	}
 	return ips
 }
@@ -527,4 +534,34 @@ func diffSvcPorts(oldPorts, newPorts []v1.ServicePort) (toDel []v1.ServicePort) 
 	}
 
 	return toDel
+}
+
+func (c *Controller) checkServiceLBIPBelongToSubnet(svc *v1.Service) error {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+
+	isServiceExternalIPFromSubnet := false
+	for _, subnet := range subnets {
+		for _, ingress := range svc.Status.LoadBalancer.Ingress {
+			if util.CIDRContainIP(subnet.Spec.CIDRBlock, ingress.IP) {
+				svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] = subnet.Name
+				isServiceExternalIPFromSubnet = true
+				break
+			}
+		}
+	}
+
+	if !isServiceExternalIPFromSubnet {
+		delete(svc.Annotations, util.ServiceExternalIPFromSubnetAnnotation)
+	}
+	klog.Infof("Service %s/%s external IP belongs to subnet: %v", svc.Namespace, svc.Name, isServiceExternalIPFromSubnet)
+	if _, err = c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("failed to update service %s/%s: %v", svc.Namespace, svc.Name, err)
+		return err
+	}
+
+	return nil
 }

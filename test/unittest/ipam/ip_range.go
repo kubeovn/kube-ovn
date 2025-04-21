@@ -89,7 +89,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 		ginkgo.It("IPv6", func() {
 			n1 := [4]uint32{rand.Uint32(), rand.Uint32(), rand.Uint32(), rand.Uint32()}
 			n2 := [4]uint32{rand.Uint32(), rand.Uint32(), rand.Uint32(), rand.Uint32()}
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				if n1[i] < n2[i] {
 					break
 				}
@@ -100,7 +100,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 			}
 
 			var n [4]uint32
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				n[i] = n1[i] + uint32(rand.Int64N(int64(n2[i]-n1[i]+1)))
 			}
 
@@ -142,7 +142,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(r.Contains(end.Sub(1))).To(gomega.BeTrue())
 			}
 
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
 			}
 
@@ -164,7 +164,7 @@ var _ = ginkgo.Context("[group:IPAM]", func() {
 				gomega.Expect(r.Contains(start.Add(1))).To(gomega.BeTrue())
 			}
 
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				gomega.Expect(r.Contains(r.Random())).To(gomega.BeTrue())
 			}
 

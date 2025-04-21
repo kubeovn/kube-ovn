@@ -87,7 +87,7 @@ func (c *OVNNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, 
 	models = append(models, lbHcModel)
 	lbhcUUIDs = append(lbhcUUIDs, lbhc.UUID)
 
-	if createLbhcOp, err = c.ovsDbClient.Create(models...); err != nil {
+	if createLbhcOp, err = c.Create(models...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating lbhc: %w", err)
 	}
@@ -110,7 +110,7 @@ func (c *OVNNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, 
 }
 
 // UpdateLoadBalancerHealthCheck update lb
-func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHealthCheck, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHealthCheck, fields ...any) error {
 	var (
 		op  []ovsdb.Operation
 		err error

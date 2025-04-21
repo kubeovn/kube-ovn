@@ -93,6 +93,7 @@ type Configuration struct {
 	EnableEcmp                  bool
 	EnableKeepVMIP              bool
 	EnableLbSvc                 bool
+	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
 	EnableOVNIPSec              bool
@@ -175,6 +176,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
@@ -186,7 +188,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
 		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "Comma-separated string of nodelocal DNS ip addresses")
 
-		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
+		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds. If set to 0, GC will be disabled")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
 
 		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
@@ -271,6 +273,7 @@ func ParseFlags() (*Configuration, error) {
 		GCInterval:                     *argGCInterval,
 		InspectInterval:                *argInspectInterval,
 		EnableLbSvc:                    *argEnableLbSvc,
+		EnableOVNLBPreferLocal:         *argEnableOVNLBPreferLocal,
 		EnableMetrics:                  *argEnableMetrics,
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
 		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
@@ -322,7 +325,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}
 
-	for _, ip := range strings.Split(*argNodeLocalDNSIP, ",") {
+	for ip := range strings.SplitSeq(*argNodeLocalDNSIP, ",") {
 		if err := util.CheckNodeDNSIP(ip); err != nil {
 			klog.Error(err)
 			return nil, err

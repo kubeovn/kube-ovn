@@ -30,31 +30,34 @@ var (
 )
 
 func (c *Controller) StartTProxyForwarding() {
-	protocol := "tcp"
-	addr := util.GetDefaultListenAddr()
-	if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
-		protocol = "tcp6"
-	}
-
-	tcpListener, err := goTProxy.ListenTCP(protocol, &net.TCPAddr{IP: net.ParseIP(addr), Port: util.TProxyListenPort})
-	if err != nil {
-		klog.Fatalf("Encountered error while binding listener: %s", err)
-		return
-	}
-
-	defer func() {
-		if err := tcpListener.Close(); err != nil {
-			klog.Errorf("Error tcpListener Close err: %v", err)
+	for _, addr := range util.GetDefaultListenAddr() {
+		protocol := "tcp"
+		if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
+			protocol = "tcp6"
 		}
-	}()
 
-	for {
-		conn, err := tcpListener.Accept()
-		if err != nil {
-			klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
-			return
-		}
-		go handleRedirectFlow(conn)
+		go func() {
+			tcpListener, err := goTProxy.ListenTCP(protocol, &net.TCPAddr{IP: net.ParseIP(addr), Port: util.TProxyListenPort})
+			if err != nil {
+				klog.Fatalf("Encountered error while binding listener: %s", err)
+				return
+			}
+
+			defer func() {
+				if err := tcpListener.Close(); err != nil {
+					klog.Errorf("Error tcpListener Close err: %v", err)
+				}
+			}()
+
+			for {
+				conn, err := tcpListener.Accept()
+				if err != nil {
+					klog.Fatalf("Unrecoverable error while accepting connection: %s", err)
+					return
+				}
+				go handleRedirectFlow(conn)
+			}
+		}()
 	}
 }
 
@@ -90,7 +93,7 @@ func getProbePorts(pod *corev1.Pod) set.Set[int32] {
 	}
 
 	ports.Delete(0)
-	klog.Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
+	klog.V(3).Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
 	return ports
 }
 
@@ -379,12 +382,13 @@ func getProtocols(protocol string) []string {
 
 func GetDefaultRouteDst(protocol string) net.IPNet {
 	var dst net.IPNet
-	if protocol == kubeovnv1.ProtocolIPv4 {
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
 		dst = net.IPNet{
 			IP:   net.IPv4zero,
 			Mask: net.CIDRMask(0, 0),
 		}
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		dst = net.IPNet{
 			IP:   net.IPv6zero,
 			Mask: net.CIDRMask(0, 0),

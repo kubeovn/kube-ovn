@@ -23,10 +23,10 @@ type VpcNatGatewayList struct {
 // +resourceName=vpc-nat-gateways
 type VpcNatGateway struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   VpcNatGatewaySpec   `json:"spec"`
-	Status VpcNatGatewayStatus `json:"status,omitempty"`
+	Status VpcNatGatewayStatus `json:"status"`
 }
 
 type VpcNatGatewaySpec struct {

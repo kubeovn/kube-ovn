@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -24,39 +26,24 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddNp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue add np %s", key)
+func (c *Controller) enqueueAddNp(obj any) {
+	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	klog.V(3).Infof("enqueue add network policy %s", key)
 	c.updateNpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteNp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	klog.V(3).Infof("enqueue delete np %s", key)
+func (c *Controller) enqueueDeleteNp(obj any) {
+	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	klog.V(3).Infof("enqueue delete network policy %s", key)
 	c.deleteNpQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateNp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 	oldNp := oldObj.(*netv1.NetworkPolicy)
 	newNp := newObj.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
-		!reflect.DeepEqual(oldNp.Annotations, newNp.Annotations) {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		!maps.Equal(oldNp.Annotations, newNp.Annotations) {
+		key := cache.MetaObjectToName(newNp).String()
 		klog.V(3).Infof("enqueue update np %s", key)
 		c.updateNpQueue.Add(key)
 	}
@@ -104,10 +91,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}()
 
-	logEnable := false
-	if np.Annotations[util.NetworkPolicyLogAnnotation] == "true" {
-		logEnable = true
-	}
+	logEnable := np.Annotations[util.NetworkPolicyLogAnnotation] == "true"
+
 	var logActions []string
 	if np.Annotations[util.ACLActionsLogAnnotation] != "" {
 		logActions = strings.Split(np.Annotations[util.ACLActionsLogAnnotation], ",")
@@ -337,15 +322,18 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
+				npp := []netv1.NetworkPolicyPort{}
 				if len(allows) != 0 || len(excepts) != 0 {
-					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, namedPortMap)
-					if err != nil {
-						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
-						return err
-					}
-
-					egressACLOps = append(egressACLOps, ops...)
+					npp = npr.Ports
 				}
+
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				if err != nil {
+					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
+					return err
+				}
+
+				egressACLOps = append(egressACLOps, ops...)
 			}
 			if len(np.Spec.Egress) == 0 {
 				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
@@ -590,8 +578,8 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 			for _, podNet := range podNets {
 				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-				podIPs := strings.Split(podIPAnnotation, ",")
-				for _, podIP := range podIPs {
+				podIPs := strings.SplitSeq(podIPAnnotation, ",")
+				for podIP := range podIPs {
 					if podIP != "" && util.CheckProtocol(podIP) == protocol {
 						selectedAddresses = append(selectedAddresses, podIP)
 					}
@@ -673,7 +661,7 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 	match := []string{}
 	for _, np := range nps {
 		if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {
-			match = append(match, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			match = append(match, cache.MetaObjectToName(np).String())
 		}
 	}
 	return match
@@ -692,18 +680,21 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to list netpols, %w", err)
 	}
-	match := []string{}
+	match := set.New[string]()
 	ns, _ := c.namespacesLister.Get(svc.Namespace)
 	for _, pod := range pods {
 		for _, np := range nps {
-			event := fmt.Sprintf("%s/%s", np.Namespace, np.Name)
-			if isPodMatchNetworkPolicy(pod, *ns, np, np.Namespace) && !slices.Contains(match, event) {
-				match = append(match, event)
-				klog.V(3).Infof("svc %s/%s match np %s/%s", svc.Namespace, svc.Name, np.Namespace, np.Name)
+			key := cache.MetaObjectToName(np).String()
+			if match.Has(key) {
+				continue
+			}
+			if isPodMatchNetworkPolicy(pod, *ns, np, np.Namespace) {
+				match.Insert(key)
+				klog.V(3).Infof("svc %s/%s match np %s", svc.Namespace, svc.Name, key)
 			}
 		}
 	}
-	return match, nil
+	return match.UnsortedList(), nil
 }
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
@@ -762,10 +753,10 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs corev1.Namespace, policyPeer ne
 
 func (c *Controller) namespaceMatchNetworkPolicies(ns *corev1.Namespace) []string {
 	nps, _ := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	match := []string{}
+	match := make([]string, 0, len(nps))
 	for _, np := range nps {
 		if isNamespaceMatchNetworkPolicy(ns, np) {
-			match = append(match, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			match = append(match, cache.MetaObjectToName(np).String())
 		}
 	}
 	return match

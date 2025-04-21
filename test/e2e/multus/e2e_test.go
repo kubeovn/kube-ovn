@@ -1,11 +1,15 @@
 package multus
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -81,7 +85,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
@@ -156,7 +160,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
 			if routeDst != subnet.Spec.CIDRBlock {
 				break
@@ -184,7 +188,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
@@ -263,21 +267,46 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		subnet.Spec.Provider = provider
 		subnet = subnetClient.CreateSync(subnet)
 
-		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		mac := util.GenerateMac()
+		ginkgo.By("Generating networks annotation with MAC " + mac)
+		networks := []*nadv1.NetworkSelectionElement{{
+			Name:       nad.Name,
+			Namespace:  nad.Namespace,
+			MacRequest: mac,
+		}}
+		networksAnnotation, err := json.Marshal(networks)
+		framework.ExpectNoError(err)
+		framework.Logf("networks annotation: %s", string(networksAnnotation))
+
+		ginkgo.By("Creating pod " + podName + " with MAC address " + mac)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: string(networksAnnotation)}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		statuses, err := nadutils.GetNetworkStatus(pod)
+		framework.ExpectNoError(err)
+		var ifaceName string
+		nadKey := cache.MetaObjectToName(nad).String()
+		for _, status := range statuses {
+			if status.Name == nadKey {
+				framework.ExpectEqual(status.Mac, mac)
+				ifaceName = status.Interface
+				break
+			}
+		}
+		framework.ExpectNotEmpty(ifaceName)
 		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
 		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
 		framework.ExpectIPInCIDR(ip, cidr)
 		framework.ExpectIPInCIDR(gateway, cidr)
-		framework.ExpectNotHaveKey(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider))
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		}
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
@@ -297,6 +326,14 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		if !f.VersionPriorTo(1, 13) {
 			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		}
+
+		ginkgo.By("Retrieving MAC address of interface " + ifaceName)
+		links, err := iproute.AddressShow(ifaceName, func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(namespaceName, podName, cmd...)
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(links, 1)
+		framework.ExpectEqual(links[0].Address, mac)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -339,7 +376,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 
 		ginkgo.By("Constructing network attachment definition config")
 		var routeDst string
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			routeDst = framework.RandomCIDR(f.ClusterIPFamily)
 			if routeDst != subnet.Spec.CIDRBlock {
 				break
@@ -365,21 +402,46 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
-		ginkgo.By("Creating pod " + podName)
-		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		mac := util.GenerateMac()
+		ginkgo.By("Generating networks annotation with MAC " + mac)
+		networks := []*nadv1.NetworkSelectionElement{{
+			Name:       nad.Name,
+			Namespace:  nad.Namespace,
+			MacRequest: mac,
+		}}
+		networksAnnotation, err := json.Marshal(networks)
+		framework.ExpectNoError(err)
+		framework.Logf("networks annotation: %s", string(networksAnnotation))
+
+		ginkgo.By("Creating pod " + podName + " with MAC address " + mac)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: string(networksAnnotation)}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
 		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		statuses, err := nadutils.GetNetworkStatus(pod)
+		framework.ExpectNoError(err)
+		var ifaceName string
+		nadKey := cache.MetaObjectToName(nad).String()
+		for _, status := range statuses {
+			if status.Name == nadKey {
+				framework.ExpectEqual(status.Mac, mac)
+				ifaceName = status.Interface
+				break
+			}
+		}
+		framework.ExpectNotEmpty(ifaceName)
 		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
 		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
 		framework.ExpectIPInCIDR(ip, cidr)
 		framework.ExpectIPInCIDR(gateway, cidr)
-		framework.ExpectNotHaveKey(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider))
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		}
 
 		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
 		ginkgo.By("Validating IP resource " + ipName)
@@ -399,6 +461,14 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		if !f.VersionPriorTo(1, 13) {
 			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
 		}
+
+		ginkgo.By("Retrieving MAC address of interface " + ifaceName)
+		links, err := iproute.AddressShow(ifaceName, func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(namespaceName, podName, cmd...)
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(links, 1)
+		framework.ExpectEqual(links[0].Address, mac)
 
 		ginkgo.By("Retrieving pod routes")
 		podRoutes, err := iproute.RouteShow("", "", func(cmd ...string) ([]byte, []byte, error) {
@@ -430,5 +500,157 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: nadIPv6Gateway})
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: ipv6RouteDst, Gateway: ipv6RouteGw})
 		}
+	})
+
+	framework.ConformanceIt("should be able to use mac and ip provided by k8s.v1.cni.cncf.io/networks annotation", func() {
+		if f.VersionPriorTo(1, 13) {
+			ginkgo.Skip("this feature is supported from version 1.13")
+		}
+
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", provider, nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Generating k8s.v1.cni.cncf.io/networks annotation")
+		mac := util.GenerateMac()
+		ips := strings.Split(framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1), ",")
+		networks := []*nadv1.NetworkSelectionElement{{
+			Name:       nad.Name,
+			Namespace:  nad.Namespace,
+			MacRequest: mac,
+			IPRequest:  ips,
+		}}
+		networksAnnotation, err := json.Marshal(networks)
+		framework.ExpectNoError(err)
+		framework.Logf("networks annotation: %s", string(networksAnnotation))
+
+		ginkgo.By("Creating pod " + podName)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: string(networksAnnotation)}
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.IPAddressAnnotationTemplate, provider), strings.Join(ips, ","))
+
+		ginkgo.By("Getting attachment interface name")
+		statuses, err := nadutils.GetNetworkStatus(pod)
+		framework.ExpectNoError(err)
+		var ifaceName string
+		nadKey := cache.MetaObjectToName(nad).String()
+		for _, status := range statuses {
+			if status.Name == nadKey {
+				framework.ExpectEqual(status.Mac, mac)
+				ifaceName = status.Interface
+				break
+			}
+		}
+		framework.ExpectNotEmpty(ifaceName)
+
+		ginkgo.By("Validating pod ip and mac")
+		links, err := iproute.AddressShow(ifaceName, func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(links, 1)
+		framework.ExpectEqual(links[0].Address, mac)
+		framework.ExpectConsistOf(links[0].NonLinkLocalIPs(), ips)
+	})
+
+	framework.ConformanceIt("should be able to provide IPAM for macvlan with ip provided by k8s.v1.cni.cncf.io/networks annotation", func() {
+		if f.VersionPriorTo(1, 13) {
+			ginkgo.Skip("this feature was introduced in v1.13")
+		}
+
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet.Spec.Provider = provider
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Generating networks annotation")
+		mac := util.GenerateMac()
+		ips := strings.Split(framework.RandomIPs(subnet.Spec.CIDRBlock, "", 1), ",")
+		networks := []*nadv1.NetworkSelectionElement{{
+			Name:       nad.Name,
+			Namespace:  nad.Namespace,
+			MacRequest: mac,
+			IPRequest:  ips,
+		}}
+		networksAnnotation, err := json.Marshal(networks)
+		framework.ExpectNoError(err)
+		framework.Logf("networks annotation: %s", string(networksAnnotation))
+
+		ginkgo.By("Creating pod " + podName)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: string(networksAnnotation)}
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+		statuses, err := nadutils.GetNetworkStatus(pod)
+		framework.ExpectNoError(err)
+		var ifaceName string
+		nadKey := cache.MetaObjectToName(nad).String()
+		for _, status := range statuses {
+			if status.Name == nadKey {
+				framework.ExpectEqual(status.Mac, mac)
+				ifaceName = status.Interface
+				break
+			}
+		}
+		framework.ExpectNotEmpty(ifaceName)
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+		framework.ExpectIPInCIDR(gateway, cidr)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.MacAddressAnnotationTemplate, provider), mac)
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ginkgo.By("Validating IP resource " + ipName)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+		framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+		framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+		framework.ExpectEmpty(ipCR.Spec.MacAddress)
+		ipv4, ipv6 := util.SplitStringIP(ip)
+		framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+		framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, subnetName, "")
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.SubnetNameLabel, subnetName)
+		framework.ExpectHaveKeyWithValue(ipCR.Labels, util.NodeNameLabel, pod.Spec.NodeName)
+		if !f.VersionPriorTo(1, 13) {
+			framework.ExpectHaveKeyWithValue(ipCR.Labels, util.IPReservedLabel, "false")
+		}
+
+		ginkgo.By("Validating pod ip and mac")
+		links, err := iproute.AddressShow(ifaceName, func(cmd ...string) ([]byte, []byte, error) {
+			return framework.KubectlExec(namespaceName, podName, cmd...)
+		})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(links, 1)
+		framework.ExpectEqual(links[0].Address, mac)
+		framework.ExpectConsistOf(links[0].NonLinkLocalIPs(), ips)
 	})
 })

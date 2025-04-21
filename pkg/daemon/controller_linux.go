@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 
+	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -30,6 +32,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	kernelModuleIPTables  = "ip_tables"
+	kernelModuleIP6Tables = "ip6_tables"
+)
+
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
 	iptables         map[string]*iptables.IPTables
@@ -39,7 +46,17 @@ type ControllerRuntime struct {
 	ipsets           map[string]*ipsets.IPSets
 	gwCounters       map[string]*util.GwIPtableCounters
 
-	nmSyncer *networkManagerSyncer
+	nmSyncer  *networkManagerSyncer
+	ovsClient *ovsutil.Client
+}
+
+type LbServiceRules struct {
+	IP          string
+	Port        uint16
+	Protocol    string
+	BridgeName  string
+	DstMac      string
+	UnderlayNic string
 }
 
 func evalCommandSymlinks(cmd string) (string, error) {
@@ -83,6 +100,7 @@ func (c *Controller) initRuntime() error {
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
 	c.k8sipsets = k8sipset.New(c.k8sExec)
+	c.ovsClient = ovsutil.New()
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -92,11 +110,17 @@ func (c *Controller) initRuntime() error {
 		}
 		c.iptables[kubeovnv1.ProtocolIPv4] = ipt
 		if c.iptablesObsolete != nil {
-			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
-				klog.Error(err)
-				return err
+			ok, err := kernelModuleLoaded(kernelModuleIPTables)
+			if err != nil {
+				klog.Errorf("failed to check kernel module %s: %v", kernelModuleIPTables, err)
 			}
-			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+			if ok {
+				if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+					klog.Error(err)
+					return err
+				}
+				c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
@@ -109,11 +133,17 @@ func (c *Controller) initRuntime() error {
 		}
 		c.iptables[kubeovnv1.ProtocolIPv6] = ipt
 		if c.iptablesObsolete != nil {
-			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
-				klog.Error(err)
-				return err
+			ok, err := kernelModuleLoaded(kernelModuleIP6Tables)
+			if err != nil {
+				klog.Errorf("failed to check kernel module %s: %v", kernelModuleIP6Tables, err)
 			}
-			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+			if ok {
+				if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+					klog.Error(err)
+					return err
+				}
+				c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
@@ -122,6 +152,57 @@ func (c *Controller) initRuntime() error {
 	c.nmSyncer = newNetworkManagerSyncer()
 	c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
+	return nil
+}
+
+func (c *Controller) handleEnableExternalLBAddressChange(oldSubnet, newSubnet *kubeovnv1.Subnet) error {
+	var subnetName string
+	var action string
+
+	switch {
+	case oldSubnet != nil && newSubnet != nil:
+		subnetName = oldSubnet.Name
+		if oldSubnet.Spec.EnableExternalLBAddress != newSubnet.Spec.EnableExternalLBAddress {
+			klog.Infof("EnableExternalLBAddress changed for subnet %s", newSubnet.Name)
+			if newSubnet.Spec.EnableExternalLBAddress {
+				action = "add"
+			} else {
+				action = "remove"
+			}
+		}
+	case oldSubnet != nil:
+		subnetName = oldSubnet.Name
+		if oldSubnet.Spec.EnableExternalLBAddress {
+			klog.Infof("EnableExternalLBAddress removed for subnet %s", oldSubnet.Name)
+			action = "remove"
+		}
+	case newSubnet != nil:
+		subnetName = newSubnet.Name
+		if newSubnet.Spec.EnableExternalLBAddress {
+			klog.Infof("EnableExternalLBAddress added for subnet %s", newSubnet.Name)
+			action = "add"
+		}
+	}
+
+	if action != "" {
+		services, err := c.servicesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list services: %v", err)
+			return err
+		}
+
+		for _, svc := range services {
+			if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] == subnetName {
+				klog.Infof("Service %s/%s has external LB address pool annotation from subnet %s, action: %s", svc.Namespace, svc.Name, subnetName, action)
+				switch action {
+				case "add":
+					c.serviceQueue.Add(&serviceEvent{newObj: svc})
+				case "remove":
+					c.serviceQueue.Add(&serviceEvent{oldObj: svc})
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -148,6 +229,10 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 			}
 		}
 
+		if err = c.handleEnableExternalLBAddressChange(oldSubnet, newSubnet); err != nil {
+			klog.Errorf("failed to handle enable external lb address change: %v", err)
+			return err
+		}
 		// handle policy routing
 		rulesToAdd, rulesToDel, routesToAdd, routesToDel, err := c.diffPolicyRouting(oldSubnet, newSubnet)
 		if err != nil {
@@ -211,7 +296,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 			continue
 		}
 
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 			if _, ipNet, err := net.ParseCIDR(cidrBlock); err != nil {
 				klog.Errorf("%s is not a valid cidr block", cidrBlock)
 			} else {
@@ -267,10 +352,164 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	return nil
 }
 
+func genLBServiceRules(service *v1.Service, bridgeName, underlayNic string) []LbServiceRules {
+	var lbServiceRules []LbServiceRules
+	for _, ingress := range service.Status.LoadBalancer.Ingress {
+		for _, port := range service.Spec.Ports {
+			lbServiceRules = append(lbServiceRules, LbServiceRules{
+				IP:          ingress.IP,
+				Port:        uint16(port.Port), // #nosec G115
+				Protocol:    string(port.Protocol),
+				DstMac:      util.MasqueradeExternalLBAccessMac,
+				UnderlayNic: underlayNic,
+				BridgeName:  bridgeName,
+			})
+		}
+	}
+	return lbServiceRules
+}
+
+func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Service, isSubnetExternalLBEnabled bool) (lbServiceRulesToAdd, lbServiceRulesToDel []LbServiceRules, err error) {
+	var oldlbServiceRules, newlbServiceRules []LbServiceRules
+
+	if oldService != nil && oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
+		oldBridgeName, underlayNic, err := c.getExtInfoBySubnet(oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		if err != nil {
+			klog.Errorf("failed to get provider network by subnet %s: %v", oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
+			return nil, nil, err
+		}
+
+		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic)
+	}
+
+	if isSubnetExternalLBEnabled && newService != nil && newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
+		newBridgeName, underlayNic, err := c.getExtInfoBySubnet(newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		if err != nil {
+			klog.Errorf("failed to get provider network by subnet %s: %v", newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
+			return nil, nil, err
+		}
+		newlbServiceRules = genLBServiceRules(newService, newBridgeName, underlayNic)
+	}
+
+	for _, oldRule := range oldlbServiceRules {
+		found := slices.Contains(newlbServiceRules, oldRule)
+		if !found {
+			lbServiceRulesToDel = append(lbServiceRulesToDel, oldRule)
+		}
+	}
+
+	for _, newRule := range newlbServiceRules {
+		found := slices.Contains(oldlbServiceRules, newRule)
+		if !found {
+			lbServiceRulesToAdd = append(lbServiceRulesToAdd, newRule)
+		}
+	}
+
+	return lbServiceRulesToAdd, lbServiceRulesToDel, nil
+}
+
+func (c *Controller) getExtInfoBySubnet(subnetName string) (string, string, error) {
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+		return "", "", err
+	}
+
+	vlanName := subnet.Spec.Vlan
+	if vlanName == "" {
+		return "", "", errors.New("vlan not specified in subnet")
+	}
+
+	vlan, err := c.vlansLister.Get(vlanName)
+	if err != nil {
+		klog.Errorf("failed to get vlan %s: %v", vlanName, err)
+		return "", "", err
+	}
+
+	providerNetworkName := vlan.Spec.Provider
+	if providerNetworkName == "" {
+		return "", "", errors.New("provider network not specified in vlan")
+	}
+
+	pn, err := c.providerNetworksLister.Get(providerNetworkName)
+	if err != nil {
+		klog.Errorf("failed to get provider network %s: %v", providerNetworkName, err)
+		return "", "", err
+	}
+
+	underlayNic := pn.Spec.DefaultInterface
+	for _, item := range pn.Spec.CustomInterfaces {
+		if slices.Contains(item.Nodes, c.config.NodeName) {
+			underlayNic = item.Interface
+			break
+		}
+	}
+	klog.Infof("Provider network: %s, Underlay NIC: %s", providerNetworkName, underlayNic)
+	return util.ExternalBridgeName(providerNetworkName), underlayNic, nil
+}
+
+func (c *Controller) reconcileServices(event *serviceEvent) error {
+	if event == nil {
+		return nil
+	}
+	var ok bool
+	var oldService, newService *v1.Service
+	if event.oldObj != nil {
+		if oldService, ok = event.oldObj.(*v1.Service); !ok {
+			klog.Errorf("expected old service in serviceEvent but got %#v", event.oldObj)
+			return nil
+		}
+	}
+
+	if event.newObj != nil {
+		if newService, ok = event.newObj.(*v1.Service); !ok {
+			klog.Errorf("expected new service in serviceEvent but got %#v", event.newObj)
+			return nil
+		}
+	}
+
+	// check is the lb service IP related subnet's EnableExternalLBAddress
+	isSubnetExternalLBEnabled := false
+	if newService != nil && newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
+		subnet, err := c.subnetsLister.Get(newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
+			return err
+		}
+		isSubnetExternalLBEnabled = subnet.Spec.EnableExternalLBAddress
+	}
+
+	lbServiceRulesToAdd, lbServiceRulesToDel, err := c.diffExternalLBServiceRules(oldService, newService, isSubnetExternalLBEnabled)
+	if err != nil {
+		klog.Errorf("failed to get ip port difference: %v", err)
+		return err
+	}
+
+	if len(lbServiceRulesToAdd) > 0 {
+		for _, rule := range lbServiceRulesToAdd {
+			klog.Infof("Adding LB service rule: %+v", rule)
+			if err := ovs.AddOrUpdateUnderlaySubnetSvcLocalOpenFlow(c.ovsClient, rule.BridgeName, rule.IP, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.Port); err != nil {
+				klog.Errorf("failed to add or update underlay subnet svc local openflow: %v", err)
+			}
+		}
+	}
+
+	if len(lbServiceRulesToDel) > 0 {
+		for _, rule := range lbServiceRulesToDel {
+			klog.Infof("Delete LB service rule: %+v", rule)
+			if err := ovs.DeleteUnderlaySubnetSvcLocalOpenFlow(c.ovsClient, rule.BridgeName, rule.IP, rule.Protocol, rule.UnderlayNic, rule.Port); err != nil {
+				klog.Errorf("failed to delete underlay subnet svc local openflow: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error) {
 	var routes, existRoutes []netlink.Route
 	var err error
-	for _, gw := range strings.Split(gateway, ",") {
+	for gw := range strings.SplitSeq(gateway, ",") {
 		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			routes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
 		} else {
@@ -293,13 +532,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			continue
 		}
 
-		found := false
-		for _, c := range cidrs {
-			if route.Dst.String() == c {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(cidrs, route.Dst.String())
 		if !found {
 			toDel = append(toDel, route)
 		}
@@ -555,8 +788,11 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	// set default nic bandwidth
+	//  ovsIngress and ovsEgress are derived from the pod's egress and ingress rate annotations respectively, their roles are reversed from the OVS interface perspective.
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	ovsIngress := pod.Annotations[util.EgressRateAnnotation]
+	ovsEgress := pod.Annotations[util.IngressRateAnnotation]
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -574,7 +810,7 @@ func (c *Controller) handlePod(key string) error {
 	}
 
 	// set multus-nic bandwidth
-	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
+	attachNets, err := nadutils.ParsePodNetworkAnnotation(pod)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -694,4 +930,20 @@ func rotateLog() {
 	if err != nil {
 		klog.Errorf("failed to rotate kube-ovn log %q", output)
 	}
+}
+
+func kernelModuleLoaded(module string) (bool, error) {
+	data, err := os.ReadFile("/proc/modules")
+	if err != nil {
+		klog.Errorf("failed to read /proc/modules: %v", err)
+		return false, err
+	}
+
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if fields := strings.Fields(line); len(fields) != 0 && fields[0] == module {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

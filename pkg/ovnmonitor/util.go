@@ -60,9 +60,10 @@ func (e *Exporter) getOvnStatus() map[string]int {
 			result["ovn-northd"] = 0
 		} else {
 			status := strings.TrimSpace(strings.Split(string(output), ":")[1])
-			if status == "standby" {
+			switch status {
+			case "standby":
 				result["ovn-northd"] = 2
-			} else if status == "active" {
+			case "active":
 				result["ovn-northd"] = 1
 			}
 		}
@@ -102,7 +103,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 }
 
 func getClusterEnableState(dbName string) (bool, error) {
-	cmdstr := fmt.Sprintf("ovsdb-tool db-is-clustered %s", dbName)
+	cmdstr := "ovsdb-tool db-is-clustered " + dbName
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	_, err := cmd.CombinedOutput()
 	if err != nil {
@@ -187,7 +188,7 @@ func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
 		return nil, fmt.Errorf("failed to retrieve cluster/status info for database %s: %w", dbName, err)
 	}
 
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		idx := strings.Index(line, ":")
 		if idx == -1 {
 			continue
@@ -290,8 +291,8 @@ func (e *Exporter) setOvnClusterInfoMetric(c *OVNDBClusterStatus, dbName string)
 func parseDbStatus(output string) int {
 	var status string
 	var result int
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(output, "\n")
+	for line := range lines {
 		if strings.Contains(line, "Role:") {
 			status = strings.TrimSpace(strings.Split(line, ":")[1])
 			break
@@ -314,9 +315,9 @@ func getDBStatus(dbName string) (bool, error) {
 	var result bool
 	switch dbName {
 	case "OVN_Northbound":
-		cmdstr = fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status %s", dbName)
+		cmdstr = "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status " + dbName
 	case "OVN_Southbound":
-		cmdstr = fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status %s", dbName)
+		cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status " + dbName
 	}
 
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
@@ -325,8 +326,8 @@ func getDBStatus(dbName string) (bool, error) {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
 		return false, err
 	}
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(output), "\n")
+	for line := range lines {
 		if strings.Contains(line, "status: ok") {
 			result = true
 			break

@@ -841,7 +841,7 @@ func TestValidateSubnet(t *testing.T) {
 				},
 				Status: kubeovnv1.SubnetStatus{},
 			},
-			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 netmask",
+			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 or /128 netmask",
 		},
 	}
 

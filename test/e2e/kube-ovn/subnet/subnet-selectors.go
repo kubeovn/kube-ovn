@@ -2,7 +2,6 @@ package subnet
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -41,15 +40,15 @@ var _ = framework.Describe("[group:subnet]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating namespace " + ns1Name)
-		ns1 = framework.MakeNamespace(ns1Name, map[string]string{projectKey: ns1Name})
+		ns1 = framework.MakeNamespace(ns1Name, map[string]string{projectKey: ns1Name}, nil)
 		ns1 = nsClient.Create(ns1)
 
 		ginkgo.By("Creating namespace " + ns2Name)
-		ns2 = framework.MakeNamespace(ns2Name, map[string]string{projectKey: ns2Name})
+		ns2 = framework.MakeNamespace(ns2Name, map[string]string{projectKey: ns2Name}, nil)
 		ns2 = nsClient.Create(ns2)
 
 		ginkgo.By("Creating namespace " + ns3Name)
-		ns3 = framework.MakeNamespace(ns3Name, nil)
+		ns3 = framework.MakeNamespace(ns3Name, nil, nil)
 		ns3 = nsClient.Create(ns3)
 
 		ns1MatchLabels := map[string]string{projectKey: ns1Name}
@@ -96,7 +95,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
+		}, "failed to update annotation for ns "+checkNs2.Name)
 
 		// 3. delete namespaceSelector
 		ginkgo.By("Delete subnet namespaceSelector matched with namespace " + ns2Name + ", should delete annotation with subnet " + subnet.Name)
@@ -111,7 +110,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
+		}, "failed to update annotation for ns "+checkNs2.Name)
 	})
 
 	framework.ConformanceIt("create subnet with namespaceSelector, update namespaces to match with selector", func() {
@@ -137,7 +136,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs3.Name))
+		}, "failed to update annotation for ns "+checkNs3.Name)
 
 		// 3. delete labels matched witch subnet namespaceSelector
 		ginkgo.By("Delete labels for namespace " + ns3Name + ", should not annotate with subnet " + subnet.Name)
@@ -151,7 +150,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs3.Name))
+		}, "failed to update annotation for ns "+checkNs3.Name)
 	})
 
 	framework.ConformanceIt("update namespace with labelSelector, and set subnet spec namespaces with selected namespace", func() {
@@ -167,7 +166,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
+		}, "failed to update annotation for ns "+checkNs2.Name)
 
 		// 2. add namespaceSelector for subnet, which select with ns2
 		ginkgo.By("Add subnet namespaceSelector matched with " + ns2Name + ", should update annotation with subnet " + subnet.Name)
@@ -227,6 +226,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return true, nil
 			}
 			return false, nil
-		}, fmt.Sprintf("failed to update annotation for ns %s", checkNs2.Name))
+		}, "failed to update annotation for ns "+checkNs2.Name)
 	})
 })

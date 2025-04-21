@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -19,7 +19,7 @@ func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 		return err
 	}
 
-	op, err := c.ovsDbClient.Create(nbGlobal)
+	op, err := c.Create(nbGlobal)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate operations for creating nb global: %w", err)
@@ -66,7 +66,7 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	return &nbGlobalList[0], nil
 }
 
-func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) error {
 	if nbGlobal == nil {
 		err := errors.New("nb global is nil")
 		klog.Error(err)
@@ -125,7 +125,7 @@ func (c *OVNNbClient) SetOVNIPSec(enable bool) error {
 	return nil
 }
 
-func (c *OVNNbClient) SetNbGlobalOptions(key string, value interface{}) error {
+func (c *OVNNbClient) SetNbGlobalOptions(key string, value any) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		klog.Error(err)
@@ -162,9 +162,7 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options)+3)
-	for k, v := range nbGlobal.Options {
-		options[k] = v
-	}
+	maps.Copy(options, nbGlobal.Options)
 	if enable {
 		options["ic-route-adv"] = "true"
 		options["ic-route-learn"] = "true"
@@ -174,7 +172,7 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 		delete(options, "ic-route-learn")
 		delete(options, "ic-route-blacklist")
 	}
-	if reflect.DeepEqual(options, nbGlobal.Options) {
+	if maps.Equal(options, nbGlobal.Options) {
 		nbGlobal.Options = options
 		return nil
 	}
@@ -211,9 +209,7 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 	}
 
 	options := make(map[string]string, len(nbGlobal.Options))
-	for k, v := range nbGlobal.Options {
-		options[k] = v
-	}
+	maps.Copy(options, nbGlobal.Options)
 
 	delete(options, "node_local_dns_ip")
 

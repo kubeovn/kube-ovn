@@ -93,7 +93,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 			"set", "interface", portName, "type=internal", "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
-			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "select_all=true", "output_port=@mirror0", "--",
+			"--id=@m", "create", "mirror", "name="+util.MirrorDefaultName, "select_all=true", "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
@@ -104,7 +104,7 @@ func configureGlobalMirror(portName string, mtu int) error {
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
-			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "select_all=true", "output_port=@mirror0", "--",
+			"--id=@m", "create", "mirror", "name="+util.MirrorDefaultName, "select_all=true", "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s, %q, %v", portName, raw, err)
@@ -128,7 +128,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 			"set", "interface", portName, "type=internal", "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
-			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "output_port=@mirror0", "--",
+			"--id=@m", "create", "mirror", "name="+util.MirrorDefaultName, "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q, %v", portName, raw, err)
@@ -139,7 +139,7 @@ func configureEmptyMirror(portName string, mtu int) error {
 		raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 			"clear", "bridge", "br-int", "mirrors", "--",
 			"--id=@mirror0", "get", "port", portName, "--",
-			"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "output_port=@mirror0", "--",
+			"--id=@m", "create", "mirror", "name="+util.MirrorDefaultName, "output_port=@mirror0", "--",
 			"add", "bridge", "br-int", "mirrors", "@m")
 		if err != nil {
 			klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
@@ -256,7 +256,7 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
 	}
 	if output != "" {
-		for _, port := range strings.Split(output, "\n") {
+		for port := range strings.SplitSeq(output, "\n") {
 			if port != nic {
 				ok, err := ovs.ValidatePortVendor(port)
 				if err != nil {

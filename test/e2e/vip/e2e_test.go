@@ -38,11 +38,11 @@ func testConnectivity(ip, namespaceName, srcPod, dstPod string, f *framework.Fra
 	case apiv1.ProtocolIPv4:
 		addIP = fmt.Sprintf("ip addr add %s/24 dev eth0", ip)
 		delIP = fmt.Sprintf("ip addr del %s/24 dev eth0", ip)
-		command = fmt.Sprintf("ping -W 1 -c 1 %s", ip)
+		command = "ping -W 1 -c 1 " + ip
 	case apiv1.ProtocolIPv6:
 		addIP = fmt.Sprintf("ip addr add %s/96 dev eth0", ip)
 		delIP = fmt.Sprintf("ip addr del %s/96 dev eth0", ip)
-		command = fmt.Sprintf("ping6 -c 1 %s", ip)
+		command = "ping6 -c 1 " + ip
 	default:
 		framework.Failf("unexpected ip address: %q", ip)
 	}
@@ -75,10 +75,10 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 	var sgCheck, conditions string
 	switch util.CheckProtocol(ip) {
 	case apiv1.ProtocolIPv4:
-		sgCheck = fmt.Sprintf("ping -W 1 -c 1 %s", ip)
+		sgCheck = "ping -W 1 -c 1 " + ip
 		conditions = fmt.Sprintf("name=ovn.sg.%s.associated.v4", strings.ReplaceAll(securityGroupName, "-", "."))
 	case apiv1.ProtocolIPv6:
-		sgCheck = fmt.Sprintf("ping6 -c 1 %s", ip)
+		sgCheck = "ping6 -c 1 " + ip
 		conditions = fmt.Sprintf("name=ovn.sg.%s.associated.v6", strings.ReplaceAll(securityGroupName, "-", "."))
 	}
 	// allowPod can ping aapPod with security group
@@ -264,7 +264,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		framework.ExpectNotEqual(vip1.Status.Mac, vip2.Status.Mac)
 
 		annotations := map[string]string{util.AAPsAnnotation: vip1Name}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		ginkgo.By("Creating pod1 support allowed address pair using " + vip1Name)
 		aapPod1 := framework.MakePrivilegedPod(namespaceName, aapPodName1, nil, annotations, f.KubeOVNImage, cmd, nil)
 		aapPod1 = podClient.CreateSync(aapPod1)

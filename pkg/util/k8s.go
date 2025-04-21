@@ -11,14 +11,13 @@ import (
 	"strings"
 	"time"
 
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
-	clientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -57,7 +56,7 @@ func DialTCP(host string, timeout time.Duration, verbose bool) error {
 
 func DialAPIServer(host string, interval time.Duration, retry int) error {
 	timer := time.NewTimer(interval)
-	for i := 0; i < retry; i++ {
+	for range retry {
 		err := DialTCP(host, interval, true)
 		if err == nil {
 			return nil
@@ -98,16 +97,15 @@ func PodAttachmentIPs(pod *v1.Pod, networkName string) ([]string, error) {
 		return nil, errors.New("programmatic error: pod is nil")
 	}
 
-	if pod.Annotations[nadv1.NetworkStatusAnnot] == "" {
-		return nil, fmt.Errorf("pod %s/%s has no network status annotation", pod.Namespace, pod.Name)
+	statuses, err := nadutils.GetNetworkStatus(pod)
+	if err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to get network status for pod %s/%s: %w", pod.Namespace, pod.Name, err)
 	}
-	var status []nadv1.NetworkStatus
-	if err := json.Unmarshal([]byte(pod.Annotations[nadv1.NetworkStatusAnnot]), &status); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal network status annotation of pod %s/%s: %w", pod.Namespace, pod.Name, err)
-	}
-	for _, s := range status {
-		if s.Name == networkName {
-			return s.IPs, nil
+
+	for _, status := range statuses {
+		if status.Name == networkName {
+			return status.IPs, nil
 		}
 	}
 
@@ -149,37 +147,6 @@ func GetTruncatedUID(uid string) string {
 	return uid[len(uid)-12:]
 }
 
-func UpdateNodeLabels(cs clientv1.NodeInterface, node string, labels map[string]any) error {
-	buf, err := json.Marshal(labels)
-	if err != nil {
-		klog.Errorf("failed to marshal labels: %v", err)
-		return err
-	}
-	patch := fmt.Sprintf(`{"metadata":{"labels":%s}}`, string(buf))
-	return nodeMergePatch(cs, node, patch)
-}
-
-func UpdateNodeAnnotations(cs clientv1.NodeInterface, node string, annotations map[string]any) error {
-	buf, err := json.Marshal(annotations)
-	if err != nil {
-		klog.Errorf("failed to marshal annotations: %v", err)
-		return err
-	}
-	patch := fmt.Sprintf(`{"metadata":{"annotations":%s}}`, string(buf))
-	return nodeMergePatch(cs, node, patch)
-}
-
-// we do not use GenerateMergePatchPayload/GenerateStrategicMergePatchPayload,
-// because we use a `null` value to delete a label/annotation
-func nodeMergePatch(cs clientv1.NodeInterface, node, patch string) error {
-	_, err := cs.Patch(context.Background(), node, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to patch node %s with json merge patch %q: %v", node, patch, err)
-		return err
-	}
-	return nil
-}
-
 func SetOwnerReference(owner, object metav1.Object) error {
 	return controllerutil.SetOwnerReference(owner, object, scheme.Scheme)
 }
@@ -204,4 +171,32 @@ func DeploymentIsReady(deployment *appsv1.Deployment) bool {
 		return false
 	}
 	return true
+}
+
+func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string, status v1.ConditionStatus, reason, message string) error {
+	now := metav1.NewTime(time.Now())
+	patch := map[string]map[string][]v1.NodeCondition{
+		"status": {
+			"conditions": []v1.NodeCondition{{
+				Type:               v1.NodeNetworkUnavailable,
+				Status:             status,
+				Reason:             reason,
+				Message:            message,
+				LastTransitionTime: now,
+				LastHeartbeatTime:  now,
+			}},
+		},
+	}
+	data, err := json.Marshal(patch)
+	if err != nil {
+		klog.Errorf("failed to marshal patch data: %v", err)
+		return err
+	}
+
+	if _, err = cs.CoreV1().Nodes().PatchStatus(context.Background(), nodeName, data); err != nil {
+		klog.Errorf("failed to patch node %s: %v", nodeName, err)
+		return err
+	}
+
+	return nil
 }

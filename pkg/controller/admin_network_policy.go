@@ -12,7 +12,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
@@ -44,24 +43,19 @@ type AdminNetworkPolicyChangedDelta struct {
 	field     ChangedField
 }
 
-func (c *Controller) enqueueAddAnp(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddAnp(obj any) {
+	key := cache.MetaObjectToName(obj.(*v1alpha1.AdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add anp %s", key)
 	c.addAnpQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteAnp(obj interface{}) {
+func (c *Controller) enqueueDeleteAnp(obj any) {
 	anp := obj.(*v1alpha1.AdminNetworkPolicy)
-	klog.V(3).Infof("enqueue delete anp %s", anp.Name)
+	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
 }
 
-func (c *Controller) enqueueUpdateAnp(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	oldAnpObj := oldObj.(*v1alpha1.AdminNetworkPolicy)
 	newAnpObj := newObj.(*v1alpha1.AdminNetworkPolicy)
 
@@ -232,7 +226,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		aclPriority := util.AnpACLMaxPriority - int(anp.Spec.Priority*100) - index
-		aclAction := convertAction(anpr.Action, "")
+		aclAction := anpACLAction(anpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if anpr.Ports != nil {
 			rulePorts = *anpr.Ports
@@ -299,7 +293,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 
 		aclPriority := util.AnpACLMaxPriority - int(anp.Spec.Priority*100) - index
-		aclAction := convertAction(anpr.Action, "")
+		aclAction := anpACLAction(anpr.Action)
 		rulePorts := []v1alpha1.AdminNetworkPolicyPort{}
 		if anpr.Ports != nil {
 			rulePorts = *anpr.Ports
@@ -562,8 +556,8 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 					ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 
 					podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-					podIPs := strings.Split(podIPAnnotation, ",")
-					for _, podIP := range podIPs {
+					podIPs := strings.SplitSeq(podIPAnnotation, ",")
+					for podIP := range podIPs {
 						switch util.CheckProtocol(podIP) {
 						case kubeovnv1.ProtocolIPv4:
 							v4Addresses = append(v4Addresses, podIP)
@@ -947,35 +941,26 @@ func getAnpAddressSetName(pgName, ruleName string, index int, isIngress bool) (s
 	return asV4Name, asV6Name
 }
 
-func convertAction(anpRuleAction v1alpha1.AdminNetworkPolicyRuleAction, banpRuleAction v1alpha1.BaselineAdminNetworkPolicyRuleAction) (aclAction ovnnb.ACLAction) {
-	switch anpRuleAction {
+func anpACLAction(action v1alpha1.AdminNetworkPolicyRuleAction) ovnnb.ACLAction {
+	switch action {
 	case v1alpha1.AdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllowRelated
+		return ovnnb.ACLActionAllowRelated
 	case v1alpha1.AdminNetworkPolicyRuleActionDeny:
-		aclAction = ovnnb.ACLActionDrop
+		return ovnnb.ACLActionDrop
 	case v1alpha1.AdminNetworkPolicyRuleActionPass:
-		aclAction = ovnnb.ACLActionPass
+		return ovnnb.ACLActionPass
 	}
-
-	switch banpRuleAction {
-	case v1alpha1.BaselineAdminNetworkPolicyRuleActionAllow:
-		aclAction = ovnnb.ACLActionAllowRelated
-	case v1alpha1.BaselineAdminNetworkPolicyRuleActionDeny:
-		aclAction = ovnnb.ACLActionDrop
-	}
-	return
+	return ovnnb.ACLActionDrop
 }
 
 func isRulesArrayEmpty(ruleNames [util.AnpMaxRules]ChangedName) bool {
-	isEmpty := true
 	for _, ruleName := range ruleNames {
 		// The ruleName can be omitted default
 		if ruleName.curRuleName != "" || ruleName.isMatch {
-			isEmpty = false
-			break
+			return false
 		}
 	}
-	return isEmpty
+	return true
 }
 
 func (c *Controller) fetchNodesAddrs(nodeSelector labels.Selector) ([]string, []string, error) {
@@ -1002,8 +987,7 @@ func (c *Controller) fetchNodesAddrs(nodeSelector labels.Selector) ([]string, []
 }
 
 func fetchCIDRAddrs(networks []v1alpha1.CIDR) ([]string, []string) {
-	v4Addresses := make([]string, 0, len(networks))
-	v6Addresses := make([]string, 0, len(networks))
+	var v4Addresses, v6Addresses []string
 
 	for _, network := range networks {
 		if _, _, err := net.ParseCIDR(string(network)); err != nil {

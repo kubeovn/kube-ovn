@@ -14,6 +14,7 @@ import (
 	"time"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -356,6 +357,8 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 }
 
 func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, intIPs, extIPs []string, subnetName string, snat bool) {
+	ginkgo.GinkgoHelper()
+
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
@@ -494,7 +497,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	annotations, err := routes.ToAnnotations()
 	framework.ExpectNoError(err)
 	attachmentNetworkName := fmt.Sprintf("%s/%s", namespaceName, nadName)
-	annotations[util.AttachmentNetworkAnnotation] = attachmentNetworkName
+	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
 	port := strconv.Itoa(8000 + rand.IntN(1000))
 	args := []string{"netexec", "--http-port", port}
 	svrPod := framework.MakePrivilegedPod(namespaceName, svrPodName, nil, annotations, framework.AgnhostImage, nil, args)

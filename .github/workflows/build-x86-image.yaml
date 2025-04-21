@@ -21,10 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  KIND_VERSION: v0.25.0
-  GOLANGCI_LINT_VERSION: 'v1.62.2'
-  HELM_VERSION: v3.16.3
-  SUBMARINER_VERSION: '0.19.1'
+  KIND_VERSION: v0.27.0
+  GOLANGCI_LINT_VERSION: 'v2.1.1'
+  HELM_VERSION: v3.17.3
+  SUBMARINER_VERSION: '0.19.3'
 
 jobs:
   build-kube-ovn-base:
@@ -218,7 +218,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.30.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
@@ -278,6 +278,10 @@ jobs:
                 goldflags="all=$(kube::version::ldflags) -s -w"
                 echo "Building $bin@$version from source..."
                 $GO_INSTALL -ldflags="${goldflags}" k8s.io/kubernetes/cmd/kubectl
+                echo "COPY $bin /$f" >> "$dockerfile"
+                ;;
+              gobgp)
+                $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$bin
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               *)
@@ -534,7 +538,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -730,7 +734,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -897,7 +901,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1083,7 +1087,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1276,7 +1280,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1433,7 +1437,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1538,7 +1542,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1588,7 +1592,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1636,7 +1640,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1686,7 +1690,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1778,7 +1782,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1921,7 +1925,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1991,7 +1995,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2035,6 +2039,74 @@ jobs:
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
+  talos-installation-test:
+    name: Talos Installation Test
+    needs: build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:
+          - overlay
+          - underlay
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Install talosctl
+        run: curl -sL https://talos.dev/install | sh
+
+      - name: Install KVM and libvirt
+        run: |
+          sudo apt update
+          sudo apt install qemu-kvm libvirt-daemon-system
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create Talos cluster
+        run: |
+          pipx install jinjanator
+          make talos-init-${{ matrix.ip-family }}
+          kubectl describe node
+
+      - name: Install Kube-OVN
+        id: install
+        run: |
+          make talos-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+          kubectl -n kube-system rollout status ds/kube-ovn-pinger
+          kubectl -n kube-system rollout status deploy/coredns
+          kubectl get pod -o wide -A
+          kubectl get endpointslice -A
+          kubectl get subnet -o wide
+          if [ "${{ matrix.mode }}" = "underlay" ]; then
+            kubectl get provider-network -o wide
+            kubectl get vlan -o wide
+          fi
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts || make check-kube-ovn-pod-restarts
+
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
     needs:
@@ -2064,7 +2136,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4.2.0
+      - uses: azure/setup-helm@v4.3.0
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -2117,7 +2189,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2272,7 +2344,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2372,7 +2444,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2492,7 +2564,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2532,41 +2604,41 @@ jobs:
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
-          kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.yaml
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-events.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && steps.e2e.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
+          path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
@@ -2666,7 +2738,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2809,7 +2881,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2952,7 +3024,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3094,7 +3166,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3140,6 +3212,151 @@ jobs:
           name: kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log
           path: kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log.tar.gz
 
+
+  kube-ovn-underlay-metallb-e2e:
+    name: OVN METALLB E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v5
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn
+
+      - name: Load images
+        run: docker load -i kube-ovn.tar
+
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-metallb-pool-from-underlay
+
+      - name: Run Ovn Metallb and Kube-OVN Combine E2E
+        id: kube-ovn-underlay-metallb-e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: make kube-ovn-underlay-metallb-e2e
+
+      - name: Collect k8s events
+        if: failure() && ( steps.ovn-metallb-e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kube-ovn-underlay-metallb-e2e-events.yaml
+          tar zcf kube-ovn-underlay-metallb-e2e-events.tar.gz kube-ovn-underlay-metallb-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-underlay-metallb-e2e-events
+          path: kube-ovn-underlay-metallb-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kube-ovn-underlay-metallb-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-underlay-metallb-e2e-audit-log
+          path: kube-ovn-underlay-metallb-e2e-audit-log.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-underlay-metallb-e2e-ko-log
+          path: kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
   push:
     name: Push Images
     needs:
@@ -3149,6 +3366,7 @@ jobs:
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
       - kube-ovn-ipsec-e2e
+      - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
@@ -3158,6 +3376,7 @@ jobs:
       - underlay-logical-gateway-installation-test
       - chart-test
       - installation-compatibility-test
+      - talos-installation-test
       - no-ovn-lb-test
       - no-np-test
       - cilium-chaining-e2e

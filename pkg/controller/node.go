@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -35,38 +34,32 @@ func (e *ErrChassisNotFound) Error() string {
 	return fmt.Sprintf("chassis %s not found for node %s", e.Chassis, e.Node)
 }
 
-func (c *Controller) enqueueAddNode(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueAddNode(obj any) {
+	key := cache.MetaObjectToName(obj.(*v1.Node)).String()
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 }
 
 func nodeReady(node *v1.Node) bool {
-	for _, con := range node.Status.Conditions {
-		if con.Type == v1.NodeReady && con.Status == v1.ConditionTrue {
-			return true
+	var ready, networkUnavailable bool
+	for _, c := range node.Status.Conditions {
+		switch c.Type {
+		case v1.NodeReady:
+			ready = c.Status == v1.ConditionTrue
+		case v1.NodeNetworkUnavailable:
+			networkUnavailable = c.Status == v1.ConditionTrue
 		}
 	}
-	return false
+	return ready && !networkUnavailable
 }
 
-func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
 		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.V(3).Infof("enqueue add node %s", key)
 			c.addNodeQueue.Add(key)
@@ -77,16 +70,11 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueDeleteNode(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+func (c *Controller) enqueueDeleteNode(obj any) {
+	node := obj.(*v1.Node)
+	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue delete node %s", key)
-
-	c.deletingNodeObjMap.Store(key, obj.(*v1.Node))
+	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 }
 
@@ -165,7 +153,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	for _, ip := range strings.Split(ipStr, ",") {
+	for ip := range strings.SplitSeq(ipStr, ",") {
 		if ip == "" {
 			continue
 		}
@@ -219,7 +207,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	annotations := map[string]any{
+	patch := util.KVPatch{
 		util.IPAddressAnnotation:     ipStr,
 		util.MacAddressAnnotation:    mac,
 		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
@@ -228,7 +216,7 @@ func (c *Controller) handleAddNode(key string) error {
 		util.AllocatedAnnotation:     "true",
 		util.PortNameAnnotation:      portName,
 	}
-	if err = util.UpdateNodeAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, annotations); err != nil {
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
 		return err
 	}
@@ -244,10 +232,6 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
 			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
-			return err
-		}
-		if err = c.addPolicyRouteForDistributedSubnet(subnet, node.Name, v4IP, v6IP); err != nil {
-			klog.Errorf("failed to add policy router for node %s and subnet %s: %v", node.Name, subnet.Name, err)
 			return err
 		}
 		// policy route for overlay distributed subnet should be reconciled when node ip changed
@@ -333,14 +317,10 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if len(node.Annotations) != 0 {
-			newNode := node.DeepCopy()
-			delete(newNode.Annotations, excludeAnno)
-			delete(newNode.Annotations, interfaceAnno)
-			if len(newNode.Annotations) != len(node.Annotations) {
-				if _, err = c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), newNode, metav1.UpdateOptions{}); err != nil {
-					klog.Errorf("failed to update node %s: %v", node.Name, err)
-					return err
-				}
+			patch := util.KVPatch{excludeAnno: nil, interfaceAnno: nil}
+			if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+				klog.Errorf("failed to patch node %s: %v", node.Name, err)
+				return err
 			}
 		}
 
@@ -536,6 +516,12 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	for _, cachedSubnet := range subnets {
+		if cachedSubnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+			// we need to reconcile ovn route for subnets with distributed gateway mode,
+			// since the informer node cache may not be synced before the subnet reconcile triggered by node addition
+			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
+			continue
+		}
 		subnet := cachedSubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
@@ -548,52 +534,53 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) CheckGatewayReady() {
-	if err := c.checkGatewayReady(); err != nil {
-		klog.Errorf("failed to check gateway ready %v", err)
+func (c *Controller) checkSubnetGateway() {
+	if err := c.checkSubnetGatewayNode(); err != nil {
+		klog.Errorf("failed to check subnet gateway node: %v", err)
 	}
 }
 
-func (c *Controller) checkGatewayReady() error {
-	klog.V(3).Infoln("start to check gateway status")
+func (c *Controller) checkSubnetGatewayNode() error {
+	klog.V(3).Infoln("start to check subnet gateway node")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
+		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
 
 	for _, subnet := range subnetList {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+		if (subnet.Spec.Vlan != "" && (subnet.Spec.U2OInterconnection || !subnet.Spec.LogicalGateway)) ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
+			subnet.Name == c.config.NodeSwitch ||
 			subnet.Spec.GatewayNode == "" ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
 			!subnet.Spec.EnableEcmp {
 			continue
 		}
+		gwNodes := strings.Split(subnet.Spec.GatewayNode, ",")
+		if len(gwNodes) < 2 {
+			continue
+		}
 
-		for _, node := range nodes {
-			ipStr := node.Annotations[util.IPAddressAnnotation]
-			for _, ip := range strings.Split(ipStr, ",") {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+			nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
+			if err != nil {
+				klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
+				continue
+			}
+			for _, node := range nodes {
+				ipStr := node.Annotations[util.IPAddressAnnotation]
+				for ip := range strings.SplitSeq(ipStr, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
 						continue
 					}
 
-					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-						break
-					}
-					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-						break
-					}
-
+					exist := nameIPMap[node.Name] == ip
 					if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 						pinger, err := goping.NewPinger(ip)
 						if err != nil {
@@ -606,10 +593,9 @@ func (c *Controller) checkGatewayReady() error {
 						pinger.Timeout = time.Duration(count) * time.Second
 						pinger.Interval = 1 * time.Second
 
-						success := false
-
+						var pingSucceeded bool
 						pinger.OnRecv = func(_ *goping.Packet) {
-							success = true
+							pingSucceeded = true
 							pinger.Stop()
 						}
 						if err = pinger.Run(); err != nil {
@@ -617,13 +603,16 @@ func (c *Controller) checkGatewayReady() error {
 							return err
 						}
 
-						if !nodeReady(node) {
-							success = false
-						}
-
-						if !success {
+						nodeIsReady := nodeReady(node)
+						if !pingSucceeded || !nodeIsReady {
 							if exist {
-								klog.Warningf("failed to ping ovn0 %s or node %s is not ready, delete ecmp policy route for node", ip, node.Name)
+								if !pingSucceeded {
+									klog.Warningf("failed to ping ovn0 ip %s on node %s", ip, node.Name)
+								}
+								if !nodeIsReady {
+									klog.Warningf("node %s is not ready", node.Name)
+								}
+								klog.Warningf("delete ecmp policy route for node %s ip %s", node.Name, ip)
 								nextHops.Remove(ip)
 								delete(nameIPMap, node.Name)
 								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
@@ -633,7 +622,7 @@ func (c *Controller) checkGatewayReady() error {
 								}
 							}
 						} else {
-							klog.V(3).Infof("succeed to ping gw %s", ip)
+							klog.V(3).Infof("succeeded to ping ovn0 ip %s on node %s", ip, node.Name)
 							if !exist {
 								nextHops.Add(ip)
 								if nameIPMap == nil {
@@ -648,7 +637,7 @@ func (c *Controller) checkGatewayReady() error {
 							}
 						}
 					} else if exist {
-						klog.Infof("subnet %s gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
+						klog.Infof("subnet %s gateway nodes does not contain node %s, delete policy route for node ip %s", subnet.Name, node.Name, ip)
 						nextHops.Remove(ip)
 						delete(nameIPMap, node.Name)
 						klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
@@ -666,19 +655,19 @@ func (c *Controller) checkGatewayReady() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	chassises, err := c.OVNSbClient.GetAllChassisByHost(node.Name)
-	if err != nil {
-		klog.Errorf("failed to list chassis %v", err)
-		return err
+	var err error
+	if _, err := c.OVNSbClient.GetChassisByHost(node.Name); err == nil {
+		return nil
 	}
-	if len(*chassises) > 1 {
+	klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
+	if errors.Is(err, ovs.ErrOneNodeMultiChassis) {
 		klog.Warningf("node %s has multiple chassis", node.Name)
 		if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
 			klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
 			return err
 		}
 	}
-	return nil
+	return err
 }
 
 func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
@@ -842,8 +831,8 @@ func (c *Controller) addNodeGatewayStaticRoute() error {
 		}
 	}
 	dstCidr := "0.0.0.0/0,::/0"
-	for _, cidrBlock := range strings.Split(dstCidr, ",") {
-		for _, nextHop := range strings.Split(c.config.NodeSwitchGateway, ",") {
+	for cidrBlock := range strings.SplitSeq(dstCidr, ",") {
+		for nextHop := range strings.SplitSeq(c.config.NodeSwitchGateway, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
@@ -880,18 +869,6 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int) (*strset.Set
 		return strset.New(), map[string]string{}, nil
 	}
 	return strset.New(policyList[0].Nexthops...), policyList[0].ExternalIDs, nil
-}
-
-func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int) (bool, error) {
-	_, nameIPMap, err := c.getPolicyRouteParas(cidr, priority)
-	if err != nil {
-		klog.Errorf("failed to get policy route paras, %v", err)
-		return false, err
-	}
-	if nodeIP, ok := nameIPMap[nodeName]; ok && nodeIP == nexthop {
-		return true, nil
-	}
-	return false, nil
 }
 
 func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
@@ -934,7 +911,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			if subnet.Spec.EnableEcmp {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
@@ -994,17 +971,9 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 				continue
 			}
 
-			for _, nextHop := range strings.Split(nodeIP, ",") {
-				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			for nextHop := range strings.SplitSeq(nodeIP, ",") {
+				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
-						continue
-					}
-					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-						continue
-					}
-					if exist {
 						continue
 					}
 
@@ -1013,6 +982,10 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
 					}
+					if nameIPMap[nodeName] == nextHop {
+						continue
+					}
+
 					nextHops.Add(nextHop)
 					if nameIPMap == nil {
 						nameIPMap = make(map[string]string, 1)
@@ -1044,12 +1017,6 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		return c.deletePolicyRouteForLocalDNSCacheOnNode(nodeName, af)
 	}
 
-	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
-	if err != nil {
-		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
-		return err
-	}
-
 	var (
 		externalIDs = map[string]string{
 			"vendor":          util.CniTypeName,
@@ -1064,6 +1031,12 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 	matches := strset.NewWithSize(len(dnsIPs))
 	for _, ip := range dnsIPs {
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
+	}
+
+	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		return err
 	}
 
 	for _, policy := range policies {

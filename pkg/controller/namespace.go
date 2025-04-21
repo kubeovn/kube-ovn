@@ -1,8 +1,7 @@
 package controller
 
 import (
-	"context"
-	"reflect"
+	"maps"
 	"slices"
 	"strings"
 
@@ -11,30 +10,24 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddNamespace(obj interface{}) {
+func (c *Controller) enqueueAddNamespace(obj any) {
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
 		}
 	}
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+
+	key := cache.MetaObjectToName(obj.(*v1.Namespace)).String()
 	c.addNamespaceQueue.Add(key)
 }
 
-func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
+func (c *Controller) enqueueDeleteNamespace(obj any) {
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -45,14 +38,14 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 	}
 }
 
-func (c *Controller) enqueueUpdateNamespace(oldObj, newObj interface{}) {
+func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 	oldNs := oldObj.(*v1.Namespace)
 	newNs := newObj.(*v1.Namespace)
 	if oldNs.ResourceVersion == newNs.ResourceVersion {
 		return
 	}
 
-	if !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
+	if !maps.Equal(oldNs.Labels, newNs.Labels) {
 		if c.config.EnableNP {
 			oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 			newNp := c.namespaceMatchNetworkPolicies(newNs)
@@ -100,14 +93,14 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 	namespace := cachedNs.DeepCopy()
 
-	var ls, ippool string
-	var lss, cidrs, excludeIps []string
+	var ls string
+	var lss, cidrs, excludeIps, ipPoolsAnnotation []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
-	ippools, err := c.ippoolLister.List(labels.Everything())
+	ipPoolList, err := c.ippoolLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ippools: %v", err)
 		return err
@@ -115,13 +108,10 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	// check if subnet bind ns
 	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == key {
-				lss = append(lss, s.Name)
-				cidrs = append(cidrs, s.Spec.CIDRBlock)
-				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
-				break
-			}
+		if slices.Contains(s.Spec.Namespaces, key) {
+			lss = append(lss, s.Name)
+			cidrs = append(cidrs, s.Spec.CIDRBlock)
+			excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
 		}
 
 		// bind subnet with namespaceLabelSeletcor which select the namespace
@@ -147,19 +137,25 @@ func (c *Controller) handleAddNamespace(key string) error {
 		if s.Spec.Vpc != "" && s.Spec.Vpc != c.config.ClusterRouter {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
 			if err != nil {
-				klog.Errorf("failed to get custom vpc %v", err)
+				if errors.IsNotFound(err) {
+					// this subnet is broken (it references a non-existent VPC) - we just ignore it.
+					klog.Errorf("vpc %q is not found. Ignoring subnet %q: %v", s.Spec.Vpc, s.Name, err)
+					break
+				}
+				klog.Errorf("failed to get vpc %q: %v", s.Spec.Vpc, err)
 				return err
 			}
 			if s.Name == vpc.Spec.DefaultSubnet {
-				lss = []string{s.Name}
+				if slices.Contains(vpc.Spec.Namespaces, key) && key != metav1.NamespaceSystem {
+					lss = append([]string{s.Name}, lss...)
+				}
 			}
 		}
 	}
 
-	for _, p := range ippools {
-		if slices.Contains(p.Spec.Namespaces, key) {
-			ippool = p.Name
-			break
+	for _, ipPool := range ipPoolList {
+		if slices.Contains(ipPool.Spec.Namespaces, key) {
+			ipPoolsAnnotation = append(ipPoolsAnnotation, ipPool.Name)
 		}
 	}
 
@@ -197,32 +193,26 @@ func (c *Controller) handleAddNamespace(key string) error {
 		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
-	if len(namespace.Annotations) == 0 {
-		namespace.Annotations = map[string]string{}
-	} else if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
+	if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
 		namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
 		namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") &&
-		namespace.Annotations[util.IPPoolAnnotation] == ippool {
+		namespace.Annotations[util.IPPoolAnnotation] == strings.Join(ipPoolsAnnotation, ",") {
 		return nil
 	}
 
-	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
-	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
-	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
+	patch := util.KVPatch{
+		util.LogicalSwitchAnnotation: strings.Join(lss, ","),
+		util.CidrAnnotation:          strings.Join(cidrs, ";"),
+		util.ExcludeIpsAnnotation:    strings.Join(excludeIps, ";"),
+	}
 
-	if ippool == "" {
-		delete(namespace.Annotations, util.IPPoolAnnotation)
+	if len(ipPoolsAnnotation) == 0 {
+		patch[util.IPPoolAnnotation] = nil
 	} else {
-		namespace.Annotations[util.IPPoolAnnotation] = ippool
+		patch[util.IPPoolAnnotation] = strings.Join(ipPoolsAnnotation, ",")
 	}
 
-	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Namespaces(), key, patch); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err

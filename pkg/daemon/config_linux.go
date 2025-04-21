@@ -41,7 +41,7 @@ func getIfaceByIP(ip string) (string, int, error) {
 			return "", 0, fmt.Errorf("failed to get addresses of link %s: %w", link.Attrs().Name, err)
 		}
 		for _, addr := range addrs {
-			if addr.IPNet.Contains(net.ParseIP(ip)) && addr.IP.String() == ip {
+			if addr.Contains(net.ParseIP(ip)) && addr.IP.String() == ip {
 				return link.Attrs().Name, link.Attrs().MTU, nil
 			}
 		}

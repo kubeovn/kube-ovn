@@ -26,7 +26,7 @@ func (c *OVNNbClient) CreateDHCPOptions(lsName, cidr, options string) error {
 		return err
 	}
 
-	op, err := c.ovsDbClient.Create(dhcpOpt)
+	op, err := c.Create(dhcpOpt)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %w", cidr, options, err)
@@ -175,7 +175,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 }
 
 // updateDHCPOptions update dhcp options
-func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...interface{}) error {
+func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...any) error {
 	if dhcpOpt == nil {
 		return errors.New("dhcp_options is nil")
 	}
@@ -291,11 +291,6 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 	}
 
 	return dhcpOptList, nil
-}
-
-func (c *OVNNbClient) DHCPOptionsExists(lsName, protocol string) (bool, error) {
-	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
-	return dhcpOpt != nil, err
 }
 
 // newDHCPOptions return dhcp options with basic information

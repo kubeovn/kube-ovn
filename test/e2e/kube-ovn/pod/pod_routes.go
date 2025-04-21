@@ -58,7 +58,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		annotations := map[string]string{
 			util.NorthGatewayAnnotation: northGateway,
 		}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 
@@ -113,7 +113,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Generating routes")
 		routes := make([]request.Route, 0, 4)
-		for _, s := range strings.Split(cidr, ",") {
+		for s := range strings.SplitSeq(cidr, ",") {
 			gw, err := util.LastIP(s)
 			framework.ExpectNoError(err)
 			var dst string
@@ -137,7 +137,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		annotations := map[string]string{
 			util.RoutesAnnotation: string(buff),
 		}
-		cmd := []string{"sh", "-c", "sleep infinity"}
+		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		pod = podClient.CreateSync(pod)
 

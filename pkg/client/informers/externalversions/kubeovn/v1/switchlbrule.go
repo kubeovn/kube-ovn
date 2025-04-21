@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // SwitchLBRules.
 type SwitchLBRuleInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.SwitchLBRuleLister
+	Lister() kubeovnv1.SwitchLBRuleLister
 }
 
 type switchLBRuleInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredSwitchLBRuleInformer(client versioned.Interface, resyncPeriod ti
 				return client.KubeovnV1().SwitchLBRules().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.SwitchLBRule{},
+		&apiskubeovnv1.SwitchLBRule{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *switchLBRuleInformer) defaultInformer(client versioned.Interface, resyn
 }
 
 func (f *switchLBRuleInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.SwitchLBRule{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.SwitchLBRule{}, f.defaultInformer)
 }
 
-func (f *switchLBRuleInformer) Lister() v1.SwitchLBRuleLister {
-	return v1.NewSwitchLBRuleLister(f.Informer().GetIndexer())
+func (f *switchLBRuleInformer) Lister() kubeovnv1.SwitchLBRuleLister {
+	return kubeovnv1.NewSwitchLBRuleLister(f.Informer().GetIndexer())
 }

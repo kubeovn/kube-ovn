@@ -19,13 +19,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // SecurityGroups.
 type SecurityGroupInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.SecurityGroupLister
+	Lister() kubeovnv1.SecurityGroupLister
 }
 
 type securityGroupInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredSecurityGroupInformer(client versioned.Interface, resyncPeriod t
 				return client.KubeovnV1().SecurityGroups().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.SecurityGroup{},
+		&apiskubeovnv1.SecurityGroup{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *securityGroupInformer) defaultInformer(client versioned.Interface, resy
 }
 
 func (f *securityGroupInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.SecurityGroup{}, f.defaultInformer)
+	return f.factory.InformerFor(&apiskubeovnv1.SecurityGroup{}, f.defaultInformer)
 }
 
-func (f *securityGroupInformer) Lister() v1.SecurityGroupLister {
-	return v1.NewSecurityGroupLister(f.Informer().GetIndexer())
+func (f *securityGroupInformer) Lister() kubeovnv1.SecurityGroupLister {
+	return kubeovnv1.NewSecurityGroupLister(f.Informer().GetIndexer())
 }

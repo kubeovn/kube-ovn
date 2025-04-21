@@ -2,12 +2,12 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,9 +28,6 @@ import (
 
 func main() {
 	defer klog.Flush()
-
-	daemon.InitMetrics()
-	metrics.InitKlogMetrics()
 
 	config := daemon.ParseFlags()
 	klog.Info(versions.String())
@@ -83,7 +80,7 @@ func main() {
 	stopCh := ctx.Done()
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
-			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
+			listOption.FieldSelector = "spec.nodeName=" + config.NodeName
 			listOption.AllowWatchBookmarks = true
 		}))
 	nodeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
@@ -102,24 +99,25 @@ func main() {
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
 
-	addr := util.GetDefaultListenAddr()
+	addrs := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
-		go func() {
-			connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
-			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
-				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
-			}
-		}()
-
-		go func() {
-			connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
-			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
-				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
-			}
-		}()
+		for _, addr := range addrs {
+			go func() {
+				connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
+				if err := util.TCPConnectivityListen(connListenaddr); err != nil {
+					util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
+				}
+			}()
+			go func() {
+				connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
+				if err := util.UDPConnectivityListen(connListenaddr); err != nil {
+					util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
+				}
+			}()
+		}
 	}
 
-	servePprofInMetricsServer := config.EnableMetrics && addr == "0.0.0.0"
+	servePprofInMetricsServer := config.EnableMetrics && slices.Contains(addrs, "0.0.0.0")
 	if config.EnablePprof && !servePprofInMetricsServer {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -149,10 +147,44 @@ func main() {
 		}()
 	}
 
-	listenAddr := util.JoinHostPort(addr, config.PprofPort)
-	if err = metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
-		util.LogFatalAndExit(err, "failed to run metrics server")
+	if config.EnableMetrics {
+		daemon.InitMetrics()
+		metrics.InitKlogMetrics()
+		for _, addr := range addrs {
+			listenAddr := util.JoinHostPort(addr, config.PprofPort)
+			go func() {
+				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
+					util.LogFatalAndExit(err, "failed to run metrics server")
+				}
+			}()
+		}
+	} else {
+		klog.Info("metrics server is disabled")
+		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addrs[0]), Port: int(config.PprofPort)})
+		if err != nil {
+			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(addrs[0], config.PprofPort))
+		}
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
+		mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
+		mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
+		svr := manager.Server{
+			Name: "health-check",
+			Server: &http.Server{
+				Handler:           mux,
+				MaxHeaderBytes:    1 << 20,
+				IdleTimeout:       90 * time.Second,
+				ReadHeaderTimeout: 32 * time.Second,
+			},
+			Listener: listerner,
+		}
+		go func() {
+			if err = svr.Start(ctx); err != nil {
+				util.LogFatalAndExit(err, "failed to run health check server")
+			}
+		}()
 	}
+
 	<-stopCh
 }
 
@@ -196,9 +228,9 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		klog.Error(err)
 		return err
 	}
-	annotations := map[string]any{util.ChassisAnnotation: chassesName}
-	if err = util.UpdateNodeAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, annotations); err != nil {
-		klog.Errorf("failed to update chassis annotation of node %s: %v", cfg.NodeName, err)
+	patch := util.KVPatch{util.ChassisAnnotation: chassesName}
+	if err = util.PatchAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, patch); err != nil {
+		klog.Errorf("failed to patch chassis annotation of node %s: %v", cfg.NodeName, err)
 		return err
 	}
 

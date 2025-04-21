@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"sort"
@@ -48,7 +49,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 		lb.SelectionFields = []string{selectFields}
 	}
 
-	if ops, err = c.ovsDbClient.Create(lb); err != nil {
+	if ops, err = c.Create(lb); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating load balancer %s: %w", lbName, err)
 	}
@@ -61,7 +62,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 }
 
 // UpdateLoadBalancer update load balancer
-func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interface{}) error {
+func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) error {
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -215,15 +216,48 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	}
 
 	options = make(map[string]string, len(lb.Options)+1)
-	for k, v := range lb.Options {
-		options[k] = v
-	}
+	maps.Copy(options, lb.Options)
 	options["affinity_timeout"] = value
 
 	lb.Options = options
 	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerPreferLocalBackend sets the LB's affinity timeout in seconds
+func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if preferLocalBackend {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["prefer_local_backend"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["prefer_local_backend"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set prefer local backend of lb %s to %s: %w", lbName, value, err)
 	}
 	return nil
 }
