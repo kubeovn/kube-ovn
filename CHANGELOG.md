@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.13.10 (2025-04-21)
+
+ * [421eb1ccd](https://github.com/kubeovn/kube-ovn/commit/421eb1ccd048433e78ed159104351a346d6c968c) release v1.13.10
+ * [84c796490](https://github.com/kubeovn/kube-ovn/commit/84c7964905cde010fc23bbe8c366fecc75d6cc2b) controller: ensure ovn route policy is reconciled after node is initialized (#5166)
+ * [d913b72ef](https://github.com/kubeovn/kube-ovn/commit/d913b72ef0038480ffe620253e99b11d4a278174) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.13.9 (2025-04-18)
 
  * [4afa60ad8](https://github.com/kubeovn/kube-ovn/commit/4afa60ad8260e7d029c6505af953e13ad667ba36) release v1.13.9
