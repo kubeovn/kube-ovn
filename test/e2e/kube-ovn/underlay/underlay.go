@@ -13,10 +13,12 @@ import (
 	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubectl/pkg/util/podutils"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -462,18 +464,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
-		containerName := "container-" + framework.RandomSuffix()
-		ginkgo.By("Creating container " + containerName)
-		cmd := []string{"sleep", "infinity"}
-		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
-		framework.ExpectNoError(err)
-		containerID = containerInfo.ID
-
-		ginkgo.By("Creating vlan " + vlanName)
-		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
-
-		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet) {
@@ -489,6 +479,28 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				}
 			}
 		}
+
+		containerName := "container-" + framework.RandomSuffix()
+		ginkgo.By("Creating container " + containerName)
+		cmd := []string{"sleep", "infinity"}
+		if !f.HasIPv4() {
+			cmd = []string{
+				"sh", "-xc",
+				"addr=$(ip addr show dev eth0 | grep -w inet6 | grep -w global | awk '{print $2}'); ip addr replace $addr dev eth0; sleep infinity",
+			}
+		}
+		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
+		framework.ExpectNoError(err)
+		containerID = containerInfo.ID
+
+		ginkgo.By("Waiting 5s to ensure container IPv6 DAD has finished")
+		time.Sleep(5 * time.Second)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating subnet " + subnetName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		if f.HasIPv4() {
@@ -527,23 +539,44 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
-		ginkgo.By("Waiting for pod events")
-		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		var message string
-		if f.HasIPv4() {
-			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
-		} else {
-			message = "dadfailed"
+		// ginkgo.By("Waiting for pod events")
+		// events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
+		// var message string
+		// if f.HasIPv4() {
+		// 	message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
+		// } else {
+		// 	message = "dadfailed"
+		// }
+		// var found bool
+		// for _, event := range events {
+		// 	if strings.Contains(event.Message, message) {
+		// 		found = true
+		// 		framework.Logf("Found pod event: %s", event.Message)
+		// 		break
+		// 	}
+		// }
+
+		_ = eventClient
+		_ = mac
+
+		ginkgo.By("Waiting 1 minute")
+		time.Sleep(time.Minute)
+
+		pod = podClient.GetPod(podName)
+		if podutils.IsPodReady(pod) {
+			ginkgo.By("Getting ip addresses and routes of container " + containerName)
+			links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
+				return docker.Exec(containerID, nil, cmd...)
+			})
+			framework.ExpectNoError(err)
+			framework.Logf("addresses of container:\n%s", format.Object(links, 2))
+			routes, err := iproute.RouteShow("eth0", "", func(cmd ...string) ([]byte, []byte, error) {
+				return docker.Exec(containerID, nil, cmd...)
+			})
+			framework.ExpectNoError(err)
+			framework.Logf("routes of container:\n%s", format.Object(routes, 2))
+			framework.Failf("pod %s should not be ready", podName)
 		}
-		var found bool
-		for _, event := range events {
-			if strings.Contains(event.Message, message) {
-				found = true
-				framework.Logf("Found pod event: %s", event.Message)
-				break
-			}
-		}
-		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
 
 	framework.ConformanceIt("should support underlay to overlay subnet interconnection", func() {

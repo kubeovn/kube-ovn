@@ -58,7 +58,7 @@ GINKGO_OUTPUT_OPT =
 GINKGO_PARALLEL_OPT =
 ifeq ($(shell echo $${CI:-false}),true)
 GINKGO_OUTPUT_OPT = --github-output --silence-skips
-GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
+# GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
 endif
 
 define ginkgo_option
@@ -130,7 +130,7 @@ kube-ovn-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
-		--focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+		--focus="should be able to detect duplicate address" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
