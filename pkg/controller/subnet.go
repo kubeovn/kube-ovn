@@ -1425,6 +1425,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 			return err
 		}
 		if node.Annotations[util.AllocatedAnnotation] != "true" {
+			klog.Warningf("node %s has not been successfully initialized, skip adding policy route for subnet %s", node.Name, subnet.Name)
 			continue
 		}
 		nodeIP, err := getNodeTunlIP(node)
