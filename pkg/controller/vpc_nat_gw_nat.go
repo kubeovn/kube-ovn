@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -930,8 +929,7 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
+	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)
