@@ -165,7 +165,10 @@ func (c *Controller) handleAddNode(key string) error {
 
 		// Clean up potentially existing logical switch ports to avoid leftover issues from previous failed configurations
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-			klog.Warningf("failed to delete logical switch port %s: %v", portName, err)
+			klog.Errorf("failed to delete logical switch port %s: %v", portName, err) // Log as error
+			// Consider adding retry logic here
+		} else {
+			klog.Infof("deleted logical switch port %s", portName)
 		}
 	}
 
