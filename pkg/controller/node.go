@@ -167,9 +167,8 @@ func (c *Controller) handleAddNode(key string) error {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 			klog.Errorf("failed to delete stale logical switch port %s: %v", portName, err)
 			return err
-		} else {
-			klog.Infof("deleted stale logical switch port %s", portName)
 		}
+		klog.Infof("deleted stale logical switch port %s", portName)
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
