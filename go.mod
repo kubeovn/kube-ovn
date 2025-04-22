@@ -48,7 +48,7 @@ require (
 	golang.org/x/sys v0.32.0
 	golang.org/x/time v0.11.0
 	golang.org/x/tools v0.32.0
-	google.golang.org/grpc v1.71.1
+	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.0
 	k8s.io/api v0.32.3
