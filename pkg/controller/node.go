@@ -146,6 +146,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	var v4IP, v6IP, mac string
+
 	portName := util.NodeLspName(key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		macStr := node.Annotations[util.MacAddressAnnotation]
@@ -160,6 +161,11 @@ func (c *Controller) handleAddNode(key string) error {
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err
+		}
+
+		// Clean up potentially existing logical switch ports to avoid leftover issues from previous failed configurations
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+			klog.Warningf("failed to delete logical switch port %s: %v", portName, err)
 		}
 	}
 
