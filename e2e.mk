@@ -248,6 +248,15 @@ kube-ovn-ipsec-e2e:
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
 
+.PHONY: kube-ovn-ipsec-e2e-cert-mgr
+kube-ovn-ipsec-e2e-cert-mgr:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec-cert-mgr
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN ./test/e2e/ipsec-cert-mgr/ipsec-cert-mgr.test -- $(TEST_BIN_ARGS)
+
 .PHONY: kube-ovn-anp-e2e
 kube-ovn-anp-e2e:
 	KUBECONFIG=$(KUBECONFIG) ./test/anp/conformance.sh

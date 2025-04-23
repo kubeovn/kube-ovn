@@ -87,5 +87,9 @@ rules:
       - ""
     resources:
       - "secrets"
+    resourceNames:
+      - "ovn-ipsec-ca"
     verbs:
       - "get"
+      - "list"
+      - "watch"
