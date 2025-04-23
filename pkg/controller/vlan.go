@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strconv"
 
@@ -60,49 +59,9 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if c.config.EnableCheckVlanConflict {
-		// todo: check if vlan conflict in webhook
-		conflict := false
-		// check if vlan conflict with node tunnel vlan
-		nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
+		err := c.checkVlanConflict(vlan)
 		if err != nil {
-			klog.Errorf("failed to list nodes: %v", err)
-			return err
-		}
-		nodeTunVlanIDs := strset.New()
-		for _, node := range nodes {
-			id := node.Labels[util.TunnelVlanIDLabel]
-			nodeTunVlanIDs.Add(id)
-			if id == strconv.Itoa(vlan.Spec.ID) {
-				conflict = true
-				err = fmt.Errorf("vlan %s id %s conflict with node %s tunnel nic vlan", vlan.Name, id, node.Name)
-				klog.Error(err)
-			}
-		}
-
-		if nodeTunVlanIDs.Size() > 1 {
-			klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunVlanIDs.List())
-		}
-		// check if new vlan conflict with other vlans
-		vlans, err := c.vlansLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list vlans: %v", err)
-			return err
-		}
-		for _, vlan := range vlans {
-			if vlan.Spec.ID == cachedVlan.Spec.ID && vlan.Name != cachedVlan.Name {
-				conflict = true
-				err = fmt.Errorf("new vlan %s conflict with vlan %s", cachedVlan.Name, vlan.Name)
-				klog.Error(err)
-				continue
-			}
-		}
-		if conflict {
-			vlan.Status.Conflict = true
-			vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
-			if err != nil {
-				klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
-				return err
-			}
+			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
@@ -145,6 +104,54 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
+	// todo: check if vlan conflict in webhook
+	// 1. check if vlan conflict with node tunnel vlan
+	nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+	nodeTunVlanIDs := strset.New()
+	conflict := false
+	for _, node := range nodes {
+		id := node.Labels[util.TunnelVlanIDLabel]
+		if id != "" {
+			nodeTunVlanIDs.Add(id)
+			if id == strconv.Itoa(vlan.Spec.ID) {
+				conflict = true
+				klog.Errorf("vlan %s id %s conflict with node %s tunnel nic vlan", vlan.Name, id, node.Name)
+			}
+		}
+	}
+	if nodeTunVlanIDs.Size() > 1 {
+		klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunVlanIDs.List())
+	}
+
+	// 2. check if new vlan conflict with other vlans
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlans: %v", err)
+		return err
+	}
+	for _, v := range vlans {
+		if v.Spec.ID == v.Spec.ID && v.Name != v.Name {
+			conflict = true
+			klog.Error("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+		}
+	}
+	if conflict {
+		vlan.Status.Conflict = true
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
+			return err
+		}
+		return err
+	}
 	return nil
 }
 
