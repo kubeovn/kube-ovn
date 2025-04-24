@@ -47,7 +47,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/f9e97031b56ab5747b5d73629198331a6daacdfd.patch | git apply && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/625825ef939e543128b6cf48eee9eb79f805713c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch | git apply && \
     # add support for conditionally skipping conntrack
     curl -s https://github.com/kubeovn/ovn/commit/44229317de74d1e97f7499b371a86c015be6b7a6.patch | git apply && \
     # northd: skip conntrack when access node local dns ip
