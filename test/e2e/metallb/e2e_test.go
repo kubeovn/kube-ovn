@@ -377,6 +377,11 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	}
 
 	ginkgo.By("checking vip node is same as backend pod's host")
+	// the arp may not be stable when just started
+	cmd = strings.Fields(fmt.Sprintf("arping -c 5 %s", targetIP))
+	output, _, err = docker.Exec(containerID, nil, cmd...)
+	framework.Logf("arping result is %s ", output)
+
 	cmd = strings.Fields(fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/hostname", net.JoinHostPort(targetIP, targetPort)))
 	output, _, err = docker.Exec(containerID, nil, cmd...)
 	framework.ExpectNoError(err)
