@@ -1981,6 +1981,11 @@ jobs:
     needs: build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version:
+          - v1.29.14
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -2010,7 +2015,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          k8s_version: v1.29.10
+          k8s_version: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
           make kind-init
