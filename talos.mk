@@ -24,7 +24,7 @@ TALOS_LIBVIRT_DOMAIN_XML ?= talos/libvirt-domain.xml
 TALOS_CLUSTER_NAME ?= talos
 TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
-TALOS_K8S_VERSION ?= 1.32.3
+TALOS_K8S_VERSION ?= 1.32.4
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT ?= 1
@@ -62,6 +62,9 @@ talos-registry-mirror:
 talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
+		if echo "$$image" | grep -q kube; then \
+			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
+		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \
 			echo ">>> Pulling $$image..."; \
 			docker pull $$image; \
@@ -261,6 +264,15 @@ talos-install: talos-install-prepare
 
 .PHONY: talos-install-%
 talos-install-%: talos-install-overlay-$*
+
+.PHONY: talos-install-ipv4
+talos-install-ipv4: talos-install-overlay-ipv4
+
+.PHONY: talos-install-ipv6
+talos-install-ipv6: talos-install-overlay-ipv6
+
+.PHONY: talos-install-dual
+talos-install-dual: talos-install-overlay-dual
 
 .PHONY: talos-install-dev
 talos-install-dev: talos-install-dev-ipv4
