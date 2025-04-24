@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.13.11 (2025-04-24)
+
+ * [147139f54](https://github.com/kubeovn/kube-ovn/commit/147139f54ef9bf739b834037e692223babe75a96) release v1.13.11
+ * [a5775069e](https://github.com/kubeovn/kube-ovn/commit/a5775069e94afc944c97670f77a83fe060554078) Makefile: fix installing dev version on talos (#5179)
+ * [d65e05601](https://github.com/kubeovn/kube-ovn/commit/d65e05601bdebd2f0f79f461f616dcffade8e01d) ci: ignore cni-server restarts caused by join network check failure (#5177)
+ * [5349262c6](https://github.com/kubeovn/kube-ovn/commit/5349262c68e9b0926d746bd9a5c153d1b4f77310) ci: add tests for underlay installation on Talos (#5147)
+ * [1be8e788a](https://github.com/kubeovn/kube-ovn/commit/1be8e788a4c1bc3ef766a74ccc889159fe9b3513) ci: fix kvm/libvirt installation (#5150)
+ * [7f1cdd275](https://github.com/kubeovn/kube-ovn/commit/7f1cdd275eb71a973899633c04cbf03855d43da2) ci: add installation test for Talos Linux (#5109)
+ * [38597cd96](https://github.com/kubeovn/kube-ovn/commit/38597cd96f25607d6aa7494ba0a75ecf25cfa76f) bump k8s to v1.31.8 (#5176)
+ * [c71c4459a](https://github.com/kubeovn/kube-ovn/commit/c71c4459ad9d39267b28f9fd0cdd9e519f46121d) base: update ovn patch (#5175)
+ * [807ec7d74](https://github.com/kubeovn/kube-ovn/commit/807ec7d7403b7d668f3449b03b6574f0d6841e7c) remove capability SYS_MODULE (#4744)
+ * [8e97319b8](https://github.com/kubeovn/kube-ovn/commit/8e97319b87640a8afb22b50a19de4f6931573648) fix: clean up garbage lsp (#5172)
+ * [e1e0a6b1c](https://github.com/kubeovn/kube-ovn/commit/e1e0a6b1c072d84ffb73b4d5737b8e8bfc5a1a8a) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.13.10 (2025-04-21)
 
  * [421eb1ccd](https://github.com/kubeovn/kube-ovn/commit/421eb1ccd048433e78ed159104351a346d6c968c) release v1.13.10
