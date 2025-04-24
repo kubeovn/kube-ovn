@@ -77,6 +77,7 @@ type Configuration struct {
 	OVSVsctlConcurrency       int32
 	SetVxlanTxOff             bool
 	EnableCheckVlanConflict   bool
+	EnableDelConflictVlanIF   bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -122,6 +123,7 @@ func ParseFlags() *Configuration {
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argEnableCheckVlanConflict   = pflag.Bool("enable-check-vlan-conflict", true, "Whether to enable check vlan conflict")
+		argEnableDelConflictVlanIF   = pflag.Bool("enable-del-conflict-vlan-interface", true, "Whether to enable delete vlan conflict interface")
 	)
 
 	// mute info log for ipset lib
@@ -183,6 +185,7 @@ func ParseFlags() *Configuration {
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		EnableCheckVlanConflict:   *argEnableCheckVlanConflict,
+		EnableDelConflictVlanIF:   *argEnableDelConflictVlanIF,
 	}
 	return config
 }

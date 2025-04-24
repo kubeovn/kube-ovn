@@ -117,11 +117,12 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	}
 	nodeTunVlanIDs := strset.New()
 	conflict := false
+	myVlanID := strconv.Itoa(vlan.Spec.ID)
 	for _, node := range nodes {
 		id := node.Labels[util.TunnelVlanIDLabel]
 		if id != "" {
 			nodeTunVlanIDs.Add(id)
-			if id == strconv.Itoa(vlan.Spec.ID) {
+			if id == myVlanID {
 				conflict = true
 				klog.Errorf("vlan %s id %s conflict with node %s tunnel nic vlan", vlan.Name, id, node.Name)
 			}
@@ -140,7 +141,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	for _, v := range vlans {
 		if v.Spec.ID == v.Spec.ID && v.Name != v.Name {
 			conflict = true
-			klog.Error("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+			klog.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
 		}
 	}
 	if conflict {

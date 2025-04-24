@@ -829,8 +829,8 @@ func (c *Controller) loopCheckVlanConflict() {
 		klog.Error(err)
 	}
 	// check if ovs local vlan conflict with os local vlan
-	klog.Infof("get os vlan ids for provider network nic: %v", pnNics)
-	osLocalVlans := strset.New()
+	klog.Infof("get os exist vlan ids for provider network nic: %v", pnNics)
+	osLocalVlans := make(map[string]string)
 	links, err := netlink.LinkList()
 	if err != nil {
 		klog.Errorf("failed to list links: %v", err)
@@ -841,27 +841,42 @@ func (c *Controller) loopCheckVlanConflict() {
 			// check if slave interface master is provider network nic
 			masterLink, err := netlink.LinkByIndex(link.Attrs().MasterIndex)
 			if err == nil && pnNics.Has(masterLink.Attrs().Name) {
+				// get os master nic its subinterface vlan id
 				id, err := c.config.getVLAN(link.Attrs().Name)
 				if err != nil {
 					klog.Errorf("failed to get vlan id for %s: %v", link.Attrs().Name, err)
 					continue
 				}
 				if id > 0 {
-					osLocalVlans.Add(strconv.Itoa(id))
+					osLocalVlans[strconv.Itoa(id)] = link.Attrs().Name
 				}
 			}
 		}
 	}
-	if osLocalVlans.IsEmpty() {
+	// no os local vlans
+	if len(osLocalVlans) == 0 {
 		return
 	}
-	klog.Infof("get os local vlan ids: %v", osLocalVlans)
-	for _, vlan := range osLocalVlans.List() {
-		if ovsLocalVlans.Has(vlan) {
-			pnName := ovsVlanPNs[vlan]
-			err := fmt.Errorf("vlan %s conflict with os vlan on node %s in providernetwork %s", vlan, c.config.NodeName, pnName)
+
+	klog.Info("check if ovs local vlans conflict with os local vlans")
+	for vlanID, nicName := range osLocalVlans {
+		if ovsLocalVlans.Has(vlanID) {
+			pnName := ovsVlanPNs[vlanID]
+			err := fmt.Errorf("vlan %s conflict with os vlan on node %s in provider network %s", vlanID, c.config.NodeName, pnName)
 			c.recordProviderNetworkErr(pnName, err.Error())
-			continue
+			if !c.config.EnableDelConflictVlanIF {
+				continue
+			}
+			// auto del os conflict vlan iface
+			link, err := netlink.LinkByName(nicName)
+			if err != nil {
+				klog.Errorf("failed to get link by name %s", nicName)
+				continue
+			}
+			klog.Infof("delete os local vlan %s interface %s", vlanID, nicName)
+			if err := netlink.LinkDel(link); err != nil {
+				klog.Errorf("failed to delete os local vlan %s interface %s: %v", vlanID, nicName, err)
+			}
 		}
 	}
 }
