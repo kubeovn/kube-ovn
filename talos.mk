@@ -62,6 +62,9 @@ talos-registry-mirror:
 talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
+		if echo "$$image" | grep -q kube; then \
+			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
+		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \
 			echo ">>> Pulling $$image..."; \
 			docker pull $$image; \
@@ -261,6 +264,15 @@ talos-install: talos-install-prepare
 
 .PHONY: talos-install-%
 talos-install-%: talos-install-overlay-$*
+
+.PHONY: talos-install-ipv4
+talos-install-ipv4: talos-install-overlay-ipv4
+
+.PHONY: talos-install-ipv6
+talos-install-ipv6: talos-install-overlay-ipv6
+
+.PHONY: talos-install-dual
+talos-install-dual: talos-install-overlay-dual
 
 .PHONY: talos-install-dev
 talos-install-dev: talos-install-dev-ipv4
