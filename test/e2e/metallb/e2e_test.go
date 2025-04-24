@@ -380,6 +380,9 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	// the arp may not be stable when just started
 	cmd = strings.Fields(fmt.Sprintf("arping -c 5 %s", targetIP))
 	output, _, err = docker.Exec(containerID, nil, cmd...)
+	if err != nil {
+		framework.Failf("arping failed: %v, output: %s", err, output)
+	}
 	framework.Logf("arping result is %s ", output)
 
 	cmd = strings.Fields(fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/hostname", net.JoinHostPort(targetIP, targetPort)))
