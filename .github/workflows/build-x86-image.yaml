@@ -1978,8 +1978,8 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-  installation-compatibility-test:
-    name: Installation Compatibility Test
+  kubernetes-compatibility-test:
+    name: Kubernetes Compatibility Test
     needs: build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -2034,14 +2034,85 @@ jobs:
         if: failure() && steps.install.conclusion == 'failure'
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kubernetes-compatibility-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v4
         if: failure() && steps.install.conclusion == 'failure'
         with:
-          name: installation-compatibility-test-ko-log
-          path: installation-compatibility-test-ko-log.tar.gz
+          name: kubernetes-compatibility-test-ko-log
+          path: kubernetes-compatibility-test-ko-log.tar.gz
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
+  kube-proxy-compatibility-test:
+    name: Kube-proxy Compatibility Test
+    needs: build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+          - iptables
+          - nftables
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Install kind
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-${{ matrix.mode }}-${{ matrix.ip-family }}
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-${{ matrix.ip-family }}
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.install.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-proxy-compatibility-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.install.conclusion == 'failure'
+        with:
+          name: kube-proxy-compatibility-test-ko-log
+          path: kube-proxy-compatibility-test-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -3382,7 +3453,8 @@ jobs:
       - lb-svc-e2e
       - underlay-logical-gateway-installation-test
       - chart-test
-      - installation-compatibility-test
+      - kubernetes-compatibility-test
+      - kube-proxy-compatibility-test
       - talos-installation-test
       - no-ovn-lb-test
       - no-np-test
