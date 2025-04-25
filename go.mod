@@ -11,7 +11,7 @@ require (
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containerd/containerd v1.7.27
 	github.com/containernetworking/cni v1.3.0
-	github.com/containernetworking/plugins v1.6.2
+	github.com/containernetworking/plugins v1.7.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20241021184246-19e734367535
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.2
