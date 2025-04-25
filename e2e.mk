@@ -17,6 +17,9 @@ K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 
 GINKGO_PARALLEL_MULTIPLIER = $(shell echo $${GINKGO_PARALLEL_MULTIPLIER:-2})
 
+VER_MAJOR = 999
+VER_MINOR = 999
+
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
 VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)
