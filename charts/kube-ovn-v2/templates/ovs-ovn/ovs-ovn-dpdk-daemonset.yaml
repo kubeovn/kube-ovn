@@ -1,0 +1,175 @@
+{{- if .Values.ovsOvn.dpdkHybrid.enabled }}
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: ovs-ovn-dpdk
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.ovsOvn.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ovsOvn.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovnOvs-dpdk
+      app.kubernetes.io/part-of: kube-ovn
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      {{- with .Values.ovsOvn.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-ovs
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.ovsOvn.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # Legacy labels
+        app: ovs-dpdk
+        component: network
+        type: infra
+    spec:
+      tolerations:
+      - operator: Exists
+      priorityClassName: system-node-critical
+      serviceAccountName: ovn-ovs
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: openvswitch
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}-dpdk
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/kube-ovn/start-ovs-dpdk-v2.sh"]
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.enableSsl }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "{{- .Values.features.HW_OFFLOAD }}"
+            - name: TUNNEL_TYPE
+              value: "{{- .Values.networking.tunnelType }}"
+            - name: DPDK_TUNNEL_IFACE
+              value: "{{- .Values.agent.dpdkTunnelInterface }}"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: "{{ .Values.masterNodes| default (include "kubeovn.nodeIPs" .) }}"
+            - name: OVN_REMOTE_PROBE_INTERVAL
+              value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
+            - name: OVN_REMOTE_OPENFLOW_INTERVAL
+              value: "{{ .Values.ovsOvn.ovnRemoteOpenflowInterval }}"
+          volumeMounts:
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
+            - name: shareddir
+              mountPath: {{ .Values.kubelet.directory }}/pods
+            - name: hugepage
+              mountPath: /dev/hugepages
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+              mountPropagation: HostToContainer
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-healthcheck.sh
+            periodSeconds: 5
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-healthcheck.sh
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 45
+          {{- with .Values.ovsOvn.dpdkHybrid.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: "userspace"
+      volumes:
+        - name: host-config-ovs
+          hostPath:
+            path: /opt/ovs-config
+            type: DirectoryOrCreate
+        - name: shareddir
+          hostPath:
+            path: {{ .Values.kubelet.directory }}/pods
+            type: ''
+        - name: hugepage
+          emptyDir:
+            medium: HugePages
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-config-openvswitch
+          hostPath:
+            path: {{ .Values.ovsOvn.ovsDirectory }}
+        - name: host-config-ovn
+          hostPath:
+            path: {{ .Values.ovsOvn.ovnDirectory }}
+        - name: host-log-ovs
+          hostPath:
+            path: {{ .Values.logging.directory }}/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: {{ .Values.logging.directory }}/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+{{- end }}

@@ -1,0 +1,181 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-monitor
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.monitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.monitor.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-monitor
+      app.kubernetes.io/part-of: kube-ovn
+  template:
+    metadata:
+      {{- with .Values.monitor.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-monitor
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.monitor.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # Legacy labels
+        app: kube-ovn-monitor
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kube-ovn-monitor
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      serviceAccountName: kube-ovn-app
+      hostNetwork: true
+      initContainers:
+        - name: hostpath-init
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: kube-ovn-monitor
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/kube-ovn/start-ovn-monitor.sh"]
+          args:
+          - --secure-serving={{- .Values.features.SECURE_SERVING }}
+          - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file_max_size=200
+          - --enable-metrics={{- .Values.networking.enableMetrics }}
+          securityContext:
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.enableSsl }}"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+          {{- with .Values.monitor.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+              readOnly: true
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            successThreshold: 1
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            successThreshold: 1
+            httpGet:
+              port: 10661
+              path: /livez
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            timeoutSeconds: 5
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        {{- with splitList "=" .Values.masterNodesLabel}}
+        {{ index . 0 }}: "{{ if eq (len .) 2 }}{{ index . 1 }}{{ end }}"
+        {{- end }}
+      volumes:
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-config-ovn
+          hostPath:
+            path: {{ .Values.ovsOvn.ovnDirectory }}
+        - name: host-log-ovn
+          hostPath:
+            path: {{ .Values.logging.directory }}/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+        - name: kube-ovn-log
+          hostPath:
+            path: {{ .Values.logging.directory }}/kube-ovn

@@ -1,0 +1,26 @@
+{{- if .Values.validatingWebhook.enabled }}
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-webhook
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.validatingWebhook.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.validatingWebhook.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: kube-ovn-webhook
+      protocol: TCP
+      port: 443
+      targetPort: 8443
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kube-ovn-webhook
+    app.kubernetes.io/part-of: kube-ovn
+  sessionAffinity: None
+{{- end }}
