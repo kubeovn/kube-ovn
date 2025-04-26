@@ -22,9 +22,9 @@ concurrency:
 
 env:
   KIND_VERSION: v0.27.0
-  GOLANGCI_LINT_VERSION: 'v2.1.1'
+  GOLANGCI_LINT_VERSION: 'v2.1.2'
   HELM_VERSION: v3.17.3
-  SUBMARINER_VERSION: '0.19.3'
+  SUBMARINER_VERSION: '0.19.4'
 
 jobs:
   build-kube-ovn-base:
@@ -236,6 +236,7 @@ jobs:
           CGO_ENABLED: "0"
           GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
+          go mod tidy
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
           export GOBIN=`dirname "$dockerfile"`
@@ -255,7 +256,6 @@ jobs:
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               kubectl)
-                go mod tidy
                 version=`go list -m -f '{{.Version}}' k8s.io/kubernetes`
                 mod_dir=`go list -m -f '{{.Dir}}' k8s.io/kubernetes`
                 source "$mod_dir/hack/lib/util.sh"
@@ -281,6 +281,8 @@ jobs:
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               gobgp)
+                version=`go list -m -f '{{.Version}}' github.com/osrg/gobgp/v3`
+                echo "Building $bin@$version from source..."
                 $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$bin
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
