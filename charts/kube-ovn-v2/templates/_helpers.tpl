@@ -61,13 +61,8 @@ Get IP-addresses of master nodes
 {{- $nodes := lookup "v1" "Node" "" "" -}}
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
-  {{- $label := splitList "=" $.Values.masterNodesLabel}}
-  {{- $key := index $label 0 }}
-  {{- $val := "" }}
-  {{- if eq (len $label) 2 }}
-  {{- $val = index $label 1 }}
-  {{- end }}
-  {{- if eq (index $node.metadata.labels $key) $val -}}
+  {{- range $label, $value := $.Values.masterNodesLabels }}
+  {{- if eq (index $node.metadata.labels $label) $value -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
@@ -75,6 +70,7 @@ Get IP-addresses of master nodes
       {{- end -}}
     {{- end -}}
   {{- end -}}
+  {{- end }}
 {{- end -}}
 {{ join "," $ips }}
 {{- end -}}
@@ -83,8 +79,16 @@ Get IP-addresses of master nodes
 Number of master nodes
 */}}
 {{- define "kubeovn.nodeCount" -}}
-  {{- len (split "," (.Values.masterNodes| default (include "kubeovn.nodeIPs" .))) }}
+  {{- len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .))) }}
 {{- end -}}
+
+{{/*
+Get IPs of master nodes from values
+*/}}
+{{- define "kubeovn.masterNodes" -}}
+  {{- join "," .Values.masterNodes }}
+{{- end -}}
+
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}

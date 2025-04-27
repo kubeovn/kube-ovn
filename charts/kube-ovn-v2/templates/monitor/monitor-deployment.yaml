@@ -156,9 +156,7 @@ spec:
             timeoutSeconds: 5
       nodeSelector:
         kubernetes.io/os: "linux"
-        {{- with splitList "=" .Values.masterNodesLabel}}
-        {{ index . 0 }}: "{{ if eq (len .) 2 }}{{ index . 1 }}{{ end }}"
-        {{- end }}
+        {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
       volumes:
         - name: host-run-ovn
           hostPath:

@@ -33,11 +33,16 @@ fullnameOverride: ""
 namespace: kube-system
 
 # -- Comma-separated list of IPs for each master node.
+# If not specified, fallback to auto-identifying masters based on "masterNodesLabels"
 # @section -- Global parameters
-masterNodes: ""
+masterNodes: []
 # -- Label used to auto-identify masters.
+# Any node that has any of these labels will be considered a master node.
+# Note: This feature uses Helm "lookup" function, which is not compatible with tools such as ArgoCD.
 # @section -- Global parameters
-masterNodesLabel: "kube-ovn/role=master"
+masterNodesLabels:
+  kube-ovn/role: master
+  # node-role.kubernetes.io/control-plane: ""
 
 # -- General configuration of the network created by Kube-OVN.
 # @section -- Network parameters of the CNI

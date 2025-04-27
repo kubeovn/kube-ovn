@@ -185,7 +185,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: "{{ .Values.masterNodes| default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
             - name: POD_IP
               valueFrom:
                 fieldRef:

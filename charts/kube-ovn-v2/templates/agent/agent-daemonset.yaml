@@ -202,7 +202,7 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
-        {{- if .Values.func.ENABLE_OVN_IPSEC }}
+        {{- if .Values.features.ENABLE_OVN_IPSEC }}
           - mountPath: /etc/ovs_ipsec_keys
             name: ovs-ipsec-keys
         {{- end }}

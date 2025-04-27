@@ -71,7 +71,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: "{{ .Values.masterNodes| default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
