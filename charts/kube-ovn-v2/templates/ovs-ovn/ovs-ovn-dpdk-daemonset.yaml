@@ -61,7 +61,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             - name: HW_OFFLOAD
-              value: "{{- .Values.features.HW_OFFLOAD }}"
+              value: "{{- .Values.features.enableHardwareOffload }}"
             - name: TUNNEL_TYPE
               value: "{{- .Values.networking.tunnelType }}"
             - name: DPDK_TUNNEL_IFACE

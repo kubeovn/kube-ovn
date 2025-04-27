@@ -82,6 +82,12 @@ networking:
       # -- IPv6 gateway.
       # @section -- Network parameters of the CNI
       v6: "fd00:10:16::1"
+    # -- Enable default gateway checks
+    # @section -- Network parameters of the CNI
+    enableGatewayChecks: true
+    # -- Enable logical gateways
+    # @section -- Network parameters of the CNI
+    enableLogicalGateways: false
   # -- Configuration for the service subnet.
   # If .networking.stack is set to IPv4, only the .v4 key is used.
   # If .networking.stack is set to IPv6, only the .v6 key is used.
@@ -170,28 +176,53 @@ networking:
 # -- Features of Kube-OVN we wish to enable/disable.
 # @section -- Opt-in/out Features
 features:
-  ENABLE_LB: true
-  ENABLE_NP: true
-  ENABLE_EXTERNAL_VPC: true
-  HW_OFFLOAD: false
-  ENABLE_LB_SVC: false
-  ENABLE_KEEP_VM_IP: true
+  # -- Enable Kube-OVN loadbalancers
+  # @section -- Opt-in/out Features
+  enableLoadbalancer: true
+  # -- Enable Kube-OVN network policies
+  # @section -- Opt-in/out Features
+  enableNetworkPolicies: true
+  # -- Enable external VPCs
+  # @section -- Opt-in/out Features
+  enableExternalVpcs: true
+  # -- Enable hardware offloads
+  # @section -- Opt-in/out Features
+  enableHardwareOffload: false
+  # -- Enable Kube-OVN loadbalancer services
+  # @section -- Opt-in/out Features
+  enableLoadbalancerService: false
+  # -- Enable persistent VM IPs
+  # @section -- Opt-in/out Features
+  enableKeepVmIps: true
+  # -- Enable secure serving
+  # @section -- Opt-in/out Features
+  enableSecureServing: false
+  # -- Enable underlay to overlay interconnections
+  # @section -- Opt-in/out Features
+  enableU2OInterconnections: false
+  # -- Enable TProxy
+  # @section -- Opt-in/out Features
+  enableTproxy: false
+  # -- Enable OVN interconnections
+  # @section -- Opt-in/out Features
+  enableOvnInterconnections: false
+  # -- Enable NAT gateways
+  # @section -- Opt-in/out Features
+  enableNatGateways: true
+  # -- Enable IPSEC
+  # @section -- Opt-in/out Features
+  enableOvnIpsec: false
+  # -- Enable optimized live migrations for VMs
+  # @section -- Opt-in/out Features
+  enableLiveMigrationOptimization: true
+
+  ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
-  CHECK_GATEWAY: true
-  LOGICAL_GATEWAY: false
-  ENABLE_BIND_LOCAL_IP: true
-  SECURE_SERVING: false
-  U2O_INTERCONNECTION: false
-  ENABLE_TPROXY: false
-  ENABLE_IC: false
-  ENABLE_NAT_GW: true
-  ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
-  ENABLE_LIVE_MIGRATION_OPTIMIZE: true
   ENABLE_OVN_LB_PREFER_LOCAL: false
 
 # -- CNI binary/configuration injected on the nodes.

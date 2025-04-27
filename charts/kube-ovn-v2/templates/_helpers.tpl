@@ -137,7 +137,7 @@ Get IPs of master nodes from values
 {{- end -}}
 
 {{- define "kubeovn.runAsUser" -}}
-  {{- if $.Values.features.ENABLE_OVN_IPSEC -}}
+  {{- if $.Values.features.enableOvnIpsec -}}
     0
   {{- else -}}
     65534

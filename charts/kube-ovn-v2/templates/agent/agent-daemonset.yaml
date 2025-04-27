@@ -125,10 +125,10 @@ spec:
           - --log_file_max_size=200
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --kubelet-dir={{ .Values.kubelet.directory }}
-          - --enable-tproxy={{ .Values.features.ENABLE_TPROXY }}
+          - --enable-tproxy={{ .Values.features.enableTproxy }}
           - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
-          - --secure-serving={{- .Values.features.SECURE_SERVING }}
-          - --enable-ovn-ipsec={{- .Values.features.ENABLE_OVN_IPSEC }}
+          - --secure-serving={{- .Values.features.enableSecureServing }}
+          - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
         securityContext:
           runAsGroup: 0
           runAsUser: 0
@@ -202,7 +202,7 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
-        {{- if .Values.features.ENABLE_OVN_IPSEC }}
+        {{- if .Values.features.enableOvnIpsec }}
           - mountPath: /etc/ovs_ipsec_keys
             name: ovs-ipsec-keys
         {{- end }}
@@ -213,7 +213,7 @@ spec:
           httpGet:
             port: 10665
             path: /readyz
-            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
           timeoutSeconds: 5
         livenessProbe:
           failureThreshold: 3
@@ -223,7 +223,7 @@ spec:
           httpGet:
             port: 10665
             path: /readyz
-            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
           timeoutSeconds: 5
         {{- with .Values.agent.resources }}
         resources:
@@ -282,7 +282,7 @@ spec:
           hostPath:
             path: {{ .Values.cni.toolingDirectory }}
         {{- end }}
-        {{- if .Values.features.ENABLE_OVN_IPSEC }}
+        {{- if .Values.features.enableOvnIpsec }}
           - name: ovs-ipsec-keys
             hostPath:
               path: {{ .Values.ovsOvn.ovsDirectory }}

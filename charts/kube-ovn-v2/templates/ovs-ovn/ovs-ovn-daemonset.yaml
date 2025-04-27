@@ -132,7 +132,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: HW_OFFLOAD
-              value: "{{- .Values.features.HW_OFFLOAD }}"
+              value: "{{- .Values.features.enableHardwareOffload }}"
             - name: TUNNEL_TYPE
               value: "{{- .Values.networking.tunnelType }}"
             - name: KUBE_NODE_NAME

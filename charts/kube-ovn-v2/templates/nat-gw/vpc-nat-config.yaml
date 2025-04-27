@@ -22,4 +22,4 @@ metadata:
   name: ovn-vpc-nat-gw-config
   namespace: {{ .Values.namespace }}
 data:
-  enable-vpc-nat-gw: "{{ .Values.features.ENABLE_NAT_GW }}"
+  enable-vpc-nat-gw: "{{ .Values.features.enableNatGateways }}"

@@ -1,4 +1,4 @@
-{{- if .Values.features.ENABLE_IC }}
+{{- if .Values.features.enableOvnInterconnections }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:

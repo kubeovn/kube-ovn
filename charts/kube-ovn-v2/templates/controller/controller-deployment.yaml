@@ -104,9 +104,9 @@ spec:
           {{- else if eq .Values.networking.stack "IPv6" -}}
           {{ .Values.networking.pods.gateways.v6 }}
           {{- end }}
-          - --default-gateway-check={{- .Values.features.CHECK_GATEWAY }}
-          - --default-logical-gateway={{- .Values.features.LOGICAL_GATEWAY }}
-          - --default-u2o-interconnection={{- .Values.features.U2O_INTERCONNECTION }}
+          - --default-gateway-check={{- .Values.networking.pods.enableGatewayChecks }}
+          - --default-logical-gateway={{- .Values.networking.pods.enableLogicalGateways }}
+          - --default-u2o-interconnection={{- .Values.features.enableU2OInterconnections }}
           - --default-exclude-ips={{- .Values.networking.excludeIps }}
           - --cluster-router={{ .Values.networking.defaultVpcName }}
           - --node-switch={{ .Values.networking.join.subnetName }}
@@ -135,10 +135,10 @@ spec:
           - --ls-dnat-mod-dl-dst={{- .Values.features.LS_DNAT_MOD_DL_DST }}
           - --ls-ct-skip-dst-lport-ips={{- .Values.features.LS_CT_SKIP_DST_LPORT_IPS }}
           - --pod-nic-type={{- .Values.networking.podNicType }}
-          - --enable-lb={{- .Values.features.ENABLE_LB }}
-          - --enable-np={{- .Values.features.ENABLE_NP }}
+          - --enable-lb={{- .Values.features.enableLoadbalancer }}
+          - --enable-np={{- .Values.features.enableNetworkPolicies }}
           - --enable-eip-snat={{- .Values.networking.enableEipSnat }}
-          - --enable-external-vpc={{- .Values.features.ENABLE_EXTERNAL_VPC }}
+          - --enable-external-vpc={{- .Values.features.enableExternalVpcs }}
           - --enable-ecmp={{- .Values.networking.enableEcmp }}
           - --logtostderr=false
           - --alsologtostderr=true
@@ -146,16 +146,16 @@ spec:
           - --inspect-interval={{- .Values.performance.inspectInterval }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
-          - --enable-lb-svc={{- .Values.features.ENABLE_LB_SVC }}
-          - --keep-vm-ip={{- .Values.features.ENABLE_KEEP_VM_IP }}
+          - --enable-lb-svc={{- .Values.features.enableLoadbalancer }}
+          - --keep-vm-ip={{- .Values.features.enableKeepVmIps }}
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
-          - --secure-serving={{- .Values.features.SECURE_SERVING }}
-          - --enable-ovn-ipsec={{- .Values.features.ENABLE_OVN_IPSEC }}
+          - --secure-serving={{- .Values.features.enableSecureServing }}
+          - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
           - --enable-anp={{- .Values.features.ENABLE_ANP }}
           - --ovsdb-con-timeout={{- .Values.features.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
-          - --enable-live-migration-optimize={{- .Values.features.ENABLE_LIVE_MIGRATION_OPTIMIZE }}
+          - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
           - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
           - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           securityContext:
@@ -211,14 +211,14 @@ spec:
             httpGet:
               port: 10660
               path: /readyz
-              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
             periodSeconds: 3
             timeoutSeconds: 5
           livenessProbe:
             httpGet:
               port: 10660
               path: /readyz
-              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.SECURE_SERVING }}'
+              scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
