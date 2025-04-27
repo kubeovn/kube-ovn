@@ -4908,7 +4908,6 @@ spec:
         args:
           - --enable-mirror=$ENABLE_MIRROR
           - --enable-arp-detect-ip-conflict=$ENABLE_ARP_DETECT_IP_CONFLICT
-          - --enable-check-vlan-conflict=true
           - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
