@@ -1,0 +1,35 @@
+# Helm chart for Kube-OVN
+
+{{ template "chart.versionBadge" . }} {{ template "chart.versionBadge" . }}
+
+This is the v2 of the Helm Chart, replacing the first version in the long term.
+Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
+
+## How to install Kube-OVN on Talos Linux
+
+To install Kube-OVN on Talos Linux, declare the **OpenvSwitch** module in the `machine` config of your Talos install:
+
+```yaml
+machine:
+  kernel:
+    modules:
+    - name: openvswitch
+```
+
+Then use the following options to install this chart:
+
+```yaml
+ovsOvn:
+  disableModulesManagement: true
+  ovsDirectory: "/var/lib/openvswitch"
+  ovnDirectory: "/var/lib/ovn"
+cni:
+  mountToolingDirectory: false
+```
+
+## How to regenerate this README
+
+This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs). Launch `helm-docs` while in this folder to regenerate the documented values.
+
+{{ template "chart.valuesSectionHtml" . }}
+

@@ -1,0 +1,23 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-cni
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.agent.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.agent.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    app.kubernetes.io/name: kube-ovn-cni
+    app.kubernetes.io/part-of: kube-ovn
+  ports:
+    - port: {{ .Values.agent.metrics.port }}
+      name: metrics
+  {{- if eq .Values.networking.stack "Dual" }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}

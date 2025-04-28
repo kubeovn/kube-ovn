@@ -1,0 +1,28 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: ovn-sb
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.central.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.central.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: ovn-sb
+      protocol: TCP
+      port: 6642
+      targetPort: 6642
+  type: ClusterIP
+  {{- if eq .Values.networking.stack "Dual" }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}
+  selector:
+    app.kubernetes.io/name: ovn-central
+    app.kubernetes.io/part-of: kube-ovn
+    ovn-sb-leader: "true"
+  sessionAffinity: None

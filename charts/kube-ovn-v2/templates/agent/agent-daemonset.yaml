@@ -1,0 +1,289 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-ovn-cni
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.agent.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.agent.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-cni
+      app.kubernetes.io/part-of: kube-ovn
+  template:
+    metadata:
+      {{- with .Values.agent.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-cni
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.agent.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # Legacy labels
+        app: kube-ovn-cni
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      priorityClassName: system-node-critical
+      serviceAccountName: kube-ovn-cni
+      hostNetwork: true
+      hostPID: true
+      initContainers:
+      - name: hostpath-init
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - sh
+          - -xec
+          - iptables -V
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+              - ALL
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
+        volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
+          - mountPath: /var/run/netns
+            name: host-ns
+            readOnly: false
+          - name: kube-ovn-log
+            mountPath: /var/log/kube-ovn
+      - name: install-cni
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/install-cni.sh
+          - --cni-conf-dir={{ .Values.cni.configDirectory }}
+          - --cni-conf-file={{ .Values.cni.localConfigFile }}
+          - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        volumeMounts:
+          - mountPath: /opt/cni/bin
+            name: cni-bin
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
+          {{- if .Values.cni.mountToolingDirectory }}
+          - mountPath: /usr/local/bin
+            name: local-bin
+          {{- end }}
+      containers:
+      - name: cni-server
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - bash
+          - /kube-ovn/start-cniserver.sh
+        args:
+          - --enable-mirror={{- .Values.agent.mirroring.enabled }}
+          - --mirror-iface={{- .Values.agent.mirroring.interface }}
+          - --node-switch={{ .Values.networking.join.subnetName }}
+          - --encap-checksum=true
+          {{- if eq .Values.networking.networkType "vlan" }}
+          - --iface=
+          {{- else}}
+          - --iface={{- .Values.agent.interface }}
+          {{- end }}
+          - --service-cluster-ip-range=
+          {{- if eq .Values.networking.stack "Dual" -}}
+          {{ .Values.networking.services.cidr.v4 }},{{ .Values.networking.services.cidr.v6 }}
+          {{- else if eq .Values.networking.stack "IPv4" -}}
+          {{ .Values.networking.services.cidr.v4 }}
+          {{- else if eq .Values.networking.stack "IPv6" -}}
+          {{ .Values.networking.services.cidr.v6 }}
+          {{- end }}
+          - --dpdk-tunnel-iface={{- .Values.agent.dpdkTunnelInterface }}
+          - --network-type={{- .Values.networking.tunnelType }}
+          - --default-interface-name={{- .Values.networking.vlan.interfaceName }}
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
+          - --log_file_max_size=200
+          - --enable-metrics={{- .Values.networking.enableMetrics }}
+          - --kubelet-dir={{ .Values.kubelet.directory }}
+          - --enable-tproxy={{ .Values.features.enableTproxy }}
+          - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
+          - --secure-serving={{- .Values.features.enableSecureServing }}
+          - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
+        securityContext:
+          runAsGroup: 0
+          runAsUser: 0
+          privileged: false
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+              - NET_RAW
+              - SYS_ADMIN
+              - CAP_SYS_PTRACE
+              - SYS_NICE
+        env:
+          - name: ENABLE_SSL
+            value: "{{ .Values.networking.enableSsl }}"
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: KUBE_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
+          - name: ENABLE_BIND_LOCAL_IP
+            value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
+        volumeMounts:
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+          - name: host-modules
+            mountPath: /lib/modules
+            readOnly: true
+          - mountPath: /run/xtables.lock
+            name: xtables-lock
+            readOnly: false
+          - name: shared-dir
+            mountPath: {{ .Values.kubelet.directory }}/pods
+          - mountPath: /etc/openvswitch
+            name: systemid
+            readOnly: true
+          - mountPath: /run/openvswitch
+            name: host-run-ovs
+            mountPropagation: HostToContainer
+          - mountPath: /run/ovn
+            name: host-run-ovn
+          - mountPath: /host/var/run/dbus
+            name: host-dbus
+            mountPropagation: HostToContainer
+          - mountPath: /var/run/netns
+            name: host-ns
+            mountPropagation: HostToContainer
+          - mountPath: /var/log/kube-ovn
+            name: kube-ovn-log
+          - mountPath: /var/log/openvswitch
+            name: host-log-ovs
+          - mountPath: /var/log/ovn
+            name: host-log-ovn
+          - mountPath: /etc/localtime
+            name: localtime
+            readOnly: true
+        {{- if .Values.features.enableOvnIpsec }}
+          - mountPath: /etc/ovs_ipsec_keys
+            name: ovs-ipsec-keys
+        {{- end }}
+        readinessProbe:
+          failureThreshold: 3
+          periodSeconds: 7
+          successThreshold: 1
+          httpGet:
+            port: 10665
+            path: /readyz
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
+          timeoutSeconds: 5
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 7
+          successThreshold: 1
+          httpGet:
+            port: 10665
+            path: /readyz
+            scheme: '{{ ternary "HTTPS" "HTTP" .Values.features.enableSecureServing }}'
+          timeoutSeconds: 5
+        {{- with .Values.agent.resources }}
+        resources:
+          {{- toYaml . | trim | nindent 10 }}
+        {{- end }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: usr-local-sbin
+          emptyDir: {}
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
+        - name: shared-dir
+          hostPath:
+            path: {{ .Values.kubelet.directory }}/pods
+        - name: systemid
+          hostPath:
+            path: {{ .Values.ovsOvn.ovsDirectory }}
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: cni-conf
+          hostPath:
+            path: {{ .Values.cni.configDirectory }}
+        - name: cni-bin
+          hostPath:
+            path: {{ .Values.cni.binaryDirectory }}
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
+        - name: host-dbus
+          hostPath:
+            path: /var/run/dbus
+        - name: kube-ovn-log
+          hostPath:
+            path: {{ .Values.logging.directory }}/kube-ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: host-log-ovs
+          hostPath:
+            path: {{ .Values.logging.directory }}/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: {{ .Values.logging.directory }}/ovn
+        {{- if .Values.cni.mountToolingDirectory }}
+        - name: local-bin
+          hostPath:
+            path: {{ .Values.cni.toolingDirectory }}
+        {{- end }}
+        {{- if .Values.features.enableOvnIpsec }}
+          - name: ovs-ipsec-keys
+            hostPath:
+              path: {{ .Values.ovsOvn.ovsDirectory }}
+        {{- end }}

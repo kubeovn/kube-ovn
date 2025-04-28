@@ -1,0 +1,14 @@
+{{- if .Values.apiNad.enabled }}
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ .Values.apiNad.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "kube-ovn",
+      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+      "provider": "{{ tpl .Values.apiNad.provider . }}"
+    }'
+{{- end }}

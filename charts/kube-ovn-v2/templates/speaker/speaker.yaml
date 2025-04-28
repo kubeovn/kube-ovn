@@ -1,0 +1,70 @@
+{{- if .Values.bgpSpeaker.enabled }}
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-speaker
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.bgpSpeaker.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.bgpSpeaker.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-speaker
+      app.kubernetes.io/part-of: kube-ovn
+  template:
+    metadata:
+      {{- with .Values.bgpSpeaker.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-speaker
+        app.kubernetes.io/part-of: kube-ovn
+        {{- with .Values.bgpSpeaker.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kube-ovn-speaker
+                  app.kubernetes.io/part-of: kube-ovn
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-node-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      containers:
+        - name: kube-ovn-speaker
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /kube-ovn/kube-ovn-speaker
+          {{- with .Values.bgpSpeaker.args }}
+          args:
+            {{- toYaml . | trim | nindent 14 }}
+          {{- end }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          {{- with .Values.bgpSpeaker.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+      {{- with .Values.bgpSpeaker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | trim | nindent 8 }}
+      {{- end }}
+{{- end }}
