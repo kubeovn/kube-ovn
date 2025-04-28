@@ -836,19 +836,23 @@ func (c *Controller) loopCheckVlanConflict() {
 		klog.Errorf("failed to list links: %v", err)
 		return
 	}
+	// get all vlan link name
 	for _, link := range links {
-		if link.Attrs().MasterIndex != 0 {
-			// check if slave interface master is provider network nic
-			masterLink, err := netlink.LinkByIndex(link.Attrs().MasterIndex)
-			if err == nil && pnNics.Has(masterLink.Attrs().Name) {
-				// get os master nic its subinterface vlan id
+		if link.Type() != "vlan" {
+			klog.V(3).Infof("link %s not use vlan", link.Attrs().Name)
+			continue
+		}
+		nicName := link.Attrs().Name
+		for _, pnc := range pnNics.List() {
+			if strings.HasPrefix(nicName, pnc) {
+				klog.Infof("provider network %s exist os vlan nic %s", pnc, nicName)
 				id, err := c.config.getVLAN(link.Attrs().Name)
 				if err != nil {
 					klog.Errorf("failed to get vlan id for %s: %v", link.Attrs().Name, err)
 					continue
 				}
 				if id > 0 {
-					osLocalVlans[strconv.Itoa(id)] = link.Attrs().Name
+					osLocalVlans[strconv.Itoa(id)] = nicName
 				}
 			}
 		}
@@ -857,8 +861,7 @@ func (c *Controller) loopCheckVlanConflict() {
 	if len(osLocalVlans) == 0 {
 		return
 	}
-
-	klog.Info("check if ovs local vlans conflict with os local vlans")
+	klog.Infof("check if ovs local vlans %v conflict with os local vlans: %v", ovsLocalVlans, osLocalVlans)
 	for vlanID, nicName := range osLocalVlans {
 		if ovsLocalVlans.Has(vlanID) {
 			pnName := ovsVlanPNs[vlanID]
