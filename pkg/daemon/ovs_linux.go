@@ -821,10 +821,10 @@ func (c *Controller) loopCheckVlanConflict() {
 		}
 	}
 	if ovsLocalVlans.Size() > 0 {
-		klog.Infof("check if local ovs vlans %v conflict with tunnel vlan %d", tunnelVlanID, ovsLocalVlans)
+		klog.Infof("check if local ovs vlans %v conflict with tunnel vlan %d", ovsLocalVlans, tunnelVlanID)
 		if ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
 			// tunnel interface using, so ovs can not use this vlan
-			err := fmt.Errorf("tunnel vlan %d conflict with local ovs vlans %v", tunnelVlanID, ovsLocalVlans)
+			err := fmt.Errorf("local ovs vlans %v conflict with tunnel vlan %d", ovsLocalVlans, tunnelVlanID)
 			klog.Error(err)
 		}
 	}
@@ -865,7 +865,7 @@ func (c *Controller) loopCheckVlanConflict() {
 	for vlanID, nicName := range osLocalVlans {
 		if ovsLocalVlans.Has(vlanID) {
 			pnName := ovsVlanPNs[vlanID]
-			err := fmt.Errorf("vlan %s conflict with os vlan on node %s in provider network %s", vlanID, c.config.NodeName, pnName)
+			err := fmt.Errorf("os local vlan %s conflict with ovs vlan in provider network %s", vlanID, pnName)
 			c.recordProviderNetworkErr(pnName, err.Error())
 			if !c.config.EnableDelConflictVlanIF {
 				continue

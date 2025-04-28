@@ -38,7 +38,7 @@ type VlanStatus struct {
 	// +patchStrategy=merge
 	Subnets []string `json:"subnets,omitempty"`
 
-	Conflict bool `json:"conflicts,omitempty"`
+	Conflict bool `json:"conflict,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
