@@ -291,8 +291,8 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		mtu = iface.MTU
 		config.tunnelIface = iface.Name
 		if config.EnableCheckVlanConflict {
-			// cache the tunnel nic vlan id
 			config.IfaceVlanID, err = config.getVLAN(config.tunnelIface)
+			klog.Infof("tunnel nic %s use vlan id %d", config.tunnelIface, config.IfaceVlanID)
 			if err != nil {
 				klog.Errorf("failed to get vlan id for tunnel iface %s: %v", config.tunnelIface, err)
 				return err
@@ -452,7 +452,7 @@ func (config *Configuration) getVLAN(iface string) (int, error) {
 		return -1, fmt.Errorf("failed to get iface %s: %w", iface, err)
 	}
 	if vlan, ok := link.(*netlink.Vlan); ok {
-		klog.Infof("iface %s vlan id is: %d", iface, vlan.VlanId)
+		klog.V(3).Infof("iface %s vlan id is: %d", iface, vlan.VlanId)
 		return vlan.VlanId, nil
 	}
 	klog.V(3).Infof("iface %s not use vlan", iface)

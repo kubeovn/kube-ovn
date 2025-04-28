@@ -789,7 +789,6 @@ func (c *Controller) loopTunnelCheck() {
 // This method checks the tunnel and ovs vlan id, and record it in the node label
 // kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
 func (c *Controller) loopCheckVlanConflict() {
-	klog.Info("start to check if tunnel vlan conflict with ovs vlan")
 	tunnelVlanID := c.config.IfaceVlanID
 	pns, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil {
@@ -821,15 +820,16 @@ func (c *Controller) loopCheckVlanConflict() {
 			pnNics.Add(pn.Spec.DefaultInterface)
 		}
 	}
-
-	klog.Infof("get ovs local vlan ids: %v", ovsLocalVlans)
-	if tunnelVlanID > 0 && ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
-		// tunnel interface using, so ovs can not use this vlan
-		err := fmt.Errorf("vlan %d conflict with tunnel vlan id", tunnelVlanID)
-		klog.Error(err)
+	if ovsLocalVlans.Size() > 0 {
+		klog.Infof("check if local ovs vlans %v conflict with tunnel vlan %d", tunnelVlanID, ovsLocalVlans)
+		if ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
+			// tunnel interface using, so ovs can not use this vlan
+			err := fmt.Errorf("tunnel vlan %d conflict with local ovs vlans %v", tunnelVlanID, ovsLocalVlans)
+			klog.Error(err)
+		}
 	}
 	// check if ovs local vlan conflict with os local vlan
-	klog.Infof("get os exist vlan ids for provider network nic: %v", pnNics)
+	klog.V(3).Infof("get os local exist vlan ids for provider network nic: %v", pnNics)
 	osLocalVlans := make(map[string]string)
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -845,7 +845,7 @@ func (c *Controller) loopCheckVlanConflict() {
 		nicName := link.Attrs().Name
 		for _, pnc := range pnNics.List() {
 			if strings.HasPrefix(nicName, pnc) {
-				klog.Infof("provider network %s exist os vlan nic %s", pnc, nicName)
+				klog.V(3).Infof("provider network %s exist os vlan nic %s", pnc, nicName)
 				id, err := c.config.getVLAN(link.Attrs().Name)
 				if err != nil {
 					klog.Errorf("failed to get vlan id for %s: %v", link.Attrs().Name, err)
@@ -861,7 +861,7 @@ func (c *Controller) loopCheckVlanConflict() {
 	if len(osLocalVlans) == 0 {
 		return
 	}
-	klog.Infof("check if ovs local vlans %v conflict with os local vlans: %v", ovsLocalVlans, osLocalVlans)
+	klog.Infof("check if local ovs vlans %v conflict with os local vlans: %v", ovsLocalVlans, osLocalVlans)
 	for vlanID, nicName := range osLocalVlans {
 		if ovsLocalVlans.Has(vlanID) {
 			pnName := ovsVlanPNs[vlanID]
