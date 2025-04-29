@@ -172,10 +172,8 @@ check-kube-ovn-pod-restarts:
 	bash hack/ci-check-crash.sh
 
 .PHONY: install-chart
-install-chart: untaint-control-plane
-	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
-	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
+install-chart:
+	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
@@ -229,9 +227,23 @@ upgrade-chart:
 		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
+.PHONY: install-chart-v2
+install-chart-v2:
+	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
+	helm install kubeovn ./charts/kube-ovn-v2 --wait
+
+.PHONY: upgrade-chart-v2
+upgrade-chart-v2:
+	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait
+	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
+
 .PHONY: uninstall
 uninstall:
 	bash dist/images/cleanup.sh
+
+.PHONY: uninstall-chart
+uninstall-chart:
+	helm uninstall kubeovn
 
 .PHONY: kubectl-ko-log
 kubectl-ko-log:

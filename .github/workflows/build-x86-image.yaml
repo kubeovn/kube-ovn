@@ -1573,7 +1573,7 @@ jobs:
         run: make check-kube-ovn-pod-restarts
 
       - name: Uninstall Kube-OVN
-        run: make kind-uninstall-chart
+        run: make uninstall-chart
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test

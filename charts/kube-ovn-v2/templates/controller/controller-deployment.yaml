@@ -92,9 +92,9 @@ spec:
           {{- if eq .Values.networking.stack "Dual" -}}
           {{ .Values.networking.pods.cidr.v4 }},{{ .Values.networking.pods.cidr.v6 }}
           {{- else if eq .Values.networking.stack "IPv4" -}}
-          { .Values.networking.pods.cidr.v4 }}
+          {{ .Values.networking.pods.cidr.v4 }}
           {{- else if eq .Values.networking.stack "IPv6" -}}
-          { .Values.networking.pods.cidr.v6 }}
+          {{ .Values.networking.pods.cidr.v6 }}
           {{- end }}
           - --default-gateway=
           {{- if eq .Values.networking.stack "Dual" -}}

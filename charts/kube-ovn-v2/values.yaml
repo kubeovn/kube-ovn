@@ -32,6 +32,10 @@ fullnameOverride: ""
 # @section -- Global parameters
 namespace: kube-system
 
+# -- Domain used by the cluster.
+# @section -- Global parameters
+clusterDomain: cluster.local
+
 # -- Comma-separated list of IPs for each master node.
 # If not specified, fallback to auto-identifying masters based on "masterNodesLabels"
 # @section -- Global parameters

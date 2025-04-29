@@ -201,11 +201,8 @@ kind-init-bgp-ha: kind-clean-bgp kind-init
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
 
-.PHONY: kind-untaint-control-plane
-kind-untaint-control-plane: untaint-control-plane
-
 .PHONY: kind-install-chart
-kind-install-chart: kind-load-image install-chart
+kind-install-chart: kind-load-image untaint-control-plane install-chart
 
 .PHONY: kind-install-chart-ssl
 kind-install-chart-ssl:
@@ -214,14 +211,16 @@ kind-install-chart-ssl:
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image upgrade-chart
 
-.PHONY: kind-uninstall-chart
-kind-uninstall-chart:
-	helm uninstall kubeovn
+.PHONY: kind-install-chart-v2
+kind-install-chart-v2: kind-load-image untaint-control-plane install-chart-v2
+
+.PHONY: kind-upgrade-chart-v2
+kind-upgrade-chart-v2: kind-load-image upgrade-chart-v2
 
 .PHONY: kind-install
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
-	@$(MAKE) kind-untaint-control-plane
+	@$(MAKE) untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 
@@ -269,7 +268,7 @@ kind-install-ovn-ic-ipv4:
 	@ENABLE_IC=true $(MAKE) kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
-	@$(MAKE) kind-untaint-control-plane
+	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
@@ -300,7 +299,7 @@ kind-install-ovn-ic-ipv6:
 	@ENABLE_IC=true $(MAKE) kind-install-ipv6
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
-	@$(MAKE) kind-untaint-control-plane
+	@$(MAKE) untaint-control-plane
 	sed -e 's/fd00:10:16:/fd00:10:18:/g' \
 		-e 's/fd00:10:96:/fd00:10:98:/g' \
 		-e 's/fd00:100:64:/fd00:100:68:/g' \
@@ -319,7 +318,7 @@ kind-install-ovn-ic-dual:
 	@ENABLE_IC=true $(MAKE) kind-install-dual
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
-	@$(MAKE) kind-untaint-control-plane
+	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
@@ -343,7 +342,7 @@ kind-install-ovn-submariner: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 
 	kubectl config use-context kind-kube-ovn1
-	@$(MAKE) kind-untaint-control-plane
+	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0.0/10.112.0.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
@@ -367,7 +366,7 @@ kind-install-underlay: kind-install-underlay-ipv4
 kind-install-underlay-hairpin: kind-install-underlay-hairpin-ipv4
 
 .PHONY: kind-install-underlay-ipv4
-kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV4_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))"@' \
@@ -379,7 +378,7 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-co
 	kubectl describe no
 
 .PHONY: kind-install-underlay-hairpin-ipv4
-kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV4_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))"@' \
@@ -391,7 +390,7 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-unt
 	kubectl describe no
 
 .PHONY: kind-install-underlay-ipv6
-kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV6_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
@@ -402,7 +401,7 @@ kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-co
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-ipv6
-kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV6_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
@@ -413,7 +412,7 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-unt
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-dual
-kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-dual: kind-disable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV4_SUBNET)),$($(UNDERLAY_NETWORK_IPV6_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY)),$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
@@ -424,7 +423,7 @@ kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-co
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-dual
-kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV4_SUBNET)),$($(UNDERLAY_NETWORK_IPV6_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY)),$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
@@ -442,7 +441,7 @@ kind-install-underlay-u2o-%:
 	@$(MAKE) U2O_INTERCONNECTION=true kind-install-underlay-$*
 
 .PHONY: kind-install-underlay-logical-gateway-dual
-kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
+kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image untaint-control-plane
 	$(call docker_network_info,$(KIND_NETWORK_UNDERLAY),kube-ovn-control-plane)
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$($(UNDERLAY_NETWORK_IPV4_SUBNET)),$($(UNDERLAY_NETWORK_IPV6_SUBNET))"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))9,$($(UNDERLAY_NETWORK_IPV6_GATEWAY))f"@' \

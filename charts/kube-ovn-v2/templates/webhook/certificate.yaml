@@ -14,9 +14,9 @@ metadata:
   {{- end }}
 spec:
   dnsNames:
-    - kube-ovn-webhook.kube-system
-    - kube-ovn-webhook.kube-system.svc
-    - kube-ovn-webhook.kube-system.svc.cluster.local
+    - kube-ovn-webhook.{{ .Values.namespace }}
+    - kube-ovn-webhook.{{ .Values.namespace }}.svc
+    - kube-ovn-webhook.{{ .Values.namespace }}.svc.{{ .Values.clusterDomain }}
   issuerRef:
     kind: Issuer
     name: kube-ovn-webhook-selfsigned-issuer
