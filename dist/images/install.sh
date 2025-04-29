@@ -2995,7 +2995,7 @@ spec:
                   items:
                     type: string
                 conflict:
-                  type: bool
+                  type: boolean
       additionalPrinterColumns:
       - name: ID
         type: string
@@ -3004,7 +3004,7 @@ spec:
         type: string
         jsonPath: .spec.provider
       - name: conflict
-        type: bool
+        type: boolean
         jsonPath: .status.conflict
   scope: Cluster
   names:
