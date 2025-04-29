@@ -51,9 +51,10 @@ type Controller struct {
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
-	podsLister listerv1.PodLister
-	podsSynced cache.InformerSynced
-	podQueue   workqueue.TypedRateLimitingInterface[string]
+	podsLister     listerv1.PodLister
+	podsSynced     cache.InformerSynced
+	updatePodQueue workqueue.TypedRateLimitingInterface[string]
+	deletePodQueue workqueue.TypedRateLimitingInterface[string]
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -112,9 +113,10 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
-		podsLister: podInformer.Lister(),
-		podsSynced: podInformer.Informer().HasSynced,
-		podQueue:   newTypedRateLimitingQueue[string]("Pod", nil),
+		podsLister:     podInformer.Lister(),
+		podsSynced:     podInformer.Informer().HasSynced,
+		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
+		deletePodQueue: newTypedRateLimitingQueue[string]("DeletePod", nil),
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -175,7 +177,8 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: controller.enqueuePod,
+		UpdateFunc: controller.enqueueUpdatePod,
+		DeleteFunc: controller.enqueueDeletePod,
 	}); err != nil {
 		return nil, err
 	}
@@ -518,7 +521,7 @@ func (c *Controller) processNextServiceWorkItem() bool {
 	return true
 }
 
-func (c *Controller) enqueuePod(oldObj, newObj any) {
+func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	key := cache.MetaObjectToName(newPod).String()
@@ -529,8 +532,9 @@ func (c *Controller) enqueuePod(oldObj, newObj any) {
 		oldPod.Annotations[util.NetemQosJitterAnnotation] != newPod.Annotations[util.NetemQosJitterAnnotation] ||
 		oldPod.Annotations[util.NetemQosLimitAnnotation] != newPod.Annotations[util.NetemQosLimitAnnotation] ||
 		oldPod.Annotations[util.NetemQosLossAnnotation] != newPod.Annotations[util.NetemQosLossAnnotation] ||
-		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
-		c.podQueue.Add(key)
+		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] ||
+		oldPod.Annotations[util.IPAddressAnnotation] != newPod.Annotations[util.IPAddressAnnotation] {
+		c.updatePodQueue.Add(key)
 		return
 	}
 
@@ -548,30 +552,63 @@ func (c *Controller) enqueuePod(oldObj, newObj any) {
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)] {
-				c.podQueue.Add(key)
+				c.updatePodQueue.Add(key)
 			}
 		}
 	}
 }
 
-func (c *Controller) runPodWorker() {
-	for c.processNextPodWorkItem() {
+func (c *Controller) enqueueDeletePod(obj any) {
+	pod := obj.(*v1.Pod)
+	key := cache.MetaObjectToName(pod).String()
+	c.deletePodQueue.Add(key)
+}
+
+func (c *Controller) runUpdatePodWorker() {
+	for c.processNextUpdatePodWorkItem() {
 	}
 }
 
-func (c *Controller) processNextPodWorkItem() bool {
-	key, shutdown := c.podQueue.Get()
+func (c *Controller) runDeletePodWorker() {
+	for c.processNextDeletePodWorkItem() {
+	}
+}
+
+func (c *Controller) processNextUpdatePodWorkItem() bool {
+	key, shutdown := c.updatePodQueue.Get()
 	if shutdown {
 		return false
 	}
 
 	err := func(key string) error {
-		defer c.podQueue.Done(key)
-		if err := c.handlePod(key); err != nil {
-			c.podQueue.AddRateLimited(key)
+		defer c.updatePodQueue.Done(key)
+		if err := c.handleUpdatePod(key); err != nil {
+			c.updatePodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
 		}
-		c.podQueue.Forget(key)
+		c.updatePodQueue.Forget(key)
+		return nil
+	}(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextDeletePodWorkItem() bool {
+	key, shutdown := c.deletePodQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(key string) error {
+		defer c.deletePodQueue.Done(key)
+		if err := c.handleDeletePod(key); err != nil {
+			c.deletePodQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
+		}
+		c.deletePodQueue.Forget(key)
 		return nil
 	}(key)
 	if err != nil {
@@ -615,7 +652,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.deleteProviderNetworkQueue.ShutDown()
 	defer c.subnetQueue.ShutDown()
 	defer c.serviceQueue.ShutDown()
-	defer c.podQueue.ShutDown()
+	defer c.updatePodQueue.ShutDown()
+	defer c.deletePodQueue.ShutDown()
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
@@ -633,7 +671,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runAddOrUpdateServicekWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
-	go wait.Until(c.runPodWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
+	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
