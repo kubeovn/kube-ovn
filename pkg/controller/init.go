@@ -372,6 +372,11 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	for _, ip := range ips {
+		if !ip.DeletionTimestamp.IsZero() {
+			klog.Infof("enqueue update for removing finalizer to delete ip %s", ip.Name)
+			c.updateIPQueue.Add(ip.Name)
+			continue
+		}
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
 		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
 			continue
@@ -623,8 +628,8 @@ func (c *Controller) syncIPCR() error {
 
 	ipMap := strset.New(c.getVMLsps()...)
 	for _, ip := range ips {
-		if !ip.DeletionTimestamp.IsZero() && len(ip.GetFinalizers()) != 0 {
-			klog.Infof("enqueue update for deleting ip %s", ip.Name)
+		if !ip.DeletionTimestamp.IsZero() {
+			klog.Infof("enqueue update for removing finalizer to delete ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 			continue
 		}

@@ -122,6 +122,10 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
+	if !ip.DeletionTimestamp.IsZero() {
+		klog.Infof("handle add process stop for deleting ip %s", ip.Name)
+		return nil
+	}
 	if ip.Spec.Subnet == "" {
 		err := errors.New("subnet parameter cannot be empty")
 		klog.Error(err)
@@ -407,7 +411,12 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		// the returned pointer is not nil if the CR does not exist
 		ipCR = nil
 	}
-
+	if ipCR != nil && !ipCR.DeletionTimestamp.IsZero() {
+		// this ip is being deleted, no need to update
+		klog.Infof("enqueue update for removing finalizer to delete ip %s", ipCR.Name)
+		c.updateIPQueue.Add(ipCR.Name)
+		return nil
+	}
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCR == nil {
 		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
