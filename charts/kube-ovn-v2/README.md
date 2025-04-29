@@ -800,6 +800,15 @@ false
 </td>
 			<td>Namespace in which the CNI is deployed.</td>
 		</tr>
+		<tr>
+			<td>clusterDomain</td>
+			<td>string</td>
+			<td><pre lang="json">
+"cluster.local"
+</pre>
+</td>
+			<td>Domain used by the cluster.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Kubelet configuration</h3>
