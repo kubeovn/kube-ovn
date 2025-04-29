@@ -124,7 +124,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 			nodeTunVlanIDs.Add(id)
 			if id == myVlanID {
 				conflict = true
-				klog.Errorf("vlan %s id %s conflict with node %s tunnel nic vlan", vlan.Name, id, node.Name)
+				klog.Errorf("vlan %s id %s conflict with tunnel nic vlan on node %s", vlan.Name, id, node.Name)
 			}
 		}
 	}

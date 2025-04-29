@@ -180,7 +180,7 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 			return nil, err
 		}
 		if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
-			err = fmt.Errorf("subnet %s has conflict vlan %s, please see its vlan provider network for more details", subnet.Name, vlan.Name)
+			err = fmt.Errorf("subnet %s has conflict vlan %s, please see kube-ovn-cni pod for more details", subnet.Name, vlan.Name)
 			klog.Error(err)
 			return nil, err
 		}

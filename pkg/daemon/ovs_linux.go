@@ -870,15 +870,21 @@ func (c *Controller) loopCheckVlanConflict() {
 			if !c.config.EnableDelConflictVlanIF {
 				continue
 			}
+			// make sure not delete tunnel nic
+			if nicName == c.config.tunnelIface {
+				klog.Infof("avoid delete tunnel vlan interface %s", nicName)
+				klog.Errorf("admin should delete invalid vlan crd which vlan id is %s", vlanID)
+				continue
+			}
 			// auto del os conflict vlan iface
 			link, err := netlink.LinkByName(nicName)
 			if err != nil {
 				klog.Errorf("failed to get link by name %s", nicName)
 				continue
 			}
-			klog.Infof("delete os local vlan %s interface %s", vlanID, nicName)
+			klog.Infof("delete os local vlan interface %s", nicName)
 			if err := netlink.LinkDel(link); err != nil {
-				klog.Errorf("failed to delete os local vlan %s interface %s: %v", vlanID, nicName, err)
+				klog.Errorf("failed to delete os local vlan interface %s: %v", nicName, err)
 			}
 		}
 	}
