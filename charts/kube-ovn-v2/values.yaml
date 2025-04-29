@@ -7,7 +7,6 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
       tag: v1.14.0
       support_arm: true
@@ -352,7 +351,7 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration
   podLabels: {}
 
-  # -- ovs-ovn resource limits & requests, overridden if DPDK is enabled.
+  # -- ovs-ovn resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- OVS/OVN daemons configuration
   resources:
@@ -382,30 +381,6 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration.
   probeInterval: 180000
 
-  # -- DPDK support for OVS.
-  # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
-  # @section -- OVS/OVN daemons configuration
-  # @default -- "{}"
-  dpdk:
-    # -- Enables DPDK support on OVS.
-    # @section -- OVS/OVN daemons configuration
-    enabled: false
-    # -- Version of the DPDK image.
-    # @section -- OVS/OVN daemons configuration
-    version: "19.11"
-
-    # -- ovs-ovn resource limits & requests when DPDK is enabled.
-    # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-    # @section -- OVS/OVN daemons configuration
-    resources:
-      requests:
-        cpu: "1000m"
-        memory: "200Mi"
-      limits:
-        hugepages-1Gi: 1Gi
-        cpu: "1000m"
-        memory: "1000Mi"
-
   # -- DPDK-hybrid support for OVS.
   # ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/
   # @section -- OVS/OVN daemons configuration
@@ -414,6 +389,9 @@ ovsOvn:
     # -- Enables DPDK-hybrid support on OVS.
     # @section -- OVS/OVN daemons configuration
     enabled: false
+    # -- DPDK image tag.
+    # @section -- OVS/OVN daemons configuration
+    tag: "v1.14.0-dpdk"
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
