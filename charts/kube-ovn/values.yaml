@@ -8,7 +8,6 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      dpdkRepository: kube-ovn-dpdk
       vpcRepository: vpc-nat-gateway
       tag: v1.14.0
       support_arm: true
@@ -138,10 +137,7 @@ fullnameOverride: ""
 HYBRID_DPDK: false
 HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default
 HUGEPAGES: 1Gi
-
-# DPDK
-DPDK: false
-DPDK_VERSION: "19.11"
+DPDK_IMAGE_TAG: "v1.14.0-dpdk"
 DPDK_CPU: "1000m" # Default CPU configuration
 DPDK_MEMORY: "2Gi" # Default Memory configuration
 

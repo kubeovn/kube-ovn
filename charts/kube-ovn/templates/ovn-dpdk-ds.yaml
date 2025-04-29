@@ -31,7 +31,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}-dpdk
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.DPDK_IMAGE_TAG }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/kube-ovn/start-ovs-dpdk-v2.sh"]
           securityContext:

@@ -729,7 +729,6 @@ false
 {
   "images": {
     "kubeovn": {
-      "dpdkRepository": "kube-ovn-dpdk",
       "repository": "kube-ovn",
       "support_arm": true,
       "tag": "v1.14.0",
@@ -1376,59 +1375,13 @@ false
 			<td>Disable auto-loading of kernel modules by OVS. If this is disabled, you will have to enable the Open vSwitch kernel module yourself.</td>
 		</tr>
 		<tr>
-			<td>ovsOvn.dpdk</td>
-			<td>object</td>
-			<td><pre lang="">
-"{}"
-</pre>
-</td>
-			<td>DPDK support for OVS. ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/</td>
-		</tr>
-		<tr>
-			<td>ovsOvn.dpdk.enabled</td>
-			<td>bool</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-			<td>Enables DPDK support on OVS.</td>
-		</tr>
-		<tr>
-			<td>ovsOvn.dpdk.resources</td>
-			<td>object</td>
-			<td><pre lang="json">
-{
-  "limits": {
-    "cpu": "1000m",
-    "hugepages-1Gi": "1Gi",
-    "memory": "1000Mi"
-  },
-  "requests": {
-    "cpu": "1000m",
-    "memory": "200Mi"
-  }
-}
-</pre>
-</td>
-			<td>ovs-ovn resource limits & requests when DPDK is enabled. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
-		</tr>
-		<tr>
-			<td>ovsOvn.dpdk.version</td>
-			<td>string</td>
-			<td><pre lang="json">
-"19.11"
-</pre>
-</td>
-			<td>Version of the DPDK image.</td>
-		</tr>
-		<tr>
 			<td>ovsOvn.dpdkHybrid</td>
 			<td>object</td>
 			<td><pre lang="">
 "{}"
 </pre>
 </td>
-			<td>DPDK-hybrid support for OVS. ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/</td>
+			<td>DPDK-hybrid support for OVS. ref: https://kubeovn.github.io/docs/v1.13.x/en/advance/dpdk/</td>
 		</tr>
 		<tr>
 			<td>ovsOvn.dpdkHybrid.enabled</td>
@@ -1438,6 +1391,15 @@ false
 </pre>
 </td>
 			<td>Enables DPDK-hybrid support on OVS.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.dpdkHybrid.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+"v1.14.0-dpdk"
+</pre>
+</td>
+			<td>DPDK image tag.</td>
 		</tr>
 		<tr>
 			<td>ovsOvn.dpdkHybrid.resources</td>
@@ -1519,7 +1481,7 @@ false
 }
 </pre>
 </td>
-			<td>ovs-ovn resource limits & requests, overridden if DPDK is enabled. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+			<td>ovs-ovn resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
 		</tr>
 	</tbody>
 </table>

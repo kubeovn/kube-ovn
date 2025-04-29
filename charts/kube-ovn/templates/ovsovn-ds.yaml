@@ -38,11 +38,7 @@ spec:
       hostPID: true
       initContainers:
         - name: hostpath-init
-          {{- if .Values.DPDK }}
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.DPDK_VERSION }}-{{ .Values.global.images.kubeovn.tag }}
-          {{- else }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - sh
@@ -82,17 +78,9 @@ spec:
               name: host-log-ovs
       containers:
         - name: openvswitch
-          {{- if .Values.DPDK }}
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.dpdkRepository }}:{{ .Values.DPDK_VERSION }}-{{ .Values.global.images.kubeovn.tag }}
-          {{- else }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if .Values.DPDK }}
-          command: ["/kube-ovn/start-ovs-dpdk.sh"]
-          {{- else }}
           command: ["/kube-ovn/start-ovs.sh"]
-          {{- end }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
@@ -156,59 +144,30 @@ spec:
             - mountPath: /var/run/containerd
               name: cruntime
               readOnly: true
-            {{- if .Values.DPDK }}
-            - mountPath: /opt/ovs-config
-              name: host-config-ovs
-            - mountPath: /dev/hugepages
-              name: hugepage
-            {{- end }}
           readinessProbe:
             exec:
-              {{- if .Values.DPDK }}
-              command:
-                - bash
-                - /kube-ovn/ovs-dpdk-healthcheck.sh
-              {{- else }}
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-              {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
             exec:
-              {{- if .Values.DPDK }}
-              command:
-                - bash
-                - /kube-ovn/ovs-dpdk-healthcheck.sh
-              {{- else }}
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-              {{- end }}
             initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
           resources:
             requests:
-              {{- if .Values.DPDK }}
-              cpu: {{ .Values.DPDK_CPU }}
-              memory: {{ .Values.DPDK_MEMORY }}
-              {{- else }}
               cpu: {{ index .Values "ovs-ovn" "requests" "cpu" }}
               memory: {{ index .Values "ovs-ovn" "requests" "memory" }}
-              {{- end }}
             limits:
-              {{- if .Values.DPDK }}
-              cpu: {{ .Values.DPDK_CPU }}
-              memory: {{ .Values.DPDK_MEMORY }}
-              hugepages-1Gi: 1Gi
-              {{- else }}
               cpu: {{ index .Values "ovs-ovn" "limits" "cpu" }}
               memory: {{ index .Values "ovs-ovn" "limits" "memory" }}
-              {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -242,12 +201,3 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
-        {{- if .Values.DPDK }}
-        - name: host-config-ovs
-          hostPath:
-            path: /opt/ovs-config
-            type: DirectoryOrCreate
-        - name: hugepage
-          emptyDir:
-            medium: HugePages
-        {{- end }}
