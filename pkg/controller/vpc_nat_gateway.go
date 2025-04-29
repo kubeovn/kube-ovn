@@ -680,6 +680,7 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
 	if externalNetworkAttachment, ok := annotations[nadv1.NetworkAttachmentAnnot]; ok {
 		networkAttachments = append([]string{externalNetworkAttachment}, networkAttachments...)
 	}
+
 	// Attach the NADs to the Pod by adding them to the special annotation
 	annotations[nadv1.NetworkAttachmentAnnot] = strings.Join(networkAttachments, ",")
 
@@ -687,6 +688,7 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
 	return c.setNatGwAPIRoute(annotations, namespace, name)
 }
 
+// setNatGwAPIRoute adds routes to a pod to reach the K8S API server
 func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespace, nadName string) error {
 	dst := os.Getenv("KUBERNETES_SERVICE_HOST")
 
@@ -734,21 +736,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		annotations = maps.Clone(oldSts.Annotations)
 	}
-	externalNadNamespace := c.config.PodNamespace
-	externalNadName := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
-	if externalSubnet, err := c.subnetsLister.Get(externalNadName); err == nil {
-		if name, namespace, ok := util.GetNadBySubnetProvider(externalSubnet.Spec.Provider); ok {
-			externalNadName = name
-			externalNadNamespace = namespace
-		}
-	}
-	podAnnotations := map[string]string{
-		util.VpcNatGatewayAnnotation: gw.Name,
-		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName),
-		util.LogicalSwitchAnnotation: gw.Spec.Subnet,
-		util.IPAddressAnnotation:     gw.Spec.LanIP,
-	}
 
+	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
+	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName)
+
+	// Restart logic to fix #5072
 	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
 		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
 			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
@@ -759,22 +751,27 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
 	if gw.Spec.BgpSpeaker.Enabled {
 		if err := c.setNatGwAPIAccess(podAnnotations); err != nil {
-			klog.Error(err)
+			klog.Errorf("couldn't add an API interface to the NAT gateway: %v", err)
 			return nil, err
 		}
 	}
 
 	maps.Copy(annotations, podAnnotations)
 
+	// Retrieve all subnets in existence
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
 		return nil, err
 	}
+
+	// Retrieve the gateways of the subnet sitting behind the NAT gateway
 	v4Gateway, v6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
 	}
+
+	// Add routes to join the services (is this still needed?)
 	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
 	routes := make([]request.Route, 0, 2)
 	if v4Gateway != "" && v4ClusterIPRange != "" {
@@ -783,6 +780,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if v6Gateway != "" && v6ClusterIPRange != "" {
 		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: v6Gateway})
 	}
+
+	// Add gateway to join every subnet in the same VPC? (is this still needed?)
+	// Are we trying to give the NAT gateway access to every subnet in the VPC?
+	// I suspect this is to solve a problem where a static route is inserted to redirect all the traffic
+	// from a VPC into the NAT GW. When that happens, the GW has no return path to the other subnets.
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
 			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
@@ -798,16 +800,19 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
+	// Use this function is nat gw set route?
 	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(externalNadNamespace, externalNadName, subnets)
+	// Set the default routes to the external network
+	subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
+
 	routes = routes[0:0]
 	v4Gateway, v6Gateway = util.SplitStringIP(subnet.Spec.Gateway)
 	if v4Gateway != "" {
@@ -821,21 +826,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	selectors := make(map[string]string, len(gw.Spec.Selector))
-	for _, v := range gw.Spec.Selector {
-		parts := strings.Split(strings.TrimSpace(v), ":")
-		if len(parts) != 2 {
-			continue
-		}
-		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-	}
+	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 
 	name := util.GenNatGwStsName(gw.Name)
-	labels := map[string]string{
-		"app":                   name,
-		util.VpcNatGatewayLabel: "true",
-	}
+	labels := util.GenNatGwLabels(gw.Name)
 
 	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -877,108 +872,38 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		},
 	}
 
-	// BGP speaker for GWs must be enabled globally and for this specific instance
+	// BGP speaker is enabled on this instance, add a BGP speaker to the statefulset
 	if gw.Spec.BgpSpeaker.Enabled {
-		containers := sts.Spec.Template.Spec.Containers
-
-		// We need a speaker image configured in the NAT GW ConfigMap
-		if vpcNatGwBgpSpeakerImage == "" {
-			return nil, fmt.Errorf("%s should have bgp speaker image field if bgp enabled", util.VpcNatConfig)
-		}
-
-		args := []string{
-			"--nat-gw-mode", // Force to run in  NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
-		}
-
-		speakerParams := gw.Spec.BgpSpeaker
-
-		if speakerParams.RouterID != "" { // Override default auto-selected RouterID
-			args = append(args, "--router-id="+speakerParams.RouterID)
-		}
-
-		if speakerParams.Password != "" { // Password for TCP MD5 BGP
-			args = append(args, "--auth-password="+speakerParams.Password)
-		}
-
-		if speakerParams.EnableGracefulRestart { // Enable graceful restart
-			args = append(args, "--graceful-restart")
-		}
-
-		if speakerParams.HoldTime != (metav1.Duration{}) { // Hold time
-			args = append(args, "--holdtime="+speakerParams.HoldTime.Duration.String())
-		}
-
-		if speakerParams.ASN == 0 { // The ASN we use to speak
-			return nil, errors.New("ASN not set, but must be non-zero value")
-		}
-
-		if speakerParams.RemoteASN == 0 { // The ASN we speak to
-			return nil, errors.New("remote ASN not set, but must be non-zero value")
-		}
-
-		args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
-		args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
-
-		if len(speakerParams.Neighbors) == 0 {
-			return nil, errors.New("no BGP neighbors specified")
-		}
-
-		var neighIPv4 []string
-		var neighIPv6 []string
-		for _, neighbor := range speakerParams.Neighbors {
-			switch util.CheckProtocol(neighbor) {
-			case kubeovnv1.ProtocolIPv4:
-				neighIPv4 = append(neighIPv4, neighbor)
-			case kubeovnv1.ProtocolIPv6:
-				neighIPv6 = append(neighIPv6, neighbor)
-			default:
-				return nil, fmt.Errorf("unsupported protocol for peer %s", neighbor)
-			}
-		}
-
-		argNeighIPv4 := strings.Join(neighIPv4, ",")
-		argNeighIPv6 := strings.Join(neighIPv6, ",")
-		argNeighIPv4 = "--neighbor-address=" + argNeighIPv4
-		argNeighIPv6 = "--neighbor-ipv6-address=" + argNeighIPv6
-
-		if len(neighIPv4) > 0 {
-			args = append(args, argNeighIPv4)
-		}
-
-		if len(neighIPv6) > 0 {
-			args = append(args, argNeighIPv6)
-		}
-
-		// Extra args to start the speaker with, for example, logging levels...
-		args = append(args, speakerParams.ExtraArgs...)
-
+		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		speakerContainer := corev1.Container{
-			Name:            "vpc-nat-gw-speaker",
-			Image:           vpcNatGwBgpSpeakerImage,
-			Command:         []string{"/kube-ovn/kube-ovn-speaker"},
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			Env: []corev1.EnvVar{
-				{
-					Name:  util.GatewayNameEnv,
-					Value: gw.Name,
-				},
-				{
-					Name: "POD_IP",
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "status.podIP",
-						},
-					},
-				},
-			},
-			Args: args,
+
+		// Craft a BGP speaker container to add to our statefulset
+		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
+		if err != nil {
+			klog.Errorf("failed to create a BGP speaker container for gateway %s: %v", gw.Name, err)
+			return nil, err
 		}
 
-		sts.Spec.Template.Spec.Containers = append(containers, speakerContainer)
+		// Add our container to the list of containers in the statefulset
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, *bgpSpeakerContainer)
 	}
 
 	return sts, nil
+}
+
+// getExternalSubnetNad returns the namespace and name of the NetworkAttachmentDefinition associated with
+// an external network attached to a NAT gateway
+func (c *Controller) getExternalSubnetNad(gw *kubeovnv1.VpcNatGateway) (string, string) {
+	externalNadNamespace := c.config.PodNamespace
+	externalNadName := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
+	if externalSubnet, err := c.subnetsLister.Get(externalNadName); err == nil {
+		if name, namespace, ok := util.GetNadBySubnetProvider(externalSubnet.Spec.Provider); ok {
+			externalNadName = name
+			externalNadNamespace = namespace
+		}
+	}
+
+	return externalNadNamespace, externalNadName
 }
 
 func (c *Controller) cleanUpVpcNatGw() error {
