@@ -1213,18 +1213,29 @@ func (c *Controller) patchNodeTunnelVlanLabel() error {
 		return err
 	}
 	var patch util.KVPatch
+	var needUpdate bool
 	if c.config.IfaceVlanID > 0 {
-		klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
-		patch = util.KVPatch{
-			util.TunnelUseVlanLabel: "true",
-			util.TunnelVlanIDLabel:  strconv.Itoa(c.config.IfaceVlanID),
+		id := strconv.Itoa(c.config.IfaceVlanID)
+		if node.Labels[util.TunnelVlanIDLabel] != "true" || node.Labels[util.TunnelVlanIDLabel] != id {
+			klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
+			patch = util.KVPatch{
+				util.TunnelUseVlanLabel: "true",
+				util.TunnelVlanIDLabel:  id,
+			}
+			needUpdate = true
 		}
 	} else {
-		klog.Infof("removing tunnel vlan id from node %s", node.Name)
-		patch = util.KVPatch{
-			util.TunnelUseVlanLabel: nil,
-			util.TunnelVlanIDLabel:  nil,
+		if node.Labels[util.TunnelVlanIDLabel] != "" {
+			klog.Infof("removing tunnel vlan id from node %s", node.Name)
+			patch = util.KVPatch{
+				util.TunnelUseVlanLabel: nil,
+				util.TunnelVlanIDLabel:  nil,
+			}
+			needUpdate = true
 		}
+	}
+	if !needUpdate {
+		return nil
 	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to update tunnel vlan id lable for node %s: %v", node.Name, err)
