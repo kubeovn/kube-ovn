@@ -142,7 +142,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 		return err
 	}
 	for _, v := range vlans {
-		if v.Spec.ID == v.Spec.ID && v.Name != v.Name {
+		if v.Spec.ID == vlan.Spec.ID && v.Name != vlan.Name {
 			conflict = true
 			conflictErr := fmt.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
 			klog.Error(conflictErr)

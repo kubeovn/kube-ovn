@@ -172,20 +172,6 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		}
 	}
 
-	if subnet.Spec.Vlan != "" {
-		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
-		if err != nil {
-			err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
-			klog.Error(err)
-			return nil, err
-		}
-		if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
-			err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
-			klog.Error(err)
-			return nil, err
-		}
-	}
-
 	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
 		changed = true
 		subnet.Spec.EnableLb = &c.config.EnableLb
@@ -211,6 +197,26 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		return newSubnet, nil
 	}
 	return subnet, nil
+}
+
+func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vlan == "" {
+		return nil
+	}
+
+	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+	if err != nil {
+		err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
+		klog.Error(err)
+		return err
+	}
+
+	if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
+		err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
@@ -617,7 +623,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
 		klog.Error(err)
-		if err = c.patchSubnetStatus(subnet, "FormatSubnetFailed", err.Error()); err != nil {
+		return err
+	}
+
+	err = c.validateSubnetVlan(subnet)
+	if err != nil {
+		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
+		klog.Error(err)
+		if err = c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); err != nil {
 			klog.Error(err)
 			return err
 		}
