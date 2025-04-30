@@ -180,7 +180,7 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 			return nil, err
 		}
 		if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
-			err = fmt.Errorf("subnet %s has conflict vlan %s, please see kube-ovn-cni pod for more details", subnet.Name, vlan.Name)
+			err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
 			klog.Error(err)
 			return nil, err
 		}
@@ -615,6 +615,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	subnet := cachedSubnet.DeepCopy()
 	subnet, err = c.formatSubnet(subnet)
 	if err != nil {
+		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
 		klog.Error(err)
 		return err
 	}
@@ -1827,6 +1828,11 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
 		klog.Errorf("failed to get vlan %s: %v", subnet.Spec.Vlan, err)
+		return err
+	}
+	if c.config.EnableCheckVlanConflict && vlan.Status.Conflict {
+		err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
+		klog.Error(err)
 		return err
 	}
 

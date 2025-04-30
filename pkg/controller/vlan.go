@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -115,6 +116,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
+	var conflictErr error
 	nodeTunVlanIDs := strset.New()
 	conflict := false
 	myVlanID := strconv.Itoa(vlan.Spec.ID)
@@ -124,7 +126,8 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 			nodeTunVlanIDs.Add(id)
 			if id == myVlanID {
 				conflict = true
-				klog.Errorf("vlan %s id %s conflict with tunnel nic vlan on node %s", vlan.Name, id, node.Name)
+				conflictErr := fmt.Errorf("vlan %s id %s conflict with tunnel nic vlan on node %s", vlan.Name, id, node.Name)
+				klog.Error(conflictErr)
 			}
 		}
 	}
@@ -141,7 +144,8 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	for _, v := range vlans {
 		if v.Spec.ID == v.Spec.ID && v.Name != v.Name {
 			conflict = true
-			klog.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+			conflictErr := fmt.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+			klog.Error(conflictErr)
 		}
 	}
 	if conflict {
@@ -151,9 +155,8 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
 			return err
 		}
-		return err
 	}
-	return nil
+	return conflictErr
 }
 
 func (c *Controller) handleUpdateVlan(key string) error {
@@ -178,7 +181,11 @@ func (c *Controller) handleUpdateVlan(key string) error {
 			return err
 		}
 	}
-
+	if vlan.Status.Conflict {
+		err := fmt.Errorf("vlan %s conflict with other vlans", vlan.Name)
+		klog.Error(err)
+		return err
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
