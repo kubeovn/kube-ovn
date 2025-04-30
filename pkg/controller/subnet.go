@@ -621,14 +621,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	subnet := cachedSubnet.DeepCopy()
 	subnet, err = c.formatSubnet(subnet)
 	if err != nil {
-		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
+		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
 		klog.Error(err)
 		return err
 	}
 
 	err = c.validateSubnetVlan(subnet)
 	if err != nil {
-		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
+		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
 		klog.Error(err)
 		if err = c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); err != nil {
 			klog.Error(err)
