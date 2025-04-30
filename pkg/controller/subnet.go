@@ -617,6 +617,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %v", key, err)
 		klog.Error(err)
+		if err = c.patchSubnetStatus(subnet, "FormatSubnetFailed", err.Error()); err != nil {
+			klog.Error(err)
+			return err
+		}
 		return err
 	}
 
