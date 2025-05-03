@@ -495,6 +495,11 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 		if !lrStaticRouteSet.Has(route.UUID) {
 			return false
 		}
+
+		if route.Policy == nil {
+			return false
+		}
+
 		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)
 		_, exists := staticRoutes[key]
 		return exists
