@@ -497,7 +497,7 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 		}
 
 		if route.Policy == nil {
-			return false
+			route.Policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
 		}
 
 		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)
