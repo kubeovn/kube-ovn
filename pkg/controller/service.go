@@ -38,7 +38,7 @@ func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.addOrUpdateEndpointQueue.Add(key)
+	c.addOrUpdateEndpointSliceQueue.Add(key)
 
 	if c.config.EnableNP {
 		netpols, err := c.svcMatchNetworkPolicies(svc)
@@ -344,7 +344,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 	}
 
 	if needUpdateEndpointQueue {
-		c.addOrUpdateEndpointQueue.Add(key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
 	}
 
 	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
