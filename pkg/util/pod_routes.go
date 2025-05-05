@@ -28,9 +28,9 @@ func (r PodRoutes) Add(provider, destination, gateway string) {
 
 	if !strings.ContainsRune(destination, '/') {
 		if strings.ContainsRune(destination, ':') {
-			destination = destination + "/128"
+			destination += "/128"
 		} else {
-			destination = destination + "/32"
+			destination += "/32"
 		}
 	}
 
