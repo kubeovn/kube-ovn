@@ -6,6 +6,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,29 +18,40 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddEndpoint(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1.Endpoints)).String()
-	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.addOrUpdateEndpointQueue.Add(key)
+func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
+	if endpointSlice != nil && endpointSlice.Labels != nil && endpointSlice.Labels[discoveryv1.LabelServiceName] != "" {
+		return endpointSlice.Namespace + "/" + endpointSlice.Labels[discoveryv1.LabelServiceName]
+	}
+	return ""
 }
 
-func (c *Controller) enqueueUpdateEndpoint(oldObj, newObj any) {
-	oldEp := oldObj.(*v1.Endpoints)
-	newEp := newObj.(*v1.Endpoints)
-	if oldEp.ResourceVersion == newEp.ResourceVersion {
+func (c *Controller) enqueueAddEndpointSlice(obj any) {
+	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
+	if key != "" {
+		klog.V(3).Infof("enqueue add endpointSlice %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
+}
+
+func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
+	oldEndpointSlice := oldObj.(*discoveryv1.EndpointSlice)
+	newEndpointSlice := newObj.(*discoveryv1.EndpointSlice)
+	if oldEndpointSlice.ResourceVersion == newEndpointSlice.ResourceVersion {
 		return
 	}
 
-	if len(oldEp.Subsets) == 0 && len(newEp.Subsets) == 0 {
+	if len(oldEndpointSlice.Endpoints) == 0 && len(newEndpointSlice.Endpoints) == 0 {
 		return
 	}
 
-	key := cache.MetaObjectToName(newEp).String()
-	klog.V(3).Infof("enqueue update endpoint %s", key)
-	c.addOrUpdateEndpointQueue.Add(key)
+	key := findServiceKey(newEndpointSlice)
+	if key != "" {
+		klog.V(3).Infof("enqueue update endpointSlice for service %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
 }
 
-func (c *Controller) handleUpdateEndpoint(key string) error {
+func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -48,9 +60,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	c.epKeyMutex.LockKey(key)
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update endpoint %s", key)
+	klog.Infof("handle update endpointSlice for service %s", key)
 
-	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
+	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Set(map[string]string{discoveryv1.LabelServiceName: name}).AsSelector())
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -81,11 +93,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		lbVips = []string{vip}
 
-		for _, subset := range ep.Subsets {
-			for _, address := range subset.Addresses {
-				// TODO: IPv6
+		for _, endpointSlice := range endpointSlices {
+			for _, endpoint := range endpointSlice.Endpoints {
 				if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 &&
-					address.TargetRef.Name != "" {
+					endpoint.TargetRef.Name != "" {
 					ignoreHealthCheck = false
 				}
 			}
@@ -113,32 +124,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
 		return err
 	}
-	for i, pod := range pods {
-		if pod.Status.PodIP != "" || len(pod.Status.PodIPs) != 0 {
-			continue
-		}
-
-		for _, subset := range ep.Subsets {
-			for _, addr := range subset.Addresses {
-				if addr.TargetRef == nil || addr.TargetRef.Kind != "Pod" || addr.TargetRef.Name != pod.Name {
-					continue
-				}
-
-				p, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
-				if err != nil {
-					klog.Errorf("failed to get pod %s/%s: %v", pod.Namespace, pod.Name, err)
-					return err
-				}
-				pods[i] = p.DeepCopy()
-				break
-			}
-			if pods[i] != pod {
-				break
-			}
-		}
-	}
-
-	vpcName, subnetName = c.getVpcSubnetName(pods, ep, svc)
+	vpcName, subnetName = c.getVpcSubnetName(pods, endpointSlices, svc)
 
 	var (
 		vpc    *kubeovnv1.Vpc
@@ -189,7 +175,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				checkIP = util.MasqueradeCheckIP
 			}
 			isGenIPPortMapping := !ignoreHealthCheck || isPreferLocalBackend
-			ipPortMapping, backends = getIPPortMappingBackend(ep, pods, port, lbVip, checkIP, isGenIPPortMapping)
+			ipPortMapping, backends = getIPPortMappingBackend(endpointSlices, port, lbVip, checkIP, isGenIPPortMapping)
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				vip = util.JoinHostPort(lbVip, port.Port)
@@ -252,7 +238,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, service *v1.Service) (string, string) {
+func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service) (string, string) {
 	var (
 		vpcName    string
 		subnetName string
@@ -267,14 +253,16 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 		}
 
 	LOOP:
-		for _, subset := range endpoints.Subsets {
-			for _, addr := range subset.Addresses {
-				if addr.IP == pod.Status.PodIP {
-					if vpcName == "" {
-						vpcName = pod.Annotations[util.LogicalRouterAnnotation]
-					}
-					if vpcName != "" {
-						break LOOP
+		for _, endpointSlice := range endpointSlices {
+			for _, endpoint := range endpointSlice.Endpoints {
+				for _, addr := range endpoint.Addresses {
+					if addr == pod.Status.PodIP {
+						if vpcName == "" {
+							vpcName = pod.Annotations[util.LogicalRouterAnnotation]
+						}
+						if vpcName != "" {
+							break LOOP
+						}
 					}
 				}
 			}
@@ -361,18 +349,18 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 	return checkIP, nil
 }
 
-func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP, checkVip string, isGenIPPortMapping bool) (map[string]string, []string) {
+func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP, checkVip string, isGenIPPortMapping bool) (map[string]string, []string) {
 	var (
 		ipPortMapping = map[string]string{}
 		backends      = []string{}
 		protocol      = util.CheckProtocol(serviceIP)
 	)
 
-	for _, subset := range endpoints.Subsets {
+	for _, endpointSlice := range endpointSlices {
 		var targetPort int32
-		for _, port := range subset.Ports {
-			if port.Name == servicePort.Name {
-				targetPort = port.Port
+		for _, port := range endpointSlice.Ports {
+			if port.Name != nil && *port.Name == servicePort.Name {
+				targetPort = *port.Port
 				break
 			}
 		}
@@ -380,37 +368,31 @@ func getIPPortMappingBackend(endpoints *v1.Endpoints, pods []*v1.Pod, servicePor
 			continue
 		}
 
-		for _, address := range subset.Addresses {
-			if isGenIPPortMapping && address.TargetRef.Name != "" {
-				ipName := fmt.Sprintf("%s.%s", address.TargetRef.Name, address.TargetRef.Namespace)
-				ipPortMapping[address.IP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, checkVip)
-			}
-			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
-				if util.CheckProtocol(address.IP) == protocol {
-					backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+		for _, endpoint := range endpointSlice.Endpoints {
+			if isGenIPPortMapping && endpoint.TargetRef.Name != "" {
+				ipName := fmt.Sprintf("%s.%s", endpoint.TargetRef.Name, endpoint.TargetRef.Namespace)
+				for _, address := range endpoint.Addresses {
+					ipPortMapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, checkVip)
 				}
+			}
+		}
+
+		for _, endpoint := range endpointSlice.Endpoints {
+			if !endpointReady(endpoint) {
 				continue
 			}
-			var ip string
-			for _, pod := range pods {
-				if pod.Name == address.TargetRef.Name {
-					for _, podIP := range util.PodIPs(*pod) {
-						if util.CheckProtocol(podIP) == protocol {
-							ip = podIP
-							break
-						}
-					}
-					break
+
+			for _, address := range endpoint.Addresses {
+				if util.CheckProtocol(address) == protocol {
+					backends = append(backends, util.JoinHostPort(address, targetPort))
 				}
-			}
-			if ip == "" && util.CheckProtocol(address.IP) == protocol {
-				ip = address.IP
-			}
-			if ip != "" {
-				backends = append(backends, util.JoinHostPort(ip, targetPort))
 			}
 		}
 	}
 
 	return ipPortMapping, backends
+}
+
+func endpointReady(endpoint discoveryv1.Endpoint) bool {
+	return endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
 }
