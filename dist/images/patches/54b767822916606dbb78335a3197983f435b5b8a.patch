@@ -1,0 +1,50 @@
+From 54b767822916606dbb78335a3197983f435b5b8a Mon Sep 17 00:00:00 2001
+From: bobz965 <zhangbingbing2_yewu@cmss.chinamobile.com>
+Date: Fri, 8 Nov 2024 14:57:28 +0800
+Subject: [PATCH] update ovs-sandbox for docker run
+
+Signed-off-by: bobz965 <zhangbingbing2_yewu@cmss.chinamobile.com>
+---
+ tutorial/ovs-sandbox | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/tutorial/ovs-sandbox b/tutorial/ovs-sandbox
+index 09e9773cefe..11d139e9238 100755
+--- a/tutorial/ovs-sandbox
++++ b/tutorial/ovs-sandbox
+@@ -271,8 +271,10 @@ trap 'kill `cat "$sandbox"/*.pid`' 0 1 2 3 13 14 15
+ touch "$sandbox"/.conf.db.~lock~
+ run ovsdb-tool create conf.db "$schema"
+ ovsdb_server_args=
++socket_file="/tmp/sandbox/db.sock"
++mkdir -p /tmp/sandbox
+ rungdb $gdb_ovsdb $gdb_ovsdb_ex ovsdb-server --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
+-       --remote=punix:"$sandbox"/db.sock \
++       --remote=punix:"$socket_file" \
+        --remote=db:Open_vSwitch,Open_vSwitch,manager_options \
+        $ovsdb_server_args
+ 
+@@ -280,19 +282,19 @@ rungdb $gdb_ovsdb $gdb_ovsdb_ex ovsdb-server --detach --no-chdir --pidfile -vcon
+ sleep 0.1
+ 
+ #Wait for ovsdb-server to finish launching.
+-if test ! -e "$sandbox"/db.sock; then
++if test ! -e "$socket_file"; then
+     printf "Waiting for ovsdb-server to start..."
+-    while test ! -e "$sandbox"/db.sock; do
++    while test ! -e "$socket_file"; do
+         sleep 1;
+     done
+     echo "  Done"
+ fi
+ 
+ # Initialize database.
+-run ovs-vsctl --no-wait -- init
++run ovs-vsctl --db=unix:$socket_file --no-wait -- init
+ 
+ # Start ovs-vswitchd.
+-rungdb $gdb_vswitchd $gdb_vswitchd_ex ovs-vswitchd --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
++rungdb $gdb_vswitchd $gdb_vswitchd_ex ovs-vswitchd --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
+     --enable-dummy=$dummy -vvconn -vnetdev_dummy
+ 
+ cat <<EOF

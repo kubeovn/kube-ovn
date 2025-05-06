@@ -1,0 +1,26 @@
+From 03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:33 +0000
+Subject: [PATCH] ovn-controller: make activation strategy work for single
+ chassis
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ controller/lport.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/controller/lport.c b/controller/lport.c
+index b3721024b1..062b6612b1 100644
+--- a/controller/lport.c
++++ b/controller/lport.c
+@@ -123,6 +123,10 @@ lport_can_bind_on_this_chassis(const struct sbrec_chassis *chassis_rec,
+                                const struct sbrec_port_binding *pb)
+ {
+     if (pb->requested_chassis == chassis_rec) {
++        if (pb->n_requested_additional_chassis == 1 &&
++            pb->requested_additional_chassis[0] == chassis_rec) {
++                return CAN_BIND_AS_ADDITIONAL;
++        }
+         return CAN_BIND_AS_MAIN;
+     }
+ 
