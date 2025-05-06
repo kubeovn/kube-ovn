@@ -36,7 +36,7 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch && \
     git apply $SRC_DIR/a432b1eb496cc1606873068c26716977a02029e2.patch && \
     # compile without avx512
-    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then git apply $SRC_DIR/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch; fi && \
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then git apply $SRC_DIR/f61283c8934589fe6de2b1e86041204dfc31a3e3.patch; fi && \
     ./boot.sh && \
     rm -rf .git && \
     export DPDK_DIR=/usr/src/dpdk-stable-20.11.1 && \

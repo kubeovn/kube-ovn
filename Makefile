@@ -52,7 +52,7 @@ build-kube-ovn: build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-no-avx512 --build-arg BASE_TAG=$(RELEASE_TAG)-no-avx512 -f dist/images/Dockerfile dist/images/
 	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -f dist/images/Dockerfile dist/images/
-	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile.dpdk dist/images/
+	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile.dpdk dist/images/
 
 .PHONY: build-dev
 build-dev: build-go
@@ -86,7 +86,7 @@ image-kube-ovn: build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-no-avx512 --build-arg BASE_TAG=$(RELEASE_TAG)-no-avx512 -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile.dpdk dist/images/
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.dpdk dist/images/
 
 .PHONY: image-vpc-nat-gateway
 image-vpc-nat-gateway:
