@@ -1,0 +1,22 @@
+From 31f736fb54cf00e893a23e396958883f54f4080f Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Mon, 20 Dec 2021 13:04:44 +0800
+Subject: [PATCH] increase election timer
+
+---
+ ovsdb/raft.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ovsdb/raft.c b/ovsdb/raft.c
+index b2361b1737a..73efba4ae4a 100644
+--- a/ovsdb/raft.c
++++ b/ovsdb/raft.c
+@@ -202,7 +202,7 @@ struct raft {
+      * most recently added to 'log'. */
+     struct hmap servers;
+ 
+-#define ELECTION_BASE_MSEC 1000
++#define ELECTION_BASE_MSEC 5000
+ #define ELECTION_RANGE_MSEC 1000
+ #define ELECTION_MIN_MSEC 100
+ #define ELECTION_MAX_MSEC 600000

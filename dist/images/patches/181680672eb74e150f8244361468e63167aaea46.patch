@@ -1,0 +1,334 @@
+From 181680672eb74e150f8244361468e63167aaea46 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 20 Jan 2024 05:33:24 +0000
+Subject: [PATCH] netdev: reduce cpu utilization for getting device addresses
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ lib/netdev-linux.c |  14 +--
+ lib/netdev.c       | 237 ++++++++++++++++++++++++++++++++++-----------
+ lib/netdev.h       |   2 +-
+ 3 files changed, 188 insertions(+), 65 deletions(-)
+
+diff --git a/lib/netdev-linux.c b/lib/netdev-linux.c
+index b7841fefb9f..4b3a945744a 100644
+--- a/lib/netdev-linux.c
++++ b/lib/netdev-linux.c
+@@ -3322,19 +3322,15 @@ netdev_linux_get_addr_list(const struct netdev *netdev_,
+                           struct in6_addr **addr, struct in6_addr **mask, int *n_cnt)
+ {
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
++    int ifindex;
+     int error;
+ 
+-    ovs_mutex_lock(&netdev->mutex);
+-    if (netdev_linux_netnsid_is_remote(netdev)) {
+-        error = EOPNOTSUPP;
+-        goto exit;
++    error = get_ifindex(netdev, &ifindex);
++    if (error) {
++        return error;
+     }
+ 
+-    error = netdev_get_addrs(netdev_get_name(netdev_), addr, mask, n_cnt);
+-
+-exit:
+-    ovs_mutex_unlock(&netdev->mutex);
+-    return error;
++    return netdev_get_addrs(ifindex, addr, mask, n_cnt);
+ }
+ 
+ static void
+diff --git a/lib/netdev.c b/lib/netdev.c
+index c797783782f..b13e983ff95 100644
+--- a/lib/netdev.c
++++ b/lib/netdev.c
+@@ -29,6 +29,10 @@
+ #include <ifaddrs.h>
+ #include <net/if.h>
+ #include <sys/ioctl.h>
++#include <asm/types.h>
++#include <linux/netlink.h>
++#include <linux/rtnetlink.h>
++#include <sys/socket.h>
+ #endif
+ 
+ #include "cmap.h"
+@@ -2166,86 +2170,209 @@ netdev_get_change_seq(const struct netdev *netdev)
+ #ifndef _WIN32
+ /* This implementation is shared by Linux and BSD. */
+ 
+-static struct ifaddrs *if_addr_list;
++struct linux_addr_list {
++    int if_index;
++    struct in6_addr addr, mask;
++    struct linux_addr_list *next;
++};
++
++struct netdev_linux_addr_list {
++    int if_index, count;
++    struct in6_addr *addr_array, *mask_array;
++    struct hmap_node hmap_node;
++};
++
++static struct hmap *if_addr_list = NULL;
+ static struct ovs_mutex if_addr_list_lock = OVS_MUTEX_INITIALIZER;
+ 
++static struct netdev_linux_addr_list *
++find_if_addr_list(struct hmap *addr_list, int if_index, uint32_t hash)
++{
++    struct netdev_linux_addr_list *l;
++    HMAP_FOR_EACH_IN_BUCKET (l, hmap_node, hash, addr_list) {
++        if (l->if_index == if_index) {
++            return l;
++        }
++    }
++    return NULL;
++}
++
++static int
++netdev_linux_get_addr_list(struct hmap **addr_list)
++{
++    struct nl_dump dump;
++    struct ifaddrmsg *ifa;
++    uint64_t reply_stub[NL_DUMP_BUFSIZE / 8];
++    struct ofpbuf request, reply, buf;
++    uint32_t hash;
++    int error = 0;
++
++    ofpbuf_init(&request, 0);
++    nl_msg_put_nlmsghdr(&request, sizeof(struct ifaddrmsg),
++                        RTM_GETADDR, NLM_F_REQUEST);
++    ifa = ofpbuf_put_zeros(&request, sizeof(struct ifaddrmsg));
++    ifa->ifa_family = AF_UNSPEC;
++
++    nl_dump_start(&dump, NETLINK_ROUTE, &request);
++    ofpbuf_uninit(&request);
++
++    *addr_list = xmalloc(sizeof(struct hmap));
++    hmap_init(*addr_list);
++
++    struct linux_addr_list *all_addrs = NULL;
++    struct linux_addr_list **p = &all_addrs;
++
++    ofpbuf_use_stub(&buf, reply_stub, sizeof reply_stub);
++    while (nl_dump_next(&dump, &reply, &buf)) {
++        bool parsed, ipv4 = false;
++
++        // IFA_ADDRESS     raw protocol address   interface address
++        // IFA_LOCAL       raw protocol address   local address
++        // IFA_LABEL       asciiz string          name of the interface
++        // IFA_BROADCAST   raw protocol address   broadcast address
++        // IFA_ANYCAST     raw protocol address   anycast address
++        // IFA_CACHEINFO   struct ifa_cacheinfo   Address information
++
++        static const struct nl_policy policy[] = {
++            [IFA_ADDRESS] = { .type = NL_A_U32, .optional = false },
++            [IFA_LOCAL] = { .type = NL_A_U32, .optional = true },
++            [IFA_LABEL] = { .type = NL_A_STRING, .optional = true },
++            [IFA_BROADCAST] = { .type = NL_A_U32, .optional = true },
++            [IFA_ANYCAST] = { .type = NL_A_U32, .optional = true },
++            [IFA_CACHEINFO] = { .type = NL_A_U128, .optional = true },
++        };
++
++        static const struct nl_policy policy6[] = {
++            [IFA_ADDRESS] = { .type = NL_A_IPV6, .optional = false },
++            [IFA_LOCAL] = { .type = NL_A_IPV6, .optional = true },
++            [IFA_LABEL] = { .type = NL_A_STRING, .optional = true },
++            [IFA_BROADCAST] = { .type = NL_A_IPV6, .optional = true },
++            [IFA_ANYCAST] = { .type = NL_A_IPV6, .optional = true },
++            [IFA_CACHEINFO] = { .type = NL_A_U128, .optional = true },
++        };
++
++        struct nlattr *attrs[ARRAY_SIZE(policy)];
++        const struct ifaddrmsg *msg;
++
++        msg = ofpbuf_at(&reply, NLMSG_HDRLEN, sizeof *msg);
++        if (msg->ifa_family == AF_INET) {
++            parsed = nl_policy_parse(&reply,
++                                     NLMSG_HDRLEN + sizeof(struct ifaddrmsg),
++                                     policy, attrs, ARRAY_SIZE(policy));
++            ipv4 = true;
++        } else if (msg->ifa_family == AF_INET6) {
++            parsed = nl_policy_parse(&reply,
++                                     NLMSG_HDRLEN + sizeof(struct ifaddrmsg),
++                                     policy6, attrs, ARRAY_SIZE(policy6));
++        } else {
++            VLOG_DBG_RL(&rl,
++                        "received non AF_INET/AF_INET6"
++                        "rtnetlink address message");
++            goto out;
++        }
++
++        if (parsed) {
++            *p = xzalloc(sizeof(struct linux_addr_list));
++            (*p)->if_index = msg->ifa_index;
++            if (ipv4) {
++                ovs_be32 addr = nl_attr_get_be32(attrs[IFA_ADDRESS]);
++                ovs_be32 mask = be32_prefix_mask(msg->ifa_prefixlen);
++                (*p)->addr = in6_addr_mapped_ipv4(addr);
++                (*p)->mask = in6_addr_mapped_ipv4(mask);
++            } else {
++                (*p)->addr = nl_attr_get_in6_addr(attrs[IFA_ADDRESS]);
++                (*p)->mask = ipv6_create_mask(msg->ifa_prefixlen);
++            }
++            p = &((*p)->next);
++
++            struct netdev_linux_addr_list *list;
++            hash = hash_int(msg->ifa_index, 0);
++            list = find_if_addr_list(*addr_list, msg->ifa_index, hash);
++            if (!list) {
++                list = xzalloc(sizeof *list);
++                list->if_index = msg->ifa_index;
++                list->count = 1;
++                hmap_insert(*addr_list, &list->hmap_node, hash);
++            } else {
++                list->count += 1;
++            }
++        } else {
++            VLOG_DBG_RL(&rl, "received unparseable rtnetlink address message");
++            goto out;
++        }
++    }
++    ofpbuf_uninit(&buf);
++
++    error = nl_dump_done(&dump);
++
++out:
++    struct linux_addr_list *addr, *next;
++    for (addr = all_addrs; addr; addr = next) {
++        next = addr->next;
++        struct netdev_linux_addr_list *list;
++        hash = hash_int(addr->if_index, 0);
++        list = find_if_addr_list(*addr_list, addr->if_index, hash);
++        if (!list->addr_array) {
++            list->addr_array = xzalloc(sizeof(struct in6_addr) * list->count);
++            list->mask_array = xzalloc(sizeof(struct in6_addr) * list->count);
++            list->count = 0;
++        }
++        list->addr_array[list->count] = addr->addr;
++        list->mask_array[list->count] = addr->mask;
++        list->count += 1;
++        free(addr);
++    }
++
++    return error;
++}
++
+ void
+ netdev_get_addrs_list_flush(void)
+ {
+     ovs_mutex_lock(&if_addr_list_lock);
+     if (if_addr_list) {
+-        freeifaddrs(if_addr_list);
++        struct netdev_linux_addr_list *list;
++        HMAP_FOR_EACH_SAFE (list, hmap_node, if_addr_list) {
++            free(list->addr_array);
++            free(list->mask_array);
++            free(list);
++        }
++        hmap_destroy(if_addr_list);
++        free(if_addr_list);
+         if_addr_list = NULL;
+     }
+     ovs_mutex_unlock(&if_addr_list_lock);
+ }
+ 
+ int
+-netdev_get_addrs(const char dev[], struct in6_addr **paddr,
++netdev_get_addrs(const int ifindex, struct in6_addr **paddr,
+                  struct in6_addr **pmask, int *n_in)
+ {
+     struct in6_addr *addr_array, *mask_array;
+-    const struct ifaddrs *ifa;
+-    int cnt = 0, i = 0;
+-    int retries = 3;
++    int cnt = 0;
+ 
+     ovs_mutex_lock(&if_addr_list_lock);
+-    if (!if_addr_list) {
+-        int err;
+ 
+-retry:
+-        err = getifaddrs(&if_addr_list);
++    if (!if_addr_list) {
++        int err = netdev_linux_get_addr_list(&if_addr_list);
+         if (err) {
+             ovs_mutex_unlock(&if_addr_list_lock);
+             return -err;
+         }
+-        retries--;
+-    }
+-
+-    for (ifa = if_addr_list; ifa; ifa = ifa->ifa_next) {
+-        if (!ifa->ifa_name) {
+-            if (retries) {
+-                /* Older versions of glibc have a bug on race condition with
+-                 * address addition which may cause one of the returned
+-                 * ifa_name values to be NULL. In such case, we know that we've
+-                 * got an inconsistent dump. Retry but beware of an endless
+-                 * loop. From glibc 2.28 and beyond, this workaround is not
+-                 * needed and should be eventually removed. */
+-                freeifaddrs(if_addr_list);
+-                goto retry;
+-            } else {
+-                VLOG_WARN("Proceeding with an inconsistent dump of "
+-                          "interfaces from the kernel. Some may be missing");
+-            }
+-        }
+-        if (ifa->ifa_addr && ifa->ifa_name && ifa->ifa_netmask) {
+-            int family;
+-
+-            family = ifa->ifa_addr->sa_family;
+-            if (family == AF_INET || family == AF_INET6) {
+-                if (!strncmp(ifa->ifa_name, dev, IFNAMSIZ)) {
+-                    cnt++;
+-                }
+-            }
+-        }
+     }
+ 
+-    if (!cnt) {
+-        ovs_mutex_unlock(&if_addr_list_lock);
+-        return EADDRNOTAVAIL;
+-    }
+-    addr_array = xzalloc(sizeof *addr_array * cnt);
+-    mask_array = xzalloc(sizeof *mask_array * cnt);
+-    for (ifa = if_addr_list; ifa; ifa = ifa->ifa_next) {
+-        if (ifa->ifa_name
+-            && ifa->ifa_addr
+-            && ifa->ifa_netmask
+-            && !strncmp(ifa->ifa_name, dev, IFNAMSIZ)
+-            && sa_is_ip(ifa->ifa_addr)) {
+-            addr_array[i] = sa_get_address(ifa->ifa_addr);
+-            mask_array[i] = sa_get_address(ifa->ifa_netmask);
+-            i++;
+-        }
++    struct netdev_linux_addr_list *list;
++    uint32_t hash = hash_int(ifindex, 0);
++    list = find_if_addr_list(if_addr_list, ifindex, hash);
++    if (list) {
++        cnt = list->count;
++    }
++    size_t size = sizeof *addr_array * cnt;
++    addr_array = xmalloc(size);
++    mask_array = xmalloc(size);
++    if (list) {
++        memcpy(addr_array, list->addr_array, size);
++        memcpy(mask_array, list->mask_array, size);
+     }
+     ovs_mutex_unlock(&if_addr_list_lock);
+     if (paddr) {
+diff --git a/lib/netdev.h b/lib/netdev.h
+index 47c15bde7ec..9eb564b0e5e 100644
+--- a/lib/netdev.h
++++ b/lib/netdev.h
+@@ -355,7 +355,7 @@ extern struct seq *tnl_conf_seq;
+ 
+ #ifndef _WIN32
+ void netdev_get_addrs_list_flush(void);
+-int netdev_get_addrs(const char dev[], struct in6_addr **paddr,
++int netdev_get_addrs(const int ifindex, struct in6_addr **paddr,
+                      struct in6_addr **pmask, int *n_in6);
+ #endif
+ 

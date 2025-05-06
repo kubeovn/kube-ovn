@@ -1,0 +1,441 @@
+From f52c239f5ded40b503e4d217f916b46ca413da4c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Fri, 4 Aug 2023 10:45:38 +0800
+Subject: [PATCH] ovsdb-tool: add command fix-cluster
+
+---
+ ovsdb/ovsdb-tool.c | 407 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 407 insertions(+)
+
+diff --git a/ovsdb/ovsdb-tool.c b/ovsdb/ovsdb-tool.c
+index 27113ded656..e47bcf3b7f9 100644
+--- a/ovsdb/ovsdb-tool.c
++++ b/ovsdb/ovsdb-tool.c
+@@ -1172,6 +1172,9 @@ struct cluster {
+     struct server *servers;
+     size_t n_servers;
+ 
++    struct json **entries;
++    size_t *n_entries;
++
+     struct hmap leaders;        /* Contains 'struct leader's. */
+ 
+     struct hmap commits;        /* Contains 'struct commit's. */
+@@ -1640,6 +1643,409 @@ do_check_cluster(struct ovs_cmdl_context *ctx)
+     hmap_destroy(&c.leaders);
+ }
+ 
++static void
++do_fix_cluster(struct ovs_cmdl_context *ctx)
++{
++    struct cluster c = {
++        .servers = xzalloc((ctx->argc - 1) * sizeof *c.servers),
++        .n_servers = 0,
++        .entries = xzalloc((ctx->argc - 1) * sizeof *c.entries),
++        .n_entries = xzalloc((ctx->argc - 1) * sizeof *c.n_entries),
++        .leaders = HMAP_INITIALIZER(&c.leaders),
++        .commits = HMAP_INITIALIZER(&c.commits),
++    };
++
++    uint64_t min_term = UINT64_MAX;
++    uint64_t max_term = 0;
++
++    for (int i = 1; i < ctx->argc; i++) {
++        struct server *s = &c.servers[c.n_servers];
++        s->filename = ctx->argv[i];
++
++        check_ovsdb_error(ovsdb_log_open(s->filename, RAFT_MAGIC,
++                                         OVSDB_LOG_READ_ONLY, 1, &s->log));
++
++        struct json *json;
++        check_ovsdb_error(ovsdb_log_read(s->log, &json));
++        check_ovsdb_error(raft_header_from_json(&s->header, json));
++        c.entries[c.n_servers] = json_array_create_empty();
++        json_array_add(c.entries[c.n_servers], json_deep_clone(json));
++        json_destroy(json);
++        c.n_entries[c.n_servers] = 1;
++
++        if (s->header.joining) {
++            printf("%s has not joined the cluster, omitting\n", s->filename);
++            ovsdb_log_close(s->log);
++            continue;
++        }
++        for (size_t j = 0; j < c.n_servers; j++) {
++            if (uuid_equals(&s->header.sid, &c.servers[j].header.sid)) {
++                ovs_fatal(0, "Duplicate server ID "SID_FMT" in %s and %s.",
++                          SID_ARGS(&s->header.sid),
++                          s->filename, c.servers[j].filename);
++            }
++        }
++        if (c.n_servers > 0) {
++            struct server *s0 = &c.servers[0];
++            if (!uuid_equals(&s0->header.cid, &s->header.cid)) {
++                ovs_fatal(0, "%s has cluster ID "CID_FMT" but %s "
++                          "has cluster ID "CID_FMT,
++                          s0->filename, CID_ARGS(&s0->header.cid),
++                          s->filename, CID_ARGS(&s->header.cid));
++            }
++            if (strcmp(s0->header.name, s->header.name)) {
++                ovs_fatal(0, "%s is named \"%s\" but %s is named \"%s\"",
++                          s0->filename, s0->header.name,
++                          s->filename, s->header.name);
++            }
++        }
++        c.n_servers++;
++    }
++
++    for (size_t i = 0; i < c.n_servers; i++) {
++        struct server *s = &c.servers[i];
++        s->snap = &s->header.snap;
++        s->log_start = s->log_end = s->header.snap_index + 1;
++
++        size_t allocated_records = 0;
++        size_t allocated_entries = 0;
++
++        uint64_t term = 0;              /* Current term. */
++        struct uuid vote = UUID_ZERO;   /* Server 's''s vote in 'term'. */
++        struct uuid leader = UUID_ZERO; /* Cluster leader in 'term'. */
++        uint64_t leader_rec_idx = 0;    /* Index of last "leader" record. */
++
++        uint64_t commit_index = s->header.snap_index;
++        for (unsigned long long int rec_idx = 1; ; rec_idx++) {
++            if (s->n_records >= allocated_records) {
++                s->records = x2nrealloc(s->records, &allocated_records,
++                                        sizeof *s->records);
++            }
++
++            struct json *json;
++            struct ovsdb_error *error = ovsdb_log_read(s->log, &json);
++            if (error) {
++                char *error_string = ovsdb_error_to_string_free(error);
++                ovs_error(0, "%s",  error_string);
++                free(error_string);
++                break;
++            }
++            if (!json) {
++                break;
++            }
++
++            json_array_add(c.entries[i], json_deep_clone(json));
++            struct raft_record *r = &s->records[s->n_records++];
++            error = raft_record_from_json(r, json);
++            json_destroy(json);
++            if (error) {
++                char *error_string = ovsdb_error_to_string_free(error);
++                ovs_error(0, "%s",  error_string);
++                free(error_string);
++                break;
++            }
++
++            if (r->term > term) {
++                term = r->term;
++                vote = UUID_ZERO;
++                leader = UUID_ZERO;
++                leader_rec_idx = 0;
++            }
++            if (term < min_term) {
++                min_term = term;
++            }
++            if (term > max_term) {
++                max_term = term;
++            }
++
++            bool broken = false;
++            switch (r->type) {
++            case RAFT_REC_ENTRY:
++                if (r->entry.index < commit_index) {
++                    ovs_error(0, "%s: record %llu attempts to truncate log "
++                              "from %"PRIu64" to %"PRIu64" entries, but "
++                              "commit index is already %"PRIu64,
++                              s->filename, rec_idx,
++                              s->log_end, r->entry.index,
++                              commit_index);
++                    broken = true;
++                    break;
++                } else if (r->entry.index > s->log_end) {
++                    ovs_error(0, "%s: record %llu with index %"PRIu64" skips "
++                              "past expected index %"PRIu64, s->filename,
++                              rec_idx, r->entry.index, s->log_end);
++                    broken = true;
++                    break;
++                }
++
++                if (r->entry.index < s->log_end) {
++                    bool is_leader = uuid_equals(&s->header.sid, &leader);
++                    if (is_leader) {
++                        /* Leader Append-Only property (see Figure 3.2). */
++                        ovs_error(0, "%s: record %llu truncates log from "
++                                  "%"PRIu64" to %"PRIu64" entries while "
++                                  "server is leader", s->filename, rec_idx,
++                                  s->log_end, r->entry.index);
++                        broken = true;
++                        break;
++                    } else {
++                        /* This can happen, but it is unusual. */
++                        printf("%s: record %llu truncates log from %"PRIu64
++                               " to %"PRIu64" entries\n", s->filename, rec_idx,
++                               s->log_end, r->entry.index);
++                    }
++                    s->log_end = r->entry.index;
++                }
++
++                uint64_t prev_term = (s->log_end > s->log_start
++                                      ? s->entries[s->log_end
++                                                   - s->log_start - 1].term
++                                      : s->snap->term);
++                if (r->term < prev_term) {
++                    ovs_error(0, "%s: record %llu with index %"PRIu64" term "
++                              "%"PRIu64" precedes previous entry's term "
++                              "%"PRIu64, s->filename, rec_idx,
++                              r->entry.index, r->term, prev_term);
++                    broken = true;
++                    break;
++                }
++
++                uint64_t log_idx = s->log_end++ - s->log_start;
++                if (log_idx >= allocated_entries) {
++                    s->entries = x2nrealloc(s->entries, &allocated_entries,
++                                            sizeof *s->entries);
++                }
++                struct raft_entry *e = &s->entries[log_idx];
++                e->term = r->term;
++                raft_entry_set_parsed_data_nocopy(e, r->entry.data);
++                e->eid = r->entry.eid;
++                e->servers = r->entry.servers;
++                break;
++
++            case RAFT_REC_TERM:
++                break;
++
++            case RAFT_REC_VOTE:
++                if (r->term < term) {
++                    ovs_error(0, "%s: record %llu votes for term %"PRIu64" "
++                              "but current term is %"PRIu64, s->filename,
++                              rec_idx, r->term, term);
++                    broken = true;
++                } else if (!uuid_is_zero(&vote)
++                           && !uuid_equals(&vote, &r->sid)) {
++                    char buf1[SID_LEN + 1];
++                    char buf2[SID_LEN + 1];
++                    ovs_error(0, "%s: record %llu votes for %s in term "
++                              "%"PRIu64" but a previous record for the "
++                              "same term voted for %s", s->filename,
++                              rec_idx,
++                              get_server_name(&c, &vote, buf1, sizeof buf1),
++                              r->term,
++                              get_server_name(&c, &r->sid, buf2, sizeof buf2));
++                    broken = true;
++                } else {
++                    vote = r->sid;
++                }
++                break;
++
++            case RAFT_REC_NOTE:
++                if (!strcmp(r->note, "left")) {
++                    printf("%s: record %llu shows that the server left the "
++                           "cluster\n", s->filename, rec_idx);
++                }
++                break;
++
++            case RAFT_REC_COMMIT_INDEX:
++                if (r->commit_index < commit_index) {
++                    ovs_error(0, "%s: record %llu regresses commit index "
++                              "from %"PRIu64 " to %"PRIu64, s->filename,
++                              rec_idx, commit_index, r->commit_index);
++                    broken = true;
++                    break;
++                } else if (r->commit_index >= s->log_end) {
++                    ovs_error(0, "%s: record %llu advances commit index to "
++                              "%"PRIu64 " but last log index is %"PRIu64,
++                              s->filename, rec_idx, r->commit_index,
++                              s->log_end - 1);
++                    broken = true;
++                    break;
++                } else {
++                    commit_index = r->commit_index;
++                }
++
++                record_commit(&c, term, s, r->commit_index);
++                break;
++
++            case RAFT_REC_LEADER:
++                if (!uuid_equals(&r->sid, &leader)) {
++                    if (uuid_is_zero(&leader)) {
++                        leader = r->sid;
++                        leader_rec_idx = rec_idx;
++                    } else {
++                        char buf1[SID_LEN + 1];
++                        char buf2[SID_LEN + 1];
++                        ovs_error(0, "%s: record %llu reports leader %s "
++                                  "for term %"PRIu64" but record %"PRIu64" "
++                                  "previously reported the leader as %s "
++                                  "in that term",
++                                  s->filename, rec_idx,
++                                  get_server_name(&c, &r->sid,
++                                                  buf1, sizeof buf1),
++                                  term, leader_rec_idx,
++                                  get_server_name(&c, &leader,
++                                                  buf2, sizeof buf2));
++                        broken = true;
++                        break;
++                    }
++                }
++                record_leader(&c, term, s, &r->sid);
++                break;
++            }
++            if (broken) {
++                break;
++            }
++            c.n_entries[i]++;
++        }
++    }
++
++    /* Check the Leader Completeness property from Figure 3.2: If a log entry
++     * is committed in a given term, then that entry will be present in the
++     * logs of the leaders for all higher-numbered terms. */
++    if (min_term == UINT64_MAX || max_term == 0) {
++        ovs_fatal(0, "all logs are empty");
++    }
++    struct commit *commit = NULL;
++    for (uint64_t term = min_term; term <= max_term; term++) {
++        struct leader *leader = find_leader(&c, term);
++        if (leader && leader->log_end
++            && commit && commit->index >= leader->log_end) {
++            ovs_fatal(0, "leader %s for term %"PRIu64" has log entries only "
++                      "up to index %"PRIu64", but index %"PRIu64" was "
++                      "committed in a previous term (e.g. by %s)",
++                      leader->server->filename, term, leader->log_end - 1,
++                      commit->index, commit->server->filename);
++        }
++
++        struct commit *next = find_commit(&c, term);
++        if (next && (!commit || next->index > commit->index)) {
++            commit = next;
++        }
++    }
++
++    /* Section 3.5: Check the Log Matching Property in Figure 3.2:
++     *
++     *   - If two entries in different logs have the same index and term, then
++     *     they store the same command.
++     *
++     *   - If two entries in different logs have the same index and term, then
++     *     the logs are identical in all preceding entries.
++     */
++    for (size_t i = 0; i < c.n_servers; i++) {
++        for (size_t j = 0; j < c.n_servers; j++) {
++            struct server *a = &c.servers[i];
++            struct server *b = &c.servers[j];
++
++            if (a == b) {
++                continue;
++            }
++
++            bool must_equal = false;
++            for (uint64_t idx = MIN(a->log_end, b->log_end) - 1;
++                 idx >= MAX(a->log_start, b->log_start);
++                 idx--) {
++                const struct raft_entry *ae = &a->entries[idx - a->log_start];
++                const struct raft_entry *be = &b->entries[idx - b->log_start];
++                if (ae->term == be->term) {
++                    must_equal = true;
++                }
++                if (!must_equal || raft_entry_equals(ae, be)) {
++                    continue;
++                }
++                struct json *jae = raft_entry_to_json(ae);
++                struct json *jbe = raft_entry_to_json(be);
++                char *as = json_to_string(jae, JSSF_SORT);
++                char *bs = json_to_string(jbe, JSSF_SORT);
++                ovs_fatal(0, "log entries with index %"PRIu64" differ:\n"
++                          "%s has %s\n"
++                          "%s has %s",
++                          idx, a->filename, as, b->filename, bs);
++                json_destroy(jae);
++                json_destroy(jbe);
++            }
++        }
++    }
++
++    /* Check for db consistency:
++     * The serverid must be in the servers list.
++     */
++
++    for (struct server *s = c.servers; s < &c.servers[c.n_servers]; s++) {
++        struct shash *servers_obj = json_object(s->snap->servers);
++        char *server_id = xasprintf(SID_FMT, SID_ARGS(&s->header.sid));
++        bool found = false;
++        const struct shash_node *node;
++
++        SHASH_FOR_EACH (node, servers_obj) {
++            if (!strncmp(server_id, node->name, SID_LEN)) {
++                found = true;
++            }
++        }
++
++        if (!found) {
++            for (struct raft_entry *e = s->entries;
++                 e < &s->entries[s->log_end - s->log_start]; e++) {
++                if (e->servers == NULL) {
++                    continue;
++                }
++                struct shash *log_servers_obj = json_object(e->servers);
++                SHASH_FOR_EACH (node, log_servers_obj) {
++                    if (!strncmp(server_id, node->name, SID_LEN)) {
++                        found = true;
++                    }
++                }
++            }
++        }
++
++        if (!found) {
++            ovs_fatal(0, "%s: server %s not found in server list",
++                      s->filename, server_id);
++        }
++        free(server_id);
++    }
++
++    /* Clean up. */
++
++    for (size_t i = 0; i < c.n_servers; i++) {
++        struct server *s = &c.servers[i];
++        check_ovsdb_error(ovsdb_log_replace(s->log, c.entries[i]->array.elems, c.n_entries[i]));
++        ovsdb_log_close(s->log);
++        s->log = NULL;
++
++        raft_header_uninit(&s->header);
++        for (size_t j = 0; j < s->n_records; j++) {
++            struct raft_record *r = &s->records[j];
++
++            raft_record_uninit(r);
++        }
++        free(s->records);
++        free(s->entries);
++    }
++    free(c.servers);
++
++    HMAP_FOR_EACH_SAFE (commit, hmap_node, &c.commits) {
++        hmap_remove(&c.commits, &commit->hmap_node);
++        free(commit);
++    }
++    hmap_destroy(&c.commits);
++
++    struct leader *leader;
++    HMAP_FOR_EACH_SAFE (leader, hmap_node, &c.leaders) {
++        hmap_remove(&c.leaders, &leader->hmap_node);
++        free(leader);
++    }
++    hmap_destroy(&c.leaders);
++}
++
+ static struct ovsdb_version
+ parse_version(const char *s)
+ {
+@@ -1764,6 +2170,7 @@ static const struct ovs_cmdl_command all_commands[] = {
+     { "transact", "[db] trns", 1, 2, do_transact, OVS_RO },
+     { "show-log", "[db]", 0, 1, do_show_log, OVS_RO },
+     { "check-cluster", "db...", 1, INT_MAX, do_check_cluster, OVS_RO },
++    { "fix-cluster", "db...", 1, INT_MAX, do_fix_cluster, OVS_RW },
+     { "compare-versions", "a op b", 3, 3, do_compare_versions, OVS_RO },
+     { "help", NULL, 0, INT_MAX, do_help, OVS_RO },
+     { "list-commands", NULL, 0, INT_MAX, do_list_commands, OVS_RO },

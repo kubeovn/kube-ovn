@@ -1,0 +1,119 @@
+From ebf61515da71fa2e23125a92859fbdb96dcbffe7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Wed, 19 Oct 2022 14:40:58 +0800
+Subject: [PATCH] ovsdb-tool: add optional server id parameter for
+ "join-cluster" command
+
+---
+ ovsdb/ovsdb-tool.c | 16 ++++++++++++++--
+ ovsdb/raft.c       |  7 +++++--
+ ovsdb/raft.h       |  3 ++-
+ 3 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/ovsdb/ovsdb-tool.c b/ovsdb/ovsdb-tool.c
+index 60f353197bf..0f15ad1806f 100644
+--- a/ovsdb/ovsdb-tool.c
++++ b/ovsdb/ovsdb-tool.c
+@@ -58,6 +58,9 @@ static const char *rbac_role;
+ /* --cid: Cluster ID for "join-cluster" command. */
+ static struct uuid cid;
+ 
++/* --sid: Server ID for "join-cluster" command. */
++static struct uuid sid;
++
+ /* --election-timer: Election timer for "create-cluster" command. */
+ static uint64_t election_timer;
+ 
+@@ -89,12 +92,14 @@ parse_options(int argc, char *argv[])
+     enum {
+         OPT_RBAC_ROLE = UCHAR_MAX + 1,
+         OPT_CID,
++        OPT_SID,
+         OPT_ELECTION_TIMER,
+     };
+     static const struct option long_options[] = {
+         {"more", no_argument, NULL, 'm'},
+         {"rbac-role", required_argument, NULL, OPT_RBAC_ROLE},
+         {"cid", required_argument, NULL, OPT_CID},
++        {"sid", required_argument, NULL, OPT_SID},
+         {"election-timer", required_argument, NULL, OPT_ELECTION_TIMER},
+         {"verbose", optional_argument, NULL, 'v'},
+         {"help", no_argument, NULL, 'h'},
+@@ -128,6 +133,12 @@ parse_options(int argc, char *argv[])
+             }
+             break;
+ 
++        case OPT_SID:
++            if (!uuid_from_string(&sid, optarg) || uuid_is_zero(&sid)) {
++                ovs_fatal(0, "%s: not a valid UUID", optarg);
++            }
++            break;
++
+         case OPT_ELECTION_TIMER:
+             election_timer = atoll(optarg);
+             error = raft_validate_election_timer(election_timer);
+@@ -169,7 +180,7 @@ usage(void)
+            "  create [DB [SCHEMA]]    create DB with the given SCHEMA\n"
+            "  [--election-timer=ms] create-cluster DB CONTENTS LOCAL\n"
+            "    create clustered DB with given CONTENTS and LOCAL address\n"
+-           "  [--cid=UUID] join-cluster DB NAME LOCAL REMOTE...\n"
++           "  [--cid=UUID] [--sid=UUID] join-cluster DB NAME LOCAL REMOTE...\n"
+            "    join clustered DB with given NAME and LOCAL and REMOTE addrs\n"
+            "  compact [DB [DST]]      compact DB in-place (or to DST)\n"
+            "  convert [DB [SCHEMA [DST]]]   convert DB to SCHEMA (to DST)\n"
+@@ -342,7 +353,8 @@ do_join_cluster(struct ovs_cmdl_context *ctx)
+     }
+     check_ovsdb_error(raft_join_cluster(db_file_name, name, local,
+                                         &remote_addrs,
+-                                        uuid_is_zero(&cid) ? NULL : &cid));
++                                        uuid_is_zero(&cid) ? NULL : &cid,
++                                        uuid_is_zero(&sid) ? NULL : &sid));
+     sset_destroy(&remote_addrs);
+ }
+ 
+diff --git a/ovsdb/raft.c b/ovsdb/raft.c
+index 73efba4ae4a..e1cab86cb85 100644
+--- a/ovsdb/raft.c
++++ b/ovsdb/raft.c
+@@ -575,7 +575,7 @@ struct ovsdb_error * OVS_WARN_UNUSED_RESULT
+ raft_join_cluster(const char *file_name,
+                   const char *name, const char *local_address,
+                   const struct sset *remote_addresses,
+-                  const struct uuid *cid)
++                  const struct uuid *cid, const struct uuid *sid)
+ {
+     ovs_assert(!sset_is_empty(remote_addresses));
+ 
+@@ -600,6 +600,9 @@ raft_join_cluster(const char *file_name,
+     if (cid && uuid_is_zero(cid)) {
+         return ovsdb_error(NULL, "all-zero UUID is not valid cluster ID");
+     }
++    if (sid && uuid_is_zero(sid)) {
++        return ovsdb_error(NULL, "all-zero UUID is not valid server ID");
++    }
+ 
+     /* Create log file. */
+     struct ovsdb_log *log;
+@@ -611,7 +614,7 @@ raft_join_cluster(const char *file_name,
+ 
+     /* Write log file. */
+     struct raft_header h = {
+-        .sid = uuid_random(),
++        .sid = sid ? *sid : uuid_random(),
+         .cid = cid ? *cid : UUID_ZERO,
+         .name = xstrdup(name),
+         .local_address = xstrdup(local_address),
+diff --git a/ovsdb/raft.h b/ovsdb/raft.h
+index 403ed3dd732..b62f95228e6 100644
+--- a/ovsdb/raft.h
++++ b/ovsdb/raft.h
+@@ -86,7 +86,8 @@ struct ovsdb_error *raft_create_cluster(const char *file_name,
+ struct ovsdb_error *raft_join_cluster(const char *file_name, const char *name,
+                                       const char *local_address,
+                                       const struct sset *remote_addrs,
+-                                      const struct uuid *cid)
++                                      const struct uuid *cid,
++                                      const struct uuid *sid)
+     OVS_WARN_UNUSED_RESULT;
+ 
+ /* Reading metadata from a server log. */

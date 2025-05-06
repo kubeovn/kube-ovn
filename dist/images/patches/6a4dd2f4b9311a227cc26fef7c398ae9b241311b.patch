@@ -1,0 +1,125 @@
+From 6a4dd2f4b9311a227cc26fef7c398ae9b241311b Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Fri, 26 May 2023 18:07:19 +0800
+Subject: [PATCH] fix memory leak in qos
+
+---
+ lib/netdev-linux.c | 56 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/lib/netdev-linux.c b/lib/netdev-linux.c
+index 2e400ca3d63..7f0645dbc3e 100644
+--- a/lib/netdev-linux.c
++++ b/lib/netdev-linux.c
+@@ -3754,6 +3754,13 @@ codel_install__(struct netdev *netdev_, uint32_t target, uint32_t limit,
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct codel *codel;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     codel = xmalloc(sizeof *codel);
+     tc_init(&codel->tc, &tc_ops_codel);
+     codel->target = target;
+@@ -3965,6 +3972,13 @@ fqcodel_install__(struct netdev *netdev_, uint32_t target, uint32_t limit,
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct fqcodel *fqcodel;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     fqcodel = xmalloc(sizeof *fqcodel);
+     tc_init(&fqcodel->tc, &tc_ops_fqcodel);
+     fqcodel->target = target;
+@@ -4187,6 +4201,13 @@ sfq_install__(struct netdev *netdev_, uint32_t quantum, uint32_t perturb)
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct sfq *sfq;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     sfq = xmalloc(sizeof *sfq);
+     tc_init(&sfq->tc, &tc_ops_sfq);
+     sfq->perturb = perturb;
+@@ -4362,6 +4383,13 @@ netem_install__(struct netdev *netdev_, uint32_t latency,
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct netem *netem;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     netem = xmalloc(sizeof *netem);
+     tc_init(&netem->tc, &tc_ops_netem);
+     netem->latency = latency;
+@@ -4552,6 +4580,13 @@ htb_install__(struct netdev *netdev_, uint64_t max_rate)
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct htb *htb;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     htb = xmalloc(sizeof *htb);
+     tc_init(&htb->tc, &tc_ops_htb);
+     htb->max_rate = max_rate;
+@@ -5037,6 +5072,13 @@ hfsc_install__(struct netdev *netdev_, uint32_t max_rate)
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     struct hfsc *hfsc;
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     hfsc = xmalloc(sizeof *hfsc);
+     tc_init(&hfsc->tc, &tc_ops_hfsc);
+     hfsc->max_rate = max_rate;
+@@ -5508,6 +5550,13 @@ noop_install__(struct netdev *netdev_)
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     static const struct tc tc = TC_INITIALIZER(&tc, &tc_ops_default);
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     netdev->tc = CONST_CAST(struct tc *, &tc);
+ }
+ 
+@@ -5543,6 +5592,13 @@ default_install__(struct netdev *netdev_)
+     struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+     static const struct tc tc = TC_INITIALIZER(&tc, &tc_ops_default);
+ 
++    if (netdev->tc) {
++        if (netdev->tc->ops->tc_destroy) {
++            netdev->tc->ops->tc_destroy(netdev->tc);
++        }
++        netdev->tc = NULL;
++    }
++
+     /* Nothing but a tc class implementation is allowed to write to a tc.  This
+      * class never does that, so we can legitimately use a const tc object. */
+     netdev->tc = CONST_CAST(struct tc *, &tc);

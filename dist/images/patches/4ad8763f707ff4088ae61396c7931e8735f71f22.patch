@@ -1,0 +1,22 @@
+From 4ad8763f707ff4088ae61396c7931e8735f71f22 Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Sat, 7 Oct 2023 09:57:00 +0800
+Subject: [PATCH] change hash type from dp_hash to hash with field src_ip
+
+---
+ lib/actions.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/actions.c b/lib/actions.c
+index 80174bd57d..efaaeb9e55 100644
+--- a/lib/actions.c
++++ b/lib/actions.c
+@@ -1617,7 +1617,7 @@ encode_SELECT(const struct ovnact_select *select,
+     struct ofpact_group *og;
+ 
+     struct ds ds = DS_EMPTY_INITIALIZER;
+-    ds_put_format(&ds, "type=select,selection_method=dp_hash");
++    ds_put_format(&ds, "type=select,selection_method=hash,fields=ip_src");
+ 
+     if (ovs_feature_is_supported(OVS_DP_HASH_L4_SYM_SUPPORT)) {
+         /* Select dp-hash l4_symmetric by setting the upper 32bits of
