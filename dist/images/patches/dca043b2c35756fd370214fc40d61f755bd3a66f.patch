@@ -1,0 +1,22 @@
+From dca043b2c35756fd370214fc40d61f755bd3a66f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Wed, 11 Jan 2023 15:57:31 +0800
+Subject: [PATCH] fix ssl listen address
+
+---
+ utilities/ovn-ctl | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/utilities/ovn-ctl b/utilities/ovn-ctl
+index 35291b0500..eda573dac8 100755
+--- a/utilities/ovn-ctl
++++ b/utilities/ovn-ctl
+@@ -305,6 +305,8 @@ $cluster_remote_port
+ 
+     if test X"$create_insecure_remote" = Xyes; then
+         set "$@" --remote=ptcp:$port:$addr
++    else
++        set "$@" --remote=pssl:$port:$addr
+     fi
+ 
+     if test $mode = active_passive; then

@@ -1,0 +1,22 @@
+From f61283c8934589fe6de2b1e86041204dfc31a3e3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Thu, 29 Sep 2022 11:22:51 +0800
+Subject: [PATCH] compile without avx512
+
+---
+ m4/openvswitch.m4 | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/m4/openvswitch.m4 b/m4/openvswitch.m4
+index 09134feca09..f4f144b9c9e 100644
+--- a/m4/openvswitch.m4
++++ b/m4/openvswitch.m4
+@@ -438,7 +438,7 @@ AC_DEFUN([OVS_CHECK_BINUTILS_AVX512],
+      GATHER_PARAMS='0x8(,%ymm1,1),%ymm0{%k2}'
+      if ($CC -dumpmachine | grep x86_64) >/dev/null 2>&1; then
+        echo "vpgatherqq $GATHER_PARAMS" | as --64 -o $OBJFILE -
+-       if (objdump -d  --no-show-raw-insn $OBJFILE | grep -q $GATHER_PARAMS) >/dev/null 2>&1; then
++       if false; then
+          ovs_cv_binutils_avx512_good=yes
+        else
+          ovs_cv_binutils_avx512_good=no
