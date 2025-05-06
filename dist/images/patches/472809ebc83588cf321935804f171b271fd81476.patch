@@ -1,0 +1,24 @@
+From 472809ebc83588cf321935804f171b271fd81476 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Mon, 13 Feb 2023 17:46:27 +0800
+Subject: [PATCH] do not remove LB if vips is empty
+
+---
+ utilities/ovn-nbctl.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/utilities/ovn-nbctl.c b/utilities/ovn-nbctl.c
+index 2d78167950..5ea14df115 100644
+--- a/utilities/ovn-nbctl.c
++++ b/utilities/ovn-nbctl.c
+@@ -3000,10 +3000,6 @@ nbctl_lb_del(struct ctl_context *ctx)
+         const char *lb_vip = ctx->argv[2];
+         if (smap_get(&lb->vips, lb_vip)) {
+             smap_remove(CONST_CAST(struct smap *, &lb->vips), lb_vip);
+-            if (smap_is_empty(&lb->vips)) {
+-                nbrec_load_balancer_delete(lb);
+-                return;
+-            }
+ 
+             /* Delete the vip of the load balancer. */
+             nbrec_load_balancer_verify_vips(lb);

@@ -1,0 +1,250 @@
+From 8146578592200c7b732bca8ab43be05a84e34269 Mon Sep 17 00:00:00 2001
+From: Adrian Moreno <amorenoz@redhat.com>
+Date: Wed, 20 Apr 2022 07:55:35 +0200
+Subject: [PATCH] treewide: bump ovs and fix problematic loops
+
+The minimum changes to adapt to new ovs are:
+- adapt to changes made in inet_parse_active function by passing an
+  extra NULL argument
+
+- fix those places where next variable was being used inside *_SAFE
+  iterators since. Now the next variable might not always be safe to use
+  so extra checks are needed.
+
+Signed-off-by: Adrian Moreno <amorenoz@redhat.com>
+Acked-by: Dumitru Ceara <dceara@redhat.com>
+Signed-off-by: Mark Michelson <mmichels@redhat.com>
+---
+ controller/ofctrl.c   |  7 ++++++-
+ lib/actions.c         |  2 +-
+ lib/expr.c            | 31 ++++++++++++++++++-------------
+ lib/ovn-util.c        |  2 +-
+ utilities/ovn-nbctl.c |  6 +++---
+ utilities/ovn-trace.c |  8 +++++---
+ 6 files changed, 34 insertions(+), 22 deletions(-)
+
+diff --git a/controller/ofctrl.c b/controller/ofctrl.c
+index 4ca39228a6..43190c7488 100644
+--- a/controller/ofctrl.c
++++ b/controller/ofctrl.c
+@@ -877,7 +877,12 @@ link_installed_to_desired(struct installed_flow *i, struct desired_flow *d)
+             break;
+         }
+     }
+-    ovs_list_insert(&f->installed_ref_list_node, &d->installed_ref_list_node);
++    if (!f) {
++        ovs_list_insert(&i->desired_refs, &d->installed_ref_list_node);
++    } else {
++        ovs_list_insert(&f->installed_ref_list_node,
++                        &d->installed_ref_list_node);
++    }
+     d->installed_flow = i;
+     return installed_flow_get_active(i) == d;
+ }
+diff --git a/lib/actions.c b/lib/actions.c
+index b3433f49ea..5c873f4cc2 100644
+--- a/lib/actions.c
++++ b/lib/actions.c
+@@ -2272,7 +2272,7 @@ validate_empty_lb_backends(struct action_context *ctx,
+ 
+         switch (o->option->code) {
+         case EMPTY_LB_VIP:
+-            if (!inet_parse_active(c->string, 0, &ss, false)) {
++            if (!inet_parse_active(c->string, 0, &ss, false, NULL)) {
+                 lexer_error(ctx->lexer, "Invalid load balancer VIP '%s'",
+                             c->string);
+                 return;
+diff --git a/lib/expr.c b/lib/expr.c
+index 1793058cc1..2210709f55 100644
+--- a/lib/expr.c
++++ b/lib/expr.c
+@@ -203,16 +203,17 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
+ }
+ 
+ static void
+-expr_insert_andor(struct expr *andor, struct expr *before, struct expr *new)
++expr_insert_andor(struct expr *andor, struct ovs_list *before,
++                  struct expr *new)
+ {
+     if (new->type == andor->type) {
+         if (andor->type == EXPR_T_AND) {
+             /* Conjunction junction, what's your function? */
+         }
+-        ovs_list_splice(&before->node, new->andor.next, &new->andor);
++        ovs_list_splice(before, new->andor.next, &new->andor);
+         expr_destroy(new);
+     } else {
+-        ovs_list_insert(&before->node, &new->node);
++        ovs_list_insert(before, &new->node);
+     }
+ }
+ 
+@@ -1955,7 +1956,8 @@ expr_annotate__(struct expr *expr, const struct shash *symtab,
+                 expr_destroy(expr);
+                 return NULL;
+             }
+-            expr_insert_andor(expr, next, new_sub);
++            expr_insert_andor(expr, next ? &next->node : &expr->andor,
++                              new_sub);
+         }
+         *errorp = NULL;
+         return expr;
+@@ -2158,7 +2160,7 @@ expr_evaluate_condition(struct expr *expr,
+             struct expr *e = expr_evaluate_condition(sub, is_chassis_resident,
+                                                      c_aux, condition_present);
+             e = expr_fix(e);
+-            expr_insert_andor(expr, next, e);
++            expr_insert_andor(expr, next ? &next->node : &expr->andor, e);
+         }
+         return expr_fix(expr);
+ 
+@@ -2192,7 +2194,8 @@ expr_simplify(struct expr *expr)
+     case EXPR_T_OR:
+         LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+             ovs_list_remove(&sub->node);
+-            expr_insert_andor(expr, next, expr_simplify(sub));
++            expr_insert_andor(expr, next ? &next->node : &expr->andor,
++                              expr_simplify(sub));
+         }
+         return expr_fix(expr);
+ 
+@@ -2302,12 +2305,13 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
+      * EXPR_T_OR with EXPR_T_CMP subexpressions. */
+     struct expr *sub, *next = NULL;
+     LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
++        struct ovs_list *next_list = next ? &next->node : &expr->andor;
+         ovs_list_remove(&sub->node);
+         struct expr *new = crush_cmps(sub, symbol);
+         switch (new->type) {
+         case EXPR_T_CMP:
+             if (!singleton) {
+-                ovs_list_insert(&next->node, &new->node);
++                ovs_list_insert(next_list, &new->node);
+                 singleton = new;
+             } else {
+                 bool match = !strcmp(new->cmp.string, singleton->cmp.string);
+@@ -2321,7 +2325,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
+         case EXPR_T_AND:
+             OVS_NOT_REACHED();
+         case EXPR_T_OR:
+-            ovs_list_insert(&next->node, &new->node);
++            ovs_list_insert(next_list, &new->node);
+             break;
+         case EXPR_T_BOOLEAN:
+             if (!new->boolean) {
+@@ -2417,7 +2421,7 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
+         case EXPR_T_AND:
+             OVS_NOT_REACHED();
+         case EXPR_T_OR:
+-            ovs_list_insert(&next->node, &new->node);
++            ovs_list_insert(next ? &next->node : &expr->andor, &new->node);
+             break;
+         case EXPR_T_BOOLEAN:
+             if (!new->boolean) {
+@@ -2583,7 +2587,8 @@ crush_or(struct expr *expr, const struct expr_symbol *symbol)
+      * is now a disjunction of cmps over the same symbol. */
+     LIST_FOR_EACH_SAFE (sub, next, node, &expr->andor) {
+         ovs_list_remove(&sub->node);
+-        expr_insert_andor(expr, next, crush_cmps(sub, symbol));
++        expr_insert_andor(expr, next ? &next->node : &expr->andor,
++                          crush_cmps(sub, symbol));
+     }
+     expr = expr_fix(expr);
+     if (expr->type != EXPR_T_OR) {
+@@ -2741,8 +2746,7 @@ expr_normalize_and(struct expr *expr)
+ 
+     struct expr *a, *b;
+     LIST_FOR_EACH_SAFE (a, b, node, &expr->andor) {
+-        if (&b->node == &expr->andor
+-            || a->type != EXPR_T_CMP || b->type != EXPR_T_CMP
++        if (!b || a->type != EXPR_T_CMP || b->type != EXPR_T_CMP
+             || a->cmp.symbol != b->cmp.symbol) {
+             continue;
+         } else if (a->cmp.symbol->width
+@@ -2819,7 +2823,8 @@ expr_normalize_or(struct expr *expr)
+                 }
+                 expr_destroy(new);
+             } else {
+-                expr_insert_andor(expr, next, new);
++                expr_insert_andor(expr, next ? &next->node : &expr->andor,
++                                  new);
+             }
+         } else {
+             ovs_assert(sub->type == EXPR_T_CMP ||
+diff --git a/lib/ovn-util.c b/lib/ovn-util.c
+index c5af8d1ab3..c3bcd53870 100644
+--- a/lib/ovn-util.c
++++ b/lib/ovn-util.c
+@@ -740,7 +740,7 @@ ip_address_and_port_from_lb_key(const char *key, char **ip_address,
+                                 uint16_t *port, int *addr_family)
+ {
+     struct sockaddr_storage ss;
+-    if (!inet_parse_active(key, 0, &ss, false)) {
++    if (!inet_parse_active(key, 0, &ss, false, NULL)) {
+         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+         VLOG_WARN_RL(&rl, "bad ip address or port for load balancer key %s",
+                      key);
+diff --git a/utilities/ovn-nbctl.c b/utilities/ovn-nbctl.c
+index 2468d523b9..ad81bdd865 100644
+--- a/utilities/ovn-nbctl.c
++++ b/utilities/ovn-nbctl.c
+@@ -2730,7 +2730,7 @@ nbctl_lb_add(struct ctl_context *ctx)
+     }
+ 
+     struct sockaddr_storage ss_vip;
+-    if (!inet_parse_active(lb_vip, 0, &ss_vip, false)) {
++    if (!inet_parse_active(lb_vip, 0, &ss_vip, false, NULL)) {
+         ctl_error(ctx, "%s: should be an IP address (or an IP address "
+                   "and a port number with : as a separator).", lb_vip);
+         return;
+@@ -2760,7 +2760,7 @@ nbctl_lb_add(struct ctl_context *ctx)
+         struct sockaddr_storage ss_dst;
+ 
+         if (lb_vip_port) {
+-            if (!inet_parse_active(token, -1, &ss_dst, false)) {
++            if (!inet_parse_active(token, -1, &ss_dst, false, NULL)) {
+                 ctl_error(ctx, "%s: should be an IP address and a port "
+                           "number with : as a separator.", token);
+                 goto out;
+@@ -2902,7 +2902,7 @@ lb_info_add_smap(const struct nbrec_load_balancer *lb,
+             const struct smap_node *node = nodes[i];
+ 
+             struct sockaddr_storage ss;
+-            if (!inet_parse_active(node->key, 0, &ss, false)) {
++            if (!inet_parse_active(node->key, 0, &ss, false, NULL)) {
+                 continue;
+             }
+ 
+diff --git a/utilities/ovn-trace.c b/utilities/ovn-trace.c
+index f55397bba4..53b8e3c133 100644
+--- a/utilities/ovn-trace.c
++++ b/utilities/ovn-trace.c
+@@ -214,7 +214,7 @@ static void
+ parse_lb_option(const char *s)
+ {
+     struct sockaddr_storage ss;
+-    if (!inet_parse_active(s, 0, &ss, false)) {
++    if (!inet_parse_active(s, 0, &ss, false, NULL)) {
+         ovs_fatal(0, "%s: bad address", s);
+     }
+ 
+@@ -1388,7 +1388,8 @@ ovntrace_node_prune_summary(struct ovs_list *nodes)
+             sub->type == OVNTRACE_NODE_TABLE) {
+             /* Replace 'sub' by its children, if any, */
+             ovs_list_remove(&sub->node);
+-            ovs_list_splice(&next->node, sub->subs.next, &sub->subs);
++            ovs_list_splice(next ? &next->node : nodes, sub->subs.next,
++                            &sub->subs);
+             ovntrace_node_destroy(sub);
+         }
+     }
+@@ -1432,7 +1433,8 @@ ovntrace_node_prune_hard(struct ovs_list *nodes)
+             sub->type == OVNTRACE_NODE_OUTPUT) {
+             /* Replace 'sub' by its children, if any, */
+             ovs_list_remove(&sub->node);
+-            ovs_list_splice(&next->node, sub->subs.next, &sub->subs);
++            ovs_list_splice(next ? &next->node : nodes, sub->subs.next,
++                            &sub->subs);
+             ovntrace_node_destroy(sub);
+         }
+     }

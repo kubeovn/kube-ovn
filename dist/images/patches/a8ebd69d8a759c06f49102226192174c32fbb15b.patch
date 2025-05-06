@@ -1,0 +1,189 @@
+From a8ebd69d8a759c06f49102226192174c32fbb15b Mon Sep 17 00:00:00 2001
+From: Han Zhou <hzhou@ovn.org>
+Date: Fri, 22 Jul 2022 17:43:22 -0700
+Subject: [PATCH] ovn-controller: Add a generic way to check if the daemon
+ started recently.
+
+In some cases we need to know if ovn-controller started long enough and
+has enough iterations of input processing, primarily to ensure it has
+downloaded and handled a complete initial view of the SB DB (and of
+course the local OVS DB), so that it won't delete things too early by
+mistake based on incomplete data.
+
+The mechanism will be used in follow up patches.
+
+Suggested-by: Dumitru Ceara <dceara@redhat.com>
+Signed-off-by: Han Zhou <hzhou@ovn.org>
+Acked-by: Dumitru Ceara <dceara@redhat.com>
+---
+ controller/ovn-controller.c | 17 ++++++++++++
+ lib/inc-proc-eng.c          | 11 ++++++++
+ lib/inc-proc-eng.h          |  4 +++
+ lib/ovn-util.c              | 52 +++++++++++++++++++++++++++++++++++++
+ lib/ovn-util.h              |  5 ++++
+ 5 files changed, 89 insertions(+)
+
+diff --git a/controller/ovn-controller.c b/controller/ovn-controller.c
+index 7990be35c7..dddd71b877 100644
+--- a/controller/ovn-controller.c
++++ b/controller/ovn-controller.c
+@@ -86,6 +86,7 @@ static unixctl_cb_func debug_dump_local_bindings;
+ static unixctl_cb_func lflow_cache_flush_cmd;
+ static unixctl_cb_func lflow_cache_show_stats_cmd;
+ static unixctl_cb_func debug_delay_nb_cfg_report;
++static unixctl_cb_func debug_ignore_startup_delay;
+ 
+ #define DEFAULT_BRIDGE_NAME "br-int"
+ #define DEFAULT_PROBE_INTERVAL_MSEC 5000
+@@ -793,6 +794,7 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
+     struct ofctrl_acked_seqnos *acked_nb_cfg_seqnos =
+         ofctrl_acked_seqnos_get(ofctrl_seq_type_nb_cfg);
+     uint64_t cur_cfg = acked_nb_cfg_seqnos->last_acked;
++    int64_t startup_ts = daemon_startup_ts();
+ 
+     if (!cur_cfg) {
+         goto done;
+@@ -2859,6 +2861,9 @@ main(int argc, char *argv[])
+                              debug_dump_local_bindings,
+                              &runtime_data->lbinding_data);
+ 
++    unixctl_command_register("debug/ignore-startup-delay", "", 0, 0,
++                             debug_ignore_startup_delay, NULL);
++
+     unsigned int ovs_cond_seqno = UINT_MAX;
+     unsigned int ovnsb_cond_seqno = UINT_MAX;
+     unsigned int ovnsb_expected_cond_seqno = UINT_MAX;
+@@ -3020,6 +3025,10 @@ main(int argc, char *argv[])
+                     }
+                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
+                                    time_msec());
++                    if (engine_has_updated()) {
++                        daemon_started_recently_countdown();
++                    }
++
+                     ct_zones_data = engine_get_data(&en_ct_zones);
+                     if (ovs_idl_txn) {
+                         if (ct_zones_data) {
+@@ -3558,3 +3567,11 @@ debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
+     unixctl_command_reply(conn, ds_cstr(&binding_data));
+     ds_destroy(&binding_data);
+ }
++
++static void
++debug_ignore_startup_delay(struct unixctl_conn *conn, int argc OVS_UNUSED,
++                           const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
++{
++    daemon_started_recently_ignore();
++    unixctl_command_reply(conn, NULL);
++}
+diff --git a/lib/inc-proc-eng.c b/lib/inc-proc-eng.c
+index c349efb22e..4ccf7f51a9 100644
+--- a/lib/inc-proc-eng.c
++++ b/lib/inc-proc-eng.c
+@@ -277,6 +277,17 @@ engine_has_run(void)
+     return false;
+ }
+ 
++bool
++engine_has_updated(void)
++{
++    for (size_t i = 0; i < engine_n_nodes; i++) {
++        if (engine_nodes[i]->state == EN_UPDATED) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ bool
+ engine_aborted(void)
+ {
+diff --git a/lib/inc-proc-eng.h b/lib/inc-proc-eng.h
+index 7e9f5bb702..83f28b86df 100644
+--- a/lib/inc-proc-eng.h
++++ b/lib/inc-proc-eng.h
+@@ -230,6 +230,10 @@ bool engine_node_changed(struct engine_node *node);
+ /* Return true if the engine has run in the last iteration. */
+ bool engine_has_run(void);
+ 
++/* Return true if the engine has any update in any node, i.e. any input
++ * has changed; false if nothing has changed. */
++bool engine_has_updated(void);
++
+ /* Returns true if during the last engine run we had to abort processing. */
+ bool engine_aborted(void);
+ 
+diff --git a/lib/ovn-util.c b/lib/ovn-util.c
+index c5af8d1ab3..e3f66e1d45 100644
+--- a/lib/ovn-util.c
++++ b/lib/ovn-util.c
+@@ -785,3 +785,55 @@ ddlog_err(const char *msg)
+     VLOG_ERR("%s", msg);
+ }
+ #endif
++
++#define DAEMON_STARTUP_DELAY_SEED 20
++#define DAEMON_STARTUP_DELAY_MS   10000
++
++static int64_t startup_ts;
++static int startup_delay = DAEMON_STARTUP_DELAY_SEED;
++
++/* Used by debug command only, for tests. */
++static bool ignore_startup_delay = false;
++
++OVS_CONSTRUCTOR(startup_ts_initializer) {
++    startup_ts = time_wall_msec();
++}
++
++int64_t
++daemon_startup_ts(void)
++{
++    return startup_ts;
++}
++
++void
++daemon_started_recently_countdown(void)
++{
++    if (startup_delay > 0) {
++        startup_delay--;
++    }
++}
++
++void
++daemon_started_recently_ignore(void)
++{
++    ignore_startup_delay = true;
++}
++
++bool
++daemon_started_recently(void)
++{
++    if (ignore_startup_delay) {
++        return false;
++    }
++
++    VLOG_DBG("startup_delay: %d, startup_ts: %"PRId64, startup_delay,
++             startup_ts);
++
++    /* Ensure that at least an amount of updates has been handled. */
++    if (startup_delay) {
++        return true;
++    }
++
++    /* Ensure that at least an amount of time has passed. */
++    return time_wall_msec() - startup_ts <= DAEMON_STARTUP_DELAY_MS;
++}
+diff --git a/lib/ovn-util.h b/lib/ovn-util.h
+index 5533dbd0c2..e7a61f6bbc 100644
+--- a/lib/ovn-util.h
++++ b/lib/ovn-util.h
+@@ -270,4 +270,9 @@ void ddlog_warn(const char *msg);
+ void ddlog_err(const char *msg);
+ #endif
+ 
++void daemon_started_recently_countdown(void);
++void daemon_started_recently_ignore(void);
++bool daemon_started_recently(void);
++int64_t daemon_startup_ts(void);
++
+ #endif

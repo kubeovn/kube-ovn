@@ -5,7 +5,27 @@ FROM ubuntu:22.04 AS ovs-builder
 
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
-ENV SRC_DIR='/usr/src'
+ARG SRC_DIR='/usr/src'
+
+ADD patches/2dc8e7aa202818952b2fa80b47298604530c9de0.patch $SRC_DIR
+ADD patches/918d6dc79634bec760054ee53f7628186315bcfb.patch $SRC_DIR
+ADD patches/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch $SRC_DIR
+ADD patches/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch $SRC_DIR
+ADD patches/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch $SRC_DIR
+ADD patches/2e2ec1161cadbec79786d63fde9475053d996586.patch $SRC_DIR
+ADD patches/62d4969877712c26fe425698d898b440f91b44bf.patch $SRC_DIR
+ADD patches/8146578592200c7b732bca8ab43be05a84e34269.patch $SRC_DIR
+ADD patches/a8ebd69d8a759c06f49102226192174c32fbb15b.patch $SRC_DIR
+ADD patches/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch $SRC_DIR
+ADD patches/8f4e4868377afb5e980856755b9f6394f8b649e2.patch $SRC_DIR
+ADD patches/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch $SRC_DIR
+ADD patches/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch $SRC_DIR
+ADD patches/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch $SRC_DIR
+ADD patches/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch $SRC_DIR
+ADD patches/0f6fe4202001c0950dc689179e7a4ad9554a51fa.patch $SRC_DIR
+ADD patches/472809ebc83588cf321935804f171b271fd81476.patch $SRC_DIR
+ADD patches/60207f7a3d072848936221f1b767722984fd50ae.patch $SRC_DIR
+ADD patches/89eaa68a006f29b2e766062e796d452fee12c3f2.patch $SRC_DIR
 
 RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
@@ -16,19 +36,19 @@ RUN cd /usr/src/ && \
     git clone -b branch-2.16 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # ofproto: Fix re-creation of tunnel backing interfaces on restart.
-    curl -s https://github.com/openvswitch/ovs/commit/8661abd4c41a89116fbd4e4d210e73165cedd323.patch | git apply && \
+    git apply $SRC_DIR/8661abd4c41a89116fbd4e4d210e73165cedd323.patch && \
     # fix memleak
-    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
+    git apply $SRC_DIR/2dc8e7aa202818952b2fa80b47298604530c9de0.patch && \
     # fix log file descriptor leak in monitor process
-    curl -s https://github.com/kubeovn/ovs/commit/918d6dc79634bec760054ee53f7628186315bcfb.patch | git apply && \
+    git apply $SRC_DIR/918d6dc79634bec760054ee53f7628186315bcfb.patch && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    git apply $SRC_DIR/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
+    git apply $SRC_DIR/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
+    git apply $SRC_DIR/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
+    git apply $SRC_DIR/2e2ec1161cadbec79786d63fde9475053d996586.patch && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
@@ -40,33 +60,33 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # fix ssl listen address
-    curl -s https://github.com/kubeovn/ovn/commit/62d4969877712c26fe425698d898b440f91b44bf.patch | git apply && \
+    git apply $SRC_DIR/62d4969877712c26fe425698d898b440f91b44bf.patch && \
     # expr.c: Use expr_destroy and expr_clone instead of free and xmemdup.
-    curl -s https://github.com/ovn-org/ovn/commit/4b4cadcfabbc79f7d69c213be2b37e5e8634201c.patch | git apply && \
+    git apply $SRC_DIR/4b4cadcfabbc79f7d69c213be2b37e5e8634201c.patch && \
     # treewide: bump ovs and fix problematic loops
-    curl -s https://github.com/kubeovn/ovn/commit/8146578592200c7b732bca8ab43be05a84e34269.patch | git apply && \
+    git apply $SRC_DIR/8146578592200c7b732bca8ab43be05a84e34269.patch && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
-    curl -s https://github.com/kubeovn/ovn/commit/a8ebd69d8a759c06f49102226192174c32fbb15b.patch | git apply && \
+    git apply $SRC_DIR/a8ebd69d8a759c06f49102226192174c32fbb15b.patch && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
-    curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    git apply $SRC_DIR/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch && \
     # do not send multicast packets to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
+    git apply $SRC_DIR/8f4e4868377afb5e980856755b9f6394f8b649e2.patch && \
     # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch | git apply && \
+    git apply $SRC_DIR/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch && \
     # Add EXTRA_CONFIGURE_OPTS for debian build
-    curl -s https://github.com/kubeovn/ovn/commit/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch | git apply && \
+    git apply $SRC_DIR/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch && \
     # fix ipv6 svc
-    curl -s https://github.com/kubeovn/ovn/commit/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch | git apply && \
+    git apply $SRC_DIR/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
+    git apply $SRC_DIR/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/0f6fe4202001c0950dc689179e7a4ad9554a51fa.patch | git apply && \
+    git apply $SRC_DIR/0f6fe4202001c0950dc689179e7a4ad9554a51fa.patch && \
     # do not remove LB if vips is empty
-    curl -s https://github.com/kubeovn/ovn/commit/472809ebc83588cf321935804f171b271fd81476.patch | git apply && \
+    git apply $SRC_DIR/472809ebc83588cf321935804f171b271fd81476.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/60207f7a3d072848936221f1b767722984fd50ae.patch | git apply && \
-    # backport tos inherit from inner packet    
-    curl -s https://github.com/kubeovn/ovn/commit/89eaa68a006f29b2e766062e796d452fee12c3f2.patch | git apply && \
+    git apply $SRC_DIR/60207f7a3d072848936221f1b767722984fd50ae.patch && \
+    # backport tos inherit from inner packet
+    git apply $SRC_DIR/89eaa68a006f29b2e766062e796d452fee12c3f2.patch && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -84,9 +104,9 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_PLUGINS_VERSION="v1.6.2"
-ENV KUBECTL_VERSION="v1.30.11"
-ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
+ARG CNI_PLUGINS_VERSION="v1.6.2"
+ARG KUBECTL_VERSION="v1.30.11"
+ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
 ADD go-deps/download-go-deps.sh /

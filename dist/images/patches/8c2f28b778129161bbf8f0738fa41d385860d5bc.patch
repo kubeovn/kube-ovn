@@ -1,0 +1,28 @@
+From 8c2f28b778129161bbf8f0738fa41d385860d5bc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Thu, 29 Sep 2022 10:58:42 +0800
+Subject: [PATCH] add fdb update log
+
+---
+ ofproto/ofproto-dpif-xlate.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/ofproto/ofproto-dpif-xlate.c b/ofproto/ofproto-dpif-xlate.c
+index e804c4d8870..fa68cc810a2 100644
+--- a/ofproto/ofproto-dpif-xlate.c
++++ b/ofproto/ofproto-dpif-xlate.c
+@@ -8244,8 +8244,12 @@ xlate_mac_learning_update(const struct ofproto_dpif *ofproto,
+         return;
+     }
+ 
+-    update_learning_table__(xbundle->xbridge,
+-                            xbundle, dl_src, vlan, is_grat_arp);
++    if (!update_learning_table__(xbundle->xbridge, xbundle, dl_src, vlan,
++                                 is_grat_arp)) {
++        VLOG_DBG("bridge %s: learned that "ETH_ADDR_FMT" is "
++                 "on port %s in VLAN %d", xbundle->xbridge->name,
++                 ETH_ADDR_ARGS(dl_src), xbundle->name, vlan);
++    }
+ }
+ 
+ bool

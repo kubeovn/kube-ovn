@@ -1,0 +1,23 @@
+From 89ca60989df4af9a96cc6024e04f99b9b77bad22 Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Mon, 20 Dec 2021 11:39:06 +0800
+Subject: [PATCH] Add EXTRA_CONFIGURE_OPTS for debian build
+
+Just like ovs debian build, ovn debian build also need `EXTRA_CONFIGURE_OPTS` to config CFLAGS, jemalloc etc.
+---
+ debian/rules | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/debian/rules b/debian/rules
+index bbd4d47448..b25a0b48ee 100755
+--- a/debian/rules
++++ b/debian/rules
+@@ -30,7 +30,7 @@ override_dh_autoreconf:
+ 	dh_autoreconf $(DH_AS_NEEDED)
+ 
+ override_dh_auto_configure:
+-	dh_auto_configure -- --enable-ssl --enable-shared --with-ovs-source=${OVSDIR}
++	dh_auto_configure -- --enable-ssl --enable-shared --with-ovs-source=${OVSDIR} $(EXTRA_CONFIGURE_OPTS)
+ 
+ override_dh_auto_test:
+ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
