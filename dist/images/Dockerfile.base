@@ -6,7 +6,34 @@ FROM ubuntu:24.04 AS ovs-builder
 ARG ARCH
 ARG LEGACY
 ARG DEBIAN_FRONTEND=noninteractive
-ENV SRC_DIR='/usr/src'
+ARG SRC_DIR='/usr/src'
+
+ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
+ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
+ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
+ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
+ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
+ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
+ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
+ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
+ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
+ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
+ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
+ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
+ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
+ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
+ADD patches/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch $SRC_DIR
+ADD patches/44229317de74d1e97f7499b371a86c015be6b7a6.patch $SRC_DIR
+ADD patches/786756870f12ac69a5d7bc498693574c6591c5e9.patch $SRC_DIR
+ADD patches/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch $SRC_DIR
+ADD patches/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch $SRC_DIR
+ADD patches/b3af07690e7b2328c02318b1bd812c5665c0632b.patch $SRC_DIR
+ADD patches/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch $SRC_DIR
+ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
+ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
+ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
+ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -14,60 +41,60 @@ RUN cd /usr/src/ && \
     git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
-    curl -s https://github.com/kubeovn/ovs/commit/4228eab1d722087ba795e310eadc9e25c4513ec1.patch | git apply && \
+    git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch | git apply && \
+    git apply $SRC_DIR/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch | git apply && \
+    git apply $SRC_DIR/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/f627b7721ec282f2edaf798913b1559b939687f0.patch | git apply && \
+    git apply $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch | git apply && \
+    git apply $SRC_DIR/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch && \
     # fix memory leak in qos
-    curl -s https://github.com/kubeovn/ovs/commit/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch | git apply && \
+    git apply $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
     # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch | git apply && \
+    git apply $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
     # netdev: reduce cpu utilization for getting device addresses
-    curl -s https://github.com/kubeovn/ovs/commit/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch | git apply && \
+    git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
-    curl -s https://github.com/kubeovn/ovs/commit/d088c5d8c263552c5a31d87813991aee30ab74de.patch | git apply && \
+    git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
-    curl -s https://github.com/kubeovn/ovs/commit/1b31f07dc60c016153fa35d936cdda0e02e58492.patch | git apply && \
+    git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # update ovs-sandbox for docker run
-    curl -s https://github.com/kubeovn/ovs/commit/54b767822916606dbb78335a3197983f435b5b8a.patch | git apply
+    git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
 
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/e490f5ac0b644101913c2a3db8e03d85e859deff.patch | git apply && \
+    git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch | git apply && \
+    git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/5593e614e51a5dce28941e5bf760f9ee5397cede.patch | git apply && \
+    git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/f9e97031b56ab5747b5d73629198331a6daacdfd.patch | git apply && \
+    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
     # northd: add nb option version_compatibility
-    curl -s https://github.com/kubeovn/ovn/commit/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch | git apply && \
+    git apply $SRC_DIR/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch && \
     # add support for conditionally skipping conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/44229317de74d1e97f7499b371a86c015be6b7a6.patch | git apply && \
+    git apply $SRC_DIR/44229317de74d1e97f7499b371a86c015be6b7a6.patch && \
     # northd: skip conntrack when access node local dns ip
-    curl -s https://github.com/kubeovn/ovn/commit/786756870f12ac69a5d7bc498693574c6591c5e9.patch | git apply && \
+    git apply $SRC_DIR/786756870f12ac69a5d7bc498693574c6591c5e9.patch && \
     # lflow: do not send direct traffic between lports to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch | git apply && \
+    git apply $SRC_DIR/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch && \
     # direct output to lsp for dnat packets in logical switch ingress pipelines
-    curl -s https://github.com/kubeovn/ovn/commit/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch | git apply && \
+    git apply $SRC_DIR/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch && \
     # fix lr-lb dnat with multiple distributed gateway ports
-    curl -s https://github.com/kubeovn/ovn/commit/b3af07690e7b2328c02318b1bd812c5665c0632b.patch | git apply && \
+    git apply $SRC_DIR/b3af07690e7b2328c02318b1bd812c5665c0632b.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    curl -s https://github.com/kubeovn/ovn/commit/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch | git apply && \
+    git apply $SRC_DIR/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch && \
     # ovn-controller: make activation strategy work for single chassis
-    curl -s https://github.com/kubeovn/ovn/commit/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch | git apply && \
+    git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
     # support dedicated BFD LRP
-    curl -s https://github.com/kubeovn/ovn/commit/b5e2975eb65f37315545300254fc0f58a9df52b1.patch | git apply && \
+    git apply $SRC_DIR/b5e2975eb65f37315545300254fc0f58a9df52b1.patch && \
     # skip node local dns ip conntrack when set acl
-    curl -s https://github.com/kubeovn/ovn/commit/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch | git apply && \
+    git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
     # select local backend first
-    curl -s https://github.com/kubeovn/ovn/commit/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch | git apply
+    git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -117,10 +144,10 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ENV CNI_PLUGINS_VERSION="v1.7.1"
-ENV KUBECTL_VERSION="v1.32.4"
-ENV GOBGP_VERSION="3.36.0"
-ENV TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
+ARG CNI_PLUGINS_VERSION="v1.7.1"
+ARG KUBECTL_VERSION="v1.32.4"
+ARG GOBGP_VERSION="3.36.0"
+ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
 ADD go-deps/download-go-deps.sh /
