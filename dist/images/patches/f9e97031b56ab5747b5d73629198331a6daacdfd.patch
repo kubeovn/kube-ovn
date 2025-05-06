@@ -1,0 +1,25 @@
+From f9e97031b56ab5747b5d73629198331a6daacdfd Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:29:00 +0000
+Subject: [PATCH] ovn-controller: do not send GARP on localnet for Kube-OVN
+ ports
+
+---
+ controller/pinctrl.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/controller/pinctrl.c b/controller/pinctrl.c
+index 30665ac0ef..1619d4b5b1 100644
+--- a/controller/pinctrl.c
++++ b/controller/pinctrl.c
+@@ -5883,6 +5883,10 @@ get_localnet_vifs_l3gwports(
+             if (!iface_id) {
+                 continue;
+             }
++            const char *vendor = smap_get(&iface_rec->external_ids, "vendor");
++            if (vendor && !strcmp(vendor, "kube-ovn")) {
++                continue;
++            }
+             const struct sbrec_port_binding *pb
+                 = lport_lookup_by_name(sbrec_port_binding_by_name, iface_id);
+             if (!pb || pb->chassis != chassis) {
