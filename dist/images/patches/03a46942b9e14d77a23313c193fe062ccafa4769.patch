@@ -1,0 +1,51 @@
+From 03a46942b9e14d77a23313c193fe062ccafa4769 Mon Sep 17 00:00:00 2001
+From: Han Zhou <hzhou@ovn.org>
+Date: Fri, 22 Jul 2022 17:54:39 -0700
+Subject: [PATCH] patch.c: Avoid patch interface deletion & recreation during
+ restart.
+
+When ovn-controller is restarted, it may need multiple iterations of
+main loop before completely download all related data from SB DB,
+especially when ovn-monitor-all=false, so after restart, before it sees
+the related localnet ports from SB DB, it treats the related patch
+ports on the chassis as not needed, and deleted them. Later when it
+downloads thoses port-bindings it recreates them.  For a graceful
+upgrade, we don't want this to happen, because it would break the
+traffic.
+
+This is especially problematic at ovn-k8s setups because the external
+side of the patch port is used to program some flows for external
+network communication. When the patch ports are recreated, the OF port
+number changes and those flows are broken. The CMS would detect and fix
+the flows but it would result in even longer downtime.
+
+This patch postpone the deletion of the patch ports, with the assumption
+that leaving the unused ports on the chassis for little longer is not
+harmful.
+
+Signed-off-by: Han Zhou <hzhou@ovn.org>
+Acked-by: Dumitru Ceara <dceara@redhat.com>
+---
+ controller/patch.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/controller/patch.c b/controller/patch.c
+index 0d0d538940..c55a97a550 100644
+--- a/controller/patch.c
++++ b/controller/patch.c
+@@ -311,7 +311,14 @@ patch_run(struct ovsdb_idl_txn *ovs_idl_txn,
+     SHASH_FOR_EACH_SAFE (port_node, port_next_node, &existing_ports) {
+         port = port_node->data;
+         shash_delete(&existing_ports, port_node);
+-        remove_port(bridge_table, port);
++        /* Wait for some iterations before really deleting any patch ports,
++         * because with conditional monitoring it is possible that related SB
++         * data is not completely downloaded yet after last restart of
++         * ovn-controller.  Otherwise it may cause unncessary dataplane
++         * interruption during restart/upgrade. */
++        if (!daemon_started_recently()) {
++            remove_port(bridge_table, port);
++        }
+     }
+     shash_destroy(&existing_ports);
+ }

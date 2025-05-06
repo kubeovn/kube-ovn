@@ -1,0 +1,30 @@
+From ab0818fed95fa3633f8c52e4afb1f8c19ff5ef1f Mon Sep 17 00:00:00 2001
+From: oilbeater <liumengxinfly@gmail.com>
+Date: Mon, 17 Oct 2022 15:54:40 +0800
+Subject: [PATCH] modify src route priority
+
+---
+ northd/northd.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 66a93911c0..73836758b2 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -9685,7 +9685,15 @@ build_route_match(const struct ovn_port *op_inport, uint32_t rtb_id,
+         dir = "dst";
+     }
+ 
+-    *priority = (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
++    if (is_src_route) {
++    dir = "src";
++        *priority = 1;
++        if ((is_ipv4 && plen == 32) || (plen == 128)) {
++            *priority = 2;
++        }
++    } else {
++        *priority = (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
++    }
+ 
+     if (op_inport) {
+         ds_put_format(match, "inport == %s && ", op_inport->json_key);

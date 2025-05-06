@@ -1,0 +1,213 @@
+From 2d6823753c295411ac63a66d1d1c5a5d8ba57bdc Mon Sep 17 00:00:00 2001
+From: Han Zhou <hzhou@ovn.org>
+Date: Tue, 24 Oct 2023 09:49:19 +0800
+Subject: [PATCH] ovn-controller: Add a generic way to check if the daemon
+ started recently.
+
+In some cases we need to know if ovn-controller started long enough and
+has enough iterations of input processing, primarily to ensure it has
+downloaded and handled a complete initial view of the SB DB (and of
+course the local OVS DB), so that it won't delete things too early by
+mistake based on incomplete data.
+
+The mechanism will be used in follow up patches.
+
+Suggested-by: Dumitru Ceara <dceara@redhat.com>
+Signed-off-by: Han Zhou <hzhou@ovn.org>
+Acked-by: Dumitru Ceara <dceara@redhat.com>
+---
+ controller/ovn-controller.c | 22 +++++++++++++---
+ lib/inc-proc-eng.c          | 11 ++++++++
+ lib/inc-proc-eng.h          |  4 +++
+ lib/ovn-util.c              | 52 +++++++++++++++++++++++++++++++++++++
+ lib/ovn-util.h              |  4 +++
+ 5 files changed, 90 insertions(+), 3 deletions(-)
+
+diff --git a/controller/ovn-controller.c b/controller/ovn-controller.c
+index 7de138104a..55a82c315b 100644
+--- a/controller/ovn-controller.c
++++ b/controller/ovn-controller.c
+@@ -92,6 +92,7 @@ static unixctl_cb_func debug_dump_lflow_conj_ids;
+ static unixctl_cb_func lflow_cache_flush_cmd;
+ static unixctl_cb_func lflow_cache_show_stats_cmd;
+ static unixctl_cb_func debug_delay_nb_cfg_report;
++static unixctl_cb_func debug_ignore_startup_delay;
+ 
+ #define DEFAULT_BRIDGE_NAME "br-int"
+ #define DEFAULT_DATAPATH "system"
+@@ -921,11 +922,12 @@ static void
+ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
+              const struct sbrec_chassis_private *chassis,
+              const struct ovsrec_bridge *br_int,
+-             unsigned int delay_nb_cfg_report, int64_t startup_ts)
++             unsigned int delay_nb_cfg_report)
+ {
+     struct ofctrl_acked_seqnos *acked_nb_cfg_seqnos =
+         ofctrl_acked_seqnos_get(ofctrl_seq_type_nb_cfg);
+     uint64_t cur_cfg = acked_nb_cfg_seqnos->last_acked;
++    int64_t startup_ts = daemon_startup_ts();
+ 
+     if (ovs_txn && br_int
+             && startup_ts != smap_get_ullong(&br_int->external_ids,
+@@ -3743,6 +3745,9 @@ main(int argc, char *argv[])
+                              debug_dump_lflow_conj_ids,
+                              &lflow_output_data->conj_ids);
+ 
++    unixctl_command_register("debug/ignore-startup-delay", "", 0, 0,
++                             debug_ignore_startup_delay, NULL);
++
+     unsigned int ovs_cond_seqno = UINT_MAX;
+     unsigned int ovnsb_cond_seqno = UINT_MAX;
+     unsigned int ovnsb_expected_cond_seqno = UINT_MAX;
+@@ -3762,7 +3767,6 @@ main(int argc, char *argv[])
+     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
+ 
+     /* Main loop. */
+-    int64_t startup_ts = time_wall_msec();
+     bool sb_monitor_all = false;
+     while (!exit_args.exiting) {
+         memory_run();
+@@ -3948,6 +3952,10 @@ main(int argc, char *argv[])
+                     }
+                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
+                                    time_msec());
++                    if (engine_has_updated()) {
++                        daemon_started_recently_countdown();
++                    }
++
+                     ct_zones_data = engine_get_data(&en_ct_zones);
+                     if (ovs_idl_txn) {
+                         if (ct_zones_data) {
+@@ -4109,7 +4117,7 @@ main(int argc, char *argv[])
+             }
+ 
+             store_nb_cfg(ovnsb_idl_txn, ovs_idl_txn, chassis_private,
+-                         br_int, delay_nb_cfg_report, startup_ts);
++                         br_int, delay_nb_cfg_report);
+ 
+             if (pending_pkt.conn) {
+                 struct ed_type_addr_sets *as_data =
+@@ -4579,3 +4587,11 @@ debug_dump_lflow_conj_ids(struct unixctl_conn *conn, int argc OVS_UNUSED,
+     unixctl_command_reply(conn, ds_cstr(&conj_ids_dump));
+     ds_destroy(&conj_ids_dump);
+ }
++
++static void
++debug_ignore_startup_delay(struct unixctl_conn *conn, int argc OVS_UNUSED,
++                           const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
++{
++    daemon_started_recently_ignore();
++    unixctl_command_reply(conn, NULL);
++}
+diff --git a/lib/inc-proc-eng.c b/lib/inc-proc-eng.c
+index 575b774ae6..2e2b310332 100644
+--- a/lib/inc-proc-eng.c
++++ b/lib/inc-proc-eng.c
+@@ -312,6 +312,17 @@ engine_has_run(void)
+     return false;
+ }
+ 
++bool
++engine_has_updated(void)
++{
++    for (size_t i = 0; i < engine_n_nodes; i++) {
++        if (engine_nodes[i]->state == EN_UPDATED) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ bool
+ engine_aborted(void)
+ {
+diff --git a/lib/inc-proc-eng.h b/lib/inc-proc-eng.h
+index 9bfab1f7cd..dc365dc184 100644
+--- a/lib/inc-proc-eng.h
++++ b/lib/inc-proc-eng.h
+@@ -238,6 +238,10 @@ bool engine_node_changed(struct engine_node *node);
+ /* Return true if the engine has run in the last iteration. */
+ bool engine_has_run(void);
+ 
++/* Return true if the engine has any update in any node, i.e. any input
++ * has changed; false if nothing has changed. */
++bool engine_has_updated(void);
++
+ /* Returns true if during the last engine run we had to abort processing. */
+ bool engine_aborted(void);
+ 
+diff --git a/lib/ovn-util.c b/lib/ovn-util.c
+index 1fde64505d..cfc9061368 100644
+--- a/lib/ovn-util.c
++++ b/lib/ovn-util.c
+@@ -840,3 +840,55 @@ ovn_exit_args_finish(struct ovn_exit_args *exit_args)
+     }
+     free(exit_args->conns);
+ }
++
++#define DAEMON_STARTUP_DELAY_SEED 20
++#define DAEMON_STARTUP_DELAY_MS   10000
++
++static int64_t startup_ts;
++static int startup_delay = DAEMON_STARTUP_DELAY_SEED;
++
++/* Used by debug command only, for tests. */
++static bool ignore_startup_delay = false;
++
++OVS_CONSTRUCTOR(startup_ts_initializer) {
++    startup_ts = time_wall_msec();
++}
++
++int64_t
++daemon_startup_ts(void)
++{
++    return startup_ts;
++}
++
++void
++daemon_started_recently_countdown(void)
++{
++    if (startup_delay > 0) {
++        startup_delay--;
++    }
++}
++
++void
++daemon_started_recently_ignore(void)
++{
++    ignore_startup_delay = true;
++}
++
++bool
++daemon_started_recently(void)
++{
++    if (ignore_startup_delay) {
++        return false;
++    }
++
++    VLOG_DBG("startup_delay: %d, startup_ts: %"PRId64, startup_delay,
++             startup_ts);
++
++    /* Ensure that at least an amount of updates has been handled. */
++    if (startup_delay) {
++        return true;
++    }
++
++    /* Ensure that at least an amount of time has passed. */
++    return time_wall_msec() - startup_ts <= DAEMON_STARTUP_DELAY_MS;
++}
+diff --git a/lib/ovn-util.h b/lib/ovn-util.h
+index 000b0d06a4..dc0c2728c4 100644
+--- a/lib/ovn-util.h
++++ b/lib/ovn-util.h
+@@ -319,6 +319,10 @@ struct ovsrec_bridge_table;
+ const struct ovsrec_bridge *get_bridge(const struct ovsrec_bridge_table *,
+                                        const char *br_name);
+ 
++void daemon_started_recently_countdown(void);
++void daemon_started_recently_ignore(void);
++bool daemon_started_recently(void);
++int64_t daemon_startup_ts(void);
+ 
+ /* Utilities around properly handling exit command. */
+ struct ovn_exit_args {

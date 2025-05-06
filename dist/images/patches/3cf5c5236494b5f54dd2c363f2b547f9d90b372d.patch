@@ -1,0 +1,43 @@
+From 3cf5c5236494b5f54dd2c363f2b547f9d90b372d Mon Sep 17 00:00:00 2001
+From: oilbeater <liumengxinfly@gmail.com>
+Date: Tue, 9 Aug 2022 11:35:20 +0800
+Subject: [PATCH] fix memory leak by ofport_usage and trim memory periodically
+
+---
+ ofproto/ofproto.c | 2 +-
+ vswitchd/bridge.c | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/ofproto/ofproto.c b/ofproto/ofproto.c
+index 8569ce94cb0..81eb829d91c 100644
+--- a/ofproto/ofproto.c
++++ b/ofproto/ofproto.c
+@@ -2439,7 +2439,7 @@ static void
+ dealloc_ofp_port(struct ofproto *ofproto, ofp_port_t ofp_port)
+ {
+     if (ofp_to_u16(ofp_port) < ofproto->max_ports) {
+-        ofport_set_usage(ofproto, ofp_port, time_msec());
++        ofport_remove_usage(ofproto, ofp_port);
+     }
+ }
+ 
+diff --git a/vswitchd/bridge.c b/vswitchd/bridge.c
+index 81f073b1cf3..57f08af1b56 100644
+--- a/vswitchd/bridge.c
++++ b/vswitchd/bridge.c
+@@ -18,6 +18,7 @@
+ #include <errno.h>
+ #include <inttypes.h>
+ #include <stdlib.h>
++#include <malloc.h>
+ 
+ #include "async-append.h"
+ #include "bfd.h"
+@@ -3259,6 +3260,7 @@ bridge_run__(void)
+ void
+ bridge_run(void)
+ {
++    malloc_trim(0);
+     static struct ovsrec_open_vswitch null_cfg;
+     const struct ovsrec_open_vswitch *cfg;
+ 
