@@ -1,0 +1,102 @@
+From 89eaa68a006f29b2e766062e796d452fee12c3f2 Mon Sep 17 00:00:00 2001
+From: oilbeater <liumengxinfly@gmail.com>
+Date: Thu, 8 Jun 2023 02:03:23 +0000
+Subject: [PATCH] support ovn-encap-tos
+
+---
+ controller/encaps.c         | 21 +++++++++++++++++----
+ controller/encaps.h         |  1 +
+ controller/ovn-controller.c |  1 +
+ 3 files changed, 19 insertions(+), 4 deletions(-)
+
+diff --git a/controller/encaps.c b/controller/encaps.c
+index fc93bf1eeb..3c560983a9 100644
+--- a/controller/encaps.c
++++ b/controller/encaps.c
+@@ -152,7 +152,7 @@ encaps_tunnel_id_match(const char *tunnel_id, const char *chassis_id,
+ 
+ static void
+ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
+-           const char *new_chassis_id, const struct sbrec_encap *encap)
++           const char *new_chassis_id, const struct sbrec_encap *encap, const struct ovsrec_open_vswitch_table *ovs_table)
+ {
+     struct smap options = SMAP_INITIALIZER(&options);
+     smap_add(&options, "remote_ip", encap->ip);
+@@ -202,6 +202,18 @@ tunnel_add(struct tunnel_ctx *tc, const struct sbrec_sb_global *sbg,
+         smap_add(&options, "remote_name", new_chassis_id);
+     }
+ 
++    const struct ovsrec_open_vswitch *cfg =
++        ovsrec_open_vswitch_table_first(ovs_table);
++    /* If the tos option is configured, get it */
++    if (cfg) {
++        const char *encap_tos = smap_get_def(&cfg->external_ids,
++           "ovn-encap-tos", "none");
++
++        if (encap_tos && strcmp(encap_tos, "none")) {
++            smap_add(&options, "tos", encap_tos);
++        }
++    }
++
+     /* If there's an existing chassis record that does not need any change,
+      * keep it.  Otherwise, create a new record (if there was an existing
+      * record, the new record will supplant it and encaps_run() will delete
+@@ -270,7 +282,7 @@ preferred_encap(const struct sbrec_chassis *chassis_rec)
+  * as there are VTEP of that type (differentiated by remote_ip) on that chassis.
+  */
+ static int
+-chassis_tunnel_add(const struct sbrec_chassis *chassis_rec, const struct sbrec_sb_global *sbg, struct tunnel_ctx *tc)
++chassis_tunnel_add(const struct sbrec_chassis *chassis_rec, const struct sbrec_sb_global *sbg, const struct ovsrec_open_vswitch_table *ovs_table, struct tunnel_ctx *tc)
+ {
+     struct sbrec_encap *encap = preferred_encap(chassis_rec);
+     int tuncnt = 0;
+@@ -286,7 +298,7 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec, const struct sbrec_s
+         if (tun_type != pref_type) {
+             continue;
+         }
+-        tunnel_add(tc, sbg, chassis_rec->name, chassis_rec->encaps[i]);
++        tunnel_add(tc, sbg, chassis_rec->name, chassis_rec->encaps[i], ovs_table);
+         tuncnt++;
+     }
+     return tuncnt;
+@@ -321,6 +333,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
+            const struct sbrec_chassis_table *chassis_table,
+            const struct sbrec_chassis *this_chassis,
+            const struct sbrec_sb_global *sbg,
++           const struct ovsrec_open_vswitch_table *ovs_table,
+            const struct sset *transport_zones)
+ {
+     if (!ovs_idl_txn || !br_int) {
+@@ -390,7 +403,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
+                 continue;
+             }
+ 
+-            if (chassis_tunnel_add(chassis_rec, sbg, &tc) == 0) {
++            if (chassis_tunnel_add(chassis_rec, sbg, ovs_table, &tc) == 0) {
+                 VLOG_INFO("Creating encap for '%s' failed", chassis_rec->name);
+                 continue;
+             }
+diff --git a/controller/encaps.h b/controller/encaps.h
+index f488393c45..25d44b034d 100644
+--- a/controller/encaps.h
++++ b/controller/encaps.h
+@@ -35,6 +35,7 @@ void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
+                 const struct sbrec_chassis_table *,
+                 const struct sbrec_chassis *,
+                 const struct sbrec_sb_global *,
++                const struct ovsrec_open_vswitch_table *,
+                 const struct sset *transport_zones);
+ 
+ bool encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
+diff --git a/controller/ovn-controller.c b/controller/ovn-controller.c
+index 7990be35c7..6bda5abe57 100644
+--- a/controller/ovn-controller.c
++++ b/controller/ovn-controller.c
+@@ -2986,6 +2986,7 @@ main(int argc, char *argv[])
+                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
+                                chassis,
+                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
++                               ovs_table,
+                                &transport_zones);
+ 
+                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,

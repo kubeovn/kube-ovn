@@ -1,0 +1,25 @@
+From e24734913d25c0bffdf1cfd79e14ef43d01e1019 Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Sun, 17 Jan 2021 11:13:47 +0800
+Subject: [PATCH] feat: modify src-route priority
+
+---
+ northd/ovn-northd.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/northd/ovn-northd.c b/northd/ovn-northd.c
+index d11e3ba20f..626a9c3f70 100644
+--- a/northd/ovn-northd.c
++++ b/northd/ovn-northd.c
+@@ -7843,7 +7843,10 @@ build_route_match(const struct ovn_port *op_inport, const char *network_s,
+      * routing. */
+     if (is_src_route) {
+         dir = "src";
+-        *priority = plen * 2;
++        *priority = 1;
++        if ((is_ipv4 && plen == 32) || (plen == 128)) {
++            *priority = 2;
++        }
+     } else {
+         dir = "dst";
+         *priority = (plen * 2) + 1;

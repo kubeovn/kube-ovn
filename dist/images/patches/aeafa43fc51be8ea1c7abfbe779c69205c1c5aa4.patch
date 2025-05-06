@@ -1,0 +1,27 @@
+From aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4 Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Wed, 29 Dec 2021 11:17:50 +0800
+Subject: [PATCH] fix ipv6 svc
+
+---
+ northd/ovn-northd.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/northd/ovn-northd.c b/northd/ovn-northd.c
+index 3c2b4bc497..1da7afc440 100644
+--- a/northd/ovn-northd.c
++++ b/northd/ovn-northd.c
+@@ -5256,10 +5256,12 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
+      */
+     if (vip_configured) {
+         if (strlen(svc_ipv4_cidr) != 0) {
+-            char *match = xasprintf("ip && ip4.dst == %s", svc_ipv4_cidr);
++            char *match = xasprintf("ip4 && ip4.dst == %s", svc_ipv4_cidr);
+             ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+                           100, match, REGBIT_CONNTRACK_NAT" = 1; next;");
+             free(match);
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
++                          100, "ip6", REGBIT_CONNTRACK_NAT" = 1; next;");
+         } else {
+             ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+                           100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");

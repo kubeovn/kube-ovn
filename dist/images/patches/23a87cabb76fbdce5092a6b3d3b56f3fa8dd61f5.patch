@@ -1,0 +1,62 @@
+From 23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5 Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Fri, 10 Dec 2021 16:26:53 +0800
+Subject: [PATCH] do not send traffic that not designate to svc to conntrack
+
+---
+ northd/ovn-northd.c | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/northd/ovn-northd.c b/northd/ovn-northd.c
+index 542c260792..3c2b4bc497 100644
+--- a/northd/ovn-northd.c
++++ b/northd/ovn-northd.c
+@@ -17,6 +17,7 @@
+ #include <getopt.h>
+ #include <stdlib.h>
+ #include <stdio.h>
++#include <string.h>
+ 
+ #include "bitmap.h"
+ #include "command-line.h"
+@@ -98,6 +99,8 @@ static bool check_lsp_is_up;
+ static char svc_monitor_mac[ETH_ADDR_STRLEN + 1];
+ static struct eth_addr svc_monitor_mac_ea;
+ 
++static char svc_ipv4_cidr[20];
++
+ /* If this option is 'true' northd will make use of ct.inv match fields.
+  * Otherwise, it will avoid using it.  The default is true. */
+ static bool use_ct_inv_match = true;
+@@ -5252,8 +5255,16 @@ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
+      * add a lflow to drop ct.inv packets.
+      */
+     if (vip_configured) {
+-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
+-                      100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
++        if (strlen(svc_ipv4_cidr) != 0) {
++            char *match = xasprintf("ip && ip4.dst == %s", svc_ipv4_cidr);
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
++                          100, match, REGBIT_CONNTRACK_NAT" = 1; next;");
++            free(match);
++        } else {
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
++                          100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
++        }
++
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
+                       100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;");
+     }
+@@ -13301,6 +13312,12 @@ ovnnb_db_run(struct northd_context *ctx,
+ 
+     const char *mac_addr_prefix = set_mac_prefix(smap_get(&nb->options,
+                                                           "mac_prefix"));
++    const char *svc_ipv4_cidr_o = smap_get(&nb->options, "svc_ipv4_cidr");
++    if (svc_ipv4_cidr_o && strlen(svc_ipv4_cidr_o) != 0) {
++        snprintf(svc_ipv4_cidr, sizeof svc_ipv4_cidr, "%s", svc_ipv4_cidr_o);
++    } else {
++        svc_ipv4_cidr[0] = '\0';
++    }
+ 
+     const char *monitor_mac = smap_get(&nb->options, "svc_monitor_mac");
+     if (monitor_mac) {

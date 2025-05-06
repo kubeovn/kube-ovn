@@ -1,0 +1,26 @@
+From 8f4e4868377afb5e980856755b9f6394f8b649e2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Thu, 2 Dec 2021 16:26:20 +0800
+Subject: [PATCH] do not send multicast packets to conntrack
+
+---
+ northd/ovn-northd.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/northd/ovn-northd.c b/northd/ovn-northd.c
+index 542c260792..15902fb24a 100644
+--- a/northd/ovn-northd.c
++++ b/northd/ovn-northd.c
+@@ -5172,6 +5172,12 @@ static void
+ build_pre_lb(struct ovn_datapath *od, struct hmap *lflows,
+              struct shash *meter_groups, struct hmap *lbs)
+ {
++    /* Do not send multicast packets to conntrack */
++    ovn_lflow_add_unique(lflows, od, S_SWITCH_IN_PRE_LB, 110, "eth.mcast",
++                         "next;");
++    ovn_lflow_add_unique(lflows, od, S_SWITCH_OUT_PRE_LB, 110, "eth.mcast",
++                         "next;");
++
+     /* Do not send ND packets to conntrack */
+     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB, 110,
+                   "nd || nd_rs || nd_ra || mldv1 || mldv2",

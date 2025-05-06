@@ -1,0 +1,218 @@
+From 1cb138aaf2fdf922d75a587e4e9cf610d38f9fee Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=BC=A0=E7=A5=96=E5=BB=BA?= <zhangzujian.7@gmail.com>
+Date: Thu, 29 Sep 2022 22:20:14 +0800
+Subject: [PATCH] fdb: fix mac learning in environments with hairpin enabled
+
+---
+ lib/mac-learning.c         | 13 +++++++++++++
+ lib/mac-learning.h         |  1 +
+ ofproto/ofproto-dpif.c     | 28 ++--------------------------
+ ofproto/ofproto-dpif.h     | 25 +++++++++++++++++++++++++
+ ofproto/ofproto-provider.h |  3 ++-
+ ofproto/ofproto.c          |  4 ++--
+ ofproto/ofproto.h          |  2 +-
+ vswitchd/bridge.c          |  4 +++-
+ 8 files changed, 49 insertions(+), 31 deletions(-)
+
+diff --git a/lib/mac-learning.c b/lib/mac-learning.c
+index a60794fb26e..ebfb7e4bcb1 100644
+--- a/lib/mac-learning.c
++++ b/lib/mac-learning.c
+@@ -23,6 +23,7 @@
+ #include "bitmap.h"
+ #include "coverage.h"
+ #include "hash.h"
++#include "ofproto/ofproto-dpif.h"
+ #include "openvswitch/list.h"
+ #include "openvswitch/poll-loop.h"
+ #include "timeval.h"
+@@ -220,6 +221,7 @@ mac_learning_create(unsigned int idle_time)
+     ml->idle_time = normalize_idle_time(idle_time);
+     ml->max_entries = MAC_DEFAULT_MAX;
+     ml->need_revalidate = false;
++    ml->fallback = false;
+     hmap_init(&ml->ports_by_ptr);
+     heap_init(&ml->ports_by_usage);
+     ovs_refcount_init(&ml->ref_cnt);
+@@ -477,6 +479,17 @@ is_mac_learning_update_needed(const struct mac_learning *ml,
+         return false;
+     }
+ 
++    if (!ml->fallback) {
++        if (age >= 10) {
++            return true;
++        }
++        struct ofbundle* port = mac_entry_get_port(ml, mac);
++        if (strcmp(port->name, ((struct ofbundle*)in_port)->name)) {
++            return false;
++        }
++        return age > 0;
++    }
++
+     /* If entry is still alive, just update the mac_entry so, that expires
+      * gets updated. */
+     if (age > 0) {
+diff --git a/lib/mac-learning.h b/lib/mac-learning.h
+index 270fbd70d40..1037a4889b3 100644
+--- a/lib/mac-learning.h
++++ b/lib/mac-learning.h
+@@ -168,6 +168,7 @@ struct mac_learning {
+     struct ovs_refcount ref_cnt;
+     struct ovs_rwlock rwlock;
+     bool need_revalidate;
++    bool fallback;              /* fallback to legacy mode */
+ 
+     /* Statistics */
+     uint64_t total_learned;
+diff --git a/ofproto/ofproto-dpif.c b/ofproto/ofproto-dpif.c
+index f9562dee877..9552689dd2c 100644
+--- a/ofproto/ofproto-dpif.c
++++ b/ofproto/ofproto-dpif.c
+@@ -85,31 +85,6 @@ static void rule_get_stats(struct rule *, struct pkt_stats *stats,
+ static struct rule_dpif *rule_dpif_cast(const struct rule *);
+ static void rule_expire(struct rule_dpif *, long long now);
+ 
+-struct ofbundle {
+-    struct hmap_node hmap_node; /* In struct ofproto's "bundles" hmap. */
+-    struct ofproto_dpif *ofproto; /* Owning ofproto. */
+-    void *aux;                  /* Key supplied by ofproto's client. */
+-    char *name;                 /* Identifier for log messages. */
+-
+-    /* Configuration. */
+-    struct ovs_list ports;      /* Contains "struct ofport_dpif"s. */
+-    enum port_vlan_mode vlan_mode; /* VLAN mode */
+-    uint16_t qinq_ethtype;
+-    int vlan;                   /* -1=trunk port, else a 12-bit VLAN ID. */
+-    unsigned long *trunks;      /* Bitmap of trunked VLANs, if 'vlan' == -1.
+-                                 * NULL if all VLANs are trunked. */
+-    unsigned long *cvlans;
+-    struct lacp *lacp;          /* LACP if LACP is enabled, otherwise NULL. */
+-    struct bond *bond;          /* Nonnull iff more than one port. */
+-    enum port_priority_tags_mode use_priority_tags;
+-                                /* Use 802.1p tag for frames in VLAN 0? */
+-
+-    bool protected;             /* Protected port mode */
+-
+-    /* Status. */
+-    bool floodable;          /* True if no port has OFPUTIL_PC_NO_FLOOD set. */
+-};
+-
+ static void bundle_remove(struct ofport *);
+ static void bundle_update(struct ofbundle *);
+ static void bundle_destroy(struct ofbundle *);
+@@ -3715,10 +3690,11 @@ forward_bpdu_changed(struct ofproto *ofproto_)
+ 
+ static void
+ set_mac_table_config(struct ofproto *ofproto_, unsigned int idle_time,
+-                     size_t max_entries)
++                     bool fallback, size_t max_entries)
+ {
+     struct ofproto_dpif *ofproto = ofproto_dpif_cast(ofproto_);
+     ovs_rwlock_wrlock(&ofproto->ml->rwlock);
++    ofproto->ml->fallback = fallback;
+     mac_learning_set_idle_time(ofproto->ml, idle_time);
+     mac_learning_set_max_entries(ofproto->ml, max_entries);
+     ovs_rwlock_unlock(&ofproto->ml->rwlock);
+diff --git a/ofproto/ofproto-dpif.h b/ofproto/ofproto-dpif.h
+index d8e0cd37ac5..cf10f669c0c 100644
+--- a/ofproto/ofproto-dpif.h
++++ b/ofproto/ofproto-dpif.h
+@@ -67,6 +67,31 @@ enum { N_TABLES = 255 };
+ enum { TBL_INTERNAL = N_TABLES - 1 };    /* Used for internal hidden rules. */
+ BUILD_ASSERT_DECL(N_TABLES >= 2 && N_TABLES <= 255);
+ 
++struct ofbundle {
++    struct hmap_node hmap_node; /* In struct ofproto's "bundles" hmap. */
++    struct ofproto_dpif *ofproto; /* Owning ofproto. */
++    void *aux;                  /* Key supplied by ofproto's client. */
++    char *name;                 /* Identifier for log messages. */
++
++    /* Configuration. */
++    struct ovs_list ports;      /* Contains "struct ofport_dpif"s. */
++    enum port_vlan_mode vlan_mode; /* VLAN mode */
++    uint16_t qinq_ethtype;
++    int vlan;                   /* -1=trunk port, else a 12-bit VLAN ID. */
++    unsigned long *trunks;      /* Bitmap of trunked VLANs, if 'vlan' == -1.
++                                 * NULL if all VLANs are trunked. */
++    unsigned long *cvlans;
++    struct lacp *lacp;          /* LACP if LACP is enabled, otherwise NULL. */
++    struct bond *bond;          /* Nonnull iff more than one port. */
++    enum port_priority_tags_mode use_priority_tags;
++                                /* Use 802.1p tag for frames in VLAN 0? */
++
++    bool protected;             /* Protected port mode */
++
++    /* Status. */
++    bool floodable;          /* True if no port has OFPUTIL_PC_NO_FLOOD set. */
++};
++
+ struct rule_dpif {
+     struct rule up;
+ 
+diff --git a/ofproto/ofproto-provider.h b/ofproto/ofproto-provider.h
+index 47e96e62e1f..412bd1b324a 100644
+--- a/ofproto/ofproto-provider.h
++++ b/ofproto/ofproto-provider.h
+@@ -1788,7 +1788,8 @@ struct ofproto_class {
+      * An implementation that doesn't support configuring these features may
+      * set this function to NULL or implement it as a no-op. */
+     void (*set_mac_table_config)(struct ofproto *ofproto,
+-                                 unsigned int idle_time, size_t max_entries);
++                                 unsigned int idle_time,
++                                 bool fallback, size_t max_entries);
+ 
+     /* Configures multicast snooping on 'ofport' using the settings
+      * defined in 's'.
+diff --git a/ofproto/ofproto.c b/ofproto/ofproto.c
+index 933f7de2dc5..83ae0899e9e 100644
+--- a/ofproto/ofproto.c
++++ b/ofproto/ofproto.c
+@@ -746,11 +746,11 @@ ofproto_set_forward_bpdu(struct ofproto *ofproto, bool forward_bpdu)
+  * 'max_entries'. */
+ void
+ ofproto_set_mac_table_config(struct ofproto *ofproto, unsigned idle_time,
+-                             size_t max_entries)
++                             bool fallback, size_t max_entries)
+ {
+     if (ofproto->ofproto_class->set_mac_table_config) {
+         ofproto->ofproto_class->set_mac_table_config(ofproto, idle_time,
+-                                                     max_entries);
++                                                     fallback, max_entries);
+     }
+ }
+ 
+diff --git a/ofproto/ofproto.h b/ofproto/ofproto.h
+index 4e15167ab72..4c8bdbe70ef 100644
+--- a/ofproto/ofproto.h
++++ b/ofproto/ofproto.h
+@@ -342,7 +342,7 @@ void ofproto_set_max_revalidator(unsigned max_revalidator);
+ void ofproto_set_min_revalidate_pps(unsigned min_revalidate_pps);
+ void ofproto_set_forward_bpdu(struct ofproto *, bool forward_bpdu);
+ void ofproto_set_mac_table_config(struct ofproto *, unsigned idle_time,
+-                                  size_t max_entries);
++                                  bool fallback, size_t max_entries);
+ int ofproto_set_mcast_snooping(struct ofproto *ofproto,
+                               const struct ofproto_mcast_snooping_settings *s);
+ int ofproto_port_set_mcast_snooping(struct ofproto *ofproto, void *aux,
+diff --git a/vswitchd/bridge.c b/vswitchd/bridge.c
+index e328d8ead18..7d305e3d290 100644
+--- a/vswitchd/bridge.c
++++ b/vswitchd/bridge.c
+@@ -2174,6 +2174,7 @@ bridge_configure_mac_table(struct bridge *br)
+ {
+     const struct smap *oc = &br->cfg->other_config;
+     int idle_time = smap_get_int(oc, "mac-aging-time", 0);
++    bool fallback = smap_get_bool(oc, "mac-learning-fallback", false);
+     if (!idle_time) {
+         idle_time = MAC_ENTRY_DEFAULT_IDLE_TIME;
+     }
+@@ -2183,7 +2184,8 @@ bridge_configure_mac_table(struct bridge *br)
+         mac_table_size = MAC_DEFAULT_MAX;
+     }
+ 
+-    ofproto_set_mac_table_config(br->ofproto, idle_time, mac_table_size);
++    ofproto_set_mac_table_config(br->ofproto, idle_time,
++                                 fallback, mac_table_size);
+ }
+ 
+ /* Set multicast snooping table configuration for 'br'. */
