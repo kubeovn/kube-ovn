@@ -1,0 +1,170 @@
+From 4b4cadcfabbc79f7d69c213be2b37e5e8634201c Mon Sep 17 00:00:00 2001
+From: Han Zhou <hzhou@ovn.org>
+Date: Tue, 28 Dec 2021 22:26:56 -0800
+Subject: [PATCH] expr.c: Use expr_destroy and expr_clone instead of free and
+ xmemdup.
+
+Use the functions for safer memory operation.
+
+Signed-off-by: Han Zhou <hzhou@ovn.org>
+Acked-by: Mark Michelson <mmichels@redhat.com>
+Acked-by: Numan Siddique <numans@ovn.org>
+---
+ lib/expr.c | 44 ++++++++++++++++++++++----------------------
+ 1 file changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/lib/expr.c b/lib/expr.c
+index e3f6bb8920..5fc6c1ce91 100644
+--- a/lib/expr.c
++++ b/lib/expr.c
+@@ -186,7 +186,7 @@ expr_combine(enum expr_type type, struct expr *a, struct expr *b)
+     } else if (a->type == type) {
+         if (b->type == type) {
+             ovs_list_splice(&a->andor, b->andor.next, &b->andor);
+-            free(b);
++            expr_destroy(b);
+         } else {
+             ovs_list_push_back(&a->andor, &b->node);
+         }
+@@ -210,7 +210,7 @@ expr_insert_andor(struct expr *andor, struct expr *before, struct expr *new)
+             /* Conjunction junction, what's your function? */
+         }
+         ovs_list_splice(&before->node, new->andor.next, &new->andor);
+-        free(new);
++        expr_destroy(new);
+     } else {
+         ovs_list_insert(&before->node, &new->node);
+     }
+@@ -276,11 +276,11 @@ expr_fix_andor(struct expr *expr, bool short_circuit)
+ 
+     if (ovs_list_is_short(&expr->andor)) {
+         if (ovs_list_is_empty(&expr->andor)) {
+-            free(expr);
++            expr_destroy(expr);
+             return expr_create_boolean(!short_circuit);
+         } else {
+-            sub = expr_from_node(ovs_list_front(&expr->andor));
+-            free(expr);
++            sub = expr_from_node(ovs_list_pop_front(&expr->andor));
++            expr_destroy(expr);
+             return sub;
+         }
+     } else {
+@@ -2096,7 +2096,7 @@ expr_simplify_relational(struct expr *expr)
+      * and similarly for "tcp.dst <= 1234". */
+     struct expr *new = NULL;
+     if (eq) {
+-        new = xmemdup(expr, sizeof *expr);
++        new = expr_clone(expr);
+         new->cmp.relop = EXPR_R_EQ;
+     }
+ 
+@@ -2105,7 +2105,7 @@ expr_simplify_relational(struct expr *expr)
+          z = bitwise_scan(value, sizeof *value, lt, z + 1, end)) {
+         struct expr *e;
+ 
+-        e = xmemdup(expr, sizeof *expr);
++        e = expr_clone(expr);
+         e->cmp.relop = EXPR_R_EQ;
+         bitwise_toggle_bit(&e->cmp.value, sizeof e->cmp.value, z);
+         bitwise_zero(&e->cmp.value, sizeof e->cmp.value, start, z - start);
+@@ -2324,7 +2324,7 @@ crush_and_string(struct expr *expr, const struct expr_symbol *symbol)
+                 expr_destroy(expr);
+                 return new;
+             }
+-            free(new);
++            expr_destroy(new);
+             break;
+         case EXPR_T_CONDITION:
+             OVS_NOT_REACHED();
+@@ -2463,14 +2463,14 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
+                 expr_destroy(sub);
+             }
+         }
+-        free(disjuncts);
+-        free(expr);
++        expr_destroy(disjuncts);
++        expr_destroy(expr);
+         if (ovs_list_is_empty(&or->andor)) {
+-            free(or);
++            expr_destroy(or);
+             return expr_create_boolean(false);
+         } else if (ovs_list_is_short(&or->andor)) {
+             struct expr *cmp = expr_from_node(ovs_list_pop_front(&or->andor));
+-            free(or);
++            expr_destroy(or);
+             return cmp;
+         } else {
+             return crush_cmps(or, symbol);
+@@ -2517,15 +2517,15 @@ crush_and_numeric(struct expr *expr, const struct expr_symbol *symbol)
+         }
+         expr_destroy(as);
+         expr_destroy(bs);
+-        free(new);
++        expr_destroy(new);
+ 
+         if (ovs_list_is_empty(&or->andor)) {
+             expr_destroy(expr);
+-            free(or);
++            expr_destroy(or);
+             return expr_create_boolean(false);
+         } else if (ovs_list_is_short(&or->andor)) {
+             struct expr *cmp = expr_from_node(ovs_list_pop_front(&or->andor));
+-            free(or);
++            expr_destroy(or);
+             if (ovs_list_is_empty(&expr->andor)) {
+                 expr_destroy(expr);
+                 return crush_cmps(cmp, symbol);
+@@ -2675,7 +2675,7 @@ expr_sort(struct expr *expr)
+     qsort(subs, n, sizeof *subs, compare_expr_sort);
+ 
+     ovs_list_init(&expr->andor);
+-    free(expr);
++    expr_destroy(expr);
+     expr = NULL;
+ 
+     for (i = 0; i < n; ) {
+@@ -2708,7 +2708,7 @@ expr_sort(struct expr *expr)
+                     expr = crushed;
+                     break;
+                 } else {
+-                    free(crushed);
++                    expr_destroy(crushed);
+                 }
+             } else {
+                 expr = expr_combine(EXPR_T_AND, expr, crushed);
+@@ -2754,8 +2754,8 @@ expr_normalize_and(struct expr *expr)
+         }
+     }
+     if (ovs_list_is_short(&expr->andor)) {
+-        struct expr *sub = expr_from_node(ovs_list_front(&expr->andor));
+-        free(expr);
++        struct expr *sub = expr_from_node(ovs_list_pop_front(&expr->andor));
++        expr_destroy(expr);
+         return sub;
+     }
+ 
+@@ -2813,7 +2813,7 @@ expr_normalize_or(struct expr *expr)
+                     expr_destroy(expr);
+                     return new;
+                 }
+-                free(new);
++                expr_destroy(new);
+             } else {
+                 expr_insert_andor(expr, next, new);
+             }
+@@ -2823,12 +2823,12 @@ expr_normalize_or(struct expr *expr)
+         }
+     }
+     if (ovs_list_is_empty(&expr->andor)) {
+-        free(expr);
++        expr_destroy(expr);
+         return expr_create_boolean(false);
+     }
+     if (ovs_list_is_short(&expr->andor)) {
+         struct expr *e = expr_from_node(ovs_list_pop_front(&expr->andor));
+-        free(expr);
++        expr_destroy(expr);
+         return e;
+     }
+ 

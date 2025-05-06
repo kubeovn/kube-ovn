@@ -7,6 +7,7 @@ ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
 
+ADD patches/8661abd4c41a89116fbd4e4d210e73165cedd323.patch $SRC_DIR
 ADD patches/2dc8e7aa202818952b2fa80b47298604530c9de0.patch $SRC_DIR
 ADD patches/918d6dc79634bec760054ee53f7628186315bcfb.patch $SRC_DIR
 ADD patches/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch $SRC_DIR
@@ -14,6 +15,7 @@ ADD patches/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch $SRC_DIR
 ADD patches/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch $SRC_DIR
 ADD patches/2e2ec1161cadbec79786d63fde9475053d996586.patch $SRC_DIR
 ADD patches/62d4969877712c26fe425698d898b440f91b44bf.patch $SRC_DIR
+ADD patches/4b4cadcfabbc79f7d69c213be2b37e5e8634201c.patch $SRC_DIR
 ADD patches/8146578592200c7b732bca8ab43be05a84e34269.patch $SRC_DIR
 ADD patches/a8ebd69d8a759c06f49102226192174c32fbb15b.patch $SRC_DIR
 ADD patches/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch $SRC_DIR

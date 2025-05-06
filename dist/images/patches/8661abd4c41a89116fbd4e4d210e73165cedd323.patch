@@ -1,0 +1,173 @@
+From 8661abd4c41a89116fbd4e4d210e73165cedd323 Mon Sep 17 00:00:00 2001
+From: Ilya Maximets <i.maximets@ovn.org>
+Date: Wed, 22 Feb 2023 22:12:46 +0100
+Subject: [PATCH] ofproto: Fix re-creation of tunnel backing interfaces on
+ restart.
+
+Tunnel OpenFlow ports do not exist in the datapath, instead there is a
+tunnel backing interface that serves all the tunnels of the same type.
+For example, if the geneve port 'my_tunnel' is added to OVS, it will
+create 'geneve_sys_6041' datapath port, if it doesn't already exist,
+and use this port as a tunnel output.
+
+However, while creating/opening a new datapath after re-start,
+ovs-vswitchd only has a list of names of OpenFlow interfaces.  And it
+thinks that each datapath port, that is not on the list, is a stale
+port that needs to be removed.  This is obviously not correct for
+tunnel backing interfaces that can serve multiple tunnel ports and do
+not match OpenFlow port names.
+
+This is causing removal and re-creation of all the tunnel backing
+interfaces in the datapath on OVS restart, causing disruption in
+existing connections.
+
+It's hard to tell by only having a name of the interface if this
+interface is a tunnel backing interface, or someone just named a
+normal interface this way.  So, instead of trying to determine that,
+not removing any interfaces at all, while we don't know types of
+actual ports we need.
+
+Assuming that all the ports that are currently not in the list of OF
+ports are tunnel backing ports.  Later, revalidation of tunnel backing
+ports in type_run() will determine which ports are still needed and
+which should be removed.
+
+It's OK to add even a non-tunnel stale ports into tnl_backers, they
+will be cleaned up the same way as stale tunnel backers.
+
+Reported-at: https://mail.openvswitch.org/pipermail/ovs-discuss/2023-February/052215.html
+Reviewed-by: Simon Horman <simon.horman@corigine.com>
+Signed-off-by: Ilya Maximets <i.maximets@ovn.org>
+---
+ ofproto/ofproto-dpif.c    | 28 ++++++-------------
+ tests/system-interface.at | 59 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 68 insertions(+), 19 deletions(-)
+
+diff --git a/ofproto/ofproto-dpif.c b/ofproto/ofproto-dpif.c
+index f9562dee877..b3e575bcd04 100644
+--- a/ofproto/ofproto-dpif.c
++++ b/ofproto/ofproto-dpif.c
+@@ -714,12 +714,6 @@ close_dpif_backer(struct dpif_backer *backer, bool del)
+     free(backer);
+ }
+ 
+-/* Datapath port slated for removal from datapath. */
+-struct odp_garbage {
+-    struct ovs_list list_node;
+-    odp_port_t odp_port;
+-};
+-
+ static void check_support(struct dpif_backer *backer);
+ 
+ static int
+@@ -729,8 +723,6 @@ open_dpif_backer(const char *type, struct dpif_backer **backerp)
+     struct dpif_port_dump port_dump;
+     struct dpif_port port;
+     struct shash_node *node;
+-    struct ovs_list garbage_list;
+-    struct odp_garbage *garbage;
+ 
+     struct sset names;
+     char *backer_name;
+@@ -792,25 +784,23 @@ open_dpif_backer(const char *type, struct dpif_backer **backerp)
+         dpif_flow_flush(backer->dpif);
+     }
+ 
+-    /* Loop through the ports already on the datapath and remove any
+-     * that we don't need anymore. */
+-    ovs_list_init(&garbage_list);
++    /* Loop through the ports already on the datapath and find ones that are
++     * not on the initial OpenFlow ports list.  These are stale ports, that we
++     * do not need anymore, or tunnel backing interfaces, that do not generally
++     * match the name of OpenFlow tunnel ports, or both.  Add all of them to
++     * the list of tunnel backers.  type_run() will garbage collect those that
++     * are not active tunnel backing interfaces during revalidation. */
+     dpif_port_dump_start(&port_dump, backer->dpif);
+     while (dpif_port_dump_next(&port_dump, &port)) {
+         node = shash_find(&init_ofp_ports, port.name);
+         if (!node && strcmp(port.name, dpif_base_name(backer->dpif))) {
+-            garbage = xmalloc(sizeof *garbage);
+-            garbage->odp_port = port.port_no;
+-            ovs_list_push_front(&garbage_list, &garbage->list_node);
++            simap_put(&backer->tnl_backers, port.name,
++                      odp_to_u32(port.port_no));
++            backer->need_revalidate = REV_RECONFIGURE;
+         }
+     }
+     dpif_port_dump_done(&port_dump);
+ 
+-    LIST_FOR_EACH_POP (garbage, list_node, &garbage_list) {
+-        dpif_port_del(backer->dpif, garbage->odp_port, false);
+-        free(garbage);
+-    }
+-
+     shash_add(&all_dpif_backers, type, backer);
+ 
+     check_support(backer);
+diff --git a/tests/system-interface.at b/tests/system-interface.at
+index 784bada12cb..3bf339582dd 100644
+--- a/tests/system-interface.at
++++ b/tests/system-interface.at
+@@ -63,3 +63,62 @@ AT_CHECK([
+     [stdout], [Device "br-p1" does not exist.]
+ )
+ AT_CLEANUP
++
++AT_SETUP([interface - datapath ports garbage collection])
++OVS_CHECK_GENEVE()
++OVS_TRAFFIC_VSWITCHD_START()
++
++dnl Not relevant for userspace datapath.
++AT_SKIP_IF([! ovs-appctl dpctl/show | grep -q ovs-system])
++
++AT_CHECK([ovs-vsctl add-port br0 tunnel_port dnl
++            -- set Interface tunnel_port dnl
++                   type=geneve options:remote_ip=flow options:key=123])
++
++AT_CHECK([ip link add ovs-veth0 type veth peer name ovs-veth1])
++on_exit 'ip link del ovs-veth0'
++
++AT_CHECK([ovs-vsctl add-port br0 ovs-veth0])
++
++OVS_WAIT_UNTIL([ip link show | grep -q " genev_sys_[[0-9]]*: .* ovs-system "])
++
++dnl Store the output of ip link for geneve port to compare ifindex later.
++AT_CHECK([ip link show | grep " genev_sys_[[0-9]]*: .* ovs-system " > geneve.0])
++
++AT_CHECK([ovs-appctl dpctl/show | grep port], [0], [dnl
++  port 0: ovs-system (internal)
++  port 1: br0 (internal)
++  port 2: genev_sys_6081 (geneve: packet_type=ptap)
++  port 3: ovs-veth0
++])
++
++OVS_APP_EXIT_AND_WAIT_BY_TARGET([ovs-vswitchd], [ovs-vswitchd.pid])
++
++dnl Check that geneve backing interface is still in the datapath.
++AT_CHECK([ip link show | grep " genev_sys_[[0-9]]*: .* ovs-system " | diff -u - geneve.0])
++
++dnl Remove the veth port from the database while ovs-vswitchd is down.
++AT_CHECK([ovs-vsctl --no-wait del-port ovs-veth0])
++
++dnl Check that it is still tied to the OVS datapath.
++AT_CHECK([ip link show ovs-veth0 | grep -q ovs-system])
++
++dnl Bring ovs-vswitchd back up.
++AT_CHECK([ovs-vswitchd --detach --no-chdir --pidfile --log-file -vdpif:dbg],
++         [0], [], [stderr])
++
++dnl Wait for the veth port to be removed from the datapath.
++OVS_WAIT_WHILE([ip link show ovs-veth0 | grep -q ovs-system])
++
++AT_CHECK([ovs-appctl dpctl/show | grep port], [0], [dnl
++  port 0: ovs-system (internal)
++  port 1: br0 (internal)
++  port 2: genev_sys_6081 (geneve: packet_type=ptap)
++])
++
++dnl Check that geneve backing interface is still in the datapath and it wasn't
++dnl re-created, i.e. the ifindex is the same.
++AT_CHECK([ip link show | grep " genev_sys_[[0-9]]*: .* ovs-system " | diff -u - geneve.0])
++
++OVS_TRAFFIC_VSWITCHD_STOP
++AT_CLEANUP
