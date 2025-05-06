@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
@@ -23,6 +24,14 @@ func NewPodRoutes() PodRoutes {
 func (r PodRoutes) Add(provider, destination, gateway string) {
 	if gateway == "" || destination == "" {
 		return
+	}
+
+	if !strings.ContainsRune(destination, '/') {
+		if strings.ContainsRune(destination, ':') {
+			destination += "/128"
+		} else {
+			destination += "/32"
+		}
 	}
 
 	if r[provider] == nil {
