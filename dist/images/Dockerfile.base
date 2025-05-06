@@ -103,7 +103,7 @@ RUN apt install -y build-essential fakeroot \
 
 RUN cd /usr/src/ovs && \
     ./boot.sh && \
-    ./configure && \
+    ./configure --disable-ssl && \
     rm -rf .git && \
     CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
