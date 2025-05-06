@@ -1,0 +1,26 @@
+From f9048a894c019cd4cf5587d40cc07054da60ec81 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 20 Jan 2024 05:30:53 +0000
+Subject: [PATCH] ovs-router: skip getting source address for kube-ipvs0
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ lib/ovs-router.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/lib/ovs-router.c b/lib/ovs-router.c
+index 5d0fbd503e9..17a583b992e 100644
+--- a/lib/ovs-router.c
++++ b/lib/ovs-router.c
+@@ -174,6 +174,11 @@ ovs_router_get_netdev_source_address(const struct in6_addr *ip6_dst,
+     struct netdev *dev;
+     bool is_ipv4;
+ 
++    if (!strncmp(output_bridge, "kube-ipvs0", 10)) {
++        VLOG_DBG_RL(&rl, "skip getting source address for device kube-ipvs0");
++        return 0;
++    }
++
+     err = netdev_open(output_bridge, NULL, &dev);
+     if (err) {
+         return err;

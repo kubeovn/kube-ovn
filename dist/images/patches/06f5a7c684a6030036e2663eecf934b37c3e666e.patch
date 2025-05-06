@@ -1,0 +1,134 @@
+From 06f5a7c684a6030036e2663eecf934b37c3e666e Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Wed, 27 Mar 2024 13:13:42 +0000
+Subject: [PATCH] northd: add nb option version_compatibility
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 55 +++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 44 insertions(+), 11 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 0a316cd631..e9f89caadc 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -90,6 +90,9 @@ static bool bcast_arp_req_flood = true;
+ 
+ static bool ls_ct_skip_dst_lport_ips = false;
+ 
++static bool compatible_21_06 = false;
++static bool compatible_22_03 = false;
++
+ #define MAX_OVN_TAGS 4096
+ 
+ /* Pipeline stages. */
+@@ -5720,8 +5723,11 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct hmap *lflows,
+                                           ds_cstr(match), ds_cstr(actions),
+                                           op->key, &op->nbsp->header_);
+     } else if (queue_id) {
+-        ds_put_cstr(actions,
+-                    REGBIT_PORT_SEC_DROP" = check_in_port_sec(); next;");
++        ds_put_format(actions,
++                      "%snext;",
++                      !compatible_22_03 ?
++                      REGBIT_PORT_SEC_DROP" = check_in_port_sec(); " :
++                      "");
+         ovn_lflow_add_with_lport_and_hint(lflows, op->od,
+                                           S_SWITCH_IN_CHECK_PORT_SEC, 70,
+                                           ds_cstr(match), ds_cstr(actions),
+@@ -5754,7 +5760,7 @@ build_lswitch_learn_fdb_op(
+         ds_clear(match);
+         ds_clear(actions);
+         ds_put_format(match, "inport == %s", op->json_key);
+-        if (lsp_is_localnet(op->nbsp)) {
++        if (lsp_is_localnet(op->nbsp) && !compatible_22_03) {
+             ds_put_cstr(actions, "flags.localnet = 1; ");
+         }
+         ds_put_format(actions, REGBIT_LKUP_FDB
+@@ -5795,8 +5801,12 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
+     if (od->nbs) {
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_CHECK_PORT_SEC, 100,
+                       "eth.mcast", REGBIT_PORT_SEC_DROP" = 0; next;");
++        const char *action = compatible_22_03 ?
++                             "next;" :
++                             REGBIT_PORT_SEC_DROP
++                             " = check_out_port_sec(); next;";
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_CHECK_PORT_SEC, 0, "1",
+-                      REGBIT_PORT_SEC_DROP" = check_out_port_sec(); next;");
++                      action);
+ 
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 50,
+                       REGBIT_PORT_SEC_DROP" == 1", "drop;");
+@@ -6615,7 +6625,7 @@ consider_acl(struct hmap *lflows, struct ovn_datapath *od,
+              * "log-related" option.
+              */
+             bool log_related = smap_get_bool(&acl->options, "log-related",
+-                                             false);
++                                             false) && !compatible_21_06;
+             if (acl->log && acl->label && log_related) {
+                 /* Related/reply flows need to be set on the opposite pipeline
+                  * from where the ACL itself is set.
+@@ -7909,9 +7919,14 @@ build_stateful(struct ovn_datapath *od,
+      * We always set ct_mark.blocked to 0 here as
+      * any packet that makes it this far is part of a connection we
+      * want to allow to continue. */
+-    ds_put_format(&actions, "ct_commit { %s = 0; "
+-                            "ct_label.label = " REG_LABEL "; }; next;",
+-                  ct_block_action);
++    if (!compatible_21_06) {
++        ds_put_format(&actions, "ct_commit { %s = 0; "
++                                "ct_label.label = " REG_LABEL "; }; next;",
++                      ct_block_action);
++    } else {
++        ds_put_format(&actions, "ct_commit { %s = 0; }; next;",
++                      ct_block_action);
++    }
+     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
+                   REGBIT_CONNTRACK_COMMIT" == 1 && "
+                   REGBIT_ACL_LABEL" == 1",
+@@ -8256,8 +8271,11 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
+     ds_put_cstr(&eth_src, "}");
+ 
+     ds_put_format(&match,
+-                  "eth.src == %s && (arp.op == 1 || rarp.op == 3 || nd_ns)",
+-                  ds_cstr(&eth_src));
++                  "eth.src == %s && (arp.op == 1 || %snd_ns)",
++                  ds_cstr(&eth_src),
++                  !compatible_22_03 ?
++                  "rarp.op == 3 || " :
++                  "");
+     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority, ds_cstr(&match),
+                   "outport = \""MC_FLOOD_L2"\"; output;");
+ 
+@@ -8787,8 +8805,12 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+         ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 100,
+                       "eth.src[40]", debug_drop_action());
+ 
++        const char *action = compatible_22_03 ?
++                             "next;" :
++                             REGBIT_PORT_SEC_DROP
++                             " = check_in_port_sec(); next;";
+         ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 50, "1",
+-                      REGBIT_PORT_SEC_DROP" = check_in_port_sec(); next;");
++                      action);
+ 
+         ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 50,
+                       REGBIT_PORT_SEC_DROP" == 1", debug_drop_action());
+@@ -16692,6 +16714,17 @@ ovnnb_db_run(struct northd_input *input_data,
+                                              "ls_ct_skip_dst_lport_ips",
+                                              false);
+ 
++    const char *s = smap_get_def(&nb->options, "version_compatibility", "");
++    int major, minor;
++    int n = sscanf(s, "%2d.%2d", &major, &minor);
++    if (n == 2) {
++        compatible_21_06 = (major < 21 || (major == 21 && minor <= 6));
++        compatible_22_03 = (major < 22 || (major == 22 && minor <= 3));
++    } else {
++        compatible_21_06 = false;
++        compatible_22_03 = false;
++    }
++
+     build_chassis_features(input_data, &data->features);
+ 
+     init_debug_config(nb);
