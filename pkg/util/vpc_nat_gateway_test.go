@@ -1,14 +1,16 @@
 package util
 
 import (
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"testing"
+
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
-func TestGenNatGwStsName(t *testing.T) {
+func TestGenNatGwName(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    string
@@ -33,7 +35,7 @@ func TestGenNatGwStsName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwStsName(tc.input)
+			result := GenNatGwName(tc.input)
 			if result != tc.expected {
 				t.Errorf("Expected %s, but got %s", tc.expected, result)
 			}
@@ -41,7 +43,7 @@ func TestGenNatGwStsName(t *testing.T) {
 	}
 }
 
-func TestGenNatGwStsNameWithCustomPrefix(t *testing.T) {
+func TestGenNatGwNameWithCustomPrefix(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    string
@@ -72,7 +74,7 @@ func TestGenNatGwStsNameWithCustomPrefix(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwStsName(tc.input)
+			result := GenNatGwName(tc.input)
 			if result != tc.expected {
 				t.Errorf("Expected %s, but got %s", tc.expected, result)
 			}
@@ -195,7 +197,7 @@ func TestGenNatGwLabels(t *testing.T) {
 			name:   "Gateway name filled",
 			gwName: "test-gateway",
 			expected: map[string]string{
-				"app":              "test-gateway",
+				"app":              "vpc-nat-gw-test-gateway",
 				VpcNatGatewayLabel: "true",
 			},
 		},
@@ -203,7 +205,7 @@ func TestGenNatGwLabels(t *testing.T) {
 			name:   "Gateway label empty",
 			gwName: "",
 			expected: map[string]string{
-				"app":              "",
+				"app":              "vpc-nat-gw-",
 				VpcNatGatewayLabel: "true",
 			},
 		},

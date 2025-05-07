@@ -116,7 +116,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 
-	name := util.GenNatGwStsName(key)
+	name := util.GenNatGwName(key)
 	klog.Infof("delete vpc nat gw %s", name)
 	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
 		name, metav1.DeleteOptions{}); err != nil {
@@ -195,7 +195,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needToCreate := false
 	needToUpdate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
-		Get(context.Background(), util.GenNatGwStsName(gw.Name), metav1.GetOptions{})
+		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
@@ -769,6 +769,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	v4Gateway, v6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
+		return nil, err
 	}
 
 	// Add routes to join the services (is this still needed?)
@@ -829,12 +830,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 
-	name := util.GenNatGwStsName(gw.Name)
 	labels := util.GenNatGwLabels(gw.Name)
 
 	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
+			Name:   util.GenNatGwName(gw.Name),
 			Labels: labels,
 		},
 		Spec: v1.StatefulSetSpec{
@@ -920,7 +920,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 
 func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": util.GenNatGwStsName(name), util.VpcNatGatewayLabel: "true"},
+		MatchLabels: map[string]string{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"},
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)

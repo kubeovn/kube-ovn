@@ -3,11 +3,13 @@ package util
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
@@ -16,8 +18,8 @@ const VpcNatGwNameDefaultPrefix = "vpc-nat-gw"
 // VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
 var VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
 
-// GenNatGwStsName returns the full name of a NAT gateway StatefulSet
-func GenNatGwStsName(name string) string {
+// GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
+func GenNatGwName(name string) string {
 	return fmt.Sprintf("%s-%s", VpcNatGwNamePrefix, name)
 }
 
@@ -37,7 +39,7 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 // GenNatGwLabels returns the labels to set on a NAT gateway
 func GenNatGwLabels(gwName string) map[string]string {
 	return map[string]string{
-		"app":              gwName,
+		"app":              GenNatGwName(gwName),
 		VpcNatGatewayLabel: "true",
 	}
 }
