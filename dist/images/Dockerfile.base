@@ -23,7 +23,7 @@ ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
 # ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 # ADD patches/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch $SRC_DIR
-ADD patches/44229317de74d1e97f7499b371a86c015be6b7a6.patch $SRC_DIR
+# ADD patches/44229317de74d1e97f7499b371a86c015be6b7a6.patch $SRC_DIR
 # ADD patches/786756870f12ac69a5d7bc498693574c6591c5e9.patch $SRC_DIR
 # ADD patches/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch $SRC_DIR
 # ADD patches/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch $SRC_DIR
@@ -73,7 +73,7 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # northd: add nb option version_compatibility
     # git apply $SRC_DIR/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch && \
     # add support for conditionally skipping conntrack
-    git apply $SRC_DIR/44229317de74d1e97f7499b371a86c015be6b7a6.patch && \
+    # git apply $SRC_DIR/44229317de74d1e97f7499b371a86c015be6b7a6.patch && \
     # northd: skip conntrack when access node local dns ip
     # git apply $SRC_DIR/786756870f12ac69a5d7bc498693574c6591c5e9.patch && \
     # lflow: do not send direct traffic between lports to conntrack
