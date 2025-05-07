@@ -28,7 +28,7 @@ ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 # ADD patches/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch $SRC_DIR
 # ADD patches/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch $SRC_DIR
 # ADD patches/b3af07690e7b2328c02318b1bd812c5665c0632b.patch $SRC_DIR
-ADD patches/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch $SRC_DIR
+# ADD patches/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch $SRC_DIR
 ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
@@ -83,7 +83,7 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # fix lr-lb dnat with multiple distributed gateway ports
     # git apply $SRC_DIR/b3af07690e7b2328c02318b1bd812c5665c0632b.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    git apply $SRC_DIR/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch && \
+    # git apply $SRC_DIR/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch && \
     # ovn-controller: make activation strategy work for single chassis
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
     # support dedicated BFD LRP
