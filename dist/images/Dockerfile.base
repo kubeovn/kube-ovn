@@ -18,7 +18,6 @@ ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
-ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
 ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
 ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
 ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
@@ -59,9 +58,7 @@ RUN cd /usr/src/ && \
     # ovs-router: skip getting source address for kube-ipvs0
     git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
-    git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
-    # update ovs-sandbox for docker run
-    git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
+    git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
