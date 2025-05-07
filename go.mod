@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.24.2
+go 1.24.3
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -41,7 +41,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
-	github.com/vishvananda/netlink v1.3.1-0.20250328051554-cb48698f2590
+	github.com/vishvananda/netlink v1.3.1-0.20250425193846-9d88d8385bf9
 	go.uber.org/mock v0.5.2
 	go.universe.tf/metallb v0.14.9
 	golang.org/x/mod v0.24.0
@@ -61,16 +61,16 @@ require (
 	k8s.io/kubectl v0.32.4
 	k8s.io/kubernetes v1.32.4
 	k8s.io/pod-security-admission v0.32.4
-	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
+	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.76
-	kubevirt.io/api v1.5.0
-	kubevirt.io/client-go v1.5.0
+	kubevirt.io/api v1.5.1
+	kubevirt.io/client-go v1.5.1
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/network-policy-api v0.1.5
 )
 
 require (
-	cel.dev/expr v0.22.1 // indirect
+	cel.dev/expr v0.23.1 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
@@ -139,7 +139,7 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20250423184734-337e5dd93bb4 // indirect
+	github.com/google/pprof v0.0.0-20250501235452-c0086092b71a // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
@@ -195,7 +195,7 @@ require (
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/oklog/run v1.1.0 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
-	github.com/opencontainers/cgroups v0.0.1 // indirect
+	github.com/opencontainers/cgroups v0.0.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runc v1.2.6 // indirect
@@ -223,7 +223,7 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
-	github.com/spf13/cast v1.7.1 // indirect
+	github.com/spf13/cast v1.8.0 // indirect
 	github.com/spf13/cobra v1.9.1 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
@@ -250,22 +250,22 @@ require (
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	gocv.io/x/gocv v0.41.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
+	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/oauth2 v0.29.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
-	google.golang.org/genproto v0.0.0-20250422160041-2d3770c4ea7f // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250422160041-2d3770c4ea7f // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250422160041-2d3770c4ea7f // indirect
+	google.golang.org/genproto v0.0.0-20250505200425-f936aa4a68b2 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250505200425-f936aa4a68b2 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250505200425-f936aa4a68b2 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
@@ -287,7 +287,7 @@ require (
 	k8s.io/kubelet v0.32.4 // indirect
 	k8s.io/mount-utils v0.32.4 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.76 // indirect
-	kubevirt.io/containerized-data-importer-api v1.61.2 // indirect
+	kubevirt.io/containerized-data-importer-api v1.62.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
@@ -331,5 +331,5 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.32.4
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.32.4
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.32.4
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20250314014734-ea4c2111cf66
+	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20250507014510-dc51721a96f1
 )

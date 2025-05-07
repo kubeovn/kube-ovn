@@ -18,7 +18,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 FRR_VERSION = 9.1.3
 FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
-CLAB_IMAGE = ghcr.io/srl-labs/clab:0.67.0
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.68.0
 
 MULTUS_VERSION = v4.2.0
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
@@ -29,7 +29,7 @@ METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:v$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:v$(METALLB_VERSION)
 
-KUBEVIRT_VERSION = v1.5.0
+KUBEVIRT_VERSION = v1.5.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
