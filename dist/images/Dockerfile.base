@@ -32,7 +32,7 @@ ADD patches/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch $SRC_DIR
 ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
-ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
+# ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -89,9 +89,9 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # support dedicated BFD LRP
     git apply $SRC_DIR/b5e2975eb65f37315545300254fc0f58a9df52b1.patch && \
     # skip node local dns ip conntrack when set acl
-    git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
+    git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch
     # select local backend first
-    git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
+    # git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
