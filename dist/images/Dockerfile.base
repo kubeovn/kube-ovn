@@ -11,7 +11,7 @@ ARG SRC_DIR='/usr/src'
 ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
 ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
 ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
-ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
+# ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
 ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
 ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
@@ -46,7 +46,7 @@ RUN cd /usr/src/ && \
     # add fdb update logging
     git apply $SRC_DIR/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch && \
     # fdb: fix mac learning in environments with hairpin enabled
-    git apply $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
+    # git apply $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     git apply $SRC_DIR/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch && \
     # fix memory leak in qos
