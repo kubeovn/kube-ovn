@@ -789,7 +789,6 @@ func (c *Controller) loopTunnelCheck() {
 // This method checks the tunnel and ovs vlan id, and record it in the node label
 // kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
 func (c *Controller) loopCheckVlanConflict() {
-	tunnelVlanID := c.config.IfaceVlanID
 	pns, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list provider network: %v", err)
@@ -821,6 +820,7 @@ func (c *Controller) loopCheckVlanConflict() {
 		}
 	}
 	if ovsLocalVlans.Size() > 0 {
+		tunnelVlanID := c.config.IfaceVlanID
 		klog.Infof("check if local ovs vlans %v conflict with tunnel vlan %d", ovsLocalVlans, tunnelVlanID)
 		if ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
 			// tunnel interface using, so ovs can not use this vlan
@@ -872,8 +872,8 @@ func (c *Controller) loopCheckVlanConflict() {
 			}
 			// make sure not delete tunnel nic
 			if nicName == c.config.tunnelIface {
-				klog.Infof("avoid delete tunnel vlan interface %s", nicName)
 				klog.Errorf("admin should delete invalid vlan crd which vlan id is %s", vlanID)
+				klog.Infof("skip auto delete tunnel vlan interface %s", nicName)
 				continue
 			}
 			// auto del os conflict vlan iface
@@ -882,7 +882,7 @@ func (c *Controller) loopCheckVlanConflict() {
 				klog.Errorf("failed to get link by name %s", nicName)
 				continue
 			}
-			klog.Infof("delete os local vlan interface %s", nicName)
+			klog.Infof("auto delete os local vlan interface %s", nicName)
 			if err := netlink.LinkDel(link); err != nil {
 				klog.Errorf("failed to delete os local vlan interface %s: %v", nicName, err)
 			}
