@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
     - master
+    - release-*
     paths-ignore:
     - 'docs/**'
     - '**.md'
@@ -23,7 +24,7 @@ concurrency:
 
 env:
   GO_VERSION: ''
-  GOSEC_VERSION: '2.20.0'
+  GOSEC_VERSION: '2.22.3'
 
 jobs:
   filter:
@@ -60,7 +61,7 @@ jobs:
             echo "- $f" | tee -a $filter
           done
 
-          sh hack/go-list.sh cmd/windows | while read f; do
+          sh hack/go-list.sh cmd/daemon | while read f; do
             echo "- $f" | tee -a $filter
           done
 
