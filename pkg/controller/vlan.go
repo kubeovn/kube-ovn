@@ -134,7 +134,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan, vlanInterface strin
 			continue
 		}
 		nodeTunnVlanIDs.Add(id)
-		// confilct with tunnel interface: same if master nic and same vlan id
+		// conflict with tunnel interface: same if master nic and same vlan id
 		if tunnelIFMaster != vlanInterface {
 			continue
 		}
