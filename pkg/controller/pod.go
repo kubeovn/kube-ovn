@@ -434,15 +434,14 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
+	klog.Infof("handle add/update pod %s", key)
+	last := time.Since(time.Now())
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle add/update pod %s", key)
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -463,6 +462,11 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		klog.Errorf("failed to get pod nets %v", err)
 		return err
 	}
+
+	// lock just before ipam operation
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
 
 	// check and do hotnoplug nic
 	if pod, err = c.syncKubeOvnNet(pod, podNets); err != nil {
@@ -889,20 +893,13 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 }
 
 func (c *Controller) handleDeletePod(key string) (err error) {
+	klog.Infof("handle delete pod %s", key)
+	last := time.Since(time.Now())
 	pod, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
 		return nil
 	}
 	podName := c.getNameByPod(pod)
-	c.podKeyMutex.LockKey(key)
-	defer func() {
-		_ = c.podKeyMutex.UnlockKey(key)
-		if err == nil {
-			c.deletingPodObjMap.Delete(key)
-		}
-	}()
-	klog.Infof("handle delete pod %s", key)
-
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
@@ -920,6 +917,15 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 	}
+	// lock just before ipam operation
+	c.podKeyMutex.LockKey(key)
+	defer func() {
+		_ = c.podKeyMutex.UnlockKey(key)
+		if err == nil {
+			c.deletingPodObjMap.Delete(key)
+		}
+		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
+	}()
 
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
@@ -1093,14 +1099,15 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 }
 
 func (c *Controller) handleUpdatePodSecurity(key string) error {
+	klog.Infof("handle add/update pod security group %s", key)
+	last := time.Since(time.Now())
+	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -1111,8 +1118,6 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		return err
 	}
 	podName := c.getNameByPod(pod)
-
-	klog.Infof("update pod %s/%s security", namespace, name)
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
@@ -1132,9 +1137,9 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
-
-		if err = c.OVNNbClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
-			klog.Errorf("set logical switch port security: %v", err)
+		portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
+		if err = c.OVNNbClient.SetLogicalSwitchPortSecurity(portSecurity, portName, mac, ipStr, vips); err != nil {
+			klog.Errorf("failed to set security for logical switch port %s: %v", portName, err)
 			return err
 		}
 
@@ -1149,7 +1154,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 				}
 			}
 		}
-		if err = c.reconcilePortSg(ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), securityGroups); err != nil {
+		if err = c.reconcilePortSg(portName, securityGroups); err != nil {
 			klog.Errorf("reconcilePortSg failed. %v", err)
 			return err
 		}
