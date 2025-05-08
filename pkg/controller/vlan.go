@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -60,7 +61,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if c.config.EnableCheckVlanConflict {
-		err := c.checkVlanConflict(vlan)
+		err := c.checkVlanConflict(vlan, vlan.Spec.ProviderInterfaceName)
 		if err != nil {
 			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 			return err
@@ -108,7 +109,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	return nil
 }
 
-func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
+func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan, vlanInterface string) error {
 	// todo: check if vlan conflict in webhook
 	// 1. check if vlan conflict with node tunnel vlan
 	nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
@@ -117,22 +118,36 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 		return err
 	}
 	var conflictErr error
-	nodeTunVlanIDs := strset.New()
+	nodeTunnVlanIDs := strset.New()
 	conflict := false
 	myVlanID := strconv.Itoa(vlan.Spec.ID)
 	for _, node := range nodes {
-		id := node.Labels[util.TunnelVlanIDLabel]
+		tunnelIF := node.Labels[util.TunnelIFLabel]
+		tunnelIFs := strings.Split(tunnelIF, ".")
+		if len(tunnelIFs) != 2 {
+			klog.Errorf("invalid tunnel interface %s on node %s", tunnelIF, node.Name)
+			continue
+		}
+		tunnelIFMaster := tunnelIFs[0]
+		id := tunnelIFs[1]
+		if id == "" {
+			continue
+		}
+		nodeTunnVlanIDs.Add(id)
+		// confilct with tunnel interface: same if master nic and same vlan id
+		if tunnelIFMaster != vlanInterface {
+			continue
+		}
 		if id != "" {
-			nodeTunVlanIDs.Add(id)
 			if id == myVlanID {
 				conflict = true
-				conflictErr := fmt.Errorf("vlan %s id %s conflict with tunnel nic vlan on node %s", vlan.Name, id, node.Name)
+				conflictErr := fmt.Errorf("vlan %s id %s conflict with tunnel nic %s vlan on node %s", vlan.Name, myVlanID, tunnelIF, node.Name)
 				klog.Error(conflictErr)
 			}
 		}
 	}
-	if nodeTunVlanIDs.Size() > 1 {
-		klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunVlanIDs.List())
+	if nodeTunnVlanIDs.Size() > 1 {
+		klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunnVlanIDs.List())
 	}
 
 	// 2. check if new vlan conflict with other vlans

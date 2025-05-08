@@ -794,9 +794,15 @@ func (c *Controller) loopCheckVlanConflict() {
 		klog.Errorf("failed to list provider network: %v", err)
 		return
 	}
+	if len(pns) == 0 {
+		return
+	}
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vlan: %v", err)
+		return
+	}
+	if len(vlans) == 0 {
 		return
 	}
 	// local node ovs vlan set
@@ -1214,19 +1220,18 @@ func (c *Controller) patchNodeTunnelVlanLabel() error {
 	}
 	var patch util.KVPatch
 	var needUpdate bool
-	id := strconv.Itoa(c.config.IfaceVlanID)
-	if c.config.IfaceVlanID > 0 && node.Labels[util.TunnelVlanIDLabel] != id {
+	if c.config.IfaceVlanID > 0 && node.Labels[util.TunnelIFLabel] != c.config.tunnelIface {
 		klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
 		patch = util.KVPatch{
 			util.TunnelUseVlanLabel: "true",
-			util.TunnelVlanIDLabel:  id,
+			util.TunnelIFLabel:      c.config.tunnelIface,
 		}
 		needUpdate = true
-	} else if c.config.IfaceVlanID <= 0 && node.Labels[util.TunnelVlanIDLabel] != "" {
+	} else if c.config.IfaceVlanID <= 0 && node.Labels[util.TunnelIFLabel] != "" {
 		klog.Infof("removing tunnel vlan id from node %s", node.Name)
 		patch = util.KVPatch{
 			util.TunnelUseVlanLabel: nil,
-			util.TunnelVlanIDLabel:  nil,
+			util.TunnelIFLabel:      nil,
 		}
 		needUpdate = true
 	}
