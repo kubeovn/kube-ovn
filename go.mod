@@ -4,7 +4,7 @@ go 1.24.3
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
-	github.com/Microsoft/hcsshim v0.12.9
+	github.com/Microsoft/hcsshim v0.13.0
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/cenkalti/backoff/v4 v4.3.0
