@@ -4681,7 +4681,7 @@ spec:
         command:
           - sh
           - -xec
-          - iptables -V
+          - sysctl -w net.ipv4.conf.all.arp_filter=0; sysctl -w net.ipv4.conf.default.arp_filter=0; iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
