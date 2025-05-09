@@ -166,7 +166,6 @@ func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 		Spec: apiv1.OvnEipSpec{
 			ExternalSubnet: subnet,
 			V4Ip:           v4ip,
-			V6Ip:           v6ip,
 			MacAddress:     mac,
 			Type:           usage,
 		},

@@ -63,12 +63,12 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) isOvnEipInUse(ctx context.Context, eipV4IP, eipV6IP string) (string, error) {
+func (v *ValidatingHook) isOvnEipInUse(ctx context.Context, eipV4IP string) (string, error) {
 	var err error
 	dnatList := ovnv1.OvnDnatRuleList{}
 	fipList := ovnv1.OvnFipList{}
 	snatList := ovnv1.OvnSnatRuleList{}
-	opts := cli.MatchingLabels{util.EipV4IpLabel: eipV4IP, util.EipV6IpLabel: eipV6IP}
+	opts := cli.MatchingLabels{util.EipV4IpLabel: eipV4IP}
 	err = v.cache.List(ctx, &dnatList, opts)
 	if err != nil {
 		klog.Errorf("failed to list ovn dnat, %v", err)
@@ -104,7 +104,7 @@ func (v *ValidatingHook) ovnEipDeleteHook(ctx context.Context, req admission.Req
 
 	if eip.Status.V4Ip != "" {
 		var err error
-		nat, err := v.isOvnEipInUse(ctx, eip.Spec.V4Ip, eip.Spec.V6Ip)
+		nat, err := v.isOvnEipInUse(ctx, eip.Spec.V4Ip)
 		if nat != "" {
 			err = fmt.Errorf("OvnEip %s is still using by ovn nat", eip.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -244,25 +244,6 @@ func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) 
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, eip.Spec.V4Ip) {
 			err := fmt.Errorf("the vip %s is not in the range of subnet %s, cidr %v",
 				eip.Spec.V4Ip, subnet.Name, subnet.Spec.CIDRBlock)
-			return err
-		}
-	}
-
-	if eip.Spec.V6Ip != "" {
-		// v6 ip address can not use upper case
-		if util.ContainsUppercase(eip.Spec.V6Ip) {
-			err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", eip.Name, eip.Spec.V6Ip)
-			klog.Error(err)
-			return err
-		}
-		if net.ParseIP(eip.Spec.V6Ip) == nil {
-			err := fmt.Errorf("spec v6ip %s is not a valid", eip.Spec.V6Ip)
-			return err
-		}
-
-		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, eip.Spec.V6Ip) {
-			err := fmt.Errorf("the vip %s is not in the range of subnet %s, cidr %v",
-				eip.Spec.V6Ip, subnet.Name, subnet.Spec.CIDRBlock)
 			return err
 		}
 	}

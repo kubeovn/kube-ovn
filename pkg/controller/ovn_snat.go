@@ -91,7 +91,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 	var v4Eip, v6Eip, v4IpCidr, v6IpCidr, vpcName, subnetName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
 	v4IpCidr = cachedSnat.Spec.V4IpCidr
 	v6IpCidr = cachedSnat.Spec.V6IpCidr
 	vpcName = cachedSnat.Spec.Vpc
@@ -165,7 +164,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipStatus(eipName, true); err != nil {
+	if err = c.patchOvnEipStatus(eipName); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
@@ -206,7 +205,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	}
 	var v4Eip, v6Eip, v4IpCidr, v6IpCidr, vpcName, subnetName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
 	v4IpCidr = cachedSnat.Spec.V4IpCidr
 	v6IpCidr = cachedSnat.Spec.V6IpCidr
 	vpcName = cachedSnat.Spec.Vpc

@@ -118,8 +118,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 
 	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
-	if v4Eip == "" && v6Eip == "" {
+	if v4Eip == "" {
 		err := fmt.Errorf("failed to dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
 		klog.Error(err)
 		return err
@@ -224,7 +223,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipStatus(eipName, true); err != nil {
+	if err = c.patchOvnEipStatus(eipName); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
@@ -307,7 +306,6 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	}
 	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
 	if v4Eip == "" && v6Eip == "" {
 		err := fmt.Errorf("failed to update dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
 		klog.Error(err)

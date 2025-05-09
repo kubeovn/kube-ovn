@@ -995,7 +995,7 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("ecmp gateway ovn eip still has no ip")
 		return
 	}
-	ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
+	ips := cachedEip.Status.V4Ip
 	cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
 	if err != nil {
 		klog.Errorf("failed to get external subnet %s, %v", cachedEip.Spec.ExternalSubnet, err)
@@ -1041,33 +1041,6 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return
 	}
-	if err = c.patchOvnEipStatus(portName, true); err != nil {
-		klog.Errorf("failed to patch status for eip %s, %v", portName, err)
-		return
-	}
-}
-
-func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
-	cachedOvnEip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
-		return err
-	}
-	ovnEip := cachedOvnEip.DeepCopy()
-	changed := false
-	if changed {
-		bytes, err := ovnEip.Status.Bytes()
-		if err != nil {
-			klog.Errorf("failed to marshal ovn eip status '%s', %v", key, err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
-			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
-			return err
-		}
-	}
-	return nil
 }
 
 func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {

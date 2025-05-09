@@ -30,7 +30,6 @@ type OvnEip struct {
 type OvnEipSpec struct {
 	ExternalSubnet string `json:"externalSubnet"`
 	V4Ip           string `json:"v4Ip"`
-	V6Ip           string `json:"v6Ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
 	// usage type: lrp, lsp, nat
@@ -49,7 +48,6 @@ type OvnEipStatus struct {
 	Type       string `json:"type" patchStrategy:"merge"`
 	Nat        string `json:"nat" patchStrategy:"merge"`
 	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
-	V6Ip       string `json:"v6Ip" patchStrategy:"merge"`
 	MacAddress string `json:"macAddress" patchStrategy:"merge"`
 }
 

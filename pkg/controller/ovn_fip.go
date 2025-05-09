@@ -111,7 +111,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	var v4Eip, v6Eip, v4IP, v6IP string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %w", key, err)
 		klog.Error(err)
@@ -209,7 +208,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipStatus(eipName, true); err != nil {
+	if err = c.patchOvnEipStatus(eipName); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
@@ -251,7 +250,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	}
 	var v4Eip, v6Eip, v4IP, v6IP string
 	v4Eip = cachedEip.Status.V4Ip
-	v6Eip = cachedEip.Status.V6Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %w", key, err)
 		klog.Error(err)
@@ -476,7 +474,7 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 		klog.Errorf("failed to get eip %s, %v", eipName, err)
 		return nil, err
 	}
-	if cachedEip.Status.V4Ip == "" && cachedEip.Status.V6Ip == "" {
+	if cachedEip.Status.V4Ip == "" {
 		err := fmt.Errorf("eip '%s' is not ready, has no ip", eipName)
 		klog.Error(err)
 		return nil, err

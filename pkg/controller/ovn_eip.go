@@ -46,8 +46,7 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 		c.resetOvnEipQueue.Add(key)
 		return
 	}
-	if oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
-		oldEip.Spec.V6Ip != newEip.Spec.V6Ip {
+	if oldEip.Spec.V4Ip != newEip.Spec.V4Ip {
 		klog.Infof("enqueue update ovn eip %s", key)
 		c.updateOvnEipQueue.Add(key)
 	}
@@ -84,12 +83,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to get external subnet, %v", err)
 		return err
 	}
-	// v6 ip address can not use upper case
-	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
-		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
-		klog.Error(err)
-		return err
-	}
+
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip, nil)
@@ -122,7 +116,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	if cachedEip.Spec.Type != util.OvnEipTypeLSP {
 		// node ext gw use lsp eip, has a nic on gw node, so left node to make it ready
-		if err = c.patchOvnEipStatus(key, true); err != nil {
+		if err = c.patchOvnEipStatus(key); err != nil {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
 			return err
 		}
@@ -156,17 +150,6 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	// v6 ip address can not use upper case
-	if util.ContainsUppercase(cachedEip.Spec.V6Ip) {
-		err := fmt.Errorf("eip %s v6 ip address %s can not contain upper case", cachedEip.Name, cachedEip.Spec.V6Ip)
-		klog.Error(err)
-		return err
-	}
-	if cachedEip.Status.V6Ip != cachedEip.Spec.V6Ip {
-		err := fmt.Errorf("not support change v6 ip for ovn eip %s", cachedEip.Name)
-		klog.Error(err)
-		return err
-	}
 	if cachedEip.Status.MacAddress != cachedEip.Spec.MacAddress {
 		err := fmt.Errorf("not support change mac address for ovn eip %s", cachedEip.Name)
 		klog.Error(err)
@@ -193,7 +176,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle reset ovn eip %s", cachedEip.Name)
-	if err := c.patchOvnEipStatus(key, true); err != nil {
+	if err := c.patchOvnEipStatus(key); err != nil {
 		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
 	}
@@ -250,7 +233,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 				Spec: kubeovnv1.OvnEipSpec{
 					ExternalSubnet: subnet,
 					V4Ip:           v4ip,
-					V6Ip:           v6ip,
 					MacAddress:     mac,
 					Type:           usageType,
 				},
@@ -278,10 +260,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 			ovnEip.Spec.V4Ip = v4ip
 			needUpdate = true
 		}
-		if v6ip != "" && ovnEip.Spec.V6Ip != v6ip {
-			ovnEip.Spec.V6Ip = v6ip
-			needUpdate = true
-		}
 		if usageType != "" && ovnEip.Spec.Type != usageType {
 			ovnEip.Spec.Type = usageType
 			needUpdate = true
@@ -296,10 +274,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		needPatch := false
 		if ovnEip.Status.V4Ip == "" && ovnEip.Status.V4Ip != v4ip {
 			ovnEip.Status.V4Ip = v4ip
-			needPatch = true
-		}
-		if ovnEip.Status.V6Ip == "" && ovnEip.Status.V6Ip != v6ip {
-			ovnEip.Status.V6Ip = v6ip
 			needPatch = true
 		}
 		if ovnEip.Status.MacAddress == "" && ovnEip.Status.MacAddress != mac {
@@ -364,7 +338,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 	return nil
 }
 
-func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
+func (c *Controller) patchOvnEipStatus(key string) error {
 	cachedOvnEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
@@ -372,10 +346,9 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	}
 	ovnEip := cachedOvnEip.DeepCopy()
 	changed := false
-	if ovnEip.Status.MacAddress == "" {
+	if ovnEip.Status.V4Ip == "" {
 		// not support change ip
 		ovnEip.Status.V4Ip = cachedOvnEip.Spec.V4Ip
-		ovnEip.Status.V6Ip = cachedOvnEip.Spec.V6Ip
 		ovnEip.Status.MacAddress = cachedOvnEip.Spec.MacAddress
 		changed = true
 	}
