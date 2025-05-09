@@ -46,11 +46,10 @@ type VipStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Ready bool   `json:"ready" patchStrategy:"merge"`
-	Type  string `json:"type"`
-	V4ip  string `json:"v4ip" patchStrategy:"merge"`
-	V6ip  string `json:"v6ip" patchStrategy:"merge"`
-	Mac   string `json:"mac" patchStrategy:"merge"`
+	Type string `json:"type"`
+	V4ip string `json:"v4ip" patchStrategy:"merge"`
+	V6ip string `json:"v6ip" patchStrategy:"merge"`
+	Mac  string `json:"mac" patchStrategy:"merge"`
 }
 
 func (s *VipStatus) Bytes() ([]byte, error) {
