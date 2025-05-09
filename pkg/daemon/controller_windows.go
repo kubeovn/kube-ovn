@@ -141,7 +141,11 @@ func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toD
 	return
 }
 
-func (c *Controller) handlePod(key string) error {
+func (c *Controller) handleDeletePod(key string) error {
+	return nil
+}
+
+func (c *Controller) handleUpdatePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
