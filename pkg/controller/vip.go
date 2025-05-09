@@ -33,8 +33,6 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 	key := cache.MetaObjectToName(newVip).String()
 	if !newVip.DeletionTimestamp.IsZero() ||
 		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
-		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
-		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
 		oldVip.Spec.V4ip != newVip.Spec.V4ip ||
 		oldVip.Spec.V6ip != newVip.Spec.V6ip {
 		klog.Infof("enqueue update vip %s", key)
@@ -100,7 +98,6 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	var parentV4ip, parentV6ip, parentMac string
 	if vip.Spec.Type == util.SwitchLBRuleVip {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
@@ -128,16 +125,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			return err
 		}
 	}
-	if vip.Spec.ParentMac != "" {
-		if vip.Spec.Type == util.SwitchLBRuleVip {
-			err = errors.New("invalid usage of vip")
-			klog.Error(err)
-			return err
-		}
-		parentV4ip = vip.Spec.ParentV4ip
-		parentV6ip = vip.Spec.ParentV6ip
-		parentMac = vip.Spec.ParentMac
-	}
+
 	if vip.Spec.Type == util.KubeHostVMVip {
 		// k8s host network pod vm use vip for its nic ip
 		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
@@ -148,7 +136,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			return err
 		}
 	}
-	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
+	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -207,10 +195,8 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	}
 	// should update
 	if vip.Status.Mac == "" {
-		// TODO:// add vip in its parent port aap list
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
-			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
-			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -336,7 +322,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
+func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string) error {
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -355,9 +341,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 					V4ip:       v4ip,
 					V6ip:       v6ip,
 					MacAddress: mac,
-					ParentV4ip: pV4ip,
-					ParentV6ip: pV6ip,
-					ParentMac:  pmac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				err := fmt.Errorf("failed to create crd vip '%s', %w", key, err)
@@ -377,17 +360,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac, pV4ip
 			vip.Spec.V4ip = v4ip
 			vip.Spec.V6ip = v6ip
 			vip.Spec.MacAddress = mac
-			vip.Spec.ParentV4ip = pV4ip
-			vip.Spec.ParentV6ip = pV6ip
-			vip.Spec.ParentMac = pmac
 
 			vip.Status.Ready = true
 			vip.Status.V4ip = v4ip
 			vip.Status.V6ip = v6ip
 			vip.Status.Mac = mac
-			vip.Status.Pv4ip = pV4ip
-			vip.Status.Pv6ip = pV6ip
-			vip.Status.Pmac = pmac
 			vip.Status.Type = vip.Spec.Type
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update vip '%s', %w", key, err)

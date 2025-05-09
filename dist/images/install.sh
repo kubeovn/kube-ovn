@@ -2472,12 +2472,6 @@ spec:
                   type: string
                 mac:
                   type: string
-                pv4ip:
-                  type: string
-                pv6ip:
-                  type: string
-                pmac:
-                  type: string
                 selector:
                   type: array
                   items:
@@ -2517,12 +2511,6 @@ spec:
                 macAddress:
                   type: string
                 v6ip:
-                  type: string
-                parentV4ip:
-                  type: string
-                parentMac:
-                  type: string
-                parentV6ip:
                   type: string
                 selector:
                   type: array
