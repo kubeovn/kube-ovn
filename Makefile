@@ -295,7 +295,8 @@ define docker_config_bridge
 endef
 
 define add_docker_iptables_rule
-	@sudo $(1) -t filter -C DOCKER-USER $(2) 2>/dev/null || sudo $(1) -I DOCKER-USER $(2)
+	@sudo $(1) -t filter -C DOCKER-USER $(2) 2>/dev/null || sudo $(1) -t filter -I DOCKER-USER $(2)
+	@sudo $(1) -t raw -C PREROUTING $(2) 2>/dev/null || sudo $(1) -t raw -I PREROUTING $(2)
 endef
 
 define kind_create_cluster
