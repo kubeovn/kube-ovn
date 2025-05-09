@@ -1273,7 +1273,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 		klog.Error(err)
 		return err
 	}
-	if !lrpEip.Status.Ready || lrpEip.Status.V4Ip == "" {
+	if lrpEip.Status.V4Ip == "" {
 		err := fmt.Errorf("lrp eip %q not ready", lrpEipName)
 		klog.Error(err)
 		return err
@@ -1281,7 +1281,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 	vpc := cachedVpc.DeepCopy()
 
 	for _, eip := range ovnEips {
-		if !eip.Status.Ready || eip.Status.V4Ip == "" {
+		if eip.Status.V4Ip == "" {
 			err := fmt.Errorf("ovn eip %q not ready", eip.Name)
 			klog.Error(err)
 			return err

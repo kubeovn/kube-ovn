@@ -52,7 +52,7 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 	}
 
 	if eipOld.Spec != eipNew.Spec {
-		if eipOld.Status.Ready {
+		if eipOld.Status.V4Ip != "" {
 			err := errors.New("OvnEip not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -102,7 +102,7 @@ func (v *ValidatingHook) ovnEipDeleteHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if eip.Status.Ready {
+	if eip.Status.V4Ip != "" {
 		var err error
 		nat, err := v.isOvnEipInUse(ctx, eip.Spec.V4Ip, eip.Spec.V6Ip)
 		if nat != "" {

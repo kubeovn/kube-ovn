@@ -144,8 +144,8 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedEip.Status.Ready {
-		// create eip only in add process, just check to error out here
+	if cachedEip.Status.V4Ip == "" {
+		// allocate ip only in add process, just check to error out here
 		klog.Infof("wait ovn eip %s to be ready only in the handle add process", cachedEip.Name)
 		return nil
 	}
@@ -372,10 +372,6 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	}
 	ovnEip := cachedOvnEip.DeepCopy()
 	changed := false
-	if ovnEip.Status.Ready != ready {
-		ovnEip.Status.Ready = ready
-		changed = true
-	}
 	if ovnEip.Status.MacAddress == "" {
 		// not support change ip
 		ovnEip.Status.V4Ip = cachedOvnEip.Spec.V4Ip

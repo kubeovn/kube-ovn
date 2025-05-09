@@ -801,7 +801,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 					return err
 				}
 				for _, eip := range ovnEips {
-					if eip.Status.Ready {
+					if eip.Status.V4Ip != "" {
 						// #nosec G204
 						cmd := exec.Command("bfdd-control", "status", "remote", eip.Spec.V4Ip, "local", nodeExtIP)
 						var outb bytes.Buffer
@@ -1055,10 +1055,6 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 	}
 	ovnEip := cachedOvnEip.DeepCopy()
 	changed := false
-	if ovnEip.Status.Ready != ready {
-		ovnEip.Status.Ready = ready
-		changed = true
-	}
 	if changed {
 		bytes, err := ovnEip.Status.Bytes()
 		if err != nil {
