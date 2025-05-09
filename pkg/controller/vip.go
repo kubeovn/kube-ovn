@@ -361,7 +361,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Spec.V6ip = v6ip
 			vip.Spec.MacAddress = mac
 
-			vip.Status.Ready = true
 			vip.Status.V4ip = v4ip
 			vip.Status.V6ip = v6ip
 			vip.Status.Mac = mac
@@ -414,10 +413,6 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	}
 	vip := oriVip.DeepCopy()
 	var changed bool
-	if vip.Status.Ready != ready {
-		vip.Status.Ready = ready
-		changed = true
-	}
 
 	if ready && v4ip != "" && vip.Status.V4ip != v4ip {
 		vip.Status.V4ip = v4ip
