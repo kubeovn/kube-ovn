@@ -7,14 +7,13 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
-
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
@@ -120,7 +119,7 @@ func (c *OvnEipClient) DeleteSync(name string) {
 func (c *OvnEipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn eip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(name).Status.V4Ip != "" {
 			Logf("ovn eip %s is ready", name)
 			return true
 		}
@@ -159,7 +158,7 @@ func (c *OvnEipClient) WaitToDisappear(name string, _, timeout time.Duration) er
 	return nil
 }
 
-func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
+func MakeOvnEip(name, subnet, v4ip, mac, usage string) *apiv1.OvnEip {
 	eip := &apiv1.OvnEip{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -167,7 +166,6 @@ func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 		Spec: apiv1.OvnEipSpec{
 			ExternalSubnet: subnet,
 			V4Ip:           v4ip,
-			V6Ip:           v6ip,
 			MacAddress:     mac,
 			Type:           usage,
 		},

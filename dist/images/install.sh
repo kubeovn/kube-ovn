@@ -1763,9 +1763,6 @@ spec:
       - jsonPath: .status.nat
         name: Nat
         type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
       - jsonPath: .spec.externalSubnet
         name: ExternalSubnet
         type: string
@@ -1780,8 +1777,6 @@ spec:
                   type: string
                 nat:
                   type: string
-                ready:
-                  type: boolean
                 v4Ip:
                   type: string
                 v6Ip:

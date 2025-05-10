@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -18,8 +19,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-
-	"github.com/onsi/ginkgo/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -52,8 +51,8 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
-func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *kubeovnv1.OvnEip {
-	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
+func makeOvnEip(name, subnet, v4ip, mac, usage string) *kubeovnv1.OvnEip {
+	return framework.MakeOvnEip(name, subnet, v4ip, mac, usage)
 }
 
 func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *kubeovnv1.Vip {
@@ -513,7 +512,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vlanSubnetGw := strings.Join(gateway, ",")
 		underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, vlanSubnetCidr, vlanSubnetGw, "", "", excludeIPs, nil, nil)
 		oldUnderlayExternalSubnet := subnetClient.CreateSync(underlaySubnet)
-		countingEip := makeOvnEip(countingEipName, underlaySubnetName, "", "", "", "")
+		countingEip := makeOvnEip(countingEipName, underlaySubnetName, "", "", "")
 		_ = ovnEipClient.CreateSync(countingEip)
 		ginkgo.By("Checking underlay vlan " + oldUnderlayExternalSubnet.Name)
 		framework.ExpectEqual(oldUnderlayExternalSubnet.Spec.Vlan, vlanName)
@@ -595,7 +594,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		cmd := []string{"sleep", "infinity"}
 		fipPod := framework.MakePod(namespaceName, fipPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
-		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "", "")
+		podEip := framework.MakeOvnEip(podEipName, underlaySubnetName, "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
 		fipPodIP := ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdSubnet.Spec.Provider)
 		podFip := framework.MakeOvnFip(podFipName, podEipName, "", fipPodIP, "", "")
@@ -778,7 +777,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		annotations = map[string]string{util.LogicalSwitchAnnotation: noBfdExtraSubnetName}
 		fipPod = framework.MakePod(namespaceName, fipExtraPodName, nil, annotations, f.KubeOVNImage, cmd, nil)
 		fipPod = podClient.CreateSync(fipPod)
-		podEip = framework.MakeOvnEip(podExtraEipName, underlayExtraSubnetName, "", "", "", "")
+		podEip = framework.MakeOvnEip(podExtraEipName, underlayExtraSubnetName, "", "", "")
 		_ = ovnEipClient.CreateSync(podEip)
 		fipPodIP = ovs.PodNameToPortName(fipPod.Name, fipPod.Namespace, noBfdExtraSubnet.Spec.Provider)
 		podFip = framework.MakeOvnFip(podExtraFipName, podExtraEipName, "", fipPodIP, "", "")
@@ -839,7 +838,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			// in this case, each node has one ecmp bfd ovs lsp nic
 			eipName := nodeName
 			ginkgo.By("Creating ovn node-ext-gw type eip " + nodeName)
-			eip := makeOvnEip(eipName, underlaySubnetName, "", "", "", util.OvnEipTypeLSP)
+			eip := makeOvnEip(eipName, underlaySubnetName, "", "", util.OvnEipTypeLSP)
 			_ = ovnEipClient.CreateSync(eip)
 		}
 
@@ -862,7 +861,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipFipVip = vipClient.CreateSync(ipFipVip)
 		framework.ExpectNotEmpty(ipFipVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipFipEipName)
-		ipFipEip := makeOvnEip(ipFipEipName, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
+		ipFipEip := makeOvnEip(ipFipEipName, underlaySubnetName, "", "", util.OvnEipTypeNAT)
 		ipFipEip = ovnEipClient.CreateSync(ipFipEip)
 		framework.ExpectNotEmpty(ipFipEip.Status.V4Ip)
 		ginkgo.By("Creating ovn fip " + ipFipName)
@@ -877,7 +876,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipDnatVip = vipClient.CreateSync(ipDnatVip)
 		framework.ExpectNotEmpty(ipDnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipDnatEipName)
-		ipDnatEip := makeOvnEip(ipDnatEipName, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
+		ipDnatEip := makeOvnEip(ipDnatEipName, underlaySubnetName, "", "", util.OvnEipTypeNAT)
 		ipDnatEip = ovnEipClient.CreateSync(ipDnatEip)
 		framework.ExpectNotEmpty(ipDnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn dnat " + ipDnatName)
@@ -889,7 +888,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn snat with eip name and ip cidr")
 		ginkgo.By("Creating ovn eip " + cidrSnatEipName)
-		cidrSnatEip := makeOvnEip(cidrSnatEipName, underlaySubnetName, "", "", "", "")
+		cidrSnatEip := makeOvnEip(cidrSnatEipName, underlaySubnetName, "", "", "")
 		cidrSnatEip = ovnEipClient.CreateSync(cidrSnatEip)
 		framework.ExpectNotEmpty(cidrSnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn snat mapping with subnet cidr" + bfdSubnetV4Cidr)
@@ -905,7 +904,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnatVip = vipClient.CreateSync(ipSnatVip)
 		framework.ExpectNotEmpty(ipSnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipSnatEipName)
-		ipSnatEip := makeOvnEip(ipSnatEipName, underlaySubnetName, "", "", "", "")
+		ipSnatEip := makeOvnEip(ipSnatEipName, underlaySubnetName, "", "", "")
 		ipSnatEip = ovnEipClient.CreateSync(ipSnatEip)
 		framework.ExpectNotEmpty(ipSnatEip.Status.V4Ip)
 		ginkgo.By("Creating ovn snat " + ipSnatName)
@@ -970,7 +969,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ginkgo.By("Get pod ip" + ipName)
 			ip := ipClient.Get(ipName)
 			ginkgo.By("Creating ovn eip " + eipOnNodeName)
-			eipOnNode := makeOvnEip(eipOnNodeName, underlaySubnetName, "", "", "", "")
+			eipOnNode := makeOvnEip(eipOnNodeName, underlaySubnetName, "", "", "")
 			_ = ovnEipClient.CreateSync(eipOnNode)
 			ginkgo.By("Creating ovn fip " + fipOnNodeName)
 			fip := makeOvnFip(fipOnNodeName, eipOnNodeName, "", ip.Name, "", "")
