@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
-
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
@@ -62,7 +61,7 @@ func (c *VipClient) CreateSync(vip *apiv1.Vip) *apiv1.Vip {
 func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn vip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		if c.Get(name).Status.V4ip != "" || c.Get(name).Status.V6ip != "" {
 			Logf("ovn vip %s is ready", name)
 			return true
 		}

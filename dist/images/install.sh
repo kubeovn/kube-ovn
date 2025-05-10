@@ -2443,18 +2443,12 @@ spec:
       - name: Mac
         type: string
         jsonPath: .status.mac
-      - name: PMac
-        type: string
-        jsonPath: .spec.parentMac
       - name: Subnet
         type: string
         jsonPath: .spec.subnet
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
-      - jsonPath: .status.type
-        name: Type
+      - name: Type
         type: string
+        jsonPath: .status.type
       schema:
         openAPIV3Schema:
           type: object
@@ -2464,19 +2458,11 @@ spec:
               properties:
                 type:
                   type: string
-                ready:
-                  type: boolean
                 v4ip:
                   type: string
                 v6ip:
                   type: string
                 mac:
-                  type: string
-                pv4ip:
-                  type: string
-                pv6ip:
-                  type: string
-                pmac:
                   type: string
                 selector:
                   type: array
@@ -2517,12 +2503,6 @@ spec:
                 macAddress:
                   type: string
                 v6ip:
-                  type: string
-                parentV4ip:
-                  type: string
-                parentMac:
-                  type: string
-                parentV6ip:
                   type: string
                 selector:
                   type: array
