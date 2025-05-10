@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
@@ -774,6 +776,116 @@ func (c *Controller) loopTunnelCheck() {
 	}
 }
 
+// This method checks the tunnel and ovs vlan id, and record it in the node label
+// kube-ovn-controller will check if vlan crd is conflict with all node existing vlan
+func (c *Controller) loopCheckVlanConflict() {
+	pns, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list provider network: %v", err)
+		return
+	}
+	if len(pns) == 0 {
+		return
+	}
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlan: %v", err)
+		return
+	}
+	if len(vlans) == 0 {
+		return
+	}
+	// local node ovs vlan set
+	ovsLocalVlans := strset.NewWithSize(len(vlans))
+	pnNics := strset.NewWithSize(len(pns))
+	ovsVlanPNs := make(map[string]string)
+	for _, pn := range pns {
+		if slices.Contains(pn.Spec.ExcludeNodes, c.config.NodeName) {
+			continue
+		}
+		for _, vlanName := range pn.Status.Vlans {
+			vlan, err := c.vlansLister.Get(vlanName)
+			if err != nil {
+				klog.Errorf("failed to get vlan %q: %v", vlanName, err)
+				continue
+			}
+			id := strconv.Itoa(vlan.Spec.ID)
+			ovsLocalVlans.Add(id)
+			ovsVlanPNs[id] = pn.Name
+			pnNics.Add(pn.Spec.DefaultInterface)
+		}
+	}
+	if ovsLocalVlans.Size() > 0 {
+		tunnelVlanID := c.config.IfaceVlanID
+		klog.Infof("check if local ovs vlans %v conflict with tunnel vlan %d", ovsLocalVlans, tunnelVlanID)
+		if ovsLocalVlans.Has(strconv.Itoa(tunnelVlanID)) {
+			// tunnel interface using, so ovs can not use this vlan
+			err := fmt.Errorf("local ovs vlans %v conflict with tunnel vlan %d", ovsLocalVlans, tunnelVlanID)
+			klog.Error(err)
+		}
+	}
+	// check if ovs local vlan conflict with os local vlan
+	klog.V(3).Infof("get os local exist vlan ids for provider network nic: %v", pnNics)
+	osLocalVlans := make(map[string]string)
+	links, err := netlink.LinkList()
+	if err != nil {
+		klog.Errorf("failed to list links: %v", err)
+		return
+	}
+	// get all vlan link name
+	for _, link := range links {
+		if link.Type() != "vlan" {
+			klog.V(3).Infof("link %s not use vlan", link.Attrs().Name)
+			continue
+		}
+		nicName := link.Attrs().Name
+		for _, pnc := range pnNics.List() {
+			if strings.HasPrefix(nicName, pnc) {
+				klog.V(3).Infof("provider network %s exist os vlan nic %s", pnc, nicName)
+				id, err := c.config.getVLAN(link.Attrs().Name)
+				if err != nil {
+					klog.Errorf("failed to get vlan id for %s: %v", link.Attrs().Name, err)
+					continue
+				}
+				if id > 0 {
+					osLocalVlans[strconv.Itoa(id)] = nicName
+				}
+			}
+		}
+	}
+	// no os local vlans
+	if len(osLocalVlans) == 0 {
+		return
+	}
+	klog.Infof("check if local ovs vlans %v conflict with os local vlans: %v", ovsLocalVlans, osLocalVlans)
+	for vlanID, nicName := range osLocalVlans {
+		if ovsLocalVlans.Has(vlanID) {
+			pnName := ovsVlanPNs[vlanID]
+			err := fmt.Errorf("os local vlan %s conflict with ovs vlan in provider network %s", vlanID, pnName)
+			c.recordProviderNetworkErr(pnName, err.Error())
+			if !c.config.EnableDelConflictVlanIF {
+				continue
+			}
+			// make sure not delete tunnel nic
+			if nicName == c.config.tunnelIface {
+				klog.Errorf("admin should delete invalid vlan crd which vlan id is %s", vlanID)
+				klog.Infof("skip auto delete tunnel vlan interface %s", nicName)
+				continue
+			}
+			// auto del os conflict vlan iface
+			link, err := netlink.LinkByName(nicName)
+			if err != nil {
+				klog.Errorf("failed to get link by name %s", nicName)
+				continue
+			}
+			klog.Infof("auto delete os local vlan interface %s", nicName)
+			if err := netlink.LinkDel(link); err != nil {
+				klog.Errorf("failed to delete os local vlan interface %s: %v", nicName, err)
+			}
+		}
+	}
+}
+
 func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
@@ -1087,6 +1199,39 @@ func (c *Controller) patchNodeExternalGwLabel(enabled bool) error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) patchNodeTunnelVlanLabel() error {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+		return err
+	}
+	var patch util.KVPatch
+	var needUpdate bool
+	if c.config.IfaceVlanID > 0 && node.Labels[util.TunnelIFLabel] != c.config.tunnelIface {
+		klog.Infof("patching tunnel vlan id %d to node %s", c.config.IfaceVlanID, node.Name)
+		patch = util.KVPatch{
+			util.TunnelUseVlanLabel: "true",
+			util.TunnelIFLabel:      c.config.tunnelIface,
+		}
+		needUpdate = true
+	} else if c.config.IfaceVlanID <= 0 && node.Labels[util.TunnelIFLabel] != "" {
+		klog.Infof("removing tunnel vlan id from node %s", node.Name)
+		patch = util.KVPatch{
+			util.TunnelUseVlanLabel: nil,
+			util.TunnelIFLabel:      nil,
+		}
+		needUpdate = true
+	}
+	if !needUpdate {
+		return nil
+	}
+	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to update tunnel vlan id for node %s: %v", node.Name, err)
+		return err
+	}
 	return nil
 }
 

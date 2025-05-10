@@ -418,3 +418,12 @@ func linkExists(name string) (bool, error) {
 	}
 	return true, nil
 }
+
+func (c *Controller) patchNodeTunnelVlanLabel() error {
+	// nothing to do on Windows
+	return nil
+}
+
+func (c *Controller) loopCheckVlanConflict() {
+	// nothing to do on Windows
+}

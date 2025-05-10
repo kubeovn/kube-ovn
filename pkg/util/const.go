@@ -96,6 +96,9 @@ const (
 
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 
+	TunnelIFLabel      = "ovn.kubernetes.io/tunnel_interface"
+	TunnelUseVlanLabel = "ovn.kubernetes.io/tunnel_use_vlan"
+
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
 	VpcNameLabel               = "ovn.kubernetes.io/vpc"

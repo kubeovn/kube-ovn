@@ -16,6 +16,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ type Configuration struct {
 	Iface                     string
 	HostTunnelSrc             bool
 	DPDKTunnelIface           string
+	IfaceVlanID               int
 	MTU                       int
 	MSS                       int
 	EnableMirror              bool
@@ -75,6 +77,8 @@ type Configuration struct {
 	EnableTProxy              bool
 	OVSVsctlConcurrency       int32
 	SetVxlanTxOff             bool
+	EnableCheckVlanConflict   bool
+	EnableDelConflictVlanIF   bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -120,6 +124,8 @@ func ParseFlags() *Configuration {
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
+		argEnableCheckVlanConflict   = pflag.Bool("enable-check-vlan-conflict", true, "Whether to enable check vlan conflict")
+		argEnableDelConflictVlanIF   = pflag.Bool("enable-del-conflict-vlan-interface", true, "Whether to enable delete vlan conflict interface")
 	)
 
 	// mute info log for ipset lib
@@ -181,6 +187,8 @@ func ParseFlags() *Configuration {
 		EnableTProxy:              *argEnableTProxy,
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
+		EnableCheckVlanConflict:   *argEnableCheckVlanConflict,
+		EnableDelConflictVlanIF:   *argEnableDelConflictVlanIF,
 	}
 	return config
 }
@@ -284,9 +292,17 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}
 
-		klog.Infof("use %s on %s as tunnel address", encapIP, iface.Name)
+		klog.Infof("tunnel nic %s use %s as tunnel address", iface.Name, encapIP)
 		mtu = iface.MTU
 		config.tunnelIface = iface.Name
+		if config.EnableCheckVlanConflict {
+			config.IfaceVlanID, err = config.getVLAN(config.tunnelIface)
+			klog.Infof("tunnel nic %s use vlan id %d", config.tunnelIface, config.IfaceVlanID)
+			if err != nil {
+				klog.Errorf("failed to get vlan id for tunnel iface %s: %v", config.tunnelIface, err)
+				return err
+			}
+		}
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
@@ -325,7 +341,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		return err
 	}
 
-	return setEncapIP(encapIP)
+	if err := setEncapIP(encapIP); err != nil {
+		klog.Errorf("failed to set encap ip %s: %v", encapIP, err)
+		return err
+	}
+	return nil
 }
 
 func (config *Configuration) getEncapIP(node *corev1.Node) string {
@@ -428,4 +448,18 @@ func setChecksum(encapChecksum bool) error {
 		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
 	}
 	return nil
+}
+
+func (config *Configuration) getVLAN(iface string) (int, error) {
+	// -1 means no vlan id
+	link, err := netlink.LinkByName(iface)
+	if err != nil || link == nil {
+		return -1, fmt.Errorf("failed to get iface %s: %w", iface, err)
+	}
+	if vlan, ok := link.(*netlink.Vlan); ok {
+		klog.V(3).Infof("iface %s vlan id is: %d", iface, vlan.VlanId)
+		return vlan.VlanId, nil
+	}
+	klog.V(3).Infof("iface %s not use vlan", iface)
+	return -1, nil
 }

@@ -2,8 +2,12 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
+	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -56,6 +60,14 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
+	if c.config.EnableCheckVlanConflict {
+		err := c.checkVlanConflict(vlan, vlan.Spec.ProviderInterfaceName)
+		if err != nil {
+			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+			return err
+		}
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -97,6 +109,71 @@ func (c *Controller) handleAddVlan(key string) error {
 	return nil
 }
 
+func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan, vlanInterface string) error {
+	// todo: check if vlan conflict in webhook
+	// 1. check if vlan conflict with node tunnel vlan
+	nodes, err := c.nodesLister.List(labels.SelectorFromSet(labels.Set{util.TunnelUseVlanLabel: "true"}))
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+	var conflictErr error
+	nodeTunnVlanIDs := strset.New()
+	conflict := false
+	myVlanID := strconv.Itoa(vlan.Spec.ID)
+	for _, node := range nodes {
+		tunnelIF := node.Labels[util.TunnelIFLabel]
+		tunnelIFs := strings.Split(tunnelIF, ".")
+		if len(tunnelIFs) != 2 {
+			klog.Errorf("invalid tunnel interface %s on node %s", tunnelIF, node.Name)
+			continue
+		}
+		tunnelIFMaster := tunnelIFs[0]
+		id := tunnelIFs[1]
+		if id == "" {
+			continue
+		}
+		nodeTunnVlanIDs.Add(id)
+		// conflict with tunnel interface: same if master nic and same vlan id
+		if tunnelIFMaster != vlanInterface {
+			continue
+		}
+		if id != "" {
+			if id == myVlanID {
+				conflict = true
+				conflictErr := fmt.Errorf("vlan %s id %s conflict with tunnel nic %s vlan on node %s", vlan.Name, myVlanID, tunnelIF, node.Name)
+				klog.Error(conflictErr)
+			}
+		}
+	}
+	if nodeTunnVlanIDs.Size() > 1 {
+		klog.Warningf("cluster nodes tunnel nic span multi vlan ids: %v", nodeTunnVlanIDs.List())
+	}
+
+	// 2. check if new vlan conflict with other vlans
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlans: %v", err)
+		return err
+	}
+	for _, v := range vlans {
+		if v.Spec.ID == vlan.Spec.ID && v.Name != vlan.Name {
+			conflict = true
+			conflictErr := fmt.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+			klog.Error(conflictErr)
+		}
+	}
+	if conflict {
+		vlan.Status.Conflict = true
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
+			return err
+		}
+	}
+	return conflictErr
+}
+
 func (c *Controller) handleUpdateVlan(key string) error {
 	c.vlanKeyMutex.LockKey(key)
 	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
@@ -119,7 +196,11 @@ func (c *Controller) handleUpdateVlan(key string) error {
 			return err
 		}
 	}
-
+	if vlan.Status.Conflict {
+		err := fmt.Errorf("vlan %s conflict with other vlans", vlan.Name)
+		klog.Error(err)
+		return err
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)

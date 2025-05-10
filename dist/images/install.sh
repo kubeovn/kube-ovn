@@ -2983,6 +2983,8 @@ spec:
                   type: array
                   items:
                     type: string
+                conflict:
+                  type: boolean
       additionalPrinterColumns:
       - name: ID
         type: string
@@ -2990,6 +2992,9 @@ spec:
       - name: Provider
         type: string
         jsonPath: .spec.provider
+      - name: conflict
+        type: boolean
+        jsonPath: .status.conflict
   scope: Cluster
   names:
     plural: vlans
