@@ -905,8 +905,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		_ = c.podKeyMutex.UnlockKey(key)
 		if err == nil {
 			c.deletingPodObjMap.Delete(key)
-			klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
 		}
+		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
 	}()
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
