@@ -438,14 +438,14 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	klog.Infof("handle add/update pod %s", key)
 	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
 
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
-
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -1103,14 +1103,14 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	klog.Infof("handle add/update pod security group %s", key)
 	defer klog.Infof("take %d ms to handle sg for pod %s", last.Milliseconds(), key)
 
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
-
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
