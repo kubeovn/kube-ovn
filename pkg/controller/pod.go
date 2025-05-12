@@ -434,8 +434,12 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
-	klog.Infof("handle add/update pod %s", key)
 	last := time.Since(time.Now())
+	klog.Infof("handle add/update pod %s", key)
+	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
+
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -462,11 +466,6 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		klog.Errorf("failed to get pod nets %v", err)
 		return err
 	}
-
-	// lock just before ipam operation
-	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
-	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
 
 	// check and do hotnoplug nic
 	if pod, err = c.syncKubeOvnNet(pod, podNets); err != nil {
@@ -893,13 +892,23 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 }
 
 func (c *Controller) handleDeletePod(key string) (err error) {
-	klog.Infof("handle delete pod %s", key)
-	last := time.Since(time.Now())
 	pod, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
 		return nil
 	}
+
+	last := time.Since(time.Now())
+	klog.Infof("handle delete pod %s", key)
 	podName := c.getNameByPod(pod)
+	c.podKeyMutex.LockKey(key)
+	defer func() {
+		_ = c.podKeyMutex.UnlockKey(key)
+		if err == nil {
+			c.deletingPodObjMap.Delete(key)
+			klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
+		}
+	}()
+
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
@@ -917,15 +926,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 	}
-	// lock just before ipam operation
-	c.podKeyMutex.LockKey(key)
-	defer func() {
-		_ = c.podKeyMutex.UnlockKey(key)
-		if err == nil {
-			c.deletingPodObjMap.Delete(key)
-		}
-		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
-	}()
 
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
@@ -1099,9 +1099,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 }
 
 func (c *Controller) handleUpdatePodSecurity(key string) error {
-	klog.Infof("handle add/update pod security group %s", key)
 	last := time.Since(time.Now())
-	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
+	klog.Infof("handle add/update pod security group %s", key)
+	defer klog.Infof("take %d ms to handle sg for pod %s", last.Milliseconds(), key)
+
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
