@@ -329,13 +329,11 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v6Eip, v4IpCidr, v6IpCi
 		needUpdateLabel = true
 		snat.Labels = map[string]string{
 			util.EipV4IpLabel: v4Eip,
-			util.EipV6IpLabel: v6Eip,
 		}
 	} else if snat.Labels[util.EipV4IpLabel] != v4Eip {
 		op = "replace"
 		needUpdateLabel = true
 		snat.Labels[util.EipV4IpLabel] = v4Eip
-		snat.Labels[util.EipV6IpLabel] = v4Eip
 	}
 	if needUpdateLabel {
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`

@@ -186,13 +186,12 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 			return "", "", err
 		}
 	} else {
-		var v6ip string
-		v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		v4ip, _, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
 		if err != nil {
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-		if err := c.createOrUpdateOvnEipCR(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
+		if err := c.createOrUpdateOvnEipCR(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, mac, util.OvnEipTypeLRP); err != nil {
 			klog.Errorf("failed to create ovn lrp eip %s, %v", lrpEipName, err)
 			return "", "", err
 		}

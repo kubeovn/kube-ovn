@@ -459,7 +459,6 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip
 		needUpdateLabel = true
 		dnat.Labels = map[string]string{
 			util.EipV4IpLabel: v4Eip,
-			util.EipV6IpLabel: v6Eip,
 		}
 	} else if dnat.Labels[util.EipV4IpLabel] != v4Eip {
 		op = "replace"

@@ -72,7 +72,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle add ovn eip %s", cachedEip.Name)
-	var v4ip, v6ip, mac, subnetName string
+	var v4ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
 		klog.Infof("subnet has not been set for eip %q, using default external subnet %q", key, c.config.ExternalGatewaySwitch)
@@ -86,10 +86,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 
 	portName := cachedEip.Name
 	if cachedEip.Spec.V4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip, nil)
+		v4ip, _, mac, err = c.acquireStaticIPAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip, nil)
 	} else {
 		// random allocate
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, cachedEip.Name, portName)
+		v4ip, _, mac, err = c.acquireIPAddress(subnet.Name, cachedEip.Name, portName)
 	}
 	if err != nil {
 		klog.Errorf("failed to acquire ip address, %v", err)
@@ -99,8 +99,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	usageType := cachedEip.Spec.Type
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		klog.Infof("create lsp type ovn eip %s", key)
-		mergedIP := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
+		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, v4ip, mac); err != nil {
 			klog.Errorf("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
@@ -110,7 +109,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		usageType = util.OvnEipTypeNAT
 	}
 
-	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, v6ip, mac, usageType); err != nil {
+	if err = c.createOrUpdateOvnEipCR(key, subnet.Name, v4ip, mac, usageType); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
@@ -216,7 +215,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageType string) error {
+func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, mac, usageType string) error {
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -227,7 +226,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 						util.SubnetNameLabel: subnet,
 						util.OvnEipTypeLabel: usageType,
 						util.EipV4IpLabel:    v4ip,
-						util.EipV6IpLabel:    v6ip,
 					},
 				},
 				Spec: kubeovnv1.OvnEipSpec{
@@ -308,7 +306,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 				util.SubnetNameLabel: subnet,
 				util.OvnEipTypeLabel: usageType,
 				util.EipV4IpLabel:    v4ip,
-				util.EipV6IpLabel:    v6ip,
 			}
 			needUpdateLabel = true
 		}
@@ -316,7 +313,6 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 			op = "replace"
 			ovnEip.Labels[util.SubnetNameLabel] = subnet
 			ovnEip.Labels[util.EipV4IpLabel] = v4ip
-			ovnEip.Labels[util.EipV6IpLabel] = v6ip
 			needUpdateLabel = true
 		}
 		if ovnEip.Labels[util.OvnEipTypeLabel] != usageType {

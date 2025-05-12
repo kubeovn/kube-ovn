@@ -1238,14 +1238,14 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		}
 		needCreateEip = true
 	}
-	var v4ip, v6ip, mac string
+	var v4ip, mac string
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
-		if v4ip, v6ip, mac, err = c.acquireIPAddress(subnet, lrpEipName, lrpEipName); err != nil {
+		if v4ip, _, mac, err = c.acquireIPAddress(subnet, lrpEipName, lrpEipName); err != nil {
 			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
-		if err := c.createOrUpdateOvnEipCR(lrpEipName, subnet, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
+		if err := c.createOrUpdateOvnEipCR(lrpEipName, subnet, v4ip, mac, util.OvnEipTypeLRP); err != nil {
 			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
 			return err
 		}
