@@ -1751,9 +1751,6 @@ spec:
       - jsonPath: .status.v4Ip
         name: V4IP
         type: string
-      - jsonPath: .status.v6Ip
-        name: V6IP
-        type: string
       - jsonPath: .status.macAddress
         name: Mac
         type: string
@@ -1778,8 +1775,6 @@ spec:
                 nat:
                   type: string
                 v4Ip:
-                  type: string
-                v6Ip:
                   type: string
                 macAddress:
                   type: string
