@@ -37,7 +37,6 @@ type OvnDnatRuleSpec struct {
 	Protocol     string `json:"protocol,omitempty"`
 	Vpc          string `json:"vpc"`
 	V4Ip         string `json:"v4Ip"`
-	V6Ip         string `json:"v6Ip"`
 }
 
 type OvnDnatRuleStatus struct {
@@ -45,10 +44,8 @@ type OvnDnatRuleStatus struct {
 	// +patchStrategy=merge
 	Vpc          string `json:"vpc" patchStrategy:"merge"`
 	V4Eip        string `json:"v4Eip" patchStrategy:"merge"`
-	V6Eip        string `json:"v6Eip" patchStrategy:"merge"`
 	ExternalPort string `json:"externalPort"`
 	V4Ip         string `json:"v4Ip" patchStrategy:"merge"`
-	V6Ip         string `json:"v6Ip" patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"`
 	Protocol     string `json:"protocol,omitempty"`
 	IPName       string `json:"ipName"`

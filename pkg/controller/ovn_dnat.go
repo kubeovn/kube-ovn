@@ -116,7 +116,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
+	var v4Eip, internalV4Ip, subnetName, vpcName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
 	if v4Eip == "" {
 		err := fmt.Errorf("failed to dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
@@ -125,7 +125,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 	vpcName = cachedDnat.Spec.Vpc
 	internalV4Ip = cachedDnat.Spec.V4Ip
-	internalV6Ip = cachedDnat.Spec.V6Ip
 	ipName = cachedDnat.Spec.IPName
 	if ipName != "" {
 		if cachedDnat.Spec.IPType == util.Vip {
@@ -135,7 +134,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalVip.Status.V4ip
-			internalV6Ip = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 		} else {
 			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
@@ -144,7 +142,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalIP.Spec.V4IPAddress
-			internalV6Ip = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -154,12 +151,12 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		}
 		vpcName = subnet.Spec.Vpc
 	}
-	if internalV4Ip == "" && internalV6Ip == "" {
+	if internalV4Ip == "" {
 		err := fmt.Errorf("failed to create dnat %s, no internal ip", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-	if v4Eip == "" && v6Eip == "" {
+	if v4Eip == "" {
 		err := fmt.Errorf("failed to create dnat %s, no eip", cachedDnat.Name)
 		klog.Error(err)
 		return err
@@ -200,12 +197,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 			return err
 		}
 	}
-	if internalV6Ip != "" && v6Eip != "" {
-		if err = c.AddDnatRule(vpcName, cachedDnat.Name, v6Eip, internalV6Ip, externalPort, internalPort, protocol); err != nil {
-			klog.Errorf("failed to create v6 dnat, %v", err)
-			return err
-		}
-	}
 	if err := c.handleAddOvnDnatFinalizer(cachedDnat); err != nil {
 		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
@@ -219,7 +210,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip, internalV6Ip, true); err != nil {
+	if err = c.patchOvnDnatStatus(key, vpcName, v4Eip, internalV4Ip, true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
@@ -246,13 +237,6 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
 				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
 				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
 				return err
 			}
 		}
@@ -304,16 +288,15 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
+	var v4Eip, internalV4Ip, subnetName, vpcName, ipName string
 	v4Eip = cachedEip.Status.V4Ip
-	if v4Eip == "" && v6Eip == "" {
+	if v4Eip == "" {
 		err := fmt.Errorf("failed to update dnat %s, eip %s has no ip", cachedDnat.Name, eipName)
 		klog.Error(err)
 		return err
 	}
 	vpcName = cachedDnat.Spec.Vpc
 	internalV4Ip = cachedDnat.Spec.V4Ip
-	internalV6Ip = cachedDnat.Spec.V6Ip
 	ipName = cachedDnat.Spec.IPName
 	if ipName != "" {
 		if cachedDnat.Spec.IPType == util.Vip {
@@ -323,7 +306,6 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalVip.Status.V4ip
-			internalV6Ip = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 		} else {
 			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
@@ -332,7 +314,6 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 				return err
 			}
 			internalV4Ip = internalIP.Spec.V4IPAddress
-			internalV6Ip = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -358,12 +339,12 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if v4Eip != cachedDnat.Status.V4Eip || v6Eip != cachedDnat.Status.V6Eip {
+	if v4Eip != cachedDnat.Status.V4Eip {
 		err := fmt.Errorf("not support change eip for dnat %s", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
-	if internalV4Ip != cachedDnat.Status.V4Ip || internalV6Ip != cachedDnat.Status.V6Ip {
+	if internalV4Ip != cachedDnat.Status.V4Ip {
 		err := fmt.Errorf("not support change internal ip for dnat %s", cachedDnat.Name)
 		klog.Error(err)
 		return err
@@ -435,7 +416,7 @@ func (c *Controller) patchOvnDnatAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip, internalV6Ip string, ready bool) error {
+func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, internalV4Ip string, ready bool) error {
 	var (
 		oriDnat, dnat *kubeovnv1.OvnDnatRule
 		err           error
@@ -488,16 +469,8 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip
 		dnat.Status.V4Eip = v4Eip
 		changed = true
 	}
-	if v6Eip != "" && dnat.Status.V6Eip != v6Eip {
-		dnat.Status.V4Eip = v6Eip
-		changed = true
-	}
 	if internalV4Ip != "" && dnat.Status.V4Ip != internalV4Ip {
 		dnat.Status.V4Ip = internalV4Ip
-		changed = true
-	}
-	if internalV6Ip != "" && dnat.Status.V6Ip != internalV6Ip {
-		dnat.Status.V6Ip = internalV6Ip
 		changed = true
 	}
 	if ready && dnat.Spec.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {

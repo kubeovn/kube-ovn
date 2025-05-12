@@ -33,7 +33,6 @@ type OvnFipSpec struct {
 	IPName string `json:"ipName"` // vip, ip crd name
 	Vpc    string `json:"vpc"`
 	V4Ip   string `json:"v4Ip"`
-	V6Ip   string `json:"v6Ip"`
 }
 
 type OvnFipStatus struct {
@@ -41,9 +40,7 @@ type OvnFipStatus struct {
 	// +patchStrategy=merge
 	Vpc   string `json:"vpc" patchStrategy:"merge"`
 	V4Eip string `json:"v4Eip" patchStrategy:"merge"`
-	V6Eip string `json:"v6Eip" patchStrategy:"merge"`
 	V4Ip  string `json:"v4Ip" patchStrategy:"merge"`
-	V6Ip  string `json:"v6Ip" patchStrategy:"merge"`
 	Ready bool   `json:"ready" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object

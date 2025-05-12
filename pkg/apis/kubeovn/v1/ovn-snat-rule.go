@@ -34,7 +34,6 @@ type OvnSnatRuleSpec struct {
 	IPName    string `json:"ipName"`
 	Vpc       string `json:"vpc"`
 	V4IpCidr  string `json:"v4IpCidr"` // subnet cidr or pod ip address
-	V6IpCidr  string `json:"v6IpCidr"` // subnet cidr or pod ip address
 }
 
 type OvnSnatRuleStatus struct {
@@ -42,9 +41,7 @@ type OvnSnatRuleStatus struct {
 	// +patchStrategy=merge
 	Vpc      string `json:"vpc" patchStrategy:"merge"`
 	V4Eip    string `json:"v4Eip" patchStrategy:"merge"`
-	V6Eip    string `json:"v6Eip" patchStrategy:"merge"`
 	V4IpCidr string `json:"v4IpCidr" patchStrategy:"merge"`
-	V6IpCidr string `json:"v6IpCidr" patchStrategy:"merge"`
 	Ready    bool   `json:"ready" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object

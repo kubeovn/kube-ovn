@@ -109,7 +109,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	var v4Eip, v6Eip, v4IP, v6IP string
+	var v4Eip, v4IP string
 	v4Eip = cachedEip.Status.V4Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %w", key, err)
@@ -120,7 +120,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	var mac, subnetName, vpcName, ipName string
 	vpcName = cachedFip.Spec.Vpc
 	v4IP = cachedFip.Spec.V4Ip
-	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
 	if ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
@@ -130,7 +129,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 				return err
 			}
 			v4IP = internalVip.Status.V4ip
-			v6IP = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 			// though vip lsp has its mac, vip always use its parent lsp nic mac
 			// and vip could float to different parent lsp nic
@@ -142,7 +140,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 				return err
 			}
 			v4IP = internalIP.Spec.V4IPAddress
-			v6IP = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 			mac = internalIP.Spec.MacAddress
 			// mac is necessary while using distributed router fip, fip use lsp its mac
@@ -165,12 +162,12 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if v4IP == "" && v6IP == "" {
+	if v4IP == "" {
 		err := fmt.Errorf("failed to create fip %s, no internal ip", cachedFip.Name)
 		klog.Error(err)
 		return err
 	}
-	if v4Eip == "" && v6Eip == "" {
+	if v4Eip == "" {
 		err := fmt.Errorf("failed to create fip %s, no external ip", cachedFip.Name)
 		klog.Error(err)
 		return err
@@ -180,12 +177,6 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	if v4IP != "" && v4Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v4 fip, %v", err)
-			return err
-		}
-	}
-	if v6Eip == "" && v6IP != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v6 fip, %v", err)
 			return err
 		}
 	}
@@ -248,7 +239,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	var v4Eip, v6Eip, v4IP, v6IP string
+	var v4Eip, v4IP string
 	v4Eip = cachedEip.Status.V4Ip
 	if err = c.isOvnFipDuplicated(key, cachedEip.Spec.V4Ip); err != nil {
 		err = fmt.Errorf("failed to add fip %s, %w", key, err)
@@ -259,7 +250,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	var subnetName, vpcName, ipName string
 	vpcName = cachedFip.Spec.Vpc
 	v4IP = cachedFip.Spec.V4Ip
-	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
 	if ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
@@ -269,7 +259,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 				return err
 			}
 			v4IP = internalVip.Status.V4ip
-			v6IP = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
 			// vip lsp has its mac, but vip always use its parent lsp nic mac
 			// vip could float to different parent lsp nic
@@ -281,7 +270,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 				return err
 			}
 			v4IP = internalIP.Spec.V4IPAddress
-			v6IP = internalIP.Spec.V6IPAddress
 			subnetName = internalIP.Spec.Subnet
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -311,17 +299,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if v6IP != cachedFip.Status.V6Ip {
-		err := fmt.Errorf("not support change v6 ip for ovn fip %s", cachedEip.Name)
-		klog.Error(err)
-		return err
-	}
 	if v4Eip != cachedFip.Status.V4Eip {
-		err := fmt.Errorf("not support change eip for ovn fip %s", cachedEip.Name)
-		klog.Error(err)
-		return err
-	}
-	if v6Eip != cachedFip.Status.V6Eip {
 		err := fmt.Errorf("not support change eip for ovn fip %s", cachedEip.Name)
 		klog.Error(err)
 		return err
@@ -346,12 +324,6 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
 		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete v4 fip %s, %v", key, err)
-			return err
-		}
-	}
-	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
-			klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 			return err
 		}
 	}

@@ -256,7 +256,7 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 		err := errors.New("should set spec ovnEip")
 		return err
 	}
-	if dnat.Spec.IPName == "" && dnat.Spec.V4Ip == "" && dnat.Spec.V6Ip == "" {
+	if dnat.Spec.IPName == "" && dnat.Spec.V4Ip == "" {
 		err := errors.New("should set spec ipName or v4 or v6 Ip")
 		return err
 	}
@@ -310,16 +310,16 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 		return errors.New("should not set spec vpcSubnet and ipName at the same time")
 	}
 
-	if snat.Spec.Vpc != "" && snat.Spec.V4IpCidr == "" && snat.Spec.V6IpCidr == "" {
-		return errors.New("should set spec v4 or v6 IpCidr (subnet cidr or ip address) when spec vpc is set")
+	if snat.Spec.Vpc != "" && snat.Spec.V4IpCidr == "" {
+		return errors.New("should set spec v4 IpCidr (subnet cidr or ip address) when spec vpc is set")
 	}
 
-	if snat.Spec.Vpc == "" && snat.Spec.V4IpCidr != "" && snat.Spec.V6IpCidr != "" {
-		return errors.New("should set spec vpc while spec v4 or v6 IpCidr is not set")
+	if snat.Spec.Vpc == "" && snat.Spec.V4IpCidr != "" {
+		return errors.New("should set spec vpc while spec v4 IpCidr is not set")
 	}
 
-	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.Vpc == "" && snat.Spec.V4IpCidr == "" && snat.Spec.V6IpCidr == "" {
-		return errors.New("should set spec vpcSubnet or ipName or vpc and v4 and v6 IpCidr at least")
+	if snat.Spec.VpcSubnet == "" && snat.Spec.IPName == "" && snat.Spec.Vpc == "" && snat.Spec.V4IpCidr == "" {
+		return errors.New("should set spec vpcSubnet or ipName or vpc and v4 IpCidr at least")
 	}
 
 	eip := &ovnv1.OvnEip{}
@@ -332,7 +332,7 @@ func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) 
 		err := errors.New("should set spec ovnEip")
 		return err
 	}
-	if fip.Spec.IPName == "" && fip.Spec.V4Ip == "" && fip.Spec.V6Ip == "" {
+	if fip.Spec.IPName == "" && fip.Spec.V4Ip == "" {
 		err := errors.New("should set spec ipName or ip")
 		return err
 	}
