@@ -96,7 +96,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # select local backend first
     git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 
-RUN apt install -y build-essential fakeroot \
+RUN apt install -y wget build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
     openssl pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
@@ -132,6 +132,15 @@ RUN cd /usr/src/openbfdd && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
     make
+
+ENV LD_LIBRARY_PATH=/usr/local/openssl-fips/lib64:$LD_LIBRARY_PATH
+RUN wget https://www.openssl.org/source/openssl-3.5.0.tar.gz && \
+    tar -xzf openssl-3.5.0.tar.gz && \
+    cd openssl-3.5.0 && \
+    ./config --prefix=/usr/local/openssl-fips enable-fips && \
+    make -j8 && \
+    make install && \
+    /usr/local/openssl-fips/bin/openssl fipsinstall -module /usr/local/openssl-fips/lib64/ossl-modules/fips.so -out /usr/local/openssl-fips/ssl/fipsmodule.cnf
 
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
@@ -220,5 +229,10 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
+
+COPY --from=ovs-builder /usr/local/openssl-fips /usr/local/openssl-fips
+RUN chown -R nobody:nogroup /usr/local/openssl-fips
+ENV OPENSSL_CONF=/usr/local/openssl-fips/ssl/fipsmodule.cnf
+ENV LD_LIBRARY_PATH=/usr/local/openssl-fips/lib64:$LD_LIBRARY_PATH
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
