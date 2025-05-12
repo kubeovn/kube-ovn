@@ -501,6 +501,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
+	vpcSubnets, defaultSubnet, err := c.getVpcSubnets(vpc)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	vpc.Status.Subnets = vpcSubnets
+	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Router = key
 	vpc.Status.Standby = true
 	vpc.Status.VpcPeerings = newPeers
