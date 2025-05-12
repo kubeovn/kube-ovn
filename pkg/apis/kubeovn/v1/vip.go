@@ -35,9 +35,6 @@ type VipSpec struct {
 	V4ip          string   `json:"v4ip"`
 	V6ip          string   `json:"v6ip"`
 	MacAddress    string   `json:"macAddress"`
-	ParentV4ip    string   `json:"parentV4ip"`
-	ParentV6ip    string   `json:"parentV6ip"`
-	ParentMac     string   `json:"parentMac"`
 	Selector      []string `json:"selector"`
 	AttachSubnets []string `json:"attachSubnets"`
 }
@@ -49,14 +46,10 @@ type VipStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Ready bool   `json:"ready" patchStrategy:"merge"`
-	Type  string `json:"type"`
-	V4ip  string `json:"v4ip" patchStrategy:"merge"`
-	V6ip  string `json:"v6ip" patchStrategy:"merge"`
-	Mac   string `json:"mac" patchStrategy:"merge"`
-	Pv4ip string `json:"pv4ip" patchStrategy:"merge"`
-	Pv6ip string `json:"pv6ip" patchStrategy:"merge"`
-	Pmac  string `json:"pmac" patchStrategy:"merge"`
+	Type string `json:"type"`
+	V4ip string `json:"v4ip" patchStrategy:"merge"`
+	V6ip string `json:"v6ip" patchStrategy:"merge"`
+	Mac  string `json:"mac" patchStrategy:"merge"`
 }
 
 func (s *VipStatus) Bytes() ([]byte, error) {

@@ -9,12 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-
-	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -247,7 +246,6 @@ var _ = framework.Describe("[group:vip]", func() {
 			time.Sleep(10 * time.Second)
 			upperCaseStaticIpv6Vip = vipClient.Get(upperCaseStaticIpv6VipName)
 			framework.ExpectEqual(upperCaseStaticIpv6Vip.Status.V6ip, "")
-			framework.ExpectFalse(upperCaseStaticIpv6Vip.Status.Ready)
 		}
 		// create vip1 and vip2, should have different ip and mac
 		ginkgo.By("Creating allowed address pair vip, should have different ip and mac")
