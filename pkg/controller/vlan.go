@@ -60,14 +60,6 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
-	if c.config.EnableCheckVlanConflict {
-		err := c.checkVlanConflict(vlan, vlan.Spec.ProviderInterfaceName)
-		if err != nil {
-			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
-			return err
-		}
-	}
-
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -94,6 +86,14 @@ func (c *Controller) handleAddVlan(key string) error {
 	if err != nil {
 		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
 		return err
+	}
+
+	if c.config.EnableCheckVlanConflict {
+		err := c.checkVlanConflict(vlan, pn.Spec.DefaultInterface)
+		if err != nil {
+			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+			return err
+		}
 	}
 
 	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
