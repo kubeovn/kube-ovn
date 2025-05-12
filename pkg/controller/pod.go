@@ -436,7 +436,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	last := time.Since(time.Now())
 	klog.Infof("handle add/update pod %s", key)
-	defer klog.Infof("take %d ms to handle sync pod %s", last.Milliseconds(), key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -445,7 +444,10 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	defer func() {
+		_ = c.podKeyMutex.UnlockKey(key)
+		klog.Infof("take %d ms to handle add or update pod %s", last.Milliseconds(), key)
+	}()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -1101,7 +1103,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 func (c *Controller) handleUpdatePodSecurity(key string) error {
 	last := time.Since(time.Now())
 	klog.Infof("handle add/update pod security group %s", key)
-	defer klog.Infof("take %d ms to handle sg for pod %s", last.Milliseconds(), key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -1110,7 +1111,10 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 
 	c.podKeyMutex.LockKey(key)
-	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	defer func() {
+		_ = c.podKeyMutex.UnlockKey(key)
+		klog.Infof("take %d ms to handle sg for pod %s", last.Milliseconds(), key)
+	}()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
