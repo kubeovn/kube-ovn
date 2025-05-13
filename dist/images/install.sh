@@ -1230,7 +1230,7 @@ spec:
                   type: integer
                   format: int32
                   default: 1
-                  minimum: 1
+                  minimum: 0
                   maximum: 10
                 prefix:
                   type: string
