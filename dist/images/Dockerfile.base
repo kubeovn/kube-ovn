@@ -231,7 +231,6 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     fi
 
 COPY --from=ovs-builder /usr/local/openssl-fips /usr/local/openssl-fips
-RUN chown -R nobody:nogroup /usr/local/openssl-fips
 ENV OPENSSL_CONF=/usr/local/openssl-fips/ssl/fipsmodule.cnf
 ENV LD_LIBRARY_PATH=/usr/local/openssl-fips/lib64:$LD_LIBRARY_PATH
 
