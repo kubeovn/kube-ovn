@@ -7,7 +7,7 @@ ENABLE_SSL=${ENABLE_SSL:-false}
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 
-UPDATE_STRATEGY=`kubectl -n kube-system get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
+UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
 SSL_OPTIONS=
 if [ "$ENABLE_SSL" != "false" ]; then
