@@ -126,10 +126,6 @@ spec:
               - SYS_PTRACE
               - SYS_NICE
         env:
-          - name: OPENSSL_CONF
-            value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-          - name: LD_LIBRARY_PATH
-            value: "/usr/local/openssl-fips/lib64"
           - name: ENABLE_SSL
             value: "{{ .Values.networking.ENABLE_SSL }}"
           - name: POD_IP
