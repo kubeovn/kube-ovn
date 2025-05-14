@@ -37,7 +37,7 @@ func main() {
 		}
 		return
 	}
-	util.InitLogFile("kube-ovn-cni")
+	util.InitLogFilePerm("kube-ovn-cni")
 	printCaps()
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)

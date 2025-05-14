@@ -19,7 +19,7 @@ import (
 
 func CmdMain() {
 	defer klog.Flush()
-	util.InitLogFile("kube-ovn-monitor")
+	util.InitLogFilePerm("kube-ovn-monitor")
 	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()

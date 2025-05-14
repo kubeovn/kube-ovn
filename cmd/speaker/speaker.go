@@ -14,7 +14,7 @@ import (
 
 func CmdMain() {
 	defer klog.Flush()
-	util.InitLogFile("kube-ovn-speaker")
+	util.InitLogFilePerm("kube-ovn-speaker")
 	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()

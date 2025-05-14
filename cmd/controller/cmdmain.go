@@ -78,7 +78,7 @@ func dumpProfile() {
 }
 
 func main() {
-	util.InitLogFile("kube-ovn-controller")
+	util.InitLogFilePerm("kube-ovn-controller")
 	cmd := filepath.Base(os.Args[0])
 	switch cmd {
 	case CmdController:
