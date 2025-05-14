@@ -202,13 +202,13 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			} else {
 				vip = util.JoinHostPort(lbVip, port.Port)
 				klog.V(3).Infof("delete vip endpoint %s from LB %s", vip, lb)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, true); err != nil {
 					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, ignoreHealthCheck); err != nil {
+				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, true); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
 					return err
 				}
