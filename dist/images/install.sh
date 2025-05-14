@@ -3959,10 +3959,6 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_NICE
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: NODE_IPS
@@ -4142,10 +4138,6 @@ spec:
                 - SYS_NICE
                 - SYS_ADMIN
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_IP
@@ -4299,10 +4291,6 @@ spec:
             runAsUser: 0
             privileged: true
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_IP
@@ -4574,10 +4562,6 @@ spec:
                 - NET_BIND_SERVICE
                 - NET_RAW
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_NAME
@@ -4771,10 +4755,6 @@ spec:
               - SYS_NICE
               - SYS_PTRACE
         env:
-          - name: OPENSSL_CONF
-            value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-          - name: LD_LIBRARY_PATH
-            value: "/usr/local/openssl-fips/lib64"
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
           - name: POD_IP
@@ -4982,10 +4962,6 @@ spec:
                 - NET_BIND_SERVICE
                 - NET_RAW
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_IP
@@ -5368,10 +5344,6 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_NICE
           env:
-            - name: OPENSSL_CONF
-              value: "/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-            - name: LD_LIBRARY_PATH
-              value: "/usr/local/openssl-fips/lib64"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_NAMESPACE

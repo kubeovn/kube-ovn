@@ -4,8 +4,6 @@ set -eo pipefail
 LOCAL_IP=${LOCAL_IP:-$POD_IP}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_OVN_LEADER_CHECK=${ENABLE_OVN_LEADER_CHECK:-true}
-OPENSSL_CONF=${OPENSSL_CONF:-"/usr/local/openssl-fips/ssl/fipsmodule.cnf"
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-"/usr/local/openssl-fips/lib64"}
 
 DB_ADDR=::
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
