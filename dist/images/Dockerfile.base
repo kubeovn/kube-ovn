@@ -234,8 +234,8 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
 COPY --from=ovs-builder /usr/local/openssl-fips /usr/local/openssl-fips
 # env OPENSSL_CONF is only work when user is root,  not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu
 RUN cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
-    cp $OPENSSL_FIPS_LIBDIR/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
-    cp $OPENSSL_FIPS_LIBDIR/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
-    cp $OPENSSL_FIPS_LIBDIR/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules/
+    cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
+    cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
+    cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules/
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
