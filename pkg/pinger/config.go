@@ -3,9 +3,7 @@ package pinger
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -185,12 +183,6 @@ func ParseFlags() (*Configuration, error) {
 	if len(config.PodProtocols) == 0 {
 		util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s after 3 attempts", config.DaemonSetNamespace, podName)
 	}
-
-	perm, err := strconv.ParseUint(*argLogPerm, 8, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid log-perm: %v", err)
-	}
-	util.InitLogFilePerm("kube-ovn-pinger", os.FileMode(perm))
 
 	klog.Infof("pinger config is %+v", config)
 	return config, nil
