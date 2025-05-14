@@ -78,8 +78,7 @@ func generateCSRCode() ([]byte, error) {
 	}
 
 	klog.Infof("ovs system id: %s", cn)
-	// #nosec G204
-	cmd := exec.Command(util.OpenSSLCmd, "genrsa", "-out", ipsecPrivKeyPath, "2048")
+	cmd := exec.Command("openssl", "genrsa", "-out", ipsecPrivKeyPath, "2048")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to generate private key: %v, output: %s", err, string(output))
@@ -93,8 +92,9 @@ func generateCSRCode() ([]byte, error) {
 		}
 		return nil, err
 	}
-	// #nosec G204
-	cmd = exec.Command(util.OpenSSLCmd, "req", "-new", "-text",
+
+	cmd = exec.Command("openssl", "req", "-new", "-text",
+		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
 		"-subj", "/C=CN/O=kubeovn/OU=kind/CN="+cn,
 		"-key", ipsecPrivKeyPath,
@@ -163,8 +163,7 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 	}
 
 	klog.V(3).Infof("ipsec get certitfcate\n%s", certificateStr)
-	// #nosec G204
-	cmd := exec.Command(util.OpenSSLCmd, "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
+	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
 	var stdinBuf bytes.Buffer
 	if _, err := stdinBuf.WriteString(certificateStr); err != nil {
 		klog.Error(err)

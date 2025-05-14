@@ -333,6 +333,4 @@ const (
 
 	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
 	MasqueradeCheckIP             = "0.0.0.0"
-
-	OpenSSLCmd = "/usr/local/openssl-fips/bin/openssl"
 )
