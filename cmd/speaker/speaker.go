@@ -1,6 +1,9 @@
 package speaker
 
 import (
+	"os"
+	"strconv"
+
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -14,7 +17,6 @@ import (
 
 func CmdMain() {
 	defer klog.Flush()
-
 	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()
@@ -24,6 +26,12 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
+
+	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to parse log-perm")
+	}
+	util.InitLogFilePerm("kube-ovn-speaker", os.FileMode(perm))
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()

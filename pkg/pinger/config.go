@@ -3,7 +3,9 @@ package pinger
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -54,6 +56,7 @@ type Configuration struct {
 	TCPConnCheckPort                int32
 	UDPConnCheckPort                int32
 	TargetIPPorts                   string
+	LogPerm                         string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -91,6 +94,7 @@ func ParseFlags() (*Configuration, error) {
 		argServiceVswitchdFilePidPath      = pflag.String("service.vswitchd.file.pid.path", "/var/run/openvswitch/ovs-vswitchd.pid", "OVS vswitchd daemon process id file.")
 		argServiceOvnControllerFileLogPath = pflag.String("service.ovncontroller.file.log.path", "/var/log/ovn/ovn-controller.log", "OVN controller daemon log file.")
 		argServiceOvnControllerFilePidPath = pflag.String("service.ovncontroller.file.pid.path", "/var/run/ovn/ovn-controller.pid", "OVN controller daemon process id file.")
+		argLogPerm                         = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -148,6 +152,7 @@ func ParseFlags() (*Configuration, error) {
 		ServiceVswitchdFilePidPath:      *argServiceVswitchdFilePidPath,
 		ServiceOvnControllerFileLogPath: *argServiceOvnControllerFileLogPath,
 		ServiceOvnControllerFilePidPath: *argServiceOvnControllerFilePidPath,
+		LogPerm:                         *argLogPerm,
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
@@ -180,6 +185,12 @@ func ParseFlags() (*Configuration, error) {
 	if len(config.PodProtocols) == 0 {
 		util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s after 3 attempts", config.DaemonSetNamespace, podName)
 	}
+
+	perm, err := strconv.ParseUint(*argLogPerm, 8, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid log-perm: %v", err)
+	}
+	util.InitLogFilePerm("kube-ovn-pinger", os.FileMode(perm))
 
 	klog.Infof("pinger config is %+v", config)
 	return config, nil

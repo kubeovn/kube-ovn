@@ -1,6 +1,9 @@
 package ovn_ic_controller
 
 import (
+	"os"
+	"strconv"
+
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
@@ -22,6 +25,12 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
+
+	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to parse log-perm")
+	}
+	util.InitLogFilePerm("kube-ovn-ic-controller", os.FileMode(perm))
 
 	stopCh := signals.SetupSignalHandler().Done()
 	ctl := ovn_ic_controller.NewController(config)

@@ -66,6 +66,7 @@ type Configuration struct {
 	KubeOvnClient  clientset.Interface
 
 	PprofPort int32
+	LogPerm   string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -92,6 +93,7 @@ func ParseFlags() (*Configuration, error) {
 		argExtendedNexthop             = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
 		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
+		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -158,6 +160,7 @@ func ParseFlags() (*Configuration, error) {
 		ExtendedNexthop:             *argExtendedNexthop,
 		NatGwMode:                   *argNatGwMode,
 		EnableMetrics:               *argEnableMetrics,
+		LogPerm:                     *argLogPerm,
 	}
 
 	if *argNeighborAddress != "" {
