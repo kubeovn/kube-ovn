@@ -12,7 +12,7 @@ import (
 
 func CmdMain() {
 	defer klog.Flush()
-
+	util.InitLogFile("kube-ovn-ic-controller")
 	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()

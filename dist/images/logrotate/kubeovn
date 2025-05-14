@@ -15,4 +15,5 @@
     missingok
     postrotate
     endscript
+    chmod 0640 nobody nobody
 }

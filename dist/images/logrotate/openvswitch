@@ -13,6 +13,7 @@
     sharedscripts
     missingok
     postrotate
+    chmod 0640 nobody nobody
         # Tell Open vSwitch daemons to reopen their log files
         if [ -d /var/run/openvswitch ]; then
             for ctl in /var/run/openvswitch/*.ctl; do
