@@ -7,6 +7,7 @@ dist/images/kube-ovn-cmd
 dist/images/kube-ovn-webhook
 dist/images/kube-ovn-daemon
 dist/images/kube-ovn-pinger
+dist/images/kube-ovn-controller
 dist/windows/kube-ovn.exe
 dist/windows/kube-ovn-daemon.exe
 ovnnb_db.*.backup

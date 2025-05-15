@@ -4,8 +4,23 @@ FROM ubuntu:24.04 AS ovs-builder
 ARG ARCH
 ARG DPDK_VERSION=23.11.1
 ARG DEBIAN_FRONTEND=noninteractive
-ENV SRC_DIR='/usr/src'
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG SRC_DIR='/usr/src'
+ARG PIP_BREAK_SYSTEM_PACKAGES=1
+
+ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
+ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
+ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
+ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
+ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
+ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
+ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
+ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
+ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
+ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
+ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
+ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
+ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -14,36 +29,36 @@ RUN cd /usr/src/ && \
     git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
-    curl -s https://github.com/kubeovn/ovs/commit/4228eab1d722087ba795e310eadc9e25c4513ec1.patch | git apply && \
+    git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch | git apply && \
+    git apply $SRC_DIR/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch | git apply && \
+    git apply $SRC_DIR/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/f627b7721ec282f2edaf798913b1559b939687f0.patch | git apply && \
+    git apply $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch | git apply && \
+    git apply $SRC_DIR/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch && \
     # fix memory leak in qos
-    curl -s https://github.com/kubeovn/ovs/commit/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch | git apply && \
+    git apply $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
     # ovsdb-tool: add command fix-cluster
-    curl -s https://github.com/kubeovn/ovs/commit/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch | git apply && \
+    git apply $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
     # netdev: reduce cpu utilization for getting device addresses
-    curl -s https://github.com/kubeovn/ovs/commit/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch | git apply && \
+    git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
-    curl -s https://github.com/kubeovn/ovs/commit/d088c5d8c263552c5a31d87813991aee30ab74de.patch | git apply && \
+    git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
-    curl -s https://github.com/kubeovn/ovs/commit/1b31f07dc60c016153fa35d936cdda0e02e58492.patch | git apply
+    git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
 RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/4b2d0bffda64fcfca876fe62a02486d7927c1162.patch | git apply && \
+    git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/3dbceb75c5e23d8d5b555e5d87238d40cb557424.patch | git apply && \
+    git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/6bf6df6da5d6fefae742856e6f43dd672360e48d.patch | git apply && \
+    git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/5fd40530728f98011d2cd852d09ee16d4907cc1d.patch | git apply
+    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
@@ -92,7 +107,7 @@ RUN mkdir /packages/ && \
 FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \

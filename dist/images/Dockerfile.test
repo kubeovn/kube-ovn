@@ -6,7 +6,7 @@ RUN set -ex \
     && apk upgrade \
     && apk add --no-cache \
     bash iproute2 iptables iputils tcpdump conntrack-tools \
-    redis nginx qperf iperf3 iperf net-tools curl
+    redis nginx qperf iperf3 iperf net-tools curl wrk
 
 WORKDIR /kube-ovn
 COPY test-server /kube-ovn/test-server
