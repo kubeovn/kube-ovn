@@ -55,7 +55,7 @@ CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
-VERSION="v1.12.7-mc"
+VERSION="v1.12.9-mc"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -3468,7 +3468,7 @@ spec:
             - name: PROBE_INTERVAL
               value: "180000"
             - name: OVN_NORTHD_PROBE_INTERVAL
-              value: "5000" 
+              value: "5000"
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "5"
             - name: OVN_NORTHD_N_THREADS
@@ -3608,7 +3608,7 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
@@ -3792,7 +3792,7 @@ spec:
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
@@ -3946,7 +3946,7 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
             - name: OVN_REMOTE_PROBE_INTERVAL
-              value: "10000" 
+              value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "180"
           volumeMounts:
@@ -4943,7 +4943,7 @@ for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); 
 done
 
 kubectl rollout status deployment/coredns -n kube-system --timeout 300s
-while true; do 
+while true; do
   pods=(`kubectl get pod -n kube-system -l app=kube-ovn-pinger --template '{{range .items}}{{if .metadata.deletionTimestamp}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}'`)
   if [ ${#pods[@]} -eq 0 ]; then
     break
