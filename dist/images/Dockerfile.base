@@ -232,6 +232,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     fi
 
 RUN if [ "$ARCH" = "amd64" ]; then \
+      # env OPENSSL_CONF is only work when user is root, not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu 
       cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
       cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
       cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
