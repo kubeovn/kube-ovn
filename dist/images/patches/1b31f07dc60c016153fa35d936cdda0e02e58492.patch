@@ -1,0 +1,22 @@
+From 1b31f07dc60c016153fa35d936cdda0e02e58492 Mon Sep 17 00:00:00 2001
+From: oilbeater <liumengxinfly@gmail.com>
+Date: Sun, 30 Mar 2025 06:16:46 +0000
+Subject: [PATCH] increase the default probe to 60s
+
+---
+ lib/reconnect.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/reconnect.h b/lib/reconnect.h
+index 40cc569c42d..fec413ef676 100644
+--- a/lib/reconnect.h
++++ b/lib/reconnect.h
+@@ -43,7 +43,7 @@ void reconnect_set_name(struct reconnect *, const char *name);
+ /* Defaults, all in msecs. */
+ #define RECONNECT_DEFAULT_MIN_BACKOFF 1000
+ #define RECONNECT_DEFAULT_MAX_BACKOFF 8000
+-#define RECONNECT_DEFAULT_PROBE_INTERVAL 5000
++#define RECONNECT_DEFAULT_PROBE_INTERVAL 60000
+ 
+ int reconnect_get_min_backoff(const struct reconnect *);
+ int reconnect_get_max_backoff(const struct reconnect *);
