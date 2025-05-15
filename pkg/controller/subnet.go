@@ -173,14 +173,6 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		}
 	}
 
-	if subnet.Spec.Vlan != "" {
-		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
-			err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
-			klog.Error(err)
-			return nil, err
-		}
-	}
-
 	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
 		changed = true
 		subnet.Spec.EnableLb = &c.config.EnableLb
@@ -206,6 +198,26 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		return newSubnet, nil
 	}
 	return subnet, nil
+}
+
+func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
+	if subnet.Spec.Vlan == "" {
+		return nil
+	}
+
+	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+	if err != nil {
+		err = fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
+		klog.Error(err)
+		return err
+	}
+
+	if vlan.Status.Conflict {
+		err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet) error {
@@ -610,7 +622,19 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	subnet := cachedSubnet.DeepCopy()
 	subnet, err = c.formatSubnet(subnet)
 	if err != nil {
+		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
 		klog.Error(err)
+		return err
+	}
+
+	err = c.validateSubnetVlan(subnet)
+	if err != nil {
+		err := fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
+		klog.Error(err)
+		if err = c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); err != nil {
+			klog.Error(err)
+			return err
+		}
 		return err
 	}
 
@@ -1823,6 +1847,11 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
 		klog.Errorf("failed to get vlan %s: %v", subnet.Spec.Vlan, err)
+		return err
+	}
+	if vlan.Status.Conflict {
+		err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
+		klog.Error(err)
 		return err
 	}
 
