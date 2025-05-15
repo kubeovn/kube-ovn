@@ -21,7 +21,7 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           DOCKER_CLI_EXPERIMENTAL: enabled
         run: |
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-xfeature
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker pull kubeovn/kube-ovn:$TAG-x86
           docker pull kubeovn/kube-ovn:$TAG-arm
