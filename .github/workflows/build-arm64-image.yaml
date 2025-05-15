@@ -38,7 +38,7 @@ jobs:
 
       - name: Setup environment variables
         run: |
-          echo "TAG=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "TAG=$(cat VERSION)-xfeature" >> "$GITHUB_ENV"
           echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go Cache
@@ -131,7 +131,7 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           COMMIT: ${{ github.sha }}
         run: |
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-xfeature
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-arm

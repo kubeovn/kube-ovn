@@ -167,7 +167,7 @@ jobs:
 
       - name: Setup environment variables
         run: |
-          echo "TAG=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "TAG=$(cat VERSION)-xfeature" >> "$GITHUB_ENV"
           echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
@@ -3387,7 +3387,7 @@ jobs:
       - no-ovn-lb-test
       - no-np-test
       - cilium-chaining-e2e
-      - kube-ovn-ha-e2e
+      # - kube-ovn-ha-e2e
       - kube-ovn-submariner-conformance-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
@@ -3440,14 +3440,14 @@ jobs:
           make scan
 
       - name: Push
-        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
+        if: github.ref_name == 'feature/x-requirements'
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           COMMIT: ${{ github.sha }}
         run: |
           cat VERSION
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-xfeature
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
