@@ -45,6 +45,7 @@ type Configuration struct {
 	EnableMetrics                   bool
 	SecureServing                   bool
 	MetricsPort                     int32
+	LogPerm                         string
 }
 
 // ParseFlags get parameters information.
@@ -88,6 +89,8 @@ func ParseFlags() (*Configuration, error) {
 		argServiceVswitchdFilePidPath = pflag.String("service.vswitchd.file.pid.path", "/var/run/openvswitch/ovs-vswitchd.pid", "OVS vswitchd daemon process id file.")
 		argServiceNorthdFileLogPath   = pflag.String("service.ovn.northd.file.log.path", "/var/log/ovn/ovn-northd.log", "OVN northd daemon log file.")
 		argServiceNorthdFilePidPath   = pflag.String("service.ovn.northd.file.pid.path", "/var/run/ovn/ovn-northd.pid", "OVN northd daemon process id file.")
+
+		argLogPerm = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -144,6 +147,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableMetrics:                   *argEnableMetrics,
 		SecureServing:                   *argSecureServing,
 		MetricsPort:                     *argMetricsPort,
+		LogPerm:                         *argLogPerm,
 	}
 
 	klog.Infof("ovn monitor config is %+v", config)

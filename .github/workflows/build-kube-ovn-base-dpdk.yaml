@@ -11,6 +11,7 @@ on:
           - release-1.13
           - release-1.12
           - release-1.12-mc
+          - xfeature
   schedule:
     - cron: "20 19 * * *"
 
@@ -24,6 +25,7 @@ jobs:
           - release-1.13
           - release-1.12
           - release-1.12-mc
+          - xfeature
     name: Build AMD64
     runs-on: ubuntu-24.04
     steps:
@@ -58,6 +60,7 @@ jobs:
           - release-1.13
           - release-1.12
           - release-1.12-mc
+          - xfeature
     needs:
       - build-amd64
     name: push
@@ -87,7 +90,7 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           cat VERSION
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-xfeature
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker images
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk

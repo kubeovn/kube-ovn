@@ -75,6 +75,7 @@ type Configuration struct {
 	EnableTProxy              bool
 	OVSVsctlConcurrency       int32
 	SetVxlanTxOff             bool
+	LogPerm                   string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -120,6 +121,7 @@ func ParseFlags() *Configuration {
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
+		argLogPerm                   = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 
 	// mute info log for ipset lib
@@ -181,6 +183,7 @@ func ParseFlags() *Configuration {
 		EnableTProxy:              *argEnableTProxy,
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
+		LogPerm:                   *argLogPerm,
 	}
 	return config
 }

@@ -8,6 +8,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"slices"
+	"strconv"
 	"time"
 
 	v1 "k8s.io/api/authorization/v1"
@@ -45,6 +46,12 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
+
+	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to parse log-perm")
+	}
+	util.InitLogFilePerm("kube-ovn-controller", os.FileMode(perm))
 
 	if err := checkPermission(config); err != nil {
 		util.LogFatalAndExit(err, "failed to check permission")

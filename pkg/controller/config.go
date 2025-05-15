@@ -115,6 +115,9 @@ type Configuration struct {
 
 	// used to set vpc-egress-gateway image
 	Image string
+
+	// used to set log file permission
+	LogPerm string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -196,6 +199,8 @@ func ParseFlags() (*Configuration, error) {
 		argBfdDetectMult = pflag.Int("detect-mult", 3, "The negotiated transmit interval, multiplied by this value, provides the Detection Time for the receiving system in Asynchronous mode.")
 
 		argImage = pflag.String("image", "", "The image for vpc-egress-gateway")
+
+		argLogPerm = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -282,6 +287,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdDetectMult:                  *argBfdDetectMult,
 		EnableANP:                      *argEnableANP,
 		Image:                          *argImage,
+		LogPerm:                        *argLogPerm,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

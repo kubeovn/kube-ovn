@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +29,6 @@ import (
 
 func main() {
 	defer klog.Flush()
-
 	config := daemon.ParseFlags()
 	klog.Info(versions.String())
 
@@ -38,7 +38,11 @@ func main() {
 		}
 		return
 	}
-
+	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to parse log-perm")
+	}
+	util.InitLogFilePerm("kube-ovn-cni", os.FileMode(perm))
 	printCaps()
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)

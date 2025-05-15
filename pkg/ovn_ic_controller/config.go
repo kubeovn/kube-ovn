@@ -32,6 +32,7 @@ type Configuration struct {
 	NodeSwitch     string
 	ClusterRouter  string
 	NodeSwitchCIDR string
+	LogPerm        string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -48,6 +49,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterRouter  = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch     = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argNodeSwitchCIDR = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch")
+		argLogPerm        = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -88,6 +90,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterRouter:  *argClusterRouter,
 		NodeSwitch:     *argNodeSwitch,
 		NodeSwitchCIDR: *argNodeSwitchCIDR,
+		LogPerm:        *argLogPerm,
 	}
 
 	if err := config.initKubeClient(); err != nil {

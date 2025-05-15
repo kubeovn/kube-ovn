@@ -2,6 +2,8 @@ package pinger
 
 import (
 	_ "net/http/pprof" // #nosec
+	"os"
+	"strconv"
 
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
@@ -16,7 +18,6 @@ import (
 
 func CmdMain() {
 	defer klog.Flush()
-
 	klog.Info(versions.String())
 
 	currentCaps := cap.GetProc()
@@ -26,6 +27,12 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
+
+	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to parse log-perm")
+	}
+	util.InitLogFilePerm("kube-ovn-pinger", os.FileMode(perm))
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
