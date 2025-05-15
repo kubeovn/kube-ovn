@@ -130,16 +130,6 @@ RUN cd /usr/src/openbfdd && \
     ./configure --enable-silent-rules && \
     make
 
-ENV OPENSSL_FIPS_LIBDIR=/usr/local/openssl-fips/lib
-ENV LD_LIBRARY_PATH=$OPENSSL_FIPS_LIBDIR:$LD_LIBRARY_PATH
-RUN wget https://www.openssl.org/source/openssl-3.0.13.tar.gz && \
-    tar -xzf openssl-3.0.13.tar.gz && \
-    cd openssl-3.0.13 && \
-    ./config --prefix=/usr/local/openssl-fips --libdir=lib enable-fips && \
-    make -j8 && \
-    make install && \
-    /usr/local/openssl-fips/bin/openssl fipsinstall -module $OPENSSL_FIPS_LIBDIR/ossl-modules/fips.so -out /usr/local/openssl-fips/ssl/fipsmodule.cnf
-
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
     cp /usr/src/openvswitch-*deb /packages && \
@@ -208,12 +198,5 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
-
-COPY --from=ovs-builder /usr/local/openssl-fips /usr/local/openssl-fips
-# env OPENSSL_CONF is only work when user is root,  not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu
-RUN cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
-    cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
-    cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
-    cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules/
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
