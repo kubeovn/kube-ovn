@@ -415,6 +415,104 @@ func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID
 	return nil
 }
 
+// findRulePositions locates all occurrences of a rule in the specified table and chain,
+// searching from lowest to highest priority (bottom to top).
+// Returns all matching position indices, or an empty slice if none found.
+func findRulePositions(ipt *iptables.IPTables, rule util.IPTableRule) ([]int, error) {
+	rules, err := ipt.List(rule.Table, rule.Chain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list iptables rules: %w", err)
+	}
+
+	positions := make([]int, 0)
+
+	// Start from the end of the list (lowest priority) and go up to 1 (but skip index 0)
+	for i := len(rules) - 1; i >= 1; i-- {
+		ruleSpec := util.DoubleQuotedFields(rules[i])
+		if len(ruleSpec) < 3 {
+			continue
+		}
+
+		if slices.Equal(ruleSpec[2:], rule.Rule) {
+			positions = append(positions, i)
+		}
+	}
+
+	return positions, nil
+}
+
+// ensureNatPreroutingRulePosition ensures that the nat prerouting rule has a higher priority than the kube-proxy rule.
+func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRule) error {
+	kubeProxyRule := util.IPTableRule{
+		Table: "nat",
+		Chain: "PREROUTING",
+		Rule:  []string{"-m", "comment", "--comment", "kubernetes service portals", "-j", "KUBE-SERVICES"},
+	}
+	kubeProxyPosList, err := findRulePositions(ipt, kubeProxyRule)
+	if err != nil {
+		return fmt.Errorf("failed to find kube-proxy rule position: %w", err)
+	}
+
+	insertPosition := 1
+	if len(kubeProxyPosList) > 0 {
+		insertPosition = kubeProxyPosList[len(kubeProxyPosList)-1]
+	}
+
+	// Check if the rule already exists at a higher priority than the kube-proxy rule
+	existingNatPreroutingPosList, err := findRulePositions(ipt, rule)
+	if err != nil {
+		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
+	}
+	if len(existingNatPreroutingPosList) > 0 && existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1] < insertPosition {
+		klog.V(5).Infof("nat prerouting rule already exists at position %d", existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1])
+		return nil
+	}
+
+	klog.Infof("inserting nat prerouting rule %q at position %d", rule.Rule, insertPosition)
+	return ipt.Insert(rule.Table, rule.Chain, insertPosition, rule.Rule...)
+}
+
+// ensureNatPreroutingRuleNoDuplicate ensures that there are no duplicate nat prerouting rules.
+func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTableRule) error {
+	existingNatPreroutingPosList, err := findRulePositions(ipt, rule)
+	if err != nil {
+		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
+	}
+	if len(existingNatPreroutingPosList) == 0 {
+		klog.Warningf("nat prerouting rule not found, skipping duplicate check")
+		return nil
+	}
+
+	// Delete all but the top priority (highest) rule
+	// NOTE: There's a race condition here as iptables rules could be modified by other processes
+	// between our findRulePositions call and the Delete operations below. Since iptables lacks
+	// a transaction mechanism, rule positions might change, potentially causing us to delete
+	// incorrect rules. This is an accepted limitation of the current implementation.
+	for _, pos := range existingNatPreroutingPosList[:len(existingNatPreroutingPosList)-1] {
+		klog.Infof("deleting duplicate nat prerouting rule at position %d", pos)
+		if err := ipt.Delete(rule.Table, rule.Chain, strconv.Itoa(pos)); err != nil {
+			return fmt.Errorf("failed to delete duplicate nat prerouting rule: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ensureNatPreroutingRule ensures that the nat prerouting rule is in the right position and no duplicate exists.
+func ensureNatPreroutingRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
+	klog.V(3).Infof("ensure nat prerouting rule %q", rule.Rule)
+
+	if err := ensureNatPreroutingRulePosition(ipt, rule); err != nil {
+		return fmt.Errorf("failed to ensure nat prerouting rule position: %w", err)
+	}
+
+	if err := ensureNatPreroutingRuleNoDuplicate(ipt, rule); err != nil {
+		return fmt.Errorf("failed to ensure nat prerouting rule no duplicate: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
 	exists, err := ipt.Exists(rule.Table, rule.Chain, rule.Rule...)
 	if err != nil {
@@ -425,39 +523,7 @@ func (c *Controller) createIptablesRule(ipt *iptables.IPTables, rule util.IPTabl
 	s := strings.Join(rule.Rule, " ")
 	if exists {
 		if rule.Table == NAT && rule.Chain == Prerouting {
-			// make sure the nat prerouting iptable rule is in the first position
-			natPreroutingRules, err := ipt.List(rule.Table, rule.Chain)
-			if err != nil {
-				klog.Errorf("failed to list iptables rules: %v", err)
-				return err
-			}
-			for i, r := range natPreroutingRules {
-				ruleSpec := util.DoubleQuotedFields(r)
-				if i == 0 || len(ruleSpec) < 3 {
-					continue
-				}
-				if i == 1 {
-					if slices.Equal(ruleSpec[2:], rule.Rule) {
-						klog.V(3).Infof("the first nat prerouting rule is %q", rule.Rule)
-						continue
-					}
-					// iptables -t nat -F could cause this case, auto fix it
-					klog.Infof("insert nat prerouting rule: %q", rule.Rule)
-					if err = ipt.Insert(rule.Table, rule.Chain, 1, rule.Rule...); err != nil {
-						klog.Errorf(`failed to insert iptables rule %q: %v`, s, err)
-						return err
-					}
-					return nil
-				}
-				if slices.Equal(ruleSpec[2:], rule.Rule) {
-					rule.Pos = strconv.Itoa(i)
-					klog.Warningf("delete the nat prerouting rule: %v", rule)
-					if err = deleteIptablesRule(ipt, rule); err != nil {
-						klog.Errorf("failed to delete rule %v: %v", rule, err)
-						return err
-					}
-				}
-			}
+			return ensureNatPreroutingRule(ipt, rule)
 		}
 		return nil
 	}
