@@ -463,13 +463,9 @@ func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRu
 	if err != nil {
 		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
 	}
-	if len(existingNatPreroutingPosList) > 0 {
-		for _, pos := range existingNatPreroutingPosList {
-			if pos < insertPosition {
-				klog.V(5).Infof("nat prerouting rule already exists at position %d", pos)
-				return nil
-			}
-		}
+	if len(existingNatPreroutingPosList) > 0 && existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1] < insertPosition {
+		klog.V(5).Infof("nat prerouting rule already exists at position %d", existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1])
+		return nil
 	}
 
 	klog.Infof("inserting nat prerouting rule %q at position %d", rule.Rule, insertPosition)
@@ -488,6 +484,10 @@ func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTabl
 	}
 
 	// Delete all but the top priority (highest) rule
+	// NOTE: There's a race condition here as iptables rules could be modified by other processes
+	// between our findRulePositions call and the Delete operations below. Since iptables lacks
+	// a transaction mechanism, rule positions might change, potentially causing us to delete
+	// incorrect rules. This is an accepted limitation of the current implementation.
 	for _, pos := range existingNatPreroutingPosList[:len(existingNatPreroutingPosList)-1] {
 		klog.Infof("deleting duplicate nat prerouting rule at position %d", pos)
 		if err := ipt.Delete(rule.Table, rule.Chain, strconv.Itoa(pos)); err != nil {
