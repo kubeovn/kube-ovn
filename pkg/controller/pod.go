@@ -434,7 +434,7 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
-	last := time.Since(time.Now())
+	now := time.Now()
 	klog.Infof("handle add/update pod %s", key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -446,6 +446,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	c.podKeyMutex.LockKey(key)
 	defer func() {
 		_ = c.podKeyMutex.UnlockKey(key)
+		last := time.Since(now)
 		klog.Infof("take %d ms to handle add or update pod %s", last.Milliseconds(), key)
 	}()
 
@@ -898,8 +899,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	if !ok {
 		return nil
 	}
-
-	last := time.Since(time.Now())
+	now := time.Now()
 	klog.Infof("handle delete pod %s", key)
 	podName := c.getNameByPod(pod)
 	c.podKeyMutex.LockKey(key)
@@ -908,6 +908,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		if err == nil {
 			c.deletingPodObjMap.Delete(key)
 		}
+		last := time.Since(now)
 		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
 	}()
 
@@ -1101,7 +1102,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 }
 
 func (c *Controller) handleUpdatePodSecurity(key string) error {
-	last := time.Since(time.Now())
+	now := time.Now()
 	klog.Infof("handle add/update pod security group %s", key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -1113,6 +1114,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	c.podKeyMutex.LockKey(key)
 	defer func() {
 		_ = c.podKeyMutex.UnlockKey(key)
+		last := time.Since(now)
 		klog.Infof("take %d ms to handle sg for pod %s", last.Milliseconds(), key)
 	}()
 
