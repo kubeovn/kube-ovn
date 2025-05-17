@@ -782,7 +782,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
 		ginkgo.By("Creating VPC " + vpcName)
-		customVPC := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		customVPC := framework.MakeVpc(vpcName, "", false, nil, []string{namespaceName})
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + u2oOverlaySubnetNameCustomVPC)

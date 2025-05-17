@@ -571,9 +571,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("1. Test custom vpc nats using centralized external gw")
 		noBfdSubnetV4Cidr := "192.168.0.0/24"
 		noBfdSubnetV4Gw := "192.168.0.1"
-		enableExternal := true
 		disableBfd := false
-		noBfdVpc := framework.MakeVpc(noBfdVpcName, "", enableExternal, disableBfd, nil)
+		noBfdVpc := framework.MakeVpc(noBfdVpcName, "", disableBfd, nil, nil)
 		_ = vpcClient.CreateSync(noBfdVpc)
 		ginkgo.By("Creating overlay subnet " + noBfdSubnetName)
 		noBfdSubnet := framework.MakeSubnet(noBfdSubnetName, "", noBfdSubnetV4Cidr, noBfdSubnetV4Gw, noBfdVpcName, util.OvnProvider, nil, nil, nil)
@@ -749,7 +748,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		cachedVpc := vpcClient.Get(noBfdVpcName)
 		noBfdVpc = cachedVpc.DeepCopy()
-		noBfdVpc.Spec.ExtraExternalSubnets = append(noBfdVpc.Spec.ExtraExternalSubnets, underlayExtraSubnetName)
+		noBfdVpc.Spec.ExternalSubnets = append(noBfdVpc.Spec.ExternalSubnets, underlayExtraSubnetName)
 		noBfdVpc.Spec.StaticRoutes = append(noBfdVpc.Spec.StaticRoutes, &kubeovnv1.StaticRoute{
 			Policy:    kubeovnv1.PolicySrc,
 			CIDR:      noBfdExtraSubnetV4Cidr,
@@ -847,7 +846,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		bfdSubnetV4Cidr := "192.168.1.0/24"
 		bfdSubnetV4Gw := "192.168.1.1"
 		enableBfd := true
-		bfdVpc := framework.MakeVpc(bfdVpcName, "", enableExternal, enableBfd, nil)
+		bfdVpc := framework.MakeVpc(bfdVpcName, "", enableBfd, nil, nil)
 		_ = vpcClient.CreateSync(bfdVpc)
 		ginkgo.By("Creating overlay subnet enable ecmp")
 		bfdSubnet := framework.MakeSubnet(bfdSubnetName, "", bfdSubnetV4Cidr, bfdSubnetV4Gw, bfdVpcName, util.OvnProvider, nil, nil, nil)

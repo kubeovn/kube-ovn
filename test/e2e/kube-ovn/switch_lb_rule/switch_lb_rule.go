@@ -92,7 +92,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		vip = ""
 		overlaySubnetCidr = framework.RandomCIDR(f.ClusterIPFamily)
 		ginkgo.By("Creating custom vpc")
-		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		vpc := framework.MakeVpc(vpcName, "", false, nil, []string{namespaceName})
 		_ = vpcClient.CreateSync(vpc)
 		ginkgo.By("Creating custom overlay subnet")
 		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, "", nil, nil, nil)

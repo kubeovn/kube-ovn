@@ -45,14 +45,18 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	DefaultSubnet        string         `json:"defaultSubnet,omitempty"`
-	Namespaces           []string       `json:"namespaces,omitempty"`
-	StaticRoutes         []*StaticRoute `json:"staticRoutes,omitempty"`
-	PolicyRoutes         []*PolicyRoute `json:"policyRoutes,omitempty"`
-	VpcPeerings          []*VpcPeering  `json:"vpcPeerings,omitempty"`
-	EnableExternal       bool           `json:"enableExternal,omitempty"`
-	ExtraExternalSubnets []string       `json:"extraExternalSubnets,omitempty"`
-	EnableBfd            bool           `json:"enableBfd,omitempty"`
+	DefaultSubnet   string         `json:"defaultSubnet,omitempty"`
+	Namespaces      []string       `json:"namespaces,omitempty"`
+	StaticRoutes    []*StaticRoute `json:"staticRoutes,omitempty"`
+	PolicyRoutes    []*PolicyRoute `json:"policyRoutes,omitempty"`
+	VpcPeerings     []*VpcPeering  `json:"vpcPeerings,omitempty"`
+	ExternalSubnets []string       `json:"externalSubnets,omitempty"`
+	// external subnets only using provider network vlan subnet
+	// set the external subnet in the ExternalSubnets means the vpc subnet can access outside via the external network
+	// vpc has no default external subnet, lnly subnet in the ExternalSubnets can be used for external access
+	// use str set to handle ExternalSubnets to avoid duplicate subnet(also webhook)
+	// enable eip snat will set a default external subnet into the ExternalSubnets
+	EnableBfd bool `json:"enableBfd,omitempty"`
 
 	// optional BFD LRP configuration
 	// currently the LRP is used for vpc external gateway only
@@ -129,8 +133,7 @@ type VpcStatus struct {
 	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
 	Subnets                 []string `json:"subnets"`
 	VpcPeerings             []string `json:"vpcPeerings"`
-	EnableExternal          bool     `json:"enableExternal"`
-	ExtraExternalSubnets    []string `json:"extraExternalSubnets"`
+	ExternalSubnets         []string `json:"ExternalSubnets"`
 	EnableBfd               bool     `json:"enableBfd"`
 
 	BFDPort BFDPortStatus `json:"bfdPort"`

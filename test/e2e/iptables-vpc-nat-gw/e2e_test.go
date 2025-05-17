@@ -174,7 +174,7 @@ func setupVpcNatGwTestEnvironment(
 	framework.ExpectNoError(err, "failed to get ConfigMap")
 
 	ginkgo.By("Creating custom vpc " + vpcName)
-	vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+	vpc := framework.MakeVpc(vpcName, lanIP, false, nil, nil)
 	_ = vpcClient.CreateSync(vpc)
 
 	ginkgo.By("Creating custom overlay subnet " + overlaySubnetName)

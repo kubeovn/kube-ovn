@@ -2135,9 +2135,6 @@ spec:
   group: kubeovn.io
   versions:
     - additionalPrinterColumns:
-        - jsonPath: .status.enableExternal
-          name: EnableExternal
-          type: boolean
         - jsonPath: .status.enableBfd
           name: EnableBfd
           type: boolean
@@ -2147,8 +2144,8 @@ spec:
         - jsonPath: .status.subnets
           name: Subnets
           type: string
-        - jsonPath: .status.extraExternalSubnets
-          name: ExtraExternalSubnets
+        - jsonPath: .status.ExternalSubnets
+          name: ExternalSubnets
           type: string
         - jsonPath: .spec.namespaces
           name: Namespaces
@@ -2164,15 +2161,13 @@ spec:
               properties:
                 defaultSubnet:
                   type: string
-                enableExternal:
-                  type: boolean
                 enableBfd:
                   type: boolean
                 namespaces:
                   items:
                     type: string
                   type: array
-                extraExternalSubnets:
+                ExternalSubnets:
                   items:
                     type: string
                   type: array
@@ -2288,15 +2283,13 @@ spec:
                   type: string
                 standby:
                   type: boolean
-                enableExternal:
-                  type: boolean
                 enableBfd:
                   type: boolean
                 subnets:
                   items:
                     type: string
                   type: array
-                extraExternalSubnets:
+                ExternalSubnets:
                   items:
                     type: string
                   type: array

@@ -85,7 +85,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Creating VPC " + vpcName)
 		vpcName = "vpc-" + framework.RandomSuffix()
-		customVPC := framework.MakeVpc(vpcName, "", false, false, nil)
+		customVPC := framework.MakeVpc(vpcName, "", false, nil, nil)
 		vpcClient.CreateSync(customVPC)
 
 		ginkgo.By("Creating subnet " + custVPCSubnetName)

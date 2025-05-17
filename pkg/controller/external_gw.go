@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,7 +10,6 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -37,10 +35,6 @@ func (c *Controller) resyncExternalGateway() {
 		klog.Info("start to remove ovn external gw")
 		if err := c.removeExternalGateway(); err != nil {
 			klog.Errorf("failed to remove ovn external gw, %v", err)
-			return
-		}
-		if err := c.updateDefaultVpcExternal(false); err != nil {
-			klog.Errorf("failed to update default vpc, %v", err)
 			return
 		}
 		exGwEnabled = "false"
@@ -69,10 +63,6 @@ func (c *Controller) resyncExternalGateway() {
 	exGwEnabled = "true"
 	lastExGwCM = cm.Data
 	c.ExternalGatewayType = cm.Data["type"]
-	if err := c.updateDefaultVpcExternal(true); err != nil {
-		klog.Errorf("failed to update default vpc, %v", err)
-		return
-	}
 	klog.Info("finish establishing ovn external gw")
 }
 
@@ -261,35 +251,4 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		return nil, err
 	}
 	return chassises, nil
-}
-
-func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
-	cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
-		return err
-	}
-	vpc := cachedVpc.DeepCopy()
-	if vpc.Spec.EnableExternal != enableExternal {
-		vpc.Spec.EnableExternal = enableExternal
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update vpc enable external %s, %w", vpc.Name, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	if vpc.Status.EnableExternal != enableExternal {
-		vpc.Status.EnableExternal = enableExternal
-		bytes, err := vpc.Status.Bytes()
-		if err != nil {
-			klog.Errorf("failed to get vpc bytes, %v", err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
-			return err
-		}
-	}
-	return nil
 }

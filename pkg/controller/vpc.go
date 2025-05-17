@@ -57,8 +57,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
 		!maps.Equal(oldVpc.Annotations, newVpc.Annotations) ||
-		!slices.Equal(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
-		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
+		!slices.Equal(oldVpc.Spec.ExternalSubnets, newVpc.Spec.ExternalSubnets) ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
 		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
@@ -113,7 +112,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	for _, subnet := range vpc.Status.ExtraExternalSubnets {
+	for _, subnet := range vpc.Status.ExternalSubnets {
 		klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
 		if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
 			klog.Error(err)
@@ -553,7 +552,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	if vpc.Name != util.DefaultVpc {
-		if cachedVpc.Spec.EnableExternal {
+		if cachedVpc.Spec.ExternalSubnets != nil {
 			if !externalSubnetExist {
 				err = fmt.Errorf("failed to get external subnet %s", c.config.ExternalGatewaySwitch)
 				klog.Error(err)
@@ -563,7 +562,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				klog.Infof("no need to handle external connection for logical gw external subnet %s", c.config.ExternalGatewaySwitch)
 				return nil
 			}
-			if !cachedVpc.Status.EnableExternal {
+			if cachedVpc.Status.ExternalSubnets == nil {
 				// connect vpc to default external
 				klog.Infof("connect external network with vpc %s", vpc.Name)
 				if err := c.handleAddVpcExternalSubnet(key, c.config.ExternalGatewaySwitch); err != nil {
@@ -592,13 +591,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 				}
 			}
-			if cachedVpc.Spec.ExtraExternalSubnets != nil {
-				sort.Strings(vpc.Spec.ExtraExternalSubnets)
+			if cachedVpc.Spec.ExternalSubnets != nil {
+				sort.Strings(vpc.Spec.ExternalSubnets)
 			}
 			// add external subnets only in spec and delete external subnets only in status
-			if !slices.Equal(vpc.Spec.ExtraExternalSubnets, vpc.Status.ExtraExternalSubnets) {
-				for _, subnetStatus := range cachedVpc.Status.ExtraExternalSubnets {
-					if !slices.Contains(cachedVpc.Spec.ExtraExternalSubnets, subnetStatus) {
+			if !slices.Equal(vpc.Spec.ExternalSubnets, vpc.Status.ExternalSubnets) {
+				for _, subnetStatus := range cachedVpc.Status.ExternalSubnets {
+					if !slices.Contains(cachedVpc.Spec.ExternalSubnets, subnetStatus) {
 						klog.Infof("delete external subnet %s connection for vpc %s", subnetStatus, vpc.Name)
 						if err := c.handleDelVpcExternalSubnet(vpc.Name, subnetStatus); err != nil {
 							klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnetStatus, vpc.Name, err)
@@ -606,8 +605,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 						}
 					}
 				}
-				for _, subnetSpec := range cachedVpc.Spec.ExtraExternalSubnets {
-					if !slices.Contains(cachedVpc.Status.ExtraExternalSubnets, subnetSpec) {
+				for _, subnetSpec := range cachedVpc.Spec.ExternalSubnets {
+					if !slices.Contains(cachedVpc.Status.ExternalSubnets, subnetSpec) {
 						klog.Infof("connect external subnet %s with vpc %s", subnetSpec, vpc.Name)
 						if err := c.handleAddVpcExternalSubnet(key, subnetSpec); err != nil {
 							klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", subnetSpec, key, err)
@@ -633,8 +632,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				return err
 			}
 		}
-
-		if !cachedVpc.Spec.EnableExternal && cachedVpc.Status.EnableExternal {
+		// todo:// use diff to sync: add and del
+		if cachedVpc.Spec.ExternalSubnets == nil && cachedVpc.Status.ExternalSubnets != nil {
 			// disconnect vpc to default external
 			if err := c.handleDelVpcExternalSubnet(key, c.config.ExternalGatewaySwitch); err != nil {
 				klog.Errorf("failed to delete external connection for vpc %s, error %v", key, err)
@@ -642,9 +641,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 
-		if cachedVpc.Status.ExtraExternalSubnets != nil && !cachedVpc.Spec.EnableExternal {
-			// disconnect vpc to extra external subnets
-			for _, subnet := range cachedVpc.Status.ExtraExternalSubnets {
+		if cachedVpc.Status.ExternalSubnets != nil && cachedVpc.Spec.ExternalSubnets == nil {
+			// disconnect vpc to external subnets
+			for _, subnet := range cachedVpc.Status.ExternalSubnets {
 				klog.Infof("disconnect external network %s to vpc %s", subnet, vpc.Name)
 				if err := c.handleDelVpcExternalSubnet(key, subnet); err != nil {
 					klog.Error(err)
@@ -1319,7 +1318,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	}
 	if subnet == c.config.ExternalGatewaySwitch {
 		vpc := cachedVpc.DeepCopy()
-		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+		vpc.Status.ExternalSubnets = cachedVpc.Spec.ExternalSubnets
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
 			klog.Errorf("failed to marshal vpc status: %v", err)
@@ -1401,7 +1400,7 @@ func (c *Controller) handleDelVpcExternalSubnet(key, subnet string) error {
 	}
 	if subnet == c.config.ExternalGatewaySwitch {
 		vpc := cachedVpc.DeepCopy()
-		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+		vpc.Status.ExternalSubnets = cachedVpc.Spec.ExternalSubnets
 		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
@@ -1432,7 +1431,7 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 
 	if cachedVpc.Status.EnableBfd != cachedVpc.Spec.EnableBfd {
 		status := cachedVpc.Status.DeepCopy()
-		status.EnableExternal = cachedVpc.Spec.EnableExternal
+		status.ExternalSubnets = cachedVpc.Spec.ExternalSubnets
 		status.EnableBfd = cachedVpc.Spec.EnableBfd
 		bytes, err := status.Bytes()
 		if err != nil {
@@ -1463,11 +1462,11 @@ func (c *Controller) updateVpcAddExternalStatus(key string, addExternalStatus bo
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
-	if addExternalStatus && vpc.Spec.ExtraExternalSubnets != nil {
-		sort.Strings(vpc.Spec.ExtraExternalSubnets)
-		vpc.Status.ExtraExternalSubnets = vpc.Spec.ExtraExternalSubnets
+	if addExternalStatus && vpc.Spec.ExternalSubnets != nil {
+		sort.Strings(vpc.Spec.ExternalSubnets)
+		vpc.Status.ExternalSubnets = vpc.Spec.ExternalSubnets
 	} else {
-		vpc.Status.ExtraExternalSubnets = nil
+		vpc.Status.ExternalSubnets = nil
 	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {

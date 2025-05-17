@@ -684,7 +684,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		(subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection)
 	// 1. overlay subnet, should add lrp, lrp ip is subnet gw
 	// 2. underlay subnet use logical gw, should add lrp, lrp ip is subnet gw
-	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
+	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.ExternalSubnets != nil && subnet.Name == c.config.ExternalGatewaySwitch
 	// 3. underlay subnet use physical gw, vpc has eip, lrp managed in vpc process, lrp ip is random allocation, not subnet gw
 
 	gateway := subnet.Spec.Gateway
@@ -1766,7 +1766,7 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 		return err
 	}
 
-	if vpc.Spec.EnableExternal && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
+	if vpc.Spec.ExternalSubnets != nil && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 		klog.Infof("add bfd and external static ecmp route for vpc %s, subnet %s", vpc.Name, subnet.Name)
 		// handle vpc static route
 		// use static ecmp route with bfd

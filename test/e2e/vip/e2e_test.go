@@ -166,7 +166,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		vpcName = "vpc-" + randomSuffix
 		subnetName = "subnet-" + randomSuffix
 		ginkgo.By("Creating vpc " + vpcName)
-		vpc = framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
+		vpc = framework.MakeVpc(vpcName, "", false, nil, []string{namespaceName})
 		vpc = vpcClient.CreateSync(vpc)
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})

@@ -2746,8 +2746,8 @@ func (in *VpcSpec) DeepCopyInto(out *VpcSpec) {
 			}
 		}
 	}
-	if in.ExtraExternalSubnets != nil {
-		in, out := &in.ExtraExternalSubnets, &out.ExtraExternalSubnets
+	if in.ExternalSubnets != nil {
+		in, out := &in.ExternalSubnets, &out.ExternalSubnets
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
@@ -2789,8 +2789,8 @@ func (in *VpcStatus) DeepCopyInto(out *VpcStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.ExtraExternalSubnets != nil {
-		in, out := &in.ExtraExternalSubnets, &out.ExtraExternalSubnets
+	if in.ExternalSubnets != nil {
+		in, out := &in.ExternalSubnets, &out.ExternalSubnets
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
