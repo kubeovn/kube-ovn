@@ -52,10 +52,12 @@ type VpcSpec struct {
 	VpcPeerings     []*VpcPeering  `json:"vpcPeerings,omitempty"`
 	ExternalSubnets []string       `json:"externalSubnets,omitempty"`
 	// external subnets only using provider network vlan subnet
-	// set the external subnet in the ExternalSubnets means the vpc subnet can access outside via the external network
-	// vpc has no default external subnet, lnly subnet in the ExternalSubnets can be used for external access
-	// use str set to handle ExternalSubnets to avoid duplicate subnet(also webhook)
-	// enable eip snat will set a default external subnet into the ExternalSubnets
+	// choose enable eip snat or ExternalSubnets to use exeternal network
+	// enable eip snat has nothing to do with ExternalSubnets
+	// ExternalSubnets means vpc has no default external subnet
+	// any vpc can use the subnet in ExternalSubnets to access outside
+	// use str set to handle ExternalSubnets to avoid duplicate subnet(also webhook),
+	// diff to sync: add or del lrp for external subnet
 	EnableBfd bool `json:"enableBfd,omitempty"`
 
 	// optional BFD LRP configuration
