@@ -86,7 +86,8 @@ done
 
 # Delete Kube-OVN components
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-monitor
-kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config ovn-external-gw-config
+kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config \
+  ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config
 kubectl delete --ignore-not-found -n kube-system svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller
@@ -194,6 +195,7 @@ done
 kubectl delete --ignore-not-found sa ovn ovn-ovs kube-ovn-cni kube-ovn-app -n kube-system
 kubectl delete --ignore-not-found clusterrole system:ovn system:ovn-ovs system:kube-ovn-cni system:kube-ovn-app
 kubectl delete --ignore-not-found clusterrolebinding ovn ovn ovn-ovs kube-ovn-cni kube-ovn-app
+kubectl delete --ignore-not-found rolebinding -n kube-system ovn kube-ovn-cni kube-ovn-app
 
 kubectl delete --ignore-not-found -n kube-system lease kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system secret ovn-ipsec-ca
