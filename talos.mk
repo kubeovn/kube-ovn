@@ -67,7 +67,7 @@ talos-prepare-images: talos-registry-mirror
 		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \
 			echo ">>> Pulling $$image..."; \
-			docker pull $$image; \
+			docker pull $$image || exit 1; \
 		else \
 			echo ">>> Image $$image already exists."; \
 		fi; \
@@ -75,7 +75,7 @@ talos-prepare-images: talos-registry-mirror
 		img=$$(echo $$image | sed -E 's#^[^/]+/#127.0.0.1:$(TALOS_REGISTRY_MIRROR_PORT)/#'); \
 		docker tag $$image $$img; \
 		echo ">>>>>> Pushing $$img to registry mirror..."; \
-		docker push --quiet $$img; \
+		docker push --quiet $$img || exit 1; \
 	done
 
 .PHONY: talos-libvirt-init
