@@ -63,7 +63,7 @@ talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
 		if echo "$$image" | grep -q kube; then \
-			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
+			image=$$(echo $$image | sed -e 's/:v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
 		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \
 			echo ">>> Pulling $$image..."; \
