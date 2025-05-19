@@ -191,7 +191,7 @@ require (
 replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.1
-	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20240218023647-f0bc3ce57fcd
+	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20241120032411-25ef1bbc83a5
 	k8s.io/api => k8s.io/api v0.30.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.30.3
 	k8s.io/apimachinery => k8s.io/apimachinery v0.30.3
