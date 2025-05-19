@@ -709,6 +709,11 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 
 		if pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter {
 			subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
+			if subnetName == "" {
+				klog.V(4).Infof("Pod %s/%s is not on cluster router and has no logical switch annotation, skipping for VLAN check.", pod.Namespace, pod.Name)
+				continue
+			}
+
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
 				klog.Errorf("failed to get subnet %s: %v", subnetName, err)

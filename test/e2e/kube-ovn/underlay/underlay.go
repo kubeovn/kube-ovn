@@ -520,17 +520,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 						"app": "agnhost",
 					},
 				},
-				Ingress: []netv1.NetworkPolicyIngressRule{
-					{
-						From: []netv1.NetworkPolicyPeer{
-							{
-								PodSelector:       nil,
-								NamespaceSelector: nil,
-								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0"},
-							},
-						},
-					},
-				},
+				Ingress:     []netv1.NetworkPolicyIngressRule{},
 				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
 			},
 		}
