@@ -12,6 +12,9 @@ import (
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	corev1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -106,7 +109,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName string
+	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName, netpolName string
 	var vpcName string
 	var u2oPodNameUnderlay, u2oOverlaySubnetName, u2oPodNameOverlay, u2oOverlaySubnetNameCustomVPC, u2oPodOverlayCustomVPC string
 	var linkMap map[string]*iproute.Link
@@ -118,6 +121,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var dockerNetwork *dockernetwork.Inspect
+	var netpolClient *framework.NetworkPolicyClient
 	var containerID string
 
 	ginkgo.BeforeEach(func() {
@@ -128,6 +132,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcClient = f.VpcClient()
 		vlanClient = f.VlanClient()
 		providerNetworkClient = f.ProviderNetworkClient()
+		netpolClient = f.NetworkPolicyClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
 		u2oPodNameOverlay = "pod-" + framework.RandomSuffix()
@@ -139,6 +144,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
+		netpolName = "netpol-" + framework.RandomSuffix()
 		containerID = ""
 
 		if skip {
@@ -325,6 +331,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectNoError(err)
 		}
 
+		ginkgo.By("Deleting network policy " + netpolName)
+		netpolClient.DeleteSync(netpolName)
+
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
@@ -446,6 +455,111 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
+	})
+
+	framework.ConformanceIt("should be able to access underlay pod from node after applying network policy", func() {
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
+		cidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating network policy " + netpolName)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      netpolName,
+				Namespace: namespaceName,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "agnhost",
+					},
+				},
+				Ingress: []netv1.NetworkPolicyIngressRule{
+					{
+						From: []netv1.NetworkPolicyPeer{
+							{
+								PodSelector:       nil,
+								NamespaceSelector: nil,
+								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0"},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		ginkgo.By("Creating pod " + podName)
+		labels := map[string]string{
+			"app": "agnhost",
+		}
+		args := []string{"netexec", "--http-port", strconv.Itoa(80)}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, labels, nil, framework.AgnhostImage, nil, args)
+		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt32(80),
+				},
+			},
+		}
+		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt32(80),
+				},
+			},
+		}
+
+		_ = podClient.CreateSync(pod)
+		pod = f.PodClientNS(namespaceName).GetPod(podName)
+		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning)
 	})
 
 	framework.ConformanceIt("should be able to detect duplicate address", func() {
