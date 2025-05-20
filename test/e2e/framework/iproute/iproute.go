@@ -147,7 +147,7 @@ func AddressDel(device, addr string, execFunc ExecFunc) error {
 
 func AddressDelCheckExist(device, addr string, execFunc ExecFunc) error {
 	found := false
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		showLinks, err := AddressShow(device, execFunc)
 		if err != nil {
 			return err
