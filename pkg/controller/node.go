@@ -703,9 +703,28 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter {
+		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName {
 			continue
 		}
+
+		if pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter {
+			subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
+			if subnetName == "" {
+				klog.V(4).Infof("Pod %s/%s is not on cluster router and has no logical switch annotation, skipping for VLAN check.", pod.Namespace, pod.Name)
+				continue
+			}
+
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+				return nil, err
+			}
+
+			if subnet.Spec.Vlan == "" {
+				continue
+			}
+		}
+
 		podName := c.getNameByPod(pod)
 
 		podNets, err := c.getPodKubeovnNets(pod)
