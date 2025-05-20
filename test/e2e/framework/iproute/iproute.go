@@ -137,7 +137,7 @@ func AddressShow(device string, execFunc ExecFunc) ([]Link, error) {
 	return links, nil
 }
 
-func AddressDel(device string, addr string, execFunc ExecFunc) error {
+func AddressDel(device, addr string, execFunc ExecFunc) error {
 	e := execer{fn: execFunc}
 	if err := e.exec("ip a del"+devArg(device)+" "+addr, nil); err != nil {
 		return err
@@ -145,7 +145,7 @@ func AddressDel(device string, addr string, execFunc ExecFunc) error {
 	return nil
 }
 
-func AddressDelCheckExist(device string, addr string, execFunc ExecFunc) error {
+func AddressDelCheckExist(device, addr string, execFunc ExecFunc) error {
 	found := false
 	for i := 0; i < 10; i++ {
 		showLinks, err := AddressShow(device, execFunc)
