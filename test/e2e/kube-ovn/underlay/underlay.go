@@ -519,20 +519,20 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				if address.Type == corev1.NodeInternalIP {
 					nodeIP := address.Address
 					if util.CheckProtocol(nodeIP) == apiv1.ProtocolIPv4 {
-						cmd1 := exec.Command("iptables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
+						cmd1 := exec.Command("sudo", "iptables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
 						if output, err := cmd1.CombinedOutput(); err != nil {
 							framework.Logf("failed to add iptables rule: %v, output: %s", err, string(output))
 						}
-						cmd2 := exec.Command("iptables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
+						cmd2 := exec.Command("sudo", "iptables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
 						if output, err := cmd2.CombinedOutput(); err != nil {
 							framework.Logf("failed to add iptables rule: %v, output: %s", err, string(output))
 						}
 					} else {
-						cmd1 := exec.Command("ip6tables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
+						cmd1 := exec.Command("sudo", "ip6tables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
 						if output, err := cmd1.CombinedOutput(); err != nil {
 							framework.Logf("failed to add ip6tables rule: %v, output: %s", err, string(output))
 						}
-						cmd2 := exec.Command("ip6tables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
+						cmd2 := exec.Command("sudo", "ip6tables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
 						if output, err := cmd2.CombinedOutput(); err != nil {
 							framework.Logf("failed to add ip6tables rule: %v, output: %s", err, string(output))
 						}
