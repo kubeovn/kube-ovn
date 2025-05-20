@@ -102,7 +102,7 @@ func (c *Controller) gcVpcNatGateway() error {
 				return err
 			}
 		}
-		gwStsNames = append(gwStsNames, util.GenNatGwStsName(gw.Name))
+		gwStsNames = append(gwStsNames, util.GenNatGwName(gw.Name))
 	}
 
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
