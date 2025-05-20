@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
@@ -134,6 +135,44 @@ func AddressShow(device string, execFunc ExecFunc) ([]Link, error) {
 	}
 
 	return links, nil
+}
+
+func AddressDel(device string, addr string, execFunc ExecFunc) error {
+	e := execer{fn: execFunc}
+	if err := e.exec("ip a del"+devArg(device)+" "+addr, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func AddressDelCheckExist(device string, addr string, execFunc ExecFunc) error {
+	found := false
+	for i := 0; i < 10; i++ {
+		showLinks, err := AddressShow(device, execFunc)
+		if err != nil {
+			return err
+		}
+		for _, link := range showLinks {
+			for _, a := range link.AddrInfo {
+				cidr := fmt.Sprintf("%s/%d", a.Local, a.PrefixLen)
+				if cidr == addr {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if found {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if !found {
+		return fmt.Errorf("Address %s not found on %s after waiting", addr, device)
+	}
+	return AddressDel(device, addr, execFunc)
 }
 
 func RouteShow(table, device string, execFunc ExecFunc) ([]Route, error) {

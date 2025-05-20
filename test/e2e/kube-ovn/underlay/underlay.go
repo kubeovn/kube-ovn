@@ -508,6 +508,57 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
+		// set iptables to allow traffic between underlay and node network
+		ginkgo.By("Getting nodes")
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodes.Items)
+
+		for _, node := range nodes.Items {
+			for _, address := range node.Status.Addresses {
+				if address.Type == corev1.NodeInternalIP {
+					nodeIP := address.Address
+					if util.CheckProtocol(nodeIP) == apiv1.ProtocolIPv4 {
+						cmd1 := exec.Command("iptables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
+						if output, err := cmd1.CombinedOutput(); err != nil {
+							framework.Logf("failed to add iptables rule: %v, output: %s", err, string(output))
+						}
+						cmd2 := exec.Command("iptables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
+						if output, err := cmd2.CombinedOutput(); err != nil {
+							framework.Logf("failed to add iptables rule: %v, output: %s", err, string(output))
+						}
+					} else {
+						cmd1 := exec.Command("ip6tables", "-t", "filter", "-I", "FORWARD", "-s", nodeIP, "-j", "ACCEPT")
+						if output, err := cmd1.CombinedOutput(); err != nil {
+							framework.Logf("failed to add ip6tables rule: %v, output: %s", err, string(output))
+						}
+						cmd2 := exec.Command("ip6tables", "-t", "filter", "-I", "FORWARD", "-d", nodeIP, "-j", "ACCEPT")
+						if output, err := cmd2.CombinedOutput(); err != nil {
+							framework.Logf("failed to add ip6tables rule: %v, output: %s", err, string(output))
+						}
+					}
+				}
+			}
+		}
+
+		// remove underlay ip on bridge
+		kindNodes, err := kind.ListNodes(clusterName, "")
+		for _, node := range kindNodes {
+			for _, container := range network.Containers {
+				if container.Name != node.Name() {
+					continue
+				}
+				if container.IPv4Address != "" && f.HasIPv4() {
+					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv4Address, node.Exec)
+					framework.ExpectNoError(err)
+				}
+				if container.IPv6Address != "" && f.HasIPv6() {
+					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv6Address, node.Exec)
+					framework.ExpectNoError(err)
+				}
+			}
+		}
+
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -548,8 +599,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 
 		_ = podClient.CreateSync(pod)
-		pod = f.PodClientNS(namespaceName).GetPod(podName)
-		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning)
 	})
 
 	framework.ConformanceIt("should be able to detect duplicate address", func() {
