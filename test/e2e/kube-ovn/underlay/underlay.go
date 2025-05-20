@@ -542,7 +542,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 
 		// remove underlay ip on bridge
-		kindNodes, err := kind.ListNodes(clusterName, "")
+		kindNodes, _ := kind.ListNodes(clusterName, "")
 		for _, node := range kindNodes {
 			for _, container := range network.Containers {
 				if container.Name != node.Name() {

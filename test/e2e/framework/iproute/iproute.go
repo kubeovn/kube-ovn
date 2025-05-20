@@ -170,7 +170,7 @@ func AddressDelCheckExist(device string, addr string, execFunc ExecFunc) error {
 		time.Sleep(time.Second)
 	}
 	if !found {
-		return fmt.Errorf("Address %s not found on %s after waiting", addr, device)
+		return fmt.Errorf("address %s not found on %s after waiting", addr, device)
 	}
 	return AddressDel(device, addr, execFunc)
 }
