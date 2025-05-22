@@ -321,8 +321,6 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	// calculate internal route destinations and forward source CIDR blocks
 	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
-	// intRouteDstIPv4.Insert(bfdIPv4)
-	// intRouteDstIPv6.Insert(bfdIPv6)
 	intRouteDstIPv4.Delete("")
 	intRouteDstIPv6.Delete("")
 	ipv4ForwardSrc.Delete("")
@@ -569,8 +567,8 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			}
 		}
 	}
-	hash := util.Sha256Hash([]byte(cache.MetaObjectToName(gw).String()))
-	pgName := "VEG." + hash[:12]
+	key := cache.MetaObjectToName(gw).String()
+	pgName := vegPortGroupName(key)
 	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
 		klog.Error(err)
@@ -583,7 +581,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	// reconcile OVN address set
-	asName := pgName
+	asName := vegAddressSetName(key, af)
 	if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create address set %s: %w", asName, err)
 		klog.Error(err)
@@ -808,7 +806,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 	}
 
 	klog.Infof("handle deleting vpc-egress-gateway %s", key)
-	if err = c.cleanOVNforVpcEgressGateway(key, cachedGateway.Spec.VPC); err != nil {
+	if err = c.cleanOVNForVpcEgressGateway(key, cachedGateway.Spec.VPC); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -825,7 +823,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 	return nil
 }
 
-func (c *Controller) cleanOVNforVpcEgressGateway(key, lrName string) error {
+func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:           util.CniTypeName,
 		ovs.ExternalIDVpcEgressGateway: key,
@@ -854,17 +852,26 @@ func (c *Controller) cleanOVNforVpcEgressGateway(key, lrName string) error {
 		klog.Error(err)
 		return err
 	}
-	hash := util.Sha256Hash([]byte(key))
-	pgName := "VEG." + hash[:12]
-	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err = c.OVNNbClient.DeletePortGroup(vegPortGroupName(key)); err != nil {
 		klog.Error(err)
 		return err
 	}
-	asName := pgName
-	if err = c.OVNNbClient.DeleteAddressSet(asName); err != nil {
-		klog.Error(err)
-		return err
+	for _, af := range [...]int{4, 6} {
+		if err = c.OVNNbClient.DeleteAddressSet(vegAddressSetName(key, af)); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
+}
+
+func vegPortGroupName(key string) string {
+	hash := util.Sha256Hash([]byte(key))
+	return "VEG." + hash[:12]
+}
+
+func vegAddressSetName(key string, af int) string {
+	hash := util.Sha256Hash([]byte(key))
+	return fmt.Sprintf("VEG.%s.ipv%d", hash[:12], af)
 }
