@@ -105,30 +105,27 @@ func (c *Controller) handleAddVlan(key string) error {
 
 func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan, vlanInterface string) error {
 	// todo: check if vlan conflict in webhook
-	var conflictErr error
-	conflict := false
-	// check if new vlan conflict with other vlans
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vlans: %v", err)
 		return err
 	}
+	// check if new vlan conflict with old vlan
 	for _, v := range vlans {
-		if v.Spec.ID == vlan.Spec.ID && v.Name != vlan.Name {
-			conflict = true
-			conflictErr := fmt.Errorf("new vlan %s conflict with exist vlan %s", v.Name, v.Name)
+		if vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
+			conflictErr := fmt.Errorf("new vlan %s conflict with old vlan %s", vlan.Name, v.Name)
 			klog.Error(conflictErr)
+
+			vlan.Status.Conflict = true
+			vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+			if err != nil {
+				klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
+				return err
+			}
+			return conflictErr
 		}
 	}
-	if conflict {
-		vlan.Status.Conflict = true
-		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
-			return err
-		}
-	}
-	return conflictErr
+	return nil
 }
 
 func (c *Controller) handleUpdateVlan(key string) error {
