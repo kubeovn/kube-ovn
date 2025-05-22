@@ -106,7 +106,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var cs clientset.Interface
 	var nodeNames []string
 	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName string
-	var conflictVlan1Name, conflictVlanSubnet1Name, conflictVlan2Name, conflictVlanSubnet2Name string
 	var vpcName string
 	var u2oPodNameUnderlay, u2oOverlaySubnetName, u2oPodNameOverlay, u2oOverlaySubnetNameCustomVPC, u2oPodOverlayCustomVPC string
 	var linkMap map[string]*iproute.Link
@@ -119,6 +118,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var dockerNetwork *dockernetwork.Inspect
 	var containerID string
+	var conflictVlan1Name, conflictVlanSubnet1Name, conflictVlan2Name, conflictVlanSubnet2Name string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -139,11 +139,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
+		containerID = ""
 		conflictVlan1Name = "conflict-vlan1-" + framework.RandomSuffix()
 		conflictVlanSubnet1Name = "conflict-vlan-subnet1-" + framework.RandomSuffix()
 		conflictVlan2Name = "conflict-vlan2-" + framework.RandomSuffix()
 		conflictVlanSubnet2Name = "conflict-vlan-subnet2-" + framework.RandomSuffix()
-		containerID = ""
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
