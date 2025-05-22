@@ -1292,61 +1292,57 @@ spec:
                     type: object
                     properties:
                       namespaceSelector:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            matchLabels:
-                              additionalProperties:
-                                type: string
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
                               type: object
-                            matchExpressions:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  key:
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
                                     type: string
-                                  operator:
-                                    type: string
-                                  values:
-                                    items:
-                                      type: string
-                                    type: array
-                                required:
-                                  - key
-                                  - operator
-                          x-kubernetes-validations:
-                            - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                              message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
                       podSelector:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            matchLabels:
-                              additionalProperties:
-                                type: string
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
                               type: object
-                            matchExpressions:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  key:
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
                                     type: string
-                                  operator:
-                                    type: string
-                                  values:
-                                    items:
-                                      type: string
-                                    type: array
-                                required:
-                                  - key
-                                  - operator
-                          x-kubernetes-validations:
-                            - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                              message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
                 policies:
                   type: array
                   minItems: 1
