@@ -1121,7 +1121,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Creating subnet " + conflictVlanSubnet2Name)
 		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(conflictVlanSubnet2)
+		_ = subnetClient.Create(conflictVlanSubnet2)
+		// wait for conflict vlan subnet to be created
+		time.Sleep(10 * time.Second)
 
 		// check
 		conflictVlan1 = vlanClient.Get(conflictVlan1Name)
