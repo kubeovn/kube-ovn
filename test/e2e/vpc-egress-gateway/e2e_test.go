@@ -361,15 +361,20 @@ func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image,
 
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
+	labels := map[string]string{"snat": strconv.FormatBool(snat)}
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
-	pod := framework.MakePod(namespaceName, podName, nil, annotations, image, []string{"sleep", "infinity"}, nil)
+	pod := framework.MakePod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Deleting pod " + podName)
 		f.PodClient().DeleteSync(podName)
 	})
 	pod = f.PodClient().CreateSync(pod)
 
-	framework.CheckPodEgressRoutes(pod.Namespace, pod.Name, f.HasIPv4(), f.HasIPv6(), 2, intIPs)
+	if !snat {
+		// skip egress route check if SNAT is enabled
+		// traceroute does not work for pods selected by the selectors
+		framework.CheckPodEgressRoutes(pod.Namespace, pod.Name, f.HasIPv4(), f.HasIPv6(), 2, intIPs)
+	}
 
 	if !snat {
 		podIPv4, podIPv6 := util.SplitIpsByProtocol(util.PodIPs(*pod))
@@ -450,12 +455,29 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 	veg.Spec.BFD.Enabled = bfd
 	veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
-		SNAT:    true,
-		Subnets: []string{snatSubnetName},
-	}, {
 		SNAT:     false,
 		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
 	}}
+	if util.IsOvnProvider(provider) {
+		veg.Spec.Selectors = []apiv1.VpcEgressGatewaySelector{{
+			NamespaceSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					corev1.LabelMetadataName: namespaceName,
+				},
+			},
+			PodSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"snat": strconv.FormatBool(true),
+				},
+			},
+		}}
+	} else {
+		veg.Spec.Policies = append(veg.Spec.Policies, apiv1.VpcEgressGatewayPolicy{
+			SNAT:    true,
+			Subnets: []string{snatSubnetName},
+		})
+	}
+
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Deleting vpc egress gateway " + vegName)
 		vegClient.DeleteSync(vegName)

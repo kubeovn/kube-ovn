@@ -875,3 +875,57 @@ func vegAddressSetName(key string, af int) string {
 	hash := util.Sha256Hash([]byte(key))
 	return fmt.Sprintf("VEG.%s.ipv%d", hash[:12], af)
 }
+
+func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
+	if !pod.DeletionTimestamp.IsZero() || pod.Annotations[util.AllocatedAnnotation] != "true" {
+		return nil
+	}
+	vpc := pod.Annotations[util.LogicalRouterAnnotation]
+	if vpc == "" {
+		return nil
+	}
+
+	ns, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
+		utilruntime.HandleError(err)
+		return err
+	}
+
+	gateways, err := c.vpcEgressGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc egress gateways: %v", err)
+		utilruntime.HandleError(err)
+		return err
+	}
+
+	for _, veg := range gateways {
+		if veg.Spec.VPC != vpc {
+			continue
+		}
+
+		for _, selector := range veg.Spec.Selectors {
+			sel, err := metav1.LabelSelectorAsSelector(selector.NamespaceSelector)
+			if err != nil {
+				klog.Errorf("failed to create label selector for namespace selector %#v: %v", selector.NamespaceSelector, err)
+				utilruntime.HandleError(err)
+				continue
+			}
+			if !sel.Matches(labels.Set(ns.Labels)) {
+				continue
+			}
+			if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
+				klog.Errorf("failed to create label selector for pod selector %#v: %v", selector.PodSelector, err)
+				utilruntime.HandleError(err)
+				continue
+			}
+			if sel.Matches(labels.Set(pod.Labels)) {
+				c.addOrUpdateVpcEgressGatewayQueue.Add(cache.MetaObjectToName(veg).String())
+			}
+		}
+	}
+	return nil
+}
