@@ -85,7 +85,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		return err
 	}
 
-	if err = c.checkVlanConflict(vlan, pn.Spec.DefaultInterface); err != nil {
+	if err = c.checkVlanConflict(vlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 		return err
 	}
@@ -103,7 +103,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	return nil
 }
 
-func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan, vlanInterface string) error {
+func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	// todo: check if vlan conflict in webhook
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
