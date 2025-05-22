@@ -63,7 +63,7 @@ if [ -n "${INTERNAL_GATEWAY_IPV6}" ]; then
   external_ipv6=`ip -o route get "${EXTERNAL_GATEWAY_IPV6}" | grep -o 'src [^ ]*' | awk '{print $2}'`
   internal_iface=`ip -o route get "${INTERNAL_GATEWAY_IPV6}" | grep -o 'dev [^ ]*' | awk '{print $2}'`
   external_iface=`ip -o route get "${EXTERNAL_GATEWAY_IPV6}" | grep -o 'dev [^ ]*' | awk '{print $2}'`
-  ip -6 route replace default via "${INTERNAL_GATEWAY_IPV4}" table 1000
+  ip -6 route replace default via "${INTERNAL_GATEWAY_IPV6}" table 1000
   for priority in 1001 1002 1003 1004; do
     if [ -n "`ip -6 rule show priority ${priority}`" ]; then
       ip -6 rule del priority "${priority}"
