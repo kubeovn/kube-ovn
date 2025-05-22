@@ -411,7 +411,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 								LabelSelector: &metav1.LabelSelector{
 									MatchLabels: labels,
 								},
-								TopologyKey: "kubernetes.io/hostname",
+								TopologyKey: corev1.LabelHostname,
 							}},
 						},
 					},
