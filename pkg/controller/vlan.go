@@ -104,6 +104,10 @@ func (c *Controller) handleAddVlan(key string) error {
 }
 
 func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
+	if vlan.Spec.ID == 0 {
+		// no conflict if vlan id is 0
+		return nil
+	}
 	// todo: check if vlan conflict in webhook
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
