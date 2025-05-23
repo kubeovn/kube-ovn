@@ -5,6 +5,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	TrafficPolicyLocal   = "Local"
+	TrafficPolicyCluster = "Cluster"
+)
+
 // Phase represents resource phase
 type Phase string
 
@@ -68,6 +73,11 @@ type VpcEgressGatewaySpec struct {
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 	// namespace/pod selectors
 	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
+	// optional traffic policy used to control the traffic routing
+	// if not specified, the default traffic policy "Cluster" will be used
+	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
+	// currently it works only for the default vpc
+	TrafficPolicy string `json:"trafficPolicy,omitempty"`
 
 	// BFD configuration
 	BFD VpcEgressGatewayBFDConfig `json:"bfd"`

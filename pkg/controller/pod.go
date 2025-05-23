@@ -735,6 +735,12 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
+			nodePortGroup := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
+			if err = c.OVNNbClient.PortGroupAddPorts(nodePortGroup, portName); err != nil {
+				klog.Errorf("failed to add port %s to port group %s: %v", portName, nodePortGroup, err)
+				return err
+			}
+
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
