@@ -521,8 +521,8 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 						klog.Errorf("failed to list ipv6 addresses on interface %s: %v", interfaceName, err)
 						return err
 					}
-					var flags []string
 					for _, addr := range addrs {
+						var flags []string
 						if addr.Flags&unix.IFA_F_DADFAILED != 0 {
 							flags = append(flags, "DADFAILED")
 						}
