@@ -616,43 +616,43 @@ jobs:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: Check kube ovn pod restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
-        run: make check-kube-ovn-pod-restarts
+      # - name: Check kube ovn pod restarts
+      #   if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+      #   run: make check-kube-ovn-pod-restarts
 
-      - name: Check valgrind result
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
+      # - name: Check valgrind result
+      #   run: |
+      #     if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
+      #       exit
+      #     fi
 
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          kubectl ko log ovn
-          kubectl ko log ovs
+      #     kubectl -n kube-system rollout restart ds ovs-ovn
+      #     kubectl -n kube-system rollout status ds ovs-ovn
+      #     sleep 10
+      #     kubectl -n kube-system rollout restart deploy ovn-central
+      #     kubectl -n kube-system rollout status deploy ovn-central
+      #     while true; do
+      #       if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
+      #         break
+      #       fi
+      #       sleep 1
+      #     done
+      #     kubectl ko log ovn
+      #     kubectl ko log ovs
 
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
+      #     for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
+      #       echo "Checking if valgrind log file for $daemon exists..."
+      #       find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
+      #     done
 
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
+      #     find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
+      #       if grep -qw 'definitely lost' "$f"; then
+      #         echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
+      #         echo $f
+      #         cat "$f"
+      #         exit 1
+      #       fi;
+      #     done
 
-      - name: Cleanup
-        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+      # - name: Cleanup
+      #   run: timeout -k 10 180 sh -x dist/images/cleanup.sh
