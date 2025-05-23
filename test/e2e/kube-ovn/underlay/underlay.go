@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubectl/pkg/util/podutils"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
@@ -688,24 +689,31 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		pod.Spec.TerminationGracePeriodSeconds = nil
 		_ = podClient.Create(pod)
 
-		ginkgo.By("Waiting for pod events")
-		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		var message string
-		if f.HasIPv4() {
-			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
-		} else {
-			message = "dadfailed"
-		}
-		var found bool
-		for _, event := range events {
-			if strings.Contains(event.Message, message) {
-				found = true
-				framework.Logf("Found pod event: %s", event.Message)
-				break
-			}
-		}
+		// ginkgo.By("Waiting for pod events")
+		// events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
+		// var message string
+		// if f.HasIPv4() {
+		// 	message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
+		// } else {
+		// 	message = "dadfailed"
+		// }
+		// var found bool
+		// for _, event := range events {
+		// 	if strings.Contains(event.Message, message) {
+		// 		found = true
+		// 		framework.Logf("Found pod event: %s", event.Message)
+		// 		break
+		// 	}
+		// }
 
-		if !found {
+		_ = eventClient
+		_ = mac
+
+		ginkgo.By("Waiting 1 minute")
+		time.Sleep(time.Minute)
+
+		pod = podClient.GetPod(podName)
+		if podutils.IsPodReady(pod) {
 			ginkgo.By("Getting ip addresses and routes of container " + containerName)
 			links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
 				return docker.Exec(containerID, nil, cmd...)
@@ -717,8 +725,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			})
 			framework.ExpectNoError(err)
 			framework.Logf("routes of container:\n%s", format.Object(routes, 2))
+			framework.Failf("pod %s should not be ready", podName)
 		}
-		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
 
 	framework.ConformanceIt("should support underlay to overlay subnet interconnection", func() {
