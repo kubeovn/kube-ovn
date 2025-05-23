@@ -184,9 +184,9 @@ jobs:
           go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           # make ut
 
-      - uses: shogo82148/actions-goveralls@v1
-        with:
-          path-to-profile: profile.cov
+      # - uses: shogo82148/actions-goveralls@v1
+      #   with:
+      #     path-to-profile: profile.cov
 
       - name: Install golangci-lint
         run: |
