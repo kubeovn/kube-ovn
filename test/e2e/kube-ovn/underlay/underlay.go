@@ -642,6 +642,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				`addr=$(ip -6 -br addr show dev eth0 scope global | awk '{print $NF}');
 				 ip addr del $addr dev eth0;
 				 ip addr add $addr dev eth0;
+				 while true; do
+					if ! ip -6 -o addr show dev eth0 scope global | grep tentative; then
+					  break
+					fi
+					continue
+				done
 				 sleep infinity`,
 			}
 		}
@@ -649,8 +655,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
 
-		ginkgo.By("Waiting 5s to ensure container IPv6 DAD has finished")
-		time.Sleep(5 * time.Second)
+		// ginkgo.By("Waiting 5s to ensure container IPv6 DAD has finished")
+		// time.Sleep(5 * time.Second)
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
@@ -720,13 +726,14 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		pod = podClient.GetPod(podName)
 		if podutils.IsPodReady(pod) {
-			ginkgo.By("Getting ip addresses and routes of container " + containerName)
+			ginkgo.By("Getting ip addresses of container " + containerName)
 			links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
 				return docker.Exec(containerID, nil, cmd...)
 			})
 			framework.ExpectNoError(err)
+			ginkgo.By("Getting ip routes of container " + containerName)
 			framework.Logf("addresses of container:\n%s", format.Object(links, 2))
-			routes, err := iproute.RouteShow("eth0", "", func(cmd ...string) ([]byte, []byte, error) {
+			routes, err := iproute.RouteShow("", "eth0", func(cmd ...string) ([]byte, []byte, error) {
 				return docker.Exec(containerID, nil, cmd...)
 			})
 			framework.ExpectNoError(err)
