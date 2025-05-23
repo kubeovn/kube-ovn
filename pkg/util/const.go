@@ -214,14 +214,15 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
-	U2OSubnetPolicyPriority         = 29400
-	GatewayRouterPolicyPriority     = 29000
-	EgressGatewayPolicyPriority     = 29100
-	NorthGatewayRoutePolicyPriority = 29250
-	OvnICPolicyPriority             = 29500
-	NodeRouterPolicyPriority        = 30000
-	NodeLocalDNSPolicyPriority      = 30100
-	SubnetRouterPolicyPriority      = 31000
+	U2OSubnetPolicyPriority          = 29400
+	GatewayRouterPolicyPriority      = 29000
+	EgressGatewayPolicyPriority      = 29100
+	EgressGatewayLocalPolicyPriority = 29150
+	NorthGatewayRoutePolicyPriority  = 29250
+	OvnICPolicyPriority              = 29500
+	NodeRouterPolicyPriority         = 30000
+	NodeLocalDNSPolicyPriority       = 30100
+	SubnetRouterPolicyPriority       = 31000
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"

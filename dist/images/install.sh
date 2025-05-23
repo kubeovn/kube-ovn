@@ -1370,6 +1370,12 @@ spec:
                     x-kubernetes-validations:
                       - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
                         message: 'Each policy MUST have at least one ipBlock or subnet'
+                trafficPolicy:
+                  type: string
+                  enum:
+                    - Local
+                    - Cluster
+                  default: Cluster
                 nodeSelector:
                   type: array
                   items:
