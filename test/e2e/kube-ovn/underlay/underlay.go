@@ -639,7 +639,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		if !f.HasIPv4() {
 			cmd = []string{
 				"sh", "-xc",
-				"addr=$(ip addr show dev eth0 | grep -w inet6 | grep -w global | awk '{print $2}'); ip addr replace $addr dev eth0; sleep infinity",
+				`addr=$(ip -6 -br addr show dev eth0 scope global | awk '{print $NF}');
+				 ip addr del $addr dev eth0;
+				 ip addr add $addr dev eth0;
+				 sleep infinity`,
 			}
 		}
 		containerInfo, err := docker.ContainerCreate(containerName, f.KubeOVNImage, dockerNetworkName, cmd)
