@@ -27,6 +27,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+          fetch-depth: 2
       - uses: docker/setup-buildx-action@v3
 
       - uses: actions/setup-go@v5
@@ -38,7 +41,7 @@ jobs:
 
       - name: Setup environment variables
         run: |
-          echo "TAG=$(cat VERSION)" >> "$GITHUB_ENV"
+          echo "TAG=$(cat VERSION)-xfeature" >> "$GITHUB_ENV"
           echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go Cache
@@ -125,13 +128,12 @@ jobs:
         run: make release-arm
 
       - name: Push
-        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           COMMIT: ${{ github.sha }}
         run: |
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-xfeature
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-arm

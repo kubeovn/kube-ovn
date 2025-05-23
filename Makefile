@@ -8,9 +8,9 @@ include e2e.mk
 
 REGISTRY = kubeovn
 DEV_TAG = dev
-RELEASE_TAG = $(shell cat VERSION)
-DEBUG_TAG = $(shell cat VERSION)-debug
-LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
+RELEASE_TAG = $(shell cat VERSION)-xfeature
+DEBUG_TAG = $(shell cat VERSION)-xfeature-debug
+LEGACY_TAG = $(shell cat VERSION)-xfeature-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
