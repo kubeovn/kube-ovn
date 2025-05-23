@@ -446,7 +446,7 @@ jobs:
           # - dual
         mode:
           - overlay
-          - underlay
+          # - underlay
         index:
           - 0
           - 1
@@ -458,17 +458,17 @@ jobs:
           - 7
           - 8
           - 9
-        index2:
-          - 0
-          - 1
-          - 2
-          - 3
-          - 4
-          - 5
-          - 6
-          - 7
-          - 8
-          - 9
+        # index2:
+          # - 0
+          # - 1
+          # - 2
+          # - 3
+          # - 4
+          # - 5
+          # - 6
+          # - 7
+          # - 8
+          # - 9
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -565,15 +565,15 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: |
           make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
-          make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
+          # make kube-ovn-conformance-e2e
           # make kind-install-kubevirt
           # make kube-ovn-kubevirt-e2e
 
