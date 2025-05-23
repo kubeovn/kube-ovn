@@ -1052,8 +1052,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning, "Pod should be in Running state, indicating successful ping with 1s timeout")
 	})
 
-	framework.ConformanceIt("should be able to detect vlan conflict", func() {
-		f.SkipVersionPriorTo(1, 14, "Duplicate address detection was introduced in v1.14")
+	framework.ConformanceIt("should be able to detect conflict vlan subnet", func() {
+		f.SkipVersionPriorTo(1, 14, "Conflict vlan detection was introduced in v1.14")
 
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
