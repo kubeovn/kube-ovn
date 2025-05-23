@@ -641,6 +641,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNoError(err)
 		containerID = containerInfo.ID
 
+		ginkgo.By("Waiting 5s to ensure container IPv6 DAD has finished")
+		time.Sleep(5 * time.Second)
+
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
 		_ = vlanClient.Create(vlan)
