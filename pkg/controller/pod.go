@@ -233,6 +233,10 @@ func (c *Controller) enqueueAddPod(obj any) {
 		klog.Infof("enqueue add pod %s", key)
 		c.addOrUpdatePodQueue.Add(key)
 	}
+
+	if err = c.handlePodEventForVpcEgressGateway(p); err != nil {
+		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
+	}
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
@@ -368,6 +372,10 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			c.deletePodQueue.AddAfter(key, delay)
 		}()
 		return
+	}
+
+	if err = c.handlePodEventForVpcEgressGateway(newPod); err != nil {
+		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
 	}
 
 	// do not delete statefulset pod unless ownerReferences is deleted
