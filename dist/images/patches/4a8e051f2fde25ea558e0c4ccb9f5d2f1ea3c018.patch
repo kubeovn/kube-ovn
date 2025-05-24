@@ -1,6 +1,6 @@
-From 49834fdd3fa3b066650bc8b7a8b05a773d217d95 Mon Sep 17 00:00:00 2001
+From 4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Thu, 10 Apr 2025 01:31:33 +0000
+Date: Fri, 23 May 2025 06:09:31 +0000
 Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
  ports
 
@@ -10,15 +10,15 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  1 file changed, 52 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index ced85dd273..f04b5eee6c 100644
+index d434118be2..193a4e2253 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9120,6 +9120,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
+@@ -9316,6 +9316,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
              return;
          }
  
 +        struct ovn_port *lrp = op->peer;
-+        if (lrp && lrp->nbrp && !lrp->l3dgw_port &&
++        if (lrp && lrp->nbrp && !lrp->primary_port &&
 +            !lrp->nbrp->n_gateway_chassis && !lrp->nbrp->ha_chassis_group &&
 +            lsp_is_router(op->nbsp)) {
 +            ovs_be32 lla_ip4;
