@@ -2144,7 +2144,7 @@ spec:
         - jsonPath: .status.subnets
           name: Subnets
           type: string
-        - jsonPath: .status.ExternalSubnets
+        - jsonPath: .status.externalSubnets
           name: ExternalSubnets
           type: string
         - jsonPath: .spec.namespaces
@@ -2167,7 +2167,7 @@ spec:
                   items:
                     type: string
                   type: array
-                ExternalSubnets:
+                externalSubnets:
                   items:
                     type: string
                   type: array
@@ -2289,7 +2289,7 @@ spec:
                   items:
                     type: string
                   type: array
-                ExternalSubnets:
+                externalSubnets:
                   items:
                     type: string
                   type: array

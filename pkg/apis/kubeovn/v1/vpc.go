@@ -51,11 +51,6 @@ type VpcSpec struct {
 	PolicyRoutes    []*PolicyRoute `json:"policyRoutes,omitempty"`
 	VpcPeerings     []*VpcPeering  `json:"vpcPeerings,omitempty"`
 	ExternalSubnets []string       `json:"externalSubnets,omitempty"`
-	// external subnets only using provider network vlan subnet
-	// choose enable eip snat or ExternalSubnets to use exeternal network
-	// enable eip snat has nothing to do with ExternalSubnets
-	// ExternalSubnets means vpc has no default external subnet
-	// any vpc can use the subnet in ExternalSubnets to access outside
 	// use str set to handle ExternalSubnets to avoid duplicate subnet(also webhook),
 	// diff to sync: add or del lrp for external subnet
 	EnableBfd bool `json:"enableBfd,omitempty"`
@@ -135,7 +130,7 @@ type VpcStatus struct {
 	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
 	Subnets                 []string `json:"subnets"`
 	VpcPeerings             []string `json:"vpcPeerings"`
-	ExternalSubnets         []string `json:"ExternalSubnets"`
+	ExternalSubnets         []string `json:"externalSubnets"`
 	EnableBfd               bool     `json:"enableBfd"`
 
 	BFDPort BFDPortStatus `json:"bfdPort"`
