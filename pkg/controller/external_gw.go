@@ -30,6 +30,18 @@ func (c *Controller) resyncExternalGateway() {
 		return
 	}
 
+	// check if default vpc only use extra external subnet
+	defaultVPC, err := c.vpcsLister.Get(c.config.ClusterRouter)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
+		return
+	}
+	if defaultVPC.Spec.ExtraExternalSubnets != nil || defaultVPC.Status.ExtraExternalSubnets != nil {
+		// vpc controller will handle
+		klog.Infof("default vpc only use extra external subnets: %v", defaultVPC.Spec.ExtraExternalSubnets)
+		return
+	}
+
 	if k8serrors.IsNotFound(err) || cm.Data["enable-external-gw"] == "false" {
 		if exGwEnabled == "false" {
 			return

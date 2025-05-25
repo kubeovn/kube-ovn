@@ -45,14 +45,19 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	DefaultSubnet        string         `json:"defaultSubnet,omitempty"`
-	Namespaces           []string       `json:"namespaces,omitempty"`
-	StaticRoutes         []*StaticRoute `json:"staticRoutes,omitempty"`
-	PolicyRoutes         []*PolicyRoute `json:"policyRoutes,omitempty"`
-	VpcPeerings          []*VpcPeering  `json:"vpcPeerings,omitempty"`
-	EnableExternal       bool           `json:"enableExternal,omitempty"`
-	ExtraExternalSubnets []string       `json:"extraExternalSubnets,omitempty"`
-	EnableBfd            bool           `json:"enableBfd,omitempty"`
+	DefaultSubnet string         `json:"defaultSubnet,omitempty"`
+	Namespaces    []string       `json:"namespaces,omitempty"`
+	StaticRoutes  []*StaticRoute `json:"staticRoutes,omitempty"`
+	PolicyRoutes  []*PolicyRoute `json:"policyRoutes,omitempty"`
+	VpcPeerings   []*VpcPeering  `json:"vpcPeerings,omitempty"`
+
+	EnableExternal bool `json:"enableExternal,omitempty"`
+	// EnableExternal only handle default external subnet
+
+	ExtraExternalSubnets []string `json:"extraExternalSubnets,omitempty"`
+	// ExtraExternalSubnets only handle provider-network vlan subnet
+
+	EnableBfd bool `json:"enableBfd,omitempty"`
 
 	// optional BFD LRP configuration
 	// currently the LRP is used for vpc external gateway only
