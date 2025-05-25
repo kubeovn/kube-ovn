@@ -590,21 +590,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableExternalEcmp, defualtExternalSubnetExist bool, externalSubnetGW string) error {
-	if vpc.Name == util.DefaultVpc {
-		if c.config.EnableEipSnat || !defualtExternalSubnetExist {
-			klog.Infof("external_gw hanlde default ovn external gw for default vpc %s", vpc.Name)
-			return nil
-		}
+func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableExternalEcmp, defaultExternalSubnetExist bool, externalSubnetGW string) error {
+	if c.config.EnableEipSnat && vpc.Name == util.DefaultVpc {
+		klog.Infof("external_gw handle ovn default external gw %s", vpc.Name)
+		return nil
 	}
 
-	// handle any vpc external
 	if !vpc.Spec.EnableExternal && !vpc.Status.EnableExternal {
 		// no need to handle external connection
 		return nil
 	}
 
-	if vpc.Spec.EnableExternal && !defualtExternalSubnetExist && vpc.Spec.ExtraExternalSubnets == nil {
+	// handle any vpc external
+	if vpc.Spec.EnableExternal && !defaultExternalSubnetExist && vpc.Spec.ExtraExternalSubnets == nil {
 		// at least have a external subnet
 		err := fmt.Errorf("failed to get external subnet for enable external vpc %s", vpc.Name)
 		klog.Error(err)
@@ -612,27 +610,25 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	}
 
 	if !vpc.Spec.EnableExternal && vpc.Status.EnableExternal {
-		// disable external to del all external subnets
+		// just del all external subnets connection
 		klog.Infof("disconnect default external subnet %s to vpc %s", c.config.ExternalGatewaySwitch, vpc.Name)
 		if err := c.handleDelVpcExternalSubnet(vpc.Name, c.config.ExternalGatewaySwitch); err != nil {
 			klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", c.config.ExternalGatewaySwitch, vpc.Name, err)
 			return err
 		}
 		for _, subnet := range vpc.Status.ExtraExternalSubnets {
-			if !slices.Contains(vpc.Spec.ExtraExternalSubnets, subnet) {
-				klog.Infof("disconnect external subnet %s to vpc %s", subnet, vpc.Name)
-				if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
-					klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
-					return err
-				}
+			klog.Infof("disconnect external subnet %s to vpc %s", subnet, vpc.Name)
+			if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
+				klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
+				return err
 			}
 		}
 	}
 
 	if vpc.Spec.EnableExternal {
 		if !vpc.Status.EnableExternal {
-			// add external connection
-			if vpc.Spec.ExtraExternalSubnets == nil && defualtExternalSubnetExist {
+			// just add external connection
+			if vpc.Spec.ExtraExternalSubnets == nil && defaultExternalSubnetExist {
 				// only connect default external subnet
 				klog.Infof("connect default external subnet %s with vpc %s", c.config.ExternalGatewaySwitch, vpc.Name)
 				if err := c.handleAddVpcExternalSubnet(vpc.Name, c.config.ExternalGatewaySwitch); err != nil {
@@ -675,7 +671,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	}
 
 	// custom vpc enable bfd
-	if vpc.Spec.EnableBfd && vpc.Name != util.DefaultVpc && defualtExternalSubnetExist {
+	if vpc.Spec.EnableBfd && vpc.Name != util.DefaultVpc && defaultExternalSubnetExist {
 		// create bfd between lrp and physical switch gw
 		// bfd status down means current lrp binding chassis node external nic lost external network connectivity
 		// should switch lrp to another node
@@ -1442,16 +1438,14 @@ func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) er
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
-	vpc.Spec.EnableExternal = enableExternal
-	vpc.Status.EnableExternal = enableExternal
+	vpc.Status.EnableExternal = vpc.Spec.EnableExternal
+	vpc.Status.EnableBfd = vpc.Spec.EnableBfd
 
 	if enableExternal {
 		sort.Strings(vpc.Spec.ExtraExternalSubnets)
 		vpc.Status.ExtraExternalSubnets = vpc.Spec.ExtraExternalSubnets
-		vpc.Status.EnableBfd = vpc.Spec.EnableBfd
 	} else {
 		vpc.Status.ExtraExternalSubnets = nil
-		vpc.Status.EnableBfd = false
 	}
 
 	bytes, err := vpc.Status.Bytes()
