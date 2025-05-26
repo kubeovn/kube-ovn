@@ -685,7 +685,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 					changed = true
 				}
 				if changed {
-					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, nil, &policy.Nexthops, &policy.BFDSessions); err != nil {
+					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 						err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
 						klog.Error(err)
 						return err
