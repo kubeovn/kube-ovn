@@ -381,7 +381,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					}
 					nextHop = externalSubnet.Spec.Gateway
 					if nextHop == "" {
-						err := errors.New("no available gateway address")
+						err := fmt.Errorf("subnet %s has no gateway configuration", externalSubnet.Name)
 						klog.Error(err)
 						return err
 					}
