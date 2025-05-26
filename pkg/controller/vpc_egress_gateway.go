@@ -536,11 +536,13 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	// reconcile OVN port group
 	ports := set.New[string]()
 	for _, selector := range gw.Spec.Selectors {
-		sel, err := metav1.LabelSelectorAsSelector(selector.NamespaceSelector)
-		if err != nil {
-			err = fmt.Errorf("failed to create label selector for namespace selector %#v: %w", selector.NamespaceSelector, err)
-			klog.Error(err)
-			return err
+		sel := labels.Everything()
+		if selector.NamespaceSelector != nil {
+			if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
+				err = fmt.Errorf("failed to create label selector for namespace selector %#v: %w", selector.NamespaceSelector, err)
+				klog.Error(err)
+				return err
+			}
 		}
 		namespaces, err := c.namespacesLister.List(sel)
 		if err != nil {
@@ -548,10 +550,13 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-		if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
-			err = fmt.Errorf("failed to create label selector for pod selector %#v: %w", selector.PodSelector, err)
-			klog.Error(err)
-			return err
+		sel = labels.Everything()
+		if selector.PodSelector != nil {
+			if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
+				err = fmt.Errorf("failed to create label selector for pod selector %#v: %w", selector.PodSelector, err)
+				klog.Error(err)
+				return err
+			}
 		}
 		for _, ns := range namespaces {
 			pods, err := c.podsLister.Pods(ns.Name).List(sel)
