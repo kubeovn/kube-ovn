@@ -397,7 +397,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 				RollingUpdate: &appsv1.RollingUpdateDeployment{
 					MaxUnavailable: ptr.To(intstr.FromInt(1)),
-					MaxSurge:       ptr.To(intstr.FromInt(1)),
+					MaxSurge:       ptr.To(intstr.FromInt(0)),
 				},
 			},
 			Template: corev1.PodTemplateSpec{
