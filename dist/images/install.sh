@@ -1217,7 +1217,6 @@ spec:
               type: object
               required:
                 - externalSubnet
-                - policies
               x-kubernetes-validations:
                 - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
                   message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
@@ -1225,6 +1224,8 @@ spec:
                 - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
                   message: 'Size of External IPs MUST be equal to or greater than Replicas'
                   fieldPath: ".externalIPs"
+                - rule: "size(self.policies) != 0 || size(self.selectors) != 0"
+                  message: 'Each VPC Egress Gateway MUST have at least one policy or selector'
               properties:
                 replicas:
                   type: integer
@@ -1345,7 +1346,6 @@ spec:
                             message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
                 policies:
                   type: array
-                  minItems: 1
                   items:
                     type: object
                     properties:
