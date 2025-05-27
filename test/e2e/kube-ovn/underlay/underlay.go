@@ -11,6 +11,7 @@ import (
 	"time"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,8 +19,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
-
-	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -123,6 +122,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var dockerNetwork *dockernetwork.Inspect
 	var netpolClient *framework.NetworkPolicyClient
 	var containerID string
+	var conflictVlan1Name, conflictVlanSubnet1Name, conflictVlan2Name, conflictVlanSubnet2Name string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -146,6 +146,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcName = "vpc-" + framework.RandomSuffix()
 		netpolName = "netpol-" + framework.RandomSuffix()
 		containerID = ""
+		conflictVlan1Name = "conflict-vlan1-" + framework.RandomSuffix()
+		conflictVlanSubnet1Name = "conflict-vlan-subnet1-" + framework.RandomSuffix()
+		conflictVlan2Name = "conflict-vlan2-" + framework.RandomSuffix()
+		conflictVlanSubnet2Name = "conflict-vlan-subnet2-" + framework.RandomSuffix()
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -1199,6 +1203,53 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("If pod is running, the ping was successful")
 		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning, "Pod should be in Running state, indicating successful ping with 1s timeout")
+	})
+
+	framework.ConformanceIt("should be able to detect conflict vlan subnet", func() {
+		f.SkipVersionPriorTo(1, 14, "Conflict vlan detection was introduced in v1.14")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Creating conflict vlan subnet1 " + conflictVlanSubnet1Name)
+		conflictVlan1 := framework.MakeVlan(conflictVlan1Name, providerNetworkName, 100)
+		_ = vlanClient.Create(conflictVlan1)
+
+		cidr1 := framework.RandomCIDR(f.ClusterIPFamily)
+		conflictVlanSubnet1 := framework.MakeSubnet(conflictVlanSubnet1Name, conflictVlan1Name, cidr1, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(conflictVlanSubnet1)
+
+		// create a second VLAN with the same ID
+		ginkgo.By("Creating conflict vlan subnet2 " + conflictVlanSubnet2Name)
+		time.Sleep(10 * time.Second)
+
+		conflictVlan2 := framework.MakeVlan(conflictVlan2Name, providerNetworkName, 100)
+		_ = vlanClient.Create(conflictVlan2)
+
+		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
+		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, cidr2, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.Create(conflictVlanSubnet2)
+		// wait for conflict vlan subnet to be created
+		time.Sleep(10 * time.Second)
+
+		// check
+		conflictVlan1 = vlanClient.Get(conflictVlan1Name)
+		conflictVlanSubnet1 = subnetClient.Get(conflictVlanSubnet1Name)
+		conflictVlan2 = vlanClient.Get(conflictVlan2Name)
+		conflictVlanSubnet2 = subnetClient.Get(conflictVlanSubnet2Name)
+		framework.ExpectFalse(conflictVlan1.Status.Conflict)
+		// new vlan should be conflict
+		framework.ExpectTrue(conflictVlan2.Status.Conflict)
+		if f.HasIPv4() {
+			framework.ExpectNotEmpty(conflictVlanSubnet1.Status.V4AvailableIPRange)
+			// new conflict vlan subnet should not have available ip
+			framework.ExpectEmpty(conflictVlanSubnet2.Status.V4AvailableIPRange)
+		}
+		if f.HasIPv6() {
+			framework.ExpectNotEmpty(conflictVlanSubnet1.Status.V6AvailableIPRange)
+			framework.ExpectEmpty(conflictVlanSubnet2.Status.V6AvailableIPRange)
+		}
 	})
 })
 
