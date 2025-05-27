@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.13.13 (2025-05-27)
+
+ * [21635236f](https://github.com/kubeovn/kube-ovn/commit/21635236f969b5635149ac03fea8cef293b78a91) release v1.13.13
+ * [df88d972b](https://github.com/kubeovn/kube-ovn/commit/df88d972b04ac07474900a3575ba0c3440b26c97) bump k8s to v1.31.9 (#5265)
+ * [72edcebd3](https://github.com/kubeovn/kube-ovn/commit/72edcebd359652645500a6024692b5e266233bcd) skip cve for no upstream fixes
+ * [edca939ea](https://github.com/kubeovn/kube-ovn/commit/edca939ea9cf67a1146677e1ad66b2f4ac222edf) base: update ovn patches (#5264)
+ * [83825f277](https://github.com/kubeovn/kube-ovn/commit/83825f27734c90ca9bd87eeaa10e09e698c8f2cd) cleanup: delete additional ConfigMaps and RoleBindings in cleanup script (#5255)
+ * [36f1ce3b3](https://github.com/kubeovn/kube-ovn/commit/36f1ce3b3023a19165516ac5ceafc1c377555485) fix: put iptables nat prerouting rule right before kube-proxy inserted one (#5232)
+ * [91f1f5726](https://github.com/kubeovn/kube-ovn/commit/91f1f572659b07e171cad6b62ff79507a712ca98) Update upgrade-ovs.sh to use POD_NAMESPACE variable for fetching update strategy (#5243)
+ * [4d0a0b479](https://github.com/kubeovn/kube-ovn/commit/4d0a0b479d261bf5c806c3759bd55296146038bb) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Zespre Chang
+ * jimyag
+ * 张祖建
+
 ## v1.13.12 (2025-05-14)
 
  * [0796f1955](https://github.com/kubeovn/kube-ovn/commit/0796f19553d6a62c504123ba95673f911e89bbf9) release v1.13.12
