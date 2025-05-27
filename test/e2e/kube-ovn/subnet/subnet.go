@@ -347,7 +347,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sleep", "infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		framework.CheckPodEgressRoutes(namespaceName, podName, f.HasIPv4(), f.HasIPv6(), 2, nodeIPs)
@@ -454,7 +454,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sleep", "infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		framework.CheckPodEgressRoutes(namespaceName, podName, f.HasIPv4(), f.HasIPv6(), 2, nodeIPs)
@@ -492,7 +492,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sleep", "infinity"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		var gwIPv4, gwIPv6 string

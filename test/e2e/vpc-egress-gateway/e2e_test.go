@@ -364,7 +364,7 @@ func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image,
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
 	labels := map[string]string{"snat": strconv.FormatBool(snat)}
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
-	pod := framework.MakePod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
+	pod := framework.MakePrivilegedPod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
 	pod.Spec.NodeName = nodeName
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Deleting pod " + podName)
