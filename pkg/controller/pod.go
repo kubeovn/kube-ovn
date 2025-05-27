@@ -1480,7 +1480,7 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 		ipName := ovs.PodNameToPortName(podName, pod.Namespace, n.ProviderName)
 		if _, err = c.ipsLister.Get(ipName); err != nil {
 			if !k8serrors.IsNotFound(err) {
-				err = fmt.Errorf("failed to get ip %s: %v", ipName, err)
+				err = fmt.Errorf("failed to get ip %s: %w", ipName, err)
 				klog.Error(err)
 				return false, err
 			}
