@@ -182,6 +182,7 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
         setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
         setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
+        setcap CAP_NET_ADMIN+eip $(readlink -f $(which traceroute)) && \
         setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
         setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
         setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
