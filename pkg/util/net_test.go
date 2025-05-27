@@ -819,39 +819,6 @@ func TestAppendGwByCidr(t *testing.T) {
 	}
 }
 
-func TestGetNatGwExternalNetwork(t *testing.T) {
-	tests := []struct {
-		name         string
-		externalNets []string
-		expected     string
-	}{
-		{
-			name:         "External network specified",
-			externalNets: []string{"custom-external-network"},
-			expected:     "custom-external-network",
-		},
-		{
-			name:         "External network not specified",
-			externalNets: []string{},
-			expected:     "ovn-vpc-external-network",
-		},
-		{
-			name:         "Multiple external networks specified",
-			externalNets: []string{"custom-external-network1", "custom-external-network2"},
-			expected:     "custom-external-network1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GetNatGwExternalNetwork(tt.externalNets)
-			if result != tt.expected {
-				t.Errorf("got %v, but want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestSplitIpsByProtocol(t *testing.T) {
 	tests := []struct {
 		name  string

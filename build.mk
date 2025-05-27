@@ -156,7 +156,7 @@ lint:
 
 .PHONY: lint-windows
 lint-windows:
-	@GOOS=windows go vet ./cmd/windows/...
+	@GOOS=windows go vet ./cmd/daemon/...
 	@GOOS=windows gosec ./pkg/util
 	@GOOS=windows gosec ./pkg/request
 	@GOOS=windows gosec ./cmd/cni

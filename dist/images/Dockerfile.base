@@ -29,7 +29,7 @@ ADD patches/786756870f12ac69a5d7bc498693574c6591c5e9.patch $SRC_DIR
 ADD patches/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch $SRC_DIR
 ADD patches/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch $SRC_DIR
 ADD patches/b3af07690e7b2328c02318b1bd812c5665c0632b.patch $SRC_DIR
-ADD patches/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch $SRC_DIR
+ADD patches/4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018.patch $SRC_DIR
 ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
@@ -86,7 +86,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # fix lr-lb dnat with multiple distributed gateway ports
     git apply $SRC_DIR/b3af07690e7b2328c02318b1bd812c5665c0632b.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    git apply $SRC_DIR/49834fdd3fa3b066650bc8b7a8b05a773d217d95.patch && \
+    git apply $SRC_DIR/4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018.patch && \
     # ovn-controller: make activation strategy work for single chassis
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
     # support dedicated BFD LRP
@@ -96,10 +96,10 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # select local backend first
     git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 
-RUN apt install -y build-essential fakeroot \
+RUN apt install -y wget build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
-    openssl pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
+    pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
 
 RUN cd /usr/src/ovs && \
     ./boot.sh && \
@@ -133,6 +133,16 @@ RUN cd /usr/src/openbfdd && \
     ./configure --enable-silent-rules && \
     make
 
+ENV OPENSSL_FIPS_LIBDIR=/usr/local/openssl-fips/lib
+ENV LD_LIBRARY_PATH=$OPENSSL_FIPS_LIBDIR:$LD_LIBRARY_PATH
+RUN wget https://www.openssl.org/source/openssl-3.0.13.tar.gz && \
+    tar -xzf openssl-3.0.13.tar.gz && \
+    cd openssl-3.0.13 && \
+    ./config --prefix=/usr/local/openssl-fips --libdir=lib enable-fips && \
+    make -j8 && \
+    make install && \
+    /usr/local/openssl-fips/bin/openssl fipsinstall -module $OPENSSL_FIPS_LIBDIR/ossl-modules/fips.so -out /usr/local/openssl-fips/ssl/fipsmodule.cnf
+
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
     cp /usr/src/openvswitch-*deb /packages && \
@@ -145,7 +155,7 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
 ARG CNI_PLUGINS_VERSION="v1.7.1"
-ARG KUBECTL_VERSION="v1.32.4"
+ARG KUBECTL_VERSION="v1.32.5"
 ARG GOBGP_VERSION="3.37.0"
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
@@ -219,6 +229,19 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+    fi
+
+RUN if [ "$ARCH" = "amd64" ]; then \
+      # env OPENSSL_CONF is only work when user is root, not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu 
+      cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
+      cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
+      cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
+      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules/; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
+      cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/aarch64-linux-gnu/libssl.so.3 && \
+      cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/aarch64-linux-gnu/libcrypto.so.3 && \
+      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/aarch64-linux-gnu/ossl-modules/; \
     fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

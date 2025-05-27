@@ -1801,21 +1801,22 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
+	if subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection {
+		if err = c.addCustomVPCStaticRouteForSubnet(subnet); err != nil {
+			klog.Errorf("failed to add static route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
+			return err
+		}
+		if err = c.addCustomVPCPolicyRoutesForSubnet(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
 		if err := c.addPolicyRouteForU2OInterconn(subnet); err != nil {
 			klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
 			return err
 		}
-
-		if err := c.addStaticRouteForU2OInterconn(subnet); err != nil {
-			klog.Errorf("failed to add static route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
-			return err
-		}
-	}
-
-	if err := c.addCustomVPCPolicyRoutesForSubnet(subnet); err != nil {
-		klog.Error(err)
-		return err
 	}
 
 	return nil
@@ -2875,7 +2876,7 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	return nil
 }
 
-func (c *Controller) addStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vpc == "" {
 		return nil
 	}

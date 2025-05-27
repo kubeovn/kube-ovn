@@ -1217,7 +1217,6 @@ spec:
               type: object
               required:
                 - externalSubnet
-                - policies
               x-kubernetes-validations:
                 - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
                   message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
@@ -1225,12 +1224,14 @@ spec:
                 - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
                   message: 'Size of External IPs MUST be equal to or greater than Replicas'
                   fieldPath: ".externalIPs"
+                - rule: "size(self.policies) != 0 || size(self.selectors) != 0"
+                  message: 'Each VPC Egress Gateway MUST have at least one policy or selector'
               properties:
                 replicas:
                   type: integer
                   format: int32
                   default: 1
-                  minimum: 1
+                  minimum: 0
                   maximum: 10
                 prefix:
                   type: string
@@ -1286,9 +1287,65 @@ spec:
                       type: integer
                       format: int32
                       default: 3
+                selectors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      namespaceSelector:
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
+                      podSelector:
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
                 policies:
                   type: array
-                  minItems: 1
                   items:
                     type: object
                     properties:
@@ -1313,6 +1370,12 @@ spec:
                     x-kubernetes-validations:
                       - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
                         message: 'Each policy MUST have at least one ipBlock or subnet'
+                trafficPolicy:
+                  type: string
+                  enum:
+                    - Local
+                    - Cluster
+                  default: Cluster
                 nodeSelector:
                   type: array
                   items:
@@ -3482,6 +3545,14 @@ rules:
     verbs:
       - create
       - update
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
       - get
       - list
       - watch

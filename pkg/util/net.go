@@ -577,13 +577,6 @@ func GetExternalNetwork(externalNet string) string {
 	return externalNet
 }
 
-func GetNatGwExternalNetwork(externalNets []string) string {
-	if len(externalNets) == 0 {
-		return vpcExternalNet
-	}
-	return externalNets[0]
-}
-
 func TCPConnectivityCheck(endpoint string) error {
 	conn, err := net.DialTimeout("tcp", endpoint, 3*time.Second)
 	if err != nil {

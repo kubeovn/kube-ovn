@@ -5,6 +5,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	TrafficPolicyLocal   = "Local"
+	TrafficPolicyCluster = "Cluster"
+)
+
 // Phase represents resource phase
 type Phase string
 
@@ -66,6 +71,13 @@ type VpcEgressGatewaySpec struct {
 	// the IPs count must NOT be less than the replicas count
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	ExternalIPs []string `json:"externalIPs,omitempty"`
+	// namespace/pod selectors
+	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
+	// optional traffic policy used to control the traffic routing
+	// if not specified, the default traffic policy "Cluster" will be used
+	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
+	// currently it works only for the default vpc
+	TrafficPolicy string `json:"trafficPolicy,omitempty"`
 
 	// BFD configuration
 	BFD VpcEgressGatewayBFDConfig `json:"bfd"`
@@ -74,6 +86,11 @@ type VpcEgressGatewaySpec struct {
 	Policies []VpcEgressGatewayPolicy `json:"policies,omitempty"`
 	// optional node selector used to select the nodes where the workload will be running
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
+}
+
+type VpcEgressGatewaySelector struct {
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`
 }
 
 type VpcEgressGatewayBFDConfig struct {
@@ -91,7 +108,6 @@ type VpcEgressGatewayPolicy struct {
 	// whether to enable SNAT/MASQUERADE for the egress traffic
 	SNAT bool `json:"snat"`
 	// CIDRs/subnets targeted by the egress traffic policy
-	// packets whose source address is in the CIDRs/subnets will be forwarded to the egress gateway
 	IPBlocks []string `json:"ipBlocks,omitempty"`
 	Subnets  []string `json:"subnets,omitempty"`
 }

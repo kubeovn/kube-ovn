@@ -72,7 +72,7 @@ func (c *VpcEgressGatewayClient) CreateSync(gateway *apiv1.VpcEgressGateway) *ap
 	_ = c.Create(gateway)
 	return c.WaitUntil(gateway.Name, func(g *apiv1.VpcEgressGateway) (bool, error) {
 		return g.Ready(), nil
-	}, "", 2*time.Second, timeout)
+	}, "Ready", 2*time.Second, timeout)
 }
 
 // Patch patches the gateway
@@ -109,7 +109,7 @@ func (c *VpcEgressGatewayClient) PatchSync(original, modified *apiv1.VpcEgressGa
 	_ = c.Patch(original, modified)
 	return c.WaitUntil(original.Name, func(g *apiv1.VpcEgressGateway) (bool, error) {
 		return g.Ready(), nil
-	}, "", 2*time.Second, timeout)
+	}, "Ready", 2*time.Second, timeout)
 }
 
 // Delete deletes a vpc-egress-gateway if the vpc-egress-gateway exists

@@ -1,5 +1,44 @@
 # Changelog
 
+## v1.13.13 (2025-05-27)
+
+ * [21635236f](https://github.com/kubeovn/kube-ovn/commit/21635236f969b5635149ac03fea8cef293b78a91) release v1.13.13
+ * [df88d972b](https://github.com/kubeovn/kube-ovn/commit/df88d972b04ac07474900a3575ba0c3440b26c97) bump k8s to v1.31.9 (#5265)
+ * [72edcebd3](https://github.com/kubeovn/kube-ovn/commit/72edcebd359652645500a6024692b5e266233bcd) skip cve for no upstream fixes
+ * [edca939ea](https://github.com/kubeovn/kube-ovn/commit/edca939ea9cf67a1146677e1ad66b2f4ac222edf) base: update ovn patches (#5264)
+ * [83825f277](https://github.com/kubeovn/kube-ovn/commit/83825f27734c90ca9bd87eeaa10e09e698c8f2cd) cleanup: delete additional ConfigMaps and RoleBindings in cleanup script (#5255)
+ * [36f1ce3b3](https://github.com/kubeovn/kube-ovn/commit/36f1ce3b3023a19165516ac5ceafc1c377555485) fix: put iptables nat prerouting rule right before kube-proxy inserted one (#5232)
+ * [91f1f5726](https://github.com/kubeovn/kube-ovn/commit/91f1f572659b07e171cad6b62ff79507a712ca98) Update upgrade-ovs.sh to use POD_NAMESPACE variable for fetching update strategy (#5243)
+ * [4d0a0b479](https://github.com/kubeovn/kube-ovn/commit/4d0a0b479d261bf5c806c3759bd55296146038bb) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Zespre Chang
+ * jimyag
+ * 张祖建
+
+## v1.13.12 (2025-05-14)
+
+ * [0796f1955](https://github.com/kubeovn/kube-ovn/commit/0796f19553d6a62c504123ba95673f911e89bbf9) release v1.13.12
+ * [009a14b9b](https://github.com/kubeovn/kube-ovn/commit/009a14b9beecf2a3673bd8f56a89d2868796f616) Deleting a FIP sets the referenced EIP to be ready (#5141)
+ * [c6563edf6](https://github.com/kubeovn/kube-ovn/commit/c6563edf65c5909640b41cf7ccd7af05fb99d08b) We've seen instances of a VPC being left with a now-deleted subnet on (#5228)
+ * [783a0c1da](https://github.com/kubeovn/kube-ovn/commit/783a0c1dab99a00f91b1d4c02206c03adbfa0c3f) ci: fix cilium chaining with underlay networking (#5226)
+ * [c697a0ab0](https://github.com/kubeovn/kube-ovn/commit/c697a0ab083be2a73c4bde8bd957c6e5d0ddbaf0) bump go to 1.23.9 (#5215)
+ * [0f7e84a0c](https://github.com/kubeovn/kube-ovn/commit/0f7e84a0c43dcdb127304d71054a39329c6733ca) build(deps): bump golang.org/x/sys from 0.32.0 to 0.33.0 (#5204)
+ * [4300f7726](https://github.com/kubeovn/kube-ovn/commit/4300f7726bbc9a85b4aa2adff589ec91bead0130) build(deps): bump go.uber.org/mock from 0.5.1 to 0.5.2 (#5198)
+ * [36b84b58c](https://github.com/kubeovn/kube-ovn/commit/36b84b58c256755bd5c6762f6c57baa64cc36983) base: use local patch files (#5206)
+ * [26ed8a131](https://github.com/kubeovn/kube-ovn/commit/26ed8a13110c5141797992ac785931c833a7eb1a) fix ip clean (#5193)
+ * [6d149712e](https://github.com/kubeovn/kube-ovn/commit/6d149712e34cf92ab1bf95da0cfa8ebd9f0afe6c) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * andrewlee1089
+ * dependabot[bot]
+ * zbb88888
+ * 张祖建
+
 ## v1.13.11 (2025-04-24)
 
  * [147139f54](https://github.com/kubeovn/kube-ovn/commit/147139f54ef9bf739b834037e692223babe75a96) release v1.13.11
@@ -4262,6 +4301,25 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.40 (2025-05-09)
+
+ * [02d8ebe3f](https://github.com/kubeovn/kube-ovn/commit/02d8ebe3f8786231449f78c825b44ad96bac39b9) release v1.9.40
+ * [b5cefcec7](https://github.com/kubeovn/kube-ovn/commit/b5cefcec7db3c115bf2162fb94e0a34e20764b64) fix missing patch files
+ * [e119c3073](https://github.com/kubeovn/kube-ovn/commit/e119c30732205c958940f18f0a0978152170fd0d) base: use local patch files (#5210)
+ * [420707540](https://github.com/kubeovn/kube-ovn/commit/420707540cc43f31dbb7febf0d9f1ed5cc699fcc) bump go to 1.23.8 (#5209)
+ * [2ffe461c3](https://github.com/kubeovn/kube-ovn/commit/2ffe461c39e98dbd2fc4c397c54d71f1fb1d6916) fix content of kubectl-ko (#5107)
+ * [e9c0894f2](https://github.com/kubeovn/kube-ovn/commit/e9c0894f2d273f20b352147b4969c47dbf1ecfbd) kubectl-ko: fix conntrack state (#5038)
+ * [df7811891](https://github.com/kubeovn/kube-ovn/commit/df78118916dde14afacf2e1b1cc4f70d6b2a400e) add gc interval (#5025)
+ * [8b2598876](https://github.com/kubeovn/kube-ovn/commit/8b25988766b1a82bf252c940435052835e53e52f) bump base image
+ * [eeed905f6](https://github.com/kubeovn/kube-ovn/commit/eeed905f6020037a4e95c451e0b26891bc96509c) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.39 (2025-02-19)
 

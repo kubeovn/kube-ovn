@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"net"
 	"reflect"
@@ -216,7 +217,7 @@ var _ = framework.Describe("[group:veg]", func() {
 		})
 		_ = subnetClient.CreateSync(externalSubnet)
 
-		vpcName := "ovn-cluster"
+		vpcName := util.DefaultVpc
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		bfdIP := framework.RandomIPs(cidr, ";", 1)
 		ginkgo.By("Enabling BFD Port with IP " + bfdIP + " for VPC " + vpcName)
@@ -356,20 +357,34 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 	return framework.MakeSubnet(subnetName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, nil)
 }
 
-func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, intIPs, extIPs []string, subnetName string, snat bool) {
+func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, extIPs []string, intIPs map[string][]string, subnetName, nodeName string, snat bool) {
 	ginkgo.GinkgoHelper()
 
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
+	labels := map[string]string{"snat": strconv.FormatBool(snat)}
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
-	pod := framework.MakePod(namespaceName, podName, nil, annotations, image, []string{"sleep", "infinity"}, nil)
+	pod := framework.MakePod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
+	pod.Spec.NodeName = nodeName
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Deleting pod " + podName)
 		f.PodClient().DeleteSync(podName)
 	})
 	pod = f.PodClient().CreateSync(pod)
 
-	framework.CheckPodEgressRoutes(pod.Namespace, pod.Name, f.HasIPv4(), f.HasIPv6(), 2, intIPs)
+	if !snat {
+		// skip egress route check if SNAT is enabled
+		// traceroute does not work for pods selected by the selectors
+		var hops []string
+		if nodeName == "" {
+			for ips := range maps.Values(intIPs) {
+				hops = append(hops, ips...)
+			}
+		} else {
+			hops = intIPs[nodeName]
+		}
+		framework.CheckPodEgressRoutes(pod.Namespace, pod.Name, f.HasIPv4(), f.HasIPv6(), 2, hops)
+	}
 
 	if !snat {
 		podIPv4, podIPv6 := util.SplitIpsByProtocol(util.PodIPs(*pod))
@@ -386,7 +401,7 @@ func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image,
 		protocol := strings.ToLower(util.CheckProtocol(svrIP))
 		ginkgo.By("Checking connection from " + pod.Name + " to " + svrIP + " via " + protocol)
 		cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(svrIP, svrPort))
-		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s`, cmd, pod.Name))
+		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 		output := e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, cmd)
 		clientIP, _, err := net.SplitHostPort(strings.TrimSpace(output))
 		framework.ExpectNoError(err)
@@ -450,12 +465,32 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 	veg.Spec.BFD.Enabled = bfd
 	veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
-		SNAT:    true,
-		Subnets: []string{snatSubnetName},
-	}, {
 		SNAT:     false,
 		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
 	}}
+	if vpcName == util.DefaultVpc {
+		veg.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
+	}
+	if util.IsOvnProvider(provider) {
+		veg.Spec.Selectors = []apiv1.VpcEgressGatewaySelector{{
+			NamespaceSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					corev1.LabelMetadataName: namespaceName,
+				},
+			},
+			PodSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"snat": strconv.FormatBool(true),
+				},
+			},
+		}}
+	} else {
+		veg.Spec.Policies = append(veg.Spec.Policies, apiv1.VpcEgressGatewayPolicy{
+			SNAT:    true,
+			Subnets: []string{snatSubnetName},
+		})
+	}
+
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Deleting vpc egress gateway " + vegName)
 		vegClient.DeleteSync(vegName)
@@ -481,9 +516,11 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(workloadPods.Items, int(replicas))
 	podNodes := make([]string, 0, len(workloadPods.Items))
+	intIPs := make(map[string][]string, len(workloadPods.Items))
 	for _, pod := range workloadPods.Items {
 		framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		podNodes = append(podNodes, pod.Spec.NodeName)
+		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
 	}
 	framework.ExpectConsistOf(veg.Status.Workload.Nodes, podNodes)
 
@@ -510,14 +547,15 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectNoError(err)
 
 	image := workloadPods.Items[0].Spec.Containers[0].Image
-	intIPs := make([]string, 0, len(veg.Status.InternalIPs)*2)
 	extIPs := make([]string, 0, len(veg.Status.ExternalIPs)*2)
-	for _, ip := range veg.Status.InternalIPs {
-		intIPs = append(intIPs, strings.Split(ip, ",")...)
-	}
 	for _, ips := range veg.Status.ExternalIPs {
 		extIPs = append(extIPs, strings.Split(ips, ",")...)
 	}
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, intIPs, extIPs, snatSubnetName, true)
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, intIPs, extIPs, forwardSubnetName, false)
+
+	var nodeName string
+	if veg.Spec.TrafficPolicy == apiv1.TrafficPolicyLocal {
+		nodeName = veg.Status.Workload.Nodes[0]
+	}
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, true)
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, false)
 }

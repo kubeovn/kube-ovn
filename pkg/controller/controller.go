@@ -20,6 +20,7 @@ import (
 	appsv1 "k8s.io/client-go/listers/apps/v1"
 	certListerv1 "k8s.io/client-go/listers/certificates/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
+	discoveryv1 "k8s.io/client-go/listers/discovery/v1"
 	netv1 "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -222,10 +223,10 @@ type Controller struct {
 	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
 	svcKeyMutex        keymutex.KeyMutex
 
-	endpointsLister          v1.EndpointsLister
-	endpointsSynced          cache.InformerSynced
-	addOrUpdateEndpointQueue workqueue.TypedRateLimitingInterface[string]
-	epKeyMutex               keymutex.KeyMutex
+	endpointSlicesLister          discoveryv1.EndpointSliceLister
+	endpointSlicesSynced          cache.InformerSynced
+	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
+	epKeyMutex                    keymutex.KeyMutex
 
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
@@ -349,7 +350,7 @@ func Run(ctx context.Context, config *Configuration) {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
-	endpointInformer := informerFactory.Core().V1().Endpoints()
+	endpointSliceInformer := informerFactory.Discovery().V1().EndpointSlices()
 	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
@@ -493,10 +494,10 @@ func Run(ctx context.Context, config *Configuration) {
 		updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
-		endpointsLister:          endpointInformer.Lister(),
-		endpointsSynced:          endpointInformer.Informer().HasSynced,
-		addOrUpdateEndpointQueue: newTypedRateLimitingQueue[string]("UpdateEndpoint", nil),
-		epKeyMutex:               keymutex.NewHashed(numKeyLocks),
+		endpointSlicesLister:          endpointSliceInformer.Lister(),
+		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
+		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
 		deploymentsLister: deploymentInformer.Lister(),
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
@@ -642,7 +643,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointsSynced, controller.deploymentsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
@@ -692,11 +693,11 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add service event handler")
 	}
 
-	if _, err = endpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddEndpoint,
-		UpdateFunc: controller.enqueueUpdateEndpoint,
+	if _, err = endpointSliceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddEndpointSlice,
+		UpdateFunc: controller.enqueueUpdateEndpointSlice,
 	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add endpoint event handler")
+		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}
 
 	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1017,7 +1018,7 @@ func (c *Controller) shutdown() {
 	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
-	c.addOrUpdateEndpointQueue.ShutDown()
+	c.addOrUpdateEndpointSliceQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
@@ -1211,7 +1212,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 		if c.config.EnableLb {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
-			go wait.Until(runWorker("add/update endpoint", c.addOrUpdateEndpointQueue, c.handleUpdateEndpoint), time.Second, ctx.Done())
+			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
 
 		if c.config.EnableNP {
@@ -1282,9 +1283,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update ovn dnat", c.updateOvnDnatRuleQueue, c.handleUpdateOvnDnatRule), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete ovn dnat", c.delOvnDnatRuleQueue, c.handleDelOvnDnatRule), time.Second, ctx.Done())
 
-	if c.config.EnableNP {
-		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
-	}
+	go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 
 	go wait.Until(runWorker("add ip", c.addIPQueue, c.handleAddReservedIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ip", c.updateIPQueue, c.handleUpdateIP), time.Second, ctx.Done())

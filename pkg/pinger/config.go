@@ -54,6 +54,7 @@ type Configuration struct {
 	TCPConnCheckPort                int32
 	UDPConnCheckPort                int32
 	TargetIPPorts                   string
+	LogPerm                         string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -91,6 +92,7 @@ func ParseFlags() (*Configuration, error) {
 		argServiceVswitchdFilePidPath      = pflag.String("service.vswitchd.file.pid.path", "/var/run/openvswitch/ovs-vswitchd.pid", "OVS vswitchd daemon process id file.")
 		argServiceOvnControllerFileLogPath = pflag.String("service.ovncontroller.file.log.path", "/var/log/ovn/ovn-controller.log", "OVN controller daemon log file.")
 		argServiceOvnControllerFilePidPath = pflag.String("service.ovncontroller.file.pid.path", "/var/run/ovn/ovn-controller.pid", "OVN controller daemon process id file.")
+		argLogPerm                         = pflag.String("log-perm", "640", "The permission for the log file")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -148,6 +150,7 @@ func ParseFlags() (*Configuration, error) {
 		ServiceVswitchdFilePidPath:      *argServiceVswitchdFilePidPath,
 		ServiceOvnControllerFileLogPath: *argServiceOvnControllerFileLogPath,
 		ServiceOvnControllerFilePidPath: *argServiceOvnControllerFilePidPath,
+		LogPerm:                         *argLogPerm,
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err

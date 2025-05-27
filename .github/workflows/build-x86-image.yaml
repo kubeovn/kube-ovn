@@ -21,10 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  KIND_VERSION: v0.27.0
+  KIND_VERSION: v0.28.0
   GOLANGCI_LINT_VERSION: 'v2.1.6'
   HELM_VERSION: v3.17.3
-  SUBMARINER_VERSION: '0.19.4'
+  SUBMARINER_VERSION: '0.20.1'
 
 jobs:
   build-kube-ovn-base:

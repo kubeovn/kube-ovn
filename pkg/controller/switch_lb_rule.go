@@ -195,11 +195,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 	name = generateSvcName(info.Name)
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete service %s, err: %v", name, err)
+			return err
 		}
-		klog.Errorf("failed to delete service %s, err: %v", name, err)
-		return err
 	}
 
 	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
