@@ -24,6 +24,19 @@ var (
 )
 
 func (c *Controller) resyncExternalGateway() {
+	// check if default vpc only use extra external subnet
+	defaultVPC, err := c.vpcsLister.Get(c.config.ClusterRouter)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
+		return
+	}
+
+	if defaultVPC.Spec.ExtraExternalSubnets != nil || defaultVPC.Status.ExtraExternalSubnets != nil {
+		// vpc controller will handle
+		klog.Infof("default vpc only use extra external subnets: %v", defaultVPC.Spec.ExtraExternalSubnets)
+		return
+	}
+
 	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get ovn-external-gw-config, %v", err)
