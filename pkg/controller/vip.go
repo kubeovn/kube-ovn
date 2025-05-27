@@ -448,13 +448,14 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod nets %v", err)
 		}
 		for _, podNet := range podNets {
 			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
-				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
 				key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 				klog.Infof("enqueue update pod security for %s", key)
