@@ -1462,15 +1462,20 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 		klog.Error(err)
 		return false, err
 	}
+	podName := c.getNameByPod(pod)
 	for _, n := range attachmentNets {
 		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
 			return true, nil
 		}
-		ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, n.ProviderName)
+		ipName := ovs.PodNameToPortName(podName, pod.Namespace, n.ProviderName)
 		if _, err = c.ipsLister.Get(ipName); err != nil {
-			err = fmt.Errorf("pod has no ip %s: %w", ipName, err)
+			if !k8serrors.IsNotFound(err) {
+				err = fmt.Errorf("failed to get ip %s: %w", ipName, err)
+				klog.Error(err)
+				return false, err
+			}
+			klog.Infof("ip %s not found", ipName)
 			// need to sync to create ip
-			klog.Error(err)
 			return true, nil
 		}
 	}

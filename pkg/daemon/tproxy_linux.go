@@ -65,7 +65,11 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 	}
 
 	for _, pod := range pods {
-		iface := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+		podName := pod.Name
+		if vmName := pod.Annotations[util.VMAnnotation]; vmName != "" {
+			podName = vmName
+		}
+		iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
 		if err != nil || nsName == "" {
 			klog.Infof("iface %s's namespace not found", iface)
