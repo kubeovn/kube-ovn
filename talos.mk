@@ -24,7 +24,7 @@ TALOS_LIBVIRT_DOMAIN_XML ?= talos/libvirt-domain.xml
 TALOS_CLUSTER_NAME ?= talos
 TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
-TALOS_K8S_VERSION ?= 1.32.4
+TALOS_K8S_VERSION ?= 1.31.9
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT ?= 1
@@ -63,7 +63,7 @@ talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in $$(talosctl image default | grep -v flannel); do \
 		if echo "$$image" | grep -q kube; then \
-			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
+			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/v$(TALOS_K8S_VERSION)/'); \
 		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \
 			echo ">>> Pulling $$image..."; \
