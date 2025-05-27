@@ -177,7 +177,14 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// ovn add fip
-	options := map[string]string{"staleless": strconv.FormatBool(c.ExternalGatewayType == kubeovnv1.GWDistributedType)}
+	var staleless bool
+	if cachedFip.Spec.Type != "" {
+		staleless = (cachedFip.Spec.Type == kubeovnv1.GWDistributedType)
+	} else {
+		staleless = (c.ExternalGatewayType == kubeovnv1.GWDistributedType)
+	}
+	options := map[string]string{"staleless": strconv.FormatBool(staleless)}
+
 	if v4IP != "" && v4Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v4 fip, %v", err)
