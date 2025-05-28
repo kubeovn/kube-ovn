@@ -16,7 +16,7 @@ require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.12.2
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/uuid v1.6.0
 	github.com/httprunner/httprunner/v4 v4.3.7-0.20240124083022-402b74876a59
