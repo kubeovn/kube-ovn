@@ -115,21 +115,24 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 		return err
 	}
 	// check if new vlan conflict with old vlan
+	var conflict bool
+	var conflictErr error
 	for _, v := range vlans {
 		if vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
-			conflictErr := fmt.Errorf("new vlan %s conflict with old vlan %s", vlan.Name, v.Name)
+			conflictErr = fmt.Errorf("new vlan %s conflict with old vlan %s", vlan.Name, v.Name)
 			klog.Error(conflictErr)
-
-			vlan.Status.Conflict = true
-			vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
-			if err != nil {
-				klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
-				return err
-			}
-			return conflictErr
+			conflict = true
 		}
 	}
-	return nil
+	if vlan.Status.Conflict != conflict {
+		vlan.Status.Conflict = conflict
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
+			return err
+		}
+	}
+	return conflictErr
 }
 
 func (c *Controller) handleUpdateVlan(key string) error {
@@ -149,14 +152,14 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	if vlan.Spec.Provider == "" {
 		newVlan := vlan.DeepCopy()
 		newVlan.Spec.Provider = c.config.DefaultProviderName
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
+		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
-	if vlan.Status.Conflict {
-		err := fmt.Errorf("vlan %s conflict with other vlans", vlan.Name)
-		klog.Error(err)
+	newVlan := vlan.DeepCopy()
+	if err = c.checkVlanConflict(newVlan); err != nil {
+		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 		return err
 	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
