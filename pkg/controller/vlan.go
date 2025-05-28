@@ -157,11 +157,9 @@ func (c *Controller) handleUpdateVlan(key string) error {
 			return err
 		}
 	}
-	if vlan.Status.Conflict {
-		if err = c.checkVlanConflict(vlan); err != nil {
-			klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
-			return err
-		}
+	if err = c.checkVlanConflict(vlan); err != nil {
+		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+		return err
 	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
