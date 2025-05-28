@@ -152,12 +152,13 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	if vlan.Spec.Provider == "" {
 		newVlan := vlan.DeepCopy()
 		newVlan.Spec.Provider = c.config.DefaultProviderName
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
+		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
-	if err = c.checkVlanConflict(vlan); err != nil {
+	newVlan := vlan.DeepCopy()
+	if err = c.checkVlanConflict(newVlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 		return err
 	}
