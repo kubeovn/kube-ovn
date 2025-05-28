@@ -194,7 +194,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 
 	// support v6:v6
-	if v6IP == "" && v6Eip != "" {
+	if v6IP != "" && v6Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v6:v6 fip, %v", err)
 			return err
