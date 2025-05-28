@@ -400,7 +400,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	// do not perform ipv4/ipv6 duplicate address detection during VM live migration
 	checkIPv6DAD := !vmMigration
 	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
-	IPv6DAD := !vmMigration && csh.Config.EnableIPv6DAD
+	ipv6DAD := !vmMigration && csh.Config.EnableIPv6DAD
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		interfaceName := nicName
@@ -421,12 +421,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, IPv6DAD, false, false); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, false, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, IPv6DAD, true, false); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -1131,7 +1131,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, IPv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1235,8 +1235,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 				}
 			}
 		} else {
-			if IPv6DAD {
-				// when IPv6DAD is true, free na is already broadcast in the step of announcement
+			if ipv6DAD {
 				available, mac, err := util.DuplicateAddressDetection(link, addr.IP.String())
 				if err != nil {
 					err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", addr.IP.String(), link, err)
