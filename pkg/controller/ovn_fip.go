@@ -185,15 +185,34 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 	options := map[string]string{"staleless": strconv.FormatBool(staleless)}
 
+	// support v4:v4
 	if v4IP != "" && v4Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v4 fip, %v", err)
+			klog.Errorf("failed to create v4:v4 fip, %v", err)
 			return err
 		}
 	}
-	if v6Eip == "" && v6IP != "" {
+
+	// support v6:v6
+	if v6IP == "" && v6Eip != "" {
 		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v6 fip, %v", err)
+			klog.Errorf("failed to create v6:v6 fip, %v", err)
+			return err
+		}
+	}
+
+	// support v4:v6
+	if v4IP != "" && v6IP == "" && v4Eip == "" && v6Eip != "" {
+		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
+			klog.Errorf("failed to create v4:v6 fip, %v", err)
+			return err
+		}
+	}
+
+	// support v6:v4
+	if v6IP != "" && v4IP == "" && v6Eip == "" && v4Eip != "" {
+		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
+			klog.Errorf("failed to create v6:v4 fip, %v", err)
 			return err
 		}
 	}
