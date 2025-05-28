@@ -400,6 +400,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	// do not perform ipv4/ipv6 duplicate address detection during VM live migration
 	checkIPv6DAD := !vmMigration
 	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
+	IPv6DAD := !vmMigration && csh.Config.EnableIPv6DAD
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		interfaceName := nicName
@@ -420,12 +421,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, false, false); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, IPv6DAD, false, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, true, false); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, IPv6DAD, true, false); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -612,7 +613,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		return errors.New(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false, true); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false, false, true); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -857,7 +858,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, false, false); err != nil {
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
@@ -1130,7 +1131,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, setUfoOff, ipv6LinkLocalOn bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, IPv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1232,6 +1233,24 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 				if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
 					klog.Warningf("failed to broadcast free arp with err %v", err)
 				}
+			}
+		} else {
+			if IPv6DAD {
+				// when IPv6DAD is true, free na is already broadcast in the step of announcement
+				available, mac, err := util.DuplicateAddressDetection(link, addr.IP.String())
+				if err != nil {
+					err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", addr.IP.String(), link, err)
+					klog.Error(err)
+					return err
+				}
+				if !available {
+					if mac != nil {
+						return fmt.Errorf("IP address %s has already been used by host with MAC %s", addr.IP.String(), mac)
+					}
+					return fmt.Errorf("IP address %s has already been used by unknown host", addr.IP.String())
+				}
+			} else {
+				addr.Flags |= unix.IFA_F_NODAD
 			}
 		}
 
