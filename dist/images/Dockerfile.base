@@ -171,7 +171,7 @@ RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
     bash -x /rebuild-go-deps.sh
 
 FROM ubuntu:24.04
-
+ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
@@ -231,17 +231,24 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
 
+COPY --from=ovs-builder /usr/local/openssl-fips/bin/openssl /usr/local/openssl-fips/bin/openssl
+COPY --from=ovs-builder /usr/local/openssl-fips/lib/libssl.so.3 /usr/local/openssl-fips/lib/libssl.so.3
+COPY --from=ovs-builder /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/local/openssl-fips/lib/libcrypto.so.3
+COPY --from=ovs-builder /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/local/openssl-fips/lib/ossl-modules/fips.so
+COPY --from=ovs-builder /usr/local/openssl-fips/ssl/fipsmodule.cnf /usr/local/openssl-fips/ssl/fipsmodule.cnf
+COPY openssl/openssl.cnf /usr/local/openssl-fips/ssl/openssl.cnf
+
 RUN if [ "$ARCH" = "amd64" ]; then \
       # env OPENSSL_CONF is only work when user is root, not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu 
       cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
       cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
       cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
-      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules/; \
+      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules; \
     elif [ "$ARCH" = "arm64" ]; then \
       cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
       cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/aarch64-linux-gnu/libssl.so.3 && \
       cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/aarch64-linux-gnu/libcrypto.so.3 && \
-      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/aarch64-linux-gnu/ossl-modules/; \
+      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/aarch64-linux-gnu/ossl-modules; \
     fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
