@@ -27,11 +27,14 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
-	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to parse log-perm")
+	// Do not try to redirect the logs on the node if we're running in a NAT gateway
+	if !config.NatGwMode {
+		perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+		if err != nil {
+			util.LogFatalAndExit(err, "failed to parse log-perm")
+		}
+		util.InitLogFilePerm("kube-ovn-speaker", os.FileMode(perm))
 	}
-	util.InitLogFilePerm("kube-ovn-speaker", os.FileMode(perm))
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
