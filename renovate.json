@@ -1,41 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Update _VERSION variables in Dockerfiles",
-      "managerFilePatterns": [
-        "/(^|/|\\.)Dockerfile$/",
-        "/(^|/)Dockerfile\\.[^/]*$/"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s(?:ENV|ARG) .+?_VERSION=(?<currentValue>.+?)\\s"
-      ]
-    },
-    {
-      "customType": "regex",
-      "description": "Update _VERSION variables in github actions",
-      "managerFilePatterns": [
-        ".github/workflows/*"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s.+?_VERSION: (?<currentValue>.+?)\\s"
-      ]
-    },
-    {
-      "customType": "regex",
-      "description": "Update _VERSION variables in Makefiles",
-      "managerFilePatterns": [
-        "Makefile",
-        "kind.mk"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s.+?_VERSION = (?<currentValue>.+?)\\s"
-      ]
-    }
+    "config:recommended",
+    "customManagers:dockerfileVersions",
+    "customManagers:githubActionsVersions",
+    "customManagers:makefileVersions"
   ],
   "packageRules": [
     {
