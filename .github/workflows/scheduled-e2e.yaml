@@ -12,7 +12,7 @@ concurrency:
 env:
   GO_VERSION: ''
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
-  KIND_VERSION: v0.28.0
+  KIND_VERSION: v0.29.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v3.18.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
