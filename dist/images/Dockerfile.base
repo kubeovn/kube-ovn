@@ -101,8 +101,10 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt install -y wget build-essential fakeroot \
-    autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
+    sleep 15 && \
+    apt install -y wget build-essential fakeroot && \
+    sleep 15 && \
+    apt install -y autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
     pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
 
