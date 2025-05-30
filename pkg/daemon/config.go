@@ -76,6 +76,11 @@ type Configuration struct {
 	OVSVsctlConcurrency       int32
 	SetVxlanTxOff             bool
 	LogPerm                   string
+
+	// TLS configuration for secure serving
+	TLSMinVersion   string
+	TLSMaxVersion   string
+	TLSCipherSuites []string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -122,6 +127,10 @@ func ParseFlags() *Configuration {
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                   = pflag.String("log-perm", "640", "The permission for the log file")
+
+		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "The list of TLS cipher suites to use for secure serving. If not set, the default cipher suites are used based on the Go version.")
 	)
 
 	// mute info log for ipset lib
@@ -184,6 +193,9 @@ func ParseFlags() *Configuration {
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
+		TLSMinVersion:             *argTLSMinVersion,
+		TLSMaxVersion:             *argTLSMaxVersion,
+		TLSCipherSuites:           *argTLSCipherSuites,
 	}
 	return config
 }

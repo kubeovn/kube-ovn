@@ -41,7 +41,7 @@ func CmdMain() {
 	go func() {
 		if config.EnableMetrics {
 			metrics.InitKlogMetrics()
-			if err = metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.PprofPort), false, false); err != nil {
+			if err = metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.PprofPort), false, false, "", "", nil); err != nil {
 				util.LogFatalAndExit(err, "failed to run metrics server")
 			}
 		}

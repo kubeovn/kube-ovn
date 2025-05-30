@@ -39,10 +39,70 @@ func filterProvider(c *rest.Config, httpClient *http.Client) (server.Filter, err
 	}, nil
 }
 
-func Run(ctx context.Context, config *rest.Config, addr string, secureServing, withPprof bool) error {
+func TLSVersionFromString(version string) (uint16, error) {
+	switch strings.ToLower(version) {
+	case "1.0", "TLS 1.0", "TLS10":
+		return tls.VersionTLS10, nil
+	case "1.1", "TLS 1.1", "TLS11":
+		return tls.VersionTLS11, nil
+	case "1.2", "TLS 1.2", "TLS12":
+		return tls.VersionTLS12, nil
+	case "1.3", "TLS 1.3", "TLS13":
+		return tls.VersionTLS13, nil
+	case "", "auto", "default":
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("unsupported TLS version: %s", version)
+	}
+}
+
+func CipherSuiteFromName(name string) (uint16, error) {
+	for _, c := range tls.CipherSuites() {
+		if c.Name == name {
+			return c.ID, nil
+		}
+	}
+	for _, c := range tls.InsecureCipherSuites() {
+		if c.Name == name {
+			return c.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("unsupported TLS cipher suite: %s", name)
+}
+
+func CipherSuitesFromNames(suites []string) ([]uint16, error) {
+	cipherSuites := make([]uint16, 0, len(suites))
+	for _, suite := range suites {
+		cipherSuite, err := CipherSuiteFromName(suite)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse cipher suite %s: %w", suite, err)
+		}
+		cipherSuites = append(cipherSuites, cipherSuite)
+	}
+	return cipherSuites, nil
+}
+
+func Run(ctx context.Context, config *rest.Config, addr string, secureServing, withPprof bool, tlsMinVersion, tlsMaxVersion string, tlsCipherSuites []string) error {
 	if config == nil {
 		config = ctrl.GetConfigOrDie()
 	}
+
+	minVersion, err := TLSVersionFromString(tlsMinVersion)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to parse TLS minimum version: %w", err)
+	}
+	maxVersion, err := TLSVersionFromString(tlsMaxVersion)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to parse TLS maximum version: %w", err)
+	}
+	cipherSuites, err := CipherSuitesFromNames(tlsCipherSuites)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to parse TLS cipher suites: %w", err)
+	}
+
 	client, err := rest.HTTPClientFor(config)
 	if err != nil {
 		klog.Error(err)
@@ -57,19 +117,8 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing, w
 		options.FilterProvider = filterProvider
 		options.TLSOpts = []func(*tls.Config){
 			func(c *tls.Config) {
-				c.CipherSuites = []uint16{
-					tls.TLS_AES_256_GCM_SHA384,
-					tls.TLS_CHACHA20_POLY1305_SHA256,
-					// ECDHE-RSA-AES256-GCM-SHA384
-					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-					// ECDHE-RSA-CHACHA20-POLY1305/ECDHE-RSA-CHACHA20-POLY1305-SHA256
-					tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-				}
-				suites := make([]string, 0, len(c.CipherSuites))
-				for _, suite := range c.CipherSuites {
-					suites = append(suites, tls.CipherSuiteName(suite))
-				}
-				klog.Infof("Using TLS cipher suites: %v", strings.Join(suites, ", "))
+				c.MinVersion, c.MaxVersion = minVersion, maxVersion
+				c.CipherSuites = cipherSuites
 			},
 		}
 	}

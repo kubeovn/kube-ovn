@@ -46,6 +46,11 @@ type Configuration struct {
 	SecureServing                   bool
 	MetricsPort                     int32
 	LogPerm                         string
+
+	// TLS configuration for secure serving
+	TLSMinVersion   string
+	TLSMaxVersion   string
+	TLSCipherSuites []string
 }
 
 // ParseFlags get parameters information.
@@ -91,6 +96,10 @@ func ParseFlags() (*Configuration, error) {
 		argServiceNorthdFilePidPath   = pflag.String("service.ovn.northd.file.pid.path", "/var/run/ovn/ovn-northd.pid", "OVN northd daemon process id file.")
 
 		argLogPerm = pflag.String("log-perm", "640", "The permission for the log file")
+
+		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "The list of TLS cipher suites to use for secure serving. If not set, the default cipher suites are used based on the Go version.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -148,6 +157,9 @@ func ParseFlags() (*Configuration, error) {
 		SecureServing:                   *argSecureServing,
 		MetricsPort:                     *argMetricsPort,
 		LogPerm:                         *argLogPerm,
+		TLSMinVersion:                   *argTLSMinVersion,
+		TLSMaxVersion:                   *argTLSMaxVersion,
+		TLSCipherSuites:                 *argTLSCipherSuites,
 	}
 
 	klog.Infof("ovn monitor config is %+v", config)

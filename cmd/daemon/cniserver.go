@@ -157,7 +157,7 @@ func main() {
 		for _, addr := range addrs {
 			listenAddr := util.JoinHostPort(addr, config.PprofPort)
 			go func() {
-				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer); err != nil {
+				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
 					util.LogFatalAndExit(err, "failed to run metrics server")
 				}
 			}()

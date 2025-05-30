@@ -51,7 +51,7 @@ func CmdMain() {
 		for _, metricsAddr := range metricsAddrs {
 			addr := util.JoinHostPort(metricsAddr, config.MetricsPort)
 			go func() {
-				if err := metrics.Run(ctx, nil, addr, config.SecureServing, false); err != nil {
+				if err := metrics.Run(ctx, nil, addr, config.SecureServing, false, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
 					util.LogFatalAndExit(err, "failed to run metrics server")
 				}
 			}()
