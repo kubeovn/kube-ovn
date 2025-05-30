@@ -467,7 +467,7 @@ kind-install-metallb:
 	helm repo add metallb $(METALLB_CHART_REPO)
 	helm repo update metallb
 	helm install metallb metallb/metallb --wait \
-		--version $(METALLB_VERSION) \
+		--version $(METALLB_VERSION:v%=%) \
 		--namespace metallb-system \
 		--create-namespace \
 		--set speaker.frr.image.tag=$(FRR_VERSION)
@@ -537,13 +537,13 @@ kind-install-cilium-chaining: kind-install-cilium-chaining-ipv4
 .PHONY: kind-install-cilium-chaining-%
 kind-install-cilium-chaining-%:
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:v$(CILIUM_VERSION),1)
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:v$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm repo update cilium
 	helm install cilium cilium/cilium --wait \
-		--version $(CILIUM_VERSION) \
+		--version $(CILIUM_VERSION:v%=%) \
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \

@@ -1,4 +1,5 @@
 # syntax = docker/dockerfile:experimental
+# renovate: datasource=golang-version depName=go
 ARG GO_VERSION=1.24.3
 
 FROM ubuntu:24.04 AS ovs-builder
@@ -35,7 +36,9 @@ ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
 
-RUN apt update && apt install -y git curl
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt update && apt install -y git curl
 
 RUN cd /usr/src/ && \
     git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
@@ -96,8 +99,12 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # select local backend first
     git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 
-RUN apt install -y wget build-essential fakeroot \
-    autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sleep 15 && \
+    apt install -y wget build-essential fakeroot && \
+    sleep 15 && \
+    apt install -y autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
     pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
 
@@ -154,9 +161,12 @@ RUN mkdir /packages/ && \
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
-ARG CNI_PLUGINS_VERSION="v1.7.1"
-ARG KUBECTL_VERSION="v1.32.5"
-ARG GOBGP_VERSION="3.37.0"
+# renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
+ARG CNI_PLUGINS_VERSION=v1.7.1
+# renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
+ARG KUBECTL_VERSION=v1.32.5
+# renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
+ARG GOBGP_VERSION=3.37.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
@@ -173,7 +183,9 @@ RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
 FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
