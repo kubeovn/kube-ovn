@@ -10,6 +10,7 @@
 package ovs
 
 import (
+	context "context"
 	reflect "reflect"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -3786,6 +3787,20 @@ func (mr *MockNbClientMockRecorder) DeleteSecurityGroup(sgName any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSecurityGroup", reflect.TypeOf((*MockNbClient)(nil).DeleteSecurityGroup), sgName)
 }
 
+// Echo mocks base method.
+func (m *MockNbClient) Echo(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Echo", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Echo indicates an expected call of Echo.
+func (mr *MockNbClientMockRecorder) Echo(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Echo", reflect.TypeOf((*MockNbClient)(nil).Echo), arg0)
+}
+
 // EnablePortLayer2forward mocks base method.
 func (m *MockNbClient) EnablePortLayer2forward(lspName string) error {
 	m.ctrl.T.Helper()
@@ -5359,6 +5374,20 @@ func (mr *MockSbClientMockRecorder) DeleteChassisByHost(node any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisByHost", reflect.TypeOf((*MockSbClient)(nil).DeleteChassisByHost), node)
 }
 
+// Echo mocks base method.
+func (m *MockSbClient) Echo(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Echo", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Echo indicates an expected call of Echo.
+func (mr *MockSbClientMockRecorder) Echo(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Echo", reflect.TypeOf((*MockSbClient)(nil).Echo), arg0)
+}
+
 // GetChassis mocks base method.
 func (m *MockSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
@@ -5502,6 +5531,20 @@ func NewMockCommon(ctrl *gomock.Controller) *MockCommon {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockCommon) EXPECT() *MockCommonMockRecorder {
 	return m.recorder
+}
+
+// Echo mocks base method.
+func (m *MockCommon) Echo(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Echo", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Echo indicates an expected call of Echo.
+func (mr *MockCommonMockRecorder) Echo(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Echo", reflect.TypeOf((*MockCommon)(nil).Echo), arg0)
 }
 
 // GetEntityInfo mocks base method.
