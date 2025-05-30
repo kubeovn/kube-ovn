@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/rest"
@@ -40,7 +39,7 @@ func filterProvider(c *rest.Config, httpClient *http.Client) (server.Filter, err
 }
 
 func TLSVersionFromString(version string) (uint16, error) {
-	switch strings.ToLower(version) {
+	switch version {
 	case "1.0", "TLS 1.0", "TLS10":
 		return tls.VersionTLS10, nil
 	case "1.1", "TLS 1.1", "TLS11":
@@ -71,6 +70,10 @@ func CipherSuiteFromName(name string) (uint16, error) {
 }
 
 func CipherSuitesFromNames(suites []string) ([]uint16, error) {
+	if len(suites) == 0 {
+		return nil, nil
+	}
+
 	cipherSuites := make([]uint16, 0, len(suites))
 	for _, suite := range suites {
 		cipherSuite, err := CipherSuiteFromName(suite)
@@ -101,6 +104,13 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing, w
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to parse TLS cipher suites: %w", err)
+	}
+
+	// Validate that if both minVersion and maxVersion are set, minVersion is not greater than maxVersion.
+	if maxVersion != 0 && minVersion > maxVersion {
+		err = fmt.Errorf("tls: MinVersion (%s) must be less than or equal to MaxVersion (%s)", tlsMinVersion, tlsMaxVersion)
+		klog.Error(err)
+		return err
 	}
 
 	client, err := rest.HTTPClientFor(config)
