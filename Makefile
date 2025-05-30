@@ -72,7 +72,7 @@ DEEPFLOW_MAPPED_PORTS = $(DEEPFLOW_SERVER_NODE_PORT),$(DEEPFLOW_SERVER_GRPC_PORT
 DEEPFLOW_CTL_URL = https://deepflow-ce.oss-cn-beijing.aliyuncs.com/bin/ctl/$(DEEPFLOW_VERSION)/linux/$(shell arch | sed 's|x86_64|amd64|' | sed 's|aarch64|arm64|')/deepflow-ctl
 
 # renovate: datasource=github-releases depName=kwork packageName=kubernetes-sigs/kwok
-KWOK_VERSION = v0.6.1
+KWOK_VERSION = v0.7.0
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
