@@ -50,8 +50,10 @@ func TestCipherSuiteFromName(t *testing.T) {
 		{"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, false},
 		{"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, false},
 		{"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256", tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, false},
-		{"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256", tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256, false},
-		{"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256", tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, false},
+		// insecure cipher suites
+		{"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256", 0, true},
+		{"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256", 0, true},
+		// invalid cipher suites
 		{"", 0, true},
 		{"foobar", 0, true},
 	}
@@ -76,9 +78,18 @@ func TestCipherSuitesFromNames(t *testing.T) {
 		{[]string{}, nil, false},
 		{[]string{""}, nil, true},
 		{[]string{"foobar"}, nil, true},
+		{[]string{"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256"}, nil, true},
 		{[]string{"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"}, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384}, false},
 		{[]string{"", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"}, nil, true},
 		{[]string{"foobar", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"}, nil, true},
+		{
+			[]string{
+				"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+				"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+			},
+			nil,
+			true,
+		},
 		{
 			[]string{
 				"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",

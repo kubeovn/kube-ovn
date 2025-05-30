@@ -63,7 +63,7 @@ func CipherSuiteFromName(name string) (uint16, error) {
 	}
 	for _, c := range tls.InsecureCipherSuites() {
 		if c.Name == name {
-			return c.ID, nil
+			return 0, fmt.Errorf("insecure cipher suite: %s", name)
 		}
 	}
 	return 0, fmt.Errorf("unsupported TLS cipher suite: %s", name)
@@ -78,7 +78,7 @@ func CipherSuitesFromNames(suites []string) ([]uint16, error) {
 	for _, suite := range suites {
 		cipherSuite, err := CipherSuiteFromName(suite)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse cipher suite %s: %w", suite, err)
+			return nil, fmt.Errorf("invalid cipher suite %s: %w", suite, err)
 		}
 		cipherSuites = append(cipherSuites, cipherSuite)
 	}
