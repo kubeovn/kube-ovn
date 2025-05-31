@@ -34,6 +34,7 @@ type OvnFipSpec struct {
 	Vpc    string `json:"vpc"`
 	V4Ip   string `json:"v4Ip"`
 	V6Ip   string `json:"v6Ip"`
+	Type   string `json:"type"` // distributed, centralized
 }
 
 type OvnFipStatus struct {
