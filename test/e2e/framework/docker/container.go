@@ -37,13 +37,16 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*container.
 		Cmd:   cmd,
 		Tty:   false,
 	}
+	hostConfig := &container.HostConfig{
+		Privileged: true,
+	}
 	networkConfig := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{
 			networkName: new(network.EndpointSettings),
 		},
 	}
 
-	resp, err := cli.ContainerCreate(context.Background(), containerConfig, nil, networkConfig, nil, name)
+	resp, err := cli.ContainerCreate(context.Background(), containerConfig, hostConfig, networkConfig, nil, name)
 	if err != nil {
 		return nil, err
 	}
