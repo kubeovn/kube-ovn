@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-logr/stdr"
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/database/inmemory"
