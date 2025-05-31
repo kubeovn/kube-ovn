@@ -9,7 +9,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/cenkalti/backoff/v5 v5.0.2
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
-	github.com/containerd/containerd v1.7.27
+	github.com/containerd/containerd/v2 v2.1.1
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.7.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20241021184246-19e734367535
@@ -247,7 +247,6 @@ require (
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.35.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.35.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect

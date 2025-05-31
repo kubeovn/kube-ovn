@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/containerd/pkg/netns"
+	"github.com/containerd/containerd/v2/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
