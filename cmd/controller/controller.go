@@ -98,7 +98,7 @@ func CmdMain() {
 			for _, metricsAddr := range metricsAddrs {
 				addr := util.JoinHostPort(metricsAddr, config.PprofPort)
 				go func() {
-					if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer); err != nil {
+					if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
 						util.LogFatalAndExit(err, "failed to run metrics server")
 					}
 				}()
