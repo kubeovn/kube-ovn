@@ -9,7 +9,8 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.2.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
-	github.com/containerd/containerd v1.7.27
+	github.com/containerd/containerd v1.7.23
+	github.com/containerd/containerd/v2 v2.1.1
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.7.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20241021184246-19e734367535
