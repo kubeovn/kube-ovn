@@ -75,8 +75,8 @@ type Controller struct {
 	podsSynced             cache.InformerSynced
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
-	deletingPodObjMap      *xsync.MapOf[string, *corev1.Pod]
-	deletingNodeObjMap     *xsync.MapOf[string, *corev1.Node]
+	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
+	deletingNodeObjMap     *xsync.Map[string, *corev1.Node]
 	updatePodSecurityQueue workqueue.TypedRateLimitingInterface[string]
 	podKeyMutex            keymutex.KeyMutex
 
@@ -369,8 +369,8 @@ func Run(ctx context.Context, config *Configuration) {
 	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
 		config:             config,
-		deletingPodObjMap:  xsync.NewMapOf[string, *corev1.Pod](),
-		deletingNodeObjMap: xsync.NewMapOf[string, *corev1.Node](),
+		deletingPodObjMap:  xsync.NewMap[string, *corev1.Pod](),
+		deletingNodeObjMap: xsync.NewMap[string, *corev1.Node](),
 		ipam:               ovnipam.NewIPAM(),
 		namedPort:          NewNamedPort(),
 
