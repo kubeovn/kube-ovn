@@ -113,6 +113,19 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing, w
 		return err
 	}
 
+	// #nosec G402
+	tlsConfig := &tls.Config{
+		MinVersion:   minVersion,
+		MaxVersion:   maxVersion,
+		CipherSuites: cipherSuites,
+	}
+	getConfigForClient, err := tlsGetConfigForClient(tlsConfig)
+	if err != nil {
+		err = fmt.Errorf("failed to set GetConfigForClient for TLS config: %w", err)
+		klog.Error(err)
+		return err
+	}
+
 	client, err := rest.HTTPClientFor(config)
 	if err != nil {
 		klog.Error(err)
@@ -127,8 +140,7 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing, w
 		options.FilterProvider = filterProvider
 		options.TLSOpts = []func(*tls.Config){
 			func(c *tls.Config) {
-				c.MinVersion, c.MaxVersion = minVersion, maxVersion
-				c.CipherSuites = cipherSuites
+				c.GetConfigForClient = getConfigForClient
 			},
 		}
 	}
