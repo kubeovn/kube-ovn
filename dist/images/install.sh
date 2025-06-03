@@ -1906,6 +1906,9 @@ spec:
       - jsonPath: .status.vpc
         name: Vpc
         type: string
+      - jsonPath: .spec.type
+        name: Type
+        type: string
       - jsonPath: .status.v4Eip
         name: V4Eip
         type: string
@@ -1969,6 +1972,8 @@ spec:
                 ovnEip:
                   type: string
                 ipType:
+                  type: string
+                type:
                   type: string
                 ipName:
                   type: string
