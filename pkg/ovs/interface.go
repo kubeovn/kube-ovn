@@ -1,6 +1,8 @@
 package ovs
 
 import (
+	"context"
+
 	netv1 "k8s.io/api/networking/v1"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -229,6 +231,7 @@ type SbClient interface {
 }
 
 type Common interface {
+	Echo(context.Context) error
 	Transact(method string, operations []ovsdb.Operation) error
 	GetEntityInfo(entity interface{}) error
 }
