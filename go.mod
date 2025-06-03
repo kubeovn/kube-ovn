@@ -54,6 +54,7 @@ require (
 	k8s.io/api v0.32.5
 	k8s.io/apiextensions-apiserver v0.32.5
 	k8s.io/apimachinery v0.32.5
+	k8s.io/apiserver v0.32.5
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/component-base v0.32.5
 	k8s.io/klog/v2 v2.130.1
@@ -271,7 +272,6 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
-	k8s.io/apiserver v0.32.5 // indirect
 	k8s.io/cli-runtime v0.32.5 // indirect
 	k8s.io/cloud-provider v0.32.5 // indirect
 	k8s.io/cluster-bootstrap v0.32.5 // indirect
