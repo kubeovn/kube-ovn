@@ -84,8 +84,9 @@ func tlsGetConfigForClient(config *tls.Config) (func(*tls.ClientHelloInfo) (*tls
 }
 
 func GenerateSelfSignedCertKey(host string, caCert *x509.Certificate, caKey *rsa.PrivateKey, alternateIPs []net.IP, alternateDNS []string) ([]byte, []byte, *time.Time, error) {
-	validFrom := time.Now().Add(-time.Hour) // valid an hour earlier to avoid flakes due to clock skew
-	maxAge := time.Hour * 24 * 365          // one year self-signed certs
+	now := time.Now().Truncate(0)
+	validFrom := now.Add(-time.Hour) // valid an hour earlier to avoid flakes due to clock skew
+	maxAge := time.Hour * 24 * 365   // one year self-signed certs
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -100,7 +101,7 @@ func GenerateSelfSignedCertKey(host string, caCert *x509.Certificate, caKey *rsa
 	template := x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: fmt.Sprintf("%s@%d", host, time.Now().Unix()),
+			CommonName: fmt.Sprintf("%s@%d", host, now.Unix()),
 		},
 		NotBefore: validFrom,
 		NotAfter:  validFrom.Add(maxAge),
@@ -180,7 +181,7 @@ func (c *DynamicInMemoryCertKeyPairContent) AddListener(listener dynamiccertific
 }
 
 func (c *DynamicInMemoryCertKeyPairContent) generateCertKeyPair() error {
-	if !c.expireTime.IsZero() && time.Now().Before(c.expireTime.Add(-30*24*time.Hour)) {
+	if !c.expireTime.IsZero() && time.Now().Truncate(0).Before(c.expireTime.Add(-30*24*time.Hour)) {
 		return nil
 	}
 
