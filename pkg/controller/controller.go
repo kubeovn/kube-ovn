@@ -281,6 +281,9 @@ type Controller struct {
 	deployInformerFactory  kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	anpInformerFactory     anpinformer.SharedInformerFactory
+
+	// Database health check
+	dbFailureCount int
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -993,6 +996,48 @@ func (c *Controller) Run(ctx context.Context) {
 	klog.Info("Shutting down workers")
 }
 
+func (c *Controller) dbStatus() {
+	const maxFailures = 5
+
+	done := make(chan error, 2)
+	go func() {
+		done <- c.OVNNbClient.Echo(context.Background())
+	}()
+	go func() {
+		done <- c.OVNSbClient.Echo(context.Background())
+	}()
+
+	resultsReceived := 0
+	timeout := time.After(time.Duration(c.config.OvnTimeout) * time.Second)
+
+	for resultsReceived < 2 {
+		select {
+		case err := <-done:
+			resultsReceived++
+			if err != nil {
+				c.dbFailureCount++
+				klog.Errorf("OVN database echo failed (%d/%d): %v", c.dbFailureCount, maxFailures, err)
+				if c.dbFailureCount >= maxFailures {
+					util.LogFatalAndExit(err, "OVN database connection failed after %d attempts", maxFailures)
+				}
+				return
+			}
+		case <-timeout:
+			c.dbFailureCount++
+			klog.Errorf("OVN database echo timeout (%d/%d) after %ds", c.dbFailureCount, maxFailures, c.config.OvnTimeout)
+			if c.dbFailureCount >= maxFailures {
+				util.LogFatalAndExit(nil, "OVN database connection timeout after %d attempts", maxFailures)
+			}
+			return
+		}
+	}
+
+	if c.dbFailureCount > 0 {
+		klog.Infof("OVN database connection recovered after %d failures", c.dbFailureCount)
+		c.dbFailureCount = 0
+	}
+}
+
 func (c *Controller) shutdown() {
 	utilruntime.HandleCrash()
 
@@ -1328,6 +1373,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	if c.config.EnableLiveMigrationOptimize {
 		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVMIMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
 	}
+
+	go wait.Until(c.dbStatus, 15*time.Second, ctx.Done())
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
