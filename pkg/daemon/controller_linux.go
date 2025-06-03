@@ -403,9 +403,17 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 		found := false
 		for _, ar := range allRoutes {
 			if ar.Dst != nil && ar.Dst.String() == c {
-				// route already exist
-				found = true
-				break
+				if slices.Contains(joinCIDR, c) {
+					// Only compare Dst for join subnets
+					found = true
+					klog.V(3).Infof("[routeDiff] joinCIDR route already exists in allRoutes: %v", ar)
+					break
+				} else if (ar.Src == nil && src == nil) || (ar.Src != nil && src != nil && ar.Src.Equal(src)) {
+					// For non-join subnets, both Dst and Src must be the same
+					found = true
+					klog.V(3).Infof("[routeDiff] route already exists in allRoutes: %v", ar)
+					break
+				}
 			}
 		}
 		if found {
@@ -415,12 +423,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			if r.Dst == nil || r.Dst.String() != c {
 				continue
 			}
-			if src == nil {
-				if r.Src == nil {
-					found = true
-					break
-				}
-			} else if src.Equal(r.Src) {
+			if (src == nil && r.Src == nil) || (src != nil && r.Src != nil && src.Equal(r.Src)) {
 				found = true
 				break
 			}
