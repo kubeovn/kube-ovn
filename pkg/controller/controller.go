@@ -988,6 +988,8 @@ func (c *Controller) Run(ctx context.Context) {
 		}
 	}
 
+	c.handleUpgrading()
+
 	// start workers to do all the network operations
 	c.startWorkers(ctx)
 
@@ -1163,6 +1165,25 @@ func (c *Controller) shutdown() {
 
 	if c.config.EnableLiveMigrationOptimize {
 		c.addOrUpdateVMIMigrationQueue.ShutDown()
+	}
+}
+
+func (c *Controller) handleUpgrading() {
+	klog.Info("Start upgrading")
+
+	if err := c.upgradeSecurityGroups(); err != nil {
+		util.LogFatalAndExit(err, "failed to upgrade security groups")
+	}
+	if err := c.upgradeSubnets(); err != nil {
+		util.LogFatalAndExit(err, "failed to upgrade subnets")
+	}
+	if c.config.EnableNP {
+		if err := c.upgradeNetworkPolicies(); err != nil {
+			util.LogFatalAndExit(err, "failed to upgrade network policies")
+		}
+	}
+	if err := c.upgradeNodes(); err != nil {
+		util.LogFatalAndExit(err, "failed to upgrade nodes")
 	}
 }
 
