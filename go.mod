@@ -27,6 +27,7 @@ require (
 	github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410050455-ce7c8d9ddfb1
 	github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
+	github.com/mdlayher/ndp v1.1.0
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
