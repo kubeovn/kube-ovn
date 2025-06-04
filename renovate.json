@@ -6,8 +6,10 @@
     "customManagers:githubActionsVersions",
     "customManagers:makefileVersions"
   ],
+  "baseBranches": ["master", "release-1.13"],
   "packageRules": [
     {
+      "matchBaseBranches": ["master"],
       "matchPackageNames": [
         "*"
       ],
@@ -40,6 +42,11 @@
         "github.com/kubeovn/**"
       ],
       "enabled": false
+    },
+    {
+      "matchBaseBranches": ["release-*"],
+      "extends":["security:only-security-updates"],
+      "automerge": true
     }
   ]
 }
