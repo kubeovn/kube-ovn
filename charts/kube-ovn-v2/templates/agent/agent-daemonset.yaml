@@ -14,8 +14,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-cni
-      app.kubernetes.io/part-of: kube-ovn
+      app: kube-ovn-cni
   template:
     metadata:
       {{- with .Values.agent.podAnnotations }}

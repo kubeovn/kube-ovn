@@ -14,8 +14,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-ovs
-      app.kubernetes.io/part-of: kube-ovn
+      app: ovs
   updateStrategy:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
     rollingUpdate:

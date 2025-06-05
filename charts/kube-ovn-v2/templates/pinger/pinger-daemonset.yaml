@@ -14,8 +14,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-pinger
-      app.kubernetes.io/part-of: kube-ovn
+      app: kube-ovn-pinger
   updateStrategy:
     type: RollingUpdate
   template:

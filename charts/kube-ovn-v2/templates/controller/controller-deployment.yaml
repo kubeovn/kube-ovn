@@ -15,8 +15,7 @@ spec:
   replicas: {{ include "kubeovn.nodeCount" . }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-controller
-      app.kubernetes.io/part-of: kube-ovn
+      app: kube-ovn-controller
   strategy:
     rollingUpdate:
       maxSurge: 0%
