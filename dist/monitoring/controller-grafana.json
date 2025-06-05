@@ -991,7 +991,7 @@
           "instant": false,
           "interval": "",
           "intervalFactor": 2,
-          "legendFormat": "{{verb}}",
+          "legendFormat": "{{verb}} {{url}}",
           "refId": "A"
         }
       ],
