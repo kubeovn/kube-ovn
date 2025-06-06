@@ -21,7 +21,7 @@ env:
 jobs:
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -113,7 +113,7 @@ jobs:
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -198,7 +198,7 @@ jobs:
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -260,7 +260,7 @@ jobs:
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -347,7 +347,7 @@ jobs:
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -424,7 +424,7 @@ jobs:
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -478,7 +478,7 @@ jobs:
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -534,7 +534,7 @@ jobs:
 
   no-np-test:
     name: Disable Network Policy Test
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -590,7 +590,7 @@ jobs:
 
   lb-svc-e2e:
     name: LB Service E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -667,7 +667,7 @@ jobs:
 
   kubevirt-e2e:
     name: Kubevirt VM E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -744,7 +744,7 @@ jobs:
 
   webhook-e2e:
     name: Webhook E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -819,7 +819,7 @@ jobs:
 
   installation-compatibility-test:
     name: Installation Compatibility Test
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -871,7 +871,7 @@ jobs:
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -962,7 +962,7 @@ jobs:
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1058,7 +1058,7 @@ jobs:
 
   chart-upgrade-e2e:
     name: Chart Upgrade E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1163,7 +1163,7 @@ jobs:
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1225,7 +1225,7 @@ jobs:
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -1299,7 +1299,7 @@ jobs:
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
