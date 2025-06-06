@@ -378,8 +378,8 @@ func (ipam *IPAM) GetPodAddressByNicName(podName, nicName string) []*SubnetAddre
 	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
 		subnet.Mutex.RLock()
-		for _, nicName := range subnet.PodToNicList[podName] {
-			if nicName == nicName {
+		for _, nic := range subnet.PodToNicList[podName] {
+			if nicName == nic {
 				v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
 				switch protocol {
 				case kubeovnv1.ProtocolIPv4:

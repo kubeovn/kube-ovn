@@ -1862,7 +1862,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 		for _, net := range nsNets {
 			if isStsPod {
-				found := c.checkPodIPConsistency(key, portName, ipStr, net.Subnet.Name)
+				found := c.checkPodIPConsistency(key, portName, ipStr)
 				klog.Infof("checkPodIPConsistency: key=%s, portName=%s, ipStr=%s, subnet=%s, found=%v", key, portName, ipStr, net.Subnet.Name, found)
 				if !found {
 					c.ipam.ReleaseAddressByPodNicName(key, portName, net.Subnet.Name)
@@ -1978,7 +1978,7 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 	return v4IP, v6IP, macStr, nil
 }
 
-func (c *Controller) checkPodIPConsistency(key, nicName, expectIP, subnet string) bool {
+func (c *Controller) checkPodIPConsistency(key, nicName, expectIP string) bool {
 	ips := c.ipam.GetPodAddressByNicName(key, nicName)
 	for _, ip := range ips {
 		if ip.IP == expectIP {
