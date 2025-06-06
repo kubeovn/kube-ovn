@@ -47,32 +47,32 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 
 	// ip can not change these specs below
 	if ipOld.Spec.Subnet != "" && ipNew.Spec.Subnet != ipOld.Spec.Subnet {
-		err := fmt.Errorf("ip %s subnet can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec subnet can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if ipOld.Spec.Namespace != "" && ipNew.Spec.Namespace != ipOld.Spec.Namespace {
-		err := fmt.Errorf("ip %s namespace can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec namespace can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if ipOld.Spec.PodName != "" && ipNew.Spec.PodName != ipOld.Spec.PodName {
-		err := fmt.Errorf("ip %s podName can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec podName can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if ipOld.Spec.PodType != "" && ipNew.Spec.PodType != ipOld.Spec.PodType {
-		err := fmt.Errorf("ip %s podType can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec podType can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if ipOld.Spec.V4IPAddress != "" && ipNew.Spec.V4IPAddress != ipOld.Spec.V4IPAddress {
-		err := fmt.Errorf("ip %s v4IPAddress can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec v4IPAddress can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
 	if ipOld.Spec.V6IPAddress != "" && ipNew.Spec.V6IPAddress != ipOld.Spec.V6IPAddress {
-		err := fmt.Errorf("ip %s v6IPAddress can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec v6IPAddress can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	if ipOld.Spec.MacAddress != "" && ipNew.Spec.MacAddress != ipOld.Spec.MacAddress {
-		err := fmt.Errorf("ip %s macAddress can not change", ipNew.Name)
+		err := fmt.Errorf("ip %s spec macAddress can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 	return ctrlwebhook.Allowed("by pass")
