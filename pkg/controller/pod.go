@@ -1861,6 +1861,14 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 
 		for _, net := range nsNets {
+			if isStsPod {
+				found := c.checkPodIPConsistency(key, portName, ipStr, net.Subnet.Name)
+				klog.Infof("checkPodIPConsistency: key=%s, portName=%s, ipStr=%s, subnet=%s, found=%v", key, portName, ipStr, net.Subnet.Name, found)
+				if !found {
+					c.ipam.ReleaseAddressByPodNicName(key, portName, net.Subnet.Name)
+				}
+			}
+
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
 				return v4IP, v6IP, mac, net.Subnet, nil
@@ -1968,6 +1976,16 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 		return "", "", "", err
 	}
 	return v4IP, v6IP, macStr, nil
+}
+
+func (c *Controller) checkPodIPConsistency(key, nicName, expectIP, subnet string) bool {
+	ips := c.ipam.GetPodAddressByNicName(key, nicName)
+	for _, ip := range ips {
+		if ip.IP == expectIP {
+			return true
+		}
+	}
+	return false
 }
 
 func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {

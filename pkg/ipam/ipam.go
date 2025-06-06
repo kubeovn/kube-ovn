@@ -158,6 +158,20 @@ func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 	}
 }
 
+func (ipam *IPAM) ReleaseAddressByPodNicName(podName, nicName, subnetName string) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	if subnetName != "" {
+		if subnet, ok := ipam.Subnets[subnetName]; ok {
+			subnet.ReleaseAddressWithNicName(podName, nicName)
+		}
+	} else {
+		for _, subnet := range ipam.Subnets {
+			subnet.ReleaseAddressWithNicName(podName, nicName)
+		}
+	}
+}
+
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
 
@@ -351,6 +365,31 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 			case kubeovnv1.ProtocolDual:
 				addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v4IP.String(), Mac: mac})
 				addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v6IP.String(), Mac: mac})
+			}
+		}
+		subnet.Mutex.RUnlock()
+	}
+	return addresses
+}
+
+func (ipam *IPAM) GetPodAddressByNicName(podName, nicName string) []*SubnetAddress {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+	addresses := []*SubnetAddress{}
+	for _, subnet := range ipam.Subnets {
+		subnet.Mutex.RLock()
+		for _, nicName := range subnet.PodToNicList[podName] {
+			if nicName == nicName {
+				v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
+				switch protocol {
+				case kubeovnv1.ProtocolIPv4:
+					addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v4IP.String(), Mac: mac})
+				case kubeovnv1.ProtocolIPv6:
+					addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v6IP.String(), Mac: mac})
+				case kubeovnv1.ProtocolDual:
+					addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v4IP.String(), Mac: mac})
+					addresses = append(addresses, &SubnetAddress{Subnet: subnet, IP: v6IP.String(), Mac: mac})
+				}
 			}
 		}
 		subnet.Mutex.RUnlock()
