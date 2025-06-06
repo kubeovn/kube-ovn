@@ -43,7 +43,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.1
 	go.uber.org/mock v0.5.2
-	go.universe.tf/metallb v0.14.9
+	go.universe.tf/metallb v0.15.2
 	golang.org/x/mod v0.24.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
@@ -51,12 +51,12 @@ require (
 	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.0
-	k8s.io/api v0.32.5
-	k8s.io/apiextensions-apiserver v0.32.5
-	k8s.io/apimachinery v0.32.5
+	k8s.io/api v0.33.0
+	k8s.io/apiextensions-apiserver v0.33.0
+	k8s.io/apimachinery v0.33.0
 	k8s.io/apiserver v0.32.5
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/component-base v0.32.5
+	k8s.io/component-base v0.33.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-aggregator v0.32.5
 	k8s.io/kubectl v0.32.5
