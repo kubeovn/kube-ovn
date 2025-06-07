@@ -1113,8 +1113,8 @@ gopkg.in/evanphx/json-patch.v4 v4.12.0/go.mod h1:p8EYWUEYMpynmqDbY58zCKCFZw8pRWM
 gopkg.in/fsnotify.v1 v1.4.7/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMys=
 gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=
 gopkg.in/inf.v0 v0.9.1/go.mod h1:cWUDdTG/fYaXco+Dcufb5Vnc6Gp2YChqWtbxRZE0mXw=
-gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.0 h1:GxEdBuQohpg8cgPbhRKEyHF+zbrFaHbuE78KYPsgAN0=
-gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.0/go.mod h1:VI/X1+BzpwTKFv3yItWwNjkiOMEqjKmFW9Bpvxg7cvU=
+gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.1 h1:aO8KrO7hSay2mEBwKnDZHSNWGE1Nr15f5AVO6FJDngM=
+gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.1/go.mod h1:IPE00mREyPTa4XtNSuDY21CWqw8qM+jcycD3EObzhFY=
 gopkg.in/natefinch/lumberjack.v2 v2.2.1 h1:bBRl1b0OH9s/DuPhuXpNl+VtCaJXFZ5/uEFST95x9zc=
 gopkg.in/natefinch/lumberjack.v2 v2.2.1/go.mod h1:YD8tP3GAjkrDg1eZH7EGmyESg/lsYskCTPBJVb9jqSc=
 gopkg.in/square/go-jose.v2 v2.6.0 h1:NGk74WTnPKBNUhNzQX7PYcTLUjoq7mzKk2OKbvwk2iI=
