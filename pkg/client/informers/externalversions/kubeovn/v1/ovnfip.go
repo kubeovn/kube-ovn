@@ -61,13 +61,25 @@ func NewFilteredOvnFipInformer(client versioned.Interface, resyncPeriod time.Dur
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().OvnFips().List(context.TODO(), options)
+				return client.KubeovnV1().OvnFips().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().OvnFips().Watch(context.TODO(), options)
+				return client.KubeovnV1().OvnFips().Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().OvnFips().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().OvnFips().Watch(ctx, options)
 			},
 		},
 		&apiskubeovnv1.OvnFip{},
