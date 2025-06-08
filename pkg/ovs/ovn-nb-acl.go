@@ -12,6 +12,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -20,8 +21,16 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func setACLName(acl *ovnnb.ACL, name string) {
+	if len(name) > 63 {
+		// ACL name length limit is 63
+		name = name[:60] + "..."
+	}
+	acl.Name = ptr.To(name)
+}
+
 // UpdateIngressACLOps return operation that creates an ingress ACL
-func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	if strings.HasSuffix(asIngressName, ".0") || strings.HasSuffix(asIngressName, ".all") {
@@ -32,6 +41,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 			NewACLMatch("ip", "", "", ""),
 		)
 		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, netpol)
 			if logEnable {
 				acl.Log = true
 				acl.Severity = &ovnnb.ACLSeverityWarning
@@ -50,8 +60,8 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 	matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 	for _, m := range matches {
 		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, aclName)
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
-				acl.Name = &aclName
 				acl.Log = true
 			}
 		}
@@ -72,7 +82,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 }
 
 // UpdateEgressACLOps return operation that creates an egress ACL
-func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
 	if strings.HasSuffix(asEgressName, ".0") || strings.HasSuffix(asEgressName, ".all") {
@@ -83,6 +93,7 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 			NewACLMatch("ip", "", "", ""),
 		)
 		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, netpol)
 			if logEnable {
 				acl.Log = true
 				acl.Severity = &ovnnb.ACLSeverityWarning
@@ -107,12 +118,12 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 	matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
 		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+			setACLName(acl, aclName)
 			if acl.Options == nil {
 				acl.Options = make(map[string]string)
 			}
 			acl.Options["apply-after-lb"] = "true"
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
-				acl.Name = &aclName
 				acl.Log = true
 			}
 		})
@@ -490,7 +501,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	allIPMatch := NewACLMatch("ip", "", "", "")
 
 	options := func(acl *ovnnb.ACL) {
-		acl.Name = &lsName
+		setACLName(acl, lsName)
 		acl.Log = true
 		acl.Severity = &ovnnb.ACLSeverityWarning
 	}

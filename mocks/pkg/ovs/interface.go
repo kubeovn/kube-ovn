@@ -1628,33 +1628,33 @@ func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSw
 }
 
 // UpdateEgressACLOps mocks base method.
-func (m *MockACL) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (m *MockACL) UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateEgressACLOps", pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	ret := m.ctrl.Call(m, "UpdateEgressACLOps", netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateEgressACLOps indicates an expected call of UpdateEgressACLOps.
-func (mr *MockACLMockRecorder) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
+func (mr *MockACLMockRecorder) UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateEgressACLOps), pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateEgressACLOps), netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 }
 
 // UpdateIngressACLOps mocks base method.
-func (m *MockACL) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (m *MockACL) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateIngressACLOps", pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	ret := m.ctrl.Call(m, "UpdateIngressACLOps", netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateIngressACLOps indicates an expected call of UpdateIngressACLOps.
-func (mr *MockACLMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
+func (mr *MockACLMockRecorder) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateIngressACLOps), netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 }
 
 // UpdateLogicalSwitchACL mocks base method.
@@ -4194,33 +4194,33 @@ func (mr *MockNbClientMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logica
 }
 
 // UpdateEgressACLOps mocks base method.
-func (m *MockNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateEgressACLOps", pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	ret := m.ctrl.Call(m, "UpdateEgressACLOps", netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateEgressACLOps indicates an expected call of UpdateEgressACLOps.
-func (mr *MockNbClientMockRecorder) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateEgressACLOps), pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateEgressACLOps), netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 }
 
 // UpdateIngressACLOps mocks base method.
-func (m *MockNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateIngressACLOps", pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	ret := m.ctrl.Call(m, "UpdateIngressACLOps", netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateIngressACLOps indicates an expected call of UpdateIngressACLOps.
-func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
 }
 
 // UpdateLogicalRouterPortOptions mocks base method.

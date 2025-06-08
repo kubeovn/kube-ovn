@@ -80,6 +80,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv4 ingress"
 		pgName := "test_create_v4_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
@@ -91,7 +92,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -109,6 +110,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv6 ingress"
 		pgName := "test_create_v6_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv6.all"
 		asExceptName := "test.default.ingress.except.ipv6.all"
@@ -118,7 +120,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := ovnClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -152,6 +154,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv4 egress"
 		pgName := "test_create_v4_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
@@ -163,7 +166,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -181,6 +184,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv6 egress"
 		pgName := "test_create_v6_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv6.all"
 		asExceptName := "test.default.egress.except.ipv6.all"
@@ -190,7 +194,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := ovnClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := ovnClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
