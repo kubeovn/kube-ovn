@@ -13,6 +13,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
