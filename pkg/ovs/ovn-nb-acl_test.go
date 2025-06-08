@@ -82,6 +82,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv4 ingress"
 		pgName := "test_create_v4_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
@@ -93,7 +94,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -111,6 +112,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv6 ingress"
 		pgName := "test_create_v6_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv6.all"
 		asExceptName := "test.default.ingress.except.ipv6.all"
@@ -120,7 +122,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -138,26 +140,28 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ingress with empty pg name"
 		pgName := ""
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ingress with empty pg name and no suffix"
 		pgName := ""
 		asIngressName := "test.default.ingress.allow.ipv4"
 		asExceptName := "test.default.ingress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -180,6 +184,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv4 egress"
 		pgName := "test_create_v4_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
@@ -191,7 +196,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 4)
 
@@ -209,6 +214,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "ipv6 egress"
 		pgName := "test_create_v6_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv6.all"
 		asExceptName := "test.default.egress.except.ipv6.all"
@@ -218,7 +224,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -236,26 +242,28 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "egress with empty pg name"
 		pgName := ""
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
 		t.Parallel()
 
+		netpol := "egress with empty pg name and no suffix"
 		pgName := ""
 		asEgressName := "test.default.egress.allow.ipv4"
 		asExceptName := "test.default.egress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
