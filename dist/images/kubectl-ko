@@ -1374,15 +1374,15 @@ perf(){
   imageID=${1:-"docker.io/kubeovn/test:v1.13.0"}
 
   nodes=($(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name))
-  if [[ ${#nodes} -eq 1 ]]; then
+  if [[ ${#nodes[@]} -eq 1 ]]; then
     applyTestClient ${nodes[0]} $imageID
     applyTestHostClient ${nodes[0]} $imageID
     applyTestServer ${nodes[0]} $imageID
     applyTestHostServer ${nodes[0]} $imageID
-  elif [[ ${#nodes} -le 0 ]]; then
+  elif [[ ${#nodes[@]} -le 0 ]]; then
     echo "can't find node in the cluster"
     return
-  elif [[ ${#nodes} -ge 2 ]]; then
+  elif [[ ${#nodes[@]} -ge 2 ]]; then
     applyTestClient ${nodes[1]} $imageID
     applyTestHostClient ${nodes[1]} $imageID
     applyTestServer ${nodes[0]} $imageID
