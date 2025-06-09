@@ -1113,7 +1113,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			ginkgo.Skip("This test requires IPv6 support")
 		}
 
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13.8")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
