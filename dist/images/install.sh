@@ -4109,6 +4109,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 EOF
 
 kubectl apply -f ovn.yaml
@@ -4310,6 +4311,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 EOF
 
 kubectl apply -f ovs-ovn-ds.yaml
@@ -4475,6 +4477,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 EOF
 kubectl apply -f ovs-ovn-dpdk-ds.yaml
 fi
@@ -4704,6 +4707,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 
 ---
 kind: DaemonSet
@@ -5108,6 +5112,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -5271,6 +5276,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
         - name: kube-ovn-log
           hostPath:
             path: $LOG_DIR/kube-ovn
@@ -5451,6 +5457,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 EOF
 kubectl apply -f ovn-ic-controller.yaml
 kubectl rollout status deployment/ovn-ic-controller -n kube-system --timeout 60s

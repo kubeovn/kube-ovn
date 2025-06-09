@@ -169,3 +169,4 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400

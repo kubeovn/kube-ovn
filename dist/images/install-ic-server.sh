@@ -166,6 +166,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+            defaultMode: 0400
 EOF
 
 kubectl apply -f ovn-ic-server.yaml

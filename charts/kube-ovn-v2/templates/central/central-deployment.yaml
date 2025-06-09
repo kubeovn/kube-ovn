@@ -82,7 +82,7 @@ spec:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: 
+          command:
           - bash
           - /kube-ovn/start-db.sh
           securityContext:
@@ -179,4 +179,4 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-
+            defaultMode: 0400
