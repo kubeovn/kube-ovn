@@ -1281,6 +1281,21 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.33 (2025-06-09)
+
+ * [2e5ef48cd](https://github.com/kubeovn/kube-ovn/commit/2e5ef48cde8c085068c3adfe0342e018e68dbef1) release v1.12.33
+ * [25ad657a3](https://github.com/kubeovn/kube-ovn/commit/25ad657a372e56a0163ed174dc43d6f0a53553b0) add dad check (#5333)
+ * [0594fa43e](https://github.com/kubeovn/kube-ovn/commit/0594fa43e8852bba2fff3db9568d1adb32ac4e64) netpol: fix missing ACL name (#5281)
+ * [5b4cc8ac9](https://github.com/kubeovn/kube-ovn/commit/5b4cc8ac9e69a0bafea58617de92abba79b8ce08) fix: kubectl-ko: properly get the number of nodes (#5327)
+ * [c505d25ca](https://github.com/kubeovn/kube-ovn/commit/c505d25ca6a1043cdb90c8dca290843698e8cb8a) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Robin Lee
+ * changluyi
+ * 张祖建
+
 ## v1.12.32 (2025-06-06)
 
  * [fb2c1d8f4](https://github.com/kubeovn/kube-ovn/commit/fb2c1d8f4eb0d6d288ddf78f2f5065f007edf0cb) release v1.12.32
