@@ -158,6 +158,20 @@ func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 	}
 }
 
+func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	if subnetName != "" {
+		if subnet, ok := ipam.Subnets[subnetName]; ok {
+			subnet.ReleaseAddressWithNicName(podName, nicName)
+		}
+	} else {
+		for _, subnet := range ipam.Subnets {
+			subnet.ReleaseAddressWithNicName(podName, nicName)
+		}
+	}
+}
+
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
 
