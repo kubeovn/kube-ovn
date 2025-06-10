@@ -1181,7 +1181,7 @@ func (c *Controller) handleDeletePod(key string) error {
 					}
 				}
 				// release ipam address after delete ip CR
-				c.ipam.ReleaseAddressByPod(podKey, podNet.Subnet.Name)
+				c.ipam.ReleaseAddressByNic(podKey, portName, podNet.Subnet.Name)
 			}
 		}
 		if pod.Annotations[util.VipAnnotation] != "" {
