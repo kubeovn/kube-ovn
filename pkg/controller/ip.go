@@ -225,8 +225,8 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
 			return err
 		}
+		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
-			portName := cachedIP.Name
 			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
 			if err != nil {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
@@ -253,7 +253,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 		}
 		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
 		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
-		c.ipam.ReleaseAddressByPod(podKey, cachedIP.Spec.Subnet)
+		c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
 		if err = c.handleDelIPFinalizer(cachedIP); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err

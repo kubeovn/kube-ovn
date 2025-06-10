@@ -452,9 +452,9 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	return nil
 }
 
-func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
+func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 	// when pod use static vip, label vip reserved for pod
-	oriVip, err := c.virtualIpsLister.Get(key)
+	oriVip, err := c.virtualIpsLister.Get(vipName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -480,7 +480,7 @@ func (c *Controller) podReuseVip(key, portName string, keepVIP bool) error {
 		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 		return err
 	}
-	c.ipam.ReleaseAddressByPod(key, vip.Spec.Subnet)
+	c.ipam.ReleaseAddressByPod(vipName, vip.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
