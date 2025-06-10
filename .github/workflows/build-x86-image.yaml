@@ -71,6 +71,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
         if: steps.check.outputs.build-base == 1
+        with:
+          driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
       - uses: actions/setup-go@v5
         if: steps.check.outputs.build-base == 1

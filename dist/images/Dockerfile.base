@@ -2,6 +2,30 @@
 # renovate: datasource=golang-version depName=go
 ARG GO_VERSION=1.24.4
 
+FROM ubuntu:24.04 AS openssl-builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt update && \
+    apt install -y apt-src && \
+    apt-src update && \
+    apt-src install openssl && \
+    cd openssl-* && \
+    sed -i '/^CONFARGS/a CONFARGS += enable-fips no-unit-test' debian/rules && \
+    echo >> debian/control && \
+    echo 'Package: libssl3t64-fips' >> debian/control && \
+    echo 'Section: libs' >> debian/control && \
+    echo 'Architecture: any' >> debian/control && \
+    echo 'Multi-Arch: same' >> debian/control && \
+    echo 'Depends: libssl3t64 (= ${binary:Version}), ${misc:Depends}' >> debian/control && \
+    echo 'Description: OpenSSL fips module' >> debian/control && \
+    echo 'usr/lib/ssl/fipsmodule.cnf' >> debian/libssl3t64-fips.install && \
+    echo 'usr/lib/*/ossl-modules/fips.so' >> debian/libssl3t64-fips.install && \
+    DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+RUN mkdir /packages/ && \
+    cp *fips*.deb /packages
+
 FROM ubuntu:24.04 AS ovs-builder
 
 ARG ARCH
@@ -138,17 +162,7 @@ RUN cd /usr/src/openbfdd && \
     autoupdate && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
-    make
-
-ENV OPENSSL_FIPS_LIBDIR=/usr/local/openssl-fips/lib
-ENV LD_LIBRARY_PATH=$OPENSSL_FIPS_LIBDIR:$LD_LIBRARY_PATH
-RUN wget https://www.openssl.org/source/openssl-3.0.13.tar.gz && \
-    tar -xzf openssl-3.0.13.tar.gz && \
-    cd openssl-3.0.13 && \
-    ./config --prefix=/usr/local/openssl-fips --libdir=lib enable-fips && \
-    make -j8 && \
-    make install && \
-    /usr/local/openssl-fips/bin/openssl fipsinstall -module $OPENSSL_FIPS_LIBDIR/ossl-modules/fips.so -out /usr/local/openssl-fips/ssl/fipsmodule.cnf
+    make -j8
 
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
@@ -226,7 +240,7 @@ RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
 
 ARG DEBUG=false
 
-RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
     cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
@@ -244,24 +258,13 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
         dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
     fi
 
-COPY --from=ovs-builder /usr/local/openssl-fips/bin/openssl /usr/local/openssl-fips/bin/openssl
-COPY --from=ovs-builder /usr/local/openssl-fips/lib/libssl.so.3 /usr/local/openssl-fips/lib/libssl.so.3
-COPY --from=ovs-builder /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/local/openssl-fips/lib/libcrypto.so.3
-COPY --from=ovs-builder /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/local/openssl-fips/lib/ossl-modules/fips.so
-COPY --from=ovs-builder /usr/local/openssl-fips/ssl/fipsmodule.cnf /usr/local/openssl-fips/ssl/fipsmodule.cnf
-COPY openssl/openssl.cnf /usr/local/openssl-fips/ssl/openssl.cnf
-
-RUN if [ "$ARCH" = "amd64" ]; then \
-      # env OPENSSL_CONF is only work when user is root, not effect when user is nobody, maybe openssl bug, so we copy openssl binary and libraries to /usr/bin and /usr/lib/x86_64-linux-gnu 
-      cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
-      cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3 && \
-      cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3 && \
-      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/x86_64-linux-gnu/ossl-modules; \
-    elif [ "$ARCH" = "arm64" ]; then \
-      cp /usr/local/openssl-fips/bin/openssl /usr/bin/openssl && \
-      cp /usr/local/openssl-fips/lib/libssl.so.3 /usr/lib/aarch64-linux-gnu/libssl.so.3 && \
-      cp /usr/local/openssl-fips/lib/libcrypto.so.3 /usr/lib/aarch64-linux-gnu/libcrypto.so.3 && \
-      cp /usr/local/openssl-fips/lib/ossl-modules/fips.so /usr/lib/aarch64-linux-gnu/ossl-modules; \
-    fi
+RUN --mount=type=bind,target=/packages,from=openssl-builder,source=/packages \
+    dpkg -i /packages/*.deb && \
+    openssl fipsinstall -out /usr/lib/ssl/fipsmodule.cnf -module $(find / -name fips.so) && \
+    sed -i --follow-symlinks \
+        -e '/^\[provider_sect\]/a fips = fips_sect' \
+        -e '/^\[default_sect\]/a activate = 1' \
+        -e '$a \\n.include /usr/lib/ssl/fipsmodule.cnf' \
+        /usr/lib/ssl/openssl.cnf
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
