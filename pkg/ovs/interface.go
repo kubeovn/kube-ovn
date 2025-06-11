@@ -121,6 +121,7 @@ type PortGroup interface {
 	ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortGroup, error)
 	GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error)
 	PortGroupExists(pgName string) (bool, error)
+	RemovePortFromPortGroups(portName string, portGroupNames ...string) error
 }
 
 type ACL interface {

@@ -432,6 +432,10 @@ func (suite *OvnClientTestSuite) Test_portGroupOp() {
 	suite.testPortGroupOp()
 }
 
+func (suite *OvnClientTestSuite) Test_removePortFromPortGroups() {
+	suite.testRemovePortFromPortGroups()
+}
+
 /* address_set unit test */
 func (suite *OvnClientTestSuite) Test_CreateAddressSet() {
 	suite.testCreateAddressSet()

@@ -1103,13 +1103,9 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("reconcile default vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
 		}
-	}
-
-	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
-			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
-			return err
-		}
+	} else if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
+		klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
+		return err
 	}
 
 	if err := c.reconcileVlan(subnet); err != nil {
@@ -1535,6 +1531,12 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		}
 	}
 
+	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
+	if err != nil {
+		klog.Errorf("failed to list port groups for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+
 	pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods %v", err)
@@ -1587,6 +1589,18 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 			portsToAdd = append(portsToAdd, port)
 		}
 
+		// remove lsp from other port groups
+		// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
+		for _, pg := range portGroups {
+			if pg.Name == pgName {
+				continue
+			}
+			if err = c.OVNNbClient.PortGroupRemovePorts(pg.Name, podPorts...); err != nil {
+				klog.Errorf("remove ports from port group %s: %v", pg.Name, err)
+				return err
+			}
+		}
+		// add ports to the port group
 		if err = c.OVNNbClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
 			klog.Errorf("add ports to port group %s: %v", pgName, err)
 			return err
@@ -2408,7 +2422,13 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 	}
 
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: subnet.Name + "/" + node.Name}); err != nil {
+	externalIDs := map[string]string{
+		"subnet":         subnet.Name,
+		"node":           node.Name,
+		"vendor":         util.CniTypeName,
+		networkPolicyKey: subnet.Name + "/" + node.Name,
+	}
+	if err := c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 		klog.Errorf("create port group for subnet %s and node %s: %v", subnet.Name, node.Name, err)
 		return err
 	}

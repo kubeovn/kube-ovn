@@ -3,6 +3,8 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -14,18 +16,25 @@ import (
 )
 
 func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]string) error {
-	exist, err := c.PortGroupExists(pgName)
+	pg, err := c.GetPortGroup(pgName, true)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	// ingnore
-	if exist {
+	if pg != nil {
+		if !maps.Equal(pg.ExternalIDs, externalIDs) {
+			pg.ExternalIDs = maps.Clone(externalIDs)
+			if err = c.UpdatePortGroup(pg, &pg.ExternalIDs); err != nil {
+				err = fmt.Errorf("failed to update port group %s external IDs: %w", pgName, err)
+				klog.Error(err)
+				return err
+			}
+		}
 		return nil
 	}
 
-	pg := &ovnnb.PortGroup{
+	pg = &ovnnb.PortGroup{
 		Name:        pgName,
 		ExternalIDs: externalIDs,
 	}
@@ -188,10 +197,9 @@ func (c *OVNNbClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.Por
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
-	pgs := make([]ovnnb.PortGroup, 0)
-
+	var pgs []ovnnb.PortGroup
 	if err := c.WhereCache(func(pg *ovnnb.PortGroup) bool {
-		if len(pg.ExternalIDs) < len(externalIDs) {
+		if len(externalIDs) != 0 && len(pg.ExternalIDs) < len(externalIDs) {
 			return false
 		}
 
@@ -290,4 +298,53 @@ func (c *OVNNbClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb
 	}
 
 	return ops, nil
+}
+
+func (c *OVNNbClient) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
+	lsp, err := c.GetLogicalSwitchPort(portName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to get logical switch port %s: %w", portName, err)
+	}
+	if lsp == nil {
+		return nil
+	}
+
+	portGroups := make([]ovnnb.PortGroup, 0, len(portGroupNames))
+	if len(portGroupNames) != 0 {
+		for _, pgName := range portGroupNames {
+			pg, err := c.GetPortGroup(pgName, true)
+			if err != nil {
+				klog.Error(err)
+				return fmt.Errorf("failed to get port group %s: %w", pgName, err)
+			}
+			if pg != nil {
+				portGroups = append(portGroups, *pg)
+			}
+		}
+	} else if portGroups, err = c.ListPortGroups(nil); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to list port groups: %w", err)
+	}
+
+	var ops []ovsdb.Operation
+	for _, pg := range portGroups {
+		if !slices.Contains(pg.Ports, lsp.UUID) {
+			continue
+		}
+
+		op, err := c.portGroupUpdatePortOp(pg.Name, []string{lsp.UUID}, ovsdb.MutateOperationDelete)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to generate operations for removing port %s from port group %s: %w", portName, pg.Name, err)
+		}
+		ops = append(ops, op...)
+	}
+
+	if err = c.Transact("pg-update", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to remove port %s from all port groups: %w", portName, err)
+	}
+
+	return nil
 }
