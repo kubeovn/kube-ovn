@@ -1281,6 +1281,17 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.34 (2025-06-11)
+
+ * [2e5315080](https://github.com/kubeovn/kube-ovn/commit/2e5315080603750409d2114108c46967057b124b) release v1.12.34
+ * [b1cb20a7f](https://github.com/kubeovn/kube-ovn/commit/b1cb20a7fc7dda9a4270740df066106de445f37b) fix sts/vm lsp in incorrect port groups after rescheduled to another node (#5346)
+ * [189ce7525](https://github.com/kubeovn/kube-ovn/commit/189ce7525f2293f9496ec2822c453c06db2a9f00) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.12.33 (2025-06-09)
 
  * [2e5ef48cd](https://github.com/kubeovn/kube-ovn/commit/2e5ef48cde8c085068c3adfe0342e018e68dbef1) release v1.12.33
