@@ -102,20 +102,6 @@ func (mr *MockNBGlobalMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNBGlobal)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -128,6 +114,20 @@ func (m *MockNBGlobal) SetLsDnatModDlDst(enabled bool) error {
 func (mr *MockNBGlobalMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNBGlobal)(nil).SetLsDnatModDlDst), enabled)
+}
+
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNBGlobal) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNBGlobalMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNBGlobal)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
 }
 
 // SetUseCtInvMatch mocks base method.
@@ -198,25 +198,6 @@ func (m *MockLogicalRouter) CreateLogicalRouter(lrName string) error {
 func (mr *MockLogicalRouterMockRecorder) CreateLogicalRouter(lrName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).CreateLogicalRouter), lrName)
-}
-
-// UpdateLogicalRouter mocks base method.
-func (m *MockLogicalRouter) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
-	m.ctrl.T.Helper()
-	varargs := []any{lr}
-	for _, a := range fields {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
-func (mr *MockLogicalRouterMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lr}, fields...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // DeleteLogicalRouter mocks base method.
@@ -295,6 +276,25 @@ func (mr *MockLogicalRouterMockRecorder) LogicalRouterUpdateLoadBalancers(lrName
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{lrName, op}, lbNames...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterUpdateLoadBalancers", reflect.TypeOf((*MockLogicalRouter)(nil).LogicalRouterUpdateLoadBalancers), varargs...)
+}
+
+// UpdateLogicalRouter mocks base method.
+func (m *MockLogicalRouter) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockLogicalRouterMockRecorder) UpdateLogicalRouter(lr any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // MockLogicalRouterPort is a mock of LogicalRouterPort interface.
@@ -1476,6 +1476,25 @@ func (mr *MockPortGroupMockRecorder) PortGroupSetPorts(pgName, ports any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockPortGroup)(nil).PortGroupSetPorts), pgName, ports)
 }
 
+// RemovePortFromPortGroups mocks base method.
+func (m *MockPortGroup) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{portName}
+	for _, a := range portGroupNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RemovePortFromPortGroups", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemovePortFromPortGroups indicates an expected call of RemovePortFromPortGroups.
+func (mr *MockPortGroupMockRecorder) RemovePortFromPortGroups(portName any, portGroupNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{portName}, portGroupNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePortFromPortGroups", reflect.TypeOf((*MockPortGroup)(nil).RemovePortFromPortGroups), varargs...)
+}
+
 // MockACL is a mock of ACL interface.
 type MockACL struct {
 	ctrl     *gomock.Controller
@@ -2582,25 +2601,6 @@ func (m *MockNbClient) CreateLogicalRouter(lrName string) error {
 func (mr *MockNbClientMockRecorder) CreateLogicalRouter(lrName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).CreateLogicalRouter), lrName)
-}
-
-// UpdateLogicalRouter mocks base method.
-func (m *MockNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
-	m.ctrl.T.Helper()
-	varargs := []any{lr}
-	for _, a := range fields {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
-func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{lr}, fields...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockLogicalRouter)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // CreateLogicalRouterPort mocks base method.
@@ -3892,13 +3892,23 @@ func (mr *MockNbClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalPatchPort", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalPatchPort), lspName, lrpName)
 }
 
-// SGLostACL mocks base method.
-func (m *MockNbClient) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
+// RemovePortFromPortGroups mocks base method.
+func (m *MockNbClient) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SGLostACL", sg)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	varargs := []any{portName}
+	for _, a := range portGroupNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RemovePortFromPortGroups", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemovePortFromPortGroups indicates an expected call of RemovePortFromPortGroups.
+func (mr *MockNbClientMockRecorder) RemovePortFromPortGroups(portName any, portGroupNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{portName}, portGroupNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePortFromPortGroups", reflect.TypeOf((*MockNbClient)(nil).RemovePortFromPortGroups), varargs...)
 }
 
 // ResetLogicalSwitchPortMigrateOptions mocks base method.
@@ -3913,6 +3923,15 @@ func (m *MockNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName
 func (mr *MockNbClientMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, migratedFail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
+}
+
+// SGLostACL mocks base method.
+func (m *MockNbClient) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SGLostACL", sg)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SGLostACL indicates an expected call of SGLostACL.
@@ -4108,20 +4127,6 @@ func (mr *MockNbClientMockRecorder) SetLsCtSkipDstLportIPs(enabled any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsCtSkipDstLportIPs", reflect.TypeOf((*MockNbClient)(nil).SetLsCtSkipDstLportIPs), enabled)
 }
 
-// SetNodeLocalDNSIP mocks base method.
-func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
-func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
-}
-
 // SetLsDnatModDlDst mocks base method.
 func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 	m.ctrl.T.Helper()
@@ -4134,6 +4139,20 @@ func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 func (mr *MockNbClientMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNbClient)(nil).SetLsDnatModDlDst), enabled)
+}
+
+// SetNodeLocalDNSIP mocks base method.
+func (m *MockNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNodeLocalDNSIP", nodeLocalDNSIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNodeLocalDNSIP indicates an expected call of SetNodeLocalDNSIP.
+func (mr *MockNbClientMockRecorder) SetNodeLocalDNSIP(nodeLocalDNSIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeLocalDNSIP", reflect.TypeOf((*MockNbClient)(nil).SetNodeLocalDNSIP), nodeLocalDNSIP)
 }
 
 // SetUseCtInvMatch mocks base method.
@@ -4221,6 +4240,25 @@ func (m *MockNbClient) UpdateIngressACLOps(netpol, pgName, asIngressName, asExce
 func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, namedPortMap)
+}
+
+// UpdateLogicalRouter mocks base method.
+func (m *MockNbClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lr}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalRouter", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalRouter indicates an expected call of UpdateLogicalRouter.
+func (mr *MockNbClientMockRecorder) UpdateLogicalRouter(lr any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lr}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalRouter", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalRouter), varargs...)
 }
 
 // UpdateLogicalRouterPortOptions mocks base method.

@@ -774,6 +774,20 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
+		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
+		if err != nil {
+			klog.Errorf("failed to list port groups: %v", err)
+			return err
+		}
+		pgNames := make([]string, 0, len(portGroups))
+		for _, pg := range portGroups {
+			if pg.Name != pgName {
+				pgNames = append(pgNames, pg.Name)
+			}
+		}
+
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			node, err := c.nodesLister.Get(pod.Spec.NodeName)
 			if err != nil {
@@ -781,7 +795,6 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
-			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
@@ -839,9 +852,14 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 								continue
 							}
 
-							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+							// remove lsp from other port groups
+							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
+							if err = c.OVNNbClient.RemovePortFromPortGroups(portName, pgNames...); err != nil {
+								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, pgNames, err)
+								return err
+							}
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
-								klog.Errorf("add port to port group %s: %v", pgName, err)
+								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
 								return err
 							}
 
@@ -998,13 +1016,21 @@ func (c *Controller) handleDeletePod(key string) error {
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
 	}
-	if !keepIPCR {
-		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-		if err != nil {
-			klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-			return err
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
+		return err
+	}
+	if keepIPCR {
+		// always remove lsp from port groups
+		for _, port := range ports {
+			klog.Infof("remove lsp %s from all port groups", port.Name)
+			if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
+				klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
+				return err
+			}
 		}
-
+	} else {
 		if len(ports) != 0 {
 			addresses := c.ipam.GetPodAddress(podKey)
 			for _, address := range addresses {

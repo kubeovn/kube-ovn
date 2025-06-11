@@ -494,3 +494,99 @@ func (suite *OvnClientTestSuite) testPortGroupOp() {
 		},
 	}, ops[0].Mutations)
 }
+
+func (suite *OvnClientTestSuite) testRemovePortFromPortGroups() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-rm-port-from-pgs-ls"
+	lspName := "test-rm-port-from-pgs-lsp"
+	pg1Name := "test-rm-port-from-pgs-pg1"
+	pg2Name := "test-rm-port-from-pgs-pg2"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
+	require.NoError(t, err)
+
+	err = ovnClient.CreatePortGroup(pg1Name, nil)
+	require.NoError(t, err)
+
+	err = ovnClient.CreatePortGroup(pg2Name, nil)
+	require.NoError(t, err)
+
+	t.Run("remove port from all port groups", func(t *testing.T) {
+		err = ovnClient.PortGroupAddPorts(pg1Name, lspName)
+		require.NoError(t, err)
+		pg1, err := ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg1.Ports, 1)
+
+		err = ovnClient.PortGroupAddPorts(pg2Name, lspName)
+		require.NoError(t, err)
+		pg2, err := ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg2.Ports, 1)
+
+		err = ovnClient.RemovePortFromPortGroups(lspName)
+		require.NoError(t, err)
+
+		pg1, err = ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Empty(t, pg1.Ports)
+		pg2, err = ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Empty(t, pg2.Ports)
+	})
+
+	t.Run("remove port from specific port group", func(t *testing.T) {
+		err = ovnClient.PortGroupAddPorts(pg1Name, lspName)
+		require.NoError(t, err)
+		pg1, err := ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg1.Ports, 1)
+
+		err = ovnClient.PortGroupAddPorts(pg2Name, lspName)
+		require.NoError(t, err)
+		pg2, err := ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg2.Ports, 1)
+
+		err = ovnClient.RemovePortFromPortGroups(lspName, pg1Name)
+		require.NoError(t, err)
+
+		pg1, err = ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Empty(t, pg1.Ports)
+
+		pg2, err = ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg2.Ports, 1)
+	})
+
+	t.Run("remove port from specific port groups", func(t *testing.T) {
+		err = ovnClient.PortGroupAddPorts(pg1Name, lspName)
+		require.NoError(t, err)
+		pg1, err := ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg1.Ports, 1)
+
+		err = ovnClient.PortGroupAddPorts(pg2Name, lspName)
+		require.NoError(t, err)
+		pg2, err := ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Len(t, pg2.Ports, 1)
+
+		err = ovnClient.RemovePortFromPortGroups(lspName, pg1Name, pg2Name)
+		require.NoError(t, err)
+
+		pg1, err = ovnClient.GetPortGroup(pg1Name, false)
+		require.NoError(t, err)
+		require.Empty(t, pg1.Ports)
+		pg2, err = ovnClient.GetPortGroup(pg2Name, false)
+		require.NoError(t, err)
+		require.Empty(t, pg2.Ports)
+	})
+}
