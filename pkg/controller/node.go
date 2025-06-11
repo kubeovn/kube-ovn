@@ -248,7 +248,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.ReplaceAll(portName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
+	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + key}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
 		return err
 	}
@@ -795,7 +795,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 
 		if err = c.OVNNbClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
-			klog.Errorf("add ports to port group %s: %v", pgName, err)
+			klog.Errorf("failed to set ports of port group %s: %v", pgName, err)
 			return err
 		}
 

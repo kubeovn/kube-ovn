@@ -665,6 +665,10 @@ func (suite *OvnClientTestSuite) Test_portGroupSetPorts() {
 	suite.testPortGroupSetPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_removePortFromPortGroups() {
+	suite.testRemovePortFromPortGroups()
+}
+
 /* address_set unit test */
 func (suite *OvnClientTestSuite) Test_CreateAddressSet() {
 	suite.testCreateAddressSet()
