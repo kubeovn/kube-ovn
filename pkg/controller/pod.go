@@ -687,13 +687,32 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
 		}
 
+		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
+		if err != nil {
+			klog.Errorf("failed to list port groups: %v", err)
+			return err
+		}
+		pgNames := make([]string, 0, len(portGroups))
+		for _, pg := range portGroups {
+			if pg.Name != pgName {
+				pgNames = append(pgNames, pg.Name)
+			}
+		}
+
 		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
 			!subnet.Spec.LogicalGateway {
-			pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
+			// remove lsp from other port groups
+			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
+			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, pgNames...); err != nil {
+				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, pgNames, err)
+				return err
+			}
+			// add lsp to the port group
 			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
 				return err
@@ -707,7 +726,6 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
-			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
@@ -762,15 +780,20 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 					}
 
 					var added bool
-
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
 
+							// remove lsp from other port groups
+							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
+							if err = c.OVNNbClient.RemovePortFromPortGroups(portName, pgNames...); err != nil {
+								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, pgNames, err)
+								return err
+							}
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
-								klog.Errorf("add port to port group %s: %v", pgName, err)
+								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
 								return err
 							}
 
@@ -970,13 +993,21 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	if err != nil {
 		klog.Errorf("failed to get kube-ovn nets of pod %s: %v", podKey, err)
 	}
-	if !keepIPCR {
-		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-		if err != nil {
-			klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
-			return err
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
+		return err
+	}
+	if keepIPCR {
+		// always remove lsp from port groups
+		for _, port := range ports {
+			klog.Infof("remove lsp %s from all port groups", port.Name)
+			if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
+				klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
+				return err
+			}
 		}
-
+	} else {
 		if len(ports) != 0 {
 			addresses := c.ipam.GetPodAddress(podKey)
 			for _, address := range addresses {

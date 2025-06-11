@@ -1666,6 +1666,25 @@ func (mr *MockPortGroupMockRecorder) PortGroupSetPorts(pgName, ports any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockPortGroup)(nil).PortGroupSetPorts), pgName, ports)
 }
 
+// RemovePortFromPortGroups mocks base method.
+func (m *MockPortGroup) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{portName}
+	for _, a := range portGroupNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RemovePortFromPortGroups", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemovePortFromPortGroups indicates an expected call of RemovePortFromPortGroups.
+func (mr *MockPortGroupMockRecorder) RemovePortFromPortGroups(portName any, portGroupNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{portName}, portGroupNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePortFromPortGroups", reflect.TypeOf((*MockPortGroup)(nil).RemovePortFromPortGroups), varargs...)
+}
+
 // MockACL is a mock of ACL interface.
 type MockACL struct {
 	ctrl     *gomock.Controller
@@ -4167,6 +4186,25 @@ func (m *MockNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 func (mr *MockNbClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalPatchPort", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalPatchPort), lspName, lrpName)
+}
+
+// RemovePortFromPortGroups mocks base method.
+func (m *MockNbClient) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{portName}
+	for _, a := range portGroupNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RemovePortFromPortGroups", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemovePortFromPortGroups indicates an expected call of RemovePortFromPortGroups.
+func (mr *MockNbClientMockRecorder) RemovePortFromPortGroups(portName any, portGroupNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{portName}, portGroupNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePortFromPortGroups", reflect.TypeOf((*MockNbClient)(nil).RemovePortFromPortGroups), varargs...)
 }
 
 // ResetLogicalSwitchPortMigrateOptions mocks base method.
