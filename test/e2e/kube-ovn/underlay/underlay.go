@@ -687,12 +687,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Waiting for pod events")
 		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		var message string
-		if f.HasIPv4() {
-			message = fmt.Sprintf("IP address %s has already been used by host with MAC %s", networkInfo.IPAddress, mac)
-		} else {
-			message = "dadfailed"
+		ip = networkInfo.IPAddress
+		if f.IsIPv6() {
+			ip = networkInfo.GlobalIPv6Address
 		}
+		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
 		var found bool
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {
