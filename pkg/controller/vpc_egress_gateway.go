@@ -986,19 +986,24 @@ func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
 		}
 
 		for _, selector := range veg.Spec.Selectors {
-			sel, err := metav1.LabelSelectorAsSelector(selector.NamespaceSelector)
-			if err != nil {
-				klog.Errorf("failed to create label selector for namespace selector %#v: %v", selector.NamespaceSelector, err)
-				utilruntime.HandleError(err)
-				continue
+			sel := labels.Everything()
+			if selector.NamespaceSelector != nil {
+				if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
+					klog.Errorf("failed to create label selector for namespace selector %#v: %v", selector.NamespaceSelector, err)
+					utilruntime.HandleError(err)
+					continue
+				}
 			}
 			if !sel.Matches(labels.Set(ns.Labels)) {
 				continue
 			}
-			if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
-				klog.Errorf("failed to create label selector for pod selector %#v: %v", selector.PodSelector, err)
-				utilruntime.HandleError(err)
-				continue
+			sel = labels.Everything()
+			if selector.PodSelector != nil {
+				if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
+					klog.Errorf("failed to create label selector for pod selector %#v: %v", selector.PodSelector, err)
+					utilruntime.HandleError(err)
+					continue
+				}
 			}
 			if sel.Matches(labels.Set(pod.Labels)) {
 				c.addOrUpdateVpcEgressGatewayQueue.Add(cache.MetaObjectToName(veg).String())
