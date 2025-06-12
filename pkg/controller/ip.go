@@ -48,30 +48,38 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
 		klog.Errorf("ip %s subnet can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
 		klog.Errorf("ip %s namespace can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.PodName != "" && newIP.Spec.PodName != oldIP.Spec.PodName {
 		klog.Errorf("ip %s podName can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
 		klog.Errorf("ip %s podType can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
 		klog.Errorf("ip %s macAddress can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
 		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+		return
 	}
 	if oldIP.Spec.V6IPAddress != "" {
 		// v6 ip address can not use upper case
 		if util.ContainsUppercase(newIP.Spec.V6IPAddress) {
 			err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", newIP.Name, newIP.Spec.V6IPAddress)
 			klog.Error(err)
+			return
 		}
 		if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
 			klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+			return
 		}
 	}
 	if !newIP.DeletionTimestamp.IsZero() {
