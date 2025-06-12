@@ -27,11 +27,7 @@
         "github.com/kubernetes/**",
         "kubernetes/**"
       ],
-      "matchUpdateTypes": [
-        "major",
-        "minor"
-      ],
-      "enabled": false
+      "groupName": "kubernetes"
     },
     {
       "matchUpdateTypes": [
