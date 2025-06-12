@@ -62,8 +62,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -151,8 +151,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -296,8 +296,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -375,8 +375,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -620,8 +620,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -697,8 +697,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -772,8 +772,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -908,8 +908,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -1001,8 +1001,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -1092,8 +1092,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Parse versions
         run: |
@@ -1252,8 +1252,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -1327,8 +1327,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-amd64-
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
