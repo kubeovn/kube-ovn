@@ -444,7 +444,7 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 func getIPFamilies(vip string) (families []corev1.IPFamily, policy corev1.IPFamilyPolicy) {
 	// Check every IP in the VIP, assess if it is an IPv6 or an IPv4
 	ipFamilies := set.New[corev1.IPFamily]()
-	for ip := range strings.SplitSeq(vip, ",") {
+	for _, ip := range strings.Split(vip, ",") {
 		switch util.CheckProtocol(ip) {
 		case kubeovnv1.ProtocolIPv6:
 			ipFamilies.Insert(corev1.IPv6Protocol)
