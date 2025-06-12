@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -343,6 +344,12 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 	}
 
 	name = generateSvcName(slr.Name)
+
+	// We need to set the correct IPFamilies and IPFamilyPolicy on the service
+	// If the VIP is an IPv4, the Service needs to be configured in IPv4, and the opposite for an IPv6
+	// If the VIP has a mix of IPv4s and IPv6s, the Service must be DualStack, with both families set
+	families, policy := getIPFamilies(slr.Spec.Vip)
+
 	if oldSvc != nil {
 		newSvc = oldSvc.DeepCopy()
 		newSvc.Name = name
@@ -351,6 +358,8 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 		newSvc.Spec.Ports = ports
 		newSvc.Spec.Selector = selectors
 		newSvc.Spec.SessionAffinity = corev1.ServiceAffinity(slr.Spec.SessionAffinity)
+		newSvc.Spec.IPFamilies = families
+		newSvc.Spec.IPFamilyPolicy = &policy
 	} else {
 		newSvc = &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -364,6 +373,8 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 				ClusterIP:       corev1.ClusterIPNone,
 				Type:            corev1.ServiceTypeClusterIP,
 				SessionAffinity: corev1.ServiceAffinity(slr.Spec.SessionAffinity),
+				IPFamilies:      families,
+				IPFamilyPolicy:  &policy,
 			},
 		}
 	}
@@ -425,4 +436,26 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		}
 	}
 	return newEps
+}
+
+// getIPFamilies returns the IP families (IPv6/IPv4) for a set of IPs within a VIP
+// This function is used to correctly construct the Service of a SwitchLBRule
+// It also returns the corresponding IPFamilyPolicy to set in the Service
+func getIPFamilies(vip string) (families []corev1.IPFamily, policy corev1.IPFamilyPolicy) {
+	// Check every IP in the VIP, assess if it is an IPv6 or an IPv4
+	ipFamilies := set.New[corev1.IPFamily]()
+	for ip := range strings.SplitSeq(vip, ",") {
+		switch util.CheckProtocol(ip) {
+		case kubeovnv1.ProtocolIPv6:
+			ipFamilies.Insert(corev1.IPv6Protocol)
+		case kubeovnv1.ProtocolIPv4:
+			ipFamilies.Insert(corev1.IPv4Protocol)
+		}
+	}
+
+	policy = corev1.IPFamilyPolicySingleStack
+	if ipFamilies.Len() > 1 {
+		policy = corev1.IPFamilyPolicyPreferDualStack
+	}
+	return ipFamilies.SortedList(), policy
 }
