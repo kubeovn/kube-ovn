@@ -28,8 +28,12 @@ import (
 
 func (c *Controller) InitOVN() error {
 	var err error
+	if err = c.migrateACLTier(); err != nil {
+		klog.Errorf("failed to migrate ACL tier: %v", err)
+		return err
+	}
 
-	if err := c.InitDefaultVpc(); err != nil {
+	if err = c.InitDefaultVpc(); err != nil {
 		klog.Errorf("init default vpc failed: %v", err)
 		return err
 	}
@@ -62,6 +66,13 @@ func (c *Controller) InitOVN() error {
 	}
 
 	return nil
+}
+
+// migrate tier field of ACL rules created in versions prior to v1.13.0
+// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
+// we need to migrate the tier field to the correct value
+func (c *Controller) migrateACLTier() error {
+	return c.OVNNbClient.MigrateACLTier()
 }
 
 func (c *Controller) InitDefaultVpc() error {
