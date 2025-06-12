@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -33,7 +34,7 @@ func Test_upgradeSubnets(t *testing.T) {
 	err := fakeinformers.subnetInformer.Informer().GetStore().Add(subnet)
 	require.NoError(t, err)
 
-	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), logicalSwitchKey, "", nil, util.DefaultACLTier).Return(nil)
+	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), logicalSwitchKey, "", nil, ptr.To(util.DefaultACLTier)).Return(nil)
 
 	err = ctrl.upgradeSubnets()
 	require.NoError(t, err)

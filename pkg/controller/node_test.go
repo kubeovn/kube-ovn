@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -31,7 +32,7 @@ func Test_upgradeNodes(t *testing.T) {
 	err := fakeinformers.nodeInformer.Informer().GetStore().Add(node)
 	require.NoError(t, err)
 
-	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), portGroupKey, "", nil, util.DefaultACLTier).Return(nil).Times(1)
+	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), portGroupKey, "", nil, ptr.To(util.DefaultACLTier)).Return(nil).Times(1)
 
 	err = ctrl.upgradeNodes()
 	require.NoError(t, err)

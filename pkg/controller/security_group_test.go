@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -59,7 +60,7 @@ func Test_upgradeSecurityGroups(t *testing.T) {
 	err := fakeinformers.sgInformer.Informer().GetStore().Add(sg)
 	require.NoError(t, err)
 
-	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), portGroupKey, "", nil, util.DefaultACLTier).Return(nil).Times(2)
+	mockOvnClient.EXPECT().DeleteAcls(gomock.Any(), portGroupKey, "", nil, ptr.To(util.DefaultACLTier)).Return(nil).Times(2)
 
 	err = ctrl.upgradeSecurityGroups()
 	require.NoError(t, err)
