@@ -1408,7 +1408,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 
 		// create legacy acls
 		// to-lport
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
 			acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.DefaultACLTier)
 			require.NoError(t, err)
@@ -1416,7 +1416,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		}
 
 		// from-lport
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
 			acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, ovnnb.ACLActionAllowRelated, util.DefaultACLTier)
 			require.NoError(t, err)
@@ -1444,7 +1444,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		acls := make([]*ovnnb.ACL, 0, 5)
 
 		// to-lport
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
 
 			// tier 0
@@ -1459,7 +1459,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		}
 
 		// from-lport
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
 
 			// tier 0
