@@ -8,6 +8,7 @@
   ],
   "baseBranches": ["master", "release-1.13"],
   "postUpdateOptions": ["gomodTidy"],
+  "labels": ["dependencies"],
   "packageRules": [
     {
       "matchBaseBranches": ["master"],
@@ -40,7 +41,8 @@
     },
     {
       "matchPackageNames": [
-        "github.com/kubeovn/**"
+        "github.com/kubeovn/**",
+        "windows"
       ],
       "enabled": false
     },
