@@ -1794,6 +1794,20 @@ func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
+// MigrateACLTier mocks base method.
+func (m *MockACL) MigrateACLTier() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MigrateACLTier")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MigrateACLTier indicates an expected call of MigrateACLTier.
+func (mr *MockACLMockRecorder) MigrateACLTier() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockACL)(nil).MigrateACLTier))
+}
+
 // SGLostACL mocks base method.
 func (m *MockACL) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
 	m.ctrl.T.Helper()
@@ -4078,6 +4092,20 @@ func (m *MockNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mu
 func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
+}
+
+// MigrateACLTier mocks base method.
+func (m *MockNbClient) MigrateACLTier() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MigrateACLTier")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MigrateACLTier indicates an expected call of MigrateACLTier.
+func (mr *MockNbClientMockRecorder) MigrateACLTier() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockNbClient)(nil).MigrateACLTier))
 }
 
 // MonitorBFD mocks base method.

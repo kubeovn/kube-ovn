@@ -1453,3 +1453,36 @@ func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 	}
 	return matches
 }
+
+func (c *OVNNbClient) MigrateACLTier() error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var aclList []ovnnb.ACL
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }).List(ctx, &aclList); err != nil {
+		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
+		klog.Error(err)
+		return err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(aclList))
+	for _, acl := range aclList {
+		acl.Tier = util.NetpolACLTier
+		op, err := c.Where(&acl).Update(&acl, &acl.Tier)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to generate operations for updating acl %s tier: %w", acl.UUID, err)
+		}
+		ops = append(ops, op...)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err := c.Transact("acl-migrate-tier", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to migrate acl tier: %w", err)
+	}
+
+	return nil
+}
