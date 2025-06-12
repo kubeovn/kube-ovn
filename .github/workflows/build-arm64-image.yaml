@@ -22,11 +22,82 @@ env:
   GO_VERSION: ''
 
 jobs:
+  build-kube-ovn-base:
+    name: Build kube-ovn-base
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      build-base: ${{ steps.check.outputs.build-base }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: check
+        run: |
+          if [ ${{ github.event_name }} != 'pull_request' ]; then
+            exit
+          fi
+          tmp_dir=`mktemp -d`
+          cat > "$tmp_dir/on_changes.txt" <<EOF
+          dist/images/Dockerfile.base
+          dist/images/OpenBFDD-compile.patch
+          dist/images/go-deps/download-go-deps.sh
+          dist/images/go-deps/rebuild-go-deps.sh
+          EOF
+          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
+            echo build-base=1 >> "$GITHUB_OUTPUT"
+          fi
+          rm -frv "$tmp_dir"
+
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        if: steps.check.outputs.build-base == 1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.build-base == 1
+
+      - uses: actions/setup-go@v5
+        if: steps.check.outputs.build-base == 1
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Build kube-ovn-base image
+        id: build
+        if: steps.check.outputs.build-base == 1
+        env:
+          GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
+        run: |
+            make base-arm64
+            make base-tar-arm64
+
+      - name: Upload base images to artifact
+        if: steps.check.outputs.build-base == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: kube-ovn-base
+          path: image-arm64.tar
+
   build:
     name: Build arm64
     runs-on: ubuntu-24.04-arm
+    needs:
+      - build-kube-ovn-base
     steps:
       - uses: actions/checkout@v4
+        id: checkout
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: actions/setup-go@v5
@@ -49,6 +120,19 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
+
+      - name: Download base images
+        if: needs.build-kube-ovn-base.outputs.build-base == 1
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn-base
+
+      - name: Load base images
+        if: needs.build-kube-ovn-base.outputs.build-base == 1
+        run: |
+          docker load --input image-arm64.tar
+          docker tag kubeovn/kube-ovn-base:$TAG-arm64 kubeovn/kube-ovn-base:$TAG
+          docker tag kubeovn/kube-ovn-base:$TAG-debug-arm64 kubeovn/kube-ovn-base:$TAG-debug
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@0.31.0
@@ -122,25 +206,27 @@ jobs:
           done
 
       - name: Build
-        run: make release-arm
+        run: |
+          if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
+            make build-kube-ovn-arm64
+          else
+            make image-kube-ovn-arm64
+          fi
+          make image-vpc-nat-gateway
 
       - name: Push
-        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          COMMIT: ${{ github.sha }}
+          COMMIT: ${{ steps.checkout.outputs.commit }}
         run: |
           TAG=$(cat VERSION)
+          COMMIT=${COMMIT:0:9}
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-arm
-          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-arm
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-arm
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-arm
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-$COMMIT-arm64
+          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-$COMMIT-debug-arm64
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-$COMMIT-arm64
           docker images
-          docker push kubeovn/kube-ovn:$TAG-arm
-          docker push kubeovn/kube-ovn:$TAG-debug-arm
-          docker push kubeovn/kube-ovn-dev:$COMMIT-arm
-          docker push kubeovn/vpc-nat-gateway:$TAG-arm
-          docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-arm
+          docker push kubeovn/kube-ovn:$TAG-$COMMIT-arm64
+          docker push kubeovn/kube-ovn:$TAG-$COMMIT-debug-arm64
+          docker push kubeovn/vpc-nat-gateway:$TAG-$COMMIT-arm64

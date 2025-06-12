@@ -14,25 +14,28 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        id: checkout
 
       - name: Publish
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           DOCKER_CLI_EXPERIMENTAL: enabled
+          COMMIT: ${{ steps.checkout.outputs.commit }}
         run: |
-          TAG=$(cat VERSION)
+          TAG=$(cat VERSION)-${COMMIT:0:9}
+          echo $TAG
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker pull kubeovn/kube-ovn:$TAG-x86
-          docker pull kubeovn/kube-ovn:$TAG-arm
-          docker pull kubeovn/kube-ovn:$TAG-debug-x86
-          docker pull kubeovn/kube-ovn:$TAG-debug-arm
-          docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
-          docker manifest create kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
+          docker pull kubeovn/kube-ovn:$TAG-amd64
+          docker pull kubeovn/kube-ovn:$TAG-arm64
+          docker pull kubeovn/kube-ovn:$TAG-debug-amd64
+          docker pull kubeovn/kube-ovn:$TAG-debug-arm64
+          docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-amd64 kubeovn/kube-ovn:$TAG-arm64
+          docker manifest create kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-amd64 kubeovn/kube-ovn:$TAG-debug-arm64
           docker manifest push kubeovn/kube-ovn:$TAG
           docker manifest push kubeovn/kube-ovn:$TAG-debug
 
-          docker pull kubeovn/vpc-nat-gateway:$TAG-x86
-          docker pull kubeovn/vpc-nat-gateway:$TAG-arm
-          docker manifest create kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
+          docker pull kubeovn/vpc-nat-gateway:$TAG-amd64
+          docker pull kubeovn/vpc-nat-gateway:$TAG-arm64
+          docker manifest create kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-amd64 kubeovn/vpc-nat-gateway:$TAG-arm64
           docker manifest push kubeovn/vpc-nat-gateway:$TAG

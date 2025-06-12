@@ -22,16 +22,16 @@ docker manifest rm kubeovn/kube-ovn:${VERSION}-debug
 docker manifest rm kubeovn/vpc-nat-gateway:${VERSION}
 set -e
 
-docker pull kubeovn/kube-ovn:${VERSION}-x86
-docker pull kubeovn/kube-ovn:${VERSION}-arm
-docker pull kubeovn/vpc-nat-gateway:${VERSION}-x86
-docker pull kubeovn/vpc-nat-gateway:${VERSION}-arm
-docker pull kubeovn/kube-ovn:${VERSION}-debug-x86
-docker pull kubeovn/kube-ovn:${VERSION}-debug-arm
+docker pull kubeovn/kube-ovn:${VERSION}-amd64
+docker pull kubeovn/kube-ovn:${VERSION}-arm64
+docker pull kubeovn/vpc-nat-gateway:${VERSION}-amd64
+docker pull kubeovn/vpc-nat-gateway:${VERSION}-arm64
+docker pull kubeovn/kube-ovn:${VERSION}-debug-amd64
+docker pull kubeovn/kube-ovn:${VERSION}-debug-arm64
 
-docker manifest create kubeovn/kube-ovn:${VERSION} kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm
-docker manifest create kubeovn/vpc-nat-gateway:${VERSION} kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm
-docker manifest create kubeovn/kube-ovn:${VERSION}-debug kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
+docker manifest create kubeovn/kube-ovn:${VERSION} kubeovn/kube-ovn:${VERSION}-amd64 kubeovn/kube-ovn:${VERSION}-arm64
+docker manifest create kubeovn/vpc-nat-gateway:${VERSION} kubeovn/vpc-nat-gateway:${VERSION}-amd64 kubeovn/vpc-nat-gateway:${VERSION}-arm64
+docker manifest create kubeovn/kube-ovn:${VERSION}-debug kubeovn/kube-ovn:${VERSION}-debug-amd64 kubeovn/kube-ovn:${VERSION}-debug-arm64
 
 docker manifest push kubeovn/kube-ovn:${VERSION}
 docker manifest push kubeovn/vpc-nat-gateway:${VERSION}
@@ -93,7 +93,7 @@ if [ "$current_branch" != "master" ]; then
   git push
 
   echo "clean up images"
-  docker rmi kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
+  docker rmi kubeovn/kube-ovn:${VERSION}-amd64 kubeovn/kube-ovn:${VERSION}-arm64 kubeovn/vpc-nat-gateway:${VERSION}-amd64 kubeovn/vpc-nat-gateway:${VERSION}-arm64 kubeovn/kube-ovn:${VERSION}-debug-amd64 kubeovn/kube-ovn:${VERSION}-debug-arm64
 
   echo "Manually update the release note with the new changelog"
 else

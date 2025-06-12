@@ -1,4 +1,4 @@
-name: Build x86 Image
+name: Build AMD64 Image
 
 on:
   pull_request:
@@ -182,8 +182,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Unit test
         run: |
@@ -402,8 +402,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
           lookup-only: true
 
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -424,8 +424,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install ginkgo
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
@@ -542,8 +542,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -738,8 +738,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1091,8 +1091,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1284,8 +1284,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1441,8 +1441,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1533,7 +1533,7 @@ jobs:
       fail-fast: false
       matrix:
         ssl:
-          - "true"
+          # - "true"
           - "false"
     timeout-minutes: 30
     steps:
@@ -1786,8 +1786,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1929,8 +1929,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2198,8 +2198,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2295,7 +2295,7 @@ jobs:
       fail-fast: false
       matrix:
         ssl:
-          - "true"
+          # - "true"
           - "false"
         bind-local:
           - "true"
@@ -2353,8 +2353,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2573,8 +2573,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2747,8 +2747,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2890,8 +2890,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -3033,8 +3033,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -3175,8 +3175,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -3282,8 +3282,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-amd64-
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -3409,6 +3409,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v4
+        id: checkout
+        with:
+          ref: ${{ github.head_ref || github.ref }}
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v4
@@ -3446,26 +3449,18 @@ jobs:
           make scan
 
       - name: Push
-        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          COMMIT: ${{ github.sha }}
+          COMMIT: ${{ steps.checkout.outputs.commit }}
         run: |
-          cat VERSION
           TAG=$(cat VERSION)
+          COMMIT=${COMMIT:0:9}
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
-          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
-          docker tag kubeovn/kube-ovn:$TAG-dpdk kubeovn/kube-ovn:$TAG-dpdk-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-$COMMIT-amd64
+          docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-$COMMIT-debug-amd64
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-$COMMIT-amd64
           docker images
-          docker push kubeovn/kube-ovn:$TAG-x86
-          docker push kubeovn/kube-ovn:$TAG-amd64-legacy
-          docker push kubeovn/kube-ovn-dev:$COMMIT-x86
-          docker push kubeovn/kube-ovn:$TAG-debug-x86
-          docker push kubeovn/kube-ovn:$TAG-dpdk-x86
-          docker push kubeovn/vpc-nat-gateway:$TAG-x86
-          docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker push kubeovn/kube-ovn:$TAG-$COMMIT-amd64
+          docker push kubeovn/kube-ovn:$TAG-$COMMIT-debug-amd64
+          docker push kubeovn/vpc-nat-gateway:$TAG-$COMMIT-amd64
