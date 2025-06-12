@@ -1935,7 +1935,7 @@ func (mr *MockACLMockRecorder) CreateSgDenyAllACL(sgName any) *gomock.Call {
 }
 
 // DeleteAcls mocks base method.
-func (m *MockACL) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error {
+func (m *MockACL) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier *int) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].(error)
@@ -1949,7 +1949,7 @@ func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction, ext
 }
 
 // DeleteAclsOps mocks base method.
-func (m *MockACL) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error) {
+func (m *MockACL) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier *int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)
@@ -3374,7 +3374,7 @@ func (mr *MockNbClientMockRecorder) CreateVirtualLogicalSwitchPorts(lsName any, 
 }
 
 // DeleteAcls mocks base method.
-func (m *MockNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error {
+func (m *MockNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier *int) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].(error)
@@ -3388,7 +3388,7 @@ func (mr *MockNbClientMockRecorder) DeleteAcls(parentName, parentType, direction
 }
 
 // DeleteAclsOps mocks base method.
-func (m *MockNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier *int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)

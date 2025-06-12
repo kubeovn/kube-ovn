@@ -24,7 +24,6 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type OvnClientTestSuite struct {
@@ -1282,7 +1281,7 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnNbClient(t, endpoint, 10)
 	require.NoError(t, err)
 
-	err = ovnClient.DeleteAcls("test_pg", portGroupKey, ovnnb.ACLDirectionToLport, nil, util.NilACLTier)
+	err = ovnClient.DeleteAcls("test_pg", portGroupKey, ovnnb.ACLDirectionToLport, nil, nil)
 	require.NoError(t, err)
 }
 

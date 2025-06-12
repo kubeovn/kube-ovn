@@ -393,7 +393,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 	pgName := GetSgPortGroupName(sg.Name)
 
 	// clear acl
-	if err := c.DeleteAcls(pgName, portGroupKey, direction, nil, util.NilACLTier); err != nil {
+	if err := c.DeleteAcls(pgName, portGroupKey, direction, nil, nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete direction '%s' acls from port group %s: %w", direction, pgName, err)
 	}
@@ -450,7 +450,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 }
 
 func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
-	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}, util.NilACLTier); err != nil {
+	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}, nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete subnet acls from %s: %w", lsName, err)
 	}
@@ -539,7 +539,7 @@ func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
 func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	// clear acls
-	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", nil, util.NilACLTier); err != nil {
+	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", nil, nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
@@ -740,7 +740,7 @@ func (c *OVNNbClient) CreateBareACL(parentName, direction, priority, match, acti
 // DeleteAcls delete several acl once,
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
-func (c *OVNNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier int) error {
+func (c *OVNNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string, tier *int) error {
 	ops, err := c.DeleteAclsOps(parentName, parentType, direction, externalIDs, tier)
 	if err != nil {
 		klog.Error(err)
@@ -831,10 +831,10 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNo
 // result should include all to-lport and from-lport acls when direction is empty,
 // result should include all acls when externalIDs is empty,
 // result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
-// result should include all acls when tier is -1
-// result should include all acls in specific tier when tier is not -1
+// result should include all acls when tier is nil
+// result should include all acls in specific tier when tier is not nil
 // TODO: maybe add other filter conditions(priority or match)
-func (c *OVNNbClient) ListAcls(direction string, externalIDs map[string]string, tier int) ([]ovnnb.ACL, error) {
+func (c *OVNNbClient) ListAcls(direction string, externalIDs map[string]string, tier *int) ([]ovnnb.ACL, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -1102,10 +1102,10 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 // result should include all to-lport and from-lport acls when direction is empty,
 // result should include all acls when externalIDs is empty,
 // result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
-// result should include all acls when tier is -1
-// result should include all acls in specific tier when tier is not -1
+// result should include all acls when tier is nil
+// result should include all acls in specific tier when tier is not nil
 // TODO: maybe add other filter conditions(priority or match)
-func aclFilter(direction string, externalIDs map[string]string, tier int) func(acl *ovnnb.ACL) bool {
+func aclFilter(direction string, externalIDs map[string]string, tier *int) func(acl *ovnnb.ACL) bool {
 	return func(acl *ovnnb.ACL) bool {
 		if len(acl.ExternalIDs) < len(externalIDs) {
 			return false
@@ -1131,7 +1131,7 @@ func aclFilter(direction string, externalIDs map[string]string, tier int) func(a
 			return false
 		}
 
-		if tier != util.NilACLTier && acl.Tier != tier {
+		if tier != nil && acl.Tier != *tier {
 			return false
 		}
 
@@ -1190,7 +1190,7 @@ func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 // DeleteAcls return operation which delete several acl once,
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
-func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier int) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string, tier *int) ([]ovsdb.Operation, error) {
 	if parentName == "" {
 		return nil, errors.New("the port group name or logical switch name is required")
 	}

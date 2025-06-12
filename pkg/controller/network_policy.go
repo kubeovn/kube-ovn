@@ -18,6 +18,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -66,7 +67,7 @@ func (c *Controller) upgradeNetworkPoliciesToV1_13() error {
 			npName = "np" + np.Name
 		}
 		pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".")
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier)); err != nil {
 			klog.Errorf("clear legacy network policy %s acls: %v", pgName, err)
 			return err
 		}
@@ -184,7 +185,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil, util.NilACLTier)
+	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil, nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s ingress acls: %v", key, err)
 		return err
@@ -300,7 +301,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil, util.NilACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil, nil); err != nil {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
@@ -313,7 +314,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil, util.NilACLTier)
+	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil, nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s egress acls: %v", key, err)
 		return err
@@ -430,7 +431,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil, util.NilACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil, nil); err != nil {
 			klog.Errorf("delete np %s egress acls: %v", key, err)
 			return err
 		}

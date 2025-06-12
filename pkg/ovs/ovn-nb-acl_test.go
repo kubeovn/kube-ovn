@@ -1430,7 +1430,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 5)
 
-		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier)
+		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier))
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1480,7 +1480,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 10)
 
-		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier)
+		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier))
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1516,7 +1516,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 5)
 
-		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(pgName, portGroupKey, "", nil, nil)
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1553,7 +1553,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, pg.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil, nil)
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1561,7 +1561,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, pg.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = nbClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil, nil)
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1597,7 +1597,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 5)
 
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, "", nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, "", nil, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1634,7 +1634,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, nil, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1642,7 +1642,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport, nil, util.NilACLTier)
+		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport, nil, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1679,7 +1679,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName}, util.NilACLTier)
+		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName}, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1688,7 +1688,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	})
 
 	t.Run("should no err when acls does not exist", func(t *testing.T) {
-		err = nbClient.DeleteAcls("test-nonexist-ls", logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"}, util.NilACLTier)
+		err = nbClient.DeleteAcls("test-nonexist-ls", logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"}, nil)
 		require.NoError(t, err)
 	})
 
@@ -1710,7 +1710,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		err = failedNbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
 		require.Error(t, err)
 		// TODO:// should err but not for now
-		err = failedNbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName}, util.NilACLTier)
+		err = failedNbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName}, nil)
 		require.NoError(t, err)
 	})
 }
@@ -1894,7 +1894,7 @@ func (suite *OvnClientTestSuite) testListAcls() {
 	}
 
 	/* list all direction acl */
-	out, err := nbClient.ListAcls("", nil, util.NilACLTier)
+	out, err := nbClient.ListAcls("", nil, nil)
 	require.NoError(t, err)
 	count := 0
 	for _, v := range out {
@@ -2120,7 +2120,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		}
 
 		/* include all direction acl */
-		filterFunc := aclFilter("", nil, util.NilACLTier)
+		filterFunc := aclFilter("", nil, nil)
 		count := 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2130,7 +2130,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.Equal(t, count, 11)
 
 		/* include all direction acl with external ids */
-		filterFunc = aclFilter("", map[string]string{aclParentKey: pgName}, util.NilACLTier)
+		filterFunc = aclFilter("", map[string]string{aclParentKey: pgName}, nil)
 		count = 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2140,7 +2140,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.Equal(t, count, 5)
 
 		/* include to-lport acl */
-		filterFunc = aclFilter(ovnnb.ACLDirectionToLport, nil, util.NilACLTier)
+		filterFunc = aclFilter(ovnnb.ACLDirectionToLport, nil, nil)
 		count = 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2150,7 +2150,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.Equal(t, count, 4)
 
 		/* include to-lport acl with external ids */
-		filterFunc = aclFilter(ovnnb.ACLDirectionToLport, map[string]string{aclParentKey: pgName}, util.NilACLTier)
+		filterFunc = aclFilter(ovnnb.ACLDirectionToLport, map[string]string{aclParentKey: pgName}, nil)
 		count = 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2160,7 +2160,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.Equal(t, count, 2)
 
 		/* include from-lport acl */
-		filterFunc = aclFilter(ovnnb.ACLDirectionFromLport, nil, util.NilACLTier)
+		filterFunc = aclFilter(ovnnb.ACLDirectionFromLport, nil, nil)
 		count = 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2170,7 +2170,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		require.Equal(t, count, 7)
 
 		/* include all from-lport acl with acl parent key*/
-		filterFunc = aclFilter(ovnnb.ACLDirectionFromLport, map[string]string{aclParentKey: ""}, util.NilACLTier)
+		filterFunc = aclFilter(ovnnb.ACLDirectionFromLport, map[string]string{aclParentKey: ""}, nil)
 		count = 0
 		for _, acl := range acls {
 			if filterFunc(acl) {
@@ -2189,7 +2189,7 @@ func (suite *OvnClientTestSuite) testACLFilter() {
 		filterFunc := aclFilter("", map[string]string{
 			aclParentKey: pgName,
 			"key":        "value",
-		}, util.NilACLTier)
+		}, nil)
 
 		require.False(t, filterFunc(acl))
 	})

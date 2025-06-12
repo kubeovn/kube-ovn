@@ -153,7 +153,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		return err
 	}
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil, util.NilACLTier)
+	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil, nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for banp %s ingress acls: %v", key, err)
 		return err
@@ -230,7 +230,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		return fmt.Errorf("failed to delete unused ingress address set for banp %s: %w", key, err)
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil, util.NilACLTier)
+	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil, nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for banp %s egress acls: %v", key, err)
 		return err

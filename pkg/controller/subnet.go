@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -148,7 +149,7 @@ func (c *Controller) upgradeSubnetsToV1_13() error {
 	}
 
 	for _, subnet := range subnets {
-		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, util.DefaultACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, ptr.To(util.DefaultACLTier)); err != nil {
 			klog.Errorf("clear legacy logical switch %s acls: %v", subnet.Name, err)
 			return err
 		}
@@ -826,7 +827,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// clear acl when direction is ""
-		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, util.NilACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil, nil); err != nil {
 			if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error()); err != nil {
 				klog.Error(err)
 				return err
@@ -926,7 +927,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	}
 
 	// clear acl when direction is ""
-	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil, util.NilACLTier); err != nil {
+	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil, nil); err != nil {
 		klog.Errorf("clear logical switch %s acls: %v", key, err)
 		return err
 	}

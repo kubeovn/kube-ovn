@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -50,7 +51,7 @@ func (c *Controller) enqueueDeleteSg(obj any) {
 func (c *Controller) upgradeSecurityGroupsToV1_13() error {
 	// clear legacy acls in tier 0 for deny all sg
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
-	if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+	if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier)); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete legacy acls from port group %s: %w", pgName, err)
 	}
@@ -63,7 +64,7 @@ func (c *Controller) upgradeSecurityGroupsToV1_13() error {
 	}
 	for _, sg := range sgs {
 		pgName := ovs.GetSgPortGroupName(sg.Name)
-		if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+		if err := c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier)); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("delete legacy acls from port group %s: %w", pgName, err)
 		}

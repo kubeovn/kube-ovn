@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -96,7 +97,7 @@ func (c *Controller) upgradeNodesToV1_13() error {
 		if pgName == "" {
 			continue
 		}
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.DefaultACLTier); err != nil {
+		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, ptr.To(util.DefaultACLTier)); err != nil {
 			klog.Errorf("delete legacy node acl for node pg %s: %v", pgName, err)
 			return err
 		}
@@ -836,7 +837,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			}
 		} else {
 			// clear all acl
-			if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, util.NilACLTier); err != nil {
+			if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil, nil); err != nil {
 				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}
