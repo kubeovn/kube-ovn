@@ -1505,12 +1505,7 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 	for _, acl := range aclList {
 		var portGroups []ovnnb.PortGroup
 		if err := c.ovsDbClient.WhereCache(func(pg *ovnnb.PortGroup) bool {
-			for _, aclUUID := range pg.ACLs {
-				if aclUUID == acl.UUID {
-					return true
-				}
-			}
-			return false
+			return slices.Contains(pg.ACLs, acl.UUID)
 		}).List(ctx, &portGroups); err == nil {
 			for _, pg := range portGroups {
 				op, err := c.portGroupUpdateACLOp(pg.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
@@ -1521,12 +1516,7 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 		}
 		var logicalSwitches []ovnnb.LogicalSwitch
 		if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
-			for _, aclUUID := range ls.ACLs {
-				if aclUUID == acl.UUID {
-					return true
-				}
-			}
-			return false
+			return slices.Contains(ls.ACLs, acl.UUID)
 		}).List(ctx, &logicalSwitches); err == nil {
 			for _, ls := range logicalSwitches {
 				op, err := c.logicalSwitchUpdateACLOp(ls.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
