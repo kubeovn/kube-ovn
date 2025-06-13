@@ -1278,14 +1278,17 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
 		c.OVNNbClient.MonitorBFD()
 	}
-	// TODO: we should merge these two vpc nat config into one config and resync them together
-	go wait.Until(func() {
-		c.resyncVpcNatGwConfig()
-	}, time.Second, ctx.Done())
 
-	go wait.Until(func() {
-		c.resyncVpcNatConfig()
-	}, time.Second, ctx.Done())
+	// TODO: we should merge these two vpc nat config into one config and resync them together
+	if c.config.EnableEipSnat {
+		go wait.Until(func() {
+			c.resyncVpcNatGwConfig()
+		}, time.Second, ctx.Done())
+
+		go wait.Until(func() {
+			c.resyncVpcNatConfig()
+		}, time.Second, ctx.Done())
+	}
 
 	if c.config.GCInterval != 0 {
 		go wait.Until(func() {
