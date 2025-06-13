@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -426,9 +428,8 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	}
 
 	// do not perform ipv4/ipv6 duplicate address detection during VM live migration
-	checkIPv6DAD := !vmMigration
+	ipv6DAD := !vmMigration
 	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
-	ipv6DAD := !vmMigration && csh.Config.EnableIPv6DAD
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		interfaceName := nicName
@@ -538,7 +539,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			underlayGateway := gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
 
 			if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual {
-				addrsFlags, err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, checkIPv6DAD)
+				addrsFlags, err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, ipv6DAD)
 				if err != nil {
 					klog.Error(err)
 					return err
@@ -557,6 +558,9 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 					if !available && mac != nil {
 						return fmt.Errorf("IP address %s has already been used by host with MAC %s", addr, mac)
 					}
+				}
+				if len(addrsFlags) != 0 {
+					return fmt.Errorf("ip address(es) %s on interface %s are not in preferred state", strings.Join(slices.Collect(maps.Keys(addrsFlags)), ","), interfaceName)
 				}
 			}
 

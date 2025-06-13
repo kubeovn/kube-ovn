@@ -68,7 +68,6 @@ type Configuration struct {
 	EnableMetrics             bool
 	EnableOVNIPSec            bool
 	EnableArpDetectIPConflict bool
-	EnableIPv6DAD             bool
 	KubeletDir                string
 	EnableVerboseConnCheck    bool
 	TCPConnCheckPort          int32
@@ -119,7 +118,6 @@ func ParseFlags() *Configuration {
 		argExternalGatewaySwitch     = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in underlay network")
-		argEnableIPv6DAD             = pflag.Bool("enable-ipv6-duplicate-address-detection", true, "Whether to support IPv6 duplicate address detection in underlay network")
 		argKubeletDir                = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
 		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
@@ -187,7 +185,6 @@ func ParseFlags() *Configuration {
 		EnableMetrics:             *argEnableMetrics,
 		EnableOVNIPSec:            *argEnableOVNIPSec,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
-		EnableIPv6DAD:             *argEnableIPv6DAD,
 		KubeletDir:                *argKubeletDir,
 		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
