@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -27,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -189,6 +192,33 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			klog.Error(err)
 			return nil, err
 		}
+	}
+
+	// wait for the ovs interface to be ready
+	var ready bool
+	ch := make(chan struct{}, 1)
+	timeout := 30 * time.Second
+	deadline := time.Now().Add(timeout)
+	wait.Until(func() {
+		if time.Now().After(deadline) {
+			ch <- struct{}{}
+			return
+		}
+		output, err := ovs.Exec(ovs.IfExists, "get", "interface", hostNicName, "external-ids:ovn-installed")
+		if err != nil {
+			klog.Errorf("failed to get ovn-installed for ovs port %s: %v, %q", hostNicName, err, output)
+			return
+		}
+		if strings.Trim(strings.TrimSpace(output), `"`) == "true" {
+			klog.Infof("ovs interface %s is ready", hostNicName)
+			ch <- struct{}{}
+			ready = true
+		}
+	}, 500*time.Millisecond, ch)
+	if !ready {
+		err = fmt.Errorf("ovs interface %s is not ready after %s", hostNicName, timeout.String())
+		klog.Error(err)
+		return nil, err
 	}
 
 	podNS, err := ns.GetNS(netns)
@@ -398,7 +428,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	}
 
 	// do not perform ipv4/ipv6 duplicate address detection during VM live migration
-	checkIPv6DAD := !vmMigration
+	ipv6DAD := !vmMigration
 	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
@@ -420,12 +450,12 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				klog.Error(err)
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, false, false); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, false, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, true, false); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -509,9 +539,28 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			underlayGateway := gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
 
 			if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual {
-				if err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, checkIPv6DAD); err != nil {
-					klog.Errorf("Some IPv6 addresses might not be in preferred state: %v", err)
+				addrsFlags, err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, ipv6DAD)
+				if err != nil {
+					klog.Error(err)
 					return err
+				}
+				for addr, flags := range addrsFlags {
+					if flags&unix.IFA_F_DADFAILED == 0 {
+						klog.Errorf("address %s on interface %s is not ready, flags: 0x%x", addr, interfaceName, flags)
+						continue
+					}
+					klog.Errorf("IPv6 DAD of address %s on interface %s failed, flags: 0x%x", addr, interfaceName, flags)
+					available, mac, err := util.DuplicateAddressDetection(interfaceName, addr)
+					if err != nil {
+						klog.Errorf("failed to perform IPv6 DAD for address %s on interface %s: %v", addr, interfaceName, err)
+						return err
+					}
+					if !available && mac != nil {
+						return fmt.Errorf("IP address %s has already been used by host with MAC %s", addr, mac)
+					}
+				}
+				if len(addrsFlags) != 0 {
+					return fmt.Errorf("ip address(es) %s on interface %s are not in preferred state", strings.Join(slices.Collect(maps.Keys(addrsFlags)), ","), interfaceName)
 				}
 			}
 
@@ -612,7 +661,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		return errors.New(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false, true); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false, false, false, true); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -857,7 +906,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, false, false); err != nil {
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
@@ -1130,7 +1179,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, setUfoOff, ipv6LinkLocalOn bool) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1164,8 +1213,9 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	ipAddMap := make(map[string]netlink.Addr)
 	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
+		err = fmt.Errorf("failed to list addresses on link %s: %w", link, err)
 		klog.Error(err)
-		return fmt.Errorf("can not get addr %s: %w", nodeLink, err)
+		return err
 	}
 
 	isIPv6LinkLocalExist := false
@@ -1233,6 +1283,8 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 					klog.Warningf("failed to broadcast free arp with err %v", err)
 				}
 			}
+		} else if !ipv6DAD {
+			addr.Flags |= unix.IFA_F_NODAD
 		}
 
 		klog.Infof("add ip address %s to %s", ip, link)
@@ -1985,67 +2037,47 @@ func rollBackVethPair(nicName string) error {
 	return nil
 }
 
-func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval time.Duration, checkIPv6DAD bool) error {
+// return a map of unready IPv6 addresses and their flags
+func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval time.Duration, checkIPv6DAD bool) (map[string]int, error) {
 	var retry int
-	var errorMessages []string
-
+	var ret map[string]int
 	for retry < maxRetry {
 		link, err := netlink.LinkByName(interfaceName)
 		if err != nil {
 			klog.Errorf("failed to get link %s: %v", interfaceName, err)
-			return err
+			return nil, err
 		}
 
 		addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
 		if err != nil {
 			klog.Errorf("failed to get IPv6 addresses on interface %s: %v", interfaceName, err)
-			return err
+			return nil, err
 		}
 
-		var globalIPv6Found bool
-		var badStateIPv6Found bool
-
+		addrsFlags := make(map[string]int, len(addrs))
 		for _, addr := range addrs {
-			// Skip link-local addresses
-			if addr.IP.IsLinkLocalUnicast() {
+			// skip ipv4 addresses
+			if addr.IP.To4() != nil {
 				continue
 			}
-
-			globalIPv6Found = true
 			// Check if the address is in a bad state
 			switch {
-			case (addr.Flags & unix.IFA_F_DEPRECATED) != 0:
-				badStateIPv6Found = true
-				errorMsg := fmt.Sprintf("IPv6 address %s on interface %s is deprecated", addr.IP.String(), interfaceName)
-				errorMessages = append(errorMessages, errorMsg)
-			case (addr.Flags & unix.IFA_F_DADFAILED) != 0:
+			case addr.Flags&unix.IFA_F_DEPRECATED != 0 || addr.Flags&unix.IFA_F_TENTATIVE != 0:
+				addrsFlags[addr.IP.String()] = addr.Flags
+			case addr.Flags&unix.IFA_F_DADFAILED != 0:
 				if !checkIPv6DAD {
 					continue
 				}
-				badStateIPv6Found = true
-				errorMsg := fmt.Sprintf("IPv6 address %s has a dadfailed flag, please check whether it has been used by another host", addr.IP.String())
-				errorMessages = append(errorMessages, errorMsg)
-			case (addr.Flags & unix.IFA_F_TENTATIVE) != 0:
-				badStateIPv6Found = true
-				errorMsg := fmt.Sprintf("IPv6 address %s on interface %s is in tentative state (DAD in progress)", addr.IP.String(), interfaceName)
-				errorMessages = append(errorMessages, errorMsg)
+				addrsFlags[addr.IP.String()] = addr.Flags
 			default:
-				klog.Infof("IPv6 address %s on interface %s is in preferred state", addr.IP.String(), interfaceName)
+				klog.V(3).Infof("IPv6 address %s on interface %s is in preferred state", addr.IP.String(), interfaceName)
 			}
 		}
 
-		if globalIPv6Found && !badStateIPv6Found {
-			klog.Infof("All non-link-local IPv6 addresses on interface %s are in preferred state", interfaceName)
-			return nil
+		if len(addrsFlags) == 0 {
+			return nil, nil
 		}
-
-		if !globalIPv6Found {
-			errorMsg := fmt.Sprintf("No non-link-local IPv6 addresses found on interface %s, retry %d/%d", interfaceName, retry+1, maxRetry)
-			errorMessages = append(errorMessages, errorMsg)
-		} else {
-			errorMsg := fmt.Sprintf("Some IPv6 addresses on interface %s are in bad state (deprecated, tentative, or DAD failed), retry %d/%d", interfaceName, retry+1, maxRetry)
-			errorMessages = append(errorMessages, errorMsg)
-		}
+		ret = addrsFlags
 
 		retry++
 		if retry < maxRetry {
@@ -2053,9 +2085,5 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 		}
 	}
 
-	finalMsg := fmt.Sprintf("failed to find non-link-local IPv6 addresses in preferred state on interface %s after %d retries", interfaceName, maxRetry)
-	if len(errorMessages) > 0 {
-		finalMsg = fmt.Sprintf("%s. Errors: %s", finalMsg, strings.Join(errorMessages, "; "))
-	}
-	return errors.New(finalMsg)
+	return ret, nil
 }
