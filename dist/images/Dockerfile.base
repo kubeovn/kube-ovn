@@ -184,8 +184,12 @@ ARG GOBGP_VERSION=3.37.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq
+
 ADD go-deps/download-go-deps.sh /
 RUN sh -x /download-go-deps.sh
+ARG DUMB_INIT_VERSION="1.2.5"
+RUN wget -O /godeps/dumb-init "https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch)" && \
+    chmod +x /godeps/dumb-init
 
 FROM golang:$GO_VERSION-alpine AS go-deps
 
@@ -201,7 +205,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
+        tcpdump ipvsadm ipset uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
@@ -230,13 +234,9 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
-ARG DUMB_INIT_VERSION="1.2.5"
-RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
-    chmod +x /usr/bin/dumb-init
-
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
     cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
-    cp /godeps/kubectl /godeps/gobgp /usr/bin/
+    cp /godeps/kubectl /godeps/gobgp /godeps/dumb-init /usr/bin/
 
 ARG DEBUG=false
 
