@@ -329,6 +329,8 @@ const (
 	SignerName = "kubeovn.io/signer"
 
 	UnderlaySvcLocalOpenFlowPriority = 10000
+	U2OKeepSrcMacPriority            = 10001
+
 	UnderlaySvcLocalOpenFlowCookieV4 = 0x1000
 	UnderlaySvcLocalOpenFlowCookieV6 = 0x1001
 

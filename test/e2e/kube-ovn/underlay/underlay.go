@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -790,7 +791,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("1. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step2: Disable u2o check")
 
@@ -810,7 +811,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("2. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step3: Recover enable u2o check")
 
@@ -830,7 +831,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("3. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step4: Check if kube-ovn-controller restart")
 
@@ -842,7 +843,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("4. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
 
@@ -862,7 +863,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("5. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step6: Recover enable u2o check after restart kube-ovn-controller")
 
@@ -882,7 +883,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("6. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		if f.VersionPriorTo(1, 9) {
 			return
@@ -926,7 +927,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			subnet = subnetClient.Get(subnetName)
 			ginkgo.By("7. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 			waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-			checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+			checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 		}
 
 		if f.VersionPriorTo(1, 11) {
@@ -969,7 +970,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("8. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
+		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true, providerNetworkName)
 
 		ginkgo.By("step9: Change underlay subnet interconnection to overlay subnet in default vpc")
 
@@ -990,7 +991,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("9. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 
 		ginkgo.By("step10: Disable u2o")
 
@@ -1010,7 +1011,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
 	})
 
 	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
@@ -1253,7 +1254,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 })
 
-func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
+func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool, pnName string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
@@ -1404,6 +1405,11 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 		ginkgo.By("checking overlay pod access to underlay pod v6")
 		checkReachable(overlayPod.Name, overlayPod.Namespace, v6OPodIP, v6UPodIP, strconv.Itoa(curlListenPort), subnet.Spec.U2OInterconnection)
 	}
+
+	if !f.VersionPriorTo(1, 14) {
+		ginkgo.By("Checking keepSrcMac OpenFlow rule")
+		checkKeepSrcMacFlow(underlayPod, pnName, subnet.Spec.U2OInterconnection)
+	}
 }
 
 func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string, expectReachable bool) {
@@ -1420,6 +1426,66 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 		framework.ExpectEqual(sourceIP, client)
 	} else {
 		framework.ExpectError(err)
+	}
+}
+
+func checkKeepSrcMacFlow(pod *corev1.Pod, providerNetworkName string, expectRules bool) {
+	ginkgo.GinkgoHelper()
+
+	cmd := fmt.Sprintf("kubectl exec -n %s %s -- ip -o link show eth0 | awk '{print $16}'", pod.Namespace, pod.Name)
+	output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+	if err != nil {
+		framework.Logf("Error getting MAC address: %v, %s", err, string(output))
+		return
+	}
+	podMac := strings.TrimSpace(string(output))
+
+	podNodeName := pod.Spec.NodeName
+	ginkgo.By(fmt.Sprintf("Checking keepSrcMac OpenFlow rule on node %s for Pod %s with MAC %s (expect rules: %v)",
+		podNodeName, pod.Name, podMac, expectRules))
+
+	var ruleFound bool
+	framework.WaitUntil(1*time.Second, 5*time.Second, func(_ context.Context) (bool, error) {
+		nodeCmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep actions=mod_dl_src:%s | wc -l",
+			podNodeName, providerNetworkName, podMac)
+		output, _ := exec.Command("bash", "-c", nodeCmd).CombinedOutput()
+		outputStr := string(output)
+
+		lines := strings.Split(outputStr, "\n")
+		var countStr string
+		for i := len(lines) - 1; i >= 0; i-- {
+			if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+				countStr = trimmed
+				break
+			}
+		}
+
+		re := regexp.MustCompile(`\d+`)
+		matches := re.FindStringSubmatch(countStr)
+		countNum := 0
+		if len(matches) > 0 {
+			countNum, _ = strconv.Atoi(matches[0])
+		}
+
+		framework.Logf("Raw output: '%s', extracted count: %d", outputStr, countNum)
+		ruleFound = countNum > 0
+
+		if (expectRules && ruleFound) || (!expectRules && !ruleFound) {
+			return true, nil
+		}
+
+		if expectRules {
+			framework.Logf("keepSrcMac flow rule not found but expected, retrying...")
+		} else {
+			framework.Logf("keepSrcMac flow rule found but not expected, retrying...")
+		}
+		return false, nil
+	}, "")
+
+	if expectRules {
+		framework.ExpectEqual(ruleFound, true, "keepSrcMac flow rule should exist")
+	} else {
+		framework.ExpectEqual(ruleFound, false, "keepSrcMac flow rule should not exist")
 	}
 }
 
