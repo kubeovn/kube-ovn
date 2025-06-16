@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.13.14 (2025-06-16)
+
+ * [91d775e92](https://github.com/kubeovn/kube-ovn/commit/91d775e9245ff0efcedc0292d018b9c6f494e9a1) release v1.13.14
+ * [d046a4fbe](https://github.com/kubeovn/kube-ovn/commit/d046a4fbe78c74a2304309026714b3d55f0e490d) fix undefined strings.SplitSeq
+ * [fb38751f1](https://github.com/kubeovn/kube-ovn/commit/fb38751f1d561b8dcb413579616669d85c14aca8) fix(slr): address family and familypolicy isn't correct (#5349)
+ * [558148287](https://github.com/kubeovn/kube-ovn/commit/558148287325a9981ee64cdabbef6017f8b94e0d) controller: migrate acl tier after upgrade (#5351)
+ * [dcbdf8867](https://github.com/kubeovn/kube-ovn/commit/dcbdf8867b4f4182a54635b2edb053bc830eae30) fix sts/vm lsp in incorrect port groups after rescheduled to another node (#5345)
+ * [e24165271](https://github.com/kubeovn/kube-ovn/commit/e241652718c690512c50fb961bed3dba13b8c264) fix: vm has multi nic in the same subnet, but release all (#5336)
+ * [b5efc5122](https://github.com/kubeovn/kube-ovn/commit/b5efc5122bf3a93b32d20c3369877c750eadf4be) fix missing package import
+ * [d82a69399](https://github.com/kubeovn/kube-ovn/commit/d82a693997ebd3b5c92e3cc95870a64b5dddda1b) netpol: fix missing ACL name (#5281)
+ * [d0fdd5e67](https://github.com/kubeovn/kube-ovn/commit/d0fdd5e67b9f68dd8bec6cd4e1cff8c19bfb2f86) fix: kubectl-ko: properly get the number of nodes (#5327)
+ * [960d9aaa1](https://github.com/kubeovn/kube-ovn/commit/960d9aaa1d750f1efff8603a541600380e0d5ccc) bump go to 1.23.10 (#5322)
+ * [b64b866ce](https://github.com/kubeovn/kube-ovn/commit/b64b866cedd211685253ad570dd36f0e055fcbe8) fix podcidr route still use join ip as src ip (#5287)
+ * [fc9a5e923](https://github.com/kubeovn/kube-ovn/commit/fc9a5e9235ffd28849dd6c58ae492469c6d8308e) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Robin Lee
+ * SKALA NETWORKS
+ * changluyi
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.13.13 (2025-05-27)
 
  * [21635236f](https://github.com/kubeovn/kube-ovn/commit/21635236f969b5635149ac03fea8cef293b78a91) release v1.13.13
