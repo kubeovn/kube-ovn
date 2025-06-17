@@ -423,8 +423,8 @@ func ListExternalIDs(table string) (map[string]string, error) {
 			continue
 		}
 		uuid := strings.TrimSpace(parts[0])
-		externalIDs := strings.Fields(parts[1])
-		for _, externalID := range externalIDs {
+		externalIDs := strings.FieldsSeq(parts[1])
+		for externalID := range externalIDs {
 			if !strings.Contains(externalID, "iface-id=") {
 				continue
 			}

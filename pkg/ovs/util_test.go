@@ -377,7 +377,6 @@ func TestPodNameToPortName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := PodNameToPortName(tc.pod, tc.namespace, tc.provider)
@@ -422,7 +421,6 @@ func TestTrimCommandOutput(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := trimCommandOutput(tc.input)
@@ -461,7 +459,6 @@ func TestLogicalRouterPortName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := LogicalRouterPortName(tc.lr, tc.ls)
@@ -500,7 +497,6 @@ func TestLogicalSwitchPortName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := LogicalSwitchPortName(tc.lr, tc.ls)
@@ -527,7 +523,6 @@ func TestFormatDHCPOptions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := formatDHCPOptions(tc.options)

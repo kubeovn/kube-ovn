@@ -229,8 +229,8 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	}
 	args := strings.SplitSeq(argString, ";")
 	for arg := range args {
-		if strings.HasPrefix(arg, key+"=") {
-			value := strings.TrimPrefix(arg, key+"=")
+		if after, ok := strings.CutPrefix(arg, key+"="); ok {
+			value := after
 			if len(value) > 0 {
 				return value, nil
 			}

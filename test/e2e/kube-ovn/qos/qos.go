@@ -18,7 +18,7 @@ import (
 
 func parseConfig(table, config string) map[string]string {
 	kvs := make(map[string]string, 3)
-	for _, s := range strings.Fields(config) {
+	for s := range strings.FieldsSeq(config) {
 		kv := strings.Split(s, "=")
 		if len(kv) != 2 {
 			framework.Logf("ignore %s config %s", table, s)

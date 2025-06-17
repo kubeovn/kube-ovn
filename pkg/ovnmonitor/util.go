@@ -237,7 +237,7 @@ func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
 			if len(line[idx+1:]) != 0 {
 				// the value is of the format `->0000 (->56d7) <-46ac <-56d7`
 				var connIn, connOut, connInErr, connOutErr float64
-				for _, conn := range strings.Fields(line[idx+2:]) {
+				for conn := range strings.FieldsSeq(line[idx+2:]) {
 					switch {
 					case strings.HasPrefix(conn, "->"):
 						connOut++
