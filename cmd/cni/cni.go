@@ -227,13 +227,9 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	if argString == "" {
 		return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", "CNI_ARGS is required")
 	}
-	args := strings.SplitSeq(argString, ";")
-	for arg := range args {
-		if strings.HasPrefix(arg, key+"=") {
-			value := strings.TrimPrefix(arg, key+"=")
-			if len(value) > 0 {
-				return value, nil
-			}
+	for arg := range strings.SplitSeq(argString, ";") {
+		if value, found := strings.CutPrefix(arg, key+"="); found && len(value) != 0 {
+			return value, nil
 		}
 	}
 	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", key+" is required in CNI_ARGS")
