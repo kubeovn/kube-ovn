@@ -1623,9 +1623,8 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 					// ip name is unique, so it is ok if the other subnet release it
 					continue
 				}
-			} else {
-				return nil, err
 			}
+			return nil, err
 		}
 
 		switch subnet.Spec.Protocol {
@@ -1768,9 +1767,8 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 							// ip name is unique, so it is ok if the other subnet release it
 							continue
 						}
-					} else {
-						return nil, err
 					}
+					return nil, err
 				}
 			}
 
