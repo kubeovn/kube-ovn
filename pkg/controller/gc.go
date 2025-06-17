@@ -325,13 +325,8 @@ func (c *Controller) gcIP() error {
 		return err
 	}
 	for _, ip := range ips {
-		if ip.Spec.Subnet == "" {
-			klog.Infof("gc ip %s without subnet", ip.Name)
-			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
-				klog.Errorf("failed to gc ip %s, %v", ip.Name, err)
-			}
-		} else if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
-			klog.Infof("gc ip %s subnet already not exist", ip.Name)
+		if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
+			klog.Infof("subnet %s already not exist, gc ip %s", ip.Spec.Subnet, ip.Name)
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
 				klog.Errorf("failed to gc ip %s, %v", ip.Name, err)
 			}
