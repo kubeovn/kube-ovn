@@ -1574,11 +1574,8 @@ func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
-	ignoreSubnetNotExist := false
-	if !pod.DeletionTimestamp.IsZero() {
-		// to return all existing subnet to clean ip crd
-		ignoreSubnetNotExist = true
-	}
+	// ignore to return all existing subnets to clean its ip crd
+	ignoreSubnetNotExist := !pod.DeletionTimestamp.IsZero()
 
 	// check pod annotations
 	if lsName := pod.Annotations[util.LogicalSwitchAnnotation]; lsName != "" {
@@ -1712,11 +1709,8 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return nil, err
 	}
 
-	ignoreSubnetNotExist := false
-	if !pod.DeletionTimestamp.IsZero() {
-		// to return all existing subnet to clean ip crd
-		ignoreSubnetNotExist = true
-	}
+	// ignore to return all existing subnets to clean its ip crd
+	ignoreSubnetNotExist := !pod.DeletionTimestamp.IsZero()
 
 	result := make([]*kubeovnNet, 0, len(multusNets))
 	for _, attach := range multusNets {
