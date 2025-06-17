@@ -635,9 +635,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 			continue
 		}
 
-		addresses := lsp.Addresses[0]
-
-		fields := strings.Fields(addresses)
+		fields := strings.Fields(lsp.Addresses[0])
 		if len(fields) != 2 {
 			continue
 		}
