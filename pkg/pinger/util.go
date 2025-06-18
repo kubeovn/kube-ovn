@@ -96,8 +96,7 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 }
 
 func (e *Exporter) ovsDatapathLookupsMetrics(line, datapath string) {
-	s := strings.TrimPrefix(line, "lookups:")
-	for field := range strings.FieldsSeq(s) {
+	for field := range strings.FieldsSeq(strings.TrimPrefix(line, "lookups:")) {
 		elem := strings.Split(field, ":")
 		if len(elem) != 2 {
 			continue
@@ -119,8 +118,7 @@ func (e *Exporter) ovsDatapathLookupsMetrics(line, datapath string) {
 }
 
 func (e *Exporter) ovsDatapathMasksMetrics(line, datapath string) {
-	s := strings.TrimPrefix(line, "masks:")
-	for field := range strings.FieldsSeq(s) {
+	for field := range strings.FieldsSeq(strings.TrimPrefix(line, "masks:")) {
 		elem := strings.Split(field, ":")
 		if len(elem) != 2 {
 			continue
