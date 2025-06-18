@@ -286,3 +286,17 @@ func initProviderChassisMac(provider string) error {
 	}
 	return nil
 }
+
+func GetProviderChassisMac(provider string) (string, error) {
+	mappings, err := getOvnMappings("ovn-chassis-mac-mappings")
+	if err != nil {
+		return "", fmt.Errorf("failed to get chassis mac for provider %s: %w", provider, err)
+	}
+
+	mac, ok := mappings[provider]
+	if !ok {
+		return "", fmt.Errorf("no chassis mac found for provider %s", provider)
+	}
+
+	return mac, nil
+}
