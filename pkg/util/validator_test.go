@@ -226,6 +226,50 @@ func TestValidateSubnet(t *testing.T) {
 			err: "ipv5 is not a valid protocol type",
 		},
 		{
+			name: "SubnetVpcSameNameErr",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "same-name",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "same-name",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "subnet same-name and vpc same-name cannot have the same name",
+		},
+		{
+			name: "SubnetVpcDifferentNameCorrect",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "subnet-name",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         "vpc-name",
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					Namespaces:  nil,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    "ovn",
+					GatewayType: kubeovnv1.GWDistributedType,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "",
+		},
+		{
 			name: "ExternalEgressGatewayUpperCaseErr",
 			asubnet: kubeovnv1.Subnet{
 				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},

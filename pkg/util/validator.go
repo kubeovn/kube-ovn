@@ -119,6 +119,10 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("%s is not a valid protocol type", protocol)
 	}
 
+	if subnet.Spec.Vpc == subnet.Name {
+		return fmt.Errorf("subnet %s and vpc %s cannot have the same name", subnet.Name, subnet.Spec.Vpc)
+	}
+
 	if subnet.Spec.Vpc == DefaultVpc {
 		k8sAPIServer := os.Getenv("KUBERNETES_SERVICE_HOST")
 		if k8sAPIServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sAPIServer) {
