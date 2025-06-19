@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -18,6 +19,13 @@ import (
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
+)
+
+const (
+	// maximum number of multicast solicitations to send during DAD
+	dadMaxMulticastSolicit = 3
+	// retransmission timer for DAD
+	dadRetransTimer = time.Second
 )
 
 var ipv6LLAPrefix = netip.MustParseAddr("fe80::").AsSlice()
@@ -172,46 +180,63 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 		return false, nil, err
 	}
 
-	if err = conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
-		err = fmt.Errorf("failed to set write deadline: %w", err)
+	if err = conn.SetReadDeadline(time.Now().Add(dadRetransTimer * dadMaxMulticastSolicit)); err != nil {
+		err = fmt.Errorf("failed to set read deadline: %w", err)
 		klog.Error(err)
-		return false, nil, err
-	}
-	if _, err = conn.WriteTo(sb.Bytes(), &packet.Addr{HardwareAddr: ifi.HardwareAddr}); err != nil {
-		err = fmt.Errorf("failed to send neighbor solicitation message: %w", err)
-		klog.Error(err)
-		return false, nil, err
-	}
-	if err = conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		return false, nil, err
 	}
 
-	buf := make([]byte, ifi.MTU+14)
-	for {
-		n, _, err := conn.ReadFrom(buf)
-		if err == nil {
-			msg, err := ndp.ParseMessage(buf[14+40 : n])
-			if err != nil {
-				klog.Warningf("failed to parse NA message: %v", err)
-				continue
-			}
-			na, ok := msg.(*ndp.NeighborAdvertisement)
-			if !ok || na.TargetAddress != target {
-				continue
-			}
-			for _, opt := range na.Options {
-				if opt, ok := opt.(*ndp.LinkLayerAddress); ok && opt.Direction == ndp.Target {
-					return false, opt.Addr, nil
+	var readErr error
+	var wg sync.WaitGroup
+	ch := make(chan net.HardwareAddr, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		buf := make([]byte, ifi.MTU+14)
+		for {
+			n, _, err := conn.ReadFrom(buf)
+			if err == nil {
+				msg, err := ndp.ParseMessage(buf[14+40 : n])
+				if err != nil {
+					klog.Warningf("failed to parse NA message: %v", err)
+					continue
 				}
+				na, ok := msg.(*ndp.NeighborAdvertisement)
+				if !ok || na.TargetAddress != target {
+					continue
+				}
+				for _, opt := range na.Options {
+					if opt, ok := opt.(*ndp.LinkLayerAddress); ok && opt.Direction == ndp.Target {
+						ch <- opt.Addr
+						return
+					}
+				}
+				// unexpected NA without link-layer address option
+				ch <- nil
 			}
-			return false, nil, nil
+			if e, ok := err.(net.Error); ok && e.Timeout() {
+				// No response received, address is available
+				return
+			}
+			klog.Error(err)
+			readErr = fmt.Errorf("failed to read from connection: %w", err)
+			return
 		}
-		if e, ok := err.(net.Error); ok && e.Timeout() {
-			// No response received, address is available
-			return true, nil, nil
-		}
-		err = fmt.Errorf("failed to read from connection: %w", err)
-		klog.Error(err)
-		return false, nil, err
+	}()
+
+	wg.Wait()
+
+	if readErr != nil {
+		klog.Error(readErr)
+		return false, nil, readErr
+	}
+
+	select {
+	case mac := <-ch:
+		return false, mac, nil
+	default:
+		return true, nil, nil
 	}
 }
