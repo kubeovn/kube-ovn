@@ -456,8 +456,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 kind-install-multus:
 	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
 	curl -s "$(MULTUS_YAML)" | sed 's/:snapshot-thick/:$(MULTUS_VERSION)-thick/g' | kubectl apply -f -
-	kubectl -n kube-system set resources ds/kube-multus-ds -c kube-multus --limits=cpu=200m
-	kubectl -n kube-system set resources ds/kube-multus-ds -c kube-multus --limits=memory=200Mi
+	kubectl -n kube-system set resources ds/kube-multus-ds -c kube-multus --limits=cpu=200m,memory=200Mi
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-metallb
