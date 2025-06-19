@@ -199,31 +199,34 @@ ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins libmnl0 \
-        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
-        setcap CAP_NET_ADMIN+eip $(readlink -f $(which traceroute)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
-        setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
-        setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
-        setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
-        setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
-        setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
-        setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
-        setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
-        rm -rf /var/lib/apt/lists/* && \
-        rm -rf /etc/localtime && \
-        rm -f /usr/bin/nc && \
-        rm -f /usr/bin/netcat && \
-        rm -f /usr/lib/apt/methods/mirror && \
-        deluser sync
+    apt update && apt upgrade -y && \
+    apt install ca-certificates hostname netbase ethtool iproute2 ncat libunbound8 procps \
+        kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
+        uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
+        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
+        -y --no-install-recommends --auto-remove && \
+    apt remove -y --allow-remove-essential --auto-remove login && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(which traceroute)) && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
+    setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
+    setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
+    setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
+    setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /etc/localtime && \
+    rm -f /usr/bin/nc && \
+    rm -f /usr/bin/netcat && \
+    rm -f /usr/lib/apt/methods/mirror && \
+    deluser sync
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
@@ -244,18 +247,18 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
     cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
-    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
-    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
+    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb /packages/ovn-*.deb && \
     rm -rf /var/lib/openvswitch/pki/ && \
     chown -R nobody: /var/lib/logrotate && \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)) && \
+        dpkg --purge gpgv apt; \
     else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
-        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
+        dpkg -i /packages/*.ddeb; \
     fi
 
 RUN --mount=type=bind,target=/packages,from=openssl-builder,source=/packages \
