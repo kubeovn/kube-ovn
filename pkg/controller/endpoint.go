@@ -285,13 +285,15 @@ func (c *Controller) getVpcSubnetName(pods []*v1.Pod, endpoints *v1.Endpoints, s
 	LOOP:
 		for _, subset := range endpoints.Subsets {
 			for _, addr := range subset.Addresses {
-				if addr.IP == pod.Status.PodIP {
-					if vpcName == "" {
-						vpcName = pod.Annotations[util.LogicalRouterAnnotation]
-					}
+				for _, podIP := range pod.Status.PodIPs {
+					if addr.IP == podIP.IP {
+						if vpcName == "" {
+							vpcName = pod.Annotations[util.LogicalRouterAnnotation]
+						}
 
-					if vpcName != "" {
-						break LOOP
+						if vpcName != "" {
+							break LOOP
+						}
 					}
 				}
 			}
