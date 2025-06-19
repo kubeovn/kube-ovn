@@ -186,9 +186,9 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 		return false, nil, err
 	}
 
-	var readErr error
 	var wg sync.WaitGroup
-	ch := make(chan net.HardwareAddr, 1)
+	errChan := make(chan error, 1)
+	macChan := make(chan net.HardwareAddr, 1)
 
 	wg.Add(1)
 	go func() {
@@ -209,32 +209,55 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 				}
 				for _, opt := range na.Options {
 					if opt, ok := opt.(*ndp.LinkLayerAddress); ok && opt.Direction == ndp.Target {
-						ch <- opt.Addr
+						macChan <- opt.Addr
 						return
 					}
 				}
 				// unexpected NA without link-layer address option
-				ch <- nil
+				macChan <- nil
 			}
 			if e, ok := err.(net.Error); ok && e.Timeout() {
 				// No response received, address is available
 				return
 			}
 			klog.Error(err)
-			readErr = fmt.Errorf("failed to read from connection: %w", err)
+			errChan <- fmt.Errorf("failed to read from connection: %w", err)
 			return
 		}
 	}()
 
-	wg.Wait()
+LOOP:
+	for i := range dadMaxMulticastSolicit {
+		timer := time.NewTimer(dadRetransTimer)
+		if err = conn.SetWriteDeadline(time.Now().Add(dadRetransTimer)); err != nil {
+			err = fmt.Errorf("failed to set write deadline: %w", err)
+			klog.Error(err)
+			return false, nil, err
+		}
+		if _, err = conn.WriteTo(sb.Bytes(), &packet.Addr{HardwareAddr: ifi.HardwareAddr}); err != nil {
+			err = fmt.Errorf("failed to send neighbor solicitation message: %w", err)
+			klog.Error(err)
+			return false, nil, err
+		}
 
-	if readErr != nil {
-		klog.Error(readErr)
-		return false, nil, readErr
+		select {
+		case <-timer.C:
+			if i == dadMaxMulticastSolicit-1 {
+				// last attempt, wait for response
+				break LOOP
+			}
+		case mac := <-macChan:
+			macChan <- mac
+			break LOOP
+		case err = <-errChan:
+			return false, nil, err
+		}
 	}
 
+	wg.Wait()
+
 	select {
-	case mac := <-ch:
+	case mac := <-macChan:
 		return false, mac, nil
 	default:
 		return true, nil, nil
