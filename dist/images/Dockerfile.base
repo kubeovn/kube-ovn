@@ -228,8 +228,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /usr/lib/apt/methods/mirror && \
     deluser sync
 
-RUN test "${DEBUG}" != "true" && dpkg --purge gpgv apt
-
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
     mkdir -p /etc/cni/net.d && \
@@ -255,7 +253,8 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)); \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)) && \
+        dpkg --purge gpgv apt; \
     else \
         apt update && apt install -y --no-install-recommends gdb valgrind && \
         rm -rf /var/lib/apt/lists/* && \
