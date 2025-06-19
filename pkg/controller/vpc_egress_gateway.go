@@ -135,55 +135,54 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	gw.Status.Workload.Nodes = nil
 	nodeNexthopIPv4 := make(map[string]string, int(gw.Spec.Replicas))
 	nodeNexthopIPv6 := make(map[string]string, int(gw.Spec.Replicas))
-	if !util.DeploymentIsReady(deploy) {
+	ready := util.DeploymentIsReady(deploy)
+	if !ready {
 		gw.Status.Ready = false
 		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
 		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, gw.Generation)
-	} else {
-		// get the pods of the deployment to collect the pod IPs
-		podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	}
+	// get the pods of the deployment to collect the pod IPs
+	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
+	if err != nil {
+		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	// update gateway status including the internal/external IPs and the nodes where the pods are running
+	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
 		if err != nil {
-			err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
-			return err
+			continue
 		}
 
-		pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
-		if err != nil {
-			err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-			klog.Error(err)
-			return err
+		ips := util.PodIPs(*pod)
+		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
+		if len(ipv4) != 0 {
+			nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
 		}
-
-		// update gateway status including the internal/external IPs and the nodes where the pods are running
-		gw.Status.Workload.Nodes = make([]string, 0, len(pods))
-		for _, pod := range pods {
-			gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
-			ips := util.PodIPs(*pod)
-			ipv4, ipv6 := util.SplitIpsByProtocol(ips)
-			if len(ipv4) != 0 {
-				nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
-			}
-			if len(ipv6) != 0 {
-				nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
-			}
-			gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
-			extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
-			if err != nil {
-				klog.Error(err)
-				gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, "<unknown>")
-				continue
-			}
-			gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
+		if len(ipv6) != 0 {
+			nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
 		}
+		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
+		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
+		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
 	}
 	if gw, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
 		klog.Error(err)
 		return err
-	}
-	if len(gw.Status.Workload.Nodes) == 0 {
-		// the workload is not ready yet
-		return nil
 	}
 
 	// reconcile OVN routes
@@ -196,11 +195,13 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 
-	gw.Status.Ready = true
-	gw.Status.Phase = kubeovnv1.PhaseCompleted
-	gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
-	if _, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
-		return err
+	if ready {
+		gw.Status.Ready = true
+		gw.Status.Phase = kubeovnv1.PhaseCompleted
+		gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+		if _, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -606,17 +607,14 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	// reconcile OVN BFD entries
 	bfdIDs := set.New[string]()
+	staleBFDIDs := set.New[string]()
 	bfdDstIPs := set.New(slices.Collect(maps.Values(nextHops))...)
 	bfdMap := make(map[string]string, bfdDstIPs.Len())
 	for _, bfd := range bfdList {
 		if bfdIP == "" || bfd.LogicalPort != lrpName || !bfdDstIPs.Has(bfd.DstIP) {
-			if err = c.OVNNbClient.DeleteBFD(bfd.UUID); err != nil {
-				err = fmt.Errorf("failed to delete bfd %s: %w", bfd.UUID, err)
-				klog.Error(err)
-				return err
-			}
+			staleBFDIDs.Insert(bfd.UUID)
 		}
-		if bfdIP == "" || bfd.LogicalPort == lrpName && bfdDstIPs.Has(bfd.DstIP) {
+		if bfdIP == "" || (bfd.LogicalPort == lrpName && bfdDstIPs.Has(bfd.DstIP)) {
 			// TODO: update min_rx, min_tx and multiplier
 			if bfdIP != "" {
 				bfdIDs.Insert(bfd.UUID)
@@ -741,6 +739,47 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	for _, match := range matches.UnsortedList() {
 		if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
 			ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
+	if gw.Spec.BFD.Enabled {
+		// drop traffic if no nexthop is available
+		if policies, err = c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
+			klog.Error(err)
+			return err
+		}
+		matches = set.New(
+			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
+			fmt.Sprintf("ip%d.src == $%s", af, asName),
+		)
+		for _, policy := range policies {
+			if matches.Has(policy.Match) {
+				matches.Delete(policy.Match)
+				continue
+			}
+			if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+				err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
+				klog.Error(err)
+				return err
+			}
+		}
+		for _, match := range matches.UnsortedList() {
+			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
+				ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
+				klog.Error(err)
+				return err
+			}
+		}
+	} else if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	for _, bfdID := range staleBFDIDs.UnsortedList() {
+		if err = c.OVNNbClient.DeleteBFD(bfdID); err != nil {
+			err = fmt.Errorf("failed to delete bfd %s: %w", bfdID, err)
 			klog.Error(err)
 			return err
 		}
