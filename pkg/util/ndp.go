@@ -127,7 +127,7 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 
 	conn, err := packet.Listen(ifi, packet.Raw, unix.ETH_P_IPV6, &packet.Config{Filter: icmpv6NAFilter})
 	if err != nil {
-		panic(err)
+		return false, nil, fmt.Errorf("failed to listen on interface %s: %w", ifi.Name, err)
 	}
 	defer conn.Close()
 
