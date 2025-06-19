@@ -524,6 +524,12 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return nil, err
 	}
 
+	// pod annotation default subnet not found
+	if defaultSubnet == nil {
+		klog.Errorf("pod %s/%s has no default subnet, skip adding default network", pod.Namespace, pod.Name)
+		return attachmentNets, nil
+	}
+
 	podNets := attachmentNets
 	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
 		podNets = append(attachmentNets, &kubeovnNet{
@@ -1507,11 +1513,21 @@ func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
+	// ignore to clean its ip crd in existing subnets
+	ignoreSubnetNotExist := !pod.DeletionTimestamp.IsZero()
+
 	// check pod annotations
 	if lsName := pod.Annotations[util.LogicalSwitchAnnotation]; lsName != "" {
+		// annotations only has one default subnet
 		subnet, err := c.subnetsLister.Get(lsName)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s: %v", lsName, err)
+			if k8serrors.IsNotFound(err) {
+				if ignoreSubnetNotExist {
+					klog.Errorf("deletting pod %s/%s default subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, lsName)
+					return nil, nil
+				}
+			}
 			return nil, err
 		}
 		return subnet, nil
@@ -1538,6 +1554,14 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
 			klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+			if k8serrors.IsNotFound(err) {
+				if ignoreSubnetNotExist {
+					klog.Errorf("deletting pod %s/%s namespace subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+					// ip name is unique, it is ok if any subnet release it
+					// gc will handle their ip cr, if all subnets are not exist
+					continue
+				}
+			}
 			return nil, err
 		}
 
@@ -1616,8 +1640,12 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
 		return nil, err
 	}
+
+	// ignore to return all existing subnets to clean its ip crd
+	ignoreSubnetNotExist := !pod.DeletionTimestamp.IsZero()
 
 	result := make([]*kubeovnNet, 0, len(multusNets))
 	for _, attach := range multusNets {
@@ -1656,15 +1684,32 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			}
 			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
+				// attachment network not specify subnet, use pod default subnet or namespace subnet
 				subnet, err = c.getPodDefaultSubnet(pod)
 				if err != nil {
 					klog.Errorf("failed to pod default subnet, %v", err)
+					if k8serrors.IsNotFound(err) {
+						if ignoreSubnetNotExist {
+							klog.Errorf("deletting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+							continue
+						}
+					}
 					return nil, err
 				}
+				// default subnet may change after pod restart
+				klog.Infof("pod %s/%s attachment network %s use default subnet %s", pod.Namespace, pod.Name, attach.Name, subnet.Name)
 			} else {
 				subnet, err = c.subnetsLister.Get(subnetName)
 				if err != nil {
 					klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+					if k8serrors.IsNotFound(err) {
+						if ignoreSubnetNotExist {
+							klog.Errorf("deletting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+							// just continue to next attach subnet
+							// ip name is unique, so it is ok if the other subnet release it
+							continue
+						}
+					}
 					return nil, err
 				}
 			}

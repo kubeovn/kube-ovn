@@ -38,6 +38,7 @@ func (c *Controller) gc() error {
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
+		c.gcIP,
 		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
@@ -313,6 +314,24 @@ func (c *Controller) gcLogicalSwitchPort() error {
 		return err
 	}
 	return c.markAndCleanLSP()
+}
+
+func (c *Controller) gcIP() error {
+	klog.Infof("start to gc ips")
+	ips, err := c.ipsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ip, %v", err)
+		return err
+	}
+	for _, ip := range ips {
+		if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
+			klog.Infof("subnet %s already not exist, gc ip %s", ip.Spec.Subnet, ip.Name)
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
+				klog.Errorf("failed to gc ip %s, %v", ip.Name, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Controller) markAndCleanLSP() error {
