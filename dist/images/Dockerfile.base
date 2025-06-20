@@ -6,12 +6,15 @@ FROM ubuntu:24.04 AS openssl-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN sed -i 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sed -i 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt update && \
     apt install -y apt-src && \
     apt-src update && \
-    apt-src install openssl && \
-    cd openssl-* && \
+    apt-src install openssl
+
+RUN cd openssl-* && \
     sed -i '/^CONFARGS/a CONFARGS += enable-fips no-unit-test' debian/rules && \
     echo >> debian/control && \
     echo 'Package: libssl3t64-fips' >> debian/control && \
@@ -23,6 +26,7 @@ RUN sed -i 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.
     echo 'usr/lib/ssl/fipsmodule.cnf' >> debian/libssl3t64-fips.install && \
     echo 'usr/lib/*/ossl-modules/fips.so' >> debian/libssl3t64-fips.install && \
     DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+
 RUN mkdir /packages/ && \
     cp *fips*.deb /packages
 
@@ -125,9 +129,8 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    sleep 15 && \
+    apt update && \
     apt install -y wget build-essential fakeroot && \
-    sleep 15 && \
     apt install -y autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
     graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
     pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
@@ -194,7 +197,23 @@ ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
     bash -x /rebuild-go-deps.sh
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS ubuntu
+
+RUN rm -rf /etc/localtime
+RUN rm -f /usr/lib/apt/methods/mirror
+RUN usermod -s /usr/sbin/nologin ubuntu
+RUN apt remove -y --allow-remove-essential --auto-remove login
+
+FROM scratch
+
+LABEL "org.opencontainers.image.ref.name"="ubuntu"
+LABEL "org.opencontainers.image.version"="24.04"
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+CMD ["/bin/bash"]
+
+COPY --from=ubuntu / /
+
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -226,7 +245,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /usr/bin/nc && \
     rm -f /usr/bin/netcat && \
     rm -f /usr/lib/apt/methods/mirror && \
-    deluser sync
+    usermod -s /usr/sbin/nologin sync
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
