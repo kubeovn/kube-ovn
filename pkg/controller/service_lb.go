@@ -57,13 +57,13 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 	return attachmentName, attachmentNs
 }
 
-func (c *Controller) getAttachNetwork(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
+func (c *Controller) getAttachNetworkForService(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
 		return nil, errors.New("the provider name should be consisted of name and namespace")
 	}
 
-	nad, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(attachmentNs).Get(attachmentName)
 	if err != nil {
 		klog.Errorf("failed to get network attachment definition %s in namespace %s, err: %v", attachmentName, attachmentNs, err)
 	}

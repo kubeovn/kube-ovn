@@ -3279,8 +3279,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) findSubnetByNetworkAttachmentDefinition(ns, name string, subnets []*kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
-	nadClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(ns)
-	nad, err := nadClient.Get(context.Background(), name, metav1.GetOptions{})
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(ns).Get(name)
 	if err != nil {
 		klog.Errorf("failed to get net-attach-def %s/%s: %v", ns, name, err)
 		return nil, err
