@@ -1690,8 +1690,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 	result := make([]*kubeovnNet, 0, len(multusNets))
 	for _, attach := range multusNets {
-		networkClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attach.Namespace)
-		network, err := networkClient.Get(context.Background(), attach.Name, metav1.GetOptions{})
+		network, err := c.netAttachLister.NetworkAttachmentDefinitions(attach.Namespace).Get(attach.Name)
 		if err != nil {
 			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
 			return nil, err
