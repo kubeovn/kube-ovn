@@ -226,7 +226,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /usr/bin/nc && \
     rm -f /usr/bin/netcat && \
     rm -f /usr/lib/apt/methods/mirror && \
-    deluser sync
+    usermod -s /usr/sbin/nologin sync && \
+    usermod -s /usr/sbin/nologin ubuntu
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
