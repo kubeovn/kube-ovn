@@ -483,25 +483,40 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 
 // LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
-	if len(ipPortMappings) != 0 {
-		ops, err := c.LoadBalancerOp(
-			lbName,
-			func(lb *ovnnb.LoadBalancer) []model.Mutation {
-				return []model.Mutation{
-					{
-						Field:   &lb.IPPortMappings,
-						Value:   ipPortMappings,
-						Mutator: ovsdb.MutateOperationInsert,
-					},
+	ops, err := c.LoadBalancerOp(
+		lbName,
+		func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			// Delete from the IPPortMappings any outdated mapping
+			mappingToDelete := make(map[string]string)
+			for portIP, portMapVip := range lb.IPPortMappings {
+				if _, ok := ipPortMappings[portIP]; !ok {
+					mappingToDelete[portIP] = portMapVip
 				}
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
-		}
-		if err = c.Transact("lb-add", ops); err != nil {
-			return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %v", vipEndpoint, lbName, err)
-		}
+			}
+
+			if len(mappingToDelete) > 0 {
+				klog.Infof("deleting outdated entry from ipportmapping %v", mappingToDelete)
+			}
+
+			return []model.Mutation{
+				{
+					Field:   &lb.IPPortMappings,
+					Value:   mappingToDelete,
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+				{
+					Field:   &lb.IPPortMappings,
+					Value:   ipPortMappings,
+					Mutator: ovsdb.MutateOperationInsert,
+				},
+			}
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+	if err = c.Transact("lb-add", ops); err != nil {
+		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
