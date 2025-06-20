@@ -201,6 +201,7 @@ FROM ubuntu:24.04 AS ubuntu
 
 RUN rm -rf /etc/localtime
 RUN rm -f /usr/lib/apt/methods/mirror
+RUN usermod -s /usr/sbin/nologin sync
 RUN usermod -s /usr/sbin/nologin ubuntu
 RUN apt remove -y --allow-remove-essential --auto-remove login
 
@@ -244,8 +245,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /etc/localtime && \
     rm -f /usr/bin/nc && \
     rm -f /usr/bin/netcat && \
-    rm -f /usr/lib/apt/methods/mirror && \
-    usermod -s /usr/sbin/nologin sync
+    rm -f /usr/lib/apt/methods/mirror
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
