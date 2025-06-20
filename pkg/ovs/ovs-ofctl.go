@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	ovs "github.com/digitalocean/go-openvswitch/ovs"
 	v1 "k8s.io/api/core/v1"
@@ -11,6 +12,29 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func getOfportByPeer(peer string) (int, error) {
+	// ovs-vsctl find interface options:peer="<peer>"
+	ifaceNames, err := ovsFind("Interface", "name", fmt.Sprintf(`options:peer="%s"`, peer))
+	if err != nil {
+		return -1, fmt.Errorf("failed to find interface with peer %s: %w", peer, err)
+	}
+	if len(ifaceNames) == 0 {
+		return -1, fmt.Errorf("no interface found with peer %s", peer)
+	}
+	if len(ifaceNames) > 1 {
+		// This should not happen for patch ports
+		klog.Warningf("multiple interfaces found with peer %s: %v", peer, ifaceNames)
+	}
+	ifaceName := ifaceNames[0]
+
+	ofportStr, err := ovsGet("Interface", ifaceName, "ofport", "")
+	if err != nil {
+		return -1, fmt.Errorf("failed to get ofport for interface %s: %w", ifaceName, err)
+	}
+
+	return strconv.Atoi(ofportStr)
+}
 
 func AddOrUpdateUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, lbServiceIP, protocol, dstMAC, underlayNic string, lbServicePort uint16) error {
 	isIPv6 := util.CheckProtocol(lbServiceIP) == kubeovnv1.ProtocolIPv6
@@ -143,7 +167,7 @@ func DeleteUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, lbServ
 	return nil
 }
 
-func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, chassisMac string) error {
+func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, chassisMac, subnetName string) error {
 	var localnetPatchPortID int
 	var podMacAddr net.HardwareAddr
 	var err error
@@ -151,12 +175,12 @@ func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, cha
 	var protocolType ovs.Protocol
 	isIPv6 := util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6
 
-	portInfo, err := client.OpenFlow.DumpPort(bridgeName, "patch-localnet.")
+	peer := fmt.Sprintf("patch-br-int-to-localnet.%s", subnetName)
+	localnetPatchPortID, err = getOfportByPeer(peer)
 	if err != nil {
-		klog.Errorf("failed to dump bridge %s port %s: %v", bridgeName, "patch-localnet.", err)
+		klog.Errorf("failed to get ofport for peer %s: %v", peer, err)
 		return err
 	}
-	localnetPatchPortID = portInfo.PortID
 
 	podMacAddr, err = net.ParseMAC(podMac)
 	if err != nil {
@@ -215,19 +239,19 @@ func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, cha
 	return client.OpenFlow.AddFlow(bridgeName, flow)
 }
 
-func DeleteU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, chassisMac string) error {
+func DeleteU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, chassisMac, subnetName string) error {
 	var localnetPatchPortID int
 	var err error
 	var matchs []ovs.Match
 	var protocolType ovs.Protocol
 	isIPv6 := util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6
 
-	portInfo, err := client.OpenFlow.DumpPort(bridgeName, "patch-localnet.")
+	peer := fmt.Sprintf("patch-br-int-to-localnet.%s", subnetName)
+	localnetPatchPortID, err = getOfportByPeer(peer)
 	if err != nil {
-		klog.Errorf("failed to dump bridge %s port %s: %v", bridgeName, "patch-localnet.", err)
+		klog.Errorf("failed to get ofport for peer %s: %v", peer, err)
 		return err
 	}
-	localnetPatchPortID = portInfo.PortID
 
 	if isIPv6 {
 		protocolType = ovs.ProtocolIPv6

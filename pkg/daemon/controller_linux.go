@@ -792,7 +792,7 @@ func (c *Controller) GetProviderInfoFromSubnet(subnet *kubeovnv1.Subnet) (bridge
 	return bridgeName, chassisMac, nil
 }
 
-func HandleU2OForPod(ovsClient *ovsutil.Client, pod *v1.Pod, bridgeName, chassisMac string, isAdd bool) error {
+func HandleU2OForPod(ovsClient *ovsutil.Client, pod *v1.Pod, bridgeName, chassisMac, subnetName string, isAdd bool) error {
 	if pod == nil {
 		return errors.New("pod is nil")
 	}
@@ -806,9 +806,9 @@ func HandleU2OForPod(ovsClient *ovsutil.Client, pod *v1.Pod, bridgeName, chassis
 		for _, podIP := range podIPs {
 			var err error
 			if isAdd {
-				err = ovs.AddOrUpdateU2OKeepSrcMac(ovsClient, bridgeName, podIP, podMac, chassisMac)
+				err = ovs.AddOrUpdateU2OKeepSrcMac(ovsClient, bridgeName, podIP, podMac, chassisMac, subnetName)
 			} else {
-				err = ovs.DeleteU2OKeepSrcMac(ovsClient, bridgeName, podIP, chassisMac)
+				err = ovs.DeleteU2OKeepSrcMac(ovsClient, bridgeName, podIP, chassisMac, subnetName)
 			}
 
 			if err != nil {
@@ -841,7 +841,7 @@ func (c *Controller) HandleU2OForSubnet(subnet *kubeovnv1.Subnet, isAdd bool) er
 		if pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 			continue
 		}
-		if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, isAdd); err != nil {
+		if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, isAdd); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -899,7 +899,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				klog.Error(err)
 				return err
 			}
-			if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, true); err != nil {
+			if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, true); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -1007,7 +1007,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return err
 	}
 
-	if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, false); err != nil {
+	if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, false); err != nil {
 		klog.Error(err)
 		return err
 	}
