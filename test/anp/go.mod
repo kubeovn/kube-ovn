@@ -4,8 +4,8 @@ go 1.24.4
 
 require (
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.32.5
-	k8s.io/client-go v0.32.5
+	k8s.io/apimachinery v0.32.6
+	k8s.io/client-go v0.32.6
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/network-policy-api v0.1.5
 )
@@ -52,8 +52,8 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/api v0.32.5 // indirect
-	k8s.io/apiextensions-apiserver v0.32.5 // indirect
+	k8s.io/api v0.32.6 // indirect
+	k8s.io/apiextensions-apiserver v0.32.6 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7 // indirect
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979 // indirect
