@@ -100,7 +100,7 @@ func (c *Controller) initRuntime() error {
 	c.ipsets = make(map[string]*ipsets.IPSets)
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
-	c.k8sipsets = k8sipset.New(c.k8sExec)
+	c.k8sipsets = k8sipset.New()
 	c.ovsClient = ovsutil.New()
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
@@ -124,7 +124,7 @@ func (c *Controller) initRuntime() error {
 			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
-		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
+		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
@@ -147,7 +147,7 @@ func (c *Controller) initRuntime() error {
 			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
-		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
+		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
 	c.nmSyncer = newNetworkManagerSyncer()
