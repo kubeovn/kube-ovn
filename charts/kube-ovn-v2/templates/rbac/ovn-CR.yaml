@@ -84,6 +84,8 @@ rules:
       - network-attachment-definitions
     verbs:
       - get
+      - list
+      - watch
   - apiGroups:
       - ""
       - networking.k8s.io

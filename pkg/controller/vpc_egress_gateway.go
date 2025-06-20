@@ -286,8 +286,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 	subStrings := strings.Split(extSubnet.Spec.Provider, ".")
 	nadName, nadNamespace := subStrings[0], subStrings[1]
-	if _, err = c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(nadNamespace).
-		Get(context.Background(), nadName, metav1.GetOptions{}); err != nil {
+	if _, err = c.netAttachLister.NetworkAttachmentDefinitions(nadNamespace).Get(nadName); err != nil {
 		klog.Errorf("failed to get net-attach-def %s/%s: %v", nadNamespace, nadName, err)
 		return "", nil, nil, nil, err
 	}

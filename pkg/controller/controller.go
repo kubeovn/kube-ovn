@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	netAttach "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/informers/externalversions"
+	netAttachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/listers/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
@@ -275,6 +277,10 @@ type Controller struct {
 	deleteVMQueue                workqueue.TypedRateLimitingInterface[string]
 	kubevirtInformerFactory      informer.KubeVirtInformerFactory
 
+	netAttachLister          netAttachv1.NetworkAttachmentDefinitionLister
+	netAttachSynced          cache.InformerSynced
+	netAttachInformerFactory netAttach.SharedInformerFactory
+
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
@@ -333,6 +339,12 @@ func Run(ctx context.Context, config *Configuration) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
+	attachNetInformerFactory := netAttach.NewSharedInformerFactoryWithOptions(config.AttachNetClient, 0,
+		netAttach.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}),
+	)
+
 	kubevirtInformerFactory := informer.NewKubeVirtInformerFactory(config.KubevirtClient.RestClient(), config.KubevirtClient, nil, util.KubevirtNamespace)
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
@@ -367,6 +379,7 @@ func Run(ctx context.Context, config *Configuration) {
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
+	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
 	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
@@ -553,6 +566,10 @@ func Run(ctx context.Context, config *Configuration) {
 		deleteVMQueue:                newTypedRateLimitingQueue[string]("DeleteVM", nil),
 		kubevirtInformerFactory:      kubevirtInformerFactory,
 
+		netAttachLister:          netAttachInformer.Lister(),
+		netAttachSynced:          netAttachInformer.Informer().HasSynced,
+		netAttachInformerFactory: attachNetInformerFactory,
+
 		recorder:               recorder,
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
@@ -638,6 +655,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
+	controller.StartNetAttachInformerFactory(ctx)
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
