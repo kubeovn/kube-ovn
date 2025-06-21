@@ -1977,6 +1977,20 @@ func (mr *MockACLMockRecorder) MigrateACLTier() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockACL)(nil).MigrateACLTier))
 }
 
+// CleanNoParentKeyAcls mocks base method.
+func (m *MockACL) CleanNoParentKeyAcls() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanNoParentKeyAcls")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanNoParentKeyAcls indicates an expected call of CleanNoParentKeyAcls.
+func (mr *MockACLMockRecorder) CleanNoParentKeyAcls() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanNoParentKeyAcls", reflect.TypeOf((*MockACL)(nil).CleanNoParentKeyAcls))
+}
+
 // SGLostACL mocks base method.
 func (m *MockACL) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
 	m.ctrl.T.Helper()
@@ -4645,6 +4659,20 @@ func (m *MockNbClient) MigrateACLTier() error {
 func (mr *MockNbClientMockRecorder) MigrateACLTier() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockNbClient)(nil).MigrateACLTier))
+}
+
+// CleanNoParentKeyAcls mocks base method.
+func (m *MockNbClient) CleanNoParentKeyAcls() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanNoParentKeyAcls")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanNoParentKeyAcls indicates an expected call of CleanNoParentKeyAcls.
+func (mr *MockNbClientMockRecorder) CleanNoParentKeyAcls() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanNoParentKeyAcls", reflect.TypeOf((*MockNbClient)(nil).CleanNoParentKeyAcls))
 }
 
 // MonitorBFD mocks base method.
