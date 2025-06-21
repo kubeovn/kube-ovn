@@ -153,9 +153,19 @@ kind-init-deepflow: kind-clean
 	@mapped_ports=$(DEEPFLOW_MAPPED_PORTS) $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
+.PHONY: kind-init-iptables-%
+kind-init-iptables-%:
+	@kube_proxy_mode=iptables $(MAKE) kind-init-$*
+
 .PHONY: kind-init-iptables
-kind-init-iptables:
-	@kube_proxy_mode=iptables $(MAKE) kind-init
+kind-init-iptables: kind-init-iptables-ipv4
+
+.PHONY: kind-init-nftables-%
+kind-init-nftables-%:
+	@kube_proxy_mode=nftables $(MAKE) kind-init-$*
+
+.PHONY: kind-init-nftables
+kind-init-iptables: kind-init-nftables-ipv4
 
 .PHONY: kind-init-ha
 kind-init-ha: kind-init-ha-ipv4
