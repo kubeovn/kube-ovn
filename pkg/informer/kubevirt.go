@@ -48,6 +48,9 @@ type KubeVirtInformerFactory interface {
 
 	// Watches VirtualMachineInstanceMigration objects
 	VirtualMachineInstanceMigration() cache.SharedIndexInformer
+
+	// Watches VirtualMachine objects
+	VirtualMachine() cache.SharedIndexInformer
 }
 
 type kubeInformerFactory struct {
@@ -147,6 +150,13 @@ func (f *kubeInformerFactory) VirtualMachineInstanceMigration() cache.SharedInde
 	return f.getInformer("vmimInformer", func() cache.SharedIndexInformer {
 		lw := cache.NewListWatchFromClient(f.restClient, "virtualmachineinstancemigrations", k8sv1.NamespaceAll, fields.Everything())
 		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachineInstanceMigration{}, f.defaultResync, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	})
+}
+
+func (f *kubeInformerFactory) VirtualMachine() cache.SharedIndexInformer {
+	return f.getInformer("vmInformer", func() cache.SharedIndexInformer {
+		lw := cache.NewListWatchFromClient(f.restClient, "virtualmachines", k8sv1.NamespaceAll, fields.Everything())
+		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachine{}, f.defaultResync, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	})
 }
 

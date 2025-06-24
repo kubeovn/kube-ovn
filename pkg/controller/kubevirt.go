@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -32,6 +33,48 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 		klog.Infof("enqueue update VMI migration %s", key)
 		c.addOrUpdateVMIMigrationQueue.Add(key)
 	}
+}
+
+func (c *Controller) enqueueDeleteVM(obj any) {
+	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachine)).String()
+	klog.Infof("enqueue add VM %s", key)
+	c.deleteVMQueue.Add(key)
+}
+
+func (c *Controller) handleDeleteVM(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid vm key: %s", key))
+		return nil
+	}
+	vmKey := fmt.Sprintf("%s/%s", namespace, name)
+
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": vmKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of vm %s: %v", vmKey, err)
+		return err
+	}
+
+	for _, port := range ports {
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), port.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", port.Name, err)
+				return err
+			}
+		}
+
+		subnetName := port.ExternalIDs["ls"]
+		if subnetName != "" {
+			c.ipam.ReleaseAddressByNic(vmKey, port.Name, subnetName)
+		}
+
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
@@ -127,27 +170,47 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	return nil
 }
 
-func (c *Controller) isVMIMigrationCRDInstalled() bool {
-	_, err := c.config.ExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "virtualmachineinstancemigrations.kubevirt.io", metav1.GetOptions{})
-	if err != nil {
-		return false
+func (c *Controller) isKubevirtCRDInstalled() bool {
+	for _, crd := range util.KubeVirtCRD {
+		_, err := c.config.ExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), crd, metav1.GetOptions{})
+		if err != nil {
+			return false
+		}
 	}
-	klog.Info("Found KubeVirt VMI Migration CRD")
+	klog.Info("Found KubeVirt CRDs")
 	return true
 }
 
-func (c *Controller) StartMigrationInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
+func (c *Controller) StartKubevirtInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				if c.isVMIMigrationCRDInstalled() {
-					klog.Info("Start VMI migration informer")
+				if c.isKubevirtCRDInstalled() {
+					klog.Info("Start kubevirt informer")
+					vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
+					vmInformer := kubevirtInformerFactory.VirtualMachine()
+
 					kubevirtInformerFactory.Start(ctx.Done())
-					if !cache.WaitForCacheSync(ctx.Done(), c.vmiMigrationSynced) {
-						util.LogFatalAndExit(nil, "failed to wait for vmi migration caches to sync")
+					if !cache.WaitForCacheSync(ctx.Done(), vmiMigrationInformer.HasSynced, vmInformer.HasSynced) {
+						util.LogFatalAndExit(nil, "failed to wait for kubevirt caches to sync")
+					}
+
+					if c.config.EnableLiveMigrationOptimize {
+						if _, err := vmiMigrationInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+							AddFunc:    c.enqueueAddVMIMigration,
+							UpdateFunc: c.enqueueUpdateVMIMigration,
+						}); err != nil {
+							util.LogFatalAndExit(err, "failed to add VMI Migration event handler")
+						}
+					}
+
+					if _, err := vmInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+						DeleteFunc: c.enqueueDeleteVM,
+					}); err != nil {
+						util.LogFatalAndExit(err, "failed to add vm event handler")
 					}
 					return
 				}
