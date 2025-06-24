@@ -199,10 +199,10 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     chown -R nobody: /var/lib/logrotate
 
 RUN if [ "${DEBUG}" = "true" ]; then \
-    apt-get update && \
-    apt-get install -y --no-install-recommends gdb valgrind && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*; \
-fi
+        apt-get update && \
+        apt-get install -y --no-install-recommends gdb valgrind && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
