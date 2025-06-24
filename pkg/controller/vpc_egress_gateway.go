@@ -204,6 +204,8 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		}
 	}
 
+	klog.Infof("finished reconciling vpc-egress-gateway %s", key)
+
 	return nil
 }
 
@@ -567,11 +569,10 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				return err
 			}
 			for _, pod := range pods {
-				if pod.Spec.HostNetwork || !isPodAlive(pod) {
-					continue
-				}
-				if pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter ||
-					pod.Annotations[util.AllocatedAnnotation] != "true" {
+				if pod.Spec.HostNetwork ||
+					pod.Annotations[util.AllocatedAnnotation] != "true" ||
+					pod.Annotations[util.LogicalRouterAnnotation] != gw.VPC(c.config.ClusterRouter) ||
+					!isPodAlive(pod) {
 					continue
 				}
 				podName := c.getNameByPod(pod)
@@ -1020,7 +1021,7 @@ func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
 	}
 
 	for _, veg := range gateways {
-		if veg.Spec.VPC != vpc {
+		if veg.VPC(c.config.ClusterRouter) != vpc {
 			continue
 		}
 

@@ -44,6 +44,15 @@ type VpcEgressGateway struct {
 	Status VpcEgressGatewayStatus `json:"status"`
 }
 
+// VPC returns the VPC name
+// If the VpcEgressGateway has no VPC specified in the spec, it will return the default VPC name
+func (g *VpcEgressGateway) VPC(defaultVPC string) string {
+	if g.Spec.VPC != "" {
+		return g.Spec.VPC
+	}
+	return defaultVPC
+}
+
 // Ready returns true if the VpcEgressGateway has been processed successfully and is ready to serve traffic
 func (g *VpcEgressGateway) Ready() bool {
 	return g.Status.Ready && g.Status.Conditions.IsReady(g.Generation)
