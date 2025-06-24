@@ -109,8 +109,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 
-	needAllocatePodNets := needAllocateSubnets(sourcePod, podNets)
-	for _, podNet := range needAllocatePodNets {
+	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, podNet.ProviderName)
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
