@@ -1486,3 +1486,58 @@ func (c *OVNNbClient) MigrateACLTier() error {
 
 	return nil
 }
+
+func (c *OVNNbClient) CleanNoParentKeyAcls() error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var aclList []ovnnb.ACL
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+		_, ok := acl.ExternalIDs[aclParentKey]
+		return !ok
+	}).List(ctx, &aclList); err != nil {
+		err = fmt.Errorf("failed to list acls without parent: %w", err)
+		klog.Error(err)
+		return err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(aclList))
+	for _, acl := range aclList {
+		var portGroups []ovnnb.PortGroup
+		if err := c.ovsDbClient.WhereCache(func(pg *ovnnb.PortGroup) bool {
+			return slices.Contains(pg.ACLs, acl.UUID)
+		}).List(ctx, &portGroups); err == nil {
+			for _, pg := range portGroups {
+				op, err := c.portGroupUpdateACLOp(pg.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
+				if err == nil {
+					ops = append(ops, op...)
+				}
+			}
+		}
+		var logicalSwitches []ovnnb.LogicalSwitch
+		if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+			return slices.Contains(ls.ACLs, acl.UUID)
+		}).List(ctx, &logicalSwitches); err == nil {
+			for _, ls := range logicalSwitches {
+				op, err := c.logicalSwitchUpdateACLOp(ls.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
+				if err == nil {
+					ops = append(ops, op...)
+				}
+			}
+		}
+		delOp, err := c.Where(&acl).Delete()
+		if err == nil {
+			ops = append(ops, delOp...)
+		}
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err := c.Transact("acl-clean-no-parent", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to clean acls without parent: %w", err)
+	}
+
+	return nil
+}
