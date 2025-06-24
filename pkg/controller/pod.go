@@ -2038,7 +2038,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		return false, nil
 	}
 	podSubnetCidr := podSubnet.Spec.CIDRBlock
-	if podSubnetCidr != "" {
+	if podSubnetCidr == "" {
 		// subnet spec cidr changed by user
 		klog.Errorf("invalid pod subnet %s empty cidr %s, not auto clean ip", podSwitch, podSubnetCidr)
 		return false, nil
