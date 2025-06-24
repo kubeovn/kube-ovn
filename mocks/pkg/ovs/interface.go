@@ -1603,6 +1603,20 @@ func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
+// CleanNoParentKeyAcls mocks base method.
+func (m *MockACL) CleanNoParentKeyAcls() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanNoParentKeyAcls")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanNoParentKeyAcls indicates an expected call of CleanNoParentKeyAcls.
+func (mr *MockACLMockRecorder) CleanNoParentKeyAcls() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanNoParentKeyAcls", reflect.TypeOf((*MockACL)(nil).CleanNoParentKeyAcls))
+}
+
 // SGLostACL mocks base method.
 func (m *MockACL) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
 	m.ctrl.T.Helper()
@@ -3794,6 +3808,20 @@ func (m *MockNbClient) LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mu
 func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, otherConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
+}
+
+// CleanNoParentKeyAcls mocks base method.
+func (m *MockNbClient) CleanNoParentKeyAcls() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanNoParentKeyAcls")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanNoParentKeyAcls indicates an expected call of CleanNoParentKeyAcls.
+func (mr *MockNbClientMockRecorder) CleanNoParentKeyAcls() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanNoParentKeyAcls", reflect.TypeOf((*MockNbClient)(nil).CleanNoParentKeyAcls))
 }
 
 // NatExists mocks base method.

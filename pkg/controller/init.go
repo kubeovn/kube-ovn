@@ -23,6 +23,10 @@ import (
 
 func (c *Controller) InitOVN() error {
 	var err error
+	if err = c.migrateACLForVersionCompat(); err != nil {
+		klog.Errorf("failed to sync the older acl : %v", err)
+		return err
+	}
 
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
@@ -51,6 +55,15 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) migrateACLForVersionCompat() error {
+	// clean all no parent key acls
+	if err := c.OVNNbClient.CleanNoParentKeyAcls(); err != nil {
+		klog.Errorf("failed to clean all no parent key acls: %v", err)
+		return err
+	}
 	return nil
 }
 

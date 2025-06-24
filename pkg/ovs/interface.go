@@ -138,6 +138,7 @@ type ACL interface {
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
+	CleanNoParentKeyAcls() error
 }
 
 type AddressSet interface {
