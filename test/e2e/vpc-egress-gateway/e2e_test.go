@@ -469,6 +469,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
 	}}
 	if vpcName == util.DefaultVpc {
+		veg.Spec.VPC = "" // test whether the veg works without specifying VPC
 		veg.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
 	}
 	if util.IsOvnProvider(provider) {
