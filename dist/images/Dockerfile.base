@@ -104,7 +104,8 @@ RUN cd /usr/src/ovs && \
     rm -rf .git && \
     CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
-    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS="exclude=openvswitch-ipsec" make debian-deb
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS make debian-deb && \
+    rm -rf /packages/openvswitch-{test*,testcontroller*,source*,ipsec*}.deb
 
 RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
@@ -164,6 +165,7 @@ RUN apt update && apt upgrade -y && apt install -y --no-install-recommends \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools libmnl0 && \
+        apt-get clean && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime && \
         rm -f /usr/bin/nc && \
@@ -191,11 +193,13 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
     rm -rf /var/lib/openvswitch/pki/ && \
-    chown -R nobody: /var/lib/logrotate && \
-    if [ "${DEBUG}" = "true" ]; then \
-        apt update && apt install -y --no-install-recommends gdb valgrind && \
-        rm -rf /var/lib/apt/lists/* && \
-        dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/*.ddeb; \
-    fi
+    chown -R nobody: /var/lib/logrotate
+
+RUN if [ "${DEBUG}" = "true" ]; then \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gdb valgrind && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*; \
+fi
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
