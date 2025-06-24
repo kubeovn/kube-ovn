@@ -105,7 +105,10 @@ RUN cd /usr/src/ovs && \
     CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS make debian-deb && \
-    rm -rf /packages/openvswitch-{test*,testcontroller*,source*,ipsec*}.deb
+    rm -f /packages/openvswitch-test*.deb && \
+    rm -f /packages/openvswitch-testcontroller*.deb && \
+    rm -f /packages/openvswitch-source*.deb && \
+    rm -f /packages/openvswitch-ipsec*.deb
 
 RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
