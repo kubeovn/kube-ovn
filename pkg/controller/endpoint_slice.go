@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -15,6 +16,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -372,9 +374,9 @@ func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servic
 
 		for _, endpoint := range endpointSlice.Endpoints {
 			if isGenIPPortMapping && endpoint.TargetRef.Name != "" {
-				ipName := fmt.Sprintf("%s.%s", endpoint.TargetRef.Name, endpoint.TargetRef.Namespace)
+				lspName := getEndpointTargetLSP(endpoint.TargetRef.Name, endpoint.TargetRef.Namespace, util.OvnProvider)
 				for _, address := range endpoint.Addresses {
-					ipPortMapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, ipName, checkVip)
+					ipPortMapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
 				}
 			}
 		}
@@ -397,4 +399,32 @@ func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servic
 
 func endpointReady(endpoint discoveryv1.Endpoint) bool {
 	return endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
+}
+
+// getEndpointTargetLSP returns the name of the LSP for a given target/namespace.
+// A custom provider can be specified if the LSP is within a subnet that doesn't use
+// the default "ovn" provider.
+func getEndpointTargetLSP(target, namespace, provider string) string {
+	// This pod seems to be a VM launcher pod, but we do not use the same syntax for the LSP
+	// of normal pods and for VM pods. We need to retrieve the real name of the VM from
+	// the pod's name to compute the LSP.
+	if strings.HasPrefix(target, util.VMLauncherPrefix) {
+		target = getVMNameFromLauncherPod(target)
+	}
+
+	return ovs.PodNameToPortName(target, namespace, provider)
+}
+
+// getVMNameFromLauncherPod returns the name of a VirtualMachine from the name of its launcher pod (virt-launcher)
+func getVMNameFromLauncherPod(podName string) string {
+	// Remove the VM launcher pod prefix
+	vmName := strings.TrimPrefix(podName, util.VMLauncherPrefix)
+
+	// Remove the ID of the pod
+	slice := strings.Split(vmName, "-")
+	if len(slice) > 0 {
+		vmName = strings.Join(slice[:len(slice)-1], "-")
+	}
+
+	return vmName
 }
