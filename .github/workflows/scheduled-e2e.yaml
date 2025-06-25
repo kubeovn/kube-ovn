@@ -28,6 +28,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -120,6 +121,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -205,6 +207,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -267,6 +270,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -354,6 +358,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -431,6 +436,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -485,6 +491,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -541,6 +548,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -597,6 +605,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -674,6 +683,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.12-mc
@@ -751,6 +761,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
     steps:
@@ -826,6 +837,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -878,6 +890,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -969,6 +982,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.11
@@ -1170,6 +1184,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
     steps:
@@ -1232,6 +1247,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
     steps:
@@ -1306,6 +1322,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.14
           - release-1.13
           - release-1.12
           - release-1.12-mc
