@@ -103,7 +103,7 @@ else
   RELEASE_BRANCH=release-$(echo ${VERSION} | sed 's/v\([0-9]*\.[0-9]*\).*/\1/')
   git push origin --tags
   git checkout -b $RELEASE_BRANCH
-  git push origin $RELEASE_BRANCH
+  git push --set-upstream origin $RELEASE_BRANCH
 
   echo "create and push base images for the master branch"
   git checkout master
