@@ -61,13 +61,25 @@ func NewFilteredIptablesDnatRuleInformer(client versioned.Interface, resyncPerio
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IptablesDnatRules().List(context.TODO(), options)
+				return client.KubeovnV1().IptablesDnatRules().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IptablesDnatRules().Watch(context.TODO(), options)
+				return client.KubeovnV1().IptablesDnatRules().Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().IptablesDnatRules().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().IptablesDnatRules().Watch(ctx, options)
 			},
 		},
 		&apiskubeovnv1.IptablesDnatRule{},

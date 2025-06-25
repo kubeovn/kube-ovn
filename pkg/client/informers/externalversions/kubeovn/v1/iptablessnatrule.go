@@ -61,13 +61,25 @@ func NewFilteredIptablesSnatRuleInformer(client versioned.Interface, resyncPerio
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IptablesSnatRules().List(context.TODO(), options)
+				return client.KubeovnV1().IptablesSnatRules().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IptablesSnatRules().Watch(context.TODO(), options)
+				return client.KubeovnV1().IptablesSnatRules().Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().IptablesSnatRules().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().IptablesSnatRules().Watch(ctx, options)
 			},
 		},
 		&apiskubeovnv1.IptablesSnatRule{},

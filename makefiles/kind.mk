@@ -10,7 +10,7 @@ endif
 endif
 
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
-K8S_VERSION = v1.33.2
+K8S_VERSION = v1.33.4
 
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')

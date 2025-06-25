@@ -48,6 +48,12 @@ linters:
       - linters:
           - gosec
         path: test/
+      - linters:
+          - staticcheck
+        text: Endpoints is deprecated
+      - linters:
+          - staticcheck
+        text: EndpointSubset is deprecated
     paths:
       - third_party$
       - builtin$
