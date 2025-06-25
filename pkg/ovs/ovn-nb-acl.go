@@ -450,14 +450,14 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 }
 
 func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
-	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("delete subnet acls from %s: %w", lsName, err)
-	}
-
 	if len(subnetAcls) == 0 {
+		if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("delete subnet acls from %s: %w", lsName, err)
+		}
 		return nil
 	}
+
 	acls := make([]*ovnnb.ACL, 0)
 
 	options := func(acl *ovnnb.ACL) {
@@ -508,9 +508,21 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 		acls = append(acls, acl)
 	}
 
-	if err := c.CreateAcls(lsName, logicalSwitchKey, acls...); err != nil {
+	delOps, err := c.DeleteAclsOps(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName})
+	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("add acls to logical switch %s: %w", lsName, err)
+		return err
+	}
+
+	addOps, err := c.CreateAclsOps(lsName, logicalSwitchKey, acls...)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err := c.Transact("acls-update", append(delOps, addOps...)); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("update acls for logical switch %s: %w", lsName, err)
 	}
 
 	return nil
