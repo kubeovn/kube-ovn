@@ -271,8 +271,8 @@ type Controller struct {
 	csrSynced           cache.InformerSynced
 	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
 
-	vmiMigrationSynced           cache.InformerSynced
 	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
+	deleteVMQueue                workqueue.TypedRateLimitingInterface[string]
 	kubevirtInformerFactory      informer.KubeVirtInformerFactory
 
 	recorder               record.EventRecorder
@@ -367,7 +367,6 @@ func Run(ctx context.Context, config *Configuration) {
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
-	vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 
 	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
@@ -550,8 +549,8 @@ func Run(ctx context.Context, config *Configuration) {
 		csrSynced:           csrInformer.Informer().HasSynced,
 		addOrUpdateCsrQueue: newTypedRateLimitingQueue[string]("AddOrUpdateCSR", custCrdRateLimiter),
 
-		vmiMigrationSynced:           vmiMigrationInformer.HasSynced,
 		addOrUpdateVMIMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVMIMigration", nil),
+		deleteVMQueue:                newTypedRateLimitingQueue[string]("DeleteVM", nil),
 		kubevirtInformerFactory:      kubevirtInformerFactory,
 
 		recorder:               recorder,
@@ -638,6 +637,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.deployInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
+	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -911,16 +911,6 @@ func Run(ctx context.Context, config *Configuration) {
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add csr event handler")
 		}
-	}
-
-	if config.EnableLiveMigrationOptimize {
-		if _, err = vmiMigrationInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddVMIMigration,
-			UpdateFunc: controller.enqueueUpdateVMIMigration,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add VMI Migration event handler")
-		}
-		controller.StartMigrationInformerFactory(ctx, kubevirtInformerFactory)
 	}
 
 	controller.Run(ctx)
@@ -1373,6 +1363,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	if c.config.EnableLiveMigrationOptimize {
 		go wait.Until(runWorker("add/update vmiMigration ", c.addOrUpdateVMIMigrationQueue, c.handleAddOrUpdateVMIMigration), 50*time.Millisecond, ctx.Done())
 	}
+
+	go wait.Until(runWorker("delete vm", c.deleteVMQueue, c.handleDeleteVM), time.Second, ctx.Done())
 
 	go wait.Until(c.dbStatus, 15*time.Second, ctx.Done())
 }

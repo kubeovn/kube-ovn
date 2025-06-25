@@ -3593,6 +3593,7 @@ rules:
     verbs:
       - get
       - list
+      - watch
   - apiGroups:
       - "policy.networking.k8s.io"
     resources:
