@@ -53,6 +53,9 @@
       <model type='virtio'/>
       <driver iommu='off'/>
       <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+      {%- if 'control-plane' in name %}
+      <mac address="aa:bb:cc:dd:ee:ff"/>
+      {%- endif %}
     </interface>
     <interface type='network'>
       <source network='talos' bridge='talos-virbr0'/>

@@ -2,7 +2,14 @@
   {%- set ip_family = "ipv4" -%}
 {%- endif -%}
 cluster:
+  discovery:
+    enabled: false
   allowSchedulingOnControlPlanes: true
+  apiServer:
+    certSANs:
+      - talos-control-plane
+      - 172.99.99.10
+      - 2001:db8:99:99::10
   controllerManager:
     extraArgs:
       {%- if ip_family is equalto "ipv4" %}
@@ -21,7 +28,7 @@ cluster:
       - 10.16.0.0/16
       {%- endif %}
       {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
-      - fd00:10:96::/108
+      - fd00:10:16::/112
       {%- endif %}
     serviceSubnets:
       {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
@@ -30,4 +37,3 @@ cluster:
       {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
       - fd00:10:96::/108
       {%- endif %}
-
