@@ -109,3 +109,65 @@ func TestEndpointReady(t *testing.T) {
 		})
 	}
 }
+
+func TestGetEndpointTargetLSP(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    string
+		namespace string
+		provider  string
+		expected  string
+	}{
+		{
+			name:      "Endpoint empty",
+			target:    "",
+			namespace: "",
+			provider:  "",
+			expected:  "..",
+		},
+		{
+			name:      "Endpoint empty with default provider",
+			target:    "",
+			namespace: "",
+			provider:  "ovn",
+			expected:  ".",
+		},
+		{
+			name:      "Pod target with default provider",
+			target:    "some-pod-1d8fn",
+			namespace: "default",
+			provider:  "ovn",
+			expected:  "some-pod-1d8fn.default",
+		},
+		{
+			name:      "Pod target with custom provider",
+			target:    "some-pod-6xjd8",
+			namespace: "default",
+			provider:  "custom.provider",
+			expected:  "some-pod-6xjd8.default.custom.provider",
+		},
+		{
+			name:      "VM target with default provider",
+			target:    "virt-launcher-some-vm-67jd3",
+			namespace: "default",
+			provider:  "ovn",
+			expected:  "some-vm.default",
+		},
+		{
+			name:      "VM target with custom provider",
+			target:    "virt-launcher-some-vm-67jd3",
+			namespace: "default",
+			provider:  "custom.provider",
+			expected:  "some-vm.default.custom.provider",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getEndpointTargetLSP(tt.target, tt.namespace, tt.provider)
+			if result != tt.expected {
+				t.Errorf("getEndpointTargetLSP() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
