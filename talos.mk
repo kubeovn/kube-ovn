@@ -278,6 +278,7 @@ talos-install: talos-install-prepare
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
 		DISABLE_MODULES_MANAGEMENT=true \
 		MOUNT_LOCAL_BIN_DIR=false \
+		IFACE=enp0s5f0 \
 		TUNNEL_TYPE=$(TALOS_TUNNEL_TYPE) \
 		$(MAKE) install-chart
 
