@@ -284,10 +284,9 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 				continue
 			}
 
-			// exclude link-local and localhost addresses
+			// exclude link-local and loopback addresses
 			ipStr := strings.Split(addr.String(), "/")[0]
-			_, localhost, _ := net.ParseCIDR("127.0.0.0/8")
-			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || localhost.Contains(ip) {
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
 				continue
 			}
 			if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
