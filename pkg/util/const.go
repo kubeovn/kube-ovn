@@ -240,8 +240,9 @@ const (
 	ChassisCniDaemonRetryInterval  = 1
 	ChassisControllerRetryInterval = 3
 
-	VM         = "VirtualMachine"
-	VMInstance = "VirtualMachineInstance"
+	VM               = "VirtualMachine"
+	VMInstance       = "VirtualMachineInstance"
+	VMLauncherPrefix = "virt-launcher-"
 
 	StatefulSet = "StatefulSet"
 
