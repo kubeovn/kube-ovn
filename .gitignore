@@ -59,9 +59,9 @@ ovn-cert.pem
 ovn-privkey.pem
 anp-test-report.yaml
 # Generated files used for Talos testing
-libvirt-domain.xml
-talosconfig
-controlplane.yaml
-worker.yaml
-cluster-patch.yaml
-machine-patch.yaml
+talos/libvirt-domain.xml
+talos/talosconfig
+talos/controlplane.yaml
+talos/worker.yaml
+talos/cluster-config.yaml
+talos/machine-config.yaml

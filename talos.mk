@@ -9,10 +9,12 @@ TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
 TALOS_REGISTRY_MIRROR_NAME ?= talos-registry-mirror
 # libvirt network gateway address
-TALOS_REGISTRY_MIRROR_HOST ?= 172.99.99.1
+TALOS_REGISTRY_MIRROR_HOST_IPV4 ?= 172.99.99.1
+TALOS_REGISTRY_MIRROR_HOST_IPV6 ?= 2001:db8:99:99::1
 TALOS_REGISTRY_MIRROR_PORT ?= 6000
-TALOS_REGISTRY_MIRROR = $(TALOS_REGISTRY_MIRROR_HOST):$(TALOS_REGISTRY_MIRROR_PORT)
-TALOS_REGISTRY_MIRROR_URL = http://$(TALOS_REGISTRY_MIRROR)
+TALOS_REGISTRY_MIRROR = [$(TALOS_REGISTRY_MIRROR_HOST)]:$(TALOS_REGISTRY_MIRROR_PORT)
+TALOS_REGISTRY_MIRROR_URL_IPV4 = http://$(TALOS_REGISTRY_MIRROR_HOST_IPV4):$(TALOS_REGISTRY_MIRROR_PORT)
+TALOS_REGISTRY_MIRROR_URL_IPV6 = http://[$(TALOS_REGISTRY_MIRROR_HOST_IPV6)]:$(TALOS_REGISTRY_MIRROR_PORT)
 
 TALOS_LIBVIRT_NETWORK_NAME ?= talos
 TALOS_LIBVIRT_NETWORK_XML ?= talos/libvirt-network.xml
@@ -23,6 +25,8 @@ TALOS_LIBVIRT_DOMAIN_XML ?= talos/libvirt-domain.xml
 
 TALOS_CLUSTER_NAME ?= talos
 TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
+TALOS_CONTROL_PLANE_IPV4 = 172.99.99.10
+TALOS_CONTROL_PLANE_IPV6 = 2001:db8:99:99::10
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
 TALOS_K8S_VERSION ?= 1.32.6
 # DO NOT CHANGE CONTROL PLANE COUNT
@@ -114,12 +118,16 @@ talos-libvirt-init: talos-libvirt-clean
 		echo ">>> Creating libvirt domain for $${name}..." && \
 		sudo virsh create --validate "$(TALOS_LIBVIRT_DOMAIN_XML)"; \
 	done
+	@$(MAKE) talos-libvirt-wait-address
+
+.PHONY: talos-libvirt-wait-address-%
+talos-libvirt-wait-address-%:
 	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read name; do \
 		echo ">>> Waiting for interface addresses of libvirt domain $${name}..."; \
 		while true; do \
-			ip=$$(sudo virsh domifaddr --full "$${name}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+			ip=$$(sudo virsh domifaddr --full "$${name}" | grep -w vnet0 | grep -iw $* | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 			if [ -z "$${ip}" ]; then \
-				echo ">>> Waiting for IP address..."; \
+				echo ">>> Waiting for $* address..."; \
 				sleep 2; \
 			else \
 				echo ">>> IP address $${ip} found."; \
@@ -127,6 +135,9 @@ talos-libvirt-init: talos-libvirt-clean
 			fi; \
 		done; \
 	done
+
+.PHONY: talos-libvirt-wait-address
+talos-libvirt-wait-address: talos-libvirt-wait-address-ipv4
 
 .PHONY: talos-libvirt-clean
 talos-libvirt-clean:
@@ -140,38 +151,46 @@ talos-libvirt-clean:
 		sudo virsh net-destroy $(TALOS_LIBVIRT_NETWORK_NAME); \
 	fi
 
-.PHONY: talos-init-%
-talos-init-%: talos-libvirt-init talos-prepare-images
-	$(eval TALOS_CONTROL_PLANE_IP = $(shell sudo virsh domifaddr --full "$(TALOS_CONTROL_PLANE_NODE)" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'))
-	$(eval TALOS_ENDPOINT = https://$(TALOS_CONTROL_PLANE_IP):6443)
+.PHONY: talos-apply-config-%
+talos-apply-config-%:
+	$(eval TALOS_ENDPOINT_IP_FAMILY = $(shell echo $* | sed 's/dual/ipv4/'))
+	$(eval TALOS_CONTROL_PLANE_IP = $(TALOS_CONTROL_PLANE_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
+	$(eval TALOS_ENDPOINT = https://[$(TALOS_CONTROL_PLANE_IP)]:6443)
+	$(eval TALOS_REGISTRY_MIRROR_URL = $(TALOS_REGISTRY_MIRROR_URL_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
 	@echo ">>> Generating Talos configuration..."
-	ip_family=$* jinjanate talos/cluster-patch.yaml.j2 -o talos/cluster-patch.yaml
-	talosctl gen config --force \
+	ip_family=$* jinjanate talos/cluster-config.yaml.j2 -o talos/cluster-config.yaml
+	talosctl gen config --force -o talos \
 		--kubernetes-version "$(TALOS_K8S_VERSION)" \
 		--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
-		--config-patch "@talos/cluster-patch.yaml" "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
-	mv talosconfig ~/.talos/config
-	@echo ">>> Applying Talos node configuration..."
+		--config-patch "@talos/cluster-config.yaml" "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
+	mv talos/talosconfig ~/.talos/config
+	@echo ">>> Applying Talos node $* configuration..."
 	@sudo virsh list --name | grep '^$(TALOS_CONTROL_PLANE_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
-		talosctl apply-config --insecure --nodes $${ip} --file controlplane.yaml --config-patch "@talos/machine-patch.yaml"; \
+		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-config.yaml.j2 -o talos/machine-config.yaml && \
+		talosctl apply-config --insecure --nodes $${ip} --file talos/controlplane.yaml --config-patch "@talos/machine-config.yaml"; \
 		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
-		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-patch.yaml.j2 -o talos/machine-patch.yaml && \
-		talosctl apply-config --insecure --nodes $${ip} --file worker.yaml --config-patch "@talos/machine-patch.yaml"; \
+		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-config.yaml.j2 -o talos/machine-config.yaml && \
+		talosctl apply-config --insecure --nodes $${ip} --file talos/worker.yaml --config-patch "@talos/machine-config.yaml"; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
+	@$(MAKE) talos-libvirt-wait-address-$(TALOS_ENDPOINT_IP_FAMILY)
+
+.PHONY: talos-init-%
+talos-init-%: talos-libvirt-init talos-prepare-images talos-apply-config-%
+	$(eval TALOS_ENDPOINT_IP_FAMILY = $(shell echo $* | sed 's/dual/ipv4/'))
+	$(eval TALOS_CONTROL_PLANE_IP = $(TALOS_CONTROL_PLANE_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
 	@echo ">>> Waiting for Talos machines to be ready for bootstrapping..."
 	@sudo virsh list --name | grep '^$(TALOS_CLUSTER_NAME)-' | while read node; do \
-		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
+		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw $(TALOS_ENDPOINT_IP_FAMILY) | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 		echo ">>>>>> Machine $${node} has an ip address $${ip}."; \
 		while true; do \
 			stage=$$(talosctl --endpoints $${ip} --nodes $${ip} get machinestatus -o jsonpath='{.spec.stage}' 2>/dev/null); \
@@ -263,7 +282,7 @@ talos-install: talos-install-prepare
 		$(MAKE) install-chart
 
 .PHONY: talos-install-%
-talos-install-%: talos-install-overlay-$*
+talos-install-%: talos-install-overlay-%
 
 .PHONY: talos-install-ipv4
 talos-install-ipv4: talos-install-overlay-ipv4

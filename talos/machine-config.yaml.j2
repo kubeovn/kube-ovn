@@ -1,3 +1,13 @@
+{% macro random_duid_uuid() -%}
+  {{- "0004" -}}
+  {%- for i in range(0, 32) -%}
+    {{- [0,1,2,3,4,5,6,7,8,9,"a","b","c","d","e","f"] | random -}}
+  {%- endfor -%}
+{%- endmacro -%}
+{%- set duidv6 = random_duid_uuid() -%}
+{%- if 'control-plane' in node -%}
+{%- set duidv6 = '00030001aabbccddeeff' -%}
+{%- endif -%}
 {%- if ip_family is not defined -%}
   {%- set ip_family = "ipv4" -%}
 {%- endif -%}
@@ -5,6 +15,8 @@ machine:
   install:
     disk: /dev/vda
     wipe: true
+  time:
+    disabled: true
   kernel:
     modules:
       # the following kernel modules configuration may be unnecessary
@@ -20,8 +32,17 @@ machine:
         mtu: 1500
         dhcp: true
         dhcpOptions:
+          {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
           ipv4: true
+          {%- else %}
+          ipv4: false
+          {%- endif %}
+          {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
           ipv6: true
+          duidv6: {{ duidv6 }}
+          {%- else %}
+          ipv6: false
+          {%- endif %}
       - deviceSelector:
           busPath: 0000:00:05.1
         mtu: 1500

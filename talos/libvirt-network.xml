@@ -4,12 +4,20 @@
   <bridge name='talos-virbr0' stp='on' delay='0'/>
   <ip address='172.99.99.1' prefix='24'>
     <dhcp>
-      <range start='172.99.99.11' end='172.99.99.99'/>
+      <range start='172.99.99.11' end='172.99.99.99'>
+        <lease expiry='1' unit='hours'/>
+      </range>
+      <!-- Use fixed ipv4 address for the control plane node -->
+      <host mac="aa:bb:cc:dd:ee:ff" ip="172.99.99.10"/>
     </dhcp>
   </ip>
   <ip family='ipv6' address='2001:db8:99:99::1' prefix='120'>
     <dhcp>
-      <range start='2001:db8:99:99::11' end='2001:db8:99:99::99'/>
+      <range start='2001:db8:99:99::11' end='2001:db8:99:99::99'>
+        <lease expiry='1' unit='hours'/>
+      </range>
+      <!-- Use fixed ipv6 address for the control plane node -->
+      <host id="0:3:0:1:aa:bb:cc:dd:ee:ff" ip="2001:db8:99:99::10"/>
     </dhcp>
   </ip>
 </network>
