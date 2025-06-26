@@ -13,4 +13,5 @@ Share you story about the Kube-OVN journey with the community.
 | User | 99Cloud | https://www.99cloud.net/ | 99Cloud uses Kube-OVN to provider cloud native network for VM, Kata, VNF in Hybird Cloud. |
 | Vendor | Canonical | https://ubuntu.com/kubernetes | Canonical uses Kube-OVN inside of its Chramed Kube-OVN operator and is distributed on Charmed Kubernetes. |
 | User | Rackspace | https://docs.rackspacecloud.com/ | Rackspace uses Kube-OVN inside of its OpenStack solutions offering hybrid cloud capabilities in both public and private cloud environments. |
-| Vendor | Swisscom | [https://www.swisscom.ch](https://www.swisscom.ch/en/business/enterprise/offer/cloud/cloudnative/container-services.html) | Swisscom uses Kube-OVN as the cloud native SDN component in combination with KubeVirt for the kubernetes-as-a-service offering.
+| Vendor | Swisscom | [https://www.swisscom.ch](https://www.swisscom.ch/en/business/enterprise/offer/cloud/cloudnative/container-services.html) | Swisscom uses Kube-OVN as the cloud native SDN component in combination with KubeVirt for the kubernetes-as-a-service offering. |
+| User	| kt cloud | https://cloud.kt.com/ | kt cloud uses Kube-OVN within its next-generation standard cloud architecture, spanning both public and private cloud environments. |
