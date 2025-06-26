@@ -47,7 +47,7 @@ func getIPsConfiguredByDHCP(iface string) ([]string, error) {
 		if addr.Flags&unix.IFA_F_PERMANENT == 0 &&
 			(addr.ValidLft > 0 && addr.ValidLft != math.MaxUint32) {
 			klog.Infof("Found temporary address %s configured by DHCP", addr.IPNet.String())
-			ips = append(ips, addr.IPNet.IP.String())
+			ips = append(ips, addr.IP.String())
 		}
 	}
 
