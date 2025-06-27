@@ -660,7 +660,7 @@ func (c *Controller) CreateIPSecKeys(p pkiFiles) error {
 	defer cancel()
 
 	var cert []byte
-	if c.config.CertManagerIPSECCert {
+	if c.config.CertManagerIPSecCert {
 		cert, err = c.getCertManagerSignedCert(ctx, csr64)
 		if err != nil {
 			err := fmt.Errorf("create cr error: %w", err)
