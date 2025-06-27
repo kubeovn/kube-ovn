@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -95,7 +96,15 @@ func main() {
 		kubeovninformer.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
+
+	caSecretInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.FieldSelector = fmt.Sprintf("metadata.name=%s", util.DefaultOVNIPSecCA)
+		}),
+		kubeinformers.WithNamespace("kube-system"),
+	)
+
+	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, caSecretInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}
