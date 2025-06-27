@@ -182,4 +182,165 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			return err == nil, nil
 		}, "")
 	})
+
+	framework.ConformanceIt("should be able to ping node-local-dns-ip after configuring NetworkPolicies in kube-system namespace", func() {
+		const nodeLocalDNSIP = "169.254.20.10"
+
+		ginkgo.By("Getting kube-ovn-controller deployment")
+		kubeOvnDeployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		originalDeploy := kubeOvnDeployClient.Get("kube-ovn-controller")
+
+		ginkgo.By("Modifying kube-ovn-controller args to enable node-local-dns-ip")
+		modifiedDeploy := originalDeploy.DeepCopy()
+		container := &modifiedDeploy.Spec.Template.Spec.Containers[0]
+
+		// Add node-local-dns-ip argument if not present
+		nodeLocalDNSArg := "--node-local-dns-ip=" + nodeLocalDNSIP
+		found := false
+		for i, arg := range container.Args {
+			if strings.HasPrefix(arg, "--node-local-dns-ip=") {
+				container.Args[i] = nodeLocalDNSArg
+				found = true
+				break
+			}
+		}
+		if !found {
+			container.Args = append(container.Args, nodeLocalDNSArg)
+		}
+
+		ginkgo.By("Updating kube-ovn-controller deployment")
+		_ = kubeOvnDeployClient.PatchSync(originalDeploy, modifiedDeploy)
+
+		ginkgo.By("Getting nodes")
+		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodeList.Items)
+
+		ginkgo.By("Getting daemonset kube-ovn-cni")
+		ds := daemonSetClient.Get("kube-ovn-cni")
+
+		ginkgo.By("Adding IP address " + nodeLocalDNSIP + "/32 to management interface on all nodes")
+		cniPods := make([]corev1.Pod, 0, len(nodeList.Items))
+		for _, node := range nodeList.Items {
+			pod, err := daemonSetClient.GetPodOnNode(ds, node.Name)
+			framework.ExpectNoError(err, "failed to get kube-ovn-cni pod running on node %s", node.Name)
+			cniPods = append(cniPods, *pod)
+
+			// Add IP to management interface (assuming eth0 is the management interface)
+			addIPCmd := fmt.Sprintf("ip addr add %s/32 dev eth0", nodeLocalDNSIP)
+			ginkgo.By(fmt.Sprintf("Adding IP %s/32 to eth0 on node %s", nodeLocalDNSIP, node.Name))
+			_, err = e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, addIPCmd)
+			// Ignore error if IP already exists
+		}
+
+		// Cleanup function to remove IP addresses
+		defer func() {
+			ginkgo.By("Cleaning up: removing IP address " + nodeLocalDNSIP + "/32 from management interface on all nodes")
+			for _, pod := range cniPods {
+				removeIPCmd := fmt.Sprintf("ip addr del %s/32 dev eth0", nodeLocalDNSIP)
+				_, _ = e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, removeIPCmd)
+			}
+
+			ginkgo.By("Restoring original kube-ovn-controller deployment")
+			_ = kubeOvnDeployClient.PatchSync(modifiedDeploy, originalDeploy)
+		}()
+
+		ginkgo.By("Creating ingress NetworkPolicy in kube-system namespace")
+		kubeSystemNetpolClient := f.NetworkPolicyClientNS("kube-system")
+		ingressNetpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ingress-rules",
+				Namespace: "kube-system",
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{}, // Empty selector matches all pods
+				Ingress: []netv1.NetworkPolicyIngressRule{
+					{
+						From: []netv1.NetworkPolicyPeer{
+							{
+								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
+							},
+						},
+						Ports: []netv1.NetworkPolicyPort{
+							{
+								Protocol: (*corev1.Protocol)(func() *corev1.Protocol { p := corev1.ProtocolTCP; return &p }()),
+							},
+						},
+					},
+					{
+						// Allow all traffic (including ICMP) without port restrictions
+						From: []netv1.NetworkPolicyPeer{
+							{
+								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+			},
+		}
+		_ = kubeSystemNetpolClient.Create(ingressNetpol)
+
+		defer func() {
+			ginkgo.By("Cleaning up ingress NetworkPolicy")
+			kubeSystemNetpolClient.DeleteSync("ingress-rules")
+		}()
+
+		ginkgo.By("Creating egress NetworkPolicy in kube-system namespace")
+		egressNetpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "egress-rules",
+				Namespace: "kube-system",
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{}, // Empty selector matches all pods
+				Egress: []netv1.NetworkPolicyEgressRule{
+					{
+						To: []netv1.NetworkPolicyPeer{
+							{
+								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
+							},
+						},
+						Ports: []netv1.NetworkPolicyPort{
+							{
+								Protocol: (*corev1.Protocol)(func() *corev1.Protocol { p := corev1.ProtocolTCP; return &p }()),
+							},
+						},
+					},
+					{
+						// Allow all traffic (including ICMP) without port restrictions
+						To: []netv1.NetworkPolicyPeer{
+							{
+								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
+			},
+		}
+		_ = kubeSystemNetpolClient.Create(egressNetpol)
+
+		defer func() {
+			ginkgo.By("Cleaning up egress NetworkPolicy")
+			kubeSystemNetpolClient.DeleteSync("egress-rules")
+		}()
+
+		ginkgo.By("Creating test pod")
+		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.AgnhostImage, nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Testing ping connectivity to node-local-dns-ip from test pod")
+		pingCmd := fmt.Sprintf("ping -W 1 -c 1 %s", nodeLocalDNSIP)
+		ginkgo.By(fmt.Sprintf("Executing %q in pod %s/%s", pingCmd, pod.Namespace, pod.Name))
+
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, pingCmd)
+			return err == nil, nil
+		}, "ping to node-local-dns-ip should succeed")
+
+		ginkgo.By("Verifying ping connectivity from test pod to node-local-dns-ip")
+		_, err = e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, pingCmd)
+		framework.ExpectNoError(err, "ping to node-local-dns-ip %s should succeed", nodeLocalDNSIP)
+	})
 })
