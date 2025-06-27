@@ -183,8 +183,11 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		}, "")
 	})
 
-	framework.ConformanceIt("should be able to ping node-local-dns-ip after configuring NetworkPolicies in kube-system namespace", func() {
+	framework.ConformanceIt("should be able to ping node-local-dns-ip after configuring NetworkPolicies", func() {
 		const nodeLocalDNSIP = "169.254.20.10"
+
+		// Helper function to get protocol pointer
+		tcpProtocol := corev1.ProtocolTCP
 
 		ginkgo.By("Getting kube-ovn-controller deployment")
 		kubeOvnDeployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
@@ -229,7 +232,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			// Add IP to management interface (assuming eth0 is the management interface)
 			addIPCmd := fmt.Sprintf("ip addr add %s/32 dev eth0", nodeLocalDNSIP)
 			ginkgo.By(fmt.Sprintf("Adding IP %s/32 to eth0 on node %s", nodeLocalDNSIP, node.Name))
-			_, err = e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, addIPCmd)
+			_, _ = e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, addIPCmd)
 			// Ignore error if IP already exists
 		}
 
@@ -263,7 +266,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 						},
 						Ports: []netv1.NetworkPolicyPort{
 							{
-								Protocol: (*corev1.Protocol)(func() *corev1.Protocol { p := corev1.ProtocolTCP; return &p }()),
+								Protocol: &tcpProtocol,
 							},
 						},
 					},
@@ -303,7 +306,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 						},
 						Ports: []netv1.NetworkPolicyPort{
 							{
-								Protocol: (*corev1.Protocol)(func() *corev1.Protocol { p := corev1.ProtocolTCP; return &p }()),
+								Protocol: &tcpProtocol,
 							},
 						},
 					},
