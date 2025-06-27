@@ -3502,6 +3502,7 @@ rules:
       - network-attachment-definitions
     verbs:
       - get
+      - list
   - apiGroups:
       - ""
       - networking.k8s.io
