@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -177,7 +178,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				checkIP = util.MasqueradeCheckIP
 			}
 			isGenIPPortMapping := !ignoreHealthCheck || isPreferLocalBackend
-			ipPortMapping, backends = getIPPortMappingBackend(endpointSlices, port, lbVip, checkIP, isGenIPPortMapping)
+			ipPortMapping, backends = c.getIPPortMappingBackend(endpointSlices, port, lbVip, checkIP, isGenIPPortMapping)
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
 				vip = util.JoinHostPort(lbVip, port.Port)
@@ -353,7 +354,7 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 	return checkIP, nil
 }
 
-func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP, checkVip string, isGenIPPortMapping bool) (map[string]string, []string) {
+func (c *Controller) getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP, checkVip string, isGenIPPortMapping bool) (map[string]string, []string) {
 	var (
 		ipPortMapping = map[string]string{}
 		backends      = []string{}
@@ -374,7 +375,13 @@ func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servic
 
 		for _, endpoint := range endpointSlice.Endpoints {
 			if isGenIPPortMapping && endpoint.TargetRef.Name != "" {
-				lspName := getEndpointTargetLSP(endpoint.TargetRef.Name, endpoint.TargetRef.Namespace, util.OvnProvider)
+				lspName, err := c.getEndpointTargetLSP(endpoint.TargetRef.Name, endpoint.TargetRef.Namespace, endpoint.Addresses)
+				if err != nil {
+					err := fmt.Errorf("couldn't get LSP for the endpoint's target: %w", err)
+					klog.Error(err)
+					continue
+				}
+
 				for _, address := range endpoint.Addresses {
 					ipPortMapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
 				}
@@ -401,30 +408,75 @@ func endpointReady(endpoint discoveryv1.Endpoint) bool {
 	return endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
 }
 
-// getEndpointTargetLSP returns the name of the LSP for a given target/namespace.
-// A custom provider can be specified if the LSP is within a subnet that doesn't use
-// the default "ovn" provider.
-func getEndpointTargetLSP(target, namespace, provider string) string {
-	// This pod seems to be a VM launcher pod, but we do not use the same syntax for the LSP
-	// of normal pods and for VM pods. We need to retrieve the real name of the VM from
-	// the pod's name to compute the LSP.
-	if strings.HasPrefix(target, util.VMLauncherPrefix) {
-		target = getVMNameFromLauncherPod(target)
+// getMatchingProviderForAddress returns the provider linked to a subnet in which a particular address is present
+func getMatchingProviderForAddress(pod *v1.Pod, providers []string, address string) string {
+	if pod.Annotations == nil {
+		return ""
 	}
 
-	return ovs.PodNameToPortName(target, namespace, provider)
+	// Find which provider is linked to this address
+	for _, provider := range providers {
+		ipsForProvider, exists := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		if !exists {
+			continue
+		}
+
+		ips := strings.Split(ipsForProvider, ",")
+		if slices.Contains(ips, address) {
+			return provider
+		}
+	}
+
+	return ""
 }
 
-// getVMNameFromLauncherPod returns the name of a VirtualMachine from the name of its launcher pod (virt-launcher)
-func getVMNameFromLauncherPod(podName string) string {
-	// Remove the VM launcher pod prefix
-	vmName := strings.TrimPrefix(podName, util.VMLauncherPrefix)
-
-	// Remove the ID of the pod
-	slice := strings.Split(vmName, "-")
-	if len(slice) > 0 {
-		vmName = strings.Join(slice[:len(slice)-1], "-")
+// getEndpointTargetLSPName returns the name of the LSP for a pod targeted by an endpoint.
+// A custom provider can be specified if the LSP is within a subnet that doesn't use
+// the default "ovn" provider.
+func getEndpointTargetLSPName(pod *v1.Pod, provider string) string {
+	// If no provider is specified, use the default one
+	if provider == "" {
+		provider = util.OvnProvider
 	}
 
-	return vmName
+	target := pod.Name
+
+	// If this pod is a VM launcher pod, we need to retrieve the name of the VM. This is necessary
+	// because we do not use the same syntax for the LSP of normal pods and for VM pods
+	if vmName, exists := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]; exists {
+		target = vmName
+	}
+
+	return ovs.PodNameToPortName(target, pod.Namespace, provider)
+}
+
+// getEndpointTargetLSP returns the name of the LSP on which addresses are attached for a specific pod
+func (c *Controller) getEndpointTargetLSP(pod, namespace string, addresses []string) (string, error) {
+	// Retrieve the pod object from its namespace and name
+	podObj, err := c.podsLister.Pods(namespace).Get(pod)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod %s/%s: %w", namespace, pod, err)
+	}
+
+	// Get all the networks to which the pod is attached
+	podNetworks, err := c.getPodKubeovnNets(podObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod networks: %w", err)
+	}
+
+	// Retrieve all the providers
+	var providers []string
+	for _, podNetwork := range podNetworks {
+		providers = append(providers, podNetwork.ProviderName)
+	}
+
+	// Get the first matching provider for any of the address in the endpoint
+	var provider string
+	for _, address := range addresses {
+		if provider = getMatchingProviderForAddress(podObj, providers, address); provider != "" {
+			break
+		}
+	}
+
+	return getEndpointTargetLSPName(podObj, provider), nil
 }
