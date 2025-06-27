@@ -21,7 +21,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/httprunner/httprunner/v4 v4.3.7-0.20240124083022-402b74876a59
-	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.6
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
