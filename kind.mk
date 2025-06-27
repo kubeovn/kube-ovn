@@ -660,16 +660,20 @@ kind-install-ovn-ipsec:
 .PHONY: kind-install-cert-manager
 kind-install-cert-manager:
 	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
+
 	kubectl apply -f "$(CERT_MANAGER_YAML)"
+
 	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
 
 .PHONY: kind-install-ovn-ipsec-cert-manager 
 kind-install-ovn-ipsec-cert-manager:
 	@$(MAKE) ENABLE_OVN_IPSEC=true CERT_MANAGER_IPSEC_CERT=true kind-install
 	@$(MAKE) kind-install-cert-manager
-	
-	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
-	
+
 	$(eval CA_KEY = $(shell mktemp))
 	$(shell openssl genrsa -out $(CA_KEY) 2048)
 	$(eval CA_CERT = $(shell openssl req -x509 -new -nodes \

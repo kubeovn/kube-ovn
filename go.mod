@@ -8,6 +8,7 @@ require (
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/brianvoe/gofakeit/v7 v7.3.0
 	github.com/cenkalti/backoff/v5 v5.0.2
+	github.com/cert-manager/cert-manager v1.17.1
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containerd/containerd/v2 v2.1.3
 	github.com/containernetworking/cni v1.3.0
@@ -75,8 +76,6 @@ require (
 	sigs.k8s.io/network-policy-api v0.1.5
 )
 
-require sigs.k8s.io/gateway-api v1.1.0 // indirect
-
 require (
 	cel.dev/expr v0.24.0 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
@@ -95,7 +94,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.4 // indirect
-	github.com/cert-manager/cert-manager v1.17.1
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.3 // indirect
 	github.com/container-storage-interface/spec v1.11.0 // indirect
@@ -296,6 +294,7 @@ require (
 	kubevirt.io/containerized-data-importer-api v1.62.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.1 // indirect
+	sigs.k8s.io/gateway-api v1.1.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kustomize/api v0.19.0 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.19.0 // indirect

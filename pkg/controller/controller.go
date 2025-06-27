@@ -990,7 +990,7 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
-	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSECCert {
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
 		if err := c.InitDefaultOVNIPsecCA(); err != nil {
 			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
 		}

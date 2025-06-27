@@ -69,7 +69,7 @@ type Configuration struct {
 	ExternalGatewaySwitch     string // provider network underlay vlan subnet
 	EnableMetrics             bool
 	EnableOVNIPSec            bool
-	CertManagerIPSECCert      bool
+	CertManagerIPSecCert      bool
 	CertManagerIssuerName     string
 	IPSecCertDuration         int
 	EnableArpDetectIPConflict bool
@@ -130,7 +130,7 @@ func ParseFlags() *Configuration {
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSECCert      = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
+		argCertManagerIPSecCert      = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argCertManagerIssuerName     = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
 		argOVNIPSecCertDuration      = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
@@ -204,7 +204,7 @@ func ParseFlags() *Configuration {
 		TLSMinVersion:             *argTLSMinVersion,
 		TLSMaxVersion:             *argTLSMaxVersion,
 		TLSCipherSuites:           *argTLSCipherSuites,
-		CertManagerIPSECCert:      *argCertManagerIPSECCert,
+		CertManagerIPSecCert:      *argCertManagerIPSecCert,
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 	}
@@ -433,7 +433,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeClient = kubeClient
 
-	if config.CertManagerIPSECCert {
+	if config.CertManagerIPSecCert {
 		cfg.ContentType = "application/json"
 		cmClient, err := certmanagerclientset.NewForConfig(cfg)
 		if err != nil {
