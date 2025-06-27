@@ -97,7 +97,7 @@ type Configuration struct {
 	EnableMetrics               bool
 	EnableANP                   bool
 	EnableOVNIPSec              bool
-	CertManagerIPSECCert        bool
+	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
 
 	ExternalGatewaySwitch   string
@@ -189,7 +189,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSECCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
+		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
@@ -292,7 +292,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableOVNLBPreferLocal:         *argEnableOVNLBPreferLocal,
 		EnableMetrics:                  *argEnableMetrics,
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
-		CertManagerIPSECCert:           *argCertManagerIPSECCert,
+		CertManagerIPSecCert:           *argCertManagerIPSecCert,
 		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
