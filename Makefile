@@ -188,6 +188,7 @@ install-chart:
 		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(shell echo $${MOUNT_LOCAL_BIN_DIR:-true}) \
 		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
+		--set networking.IFACE=$(shell echo $${IFACE:-}) \
 		--set networking.NETWORK_TYPE=$(shell echo $${NETWORK_TYPE:-geneve}) \
 		--set networking.TUNNEL_TYPE=$(shell echo $${TUNNEL_TYPE:-geneve}) \
 		--set networking.vlan.VLAN_INTERFACE_NAME=$(shell echo $${VLAN_INTERFACE_NAME:-}) \

@@ -264,9 +264,14 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			klog.Errorf("failed to find iface %s, %v", tunnelNic, err)
 			return err
 		}
-		srcIPs, err := getSrcIPsByRoutes(iface)
+		srcIPs, err := getSrcIPsByRoutes(iface.Name)
 		if err != nil {
 			return fmt.Errorf("failed to get src IPs by routes on interface %s: %w", iface.Name, err)
+		}
+		dhcpIPs, err := getIPsConfiguredByDHCP(iface.Name)
+		if err != nil {
+			klog.Errorf("failed to get DHCP IPs on interface %s: %v", iface.Name, err)
+			return fmt.Errorf("failed to get DHCP IPs on interface %s: %w", iface.Name, err)
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
@@ -278,14 +283,17 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 				klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
 				continue
 			}
+
 			// exclude the vip as encap ip unless host-tunnel-src is true
+			ipStr := strings.Split(addr.String(), "/")[0]
 			if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
-				klog.Infof("Skip address %s", ipCidr.String())
-				continue
+				if !slices.Contains(dhcpIPs, ipStr) {
+					klog.Infof("Skip address %s", ipCidr.String())
+					continue
+				}
 			}
 
 			// exclude link-local and loopback addresses
-			ipStr := strings.Split(addr.String(), "/")[0]
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
 				continue
 			}
