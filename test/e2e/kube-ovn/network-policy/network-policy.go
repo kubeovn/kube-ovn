@@ -184,7 +184,16 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	})
 
 	framework.ConformanceIt("should be able to ping node-local-dns-ip after configuring NetworkPolicies", func() {
-		const nodeLocalDNSIP = "169.254.20.10"
+		if f.IsUnderlay() {
+			ginkgo.Skip("underlay mode is not supported node-local-dns-ip")
+		}
+
+		var nodeLocalDNSIP string
+		if f.IsIPv6() {
+			nodeLocalDNSIP = "fd00::10"
+		} else {
+			nodeLocalDNSIP = "169.254.20.10"
+		}
 
 		// Helper function to get protocol pointer
 		tcpProtocol := corev1.ProtocolTCP
