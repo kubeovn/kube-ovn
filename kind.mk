@@ -9,6 +9,9 @@ OS_LINUX = 1
 endif
 endif
 
+# renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
+K8S_VERSION = v1.33.1
+
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
 UNDERLAY_NETWORK_IPV4_SUBNET = $(UNDERLAY_NETWORK_VAR_PREFIX)_IPV4_SUBNET
@@ -103,7 +106,7 @@ kind-iptables-accepct-underlay:
 
 .PHONY: kind-generate-config
 kind-generate-config:
-	jinjanate yamls/kind.yaml.j2 -o yamls/kind.yaml
+	k8s_version=$(K8S_VERSION) jinjanate yamls/kind.yaml.j2 -o yamls/kind.yaml
 
 .PHONY: kind-disable-hairpin
 kind-disable-hairpin:
