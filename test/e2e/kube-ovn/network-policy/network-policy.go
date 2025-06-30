@@ -248,12 +248,12 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			_ = kubeOvnDeployClient.PatchSync(modifiedDeploy, originalDeploy)
 		}()
 
-		ginkgo.By("Creating ingress NetworkPolicy in kube-system namespace")
-		kubeSystemNetpolClient := f.NetworkPolicyClientNS("kube-system")
+		ginkgo.By("Creating ingress NetworkPolicy")
+		netpolClient := f.NetworkPolicyClientNS(namespaceName)
 		ingressNetpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ingress-rules",
-				Namespace: "kube-system",
+				Namespace: namespaceName,
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{}, // Empty selector matches all pods
@@ -270,30 +270,22 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 							},
 						},
 					},
-					{
-						// Allow all traffic (including ICMP) without port restrictions
-						From: []netv1.NetworkPolicyPeer{
-							{
-								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
-							},
-						},
-					},
 				},
 				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
 			},
 		}
-		_ = kubeSystemNetpolClient.Create(ingressNetpol)
+		_ = netpolClient.Create(ingressNetpol)
 
 		defer func() {
 			ginkgo.By("Cleaning up ingress NetworkPolicy")
-			kubeSystemNetpolClient.DeleteSync("ingress-rules")
+			netpolClient.DeleteSync("ingress-rules")
 		}()
 
-		ginkgo.By("Creating egress NetworkPolicy in kube-system namespace")
+		ginkgo.By("Creating egress NetworkPolicy")
 		egressNetpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "egress-rules",
-				Namespace: "kube-system",
+				Namespace: namespaceName,
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{}, // Empty selector matches all pods
@@ -310,23 +302,15 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 							},
 						},
 					},
-					{
-						// Allow all traffic (including ICMP) without port restrictions
-						To: []netv1.NetworkPolicyPeer{
-							{
-								IPBlock: &netv1.IPBlock{CIDR: "0.0.0.0/0"},
-							},
-						},
-					},
 				},
 				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
 			},
 		}
-		_ = kubeSystemNetpolClient.Create(egressNetpol)
+		_ = netpolClient.Create(egressNetpol)
 
 		defer func() {
 			ginkgo.By("Cleaning up egress NetworkPolicy")
-			kubeSystemNetpolClient.DeleteSync("egress-rules")
+			netpolClient.DeleteSync("egress-rules")
 		}()
 
 		ginkgo.By("Creating test pod")

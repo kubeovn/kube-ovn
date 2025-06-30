@@ -33,9 +33,8 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-controller -v ./cmd/controller
 
 .PHONY: build-kube-ovn
-build-kube-ovn: build-debug build-go
+build-kube-ovn: build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
-	docker build -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-dpdk
 build-kube-ovn-dpdk: build-go
