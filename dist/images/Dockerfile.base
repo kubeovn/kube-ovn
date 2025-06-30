@@ -63,7 +63,7 @@ ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
-ADD patches/700f950f23f1e810f09a0eb66a8b2dad07b713d3.patch $SRC_DIR
+ADD patches/91246ee5f6ee58a088fb54a531e77f5fcc19840b.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -125,7 +125,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/b5e2975eb65f37315545300254fc0f58a9df52b1.patch && \
     # skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-    git apply $SRC_DIR/700f950f23f1e810f09a0eb66a8b2dad07b713d3.patch && \
+    git apply $SRC_DIR/91246ee5f6ee58a088fb54a531e77f5fcc19840b.patch && \
     # select local backend first
     git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
 

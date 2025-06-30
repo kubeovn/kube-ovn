@@ -1,16 +1,15 @@
-From 700f950f23f1e810f09a0eb66a8b2dad07b713d3 Mon Sep 17 00:00:00 2001
+From 91246ee5f6ee58a088fb54a531e77f5fcc19840b Mon Sep 17 00:00:00 2001
 From: clyi <clyi@alauda.io>
-Date: Fri, 27 Jun 2025 09:44:16 +0800
-Subject: [PATCH] should consider the nodelocaldns ip reply packet not be drop
- by acl
+Date: Mon, 30 Jun 2025 10:54:44 +0800
+Subject: [PATCH] fix network policy cause pod access nodelocaldsn fail
 
 Signed-off-by: clyi <clyi@alauda.io>
 ---
- northd/northd.c | 51 ++++++++++++++++++++++++++++++++++++++++++++-----
- 1 file changed, 46 insertions(+), 5 deletions(-)
+ northd/northd.c | 61 +++++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 54 insertions(+), 7 deletions(-)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index f01cfb72e2..7ea3a37393 100644
+index f01cfb72e2..d4c6192098 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
 @@ -6178,12 +6178,10 @@ build_ls_stateful_rec_pre_acls(
@@ -40,7 +39,35 @@ index f01cfb72e2..7ea3a37393 100644
              ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
                                      110, match, "next;",
                                      &od->nbs->header_, lflow_ref);
-@@ -7359,6 +7356,50 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
+@@ -6440,19 +6437,25 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+         char *match = NULL;
+         const char **array = sset_array(&node_local_dns_ip_v4);
+         for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
+-            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
++            match = xasprintf("ip4 && ((ip4.dst == %s && udp.dst == 53) || (ip4.src == %s && udp.src == 53))", array[i], array[i]);
+             ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
+                                              105, match, "next;",
+                                              &od->nbs->header_, lflow_ref);
++           ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
+             free(match);
+         }
+         free(array);
+         array = sset_array(&node_local_dns_ip_v6);
+         for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
+-            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
++            match = xasprintf("ip6 && ((ip6.dst == %s && udp.dst == 53) || (ip6.src == %s && udp.src == 53))", array[i], array[i]);
+             ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
+                                              105, match, "next;",
+                                              &od->nbs->header_, lflow_ref);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
+             free(match);
+         }
+         free(array);
+@@ -7359,6 +7362,50 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                    REGBIT_ACL_VERDICT_ALLOW " = 1; next;",
                    lflow_ref);
  
