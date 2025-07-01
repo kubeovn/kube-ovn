@@ -160,21 +160,40 @@ ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
     bash -x /rebuild-go-deps.sh
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS ubuntu
 
+RUN rm -rf /etc/localtime
+RUN rm -f /usr/lib/apt/methods/mirror
+RUN usermod -s /usr/sbin/nologin sync
+RUN usermod -s /usr/sbin/nologin ubuntu
+RUN apt remove -y --allow-remove-essential --auto-remove login
+
+FROM scratch
+
+LABEL "org.opencontainers.image.ref.name"="ubuntu"
+LABEL "org.opencontainers.image.version"="24.04"
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+CMD ["/bin/bash"]
+
+COPY --from=ubuntu / /
+
+ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt upgrade -y && apt install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt update && apt upgrade -y && apt install -y --no-install-recommends --auto-remove \
         ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools libmnl0 && \
+        apt remove -y --allow-remove-essential --auto-remove login && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime && \
         rm -f /usr/bin/nc && \
         rm -f /usr/bin/netcat && \
-        rm -f /usr/lib/apt/methods/mirror && \
-        deluser sync
+        rm -f /usr/lib/apt/methods/mirror
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
