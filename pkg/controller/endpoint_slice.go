@@ -131,6 +131,22 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		}
 	}
 
+	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
+	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
+	// TODO: Identify how endpoints are constructed, by deafult, endpoints has IP address of eth0 inteface
+	if c.config.EnableNonPrimaryCNI {
+		var pods []*v1.Pod
+		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
+			klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
+			return err
+		}
+		err = c.replaceEndpointAddressesWithSecondaryIPs(endpointSlices, pods)
+		if err != nil {
+			klog.Errorf("failed to update endpointSlice: %v", err)
+			return err
+		}
+	}
+
 	vpcName, subnetName, err = c.getVpcAndSubnetForEndpoints(endpointSlices, svc)
 	if err != nil {
 		return err
@@ -251,6 +267,68 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(namespace), svc.Name, patch); err != nil {
 			klog.Errorf("failed to patch service %s: %v", key, err)
 			return err
+		}
+	}
+
+	return nil
+}
+
+// Update the endpoint IP address with the secondary IP address of the pod using the network attachment definition annotation
+// This is a temporary fix to allow consumers to use the secondary IP address of the pod
+// TODO: Remove this function and update the endpoint construction to use the secondary IP address of the pod
+func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlice []*discoveryv1.EndpointSlice, pods []*v1.Pod) error {
+	// store replaced endpoints in a map
+	replacedEndpoints := make(map[string]bool)
+	// iterate over all endpoint slices
+	for i, endpoint := range endpointSlice {
+		// iterate over all endpoints in the slice
+		for j, ep := range endpoint.Endpoints {
+			if ep.TargetRef != nil && ep.TargetRef.Kind == "Pod" {
+				podName := ep.TargetRef.Name
+				for _, pod := range pods {
+					// Find the matching pod
+					if podName == pod.Name {
+						// Retrieve all the providers of the pod
+						providers, err := c.getPodProviders(pod)
+						if err != nil {
+							return err
+						}
+						if len(providers) == 0 {
+							// pod has no providers
+							continue
+						}
+						// Get the network attachment definition associated IP address
+						// If multiple providers exist, use the first one.
+						ipAddress := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providers[0])]
+						if ipAddress == "" {
+							klog.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
+							return fmt.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
+						}
+						// Update the matching endpoint with the secondary IP address
+						found := false
+						for k, address := range ep.Addresses {
+							// skip if this specific endpoint has already been replaced
+							if replacedEndpoints[address] {
+								continue
+							}
+							// check if the endpoint address is the same as the pod IP address
+							if address == pod.Status.PodIP {
+								klog.Infof("updating pod %s/%s ip address %s to %s", pod.Namespace, pod.Name, pod.Status.PodIP, ipAddress)
+								// update the endpoint IP address with the secondary IP address
+								endpointSlice[i].Endpoints[j].Addresses[k] = ipAddress
+								// mark this specific endpoint position as replaced
+								replacedEndpoints[ipAddress] = true
+								found = true
+								break
+							}
+						}
+						if !found {
+							return fmt.Errorf("failed to find pod %s/%s ip address %s in endpoint slice %s", pod.Namespace, pod.Name, pod.Status.PodIP, endpointSlice[i].Name)
+						}
+						break
+					}
+				}
+			}
 		}
 	}
 
