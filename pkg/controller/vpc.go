@@ -268,7 +268,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	if err = c.createVpcRouter(key); err != nil {
+	if err = c.createVpcRouter(key, vpc.Spec.EnableExternal); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
 	}
@@ -1235,7 +1235,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 }
 
 // createVpcRouter create router to connect logical switches in vpc
-func (c *Controller) createVpcRouter(lr string) error {
+func (c *Controller) createVpcRouter(lr string, enableExternal bool) error {
 	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
 		klog.Errorf("create logical router %s failed: %v", lr, err)
 		return err
@@ -1247,12 +1247,21 @@ func (c *Controller) createVpcRouter(lr string) error {
 		return err
 	}
 
-	vpcRouter.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
-	err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options)
-	if err != nil {
-		klog.Errorf("update logical router %s failed: %v", lr, err)
-		return err
+	lrOptions := map[string]string{
+		"mac_binding_age_threshold": "300",
+		"dynamic_neigh_routers":     "true",
 	}
+	if !enableExternal {
+		lrOptions["always_learn_from_arp_request"] = "false"
+	}
+	if !maps.Equal(vpcRouter.Options, lrOptions) {
+		vpcRouter.Options = lrOptions
+		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
+			klog.Errorf("failed to update options of logical router %s: %v", lr, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
