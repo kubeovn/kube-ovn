@@ -438,13 +438,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
-	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	attachmentNets, err := c.getPodAttachmentNet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	attachmentNets, err := c.getPodAttachmentNet(pod)
+	podNets := attachmentNets
+	// When Kube-OVN is run as non-primary CNI, we do not add default network configuration to pod.
+	// We only add network attachment defined by the user to pod.
+	if c.config.EnableNonPrimaryCNI {
+		return podNets, nil
+	}
+
+	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -456,7 +463,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return attachmentNets, nil
 	}
 
-	podNets := attachmentNets
 	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
 		podNets = append(attachmentNets, &kubeovnNet{
 			Type:         providerTypeOriginal,

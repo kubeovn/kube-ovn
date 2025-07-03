@@ -758,6 +758,35 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
 		}
 	}
+
+	subnetProvider := util.OvnProvider
+	if c.config.EnableNonPrimaryCNI {
+		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
+		var attachedNetworks string
+		// Get NetworkAttachmentDefinition if specified by user from pod annotations
+		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
+			attachedNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot] + ", "
+		}
+		// Attach the external network to attachedNetworks
+		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+		// Check if we have a subnet provider, if so, use it to set the routes annotation
+		// This is useful when running in secondary CNI mode, as the subnet provider will be the
+		// one that has the routes to the subnet
+		var err error
+		subnetProvider, err = c.GetSubnetProvider(gw.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("%v", err)
+			return nil, err
+		}
+		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, subnetProvider)
+		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnetProvider)
+		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
+		// Merge new annotations with existing ones
+		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
+		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
+		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
+	}
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
