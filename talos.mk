@@ -48,7 +48,7 @@ TALOS_UNDERLAY_EXCLUDE_IPS_DUAL = $(TALOS_UNDERLAY_EXCLUDE_IPS_IPV4),$(TALOS_UND
 # geneve causes kernel panic on my local libvirt virtual machines
 # use vxlan instead
 TALOS_TUNNEL_TYPE = vxlan
-ifeq ($(shell echo $${CI:-false}),true)
+ifeq ($(or $(CI),false),true)
 TALOS_TUNNEL_TYPE = geneve
 endif
 
@@ -278,6 +278,8 @@ talos-install: talos-install-prepare
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
 		DISABLE_MODULES_MANAGEMENT=true \
 		MOUNT_LOCAL_BIN_DIR=false \
+		ENABLE_TPROXY=true \
+		IMAGE_PULL_POLICY=Always \
 		TUNNEL_TYPE=$(TALOS_TUNNEL_TYPE) \
 		$(MAKE) install-chart
 
