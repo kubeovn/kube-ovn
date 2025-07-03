@@ -59,7 +59,7 @@ endif
 
 GINKGO_OUTPUT_OPT =
 GINKGO_PARALLEL_OPT =
-ifeq ($(shell echo $${CI:-false}),true)
+ifeq ($(or $(CI),false),true)
 GINKGO_OUTPUT_OPT = --github-output --silence-skips
 GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
 endif

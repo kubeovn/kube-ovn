@@ -27,7 +27,7 @@ KIND_VLAN_NIC = eth1
 endif
 
 KIND_AUDITING = $(shell echo $${KIND_AUDITING:-false})
-ifeq ($(shell echo $${CI:-false}),true)
+ifeq ($(or $(CI),false),true)
 KIND_AUDITING = true
 endif
 
@@ -552,6 +552,8 @@ kind-install-cilium-chaining-%:
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
 		--set kubeProxyReplacement=false \
+		--set image.useDigest=false \
+		--set operator.image.useDigest=false \
 		--set operator.replicas=1 \
 		--set socketLB.enabled=true \
 		--set nodePort.enabled=true \
@@ -561,6 +563,7 @@ kind-install-cilium-chaining-%:
 		--set enableIPv4Masquerade=false \
 		--set enableIPv6Masquerade=false \
 		--set hubble.enabled=true \
+		--set envoy.enabled=false \
 		--set sctp.enabled=true \
 		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
 		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
