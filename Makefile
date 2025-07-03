@@ -6,6 +6,8 @@ include kind.mk
 include talos.mk
 include e2e.mk
 
+COMMA = ,
+
 REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
@@ -183,55 +185,59 @@ install-chart:
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
-		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
-		--set OPENVSWITCH_DIR=$(shell echo $${OPENVSWITCH_DIR:-/etc/origin/openvswitch}) \
-		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
-		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(shell echo $${MOUNT_LOCAL_BIN_DIR:-true}) \
-		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set networking.NETWORK_TYPE=$(shell echo $${NETWORK_TYPE:-geneve}) \
-		--set networking.TUNNEL_TYPE=$(shell echo $${TUNNEL_TYPE:-geneve}) \
-		--set networking.vlan.VLAN_INTERFACE_NAME=$(shell echo $${VLAN_INTERFACE_NAME:-}) \
-		--set networking.vlan.VLAN_ID=$(shell echo $${VLAN_ID:-100}) \
-		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
-		--set-json networking.EXCLUDE_IPS='"$(shell echo $${EXCLUDE_IPS:-})"' \
-		--set-json ipv4.POD_CIDR='"$(shell echo $${POD_CIDR:-10.16.0.0/16})"' \
-		--set-json ipv4.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-10.16.0.1})"' \
-		--set-json ipv6.POD_CIDR='"$(shell echo $${POD_CIDR:-fd00:10:16::/112})"' \
-		--set-json ipv6.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-fd00:10:16::1})"' \
-		--set-json dual_stack.POD_CIDR='"$(shell echo $${POD_CIDR:-10.16.0.0/16,fd00:10:16::/112})"' \
-		--set-json dual_stack.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-10.16.0.1,fd00:10:16::1})"' \
-		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
+		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
+		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
+		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
+		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
+		--set networking.NETWORK_TYPE=$(or $(NETWORK_TYPE),geneve) \
+		--set networking.TUNNEL_TYPE=$(or $(TUNNEL_TYPE),geneve) \
+		--set networking.vlan.VLAN_INTERFACE_NAME=$(or $(VLAN_INTERFACE_NAME),) \
+		--set networking.vlan.VLAN_ID=$(or $(VLAN_ID),100) \
+		--set networking.NET_STACK=$(subst dual,dual_stack,$(or $(NET_STACK),ipv4)) \
+		--set-json networking.EXCLUDE_IPS='"$(or $(EXCLUDE_IPS),)"' \
+		--set-json ipv4.POD_CIDR='"$(or $(POD_CIDR),10.16.0.0/16)"' \
+		--set-json ipv4.POD_GATEWAY='"$(or $(POD_GATEWAY),10.16.0.1)"' \
+		--set-json ipv6.POD_CIDR='"$(or $(POD_CIDR),fd00:10:16::/112)"' \
+		--set-json ipv6.POD_GATEWAY='"$(or $(POD_GATEWAY),fd00:10:16::1)"' \
+		--set-json dual_stack.POD_CIDR='"$(or $(POD_CIDR),10.16.0.0/16$(COMMA)fd00:10:16::/112)"' \
+		--set-json dual_stack.POD_GATEWAY='"$(or $(POD_GATEWAY),10.16.0.1$(COMMA)fd00:10:16::1)"' \
+		--set func.SECURE_SERVING=$(or $(SECURE_SERVING),false) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
+		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
+		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
-		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
+		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false)
 
 .PHONY: upgrade-chart
 upgrade-chart:
 	helm upgrade kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
-		--set OVN_DIR=$(shell echo $${OVN_DIR:-/etc/origin/ovn}) \
-		--set OPENVSWITCH_DIR=$(shell echo $${OPENVSWITCH_DIR:-/etc/origin/openvswitch}) \
-		--set DISABLE_MODULES_MANAGEMENT=$(shell echo $${DISABLE_MODULES_MANAGEMENT:-false}) \
-		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(shell echo $${MOUNT_LOCAL_BIN_DIR:-true}) \
-		--set networking.ENABLE_SSL=$(shell echo $${ENABLE_SSL:-false}) \
-		--set networking.NETWORK_TYPE=$(shell echo $${NETWORK_TYPE:-geneve}) \
-		--set networking.TUNNEL_TYPE=$(shell echo $${TUNNEL_TYPE:-geneve}) \
-		--set networking.vlan.VLAN_INTERFACE_NAME=$(shell echo $${VLAN_INTERFACE_NAME:-}) \
-		--set networking.vlan.VLAN_ID=$(shell echo $${VLAN_ID:-100}) \
-		--set networking.NET_STACK=$(shell echo $${NET_STACK:-ipv4} | sed 's/^dual$$/dual_stack/') \
-		--set-json networking.EXCLUDE_IPS='"$(shell echo $${EXCLUDE_IPS:-})"' \
-		--set-json ipv4.POD_CIDR='"$(shell echo $${POD_CIDR:-10.16.0.0/16})"' \
-		--set-json ipv4.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-10.16.0.1})"' \
-		--set-json ipv6.POD_CIDR='"$(shell echo $${POD_CIDR:-fd00:10:16::/112})"' \
-		--set-json ipv6.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-fd00:10:16::1})"' \
-		--set-json dual_stack.POD_CIDR='"$(shell echo $${POD_CIDR:-10.16.0.0/16,fd00:10:16::/112})"' \
-		--set-json dual_stack.POD_GATEWAY='"$(shell echo $${POD_GATEWAY:-10.16.0.1,fd00:10:16::1})"' \
-		--set func.SECURE_SERVING=$(shell echo $${SECURE_SERVING:-false}) \
-		--set func.ENABLE_BIND_LOCAL_IP=$(shell echo $${ENABLE_BIND_LOCAL_IP:-true}) \
-		--set func.ENABLE_OVN_IPSEC=$(shell echo $${ENABLE_OVN_IPSEC:-false}) \
+		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
+		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
+		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
+		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
+		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
+		--set networking.NETWORK_TYPE=$(or $(NETWORK_TYPE),geneve) \
+		--set networking.TUNNEL_TYPE=$(or $(TUNNEL_TYPE),geneve) \
+		--set networking.vlan.VLAN_INTERFACE_NAME=$(or $(VLAN_INTERFACE_NAME),) \
+		--set networking.vlan.VLAN_ID=$(or $(VLAN_ID),100) \
+		--set networking.NET_STACK=$(subst dual,dual_stack,$(or $(NET_STACK),ipv4)) \
+		--set-json networking.EXCLUDE_IPS='"$(or $(EXCLUDE_IPS),)"' \
+		--set-json ipv4.POD_CIDR='"$(or $(POD_CIDR),10.16.0.0/16)"' \
+		--set-json ipv4.POD_GATEWAY='"$(or $(POD_GATEWAY),10.16.0.1)"' \
+		--set-json ipv6.POD_CIDR='"$(or $(POD_CIDR),fd00:10:16::/112)"' \
+		--set-json ipv6.POD_GATEWAY='"$(or $(POD_GATEWAY),fd00:10:16::1)"' \
+		--set-json dual_stack.POD_CIDR='"$(or $(POD_CIDR),10.16.0.0/16$(COMMA)fd00:10:16::/112)"' \
+		--set-json dual_stack.POD_GATEWAY='"$(or $(POD_GATEWAY),10.16.0.1$(COMMA)fd00:10:16::1)"' \
+		--set func.SECURE_SERVING=$(or $(SECURE_SERVING),false) \
+		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
+		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
+		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
-		--set func.ENABLE_ANP=$(shell echo $${ENABLE_ANP:-false})
+		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false)
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
 
 .PHONY: install-chart-v2
