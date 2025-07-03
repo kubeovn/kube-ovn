@@ -80,7 +80,7 @@ func (c *Controller) setCniConfigMetric() {
 }
 
 func (c *Controller) setDNSSearchMetric() {
-	file, err := resolvconf.Get()
+	file, err := resolvconf.GetSpecific("/etc/resolv.conf")
 	if err != nil {
 		klog.Errorf("failed to get /etc/resolv.conf content: %v", err)
 		return
@@ -89,7 +89,8 @@ func (c *Controller) setDNSSearchMetric() {
 
 	found := false
 	for _, domain := range domains {
-		if strings.Contains(domain, "local") {
+		if domain == "." {
+			// Ignore the root domain
 			continue
 		}
 
