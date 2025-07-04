@@ -56,7 +56,8 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 		!reflect.DeepEqual(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
-		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
+		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] ||
+		!slices.Equal(oldVpc.Status.Subnets, newVpc.Status.Subnets) {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 		var (
 			key string
@@ -279,7 +280,26 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Errorf("failed to format vpc %s: %v", key, err)
 		return err
 	}
-	if err = c.createVpcRouter(key, vpc.Spec.EnableExternal); err != nil {
+
+	learnFromARPRequest := vpc.Spec.EnableExternal
+	if !learnFromARPRequest {
+		for _, subnetName := range vpc.Status.Subnets {
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				klog.Errorf("failed to get subnet %s for vpc %s: %v", subnetName, key, err)
+				return err
+			}
+			if subnet.Spec.Vlan != "" && subnet.Spec.U2OInterconnection {
+				learnFromARPRequest = true
+				break
+			}
+		}
+	}
+
+	if err = c.createVpcRouter(key, learnFromARPRequest); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
 	}
@@ -1047,11 +1067,12 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 			defaultSubnet = subnet.Name
 		}
 	}
+	sort.Strings(subnets)
 	return
 }
 
 // createVpcRouter create router to connect logical switches in vpc
-func (c *Controller) createVpcRouter(lr string, enableExternal bool) error {
+func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
 	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
 		klog.Errorf("create logical router %s failed: %v", lr, err)
 		return err
@@ -1067,7 +1088,7 @@ func (c *Controller) createVpcRouter(lr string, enableExternal bool) error {
 		"mac_binding_age_threshold": "300",
 		"dynamic_neigh_routers":     "true",
 	}
-	if !enableExternal {
+	if !learnFromARPRequest {
 		lrOptions["always_learn_from_arp_request"] = "false"
 	}
 	if !maps.Equal(vpcRouter.Options, lrOptions) {
