@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.14.1 (2025-07-04)
+
+ * [f2b180e60](https://github.com/kubeovn/kube-ovn/commit/f2b180e608e0a8d241f56d67c4ca8e05ad959c45) release v1.14.1
+ * [d24fc268e](https://github.com/kubeovn/kube-ovn/commit/d24fc268ee09bb57be3dbcda290f7db68119aa64) fix setting LR option always_learn_from_arp_request (#5426)
+ * [5ea4d1456](https://github.com/kubeovn/kube-ovn/commit/5ea4d14566553150f3b22add8d77db4e30579799) kubectl-ko: replace endpoint with endpointslice (#5425)
+ * [018a55927](https://github.com/kubeovn/kube-ovn/commit/018a55927ff09185d51db8c3c45c8f301d89e7ee) controller: set always_learn_from_arp_request to false only when LR is not connected to external network (#5419)
+ * [fb859bbf6](https://github.com/kubeovn/kube-ovn/commit/fb859bbf653689d0115b942d6fea78b64cccb1cf) fix parsing resolv.conf when systemd-resolved is running on the host (#5423)
+ * [ee0c70951](https://github.com/kubeovn/kube-ovn/commit/ee0c709513d188053f7dc693a16b9d7db9370c38) remove unused e2e tests
+ * [737c301a8](https://github.com/kubeovn/kube-ovn/commit/737c301a845d82a1c152ce391728888f3f2e790a) cni-server: fix inserting and deleting iptables rules (#5421)
+ * [30c8c5835](https://github.com/kubeovn/kube-ovn/commit/30c8c5835206148b7a8c55043403bf71ece5d56f) add manual release
+ * [eae798768](https://github.com/kubeovn/kube-ovn/commit/eae798768adb72e1b9a0292eff2d7a4de8ccd72f) upgrade ovn chart name (#5416)
+ * [f35452203](https://github.com/kubeovn/kube-ovn/commit/f35452203eb48869389f420d63dccc7450b0f7a4) mock: generate code using go tool command (#5409)
+ * [528fb73ce](https://github.com/kubeovn/kube-ovn/commit/528fb73ced4e6ecab02b0d6297dd2a6e53adcede) fix matching loopback addresses (#5402)
+ * [7cfc3bc89](https://github.com/kubeovn/kube-ovn/commit/7cfc3bc89b5ecdbc4c6d6426f8c370223b7d2f90) ci: deploy ipv6 talos cluster without ipv4 addresses (#5401)
+ * [eb930603a](https://github.com/kubeovn/kube-ovn/commit/eb930603a7275b8f06f5110d4761a1c8cad3dfdf) fix(services): SLRs could not target VM endpoints (#5397)
+ * [14d3fbb07](https://github.com/kubeovn/kube-ovn/commit/14d3fbb07db960996452b108b06baeb16b53638b) del and add acls in one transaction (#5394)
+ * [d0fab29b9](https://github.com/kubeovn/kube-ovn/commit/d0fab29b92d6208406aabfa0f5b3bd4b84ee4366) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.14.0 (2025-06-25)
 
  * [85a45ce30](https://github.com/kubeovn/kube-ovn/commit/85a45ce306585ce24e2ee23a752df850a81c034c) release vm ip when vm is stopped then deleted (#5390)
