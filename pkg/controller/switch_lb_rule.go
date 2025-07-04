@@ -358,7 +358,30 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 			},
 		}
 	}
+
+	// If the user supplies a VPC/subnet for the SLR, propagate it to the service
+	setUserDefinedNetwork(newSvc, slr)
+
 	return newSvc
+}
+
+// setUserDefinedNetwork propagates user-defined VPC/subnet from the SLR to the Service
+func setUserDefinedNetwork(service *corev1.Service, slr *kubeovnv1.SwitchLBRule) {
+	if service == nil || slr == nil || slr.Annotations == nil {
+		return
+	}
+
+	if service.Annotations == nil {
+		service.Annotations = make(map[string]string)
+	}
+
+	if vpc := slr.Annotations[util.LogicalRouterAnnotation]; vpc != "" {
+		service.Annotations[util.LogicalRouterAnnotation] = vpc
+	}
+
+	if subnet := slr.Annotations[util.LogicalSwitchAnnotation]; subnet != "" {
+		service.Annotations[util.LogicalSwitchAnnotation] = subnet
+	}
 }
 
 func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *corev1.Endpoints {
