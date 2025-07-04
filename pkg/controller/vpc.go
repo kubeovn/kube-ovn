@@ -578,7 +578,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 	}
-
+	klog.Info(vpc.Spec.EnableExternal, vpc.Status.EnableExternal, custVpcEnableExternalEcmp, externalSubnetExist, externalSubnetGW)
 	if vpc.Spec.EnableExternal || vpc.Status.EnableExternal {
 		if err = c.handleUpdateVpcExternal(cachedVpc, custVpcEnableExternalEcmp, externalSubnetExist, externalSubnetGW); err != nil {
 			klog.Errorf("failed to handle update external subnet for vpc %s, %v", key, err)

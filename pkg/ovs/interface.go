@@ -224,6 +224,12 @@ type NAT interface {
 	ListNats(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error)
 }
 
+type Qos interface {
+	AddQos(vpcName string, externalSubnetName string, v4Eip string, burstMax int, rateMax int, direction string) error
+	UpdateQos(vpcName string, externalSubnetName string, v4Eip string, burstMax int, rateMax int, direction string) error
+	DeleteQos(vpcName string, externalSubnetName string, v4Eip string, direction string) error
+}
+
 type DHCPOptions interface {
 	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName, protocol string) error
@@ -255,6 +261,7 @@ type NbClient interface {
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
 	Common
+	Qos
 }
 
 type SbClient interface {
