@@ -657,6 +657,38 @@ kind-install-kwok:
 kind-install-ovn-ipsec:
 	@$(MAKE) ENABLE_OVN_IPSEC=true kind-install
 
+.PHONY: kind-install-cert-manager
+kind-install-cert-manager:
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
+
+	kubectl apply -f "$(CERT_MANAGER_YAML)"
+
+	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
+
+.PHONY: kind-install-ovn-ipsec-cert-manager 
+kind-install-ovn-ipsec-cert-manager:
+	@$(MAKE) ENABLE_OVN_IPSEC=true CERT_MANAGER_IPSEC_CERT=true kind-install
+	@$(MAKE) kind-install-cert-manager
+
+	$(eval CA_KEY = $(shell mktemp))
+	$(shell openssl genrsa -out $(CA_KEY) 2048)
+	$(eval CA_CERT = $(shell openssl req -x509 -new -nodes \
+		-key "$(CA_KEY)" \
+		-days 3650 \
+		-subj "/C=US/ST=California/L=Palo Alto/O=Open vSwitch/OU=Open vSwitch Certification Authority/CN=OVS CA" | \
+		base64 -w 0 -))
+
+	$(eval CA_KEY64 = $(shell base64 -w 0 "$(CA_KEY)"))
+
+	sed -e 's/KUBE_OVN_CA_KEY/$(CA_KEY64)/g' \
+	    -e 's/KUBE_OVN_CA_CERT/$(CA_CERT)/g' yamls/ipsec-certs.yaml | \
+		kubectl apply -f -
+	rm $(CA_KEY)
+
 .PHONY: kind-install-anp
 kind-install-anp: kind-load-image
 	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
