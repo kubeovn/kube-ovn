@@ -190,6 +190,9 @@ func (c *Controller) enqueueAddPod(obj any) {
 		return
 	}
 
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
+
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(p)
@@ -241,9 +244,13 @@ func (c *Controller) enqueueAddPod(obj any) {
 
 func (c *Controller) enqueueDeletePod(obj any) {
 	p := obj.(*v1.Pod)
+
 	if p.Spec.HostNetwork {
 		return
 	}
+
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
 	if c.config.EnableNP {
 		c.namedPort.DeleteNamedPortByPod(p)
@@ -266,6 +273,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
 
 	if oldPod.Annotations[util.AAPsAnnotation] != "" || newPod.Annotations[util.AAPsAnnotation] != "" {
 		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
