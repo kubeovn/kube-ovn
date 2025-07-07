@@ -95,6 +95,12 @@ type VpcEgressGatewaySpec struct {
 	Policies []VpcEgressGatewayPolicy `json:"policies,omitempty"`
 	// optional node selector used to select the nodes where the workload will be running
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
+
+	// Add BGP configuration
+	BGP VpcEgressGatewayBGPConfig `json:"bgp,omitempty"`
+
+	// TODO, subnet to access kube-apiserver. this will be used to reconcile routes to vpc
+	//KubeApiSubnet string `json:"kubeApiSubnet,omitempty"`
 }
 
 type VpcEgressGatewaySelector struct {
@@ -150,4 +156,20 @@ type VpcEgressWorkload struct {
 	Name       string `json:"name,omitempty"`
 	// nodes where the workload is running
 	Nodes []string `json:"nodes,omitempty"`
+}
+
+type VpcEgressGatewayBGPConfig struct {
+	// whether to enable BGP for the egress gateway
+	Enabled               bool            `json:"enabled"`
+	// optional bgp image used by the workload
+	// if not specified, the default image passed in by kube-ovn-controller will be used
+	Image  			      string          `json:"image,omitempty"`
+	ASN                   uint32          `json:"asn"`
+	RemoteASN             uint32          `json:"remoteAsn"`
+	Neighbors             []string        `json:"neighbors"`
+	HoldTime              metav1.Duration `json:"holdTime"`
+	RouterID              string          `json:"routerId"`
+	Password              string          `json:"password"`
+	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
+	ExtraArgs             []string        `json:"extraArgs"`
 }
