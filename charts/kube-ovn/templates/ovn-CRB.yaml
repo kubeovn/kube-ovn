@@ -70,11 +70,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: kube-ovn-cni-secret-reader
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 subjects:
 - kind: ServiceAccount
   name: kube-ovn-cni
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
 roleRef:
   kind: Role
   name: secret-reader-ovn-ipsec

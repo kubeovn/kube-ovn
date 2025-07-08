@@ -101,7 +101,7 @@ func main() {
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = fmt.Sprintf("metadata.name=%s", util.DefaultOVNIPSecCA)
 		}),
-		kubeinformers.WithNamespace("kube-system"),
+		kubeinformers.WithNamespace(os.Getenv("POD_NAMESPACE")),
 	)
 
 	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, caSecretInformerFactory, kubeovnInformerFactory)
