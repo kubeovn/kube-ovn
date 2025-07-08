@@ -30,19 +30,6 @@
       "groupName": "kubernetes"
     },
     {
-      "matchUpdateTypes": [
-        "digest"
-      ],
-      "enabled": false
-    },
-    {
-      "matchPackageNames": [
-        "github.com/kubeovn/**",
-        "windows"
-      ],
-      "enabled": false
-    },
-    {
       "matchBaseBranches": ["release-*"],
       "extends":["security:only-security-updates"],
       "automerge": true
@@ -55,6 +42,19 @@
       ],
       "enabled": true,
       "automerge": true
+    },
+    {
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "github.com/kubeovn/**",
+        "windows"
+      ],
+      "enabled": false
     }
   ]
 }
