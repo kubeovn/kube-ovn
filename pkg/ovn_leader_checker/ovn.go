@@ -40,16 +40,7 @@ const (
 
 var failCount int
 
-var selector labels.Selector
-
-func init() {
-	var err error
-	if selector, err = metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{discoveryv1.LabelServiceName: OvnNorthdServiceName},
-	}); err != nil {
-		panic(fmt.Sprintf("failed to create label selector for ovn-northd service: %v", err))
-	}
-}
+var labelSelector = labels.Set{discoveryv1.LabelServiceName: OvnNorthdServiceName}.AsSelector().String()
 
 // Configuration is the controller conf
 type Configuration struct {
@@ -289,7 +280,7 @@ func checkNorthdEpAvailable(ip string) bool {
 }
 
 func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
-	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector.String()})
+	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		klog.Errorf("failed to list endpoint slices for service %s/%s: %v", namespace, service, err)
 		return false

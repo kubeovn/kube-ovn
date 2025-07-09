@@ -1328,8 +1328,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	}
 	// init lrp gw chassis group
 	chassises := []string{}
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	gwNodes, err := c.nodesLister.List(sel)
+	gwNodes, err := c.nodesLister.List(externalGatewayNodeSelector)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
