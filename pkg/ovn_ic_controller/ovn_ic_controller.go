@@ -230,8 +230,8 @@ func (c *Controller) resyncInterConnection() {
 }
 
 func (c *Controller) removeInterConnection(azName string) error {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ICGatewayLabel: "true"}})
-	nodes, err := c.nodesLister.List(sel)
+	selector := labels.Set{util.ICGatewayLabel: "true"}.AsSelector()
+	nodes, err := c.nodesLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
