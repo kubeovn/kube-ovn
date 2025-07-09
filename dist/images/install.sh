@@ -3503,6 +3503,7 @@ rules:
     verbs:
       - get
       - list
+      - watch
   - apiGroups:
       - ""
       - networking.k8s.io

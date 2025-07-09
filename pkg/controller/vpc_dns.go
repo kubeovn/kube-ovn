@@ -410,8 +410,7 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 }
 
 func (c *Controller) checkOvnNad() error {
-	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(corev1.NamespaceDefault).
-		Get(context.Background(), nadName, metav1.GetOptions{})
+	_, err := c.netAttachLister.NetworkAttachmentDefinitions(corev1.NamespaceDefault).Get(nadName)
 	if err != nil {
 		klog.Error(err)
 		return err
