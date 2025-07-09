@@ -1,11 +1,11 @@
 module github.com/kubeovn/kube-ovn/test/anp
 
-go 1.23.10
+go 1.23.11
 
 require (
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.31.9
-	k8s.io/client-go v0.31.9
+	k8s.io/apimachinery v0.31.10
+	k8s.io/client-go v0.31.10
 	sigs.k8s.io/controller-runtime v0.19.7
 	sigs.k8s.io/network-policy-api v0.1.5
 )
@@ -42,6 +42,7 @@ require (
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
@@ -52,11 +53,11 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.31.9 // indirect
+	k8s.io/api v0.31.10 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240812233141-91dab695df6f // indirect
-	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979 // indirect
+	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
+	sigs.k8s.io/yaml v1.5.0 // indirect
 )
