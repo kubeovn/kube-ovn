@@ -41,6 +41,9 @@ OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
+CERT_MANAGER_IPSEC_CERT=${CERT_MANAGER_IPSEC_CERT:-false}
+IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
+CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
@@ -3776,12 +3779,32 @@ rules:
       - "list"
       - "watch"
       - "delete"
-  - apiGroups:
-      - ""
-    resources:
-      - "secrets"
-    verbs:
-      - "get"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-reader-ovn-ipsec
+  namespace: kube-system
+rules:
+- apiGroups: 
+    - ""
+  resources: 
+    - "secrets"
+  resourceNames:
+    - "ovn-ipsec-ca"
+  verbs: 
+    - "get"
+    - "list"
+    - "watch"
+- apiGroups: 
+    - "cert-manager.io"
+  resources: 
+    - "certificaterequests"
+  verbs: 
+    - "get"
+    - "list"
+    - "create"
+    - "delete"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -3809,6 +3832,20 @@ subjects:
   - kind: ServiceAccount
     name: kube-ovn-cni
     namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-cni-secret-reader
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: kube-ovn-cni
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: secret-reader-ovn-ipsec
+  apiGroup: rbac.authorization.k8s.io
 EOF
 
 cat <<EOF > kube-ovn-app-sa.yaml
@@ -4611,6 +4648,7 @@ spec:
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
+          - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
@@ -4806,6 +4844,9 @@ spec:
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
+          - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
+          - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
+          - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
         securityContext:
           runAsUser: 0

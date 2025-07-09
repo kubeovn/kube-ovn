@@ -90,6 +90,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/connectivity
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/metallb
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec-cert-mgr
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -247,6 +248,15 @@ kube-ovn-ipsec-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-ipsec-cert-mgr-e2e
+kube-ovn-ipsec-cert-mgr-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec-cert-mgr
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN ./test/e2e/ipsec-cert-mgr/ipsec-cert-mgr.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-anp-e2e
 kube-ovn-anp-e2e:
