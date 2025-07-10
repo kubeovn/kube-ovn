@@ -39,7 +39,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	go.uber.org/mock v0.5.2
-	golang.org/x/mod v0.25.0
+	golang.org/x/mod v0.26.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.12.0
 	google.golang.org/grpc v1.72.2
