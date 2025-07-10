@@ -150,6 +150,8 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		klog.Errorf("failed to validate anp %s: %v", anp.Name, err)
 		return err
 	}
+
+	c.anpMapMutex.Lock()
 	if priority, exist := c.anpNamePrioMap[anp.Name]; exist && priority != anp.Spec.Priority {
 		// anp spec's priority has been changed
 		delete(c.anpPrioNameMap, priority)
@@ -157,6 +159,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	// record new created anp after validation
 	c.anpPrioNameMap[anp.Spec.Priority] = anp.Name
 	c.anpNamePrioMap[anp.Name] = anp.Spec.Priority
+	c.anpMapMutex.Unlock()
 
 	anpName := getAnpName(anp.Name)
 	var logActions []string
@@ -335,8 +338,11 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 	defer func() { _ = c.anpKeyMutex.UnlockKey(anp.Name) }()
 
 	klog.Infof("handle delete admin network policy %s", anp.Name)
+
+	c.anpMapMutex.Lock()
 	delete(c.anpPrioNameMap, anp.Spec.Priority)
 	delete(c.anpNamePrioMap, anp.Name)
+	c.anpMapMutex.Unlock()
 
 	anpName := getAnpName(anp.Name)
 
@@ -462,7 +468,11 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 
 func (c *Controller) validateAnpConfig(anp *v1alpha1.AdminNetworkPolicy) error {
 	// The behavior is undefined if two ANP objects have same priority.
-	if anpName, exist := c.anpPrioNameMap[anp.Spec.Priority]; exist && anpName != anp.Name {
+	c.anpMapMutex.RLock()
+	anpName, exist := c.anpPrioNameMap[anp.Spec.Priority]
+	c.anpMapMutex.RUnlock()
+
+	if exist && anpName != anp.Name {
 		err := fmt.Errorf("can not create anp with same priority %d, exist one is %s, new created is %s", anp.Spec.Priority, anpName, anp.Name)
 		klog.Error(err)
 		return err

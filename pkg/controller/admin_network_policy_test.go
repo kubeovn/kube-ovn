@@ -34,7 +34,9 @@ func TestValidateAnpConfig(t *testing.T) {
 	})
 
 	t.Run("conflict priority", func(t *testing.T) {
+		ctrl.anpMapMutex.Lock()
 		ctrl.anpPrioNameMap = map[int32]string{anp.Spec.Priority: anp.Name + "-conflict"}
+		ctrl.anpMapMutex.Unlock()
 		err := ctrl.validateAnpConfig(anp)
 		require.ErrorContains(t, err, "can not create anp with same priority")
 	})

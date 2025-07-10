@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	netAttach "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/informers/externalversions"
@@ -64,6 +65,7 @@ type Controller struct {
 
 	ipam           *ovnipam.IPAM
 	namedPort      *NamedPort
+	anpMapMutex    sync.RWMutex
 	anpPrioNameMap map[int32]string
 	anpNamePrioMap map[string]int32
 
