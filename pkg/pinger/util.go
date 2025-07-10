@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/kubeovn/ovsdb"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog/v2"
 )
 
@@ -197,37 +198,41 @@ func (e *Exporter) setOvsInterfaceStateMetric(intf *ovsdb.OvsInterface) {
 }
 
 func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
+	podName := ""
+	podNamespace := ""
+	if intf.ExternalIDs != nil {
+		podName = intf.ExternalIDs["pod_name"]
+		podNamespace = intf.ExternalIDs["pod_namespace"]
+	}
+
+	interfaceStatsMetricMap := map[string]*prometheus.GaugeVec{
+		"rx_crc_err":           interfaceStatRxCrcError,
+		"rx_dropped":           interfaceStatRxDropped,
+		"rx_frame_err":         interfaceStatRxFrameError,
+		"rx_missed_errors":     interfaceStatRxMissedError,
+		"rx_over_err":          interfaceStatRxOverrunError,
+		"rx_errors":            interfaceStatRxErrorsTotal,
+		"rx_packets":           interfaceStatRxPackets,
+		"rx_bytes":             interfaceStatRxBytes,
+		"tx_packets":           interfaceStatTxPackets,
+		"tx_bytes":             interfaceStatTxBytes,
+		"tx_dropped":           interfaceStatTxDropped,
+		"tx_errors":            interfaceStatTxErrorsTotal,
+		"collisions":           interfaceStatCollisions,
+		"rx_multicast_packets": interfaceStatRxMulticastPackets,
+	}
+
+	labels := prometheus.Labels{
+		"hostname":      e.Client.System.Hostname,
+		"interfaceName": intf.Name,
+		"pod_name":      podName,
+		"pod_namespace": podNamespace,
+	}
+
 	for key, value := range intf.Statistics {
-		switch key {
-		case "rx_crc_err":
-			interfaceStatRxCrcError.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_dropped":
-			interfaceStatRxDropped.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_frame_err":
-			interfaceStatRxFrameError.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_missed_errors":
-			interfaceStatRxMissedError.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_over_err":
-			interfaceStatRxOverrunError.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_errors":
-			interfaceStatRxErrorsTotal.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_packets":
-			interfaceStatRxPackets.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_bytes":
-			interfaceStatRxBytes.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "tx_packets":
-			interfaceStatTxPackets.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "tx_bytes":
-			interfaceStatTxBytes.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "tx_dropped":
-			interfaceStatTxDropped.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "tx_errors":
-			interfaceStatTxErrorsTotal.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "collisions":
-			interfaceStatCollisions.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		case "rx_multicast_packets":
-			interfaceStatRxMulticastPackets.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
-		default:
+		if metric, ok := interfaceStatsMetricMap[key]; ok {
+			metric.With(labels).Set(float64(value))
+		} else {
 			klog.V(3).Infof("unknown statistics %s with value %d on OVS interface %s", key, value, intf.Name)
 		}
 	}
