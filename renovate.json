@@ -30,6 +30,13 @@
       "groupName": "kubernetes"
     },
     {
+      "matchPackageNames": [
+        "golang.org/x/**",
+        "go"
+      ],
+      "groupName": "golang"
+    },
+    {
       "matchBaseBranches": ["release-*"],
       "extends":["security:only-security-updates"],
       "automerge": true
