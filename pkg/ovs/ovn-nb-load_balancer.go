@@ -90,7 +90,7 @@ func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string)
 		err error
 	)
 
-	if _, err = c.GetLoadBalancer(lbName, false); err != nil {
+	if _, err = c.getLoadBalancerFromCache(lbName, false); err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return err
 	}
@@ -314,9 +314,9 @@ func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
 	return nil
 }
 
-// GetLoadBalancer get load balancer by name,
-// it is because of lack name index that does't use OVNNbClient.Get
-func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
+// getLoadBalancerFromCache get load balancer from cache without locking
+// This is an unexported helper function to avoid deadlocks when called from functions that already hold a write lock
+func (c *OVNNbClient) getLoadBalancerFromCache(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -345,24 +345,39 @@ func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnn
 	case len(lbList) > 1:
 		return nil, fmt.Errorf("more than one load balancer with same name %q", lbName)
 	default:
-		// Create a safe copy of the LoadBalancer using maps.Clone for all map fields
-		c.lbMutex.RLock()
-		original := &lbList[0]
-		result := &ovnnb.LoadBalancer{
-			UUID:            original.UUID,
-			ExternalIDs:     maps.Clone(original.ExternalIDs),
-			HealthCheck:     slices.Clone(original.HealthCheck),
-			IPPortMappings:  maps.Clone(original.IPPortMappings),
-			Name:            original.Name,
-			Options:         maps.Clone(original.Options),
-			Protocol:        original.Protocol,
-			SelectionFields: slices.Clone(original.SelectionFields),
-			Vips:            maps.Clone(original.Vips),
-		}
-		c.lbMutex.RUnlock()
-
-		return result, nil
+		// Return a pointer to the cached object without copying
+		// The caller is responsible for ensuring thread safety
+		return &lbList[0], nil
 	}
+}
+
+// GetLoadBalancer get load balancer by name,
+// it is because of lack name index that does't use OVNNbClient.Get
+func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
+	c.lbMutex.RLock()
+	defer c.lbMutex.RUnlock()
+	original, err := c.getLoadBalancerFromCache(lbName, ignoreNotFound)
+	if err != nil {
+		return nil, err
+	}
+	if original == nil {
+		return nil, nil
+	}
+
+	// Create a safe copy of the LoadBalancer using maps.Clone for all map fields
+	result := &ovnnb.LoadBalancer{
+		UUID:            original.UUID,
+		ExternalIDs:     maps.Clone(original.ExternalIDs),
+		HealthCheck:     slices.Clone(original.HealthCheck),
+		IPPortMappings:  maps.Clone(original.IPPortMappings),
+		Name:            original.Name,
+		Options:         maps.Clone(original.Options),
+		Protocol:        original.Protocol,
+		SelectionFields: slices.Clone(original.SelectionFields),
+		Vips:            maps.Clone(original.Vips),
+	}
+
+	return result, nil
 }
 
 func (c *OVNNbClient) LoadBalancerExists(lbName string) (bool, error) {
@@ -404,7 +419,7 @@ func (c *OVNNbClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ov
 		err       error
 	)
 
-	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+	if lb, err = c.getLoadBalancerFromCache(lbName, false); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -438,7 +453,7 @@ func (c *OVNNbClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, er
 		err error
 	)
 
-	if lb, err = c.GetLoadBalancer(lbName, true); err != nil {
+	if lb, err = c.getLoadBalancerFromCache(lbName, true); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -504,7 +519,7 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 		err      error
 	)
 
-	if lb, err = c.GetLoadBalancer(lbName, true); err != nil {
+	if lb, err = c.getLoadBalancerFromCache(lbName, true); err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return err
 	}
