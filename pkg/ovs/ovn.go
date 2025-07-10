@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/ovn-org/libovsdb/client"
@@ -26,6 +27,7 @@ type LegacyClient struct {
 type OVNNbClient struct {
 	ovsDbClient
 	ClusterRouter string
+	lbMutex       sync.RWMutex
 }
 
 type OVNSbClient struct {

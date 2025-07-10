@@ -82,6 +82,9 @@ func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) 
 
 // LoadBalancerAddVips adds or updates a vip
 func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
+	c.lbMutex.Lock()
+	defer c.lbMutex.Unlock()
+
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -169,6 +172,9 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 	if _, ok := lb.Vips[vipEndpoint]; !ok {
 		return nil
 	}
+
+	c.lbMutex.Lock()
+	defer c.lbMutex.Unlock()
 
 	ops, err = c.LoadBalancerOp(
 		lbName,
@@ -339,8 +345,23 @@ func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnn
 	case len(lbList) > 1:
 		return nil, fmt.Errorf("more than one load balancer with same name %q", lbName)
 	default:
-		// #nosec G602
-		return &lbList[0], nil
+		// Create a safe copy of the LoadBalancer using maps.Clone for all map fields
+		c.lbMutex.RLock()
+		original := &lbList[0]
+		result := &ovnnb.LoadBalancer{
+			UUID:            original.UUID,
+			ExternalIDs:     maps.Clone(original.ExternalIDs),
+			HealthCheck:     slices.Clone(original.HealthCheck),
+			IPPortMappings:  maps.Clone(original.IPPortMappings),
+			Name:            original.Name,
+			Options:         maps.Clone(original.Options),
+			Protocol:        original.Protocol,
+			SelectionFields: slices.Clone(original.SelectionFields),
+			Vips:            maps.Clone(original.Vips),
+		}
+		c.lbMutex.RUnlock()
+
+		return result, nil
 	}
 }
 
@@ -439,6 +460,9 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 		return nil
 	}
 
+	c.lbMutex.Lock()
+	defer c.lbMutex.Unlock()
+
 	var (
 		ops []ovsdb.Operation
 		err error
@@ -469,6 +493,9 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 
 // LoadBalancerDeleteIPPortMapping delete load balancer ip port mapping
 func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string) error {
+	c.lbMutex.Lock()
+	defer c.lbMutex.Unlock()
+
 	var (
 		ops      []ovsdb.Operation
 		lb       *ovnnb.LoadBalancer
@@ -531,6 +558,9 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 
 // LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
+	c.lbMutex.Lock()
+	defer c.lbMutex.Unlock()
+
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
