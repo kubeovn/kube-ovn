@@ -522,16 +522,7 @@ kind-install-lb-svc:
 	@$(MAKE) kind-install-multus
 
 .PHONY: kind-install-webhook
-kind-install-webhook: kind-install
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
-
-	kubectl apply -f "$(CERT_MANAGER_YAML)"
-	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
-	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
-	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
-
+kind-install-webhook: kind-install kind-install-cert-manager
 	sed 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' yamls/webhook.yaml | kubectl apply -f -
 	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
@@ -544,7 +535,7 @@ kind-install-cilium-chaining-%:
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:$(CILIUM_VERSION),1)
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
-	helm repo add cilium https://helm.cilium.io/
+	helm repo add cilium $(CILIUM_CHART_REPO)
 	helm repo update cilium
 	helm install cilium cilium/cilium --wait \
 		--version $(CILIUM_VERSION:v%=%) \
@@ -659,15 +650,34 @@ kind-install-ovn-ipsec:
 
 .PHONY: kind-install-cert-manager
 kind-install-cert-manager:
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-controller:$(CERT_MANAGER_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-cainjector:$(CERT_MANAGER_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-webhook:$(CERT_MANAGER_VERSION),1)
 
-	kubectl apply -f "$(CERT_MANAGER_YAML)"
-
-	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
-	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
-	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
+	helm repo add jetstack $(CERT_MANAGER_CHART_REPO)
+	helm repo update jetstack
+	helm upgrade cert-manager jetstack/cert-manager \
+		--install \
+		--create-namespace \
+		--namespace cert-manager \
+		--version $(CERT_MANAGER_VERSION) \
+		--set crds.enabled=true \
+		--set crds.keep=true \
+		--set startupapicheck.enabled=false \
+		--set-json affinity=$(CERT_MANAGER_AFFINITY) \
+		--set-json strategy='{"type":"RollingUpdate","rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"}}' \
+		--set-json cainjector.affinity=$(CERT_MANAGER_AFFINITY) \
+		--set-json cainjector.strategy='{"type":"RollingUpdate","rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"}}' \
+		--set-json webhook.affinity=$(CERT_MANAGER_AFFINITY) \
+		--set webhook.hostNetwork=true \
+		--set webhook.securePort=11250
+	kubectl -n cert-manager patch -p '{"spec":{"template":{"spec":{"hostNetwork":true}}}}' deployments.apps cert-manager 
+	kubectl -n cert-manager patch -p '{"spec":{"template":{"spec":{"hostNetwork":true}}}}' deployments.apps cert-manager-cainjector
+	kubectl -n cert-manager delete pod -l app=cert-manager
+	kubectl -n cert-manager delete pod -l app=cainjector
+	kubectl -n cert-manager rollout status --timeout 120s deployment/cert-manager
+	kubectl -n cert-manager rollout status --timeout 120s deployment/cert-manager-cainjector
+	kubectl -n cert-manager rollout status --timeout 120s deployment/cert-manager-webhook
 
 .PHONY: kind-install-ovn-ipsec-cert-manager
 kind-install-ovn-ipsec-cert-manager:

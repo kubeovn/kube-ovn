@@ -810,7 +810,7 @@ jobs:
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
           sudo pip3 install jinjanator j2cli
-          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo PATH=~/.local/bin:$PATH n_worker=2 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
