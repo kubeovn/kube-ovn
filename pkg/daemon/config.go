@@ -208,6 +208,10 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 	}
+	if runtime.GOOS == "windows" {
+		config.EnableOVNIPSec = false
+	}
+
 	return config
 }
 
