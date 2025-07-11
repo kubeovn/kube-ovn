@@ -653,6 +653,7 @@ kind-install-cert-manager:
 	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-controller:$(CERT_MANAGER_VERSION),1)
 	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-cainjector:$(CERT_MANAGER_VERSION),1)
 	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-webhook:$(CERT_MANAGER_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_IMAGE_REPO)/cert-manager-startupapicheck:$(CERT_MANAGER_VERSION),1)
 
 	helm repo add jetstack $(CERT_MANAGER_CHART_REPO)
 	helm repo update jetstack
@@ -663,15 +664,15 @@ kind-install-cert-manager:
 		--version $(CERT_MANAGER_VERSION) \
 		--set crds.enabled=true \
 		--set crds.keep=true \
-		--set startupapicheck.enabled=false \
 		--set-json affinity=$(CERT_MANAGER_AFFINITY) \
 		--set-json strategy='{"type":"RollingUpdate","rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"}}' \
 		--set-json cainjector.affinity=$(CERT_MANAGER_AFFINITY) \
 		--set-json cainjector.strategy='{"type":"RollingUpdate","rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"}}' \
 		--set-json webhook.affinity=$(CERT_MANAGER_AFFINITY) \
 		--set webhook.hostNetwork=true \
-		--set webhook.securePort=11250
-	kubectl -n cert-manager patch -p '{"spec":{"template":{"spec":{"hostNetwork":true}}}}' deployments.apps cert-manager 
+		--set webhook.securePort=11250 \
+		--set startupapicheck.enabled=true
+	kubectl -n cert-manager patch -p '{"spec":{"template":{"spec":{"hostNetwork":true}}}}' deployments.apps cert-manager
 	kubectl -n cert-manager patch -p '{"spec":{"template":{"spec":{"hostNetwork":true}}}}' deployments.apps cert-manager-cainjector
 	kubectl -n cert-manager delete pod -l app=cert-manager
 	kubectl -n cert-manager delete pod -l app=cainjector
