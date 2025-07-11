@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -39,20 +40,17 @@ type pkiFiles struct {
 }
 
 func getOVSSystemID() (string, error) {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "external-ids:system-id")
-	output, err := cmd.CombinedOutput()
+	id, err := ovs.Get("Open_vSwitch", ".", "external_ids", "system-id", true)
 	if err != nil {
-		klog.Errorf("failed to get ovs system id: %v, output: %s", err, string(output))
+		klog.Errorf("failed to get ovs system-id: %v", err)
 		return "", err
 	}
-	systemID := strings.ReplaceAll(string(output), "\"", "")
-	systemID = systemID[:len(systemID)-1]
-
-	if systemID == "" {
-		return "", errors.New("empty system-id")
+	id = strings.Trim(id, `"`)
+	if id == "" {
+		return "", errors.New("ovs system-id is not set or is empty")
 	}
 
-	return systemID, nil
+	return id, nil
 }
 
 func (c *Controller) needNewCA(p pkiFiles) (bool, error) {
@@ -220,7 +218,7 @@ func generateNewPrivateKey(path string) error {
 func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 	cn, err := getOVSSystemID()
 	if err != nil {
-		klog.Errorf("failed to get ovs system id: %v", err)
+		klog.Errorf("failed to get ovs system-id: %v", err)
 		return nil, err
 	}
 
@@ -378,69 +376,40 @@ func (c *Controller) storeCertificate(cert []byte, certPath string) error {
 }
 
 func configureOVSWithIPSecKeys(p pkiFiles) error {
-	args := []string{
-		"-t", "60", "set", "Open_vSwitch", ".",
+	if err := ovs.Set("Open_vSwitch", ".",
 		fmt.Sprintf("other_config:certificate=%s", p.certificatePath),
 		fmt.Sprintf("other_config:private_key=%s", p.privateKeyPath),
 		fmt.Sprintf("other_config:ca_cert=%s", p.caCertPath),
-	}
-	cmd := exec.Command("ovs-vsctl", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to configure OVS with IPSec keys: %q: %w", string(output), err)
+	); err != nil {
+		return fmt.Errorf("failed to configure OVS with IPSec keys: %w", err)
 	}
 	return nil
 }
 
 func getOVSIPSecKeys() (pkiFiles, error) {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "other_config:certificate")
-	certificate, err := cmd.CombinedOutput()
+	certificate, err := ovs.Get("Open_vSwitch", ".", "other_config", "certificate", true)
 	if err != nil {
-		if strings.Contains(string(certificate), "no key \"certificate\"") {
-			return pkiFiles{}, nil
-		}
 		return pkiFiles{}, fmt.Errorf("reading OVS certificate config; %w", err)
 	}
-
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "other_config:private_key")
-	privateKey, err := cmd.CombinedOutput()
+	privateKey, err := ovs.Get("Open_vSwitch", ".", "other_config", "private_key", true)
 	if err != nil {
-		if strings.Contains(string(certificate), "no key \"private_key\"") {
-			return pkiFiles{}, nil
-		}
 		return pkiFiles{}, fmt.Errorf("reading OVS private key config; %w", err)
 	}
-
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "other_config:ca_cert")
-	caCert, err := cmd.CombinedOutput()
+	caCert, err := ovs.Get("Open_vSwitch", ".", "other_config", "ca_cert", true)
 	if err != nil {
-		if strings.Contains(string(certificate), "no key \"ca_cert\"") {
-			return pkiFiles{}, nil
-		}
 		return pkiFiles{}, fmt.Errorf("reading OVS CA certificate config; %w", err)
 	}
 
 	return pkiFiles{
-		certificatePath: strings.Trim(string(certificate), "\n\""),
-		privateKeyPath:  strings.Trim(string(privateKey), "\n\""),
-		caCertPath:      strings.Trim(string(caCert), "\n\""),
+		certificatePath: strings.Trim(certificate, `"`),
+		privateKeyPath:  strings.Trim(privateKey, `"`),
+		caCertPath:      strings.Trim(caCert, `"`),
 	}, nil
 }
 
-func unconfigureOVSWithIPSecKeys() error {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "certificate")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS certificate: %s: %w", string(output), err)
-	}
-
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "private_key")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS private key: %s: %w", string(output), err)
-	}
-
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "ca_cert")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS CA certificate: %s: %w", string(output), err)
+func clearOVSIPSecConfig() error {
+	if err := ovs.Remove("Open_vSwitch", ".", "other_config", "ca_cert", "private_key", "certificate"); err != nil {
+		return fmt.Errorf("failed to remove OVS ipsec configuration: %w", err)
 	}
 	return nil
 }
@@ -692,9 +661,8 @@ func (c *Controller) RemoveIPSecKeys() error {
 		return err
 	}
 
-	err = unconfigureOVSWithIPSecKeys()
-	if err != nil {
-		klog.Errorf("unconfigure ovs with ipsec keys error: %v", err)
+	if err = clearOVSIPSecConfig(); err != nil {
+		klog.Errorf("clear OVS IPSec configuration error: %v", err)
 		return err
 	}
 

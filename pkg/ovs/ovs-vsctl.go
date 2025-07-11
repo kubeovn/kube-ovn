@@ -90,7 +90,7 @@ func ovsDestroy(table, record string) error {
 	return err
 }
 
-func ovsSet(table, record string, values ...string) error {
+func Set(table, record string, values ...string) error {
 	args := append([]string{"set", table, record}, values...)
 	_, err := Exec(args...)
 	return err
@@ -135,13 +135,19 @@ func parseOvsFindOutput(output string) []string {
 	return ret
 }
 
+func Remove(table, record, column string, keys ...string) error {
+	args := append([]string{"remove", table, record, column}, keys...)
+	_, err := Exec(args...)
+	return err
+}
+
 func ovsClear(table, record string, columns ...string) error {
 	args := append([]string{"--if-exists", "clear", table, record}, columns...)
 	_, err := Exec(args...)
 	return err
 }
 
-func ovsGet(table, record, column, key string) (string, error) {
+func Get(table, record, column, key string, ifExists bool) (string, error) {
 	var columnVal string
 	if key == "" {
 		columnVal = column
@@ -149,6 +155,9 @@ func ovsGet(table, record, column, key string) (string, error) {
 		columnVal = column + ":" + key
 	}
 	args := []string{"get", table, record, columnVal}
+	if ifExists {
+		args = append([]string{"--if-exists"}, args...)
+	}
 	return Exec(args...)
 }
 
@@ -406,8 +415,7 @@ func ClearPortQosBinding(ifaceID string) error {
 }
 
 func ListExternalIDs(table string) (map[string]string, error) {
-	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]"}
-	output, err := Exec(args...)
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]")
 	if err != nil {
 		klog.Errorf("failed to list %s, %v", table, err)
 		return nil, err
@@ -436,8 +444,7 @@ func ListExternalIDs(table string) (map[string]string, error) {
 }
 
 func ListQosQueueIDs() (map[string]string, error) {
-	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]"}
-	output, err := Exec(args...)
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]")
 	if err != nil {
 		klog.Errorf("failed to list qos, %v", err)
 		return nil, err
