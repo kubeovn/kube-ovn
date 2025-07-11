@@ -3204,7 +3204,9 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-        run: make kube-ovn-ipsec-cert-mgr-e2e
+        run: |
+          make kube-ovn-ipsec-e2e
+          make kube-ovn-ipsec-cert-mgr-e2e
 
       - name: Collect k8s events
         if: failure() && ( steps.ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')

@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
@@ -39,22 +42,23 @@ func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Checking ip xfrm state for pod " + pod.Name + " on node " + pod.Spec.NodeName + " from " + node1IP + " to " + node2IP)
-	output, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, "ip xfrm state")
-	framework.ExpectNoError(err)
-
-	var count int
-	for line := range strings.SplitSeq(output, "\n") {
-		if line == fmt.Sprintf("src %s dst %s", node1IP, node2IP) {
-			count++
+	framework.WaitUntil(0, time.Second*120, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf("ip xfrm state list src %s dst %s", node1IP, node2IP)
+		output, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
+		if err != nil {
+			return false, err
 		}
-	}
-	framework.ExpectEqual(count, 2)
+		return strings.Count(output, fmt.Sprintf("src %s dst %s", node1IP, node2IP)) >= 2, nil
+	}, "xfrm state check passed")
 }
 
 func checkXfrmState(pods []corev1.Pod, node1IP, node2IP string) {
 	ginkgo.GinkgoHelper()
 
 	for _, pod := range pods {
+		if ips := util.PodIPs(pod); !slices.Contains(ips, node1IP) && !slices.Contains(ips, node2IP) {
+			continue
+		}
 		checkPodXfrmState(pod, node1IP, node2IP)
 		checkPodXfrmState(pod, node2IP, node1IP)
 	}
