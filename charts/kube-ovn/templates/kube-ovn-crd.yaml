@@ -1192,6 +1192,46 @@ spec:
                           required:
                             - key
                             - operator
+                bgp:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    image:
+                      type: string
+                    asn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    remoteAsn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                        anyOf:
+                          - format: ipv4
+                          - format: ipv6
+                    holdTime:
+                      type: string
+                      pattern: ^[0-9]+[smhd]$
+                    routerId:
+                      type: string
+                      anyOf:
+                        - format: ipv4
+                        - format: ipv6
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                      default: false
+                    extraArgs:
+                      type: array
+                      items:
+                        type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
