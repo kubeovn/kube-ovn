@@ -669,25 +669,17 @@ kind-install-cert-manager:
 	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
 	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
 
-.PHONY: kind-install-ovn-ipsec-cert-manager 
+.PHONY: kind-install-ovn-ipsec-cert-manager
 kind-install-ovn-ipsec-cert-manager:
-	@$(MAKE) ENABLE_OVN_IPSEC=true CERT_MANAGER_IPSEC_CERT=true kind-install
+	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
 	@$(MAKE) kind-install-cert-manager
 
-	$(eval CA_KEY = $(shell mktemp))
-	$(shell openssl genrsa -out $(CA_KEY) 2048)
-	$(eval CA_CERT = $(shell openssl req -x509 -new -nodes \
-		-key "$(CA_KEY)" \
-		-days 3650 \
-		-subj "/C=US/ST=California/L=Palo Alto/O=Open vSwitch/OU=Open vSwitch Certification Authority/CN=OVS CA" | \
-		base64 -w 0 -))
+	docker run --rm -v "$(CURDIR)":/etc/ovn $(REGISTRY)/kube-ovn:$(VERSION) bash generate-ssl.sh
 
-	$(eval CA_KEY64 = $(shell base64 -w 0 "$(CA_KEY)"))
-
-	sed -e 's/KUBE_OVN_CA_KEY/$(CA_KEY64)/g' \
-	    -e 's/KUBE_OVN_CA_CERT/$(CA_CERT)/g' yamls/ipsec-certs.yaml | \
+	kubectl create secret generic -n cert-manager kube-ovn-ca --from-file=tls.key=cakey.pem --from-file=tls.crt=cacert.pem
+	kubectl create secret generic -n kube-system ovn-ipsec-ca --from-file=cacert=cacert.pem
+	echo '{"apiVersion": "cert-manager.io/v1", "kind": "ClusterIssuer", "metadata": {"name": "kube-ovn"}, "spec": {"ca": {"secretName": "kube-ovn-ca"}}}' | \
 		kubectl apply -f -
-	rm $(CA_KEY)
 
 .PHONY: kind-install-anp
 kind-install-anp: kind-load-image

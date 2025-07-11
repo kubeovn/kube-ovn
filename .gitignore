@@ -53,6 +53,7 @@ kube-ovn-cni-sa.yaml
 kube-ovn-sa.yaml
 ovn-ovs-sa.yaml
 ovs-ovn-ds.yaml
+cakey.pem
 cacert.pem
 ovn-req.pem
 ovn-cert.pem
