@@ -271,7 +271,7 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-config.yaml ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
-	$(RM) cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
+	$(RM) cakey.pem cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 	$(RM) kubectl-ko-log.tar.gz
 	$(RM) -r kubectl-ko-log/
