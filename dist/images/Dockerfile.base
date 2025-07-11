@@ -220,7 +220,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt upgrade -y && \
-    apt install ca-certificates hostname netbase ethtool iproute2 ncat libunbound8 procps \
+    apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
         kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
         uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
