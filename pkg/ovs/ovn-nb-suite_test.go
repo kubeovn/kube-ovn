@@ -1211,6 +1211,10 @@ func (suite *OvnClientTestSuite) Test_ParseOvsFindOutput() {
 	suite.testParseOvsFindOutput()
 }
 
+func (suite *OvnClientTestSuite) Test_OvsRemove() {
+	suite.testOvsRemove()
+}
+
 func (suite *OvnClientTestSuite) Test_OvsClear() {
 	suite.testOvsClear()
 }
