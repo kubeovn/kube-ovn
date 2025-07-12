@@ -28,24 +28,26 @@ type OvnFip struct {
 	Status OvnFipStatus `json:"status"`
 }
 type OvnFipSpec struct {
-	OvnEip string `json:"ovnEip"`
-	IPType string `json:"ipType"` // vip, ip
-	IPName string `json:"ipName"` // vip, ip crd name
-	Vpc    string `json:"vpc"`
-	V4Ip   string `json:"v4Ip"`
-	V6Ip   string `json:"v6Ip"`
-	Type   string `json:"type"` // distributed, centralized
+	OvnEip    string `json:"ovnEip"`
+	IPType    string `json:"ipType"` // vip, ip
+	IPName    string `json:"ipName"` // vip, ip crd name
+	Vpc       string `json:"vpc"`
+	V4Ip      string `json:"v4Ip"`
+	V6Ip      string `json:"v6Ip"`
+	Type      string `json:"type"`                // distributed, centralized
+	QoSPolicy string `json:"qosPolicy,omitempty"` // +optional
 }
 
 type OvnFipStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Vpc   string `json:"vpc" patchStrategy:"merge"`
-	V4Eip string `json:"v4Eip" patchStrategy:"merge"`
-	V6Eip string `json:"v6Eip" patchStrategy:"merge"`
-	V4Ip  string `json:"v4Ip" patchStrategy:"merge"`
-	V6Ip  string `json:"v6Ip" patchStrategy:"merge"`
-	Ready bool   `json:"ready" patchStrategy:"merge"`
+	Vpc       string `json:"vpc" patchStrategy:"merge"`
+	V4Eip     string `json:"v4Eip" patchStrategy:"merge"`
+	V6Eip     string `json:"v6Eip" patchStrategy:"merge"`
+	V4Ip      string `json:"v4Ip" patchStrategy:"merge"`
+	V6Ip      string `json:"v6Ip" patchStrategy:"merge"`
+	Ready     bool   `json:"ready" patchStrategy:"merge"`
+	QoSPolicy string `json:"qosPolicy" patchStrategy:"merge"` // +optional
 
 	// Conditions represents the latest state of the object
 	// +optional
