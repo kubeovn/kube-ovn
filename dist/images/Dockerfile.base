@@ -181,7 +181,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.7.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.32.6
+ARG KUBECTL_VERSION=v1.33.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=3.37.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
