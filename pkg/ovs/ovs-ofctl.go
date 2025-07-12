@@ -28,7 +28,7 @@ func getOfportByPeer(peer string) (int, error) {
 	}
 	ifaceName := ifaceNames[0]
 
-	ofportStr, err := ovsGet("Interface", ifaceName, "ofport", "")
+	ofportStr, err := Get("Interface", ifaceName, "ofport", "", false)
 	if err != nil {
 		return -1, fmt.Errorf("failed to get ofport for interface %s: %w", ifaceName, err)
 	}

@@ -46,13 +46,13 @@ KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBE
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
 CILIUM_VERSION = v1.17.5
 CILIUM_IMAGE_REPO = quay.io/cilium
+CILIUM_CHART_REPO = https://helm.cilium.io
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
 CERT_MANAGER_VERSION = v1.18.2
-CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
-CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
-CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
-CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+CERT_MANAGER_IMAGE_REPO = quay.io/jetstack
+CERT_MANAGER_CHART_REPO = https://charts.jetstack.io
+CERT_MANAGER_AFFINITY = '{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"app","operator":"In","values":["cert-manager", "cainjector", "webhook"]}]},"topologyKey":"kubernetes.io/hostname"}]}}'
 
 SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.20.1})
 SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
@@ -271,7 +271,7 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-config.yaml ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
-	$(RM) cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
+	$(RM) cakey.pem cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
 	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 	$(RM) kubectl-ko-log.tar.gz
 	$(RM) -r kubectl-ko-log/

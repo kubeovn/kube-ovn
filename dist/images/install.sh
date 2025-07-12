@@ -214,7 +214,7 @@ if [[ $ENABLE_SSL = "true" ]];then
       exit 1
     fi
     kubectl create secret generic -n kube-system kube-ovn-tls --from-file=cacert=cacert.pem --from-file=cert=ovn-cert.pem --from-file=key=ovn-privkey.pem
-    rm -rf cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
+    rm -rf cakey.pem cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
   fi
   echo "-------------------------------"
   echo ""
