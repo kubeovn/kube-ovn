@@ -187,7 +187,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
 
 			if !ignoreHealthCheck || isPreferLocalBackend {
-				ipPortMapping = c.getIPPortMapping(endpointSlices, svc, checkIP)
+				ipPortMapping, err = c.getIPPortMapping(endpointSlices, svc, checkIP)
+				if err != nil {
+					err := fmt.Errorf("couldn't get ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
+					return err
+				}
 			}
 
 			// for performance reason delete lb with no backends
@@ -329,20 +333,41 @@ func serviceHasSelector(service *v1.Service) bool {
 	return len(service.Spec.Selector) > 0
 }
 
+// getCustomServiceVpcAndSubnet returns the custom VPC/Subnet defined on a service
+func getCustomServiceVpcAndSubnet(service *v1.Service) (vpcName, subnetName string) {
+	if service.Annotations != nil {
+		vpcName = service.Annotations[util.LogicalRouterAnnotation]
+		subnetName = service.Annotations[util.LogicalSwitchAnnotation]
+	}
+
+	return vpcName, subnetName
+}
+
+// getDefaultVpcAndSubnet returns the default VPC/Subnet to apply to a LoadBalancer if nothing was found
+// during automatic discovery. If both parameters are non-empty, they are returned as is.
+func (c *Controller) getDefaultVpcAndSubnet(service *v1.Service, vpcName, subnetName string) (string, string) {
+	// Default to what's on the service or to the default VPC
+	if vpcName == "" {
+		if vpcName = service.Annotations[util.VpcAnnotation]; vpcName == "" {
+			vpcName = c.config.ClusterRouter
+		}
+	}
+
+	// Use the default subnet if it wasn't found
+	if subnetName == "" {
+		subnetName = util.DefaultSubnet
+	}
+
+	return vpcName, subnetName
+}
+
 // getVpcAndSubnetForEndpoints returns the name of the VPC/Subnet for EndpointSlices
 func (c *Controller) getVpcAndSubnetForEndpoints(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service) (vpcName, subnetName string, err error) {
-	// Let the user self-determine what VPC and subnet to use if they provided annotations
-	if service.Annotations != nil {
-		if vpc := service.Annotations[util.LogicalRouterAnnotation]; vpc != "" {
-			vpcName = vpc
-		}
-		if subnet := service.Annotations[util.LogicalSwitchAnnotation]; subnet != "" {
-			subnetName = subnet
-		}
-
-		if vpcName != "" && subnetName != "" {
-			return vpcName, subnetName, nil
-		}
+	// Let the user self-determine what VPC and subnet to use if they provided annotations on the service
+	// Both the VPC and Subnet must be provided
+	vpcName, subnetName = getCustomServiceVpcAndSubnet(service)
+	if vpcName != "" && subnetName != "" {
+		return vpcName, subnetName, nil
 	}
 
 	// Choose the most optimized and straightforward way to retrieve the name of the VPC and subnet
@@ -363,16 +388,7 @@ func (c *Controller) getVpcAndSubnetForEndpoints(endpointSlices []*discoveryv1.E
 		vpcName, subnetName = c.findVpcAndSubnetWithNoTargets(endpointSlices, pods)
 	}
 
-	if vpcName == "" { // Default to what's on the service or to the default VPC
-		if vpcName = service.Annotations[util.VpcAnnotation]; vpcName == "" {
-			vpcName = c.config.ClusterRouter
-		}
-	}
-
-	if subnetName == "" { // Use the default subnet
-		subnetName = util.DefaultSubnet
-	}
-
+	vpcName, subnetName = c.getDefaultVpcAndSubnet(service, vpcName, subnetName)
 	return vpcName, subnetName, nil
 }
 
@@ -484,6 +500,7 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 		}
 
 		// wait for vip created
+		// TODO: WATCH VIP
 		time.Sleep(1 * time.Second)
 		checkVip, err = c.virtualIpsLister.Get(vipName)
 		if err != nil {
@@ -514,11 +531,8 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 }
 
 // getEndpointBackend returns the LB backend for a service
-func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string) []string {
-	var (
-		backends = []string{}
-		protocol = util.CheckProtocol(serviceIP)
-	)
+func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string) (backends []string) {
+	protocol := util.CheckProtocol(serviceIP)
 
 	for _, endpointSlice := range endpointSlices {
 		var targetPort int32
@@ -575,12 +589,12 @@ func (c *Controller) addIPPortMappingEntry(pod *v1.Pod, addresses []string, chec
 }
 
 // getIPPortMapping returns the mapping between each endpoint, LSP and health check VIP
-func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service, checkVip string) IPPortMapping {
+func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service, checkVip string) (IPPortMapping, error) {
 	// Choose the most optimized and straightforward way to compute the IPPortMapping
 	if serviceHasSelector(service) {
 		// The service has a selector, which means that the EndpointSlices should have targets.
 		// We can use those targets instead of looking at every pod in the namespace.
-		return c.getIPPortMappingWithTargets(endpointSlices, checkVip)
+		return c.getIPPortMappingWithTargets(endpointSlices, checkVip), nil
 	}
 
 	// The service has no selectors, we must find which pods in the namespace of the service
@@ -589,9 +603,10 @@ func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlic
 	if err != nil {
 		err := fmt.Errorf("failed to get pods for service %s in namespace %s: %w", service.Name, service.Namespace, err)
 		klog.Error(err)
+		return nil, err
 	}
 
-	return c.getIPPortMappingWithNoTargets(endpointSlices, pods, checkVip)
+	return c.getIPPortMappingWithNoTargets(endpointSlices, pods, checkVip), nil
 }
 
 // getIPPortMappingWithTargets returns the IPPortMapping for endpoints with targets
