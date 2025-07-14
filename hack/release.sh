@@ -85,7 +85,7 @@ if [ "$current_branch" != "master" ]; then
 
   echo "Modify the doc version number"
   cd ${DOCS_DIR}
-  git checkout $(cat VERSION | awk -F '.' '{print $1"."$2}')
+  git checkout $(cat $VERSION | awk -F '.' '{print $1"."$2}')
   git pull
   sed -i "s/version: .*/version: ${VERSION}/" mkdocs.yml
   git add mkdocs.yml
