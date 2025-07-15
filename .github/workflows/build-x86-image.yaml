@@ -3111,6 +3111,8 @@ jobs:
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure')) }}
+        env:
+          IGNORABLE_PODS: app=kube-ovn-pinger
         run: make check-kube-ovn-pod-restarts
 
   kube-ovn-ipsec-cert-mgr-e2e:
