@@ -44,14 +44,14 @@ Kube-OVN is easy to install, please refer to the [Installation Guide](https://ku
 
 ## Documents
 
-- [Overview](https://kubeovn.github.io/docs/en/)
-- [Getting Start](https://kubeovn.github.io/docs/en/start/prepare/)
+- [CNI Selection Recommendations](https://kubeovn.github.io/docs/stable/en/#cni-selection-recommendations)
+- [Getting Start](https://kubeovn.github.io/docs/stable/en/start/prepare/)
 - [KubeVirt Usage](https://kubeovn.github.io/docs/stable/en/kubevirt/static-ip/)
 - [VPC Network](https://kubeovn.github.io/docs/stable/en/vpc/vpc/)
-- [User Guide](https://kubeovn.github.io/docs/en/guide/setup-options/)
-- [Operations](https://kubeovn.github.io/docs/en/ops/kubectl-ko/)
-- [Advanced Usage](https://kubeovn.github.io/docs/en/advance/multi-nic/)
-- [Reference](https://kubeovn.github.io/docs/en/reference/architecture/)
+- [User Guide](https://kubeovn.github.io/docs/stable/en/guide/setup-options/)
+- [Operations](https://kubeovn.github.io/docs/stable/en/ops/kubectl-ko/)
+- [Advanced Usage](https://kubeovn.github.io/docs/stable/en/advance/multi-nic/)
+- [Reference](https://kubeovn.github.io/docs/stable/en/reference/architecture/)
 
 ## Contribution
 
@@ -66,3 +66,7 @@ The Kube-OVN community is waiting for your participation!
 
 - 🔗 Follow us on [Linkedin](https://www.linkedin.com/company/kube-ovn/)
 - 💬 Chat with us on [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
+
+## Adopters
+
+A list of adopters and use cases can be found in [USERS.md](USERS.md)
