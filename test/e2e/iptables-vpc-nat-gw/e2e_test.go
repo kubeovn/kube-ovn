@@ -554,6 +554,10 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		macvlanSubnet := subnetClient.Get(networkAttachDefName)
 		eth0IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
 		net1IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
+
+		ginkgo.By("Deleting custom vpc nat gw")
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+
 		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
 		ipClient.DeleteSync(eth0IpName)
 		ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
@@ -561,9 +565,6 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
 		subnetClient.DeleteSync(overlaySubnetName)
-
-		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(vpcNatGwName)
 
 		ginkgo.By("Deleting custom vpc " + vpcName)
 		vpcClient.DeleteSync(vpcName)
