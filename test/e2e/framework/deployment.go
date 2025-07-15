@@ -237,5 +237,6 @@ func (c *DeploymentClient) WaitToDisappear(name string, _, timeout time.Duration
 func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[string]string, containerName, image string, strategyType appsv1.DeploymentStrategyType) *appsv1.Deployment {
 	deploy := deployment.NewDeployment(name, replicas, podLabels, containerName, image, strategyType)
 	deploy.Spec.Template.Annotations = podAnnotations
+	deploy.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
 	return deploy
 }
