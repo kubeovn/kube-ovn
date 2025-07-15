@@ -555,4 +555,15 @@ entries:
     urls:
     - kube-ovn-v2-2.0.0.tgz
     version: 2.0.0
-generated: "2025-07-14T08:50:41.443212004Z"
+  - apiVersion: v2
+    appVersion: 1.14.0
+    created: "2025-07-15T07:24:24.5828281Z"
+    description: Helm chart for Kube-OVN
+    digest: fdda4daf9c189d54a115aba95053d510cbdace69b1c88dca2e61f4a634a4aad4
+    kubeVersion: '>= 1.29.0-0'
+    name: kube-ovn-v2
+    type: application
+    urls:
+    - kube-ovn-v2-1.14.0.tgz
+    version: 1.14.0
+generated: "2025-07-15T07:24:24.582979903Z"
