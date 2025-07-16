@@ -42,6 +42,11 @@ func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
 	e2epodoutput.RunHostCmdOrDie(f.Namespace.Name, clientPodName, cmd)
 }
 
+func isMultusInstalled(f *framework.Framework) bool {
+	_, err := f.ExtClientSet.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "network-attachment-definitions.k8s.cni.cncf.io", metav1.GetOptions{})
+	return err == nil
+}
+
 var _ = framework.Describe("[group:slr]", func() {
 	f := framework.NewDefaultFramework("slr")
 
@@ -121,19 +126,24 @@ var _ = framework.Describe("[group:slr]", func() {
 	ginkgo.DescribeTable("Test SLR connectivity", ginkgo.Label("Conformance"), func(customProvider bool) {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 
-		ginkgo.By("Creating custom overlay subnet")
-
 		var provider string
 		annotations := make(map[string]string)
 
 		if customProvider {
 			f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
+			if !isMultusInstalled(f) { // Multus must be installed for some tests
+				ginkgo.Skip("Multus must be activated to run the SLR tests with custom providers")
+			}
+
 			provider = fmt.Sprintf("%s.%s.%s", subnetName, f.Namespace.Name, util.OvnProvider)
 			annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] = subnetName
 			annotations[util.DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", f.Namespace.Name, nadName)
 		} else {
 			annotations[util.LogicalSwitchAnnotation] = subnetName
 		}
+
+		ginkgo.By("Creating custom overlay subnet")
 
 		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, provider, nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
