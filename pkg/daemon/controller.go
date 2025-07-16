@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -136,7 +138,7 @@ func NewController(config *Configuration,
 
 		caSecretLister: caSecretInformer.Lister(),
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
-		ipsecQueue:     newTypedRateLimitingQueue[string]("CA", nil),
+		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
@@ -197,9 +199,8 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 	if _, err = caSecretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddCA,
-		UpdateFunc: controller.enqueueUpdateCA,
-		DeleteFunc: controller.enqueueDeleteCA,
+		AddFunc:    controller.enqueueAddIPSecCA,
+		UpdateFunc: controller.enqueueUpdateIPSecCA,
 	}); err != nil {
 		return nil, err
 	}
@@ -207,22 +208,22 @@ func NewController(config *Configuration,
 	return controller, nil
 }
 
-func (c *Controller) enqueueAddCA(obj any) {
+func (c *Controller) enqueueAddIPSecCA(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1.Secret)).String()
 	klog.V(3).Infof("enqueue add CA %s", key)
 	c.ipsecQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateCA(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*v1.Secret)).String()
-	klog.V(3).Infof("enqueue update CA %s", key)
-	c.ipsecQueue.Add(key)
-}
+func (c *Controller) enqueueUpdateIPSecCA(oldObj, newObj any) {
+	oldSecret := oldObj.(*v1.Secret)
+	newSecret := newObj.(*v1.Secret)
+	if maps.EqualFunc(oldSecret.Data, newSecret.Data, bytes.Equal) {
+		// No changes in CA data, no need to enqueue
+		return
+	}
 
-func (c *Controller) enqueueDeleteCA(obj any) {
-	pn := obj.(*v1.Secret)
-	key := cache.MetaObjectToName(pn).String()
-	klog.V(3).Infof("enqueue delete CA %s", key)
+	key := cache.MetaObjectToName(newSecret).String()
+	klog.V(3).Infof("enqueue update CA %s", key)
 	c.ipsecQueue.Add(key)
 }
 
@@ -688,10 +689,7 @@ func (c *Controller) markAndCleanInternalPort() error {
 func (c *Controller) runIPSecWorker() {
 	if err := c.StartIPSecService(); err != nil {
 		klog.Errorf("starting ipsec service: %v", err)
-		return
 	}
-
-	c.ipsecQueue.AddRateLimited("")
 
 	for c.processNextIPSecWorkItem() {
 	}
@@ -705,7 +703,7 @@ func (c *Controller) processNextIPSecWorkItem() bool {
 	defer c.ipsecQueue.Done(key)
 
 	err := func(key string) error {
-		if err := c.SyncIPSecKeys(); err != nil {
+		if err := c.SyncIPSecKeys(key); err != nil {
 			c.ipsecQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
 		}
@@ -747,6 +745,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
@@ -772,10 +771,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.cleanTProxyConfig()
 	}
 
-	if c.config.EnableOVNIPSec {
-		go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
-	} else {
-		if err := c.StopAndClearIPSecResouce(); err != nil {
+	if !c.config.EnableOVNIPSec {
+		if err := c.StopAndClearIPSecResource(); err != nil {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
 	}
