@@ -3384,9 +3384,14 @@ rules:
       - ""
     resources:
       - services
-      - endpoints
     verbs:
       - get
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
   - apiGroups:
       - apps
     resources:
