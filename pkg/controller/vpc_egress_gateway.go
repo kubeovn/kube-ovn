@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -366,7 +367,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
-		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
+		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";") // is it ; okay?
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
@@ -489,7 +490,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			return "", nil, nil, nil, err
 		}
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *bgpContainer)
-	}			
+	}
 
 	// generate hash for the workload to determine whether to update the existing workload or not
 	hash, err := util.Sha256HashObject(deploy)
@@ -1052,82 +1053,93 @@ func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
 	return nil
 }
 
-
 func vpcEgressGatewayContainerBGP(speakerImage, gatewayName string, speakerParams *kubeovnv1.VpcEgressGatewayBGPConfig) (*corev1.Container, error) {
-    if speakerImage == "" {
-        return nil, fmt.Errorf("BGP speaker image must be specified")
-    }
-    if speakerParams == nil {
-        return nil, fmt.Errorf("BGP config must not be nil")
-    }
-    if speakerParams.ASN == 0 {
-        return nil, fmt.Errorf("ASN not set, but must be non-zero value")
-    }
-    if speakerParams.RemoteASN == 0 {
-        return nil, fmt.Errorf("remote ASN not set, but must be non-zero value")
-    }
-    if len(speakerParams.Neighbors) == 0 {
-        return nil, fmt.Errorf("no BGP neighbors specified")
-    }
+	if speakerImage == "" {
+		return nil, errors.New("BGP speaker image must be specified")
+	}
+	if speakerParams == nil {
+		return nil, errors.New("BGP config must not be nil")
+	}
+	if speakerParams.ASN == 0 {
+		return nil, errors.New("ASN not set, but must be non-zero value")
+	}
+	if speakerParams.RemoteASN == 0 {
+		return nil, errors.New("remote ASN not set, but must be non-zero value")
+	}
+	if len(speakerParams.Neighbors) == 0 {
+		return nil, errors.New("no BGP neighbors specified")
+	}
 
-    args := []string{}
-    if speakerParams.RouterID != "" {
-        args = append(args, "--router-id="+speakerParams.RouterID)
-    }
-    if speakerParams.Password != "" {
-        args = append(args, "--auth-password="+speakerParams.Password)
-    }
-    if speakerParams.EnableGracefulRestart {
-        args = append(args, "--graceful-restart")
-    }
-    if speakerParams.HoldTime != (metav1.Duration{}) {
-        args = append(args, "--holdtime="+speakerParams.HoldTime.Duration.String())
-    }
+	args := []string{}
+	if speakerParams.EdgeRouterMode {
+		args = append(args, "--edge-router-mode=true")
+	}
+	if speakerParams.RouterID != "" {
+		args = append(args, "--router-id="+speakerParams.RouterID)
+	}
+	if speakerParams.Password != "" {
+		args = append(args, "--auth-password="+speakerParams.Password)
+	}
+	if speakerParams.EnableGracefulRestart {
+		args = append(args, "--graceful-restart")
+	}
+	if speakerParams.HoldTime != (metav1.Duration{}) {
+		args = append(args, "--holdtime="+speakerParams.HoldTime.Duration.String())
+	}
 
-    args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
-    args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
+	args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
+	args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
 
-    var neighIPv4, neighIPv6 []string
-    for _, neighbor := range speakerParams.Neighbors {
-        switch util.CheckProtocol(neighbor) {
-        case kubeovnv1.ProtocolIPv4:
-            neighIPv4 = append(neighIPv4, neighbor)
-        case kubeovnv1.ProtocolIPv6:
-            neighIPv6 = append(neighIPv6, neighbor)
-        default:
-            return nil, fmt.Errorf("unsupported protocol for peer %s", neighbor)
-        }
-    }
-    if len(neighIPv4) > 0 {
-        args = append(args, "--neighbor-address="+strings.Join(neighIPv4, ","))
-    }
-    if len(neighIPv6) > 0 {
-        args = append(args, "--neighbor-ipv6-address="+strings.Join(neighIPv6, ","))
-    }
+	var neighIPv4, neighIPv6 []string
+	for _, neighbor := range speakerParams.Neighbors {
+		switch util.CheckProtocol(neighbor) {
+		case kubeovnv1.ProtocolIPv4:
+			neighIPv4 = append(neighIPv4, neighbor)
+		case kubeovnv1.ProtocolIPv6:
+			neighIPv6 = append(neighIPv6, neighbor)
+		default:
+			return nil, fmt.Errorf("unsupported protocol for peer %s", neighbor)
+		}
+	}
+	if len(neighIPv4) > 0 {
+		args = append(args, "--neighbor-address="+strings.Join(neighIPv4, ","))
+	}
+	if len(neighIPv6) > 0 {
+		args = append(args, "--neighbor-ipv6-address="+strings.Join(neighIPv6, ","))
+	}
 
-    args = append(args, speakerParams.ExtraArgs...)
+	args = append(args, speakerParams.ExtraArgs...)
 
-    container := &corev1.Container{
-        Name:            "vpc-egress-gw-speaker",
-        Image:           speakerImage,
-        Command:         []string{"/kube-ovn/kube-ovn-speaker"},
-        ImagePullPolicy: corev1.PullIfNotPresent,
-        Env: []corev1.EnvVar{
-            {
-                Name:  "EGRESS_GATEWAY_NAME",
-                Value: gatewayName,
-            },
-            {
-                Name: "POD_IP",
-                ValueFrom: &corev1.EnvVarSource{
-                    FieldRef: &corev1.ObjectFieldSelector{
-                        FieldPath: "status.podIP",
-                    },
-                },
-            },
-        },
-        Args: args,
-    }
+	container := &corev1.Container{
+		Name:            "vpc-egress-gw-speaker",
+		Image:           speakerImage,
+		Command:         []string{"/kube-ovn/kube-ovn-speaker"},
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "EGRESS_GATEWAY_NAME",
+				Value: gatewayName,
+			},
+			{
+				Name: "POD_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIP",
+					},
+				},
+			},
+		},
+		Args: args,
+		// bgp need to add/remove fib, it needs root user
+		SecurityContext: &corev1.SecurityContext{
+			Privileged: ptr.To(false),
+			RunAsUser:  ptr.To[int64](0),
+			Capabilities: &corev1.Capabilities{
+				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+	}
 
-    return container, nil
+	return container, nil
 }

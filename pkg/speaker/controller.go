@@ -108,11 +108,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	klog.Info("Started workers")
-	go wait.Until(c.Reconcile, 5*time.Second, stopCh)
-
-	// Start route syncer work
-	// run every c.routerSyncer.injectedRoutesSyncPeriod
-	c.routerSyncer.Run(stopCh)
+	if c.config.EdgeRouterMode {
+		// Start route syncer work
+		// run every c.routerSyncer.injectedRoutesSyncPeriod
+		c.routerSyncer.Run(stopCh)
+	} else {
+		go wait.Until(c.Reconcile, 5*time.Second, stopCh)
+	}
 
 	<-stopCh
 	klog.Info("Shutting down workers")

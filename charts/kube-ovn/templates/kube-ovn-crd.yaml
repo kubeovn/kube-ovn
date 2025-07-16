@@ -1195,6 +1195,9 @@ spec:
                 bgp:
                   type: object
                   properties:
+                    edgeRouterMode:
+                      type: boolean
+                      default: false
                     enabled:
                       type: boolean
                       default: false

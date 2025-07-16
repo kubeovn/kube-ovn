@@ -65,8 +65,9 @@ type Configuration struct {
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
 
-	PprofPort int32
-	LogPerm   string
+	PprofPort      int32
+	LogPerm        string
+	EdgeRouterMode bool
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -94,6 +95,7 @@ func ParseFlags() (*Configuration, error) {
 		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
 		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
+		argEdgeRouterMode              = pflag.BoolP("edge-router-mode", "", false, "Make the BGP speaker announce inside subnet and get routes from the outside, work as edge router")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -161,6 +163,7 @@ func ParseFlags() (*Configuration, error) {
 		NatGwMode:                   *argNatGwMode,
 		EnableMetrics:               *argEnableMetrics,
 		LogPerm:                     *argLogPerm,
+		EdgeRouterMode:              *argEdgeRouterMode,
 	}
 
 	if *argNeighborAddress != "" {

@@ -26,9 +26,8 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
-
 	// Do not try to redirect the logs on the node if we're running in a NAT gateway
-	if !config.NatGwMode {
+	if !config.NatGwMode && !config.EdgeRouterMode {
 		perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 		if err != nil {
 			util.LogFatalAndExit(err, "failed to parse log-perm")

@@ -61,7 +61,7 @@ func (rs *RouteSyncer) watchBgpUpdates() {
 					if path.NeighborIp == "<nil>" {
 						return
 					}
-					klog.V(2).Infof("Processing bgp route advertisement from peer: %s", path.NeighborIp)
+					klog.Infof("Processing bgp route advertisement from peer: %s", path.NeighborIp)
 					if err := rs.injectRoute(path); err != nil {
 						klog.Errorf("failed to inject routes due to: %v", err)
 					}
@@ -87,7 +87,7 @@ func (rs *RouteSyncer) watchBgpUpdates() {
 func (rs *RouteSyncer) AddInjectedRoute(dst *net.IPNet, route *netlink.Route) {
 	rs.mutex.Lock()
 	defer rs.mutex.Unlock()
-	klog.V(3).Infof("Adding route for destination: %s", dst)
+	klog.Infof("Adding route for destination: %s", dst)
 	rs.routeTableStateMap[dst.String()] = route
 }
 
@@ -96,7 +96,7 @@ func (rs *RouteSyncer) DelInjectedRoute(dst *net.IPNet) {
 	rs.mutex.Lock()
 	defer rs.mutex.Unlock()
 	if _, ok := rs.routeTableStateMap[dst.String()]; ok {
-		klog.V(3).Infof("Removing route for destination: %s", dst)
+		klog.Infof("Removing route for destination: %s", dst)
 		delete(rs.routeTableStateMap, dst.String())
 	}
 }
@@ -105,9 +105,9 @@ func (rs *RouteSyncer) DelInjectedRoute(dst *net.IPNet) {
 func (rs *RouteSyncer) SyncLocalRouteTable() (*netlink.Route, error) {
 	rs.mutex.Lock()
 	defer rs.mutex.Unlock()
-	klog.V(2).Infof("Running local route table synchronization")
+	klog.Infof("Running local route table synchronization")
 	for _, route := range rs.routeTableStateMap {
-		klog.V(3).Infof("Syncing route: %s -> %s via %s", route.Src, route.Dst, route.Gw)
+		klog.Infof("Syncing route: %s -> %s via %s", route.Src, route.Dst, route.Gw)
 		err := rs.routeReplacer(route)
 		if err != nil {
 			return route, err
@@ -139,7 +139,7 @@ func (rs *RouteSyncer) Run(stopCh <-chan struct{}) {
 
 // Delete the route from the kernel's routing table, and remove it from the local state map
 func (rs *RouteSyncer) injectRoute(path *gobgpapi.Path) error {
-	klog.V(2).Infof("injectRoute Path Looks Like: %s", path.String())
+	klog.Infof("injectRoute Path Looks Like: %s", path.String())
 	var route *netlink.Route
 	var link netlink.Link
 
@@ -158,18 +158,17 @@ func (rs *RouteSyncer) injectRoute(path *gobgpapi.Path) error {
 		return pathErr
 	}
 
-	// TO-DO
 	// If path is same with external interface subnet do not add
 	if err := rs.checkExistingKernelRoute(dst); err != nil {
 		// If it's already a kernel route, just log and skip
-		klog.V(2).Infof("Skipping BGP route injection for %s: %v", dst.String(), err)
+		klog.Infof("Skipping BGP route injection for %s: %v", dst.String(), err)
 		return nil
 	}
 
 	// If the path we've received from GoBGP is a withdrawal, we should clean up any lingering routes that may exist
 	// on the host (rather than creating a new one or updating an existing one), and then return.
 	if path.IsWithdraw {
-		klog.V(2).Infof("Removing route: '%s via %s' from peer in the routing table", dst, nextHop)
+		klog.Infof("Removing route: '%s via %s' from peer in the routing table", dst, nextHop)
 
 		// Delete route from state map so that it doesn't get re-synced after deletion
 		rs.DelInjectedRoute(dst)
@@ -223,7 +222,7 @@ func (rs *RouteSyncer) injectRoute(path *gobgpapi.Path) error {
 	}
 
 	// We have our route configured, let's add it to the host's routing table
-	klog.V(2).Infof("Inject route: '%s via %s' from peer to routing table", dst, nextHop)
+	klog.Infof("Inject route: '%s via %s' from peer to routing table", dst, nextHop)
 	rs.AddInjectedRoute(dst, route)
 	// Immediately sync the local route table regardless of timer
 	_, syncLocalRouteTableErr := rs.SyncLocalRouteTable()
@@ -293,7 +292,7 @@ func (rs *RouteSyncer) DeleteByDestination(destinationSubnet *net.IPNet) error {
 		return fmt.Errorf("failed to get routes from netlink: %w", err)
 	}
 	for i, r := range routes {
-		klog.V(2).Infof("Found route to remove: %s", r.String())
+		klog.Infof("Found route to remove: %s", r.String())
 		if err = netlink.RouteDel(&routes[i]); err != nil {
 			return fmt.Errorf("failed to remove route due to %w", err)
 		}
@@ -317,7 +316,7 @@ func (rs *RouteSyncer) checkExistingKernelRoute(dst *net.IPNet) error {
 	// If we found any kernel routes with the same destination, skip injection
 	if len(routes) > 0 {
 		for _, existingRoute := range routes {
-			klog.V(2).Infof("Found existing kernel route: %s", existingRoute.String())
+			klog.Infof("Found existing kernel route: %s", existingRoute.String())
 		}
 		return fmt.Errorf("destination %s already exists as kernel protocol route", dst.String())
 	}
