@@ -1223,9 +1223,13 @@ spec:
                       pattern: ^[0-9]+[smhd]$
                     routerId:
                       type: string
+                      # The routerId can be an IPv4 or IPv6 address, but we are not enforcing it here
+                      # routerId could be nullable, so that we can use environment value to set it
+                      # refer pkg/speaker/config.go#L186
                       anyOf:
                         - format: ipv4
                         - format: ipv6
+                        - pattern: '^$'
                     password:
                       type: string
                     enableGracefulRestart:

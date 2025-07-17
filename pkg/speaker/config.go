@@ -2,6 +2,7 @@ package speaker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -184,11 +185,19 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.RouterID == "" {
-		if podIPv4 != "" {
-			config.RouterID = podIPv4
-		} else {
-			config.RouterID = podIPv6
+		externalIP, err := GetExternalIP()
+		if err != nil || externalIP == "" {
+			klog.Warningf("failed to get external IP: %v", err)
+			return nil, err
 		}
+		config.RouterID = externalIP
+		klog.Infof("using external IP %s as router ID", config.RouterID)
+
+		// if podIPv4 != "" {
+		// 	config.RouterID = podIPv4
+		// } else {
+		// 	config.RouterID = podIPv6
+		// }
 		if config.RouterID == "" {
 			return nil, errors.New("no router id or POD_IPS")
 		}
@@ -367,4 +376,33 @@ func (config *Configuration) initBgpServer() error {
 
 	config.BgpServer = s
 	return nil
+}
+
+func GetExternalIP() (string, error) {
+	raw := os.Getenv("MULTI_NET_STATUS")
+	if raw == "" {
+		return "", errors.New("MULTI_NET_STATUS annotation is empty")
+	}
+
+	type networkStatusEntry struct {
+		Name      string   `json:"name"`
+		Interface string   `json:"interface"`
+		IPs       []string `json:"ips"`
+		Default   bool     `json:"default"`
+		DNS       struct{} `json:"dns"`
+	}
+
+	var entries []networkStatusEntry
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+		return "", err
+	}
+
+	for _, e := range entries {
+		// search for CNI network name is not "kube-ovn"
+		if e.Name != "kube-ovn" && len(e.IPs) > 0 {
+			return e.IPs[0], nil
+		}
+	}
+
+	return "", errors.New("non–kube-ovn interface not found")
 }
