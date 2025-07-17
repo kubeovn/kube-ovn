@@ -14,6 +14,7 @@ import (
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -41,6 +42,11 @@ func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
 	e2epodoutput.RunHostCmdOrDie(f.Namespace.Name, clientPodName, cmd)
 }
 
+func isMultusInstalled(f *framework.Framework) bool {
+	_, err := f.ExtClientSet.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "network-attachment-definitions.k8s.cni.cncf.io", metav1.GetOptions{})
+	return err == nil
+}
+
 var _ = framework.Describe("[group:slr]", func() {
 	f := framework.NewDefaultFramework("slr")
 
@@ -52,12 +58,14 @@ var _ = framework.Describe("[group:slr]", func() {
 		podClient          *framework.PodClient
 		subnetClient       *framework.SubnetClient
 		vpcClient          *framework.VpcClient
+		nadClient          *framework.NetworkAttachmentDefinitionClient
 
 		namespaceName, suffix                     string
 		vpcName, subnetName, clientPodName, label string
 		stsName, stsSvcName                       string
 		selSlrName, selSvcName                    string
 		epSlrName, epSvcName                      string
+		nadName                                   string
 		overlaySubnetCidr, vip                    string
 		// TODO:// slr support dual-stack
 		frontPort, selSlrFrontPort, epSlrFrontPort, backendPort int32
@@ -71,9 +79,8 @@ var _ = framework.Describe("[group:slr]", func() {
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vpcClient = f.VpcClient()
-
+		nadClient = f.NetworkAttachmentDefinitionClient()
 		suffix = framework.RandomSuffix()
-
 		namespaceName = f.Namespace.Name
 		selSlrName = "sel-" + generateSwitchLBRuleName(suffix)
 		selSvcName = generateServiceName(selSlrName)
@@ -84,6 +91,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		label = "slr"
 		clientPodName = "client-" + suffix
 		subnetName = generateSubnetName(suffix)
+		nadName = subnetName
 		vpcName = generateVpcName(suffix)
 		frontPort = 8090
 		selSlrFrontPort = 8091
@@ -94,15 +102,6 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("Creating custom vpc")
 		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
 		_ = vpcClient.CreateSync(vpc)
-		ginkgo.By("Creating custom overlay subnet")
-		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, "", nil, nil, nil)
-		_ = subnetClient.CreateSync(overlaySubnet)
-		annotations := map[string]string{
-			util.LogicalSwitchAnnotation: subnetName,
-		}
-		ginkgo.By("Creating client pod " + clientPodName)
-		clientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, framework.AgnhostImage, nil, nil)
-		podClient.CreateSync(clientPod)
 	})
 
 	ginkgo.AfterEach(func() {
@@ -120,10 +119,44 @@ var _ = framework.Describe("[group:slr]", func() {
 		subnetClient.DeleteSync(subnetName)
 		ginkgo.By("Deleting vpc " + vpcName)
 		vpcClient.DeleteSync(vpcName)
+		ginkgo.By("Deleting network attachment definition " + nadName)
+		nadClient.Delete(nadName)
 	})
 
-	framework.ConformanceIt("should access sts and slr svc ok", func() {
+	ginkgo.DescribeTable("Test SLR connectivity", ginkgo.Label("Conformance"), func(customProvider bool) {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
+
+		var provider string
+		annotations := make(map[string]string)
+
+		if customProvider {
+			f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
+			if !isMultusInstalled(f) { // Multus must be installed for some tests
+				ginkgo.Skip("Multus must be activated to run the SLR tests with custom providers")
+			}
+
+			provider = fmt.Sprintf("%s.%s.%s", subnetName, f.Namespace.Name, util.OvnProvider)
+			annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] = subnetName
+			annotations[util.DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", f.Namespace.Name, nadName)
+		} else {
+			annotations[util.LogicalSwitchAnnotation] = subnetName
+		}
+
+		ginkgo.By("Creating custom overlay subnet")
+
+		overlaySubnet := framework.MakeSubnet(subnetName, "", overlaySubnetCidr, "", vpcName, provider, nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+
+		if customProvider {
+			nad := framework.MakeOVNNetworkAttachmentDefinition(subnetName, f.Namespace.Namespace, provider, []request.Route{})
+			nadClient.Create(nad)
+		}
+
+		ginkgo.By("Creating client pod " + clientPodName)
+		newClientPod := framework.MakePod(namespaceName, clientPodName, nil, annotations, framework.AgnhostImage, nil, nil)
+		podClient.CreateSync(newClientPod)
+
 		ginkgo.By("1. Creating sts svc with slr")
 		var (
 			clientPod             *corev1.Pod
@@ -136,9 +169,9 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("Creating statefulset " + stsName + " with subnet " + subnetName)
 		sts := framework.MakeStatefulSet(stsName, stsSvcName, int32(replicas), labels, framework.AgnhostImage)
 		ginkgo.By("Creating sts " + stsName)
-		sts.Spec.Template.Annotations = map[string]string{
-			util.LogicalSwitchAnnotation: subnetName,
-		}
+
+		sts.Spec.Template.Annotations = annotations
+
 		portStr := strconv.Itoa(80)
 		webServerCmd := []string{"/agnhost", "netexec", "--http-port", portStr}
 		sts.Spec.Template.Spec.Containers[0].Command = webServerCmd
@@ -151,10 +184,10 @@ var _ = framework.Describe("[group:slr]", func() {
 			TargetPort: intstr.FromInt32(80),
 		}}
 		selector := map[string]string{"app": label}
-		annotations := map[string]string{
+		svcAnnotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-		stsSvc = framework.MakeService(stsSvcName, corev1.ServiceTypeClusterIP, annotations, selector, ports, corev1.ServiceAffinityNone)
+		stsSvc = framework.MakeService(stsSvcName, corev1.ServiceTypeClusterIP, svcAnnotations, selector, ports, corev1.ServiceAffinityNone)
 		stsSvc = serviceClient.CreateSync(stsSvc, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
@@ -352,5 +385,8 @@ var _ = framework.Describe("[group:slr]", func() {
 		}
 		ginkgo.By("Checking endpoint switch lb service " + epSvc.Name)
 		curlSvc(f, clientPodName, vip, epSlrFrontPort)
-	})
+	},
+		ginkgo.Entry("SLR with default provider", false),
+		ginkgo.Entry("SLR with custom provider", true),
+	)
 })

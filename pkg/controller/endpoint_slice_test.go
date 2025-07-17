@@ -114,7 +114,7 @@ func TestEndpointReady(t *testing.T) {
 	}
 }
 
-func TestGetEndpointTargetLSPName(t *testing.T) {
+func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 	tests := []struct {
 		name     string
 		pod      *corev1.Pod
@@ -222,7 +222,7 @@ func TestGetEndpointTargetLSPName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := getEndpointTargetLSPName(tt.pod, tt.provider)
+			result := getEndpointTargetLSPNameFromProvider(tt.pod, tt.provider)
 			if result != tt.expected {
 				t.Errorf("getEndpointTargetLSPName() = %q, want %q", result, tt.expected)
 			}
@@ -324,6 +324,57 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 			result := getMatchingProviderForAddress(tt.pod, tt.providers, tt.address)
 			if result != tt.expected {
 				t.Errorf("getMatchingProviderForAddress() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestServiceHasSelector(t *testing.T) {
+	tests := []struct {
+		name     string
+		service  *corev1.Service
+		expected bool
+	}{
+		{
+			name: "Service has no selector",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Selector: nil,
+			}},
+			expected: false,
+		},
+		{
+			name: "Service has empty selectors",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Selector: map[string]string{},
+			}},
+			expected: false,
+		},
+		{
+			name: "Service has one selector",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Selector: map[string]string{
+					"a": "b",
+				},
+			}},
+			expected: true,
+		},
+		{
+			name: "Service has multiple selectors",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Selector: map[string]string{
+					"a": "b",
+					"c": "d",
+				},
+			}},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := serviceHasSelector(tt.service)
+			if result != tt.expected {
+				t.Errorf("serviceHasSelector() = %t, want %t", result, tt.expected)
 			}
 		})
 	}

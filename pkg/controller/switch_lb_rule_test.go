@@ -4,7 +4,11 @@ import (
 	"reflect"
 	"testing"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func Test_getIPFamilies(t *testing.T) {
@@ -68,6 +72,88 @@ func Test_getIPFamilies(t *testing.T) {
 
 			if policy != tt.expectedFamilyPolicy {
 				t.Errorf("Expected familiyPolicy %s, but got %s", tt.expectedFamilyPolicy, policy)
+			}
+		})
+	}
+}
+
+func Test_setUserDefinedNetwork(t *testing.T) {
+	tests := []struct {
+		name    string
+		service *corev1.Service
+		slr     *kubeovnv1.SwitchLBRule
+		result  *corev1.Service
+	}{
+		{
+			name:    "Propagate VPC",
+			service: &corev1.Service{},
+			slr: &kubeovnv1.SwitchLBRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalRouterAnnotation: "test",
+					},
+				},
+			},
+			result: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalRouterAnnotation: "test",
+					},
+				},
+			},
+		},
+		{
+			name:    "Propagate Subnet",
+			service: &corev1.Service{},
+			slr: &kubeovnv1.SwitchLBRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalSwitchAnnotation: "test",
+					},
+				},
+			},
+			result: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalSwitchAnnotation: "test",
+					},
+				},
+			},
+		},
+		{
+			name:    "Propagate VPC/Subnet",
+			service: &corev1.Service{},
+			slr: &kubeovnv1.SwitchLBRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalRouterAnnotation: "test1",
+						util.LogicalSwitchAnnotation: "test2",
+					},
+				},
+			},
+			result: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.LogicalRouterAnnotation: "test1",
+						util.LogicalSwitchAnnotation: "test2",
+					},
+				},
+			},
+		},
+		{
+			name:    "Propagate nothing",
+			service: &corev1.Service{},
+			slr:     &kubeovnv1.SwitchLBRule{},
+			result:  &corev1.Service{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setUserDefinedNetwork(tt.service, tt.slr)
+
+			if !reflect.DeepEqual(*tt.service, *tt.result) {
+				t.Errorf("Expected service %v, but got %v", *tt.service, *tt.result)
 			}
 		})
 	}
