@@ -463,9 +463,12 @@ func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRu
 	if err != nil {
 		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
 	}
-	if len(existingNatPreroutingPosList) > 0 && existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1] < insertPosition {
-		klog.V(5).Infof("nat prerouting rule already exists at position %d", existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1])
-		return nil
+	if len(existingNatPreroutingPosList) > 0 {
+		pos := existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1]
+		if pos <= insertPosition {
+			klog.V(5).Infof("nat prerouting rule already exists at position %d", pos)
+			return nil
+		}
 	}
 
 	klog.Infof("inserting nat prerouting rule %q at position %d", rule.Rule, insertPosition)

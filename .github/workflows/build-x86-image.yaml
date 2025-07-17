@@ -24,9 +24,9 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.29.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.2.1
+  GOLANGCI_LINT_VERSION: v2.2.2
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v3.18.3
+  HELM_VERSION: v3.18.4
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.20.1
 
@@ -224,7 +224,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.32.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
@@ -572,9 +572,11 @@ jobs:
           fi
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -768,9 +770,11 @@ jobs:
           fi
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -935,9 +939,11 @@ jobs:
           fi
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1121,9 +1127,11 @@ jobs:
           fi
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1306,6 +1314,8 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind clusters
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
           make kind-init-ovn-ic-${{ matrix.ip-family }}
@@ -1384,7 +1394,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -1564,9 +1574,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -1614,9 +1626,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-dual
+          make kind-ghcr-pull kind-init-dual
 
       - name: Install Kube-OVN
         id: install
@@ -1662,9 +1676,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN without LoadBalancer
         id: install
@@ -1712,9 +1728,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -1815,9 +1833,11 @@ jobs:
           docker load -i vpc-nat-gateway.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Multus and Kube-OVN
         id: install
@@ -1952,9 +1972,11 @@ jobs:
           docker load -i kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN with webhook
         id: install
@@ -2023,10 +2045,11 @@ jobs:
 
       - name: Create kind cluster
         env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           k8s_version: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -2220,9 +2243,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-cilium-chaining-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-cilium-chaining-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN with Cilium chaining
         id: install
@@ -2375,9 +2400,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-ha-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-ha-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -2477,9 +2504,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-ovn-submariner
+          make kind-ghcr-pull kind-init-ovn-submariner
 
       - name: Install Kube-OVN and Submariner
         id: install
@@ -2595,9 +2624,11 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -2776,9 +2807,11 @@ jobs:
           docker load -i vpc-nat-gateway.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN with VPC NAT gateway enabled
         id: install
@@ -2912,9 +2945,11 @@ jobs:
         run: docker load -i kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3055,9 +3090,11 @@ jobs:
         run: docker load -i kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3111,6 +3148,146 @@ jobs:
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure')) }}
+        env:
+          IGNORABLE_PODS: app=kube-ovn-pinger
+        run: make check-kube-ovn-pod-restarts
+
+  kube-ovn-ipsec-cert-mgr-e2e:
+    name: OVN IPSEC E2E CERT MANAGER
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v5
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v4
+        with:
+          name: kube-ovn
+
+      - name: Load images
+        run: docker load -i kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-ovn-ipsec-cert-manager
+
+      - name: Run Ovn IPSEC cert-manager E2E
+        id: kube-ovn-ipsec-cert-mgr-e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: make kube-ovn-ipsec-cert-mgr-e2e
+
+      - name: Collect k8s events
+        if: failure() && ( steps.ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kube-ovn-ipsec-cert-mgr-e2e-events.yaml
+          tar zcf kube-ovn-ipsec-cert-mgr-e2e-events.tar.gz kube-ovn-ipsec-cert-mgr-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-ipsec-cert-mgr-e2e-events
+          path: kube-ovn-ipsec-cert-mgr-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kube-ovn-ipsec-cert-mgr-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-ipse-cert-mgrc-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-ipsec-cert-mgr-e2e-audit-log
+          path: kube-ovn-ipsec-cert-mgr-e2e-audit-log.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && (steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')
+        with:
+          name: kube-ovn-ipsec-cert-mgr-e2e-ko-log
+          path: kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
   kube-ovn-connectivity-test:
@@ -3197,9 +3374,11 @@ jobs:
         run: docker load -i kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3312,9 +3491,11 @@ jobs:
           fi
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-ghcr-pull kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3379,6 +3560,7 @@ jobs:
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
       - kube-ovn-ipsec-e2e
+      - kube-ovn-ipsec-cert-mgr-e2e
       - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
       - vpc-egress-gateway-e2e

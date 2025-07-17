@@ -431,7 +431,7 @@ func (c *Controller) handleAddService(key string) error {
 		return err
 	}
 
-	nad, err := c.getAttachNetwork(svc)
+	nad, err := c.getAttachNetworkForService(svc)
 	if err != nil {
 		c.recorder.Event(svc, v1.EventTypeWarning, "GetNADFailed", err.Error())
 		klog.Errorf("failed to check attachment network of lb svc %s: %v", key, err)

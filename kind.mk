@@ -27,7 +27,7 @@ KIND_VLAN_NIC = eth1
 endif
 
 KIND_AUDITING = $(shell echo $${KIND_AUDITING:-false})
-ifeq ($(shell echo $${CI:-false}),true)
+ifeq ($(or $(CI),false),true)
 KIND_AUDITING = true
 endif
 
@@ -552,6 +552,8 @@ kind-install-cilium-chaining-%:
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
 		--set kubeProxyReplacement=false \
+		--set image.useDigest=false \
+		--set operator.image.useDigest=false \
 		--set operator.replicas=1 \
 		--set socketLB.enabled=true \
 		--set nodePort.enabled=true \
@@ -561,6 +563,7 @@ kind-install-cilium-chaining-%:
 		--set enableIPv4Masquerade=false \
 		--set enableIPv6Masquerade=false \
 		--set hubble.enabled=true \
+		--set envoy.enabled=false \
 		--set sctp.enabled=true \
 		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
 		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
@@ -654,6 +657,30 @@ kind-install-kwok:
 kind-install-ovn-ipsec:
 	@$(MAKE) ENABLE_OVN_IPSEC=true kind-install
 
+.PHONY: kind-install-cert-manager
+kind-install-cert-manager:
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
+
+	kubectl apply -f "$(CERT_MANAGER_YAML)"
+
+	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
+
+.PHONY: kind-install-ovn-ipsec-cert-manager
+kind-install-ovn-ipsec-cert-manager:
+	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
+	@$(MAKE) kind-install-cert-manager
+
+	docker run --rm -v "$(CURDIR)":/etc/ovn $(REGISTRY)/kube-ovn:$(VERSION) bash generate-ssl.sh
+
+	kubectl create secret generic -n cert-manager kube-ovn-ca --from-file=tls.key=cakey.pem --from-file=tls.crt=cacert.pem
+	kubectl create secret generic -n kube-system ovn-ipsec-ca --from-file=cacert=cacert.pem
+	echo '{"apiVersion": "cert-manager.io/v1", "kind": "ClusterIssuer", "metadata": {"name": "kube-ovn"}, "spec": {"ca": {"secretName": "kube-ovn-ca"}}}' | \
+		kubectl apply -f -
+
 .PHONY: kind-install-anp
 kind-install-anp: kind-load-image
 	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
@@ -711,3 +738,9 @@ kind-clean-bgp-ha:
 		-v $(CURDIR)/yamls/clab-bgp-ha.yaml:/clab-bgp/clab.yaml \
 		$(CLAB_IMAGE) clab destroy -t /clab-bgp/clab.yaml
 	@$(MAKE) kind-clean
+
+.PHONY: kind-ghcr-pull
+kind-ghcr-pull:
+	echo $${GHCR_TOKEN} | docker login ghcr.io -u github-actions --password-stdin
+	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
+	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)

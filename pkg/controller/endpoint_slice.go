@@ -78,7 +78,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update endpointSlice for service %s", key)
 
-	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Set(map[string]string{discoveryv1.LabelServiceName: name}).AsSelector())
+	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Set{discoveryv1.LabelServiceName: name}.AsSelector())
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil

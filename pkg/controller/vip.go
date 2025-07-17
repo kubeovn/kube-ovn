@@ -273,16 +273,20 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	}
 
 	// vip cloud use selector to select pods as its virtual parents
-	selectors := make(map[string]string)
+	matchLabels := make(map[string]string)
 	for _, v := range cachedVip.Spec.Selector {
 		parts := strings.Split(strings.TrimSpace(v), ":")
 		if len(parts) != 2 {
 			continue
 		}
-		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		matchLabels[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 	}
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: selectors})
-	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(sel)
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: matchLabels})
+	if err != nil {
+		klog.Errorf("failed to convert label selector %v: %v", matchLabels, err)
+		return err
+	}
+	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(selector)
 	if err != nil {
 		klog.Errorf("failed to list pods that meet selector requirements, %v", err)
 		return err

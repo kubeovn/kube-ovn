@@ -59,7 +59,7 @@ endif
 
 GINKGO_OUTPUT_OPT =
 GINKGO_PARALLEL_OPT =
-ifeq ($(shell echo $${CI:-false}),true)
+ifeq ($(or $(CI),false),true)
 GINKGO_OUTPUT_OPT = --github-output --silence-skips
 GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
 endif
@@ -156,7 +156,7 @@ kube-ovn-multus-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=10m \
 		--focus=CNI:Kube-OVN ./test/e2e/multus/multus.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
@@ -241,6 +241,15 @@ kube-ovn-webhook-e2e:
 
 .PHONY: kube-ovn-ipsec-e2e
 kube-ovn-ipsec-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN --label-filter="!cert-manager" ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-ipsec-cert-mgr-e2e
+kube-ovn-ipsec-cert-mgr-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \

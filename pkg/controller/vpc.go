@@ -61,7 +61,8 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
 		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
-		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] {
+		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] ||
+		!slices.Equal(oldVpc.Status.Subnets, newVpc.Status.Subnets) {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 
 		if newVpc.Annotations == nil {
@@ -268,7 +269,25 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	if err = c.createVpcRouter(key); err != nil {
+	learnFromARPRequest := vpc.Spec.EnableExternal
+	if !learnFromARPRequest {
+		for _, subnetName := range vpc.Status.Subnets {
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				klog.Errorf("failed to get subnet %s for vpc %s: %v", subnetName, key, err)
+				return err
+			}
+			if subnet.Spec.Vlan != "" && subnet.Spec.U2OInterconnection {
+				learnFromARPRequest = true
+				break
+			}
+		}
+	}
+
+	if err = c.createVpcRouter(key, learnFromARPRequest); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
 	}
@@ -1231,11 +1250,12 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 			defaultSubnet = vpc.Spec.DefaultSubnet
 		}
 	}
+	sort.Strings(subnets)
 	return
 }
 
 // createVpcRouter create router to connect logical switches in vpc
-func (c *Controller) createVpcRouter(lr string) error {
+func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
 	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
 		klog.Errorf("create logical router %s failed: %v", lr, err)
 		return err
@@ -1247,12 +1267,21 @@ func (c *Controller) createVpcRouter(lr string) error {
 		return err
 	}
 
-	vpcRouter.Options = map[string]string{"always_learn_from_arp_request": "false", "dynamic_neigh_routers": "true", "mac_binding_age_threshold": "300"}
-	err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options)
-	if err != nil {
-		klog.Errorf("update logical router %s failed: %v", lr, err)
-		return err
+	lrOptions := map[string]string{
+		"mac_binding_age_threshold": "300",
+		"dynamic_neigh_routers":     "true",
 	}
+	if !learnFromARPRequest {
+		lrOptions["always_learn_from_arp_request"] = "false"
+	}
+	if !maps.Equal(vpcRouter.Options, lrOptions) {
+		vpcRouter.Options = lrOptions
+		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
+			klog.Errorf("failed to update options of logical router %s: %v", lr, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1299,8 +1328,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	}
 	// init lrp gw chassis group
 	chassises := []string{}
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	gwNodes, err := c.nodesLister.List(sel)
+	gwNodes, err := c.nodesLister.List(externalGatewayNodeSelector)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err

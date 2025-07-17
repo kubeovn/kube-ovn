@@ -493,6 +493,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatTxBytes = prometheus.NewGaugeVec(
@@ -504,6 +506,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxPackets = prometheus.NewGaugeVec(
@@ -515,6 +519,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxBytes = prometheus.NewGaugeVec(
@@ -526,6 +532,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	// OVS Interface Statistics: Receive errors
@@ -538,6 +546,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxDropped = prometheus.NewGaugeVec(
@@ -549,6 +559,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxErrorsTotal = prometheus.NewGaugeVec(
@@ -560,6 +572,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxFrameError = prometheus.NewGaugeVec(
@@ -571,6 +585,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxMissedError = prometheus.NewGaugeVec(
@@ -582,6 +598,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxOverrunError = prometheus.NewGaugeVec(
@@ -593,6 +611,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	// OVS Interface Statistics: Transmit errors
@@ -605,6 +625,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatTxErrorsTotal = prometheus.NewGaugeVec(
@@ -616,6 +638,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatCollisions = prometheus.NewGaugeVec(
@@ -627,6 +651,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 
 	interfaceStatRxMulticastPackets = prometheus.NewGaugeVec(
@@ -638,6 +664,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
+			"pod_name",
+			"pod_namespace",
 		})
 )
 

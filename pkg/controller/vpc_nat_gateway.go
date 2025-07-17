@@ -919,11 +919,8 @@ func (c *Controller) cleanUpVpcNatGw() error {
 }
 
 func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"},
-	})
-
-	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
+	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.AsSelector()
+	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(selector)
 
 	switch {
 	case err != nil:

@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 # renovate: datasource=golang-version depName=go
-ARG GO_VERSION=1.24.4
+ARG GO_VERSION=1.24.5
 
 FROM ubuntu:24.04 AS openssl-builder
 
@@ -181,7 +181,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.7.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.32.6
+ARG KUBECTL_VERSION=v1.32.7
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=3.37.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
@@ -220,7 +220,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt upgrade -y && \
-    apt install ca-certificates hostname netbase ethtool iproute2 ncat libunbound8 procps \
+    apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
         kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
         uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \

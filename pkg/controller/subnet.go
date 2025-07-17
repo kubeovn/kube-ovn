@@ -92,6 +92,11 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 		c.updateVpcStatusQueue.Add(oldSubnet.Spec.Vpc)
 	}
 
+	if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
+		klog.Infof("enqueue update vpc %s triggered by u2o interconnection change of subnet %s", newSubnet.Spec.Vpc, key)
+		c.addOrUpdateVpcQueue.Add(newSubnet.Spec.Vpc)
+	}
+
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
 		oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock ||
 		!slices.Equal(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
@@ -185,6 +190,11 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 
 	if subnet.Spec.U2OInterconnectionIP != "" && !subnet.Spec.U2OInterconnection {
 		subnet.Spec.U2OInterconnectionIP = ""
+		changed = true
+	}
+
+	if subnet.Spec.Vlan == "" && subnet.Spec.U2OInterconnection {
+		subnet.Spec.U2OInterconnection = false
 		changed = true
 	}
 
@@ -3279,8 +3289,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) findSubnetByNetworkAttachmentDefinition(ns, name string, subnets []*kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
-	nadClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(ns)
-	nad, err := nadClient.Get(context.Background(), name, metav1.GetOptions{})
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(ns).Get(name)
 	if err != nil {
 		klog.Errorf("failed to get net-attach-def %s/%s: %v", ns, name, err)
 		return nil, err

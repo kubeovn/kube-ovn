@@ -15,6 +15,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
@@ -57,13 +58,13 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 	return attachmentName, attachmentNs
 }
 
-func (c *Controller) getAttachNetwork(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
+func (c *Controller) getAttachNetworkForService(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
 		return nil, errors.New("the provider name should be consisted of name and namespace")
 	}
 
-	nad, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(attachmentNs).Get(attachmentName)
 	if err != nil {
 		klog.Errorf("failed to get network attachment definition %s in namespace %s, err: %v", attachmentName, attachmentNs, err)
 	}
@@ -199,11 +200,8 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service, nad *nadv1.NetworkAttac
 }
 
 func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, error) {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genLbSvcDpName(svcName), "namespace": svcNamespace},
-	})
-
-	pods, err := c.podsLister.Pods(svcNamespace).List(sel)
+	selector := labels.Set{"app": genLbSvcDpName(svcName), "namespace": svcNamespace}.AsSelector()
+	pods, err := c.podsLister.Pods(svcNamespace).List(selector)
 	switch {
 	case err != nil:
 		klog.Error(err)

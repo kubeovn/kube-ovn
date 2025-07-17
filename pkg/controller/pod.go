@@ -16,8 +16,6 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
-	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1665,20 +1663,6 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	return nil, ipam.ErrNoAvailable
 }
 
-func loadNetConf(bytes []byte) (*multustypes.DelegateNetConf, error) {
-	delegateConf := &multustypes.DelegateNetConf{}
-	if err := json.Unmarshal(bytes, &delegateConf.Conf); err != nil {
-		return nil, logging.Errorf("LoadDelegateNetConf: error unmarshalling delegate config: %v", err)
-	}
-
-	if delegateConf.Conf.Type == "" {
-		if err := multustypes.LoadDelegateNetConfList(bytes, delegateConf); err != nil {
-			return nil, logging.Errorf("LoadDelegateNetConf: failed with: %v", err)
-		}
-	}
-	return delegateConf, nil
-}
-
 type providerType int
 
 const (
@@ -1728,8 +1712,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 	result := make([]*kubeovnNet, 0, len(multusNets))
 	for _, attach := range multusNets {
-		networkClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attach.Namespace)
-		network, err := networkClient.Get(context.Background(), attach.Name, metav1.GetOptions{})
+		network, err := c.netAttachLister.NetworkAttachmentDefinitions(attach.Namespace).Get(attach.Name)
 		if err != nil {
 			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
 			return nil, err

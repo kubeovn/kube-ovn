@@ -9,6 +9,7 @@ import (
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
+	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -56,6 +57,7 @@ type Framework struct {
 	KubeVirtClientSet kubecli.KubevirtClient
 	MetallbClientSet  *MetallbClientSet
 	AttachNetClient   nad.Interface
+	ExtClientSet      *extClientSet.Clientset
 	// master/release-1.10/...
 	ClusterVersion string
 	// 999.999 for master
@@ -210,6 +212,17 @@ func (f *Framework) BeforeEach() {
 		config.QPS = f.Options.ClientQPS
 		config.Burst = f.Options.ClientBurst
 		f.KubeVirtClientSet, err = kubecli.GetKubevirtClientFromRESTConfig(config)
+		ExpectNoError(err)
+	}
+
+	if f.ExtClientSet == nil {
+		ginkgo.By("Creating a Kubernetes client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.ExtClientSet, err = extClientSet.NewForConfig(config)
 		ExpectNoError(err)
 	}
 

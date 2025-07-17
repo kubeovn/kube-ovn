@@ -1,5 +1,57 @@
 # Changelog
 
+## v1.14.2 (2025-07-14)
+
+ * [f22e6ce93](https://github.com/kubeovn/kube-ovn/commit/f22e6ce93a636b1651344114a80c102a03f74e56) release v1.14.2
+ * [be4e75777](https://github.com/kubeovn/kube-ovn/commit/be4e7577773d558732eb0fc85dd3804b82a9875a) controller: fix setting LR options on initialization (#5444)
+ * [d00729aa9](https://github.com/kubeovn/kube-ovn/commit/d00729aa95c00362c3573ab1322445b41f26bc77) kubectl-ko: collect information about ipsec and xfrm (#5472)
+ * [549c17cc0](https://github.com/kubeovn/kube-ovn/commit/549c17cc091c4d59826885ca558dbaf3f26e1544) fix(deps): update module golang.org/x/tools to v0.35.0 (#5478)
+ * [131bebf7c](https://github.com/kubeovn/kube-ovn/commit/131bebf7c8464ef201437a747586f6086ce664c0) allow different provider use same vlan (#5471)
+ * [2bafe4c0b](https://github.com/kubeovn/kube-ovn/commit/2bafe4c0b441b47f0369a3518680dd4c917b82d4) fix(deps): update module golang.org/x/net to v0.42.0 (#5469)
+ * [4c0a115a9](https://github.com/kubeovn/kube-ovn/commit/4c0a115a9a7e913e288648ef9e8b8ed3ffa591d4) chore(deps): update module golang.org/x/term to v0.33.0 (#5462)
+ * [a42245ab4](https://github.com/kubeovn/kube-ovn/commit/a42245ab462c936bfb6d1c095d58879bc2dd1468) chore(deps): update module golang.org/x/text to v0.27.0 (#5458)
+ * [918e2a47b](https://github.com/kubeovn/kube-ovn/commit/918e2a47b6060b5d50f6dbe4d2d6467f1ad07a2c) fix(deps): update module golang.org/x/sys to v0.34.0 (#5460)
+ * [d7446cc87](https://github.com/kubeovn/kube-ovn/commit/d7446cc8793b83a7d8829332fcc45c0d72f1bd6c) fix(deps): update module golang.org/x/mod to v0.26.0 (#5459)
+ * [7db024adc](https://github.com/kubeovn/kube-ovn/commit/7db024adcdf1783e2f1084486dcae67be0ad96f5) chore(deps): update module golang.org/x/sync to v0.16.0 (#5456)
+ * [b85e80bb0](https://github.com/kubeovn/kube-ovn/commit/b85e80bb017d2c4fc62db9871aa284b661c75b28) chore(deps): update dependency go to v1.24.5 (master) (#5438)
+ * [661cfb526](https://github.com/kubeovn/kube-ovn/commit/661cfb526b26f392fdde172fa590697060e3a66a) replace Endpoint with EndpointSlice (#5437)
+ * [87828c62d](https://github.com/kubeovn/kube-ovn/commit/87828c62d561e4495e7c70c0be09311f8c6a0a85) ci: increase timeout of Multus-CNI conformance e2e (#5429)
+ * [b161305e1](https://github.com/kubeovn/kube-ovn/commit/b161305e137ca82f9cbbe0198062e96c9ddb66b2) chore(deps): update dependency go to v1.24.5 (#5439)
+ * [e78ebeb75](https://github.com/kubeovn/kube-ovn/commit/e78ebeb75b268bba91d096458ca50ac613d2a356) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * zbb88888
+ * 张祖建
+
+## v1.14.1 (2025-07-04)
+
+ * [f2b180e60](https://github.com/kubeovn/kube-ovn/commit/f2b180e608e0a8d241f56d67c4ca8e05ad959c45) release v1.14.1
+ * [d24fc268e](https://github.com/kubeovn/kube-ovn/commit/d24fc268ee09bb57be3dbcda290f7db68119aa64) fix setting LR option always_learn_from_arp_request (#5426)
+ * [5ea4d1456](https://github.com/kubeovn/kube-ovn/commit/5ea4d14566553150f3b22add8d77db4e30579799) kubectl-ko: replace endpoint with endpointslice (#5425)
+ * [018a55927](https://github.com/kubeovn/kube-ovn/commit/018a55927ff09185d51db8c3c45c8f301d89e7ee) controller: set always_learn_from_arp_request to false only when LR is not connected to external network (#5419)
+ * [fb859bbf6](https://github.com/kubeovn/kube-ovn/commit/fb859bbf653689d0115b942d6fea78b64cccb1cf) fix parsing resolv.conf when systemd-resolved is running on the host (#5423)
+ * [ee0c70951](https://github.com/kubeovn/kube-ovn/commit/ee0c709513d188053f7dc693a16b9d7db9370c38) remove unused e2e tests
+ * [737c301a8](https://github.com/kubeovn/kube-ovn/commit/737c301a845d82a1c152ce391728888f3f2e790a) cni-server: fix inserting and deleting iptables rules (#5421)
+ * [30c8c5835](https://github.com/kubeovn/kube-ovn/commit/30c8c5835206148b7a8c55043403bf71ece5d56f) add manual release
+ * [eae798768](https://github.com/kubeovn/kube-ovn/commit/eae798768adb72e1b9a0292eff2d7a4de8ccd72f) upgrade ovn chart name (#5416)
+ * [f35452203](https://github.com/kubeovn/kube-ovn/commit/f35452203eb48869389f420d63dccc7450b0f7a4) mock: generate code using go tool command (#5409)
+ * [528fb73ce](https://github.com/kubeovn/kube-ovn/commit/528fb73ced4e6ecab02b0d6297dd2a6e53adcede) fix matching loopback addresses (#5402)
+ * [7cfc3bc89](https://github.com/kubeovn/kube-ovn/commit/7cfc3bc89b5ecdbc4c6d6426f8c370223b7d2f90) ci: deploy ipv6 talos cluster without ipv4 addresses (#5401)
+ * [eb930603a](https://github.com/kubeovn/kube-ovn/commit/eb930603a7275b8f06f5110d4761a1c8cad3dfdf) fix(services): SLRs could not target VM endpoints (#5397)
+ * [14d3fbb07](https://github.com/kubeovn/kube-ovn/commit/14d3fbb07db960996452b108b06baeb16b53638b) del and add acls in one transaction (#5394)
+ * [d0fab29b9](https://github.com/kubeovn/kube-ovn/commit/d0fab29b92d6208406aabfa0f5b3bd4b84ee4366) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.14.0 (2025-06-25)
 
  * [85a45ce30](https://github.com/kubeovn/kube-ovn/commit/85a45ce306585ce24e2ee23a752df850a81c034c) release vm ip when vm is stopped then deleted (#5390)

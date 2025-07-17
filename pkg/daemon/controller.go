@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -63,6 +65,10 @@ type Controller struct {
 	servicesSynced cache.InformerSynced
 	serviceQueue   workqueue.TypedRateLimitingInterface[*serviceEvent]
 
+	caSecretLister listerv1.SecretLister
+	caSecretSynced cache.InformerSynced
+	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
+
 	recorder record.EventRecorder
 
 	protocol string
@@ -82,7 +88,11 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration,
+	stopCh <-chan struct{},
+	podInformerFactory, nodeInformerFactory, caSecretInformerFactory informers.SharedInformerFactory,
+	kubeovnInformerFactory kubeovninformer.SharedInformerFactory,
+) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events(v1.NamespaceAll)})
@@ -94,6 +104,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	servicesInformer := nodeInformerFactory.Core().V1().Services()
+	caSecretInformer := caSecretInformerFactory.Core().V1().Secrets()
 
 	controller := &Controller{
 		config: config,
@@ -125,6 +136,10 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		servicesSynced: servicesInformer.Informer().HasSynced,
 		serviceQueue:   newTypedRateLimitingQueue[*serviceEvent]("Service", nil),
 
+		caSecretLister: caSecretInformer.Lister(),
+		caSecretSynced: caSecretInformer.Informer().HasSynced,
+		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
+
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
 	}
@@ -142,10 +157,11 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
+	caSecretInformerFactory.Start(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced, controller.servicesSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -182,8 +198,33 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 	}); err != nil {
 		return nil, err
 	}
+	if _, err = caSecretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIPSecCA,
+		UpdateFunc: controller.enqueueUpdateIPSecCA,
+	}); err != nil {
+		return nil, err
+	}
 
 	return controller, nil
+}
+
+func (c *Controller) enqueueAddIPSecCA(obj any) {
+	key := cache.MetaObjectToName(obj.(*v1.Secret)).String()
+	klog.V(3).Infof("enqueue add CA %s", key)
+	c.ipsecQueue.Add(key)
+}
+
+func (c *Controller) enqueueUpdateIPSecCA(oldObj, newObj any) {
+	oldSecret := oldObj.(*v1.Secret)
+	newSecret := newObj.(*v1.Secret)
+	if maps.EqualFunc(oldSecret.Data, newSecret.Data, bytes.Equal) {
+		// No changes in CA data, no need to enqueue
+		return
+	}
+
+	key := cache.MetaObjectToName(newSecret).String()
+	klog.V(3).Infof("enqueue update CA %s", key)
+	c.ipsecQueue.Add(key)
 }
 
 func (c *Controller) enqueueAddProviderNetwork(obj any) {
@@ -645,6 +686,37 @@ func (c *Controller) markAndCleanInternalPort() error {
 	return nil
 }
 
+func (c *Controller) runIPSecWorker() {
+	if err := c.StartIPSecService(); err != nil {
+		klog.Errorf("starting ipsec service: %v", err)
+	}
+
+	for c.processNextIPSecWorkItem() {
+	}
+}
+
+func (c *Controller) processNextIPSecWorkItem() bool {
+	key, shutdown := c.ipsecQueue.Get()
+	if shutdown {
+		return false
+	}
+	defer c.ipsecQueue.Done(key)
+
+	err := func(key string) error {
+		if err := c.SyncIPSecKeys(key); err != nil {
+			c.ipsecQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
+		}
+		c.ipsecQueue.Forget(key)
+		return nil
+	}(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -654,7 +726,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.serviceQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
-
+	defer c.ipsecQueue.ShutDown()
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -673,6 +745,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
@@ -698,14 +771,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.cleanTProxyConfig()
 	}
 
-	if c.config.EnableOVNIPSec {
-		go wait.Until(func() {
-			if err := c.ManageIPSecKeys(); err != nil {
-				klog.Errorf("manage ipsec keys error: %v", err)
-			}
-		}, 24*time.Hour, stopCh)
-	} else {
-		if err := c.StopAndClearIPSecResouce(); err != nil {
+	if !c.config.EnableOVNIPSec {
+		if err := c.StopAndClearIPSecResource(); err != nil {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
 	}

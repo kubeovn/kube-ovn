@@ -106,9 +106,8 @@ func (c *Controller) gcVpcNatGateway() error {
 		gwStsNames = append(gwStsNames, util.GenNatGwName(gw.Name))
 	}
 
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
 	stss, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
-		LabelSelector: sel.String(),
+		LabelSelector: labels.Set{util.VpcNatGatewayLabel: "true"}.AsSelector().String(),
 	})
 	if err != nil {
 		klog.Errorf("failed to list vpc nat gateway statefulset, %v", err)
@@ -1102,10 +1101,9 @@ func (c *Controller) gcVPCDNS() error {
 		return err
 	}
 
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDNSNameLabel: "true"}})
-
+	labelSelector := labels.Set{util.VpcDNSNameLabel: "true"}.AsSelector()
 	deps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
-		LabelSelector: sel.String(),
+		LabelSelector: labelSelector.String(),
 	})
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns deployment, %s", err)
@@ -1131,7 +1129,7 @@ func (c *Controller) gcVPCDNS() error {
 		}
 	}
 
-	slrs, err := c.switchLBRuleLister.List(sel)
+	slrs, err := c.switchLBRuleLister.List(labelSelector)
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns SwitchLBRules, %s", err)
 		return err
