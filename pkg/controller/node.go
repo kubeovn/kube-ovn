@@ -540,7 +540,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	for _, cachedSubnet := range subnets {
-		if cachedSubnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+		if cachedSubnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			// we need to reconcile ovn route for subnets with distributed gateway mode,
 			// since the informer node cache may not be synced before the subnet reconcile triggered by node addition
 			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
