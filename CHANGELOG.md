@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.14.3 (2025-07-18)
+
+ * [328e984c5](https://github.com/kubeovn/kube-ovn/commit/328e984c591e4e79c240944ea030bea9009a1a85) release v1.14.3
+ * [305d0c23b](https://github.com/kubeovn/kube-ovn/commit/305d0c23b1ce7daced682a2c23951e53cac4484d) fix version (#5495)
+ * [a05ad7a8c](https://github.com/kubeovn/kube-ovn/commit/a05ad7a8ca5891014b9e591f51587f31fef921fe) metrics: fix pinger_inconsistent_port_binding (#5496)
+ * [987abfb8a](https://github.com/kubeovn/kube-ovn/commit/987abfb8a32ab13929171b98bfdd9483b39bc43a) fix: only addOrUpdateSubnetQueue if the GatewayType is distributed instead of if it's not centralized (#5493)
+ * [f9c72712f](https://github.com/kubeovn/kube-ovn/commit/f9c72712f923dc10a579866e0b0ab91de13dec26) bump k8s to v1.32.7 (#5492)
+ * [6cde3a346](https://github.com/kubeovn/kube-ovn/commit/6cde3a34622aa81f3ccfb0665b53ad0b3e4e8880) fix missing rbac rule for sa ovn-ovs (#5488)
+ * [bf6702777](https://github.com/kubeovn/kube-ovn/commit/bf67027775fa31e3dc78f39397a5e7eebbf5051d) chart version equal to 1.0 (#5417)
+ * [b73f4616f](https://github.com/kubeovn/kube-ovn/commit/b73f4616f539221068a04ee98e7a0dba06911517) add release image cleanup
+ * [9175edc27](https://github.com/kubeovn/kube-ovn/commit/9175edc276d711f12caa977cb7823c85a4d7a265) fix docs release
+ * [18e08ef19](https://github.com/kubeovn/kube-ovn/commit/18e08ef1922c8d3586c2fa9216cc9ad1950e376a) prepare for next release
+
+### Contributors
+
+ * Joachim Hill-Grannec
+ * Mengxin Liu
+ * changluyi
+ * 张祖建
+
 ## v1.14.2 (2025-07-14)
 
  * [f22e6ce93](https://github.com/kubeovn/kube-ovn/commit/f22e6ce93a636b1651344114a80c102a03f74e56) release v1.14.2
