@@ -357,7 +357,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	var delay time.Duration
 	if newPod.Spec.TerminationGracePeriodSeconds != nil {
 		if !newPod.DeletionTimestamp.IsZero() {
-			delay = time.Until(newPod.DeletionTimestamp.Add(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second))
+			delay = time.Until(newPod.DeletionTimestamp.Time)
 		} else {
 			delay = time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second
 		}
