@@ -74,7 +74,7 @@ type bgpEdgeRouters struct {
 func newBgpEdgeRouters(c *KubeovnV1Client, namespace string) *bgpEdgeRouters {
 	return &bgpEdgeRouters{
 		gentype.NewClientWithList[*kubeovnv1.BgpEdgeRouter, *kubeovnv1.BgpEdgeRouterList](
-			"bgp-edgerouters",
+			"bgp-edge-routers",
 			c.RESTClient(),
 			scheme.ParameterCodec,
 			namespace,
@@ -89,7 +89,7 @@ func (c *bgpEdgeRouters) GetScale(ctx context.Context, bgpEdgeRouterName string,
 	result = &autoscalingv1.Scale{}
 	err = c.GetClient().Get().
 		Namespace(c.GetNamespace()).
-		Resource("bgp-edgerouters").
+		Resource("bgp-edge-routers").
 		Name(bgpEdgeRouterName).
 		SubResource("scale").
 		VersionedParams(&options, scheme.ParameterCodec).
