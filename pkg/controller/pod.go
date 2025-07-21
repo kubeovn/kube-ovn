@@ -353,40 +353,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		return
 	}
 
-	// enqueue delay
-	var delay time.Duration
-	if newPod.Spec.TerminationGracePeriodSeconds != nil {
-		if !newPod.DeletionTimestamp.IsZero() {
-			delay = time.Until(newPod.DeletionTimestamp.Time)
-		} else {
-			delay = time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second
-		}
-	}
-
 	if !newPod.DeletionTimestamp.IsZero() && !isStateful && !isVMPod {
-		// Use short interval check instead of time.AfterFunc for better timing accuracy
-		targetTime := newPod.DeletionTimestamp.Time
-		now := time.Now()
-		expectedExecutionTime := targetTime
-		klog.V(3).Infof("enqueue delete pod %s after %v (current time: %v, expected execution time: %v)", key, targetTime.Sub(now), now, expectedExecutionTime)
 		c.deletingPodObjMap.Store(key, newPod)
-
-		// Use short interval check for better precision
-		go func() {
-			checkInterval := 1 * time.Second
-			for {
-				now := time.Now()
-				if now.After(targetTime) {
-					klog.V(3).Infof("Adding pod %s to delete queue after short interval check", key)
-					c.deletePodQueue.Add(key)
-					return
-				}
-				sleepStart := time.Now()
-				time.Sleep(checkInterval)
-				actualSleepTime := time.Since(sleepStart)
-				klog.V(4).Infof("Pod %s sleep actual time: %v (expected: %v)", key, actualSleepTime, checkInterval)
-			}
-		}()
 		return
 	}
 
@@ -396,51 +364,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID) {
-		// Use short interval check instead of time.AfterFunc for better timing accuracy
-		targetTime := newPod.DeletionTimestamp.Time
-		klog.V(3).Infof("enqueue delete pod %s after %v", key, targetTime.Sub(time.Now()))
 		c.deletingPodObjMap.Store(key, newPod)
-
-		// Use short interval check for better precision
-		go func() {
-			checkInterval := 1 * time.Second
-			for {
-				now := time.Now()
-				if now.After(targetTime) {
-					klog.V(3).Infof("Adding statefulset pod %s to delete queue after short interval check", key)
-					c.deletePodQueue.Add(key)
-					return
-				}
-				sleepStart := time.Now()
-				time.Sleep(checkInterval)
-				actualSleepTime := time.Since(sleepStart)
-				klog.V(4).Infof("Statefulset pod %s sleep actual time: %v (expected: %v)", key, actualSleepTime, checkInterval)
-			}
-		}()
 		return
 	}
 	if isVMPod && c.isVMToDel(newPod, vmName) {
-		// Use short interval check instead of time.AfterFunc for better timing accuracy
-		targetTime := time.Now().Add(delay)
-		klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 		c.deletingPodObjMap.Store(key, newPod)
-
-		// Use short interval check for better precision
-		go func() {
-			checkInterval := 1 * time.Second
-			for {
-				now := time.Now()
-				if now.After(targetTime) {
-					klog.V(3).Infof("Adding VM pod %s to delete queue after short interval check", key)
-					c.deletePodQueue.Add(key)
-					return
-				}
-				sleepStart := time.Now()
-				time.Sleep(checkInterval)
-				actualSleepTime := time.Since(sleepStart)
-				klog.V(4).Infof("VM pod %s sleep actual time: %v (expected: %v)", key, actualSleepTime, checkInterval)
-			}
-		}()
 		return
 	}
 	klog.Infof("enqueue update pod %s", key)
