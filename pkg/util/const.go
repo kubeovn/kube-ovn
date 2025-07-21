@@ -114,6 +114,7 @@ const (
 	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
 
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
+	BgpEdgeRouterLabel     = "ovn.kubernetes.io/bgp-edge-router"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
 
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"

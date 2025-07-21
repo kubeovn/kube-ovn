@@ -48,6 +48,7 @@ const (
 
 	ExternalIDVendor           = "vendor"
 	ExternalIDVpcEgressGateway = "vpc-egress-gateway"
+	ExternalIDBgpEdgeRouter    = "bgp-edge-router"
 )
 
 // NewLegacyClient init a legacy ovn client

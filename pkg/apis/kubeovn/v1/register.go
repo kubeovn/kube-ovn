@@ -73,6 +73,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcEgressGatewayList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
+		&BgpEdgeRouter{},
+		&BgpEdgeRouterList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

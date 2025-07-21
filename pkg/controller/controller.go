@@ -289,7 +289,12 @@ type Controller struct {
 	anpInformerFactory     anpinformer.SharedInformerFactory
 
 	// Database health check
-	dbFailureCount int
+	dbFailureCount                int
+	bgpEdgeRouterLister           kubeovnlister.BgpEdgeRouterLister
+	bgpEdgeRouterSynced           cache.InformerSynced
+	addOrUpdateBgpEdgeRouterQueue workqueue.TypedRateLimitingInterface[string]
+	delBgpEdgeRouterQueue         workqueue.TypedRateLimitingInterface[string]
+	bgpEdgeRouterKeyMutex         keymutex.KeyMutex
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -350,6 +355,7 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
+	bgpEdgeRouterInformer := kubeovnInformerFactory.Kubeovn().V1().BgpEdgeRouters()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -742,6 +748,14 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = bgpEdgeRouterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddBgpEdgeRouter,
+		UpdateFunc: controller.enqueueUpdateBgpEdgeRouter,
+		DeleteFunc: controller.enqueueDeleteBgpEdgeRouter,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add bgp edge router event handler")
 	}
 
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
