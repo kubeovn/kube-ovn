@@ -109,7 +109,7 @@ spec:
               name: kube-ovn-log
       nodeSelector:
         kubernetes.io/os: "linux"
-        kube-ovn/role: "master"
+        {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
       volumes:
         - name: host-run-ovn
           hostPath:
