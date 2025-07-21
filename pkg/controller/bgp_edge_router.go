@@ -596,7 +596,7 @@ func (c *Controller) reconcilebgpEdgeRouterOVNRoutes(router *kubeovnv1.BgpEdgeRo
 		}
 	}
 	key := cache.MetaObjectToName(router).String()
-	pgName := vegPortGroupName(key)
+	pgName := berPortGroupName(key)
 	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
 		klog.Error(err)
@@ -609,7 +609,7 @@ func (c *Controller) reconcilebgpEdgeRouterOVNRoutes(router *kubeovnv1.BgpEdgeRo
 	}
 
 	// reconcile OVN address set
-	asName := vegAddressSetName(key, af)
+	asName := berAddressSetName(key, af)
 	if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create address set %s: %w", asName, err)
 		klog.Error(err)
@@ -922,7 +922,7 @@ func bgpEdgeRouterContainerBFDD(image, bfdIP string, minTX, minRX, multiplier in
 	}
 }
 
-func (c *Controller) handleDelbgpEdgeRouter(key string) error {
+func (c *Controller) handleDelBgpEdgeRouter(key string) error {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -985,12 +985,12 @@ func (c *Controller) cleanOVNForbgpEdgeRouter(key, lrName string) error {
 		klog.Error(err)
 		return err
 	}
-	if err = c.OVNNbClient.DeletePortGroup(vegPortGroupName(key)); err != nil {
+	if err = c.OVNNbClient.DeletePortGroup(berPortGroupName(key)); err != nil {
 		klog.Error(err)
 		return err
 	}
 	for _, af := range [...]int{4, 6} {
-		if err = c.OVNNbClient.DeleteAddressSet(vegAddressSetName(key, af)); err != nil {
+		if err = c.OVNNbClient.DeleteAddressSet(berAddressSetName(key, af)); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1001,15 +1001,15 @@ func (c *Controller) cleanOVNForbgpEdgeRouter(key, lrName string) error {
 
 func berPortGroupName(key string) string {
 	hash := util.Sha256Hash([]byte(key))
-	return "VEG." + hash[:12]
+	return "BER." + hash[:12]
 }
 
 func berAddressSetName(key string, af int) string {
 	hash := util.Sha256Hash([]byte(key))
-	return fmt.Sprintf("VEG.%s.ipv%d", hash[:12], af)
+	return fmt.Sprintf("BER.%s.ipv%d", hash[:12], af)
 }
 
-func (c *Controller) handlePodEventForbgpEdgeRouter(pod *corev1.Pod) error {
+func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 	if !pod.DeletionTimestamp.IsZero() || pod.Annotations[util.AllocatedAnnotation] != "true" {
 		return nil
 	}
@@ -1035,19 +1035,19 @@ func (c *Controller) handlePodEventForbgpEdgeRouter(pod *corev1.Pod) error {
 		return err
 	}
 
-	for _, veg := range gateways {
-		if veg.VPC(c.config.ClusterRouter) != vpc {
+	for _, ber := range gateways {
+		if ber.VPC(c.config.ClusterRouter) != vpc {
 			continue
 		}
 
-		for _, selector := range veg.Spec.Selectors {
+		for _, selector := range ber.Spec.Selectors {
 			if selector.NamespaceSelector != nil && !util.ObjectMatchesLabelSelector(ns, selector.NamespaceSelector) {
 				continue
 			}
 			if selector.PodSelector != nil && !util.ObjectMatchesLabelSelector(pod, selector.PodSelector) {
 				continue
 			}
-			c.addOrUpdateBgpEdgeRouterQueue.Add(cache.MetaObjectToName(veg).String())
+			c.addOrUpdateBgpEdgeRouterQueue.Add(cache.MetaObjectToName(ber).String())
 		}
 	}
 	return nil

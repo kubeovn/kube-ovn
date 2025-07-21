@@ -420,6 +420,12 @@ func Run(ctx context.Context, config *Configuration) {
 		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
 		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
+		bgpEdgeRouterLister:           bgpEdgeRouterInformer.Lister(),
+		bgpEdgeRouterSynced:           bgpEdgeRouterInformer.Informer().HasSynced,
+		addOrUpdateBgpEdgeRouterQueue: newTypedRateLimitingQueue("AddOrUpdateBgpEdgeRouter", custCrdRateLimiter),
+		delBgpEdgeRouterQueue:         newTypedRateLimitingQueue("DeleteBgpEdgeRouter", custCrdRateLimiter),
+		bgpEdgeRouterKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
@@ -672,7 +678,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
-		controller.ovnDnatRuleSynced,
+		controller.ovnDnatRuleSynced, controller.bgpEdgeRouterSynced,
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
@@ -1200,6 +1206,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update bgp edge router", c.addOrUpdateBgpEdgeRouterQueue, c.handleAddOrUpdateBgpEdgeRouter), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete bgp edge router", c.delBgpEdgeRouterQueue, c.handleDelBgpEdgeRouter), time.Second, ctx.Done())
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())
