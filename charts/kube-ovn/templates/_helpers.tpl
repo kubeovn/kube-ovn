@@ -20,6 +20,9 @@ Get IP-addresses of master nodes
     {{- end -}}
   {{- end -}}
 {{- end -}}
+{{- if eq (len $ips) 0 -}}
+  {{- fail (printf "No nodes found with label '%s'. Please check your MASTER_NODES_LABEL configuration or ensure master nodes are properly labeled." $.Values.MASTER_NODES_LABEL) -}}
+{{- end -}}
 {{ join "," $ips }}
 {{- end -}}
 
