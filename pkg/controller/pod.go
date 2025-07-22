@@ -709,9 +709,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
-		c.initVpcNatGatewayQueue.Add(vpcGwName)
+	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
+	for _, podNet := range needAllocatePodNets {
+		if vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, podNet.ProviderName)]; isVpcNatGw {
+			c.initVpcNatGatewayQueue.Add(vpcGwName)
+			break
+		}
 	}
+
 	return pod, nil
 }
 

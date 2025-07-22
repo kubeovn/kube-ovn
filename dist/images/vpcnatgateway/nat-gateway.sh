@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# TODO: Interfaces used in this script are hard coded. Should we make them configurable?
+#       For now, we assume the following:
+#       - net1 is the interface that connects to the VPC
+#       - net2 is the interface that connects to the external network
+#       - A VPC gateway cannot be part of more than one VPC and external network
 
 iptables_cmd=$(which iptables)
 iptables_save_cmd=$(which iptables-save)
@@ -67,7 +72,7 @@ function add_vpc_internal_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
+        exec_cmd "ip route replace $cidr via $nextHop dev net1"
     done
 }
 
@@ -79,7 +84,7 @@ function del_vpc_internal_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip route del $cidr dev eth0"
+        exec_cmd "ip route del $cidr dev net1"
     done
 }
 
@@ -92,9 +97,9 @@ function del_vpc_external_route() {
     # do
     #     arr=(${rule//,/ })
     #     cidr=${arr[0]}
-    #     exec_cmd "ip route del $cidr dev net1"
+    #     exec_cmd "ip route del $cidr dev net2"
     #     sleep 1
-    #     exec_cmd "ip route del default dev net1"
+    #     exec_cmd "ip route del default dev net2"
     # done
 }
 
@@ -117,9 +122,9 @@ function del_eip() {
     do
         arr=(${rule//,/ })
         eip=${arr[0]}
-        ipCidr=`ip addr show net1 | grep $eip | awk '{print $2 }'`
+        ipCidr=`ip addr show net2 | grep $eip | awk '{print $2 }'`
         if [ -n "$ipCidr" ]; then
-            exec_cmd "ip addr del $ipCidr dev net1"
+            exec_cmd "ip addr del $ipCidr dev net2"
         fi
     done
 }
@@ -169,7 +174,7 @@ function add_snat() {
         randomFullyOption=${arr[2]}
         # check if already exist
         $iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o net1 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o net2 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
@@ -230,14 +235,14 @@ function del_dnat() {
 
 
 # example usage:
-# delete_tc_u32_filter "net1" "1:0" "192.168.1.1" "src"
+# delete_tc_u32_filter "net2" "1:0" "192.168.1.1" "src"
 function delete_tc_u32_filter() {
     dev=$1
     qdisc_id=$2
     cidr=$3
     matchDirection=$4
 
-    # tc -p -s -d filter show dev net1 parent $qdisc_id
+    # tc -p -s -d filter show dev net2 parent $qdisc_id
     # filter protocol ip pref 10 u32 chain 0
     # filter protocol ip pref 10 u32 chain 0 fh 800: ht divisor 1
     # filter protocol ip pref 10 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 *flowid :1 not_in_hw
@@ -265,8 +270,8 @@ function delete_tc_u32_filter() {
 
 function eip_ingress_qos_add() {
     # ingress:
-    # external --> net1 --> qos -->
-    # dst ip is iptables eip on net1
+    # external --> net2 --> qos -->
+    # dst ip is iptables eip on net2
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -274,7 +279,7 @@ function eip_ingress_qos_add() {
         priority=${arr[1]}
         rate=${arr[2]}
         burst=${arr[3]}
-        dev="net1"
+        dev="net2"
         matchDirection="dst"
         tc qdisc add dev $dev ingress 2>/dev/nul || true
         # get qdisc id
@@ -290,8 +295,8 @@ function eip_ingress_qos_add() {
 
 function eip_egress_qos_add() {
     # egress:
-    # net1 --> qos --> external
-    # src ip is iptables eip on net1
+    # net2 --> qos --> external
+    # src ip is iptables eip on net2
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -301,7 +306,7 @@ function eip_egress_qos_add() {
         burst=${arr[3]}
         qdisc_id="1:0"
         matchDirection="src"
-        dev="net1"
+        dev="net2"
         tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/nul || true
         # del old filter
         tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $v4ip
@@ -389,7 +394,7 @@ function eip_ingress_qos_del() {
         arr=(${rule//,/ })
         cidr=(${arr[0]//\// })
         matchDirection="dst"
-        dev="net1"
+        dev="net2"
         qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         # if qdisc_id is empty, this means ingress qdisc is not added, so we don't need to delete filter.
         if [ -n "$qdisc_id" ]; then
@@ -405,7 +410,7 @@ function eip_egress_qos_del() {
         cidr=(${arr[0]//\// })
         matchDirection="src"
         qdisc_id="1:0"
-        dev="net1"
+        dev="net2"
         delete_tc_u32_filter $dev $qdisc_id $cidr $matchDirection
     done
 }
