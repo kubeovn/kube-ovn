@@ -51,12 +51,12 @@ func (c *Controller) disableOVNIC(azName string) error {
 	return nil
 }
 
-func (c *Controller) setAutoRoute(autoRoute bool) {
+func (c *Controller) setAutoRoute(autoRoute bool) error {
 	var blackList []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets, %v", err)
-		return
+		return err
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.DisableInterConnection || subnet.Name == c.config.NodeSwitch {
@@ -66,7 +66,7 @@ func (c *Controller) setAutoRoute(autoRoute bool) {
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list node, %v", err)
-		return
+		return err
 	}
 	for _, node := range nodes {
 		ipv4, ipv6 := util.GetNodeInternalIP(*node)
@@ -79,8 +79,10 @@ func (c *Controller) setAutoRoute(autoRoute bool) {
 	}
 	if err := c.OVNNbClient.SetICAutoRoute(autoRoute, blackList); err != nil {
 		klog.Errorf("failed to config auto route, %v", err)
-		return
+		return err
 	}
+
+	return nil
 }
 
 func (c *Controller) DeleteICResources(azName string) error {
@@ -179,6 +181,11 @@ func (c *Controller) resyncInterConnection() {
 			klog.Errorf("Disable az %s OVN IC failed: %v", azName, err)
 			return
 		}
+		if err = c.setAutoRoute(false); err != nil {
+			klog.Errorf("failed to disable auto route: %v", err)
+			return
+		}
+
 		icEnabled = "false"
 		lastIcCm = nil
 
@@ -186,11 +193,10 @@ func (c *Controller) resyncInterConnection() {
 		return
 	}
 
-	autoRoute := false
-	if cm.Data["auto-route"] == "true" {
-		autoRoute = true
+	if err = c.setAutoRoute(cm.Data["auto-route"] == "true"); err != nil {
+		klog.Errorf("failed to set auto route: %v", err)
+		return
 	}
-	c.setAutoRoute(autoRoute)
 
 	switch c.getICState(cm.Data, lastIcCm) {
 	case icNoAction:
