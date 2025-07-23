@@ -83,6 +83,7 @@ type Controller struct {
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
 	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
+	vpcLastPoliciesMap   *xsync.Map[string, string]
 	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
 	updateVpcStatusQueue workqueue.TypedRateLimitingInterface[string]
 	vpcKeyMutex          keymutex.KeyMutex
@@ -119,6 +120,7 @@ type Controller struct {
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
+	subnetLastVpcNameMap    *xsync.Map[string, string]
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
@@ -379,6 +381,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
 		addOrUpdateVpcQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateVpc", nil),
+		vpcLastPoliciesMap:   xsync.NewMap[string, string](),
 		delVpcQueue:          newTypedRateLimitingQueue[*kubeovnv1.Vpc]("DeleteVpc", nil),
 		updateVpcStatusQueue: newTypedRateLimitingQueue[string]("UpdateVpcStatus", nil),
 		vpcKeyMutex:          keymutex.NewHashed(numKeyLocks),
@@ -404,6 +407,7 @@ func Run(ctx context.Context, config *Configuration) {
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
+		subnetLastVpcNameMap:    xsync.NewMap[string, string](),
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
