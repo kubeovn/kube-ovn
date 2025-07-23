@@ -1019,6 +1019,9 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	}
 
+	// clean up subnet last vpc name cached
+	c.subnetLastVpcNameMap.Delete(subnet.Name)
+
 	return nil
 }
 

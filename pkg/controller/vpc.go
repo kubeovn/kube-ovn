@@ -102,6 +102,9 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
+	// clean up vpc last policies cached
+	c.vpcLastPoliciesMap.Delete(vpc.Name)
+
 	if err := c.deleteVpcLb(vpc); err != nil {
 		klog.Error(err)
 		return err
