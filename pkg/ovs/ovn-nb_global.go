@@ -173,7 +173,6 @@ func (c *OVNNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 		delete(options, "ic-route-blacklist")
 	}
 	if maps.Equal(options, nbGlobal.Options) {
-		nbGlobal.Options = options
 		return nil
 	}
 
