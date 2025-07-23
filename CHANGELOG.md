@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.14.4 (2025-07-23)
+
+ * [839f68c34](https://github.com/kubeovn/kube-ovn/commit/839f68c34aaae682eb21d44484edd098641042f2) release v1.14.4
+ * [282158756](https://github.com/kubeovn/kube-ovn/commit/282158756de99cf838365ce8e4a1c5aa6a0da8c7) fix NB Global not updated after OVN IC is disabled (#5511)
+ * [a6950498a](https://github.com/kubeovn/kube-ovn/commit/a6950498a899ccdcfbd9fe160446af4c2c66e86a) fix concurrent map race (#5510)
+ * [1e7988b26](https://github.com/kubeovn/kube-ovn/commit/1e7988b2680cd18582f4acef5fcd937591ffb4c0) fix cleanup stuck (#5505)
+ * [c075fb20b](https://github.com/kubeovn/kube-ovn/commit/c075fb20b17b1216330fa08c141d946af0dc436d) panic install if labeled nodes are not found (#5504)
+ * [31cf1670d](https://github.com/kubeovn/kube-ovn/commit/31cf1670df82527a4097550df7256f625d42702b) fix: ip/vpc are not deleted by helm uninstall (#5501)
+ * [f1f059bff](https://github.com/kubeovn/kube-ovn/commit/f1f059bffc359a7b7a93c12b54d487ce49b0dd1f) chart: fix node selector (#5500)
+ * [64b027d1d](https://github.com/kubeovn/kube-ovn/commit/64b027d1dec4e638829614159b2187ee1b6a438a) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * cmdy
+ * 张祖建
+
 ## v1.14.3 (2025-07-18)
 
  * [328e984c5](https://github.com/kubeovn/kube-ovn/commit/328e984c591e4e79c240944ea030bea9009a1a85) release v1.14.3
