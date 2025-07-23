@@ -485,7 +485,7 @@ func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.V
 		}
 		lastVpcName, _ := c.subnetLastVpcNameMap.Load(subnet.Name)
 		for _, vpc := range vpcs {
-			if (lastVpcName == "" && subnet.Spec.Vpc != vpc.Name || lastVpcName != "" && subnet.Annotations[util.VpcLastName] != vpc.Name) &&
+			if (lastVpcName == "" && subnet.Spec.Vpc != vpc.Name || lastVpcName != "" && lastVpcName != vpc.Name) &&
 				!vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
 				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
 				klog.Error(err)
