@@ -65,10 +65,8 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		!slices.Equal(oldVpc.Status.Subnets, newVpc.Status.Subnets) {
 		// TODO:// label VpcExternalLabel replace with spec enable external
 
-		if newVpc.Annotations == nil {
-			newVpc.Annotations = make(map[string]string)
-		}
-		newVpc.Annotations[util.VpcLastPolicies] = convertPolicies(oldVpc.Spec.PolicyRoutes)
+		// recode last policies
+		c.vpcLastPoliciesMap.Store(newVpc.Name, convertPolicies(oldVpc.Spec.PolicyRoutes))
 
 		key := cache.MetaObjectToName(newVpc).String()
 		klog.Infof("enqueue update vpc %s", key)
@@ -103,6 +101,9 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		klog.Error(err)
 		return err
 	}
+
+	// clean up vpc last policies cached
+	c.vpcLastPoliciesMap.Delete(vpc.Name)
 
 	if err := c.deleteVpcLb(vpc); err != nil {
 		klog.Error(err)
@@ -482,7 +483,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	)
 
 	if vpc.Name == c.config.ClusterRouter {
-		policyRouteExisted = reversePolicies(vpc.Annotations[util.VpcLastPolicies])
+		lastPolicies, _ := c.vpcLastPoliciesMap.Load(vpc.Name)
+		policyRouteExisted = reversePolicies(lastPolicies)
 		// diff list
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
