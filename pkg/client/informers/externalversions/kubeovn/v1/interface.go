@@ -188,5 +188,5 @@ func (v *version) VpcNatGateways() VpcNatGatewayInformer {
 
 // BgpEdgeRouters returns a BgpEdgeRouterInformer.
 func (v *version) BgpEdgeRouters() BgpEdgeRouterInformer {
-	return &bgpEdgeRouterInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &bgpEdgeRouterInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

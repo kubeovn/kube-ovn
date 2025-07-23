@@ -107,6 +107,12 @@ type Controller struct {
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
 
+	bgpEdgeRouterLister           kubeovnlister.BgpEdgeRouterLister
+	bgpEdgeRouterSynced           cache.InformerSynced
+	addOrUpdateBgpEdgeRouterQueue workqueue.TypedRateLimitingInterface[string]
+	delBgpEdgeRouterQueue         workqueue.TypedRateLimitingInterface[string]
+	bgpEdgeRouterKeyMutex         keymutex.KeyMutex
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
@@ -233,6 +239,9 @@ type Controller struct {
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
 
+	berDeploymentsLister appsv1.DeploymentLister
+	berDeploymentsSynced cache.InformerSynced
+
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.TypedRateLimitingInterface[string]
@@ -281,20 +290,16 @@ type Controller struct {
 	netAttachSynced          cache.InformerSynced
 	netAttachInformerFactory netAttach.SharedInformerFactory
 
-	recorder               record.EventRecorder
-	informerFactory        kubeinformers.SharedInformerFactory
-	cmInformerFactory      kubeinformers.SharedInformerFactory
-	deployInformerFactory  kubeinformers.SharedInformerFactory
-	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
-	anpInformerFactory     anpinformer.SharedInformerFactory
+	recorder                 record.EventRecorder
+	informerFactory          kubeinformers.SharedInformerFactory
+	cmInformerFactory        kubeinformers.SharedInformerFactory
+	deployInformerFactory    kubeinformers.SharedInformerFactory
+	berDeployInformerFactory kubeinformers.SharedInformerFactory
+	kubeovnInformerFactory   kubeovninformer.SharedInformerFactory
+	anpInformerFactory       anpinformer.SharedInformerFactory
 
 	// Database health check
-	dbFailureCount                int
-	bgpEdgeRouterLister           kubeovnlister.BgpEdgeRouterLister
-	bgpEdgeRouterSynced           cache.InformerSynced
-	addOrUpdateBgpEdgeRouterQueue workqueue.TypedRateLimitingInterface[string]
-	delBgpEdgeRouterQueue         workqueue.TypedRateLimitingInterface[string]
-	bgpEdgeRouterKeyMutex         keymutex.KeyMutex
+	dbFailureCount int
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -321,6 +326,11 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to create label selector for vpc egress gateway workload")
 	}
 
+	berSelector, berErr := labels.Parse(util.BgpEdgeRouterLabel)
+	if berErr != nil {
+		util.LogFatalAndExit(berErr, "failed to create label selector for bgp edge router workload")
+	}
+
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
@@ -334,6 +344,12 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 			listOption.LabelSelector = selector.String()
+		}))
+	// deployment informer used to list/watch bgp edge router workloads
+	berDeployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+			listOption.LabelSelector = berSelector.String()
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -373,6 +389,7 @@ func Run(ctx context.Context, config *Configuration) {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointSliceInformer := informerFactory.Discovery().V1().EndpointSlices()
 	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
+	berDeploymentInformer := berDeployInformerFactory.Apps().V1().Deployments()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -529,6 +546,9 @@ func Run(ctx context.Context, config *Configuration) {
 		deploymentsLister: deploymentInformer.Lister(),
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 
+		berDeploymentsLister: berDeploymentInformer.Lister(),
+		berDeploymentsSynced: berDeploymentInformer.Informer().HasSynced,
+
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
 		addQoSPolicyQueue:    newTypedRateLimitingQueue("AddQoSPolicy", custCrdRateLimiter),
@@ -582,12 +602,13 @@ func Run(ctx context.Context, config *Configuration) {
 		netAttachSynced:          netAttachInformer.Informer().HasSynced,
 		netAttachInformerFactory: attachNetInformerFactory,
 
-		recorder:               recorder,
-		informerFactory:        informerFactory,
-		cmInformerFactory:      cmInformerFactory,
-		deployInformerFactory:  deployInformerFactory,
-		kubeovnInformerFactory: kubeovnInformerFactory,
-		anpInformerFactory:     anpInformerFactory,
+		recorder:                 recorder,
+		informerFactory:          informerFactory,
+		cmInformerFactory:        cmInformerFactory,
+		deployInformerFactory:    deployInformerFactory,
+		berDeployInformerFactory: berDeployInformerFactory,
+		kubeovnInformerFactory:   kubeovnInformerFactory,
+		anpInformerFactory:       anpInformerFactory,
 	}
 
 	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
@@ -664,6 +685,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.deployInformerFactory.Start(ctx.Done())
+	controller.berDeployInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
@@ -676,7 +698,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.berDeploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced, controller.bgpEdgeRouterSynced,
 	}
@@ -734,6 +756,13 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddDeployment,
+		UpdateFunc: controller.enqueueUpdateDeployment,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add deployment event handler")
+	}
+
+	if _, err = berDeploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddDeployment,
 		UpdateFunc: controller.enqueueUpdateDeployment,
 	}); err != nil {
@@ -1112,6 +1141,9 @@ func (c *Controller) shutdown() {
 
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
+
+	c.addOrUpdateBgpEdgeRouterQueue.ShutDown()
+	c.delBgpEdgeRouterQueue.ShutDown()
 
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()

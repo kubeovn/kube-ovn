@@ -6,17 +6,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type BerPhase string
-
-const (
-	// PhasePending means the resource is pending and not processed yet
-	BerPhasePending BerPhase = "Pending"
-	// PhaseProcessing means the resource is being processed
-	BerPhaseProcessing BerPhase = "Processing"
-	// PhaseCompleted means the resource has been processed successfully
-	BerPhaseCompleted BerPhase = "Completed"
-)
-
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type BgpEdgeRouterList struct {
 	metav1.TypeMeta `json:",inline"`

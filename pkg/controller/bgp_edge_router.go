@@ -116,7 +116,7 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 		bfdIPv4, bfdIPv6 = util.SplitStringIP(bfdIP)
 	}
 
-	// reconcile the vpc egress gateway workload and get the route sources for later OVN resources reconciliation
+	// reconcile the bgp edge router workload and get the route sources for later OVN resources reconciliation
 	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcilebgpEdgeRouterWorkload(router, vpc, bfdIP, bfdIPv4, bfdIPv6)
 	router.Status.Replicas = router.Spec.Replicas
 	router.Status.LabelSelector = labels.FormatLabels(bgpEdgeRouterWorkloadLabels(router.Name))
@@ -157,7 +157,7 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 		return err
 	}
 
-	// update gateway status including the internal/external IPs and the nodes where the pods are running
+	// update router status including the internal/external IPs and the nodes where the pods are running
 	router.Status.Workload.Nodes = make([]string, 0, len(pods))
 	for _, pod := range pods {
 		if len(pod.Status.PodIPs) == 0 {
@@ -187,11 +187,11 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 	}
 
 	// reconcile OVN routes
-	if err = c.reconcilebgpEdgeRouterOVNRoutes(router, 4, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv4, nodeNexthopIPv4, ipv4Src); err != nil {
+	if err = c.reconcileBgpEdgeRouterOVNRoutes(router, 4, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv4, nodeNexthopIPv4, ipv4Src); err != nil {
 		klog.Error(err)
 		return err
 	}
-	if err = c.reconcilebgpEdgeRouterOVNRoutes(router, 6, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv6, nodeNexthopIPv6, ipv6Src); err != nil {
+	if err = c.reconcileBgpEdgeRouterOVNRoutes(router, 6, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv6, nodeNexthopIPv6, ipv6Src); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -249,7 +249,7 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 		bgpImage = router.Spec.BGP.Image
 	}
 	if image == "" {
-		err := fmt.Errorf("no image specified for vpc egress gateway %s/%s", router.Namespace, router.Name)
+		err := fmt.Errorf("no image specified for bgp edge router %s/%s", router.Namespace, router.Name)
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
@@ -270,7 +270,7 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 		internalSubnet = vpc.Status.DefaultLogicalSwitch
 	}
 	if internalSubnet == "" {
-		err := fmt.Errorf("default subnet of vpc %s not found, please set internal subnet of the egress gateway", vpc.Name)
+		err := fmt.Errorf("default subnet of vpc %s not found, please set internal subnet of the bgp edge router", vpc.Name)
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
@@ -343,7 +343,7 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	routes := util.NewPodRoutes()
 	intGatewayIPv4, intGatewayIPv6 := util.SplitStringIP(intSubnet.Spec.Gateway)
 	extGatewayIPv4, extGatewayIPv6 := util.SplitStringIP(extSubnet.Spec.Gateway)
-	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
+	// add routes for the VPC BFD Port so that the bgp edge router can establish BFD session(s) with it
 	routes.Add(util.OvnProvider, bfdIPv4, intGatewayIPv4)
 	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
 	// add routes for the internal networks
@@ -389,7 +389,7 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	initEnv = append(initEnv, ipv6Env...)
 
 	// generate workload
-	labels := vegWorkloadLabels(router.Name)
+	labels := bgpEdgeRouterWorkloadLabels(router.Name)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      router.Spec.Prefix + router.Name,
@@ -469,24 +469,24 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 			},
 		},
 	}
-	// set owner reference so that the workload will be deleted automatically when the vpc egress gateway is deleted
+	// set owner reference so that the workload will be deleted automatically when the bgp edge router is deleted
 	if err = util.SetOwnerReference(router, deploy); err != nil {
 		klog.Error(err)
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 
 	if bfdIP != "" {
-		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
+		// run BFD in the router container	to establish BFD session(s) with the VPC BFD LRP
 		container := bgpEdgeRouterContainerBFDD(image, bfdIP, router.Spec.BFD.MinTX, router.Spec.BFD.MinRX, router.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers[0] = container
 	}
 
 	// bgp sidecar container logic
 	if router.Spec.BGP.Enabled {
-		// run BGP in the gateway container
+		// run BGP in the router container
 		bgpContainer, err := bgpEdgeRouterContainerBGP(bgpImage, router.Name, &router.Spec.BGP)
 		if err != nil {
-			klog.Errorf("failed to create a BGP speaker container for gateway %s: %v", router.Name, err)
+			klog.Errorf("failed to create a BGP speaker container for router %s: %v", router.Name, err)
 			return "", nil, nil, nil, err
 		}
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *bgpContainer)
@@ -504,7 +504,13 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	// replicas and the hash annotation should be excluded from hash calculation
 	deploy.Spec.Replicas = ptr.To(router.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
-	if currentDeploy, err := c.deploymentsLister.Deployments(router.Namespace).Get(deploy.Name); err != nil {
+
+	realDeploy, err := c.config.KubeClient.AppsV1().Deployments(router.Namespace).Get(context.Background(), deploy.Name, metav1.GetOptions{})
+	if err == nil {
+		// 이미 존재함
+		klog.Infof("Deployment %s/%s already exists in API server realDeploy name: %s", router.Namespace, deploy.Name, realDeploy.Name)
+	}
+	if currentDeploy, err := c.berDeploymentsLister.Deployments(router.Namespace).Get(deploy.Name); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
@@ -535,7 +541,7 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	return attachmentNetworkName, intRouteDstIPv4, intRouteDstIPv6, deploy, nil
 }
 
-func (c *Controller) reconcilebgpEdgeRouterOVNRoutes(router *kubeovnv1.BgpEdgeRouter, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {
+func (c *Controller) reconcileBgpEdgeRouterOVNRoutes(router *kubeovnv1.BgpEdgeRouter, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {
 	if len(nextHops) == 0 {
 		return nil
 	}
@@ -1028,14 +1034,14 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 		return err
 	}
 
-	gateways, err := c.bgpEdgeRouterLister.List(labels.Everything())
+	router, err := c.bgpEdgeRouterLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list vpc egress gateways: %v", err)
+		klog.Errorf("failed to list bgp edge router: %v", err)
 		utilruntime.HandleError(err)
 		return err
 	}
 
-	for _, ber := range gateways {
+	for _, ber := range router {
 		if ber.VPC(c.config.ClusterRouter) != vpc {
 			continue
 		}
@@ -1053,7 +1059,7 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 	return nil
 }
 
-func bgpEdgeRouterContainerBGP(speakerImage, gatewayName string, speakerParams *kubeovnv1.BgpEdgeRouterBGPConfig) (*corev1.Container, error) {
+func bgpEdgeRouterContainerBGP(speakerImage, routerName string, speakerParams *kubeovnv1.BgpEdgeRouterBGPConfig) (*corev1.Container, error) {
 	if speakerImage == "" {
 		return nil, errors.New("BGP speaker image must be specified")
 	}
@@ -1108,14 +1114,14 @@ func bgpEdgeRouterContainerBGP(speakerImage, gatewayName string, speakerParams *
 	args = append(args, speakerParams.ExtraArgs...)
 
 	container := &corev1.Container{
-		Name:            "vpc-egress-router-speaker",
+		Name:            "bgp-router-speaker",
 		Image:           speakerImage,
 		Command:         []string{"/kube-ovn/kube-ovn-speaker"},
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "EGRESS_GATEWAY_NAME",
-				Value: gatewayName,
+				Value: routerName,
 			},
 			{
 				Name: "POD_IP",

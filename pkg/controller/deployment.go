@@ -15,6 +15,8 @@ var (
 	deploymentKind               string
 	vpcEgressGatewayGroupVersion string
 	vpcEgressGatewayKind         string
+	bgpEdgeRouterGroupVersion    string
+	bgpEdgeRouterKind            string
 )
 
 func init() {
@@ -27,6 +29,11 @@ func init() {
 	gvk = kubeovnv1.SchemeGroupVersion.WithKind(name)
 	vpcEgressGatewayGroupVersion = gvk.GroupVersion().String()
 	vpcEgressGatewayKind = gvk.Kind
+
+	name = reflect.TypeOf(&kubeovnv1.BgpEdgeRouter{}).Elem().Name()
+	gvk = kubeovnv1.SchemeGroupVersion.WithKind(name)
+	bgpEdgeRouterGroupVersion = gvk.GroupVersion().String()
+	bgpEdgeRouterKind = gvk.Kind
 }
 
 func (c *Controller) enqueueAddDeployment(obj any) {
@@ -36,6 +43,11 @@ func (c *Controller) enqueueAddDeployment(obj any) {
 			key := types.NamespacedName{Namespace: deploy.Namespace, Name: ref.Name}.String()
 			klog.V(3).Infof("enqueue update vpc-egress-gateway %s", key)
 			c.addOrUpdateVpcEgressGatewayQueue.Add(key)
+			return
+		} else if ref.APIVersion == bgpEdgeRouterGroupVersion && ref.Kind == bgpEdgeRouterKind {
+			key := types.NamespacedName{Namespace: deploy.Namespace, Name: ref.Name}.String()
+			klog.V(3).Infof("enqueue update bgp-edge-router %s", key)
+			c.addOrUpdateBgpEdgeRouterQueue.Add(key)
 			return
 		}
 	}
