@@ -362,6 +362,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 	// If the user supplies a VPC/subnet for the SLR, propagate it to the service
 	setUserDefinedNetwork(newSvc, slr)
 
+	// Set healthcheck annotation on the service if the setting is provided by the user
+	setHealthCheckAnnotation(newSvc, slr)
+
 	return newSvc
 }
 
@@ -381,6 +384,22 @@ func setUserDefinedNetwork(service *corev1.Service, slr *kubeovnv1.SwitchLBRule)
 
 	if subnet := slr.Annotations[util.LogicalSwitchAnnotation]; subnet != "" {
 		service.Annotations[util.LogicalSwitchAnnotation] = subnet
+	}
+}
+
+// setHealthCheckAnnotation propagates the healthcheck toggle from the SLR to the Service
+// Users can choose to disable health checks on their services using this annotation
+func setHealthCheckAnnotation(service *corev1.Service, slr *kubeovnv1.SwitchLBRule) {
+	if service == nil || slr == nil || slr.Annotations == nil {
+		return
+	}
+
+	if service.Annotations == nil {
+		service.Annotations = make(map[string]string)
+	}
+
+	if healthcheck := slr.Annotations[util.ServiceHealthCheck]; healthcheck != "" {
+		service.Annotations[util.ServiceHealthCheck] = healthcheck
 	}
 }
 
