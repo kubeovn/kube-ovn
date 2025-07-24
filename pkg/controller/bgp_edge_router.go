@@ -458,12 +458,20 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 							MountPath: "/usr/local/sbin",
 						}},
 					}},
-					Volumes: []corev1.Volume{{
-						Name: "usr-local-sbin",
-						VolumeSource: corev1.VolumeSource{
-							EmptyDir: &corev1.EmptyDirVolumeSource{},
+					Volumes: []corev1.Volume{
+						{
+							Name: "usr-local-sbin",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
 						},
-					}},
+						{
+							Name: "kube-ovn-logs",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+					},
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
 				},
 			},
@@ -1133,6 +1141,12 @@ func bgpEdgeRouterContainerBGP(speakerImage, routerName string, speakerParams *k
 			},
 		},
 		Args: args,
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "kube-ovn-logs",
+				MountPath: "/var/log/kube-ovn",
+			},
+		},
 	}
 
 	return container, nil
