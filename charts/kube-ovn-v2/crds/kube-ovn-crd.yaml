@@ -2841,6 +2841,31 @@ spec:
                           type: string
                 exchangeLinkName:
                   type: boolean
+                nodeSelector:
+                  properties:
+                    matchExpressions:
+                      items:
+                        properties:
+                          key:
+                            type: string
+                            x-kubernetes-patch-strategy: merge
+                            x-kubernetes-patch-merge-key: key
+                          operator:
+                            type: string
+                          values:
+                            items:
+                              type: string
+                            type: array
+                        required:
+                          - key
+                          - operator
+                        type: object
+                      type: array
+                    matchLabels:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  type: object
                 excludeNodes:
                   type: array
                   items:
