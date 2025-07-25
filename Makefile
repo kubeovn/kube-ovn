@@ -23,7 +23,7 @@ FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 CLAB_IMAGE = ghcr.io/srl-labs/clab:0.68.0
 
 # renovate: datasource=github-releases depName=multus packageName=k8snetworkplumbingwg/multus-cni
-MULTUS_VERSION = v4.2.1
+MULTUS_VERSION = v4.2.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
