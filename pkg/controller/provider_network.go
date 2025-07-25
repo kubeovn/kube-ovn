@@ -46,7 +46,12 @@ func (c *Controller) resyncProviderNetworkStatus() {
 
 		var conditionsUpdated bool
 		for _, node := range nodes {
-			if slices.Contains(pn.Spec.ExcludeNodes, node.Name) {
+			excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+			if err != nil {
+				klog.Errorf("failed to check if node %s is excluded from provider network %s: %v", node.Name, pn.Name, err)
+				continue
+			}
+			if excluded {
 				if pn.Status.RemoveNodeConditions(node.Name) {
 					conditionsUpdated = true
 				}
