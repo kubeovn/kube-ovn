@@ -1283,9 +1283,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		pn = providerNetworkClient.CreateSync(pn)
 
-		ginkgo.By("Waiting for provider network to be processed")
-		time.Sleep(10 * time.Second)
-
 		ginkgo.By("Getting updated k8s nodes")
 		updatedNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
