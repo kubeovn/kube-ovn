@@ -117,7 +117,7 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 	}
 
 	// reconcile the bgp edge router workload and get the route sources for later OVN resources reconciliation
-	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcilebgpEdgeRouterWorkload(router, vpc, bfdIP, bfdIPv4, bfdIPv6)
+	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileBgpEdgeRouterWorkload(router, vpc, bfdIP, bfdIPv4, bfdIPv6)
 	router.Status.Replicas = router.Spec.Replicas
 	router.Status.LabelSelector = labels.FormatLabels(bgpEdgeRouterWorkloadLabels(router.Name))
 	if err != nil {
@@ -239,7 +239,7 @@ func (c *Controller) updatebgpEdgeRouterStatus(router *kubeovnv1.BgpEdgeRouter) 
 }
 
 // create or update bgp edge router workload
-func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRouter, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
+func (c *Controller) reconcileBgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRouter, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
 	image := c.config.Image
 	bgpImage := c.config.Image
 	if router.Spec.Image != "" {
@@ -513,11 +513,6 @@ func (c *Controller) reconcilebgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	deploy.Spec.Replicas = ptr.To(router.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
 
-	realDeploy, err := c.config.KubeClient.AppsV1().Deployments(router.Namespace).Get(context.Background(), deploy.Name, metav1.GetOptions{})
-	if err == nil {
-		// 이미 존재함
-		klog.Infof("Deployment %s/%s already exists in API server realDeploy name: %s", router.Namespace, deploy.Name, realDeploy.Name)
-	}
 	if currentDeploy, err := c.berDeploymentsLister.Deployments(router.Namespace).Get(deploy.Name); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
@@ -957,7 +952,7 @@ func (c *Controller) handleDelBgpEdgeRouter(key string) error {
 	}
 
 	klog.Infof("handle deleting bgp-edge-router %s", key)
-	if err = c.cleanOVNForbgpEdgeRouter(key, cachedGateway.Spec.VPC); err != nil {
+	if err = c.cleanOVNForBgpEdgeRouter(key, cachedGateway.Spec.VPC); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -974,7 +969,7 @@ func (c *Controller) handleDelBgpEdgeRouter(key string) error {
 	return nil
 }
 
-func (c *Controller) cleanOVNForbgpEdgeRouter(key, lrName string) error {
+func (c *Controller) cleanOVNForBgpEdgeRouter(key, lrName string) error {
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
 		ovs.ExternalIDBgpEdgeRouter: key,
