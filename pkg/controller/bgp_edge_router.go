@@ -78,7 +78,7 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 
 	klog.Infof("reconciling bgp-edge-router %s", key)
 	router := cachedRouter.DeepCopy()
-	if router, err = c.initbgpEdgeRouterStatus(router); err != nil {
+	if router, err = c.initBgpEdgeRouterStatus(router); err != nil {
 		return err
 	}
 
@@ -210,7 +210,7 @@ func (c *Controller) handleAddOrUpdateBgpEdgeRouter(key string) error {
 	return nil
 }
 
-func (c *Controller) initbgpEdgeRouterStatus(router *kubeovnv1.BgpEdgeRouter) (*kubeovnv1.BgpEdgeRouter, error) {
+func (c *Controller) initBgpEdgeRouterStatus(router *kubeovnv1.BgpEdgeRouter) (*kubeovnv1.BgpEdgeRouter, error) {
 	var err error
 	if router.Status.Phase == "" || router.Status.Phase == kubeovnv1.PhasePending {
 		router.Status.Phase = kubeovnv1.PhaseProcessing
