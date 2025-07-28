@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -62,8 +61,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 		info   = NewSlrInfo(oldSlr)
 	)
 
-	if oldSlr.ResourceVersion == newSlr.ResourceVersion ||
-		reflect.DeepEqual(oldSlr.Spec, newSlr.Spec) {
+	if oldSlr.ResourceVersion == newSlr.ResourceVersion {
 		return
 	}
 
