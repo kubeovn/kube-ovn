@@ -379,3 +379,70 @@ func TestServiceHasSelector(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceHealthChecksDisabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		svc      *corev1.Service
+		expected bool
+	}{
+		{
+			name: "no annotation on the service",
+			svc: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "unrelated annotation on the service",
+			svc: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "default",
+					Annotations: map[string]string{"key": "value"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "annotation to enable checks",
+			svc: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "default",
+					Annotations: map[string]string{util.ServiceHealthCheck: "true"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "malformed annotation to enable checks (will be ignored)",
+			svc: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "default",
+					Annotations: map[string]string{util.ServiceHealthCheck: "invalid"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "annotation to disable checks",
+			svc: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "default",
+					Annotations: map[string]string{util.ServiceHealthCheck: "false"},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := serviceHealthChecksDisabled(tt.svc)
+			if result != tt.expected {
+				t.Errorf("findServiceKey() = %t, want %t", result, tt.expected)
+			}
+		})
+	}
+}

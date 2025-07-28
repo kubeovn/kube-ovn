@@ -108,7 +108,8 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		lbVips = []string{vip}
 
-		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 {
+		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled
+		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
 			ignoreHealthCheck = false
 		}
 	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
@@ -270,6 +271,17 @@ func (c *Controller) enqueueStaticEndpointUpdateInNamespace(namespace string) {
 	for _, slice := range endpointSlices {
 		c.enqueueAddEndpointSlice(slice)
 	}
+}
+
+// serviceHealthChecksDisabled returns whether health checks must be omitted for a particular service
+func serviceHealthChecksDisabled(service *v1.Service) bool {
+	// Service must not have disabled health checks
+	if service.Annotations != nil && service.Annotations[util.ServiceHealthCheck] == "false" {
+		return true
+	}
+
+	// If nothing is specified, checks are enabled by default
+	return false
 }
 
 // findStaticEndpointSlicesInNamespace finds all the EndpointSlices in a namespace that are statically generated.
