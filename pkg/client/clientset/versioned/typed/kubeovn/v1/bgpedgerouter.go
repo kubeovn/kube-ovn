@@ -21,17 +21,6 @@ package v1
 import (
 	context "context"
 
-	// apiskubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	// versioned "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	// internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	// kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	// autoscalingv1 "k8s.io/api/autoscaling/v1"
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	// runtime "k8s.io/apimachinery/pkg/runtime"
-	// types "k8s.io/apimachinery/pkg/types"
-	// watch "k8s.io/apimachinery/pkg/watch"
-	// cache "k8s.io/client-go/tools/cache"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
