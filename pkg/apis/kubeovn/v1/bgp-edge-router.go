@@ -19,7 +19,7 @@ type BgpEdgeRouterList struct {
 // +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/api/autoscaling/v1.Scale,result=k8s.io/api/autoscaling/v1.Scale
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resourceName=bgp-edge-routers
-// vpc egress gateway is used to forward the egress traffic from the VPC to the external network
+// bgp edge router is used to forward the egress traffic from the VPC to the external network
 type BgpEdgeRouter struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
