@@ -1251,6 +1251,78 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectEmpty(conflictVlanSubnet2.Status.V6AvailableIPRange)
 		}
 	})
+
+	framework.ConformanceIt("should support nodeSelector to include only specific nodes", func() {
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
+		ginkgo.By("Getting k8s nodes")
+		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(k8sNodes.Items)
+
+		// Select the first node for inclusion
+		selectedNodeName := k8sNodes.Items[0].Name
+		testLabelKey := "provider-network-test"
+		testLabelValue := "selected"
+
+		ginkgo.By("Adding test label to selected node " + selectedNodeName)
+		selectedNode := &k8sNodes.Items[0]
+		if selectedNode.Labels == nil {
+			selectedNode.Labels = make(map[string]string)
+		}
+		selectedNode.Labels[testLabelKey] = testLabelValue
+		_, err = cs.CoreV1().Nodes().Update(context.Background(), selectedNode, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Creating provider network with nodeSelector " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		pn.Spec.NodeSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				testLabelKey: testLabelValue,
+			},
+		}
+		pn = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting updated k8s nodes")
+		updatedNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+
+		var selectedUpdatedNode, nonSelectedUpdatedNode *corev1.Node
+		for i := range updatedNodes.Items {
+			if updatedNodes.Items[i].Name == selectedNodeName {
+				selectedUpdatedNode = &updatedNodes.Items[i]
+			} else {
+				nonSelectedUpdatedNode = &updatedNodes.Items[i]
+				break // Take the first non-selected node for verification
+			}
+		}
+		framework.ExpectNotNil(selectedUpdatedNode, "Selected node should be found")
+		framework.ExpectNotNil(nonSelectedUpdatedNode, "At least one non-selected node should exist")
+
+		ginkgo.By("Validating that only selected node has ready annotation")
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName), "true")
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName), linkMap[selectedNodeName].IfName)
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName), strconv.Itoa(linkMap[selectedNodeName].Mtu))
+
+		ginkgo.By("Validating that non-selected node does not have ready annotation")
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName))
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName))
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName))
+
+		ginkgo.By("Validating provider network status")
+		framework.ExpectEqual(pn.Status.Ready, true, "field .status.ready should be true")
+		framework.ExpectConsistOf(pn.Status.ReadyNodes, []string{selectedNodeName})
+		framework.ExpectNotContainElement(pn.Status.ReadyNodes, nonSelectedUpdatedNode.Name)
+
+		ginkgo.By("Cleaning up test label from selected node")
+		cleanupNode, err := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		if cleanupNode.Labels != nil {
+			delete(cleanupNode.Labels, testLabelKey)
+			_, err = cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
+			framework.ExpectNoError(err)
+		}
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool, pnName string) {

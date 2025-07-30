@@ -316,7 +316,13 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
-	if slices.Contains(pn.Spec.ExcludeNodes, node.Name) {
+	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if excluded {
 		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}

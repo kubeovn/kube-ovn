@@ -1305,6 +1305,11 @@ func (in *ProviderNetworkSpec) DeepCopyInto(out *ProviderNetworkSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.NodeSelector != nil {
+		in, out := &in.NodeSelector, &out.NodeSelector
+		*out = new(metav1.LabelSelector)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.ExcludeNodes != nil {
 		in, out := &in.ExcludeNodes, &out.ExcludeNodes
 		*out = make([]string, len(*in))

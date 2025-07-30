@@ -282,8 +282,14 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)
 
 		var newPn *kubeovnv1.ProviderNetwork
-		excluded := slices.Contains(pn.Spec.ExcludeNodes, node.Name)
-		if !excluded && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
+		excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		// Handle node annotation for exclusion (only when nodeSelector is not set)
+		if !excluded && pn.Spec.NodeSelector == nil && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
 			newPn = pn.DeepCopy()
 			newPn.Spec.ExcludeNodes = append(newPn.Spec.ExcludeNodes, node.Name)
 			excluded = true
