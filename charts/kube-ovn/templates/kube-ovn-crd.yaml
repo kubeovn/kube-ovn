@@ -3583,3 +3583,290 @@ spec:
                       type: array
                       items:
                         type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bgp-edge-router-advertisements.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: bgp-edge-router-advertisements
+    singular: bgp-edge-router-advertisement
+    shortNames:
+      - ber-ad
+    kind: BgpEdgeRouterAdvertisement
+    listKind: BgpEdgeRouterAdvertisementList
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.subnet
+          name: SUBNET
+          type: string
+        - jsonPath: .spec.bgpedgerouter
+          name: BGP-EDGE-ROUTER
+          type: string
+        - jsonPath: .status.ready
+          name: READY
+          type: boolean
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+        scale:
+          # specReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Spec.Replicas.
+          specReplicasPath: .spec.replicas
+          # statusReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Replicas.
+          statusReplicasPath: .status.replicas
+          # labelSelectorPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Selector.
+          labelSelectorPath: .status.labelSelector
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              properties:
+                replicas:
+                  type: integer
+                  format: int32
+                labelSelector:
+                  type: string
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      lastUpdateTime:
+                        format: date-time
+                        type: string
+                      message:
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                internalIPs:
+                  items:
+                    type: string
+                  type: array
+                externalIPs:
+                  items:
+                    type: string
+                  type: array
+                phase:
+                  type: string
+                  default: Pending
+                  enum:
+                    - Pending
+                    - Processing
+                    - Completed
+                ready:
+                  type: boolean
+                  default: false
+                workload:
+                  type: object
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    nodes:
+                      type: array
+                      items:
+                        type: string
+              required:
+                - conditions
+                - phase
+              type: object
+            spec:
+              type: object
+              required:
+                - externalSubnet
+              x-kubernetes-validations:
+                - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
+                  message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".internalIPs"
+                - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
+                  message: 'Size of External IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".externalIPs"
+                - rule: "size(self.policies) != 0 || size(self.selectors) != 0"
+                  message: 'Each BGP Edeg Router MUST have at least one policy or selector'
+              properties:
+
+
+
+                selectors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      namespaceSelector:
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
+                      podSelector:
+                        type: object
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          matchExpressions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                operator:
+                                  type: string
+                                values:
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                                - key
+                                - operator
+                        x-kubernetes-validations:
+                          - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
+                            message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
+                policies:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      snat:
+                        type: boolean
+                        default: false
+                      ipBlocks:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          anyOf:
+                            - format: ipv4
+                            - format: ipv6
+                            - format: cidr
+                      subnets:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          minLength: 1
+                    x-kubernetes-validations:
+                      - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
+                        message: 'Each policy MUST have at least one ipBlock or subnet'
+                nodeSelector:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      matchExpressions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator
+                      matchFields:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator

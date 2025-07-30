@@ -46,9 +46,10 @@ const (
 
 	OVSDBWaitTimeout = 0
 
-	ExternalIDVendor           = "vendor"
-	ExternalIDVpcEgressGateway = "vpc-egress-gateway"
-	ExternalIDBgpEdgeRouter    = "bgp-edge-router"
+	ExternalIDVendor                     = "vendor"
+	ExternalIDVpcEgressGateway           = "vpc-egress-gateway"
+	ExternalIDBgpEdgeRouter              = "bgp-edge-router"
+	ExternalIDBgpEdgeRouterAdvertisement = "bgp-edge-router-advertisement"
 )
 
 // NewLegacyClient init a legacy ovn client

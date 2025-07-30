@@ -113,9 +113,10 @@ const (
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
 
-	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
-	BgpEdgeRouterLabel     = "ovn.kubernetes.io/bgp-edge-router"
-	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
+	VpcEgressGatewayLabel           = "ovn.kubernetes.io/vpc-egress-gateway"
+	BgpEdgeRouterLabel              = "ovn.kubernetes.io/bgp-edge-router"
+	BgpEdgeRouterAdvertisementLabel  = "ovn.kubernetes.io/bgp-edge-router-advertisement"
+	GenerateHashAnnotation          = "ovn.kubernetes.io/generate-hash"
 
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"

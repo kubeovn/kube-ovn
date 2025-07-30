@@ -68,6 +68,8 @@ type Interface interface {
 	VpcNatGateways() VpcNatGatewayInformer
 	// BgpEdgeRouters returns a BgpEdgeRouterInformer.
 	BgpEdgeRouters() BgpEdgeRouterInformer
+	// BgpEdgeRouters returns a BgpEdgeRouterInformer.
+	BgpEdgeRouterAdvertisements() BgpEdgeRouterAdvertisementInformer
 }
 
 type version struct {
@@ -189,4 +191,9 @@ func (v *version) VpcNatGateways() VpcNatGatewayInformer {
 // BgpEdgeRouters returns a BgpEdgeRouterInformer.
 func (v *version) BgpEdgeRouters() BgpEdgeRouterInformer {
 	return &bgpEdgeRouterInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// BgpEdgeRouters returns a BgpEdgeRouterInformer.
+func (v *version) BgpEdgeRouterAdvertisements() BgpEdgeRouterAdvertisementInformer {
+	return &bgpEdgeRouterAdvertisementInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
