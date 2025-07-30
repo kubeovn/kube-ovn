@@ -23,7 +23,8 @@ type BgpEdgeRouterAdvertisement struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
-	Spec BgpEdgeRouterAdvertisementSpec `json:"spec"`
+	Spec   BgpEdgeRouterAdvertisementSpec   `json:"spec"`
+	Status BgpEdgeRouterAdvertisementStatus `json:"status"`
 }
 
 // If the BgpEdgeRouter has no VPC specified in the spec, it will return the default VPC name
@@ -42,4 +43,9 @@ func (g *BgpEdgeRouterAdvertisement) Subnet(subnets []string) []string {
 type BgpEdgeRouterAdvertisementSpec struct {
 	Subnet        []string `json:"subnet,omitempty"`
 	BgpEdgeRouter string   `json:"bgpEdgeRouter,omitempty"`
+}
+
+type BgpEdgeRouterAdvertisementStatus struct {
+	Ready      bool       `json:"ready"`
+	Conditions Conditions `json:"conditions,omitempty"`
 }

@@ -808,6 +808,14 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add bgp edge router event handler")
 	}
 
+	if _, err = bgpEdgeRouterAdvertisementInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddBgpEdgeRouterAdvertisement,
+		UpdateFunc: controller.enqueueUpdateBgpEdgeRouterAdvertisement,
+		DeleteFunc: controller.enqueueDeleteBgpEdgeRouterAdvertisement,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add bgp edge router advertisement event handler")
+	}
+
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpcEgressGateway,
 		UpdateFunc: controller.enqueueUpdateVpcEgressGateway,

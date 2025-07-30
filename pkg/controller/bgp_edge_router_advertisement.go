@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -33,10 +34,6 @@ func (c *Controller) enqueueDeleteBgpEdgeRouterAdvertisement(obj any) {
 	c.delBgpEdgeRouterAdvertisementQueue.Add(key)
 }
 
-func bgpEdgeRouterAdvertisementWorkloadLabels(bgpEdgeRouterAdvertisementName string) map[string]string {
-	return map[string]string{"app": "bgp-edge-router-advertisement", util.BgpEdgeRouterLabel: bgpEdgeRouterAdvertisementName}
-}
-
 func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -61,6 +58,11 @@ func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 		return nil
 	}
 
+	if _, err := c.initBgpEdgeRouterAdvertisementStatus(cachedAdvertisement); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	klog.Infof("reconciling bgp-edge-router-advertisement %s", key)
 	advertisement := cachedAdvertisement.DeepCopy()
 
@@ -75,37 +77,19 @@ func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 		advertisement = updatedAdvertisement
 	}
 
-	// reconcile the bgp edge router workload and get the route sources for later OVN resources reconciliation
-	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
-	if err != nil {
+	if pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement); err != nil || pods == nil {
 		klog.Error(err)
 		return err
-	}
-
-	ready := util.DeploymentIsReady(deploy)
-	if !ready {
-		readyErr := fmt.Sprintf("Deployment %s is not ready", deploy.Kind, deploy.Name)
-		klog.Error(readyErr)
-		return fmt.Errorf(readyErr)
-	}
-	// get the pods of the deployment to collect the pod IPs
-	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-	if err != nil {
-		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	for _, pod := range pods {
-		if len(pod.Status.PodIPs) == 0 {
-			continue
+	} else {
+		for _, pod := range pods {
+			if len(pod.Status.PodIPs) == 0 {
+				continue
+			}
+			klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
+			if err = c.addBgpEdgeRouterAdvertisementRule(key, pod.Name, advertisement.Spec.Subnet); err != nil {
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -161,9 +145,14 @@ func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(key string) error {
 
 	ready := util.DeploymentIsReady(deploy)
 	if !ready {
-		readyErr := fmt.Sprintf("Deployment %s is not ready", deploy.Kind, deploy.Name)
+		advertisement.Status.Ready = false
+		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
+		// advertisement.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, advertisement.Generation)
+		advertisement.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "BgpEdgeRouterNotEnabled", msg, advertisement.Generation)
+		_, _ = c.updatebgpEdgeRouterAdvertisementStatus(advertisement)
+		readyErr := fmt.Sprintf("Kind %s, Deployment %s is not ready", deploy.Kind, deploy.Name)
 		klog.Error(readyErr)
-		return fmt.Errorf(readyErr)
+		return fmt.Errorf("%s", readyErr)
 	}
 	// get the pods of the deployment to collect the pod IPs
 	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
@@ -218,42 +207,19 @@ func (c *Controller) handleDelBgpEdgeRouterAdvertisement(key string) error {
 	klog.Infof("reconciling bgp-edge-router-advertisement %s", key)
 	advertisement := cachedAdvertisement.DeepCopy()
 
-	// reconcile the bgp edge router workload and get the route sources for later OVN resources reconciliation
-	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
-	if err != nil {
+	if pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement); err != nil || pods == nil {
 		klog.Error(err)
 		return err
-	}
-
-	ready := util.DeploymentIsReady(deploy)
-	if !ready {
-		readyErr := fmt.Sprintf("Deployment %s is not ready", deploy.Kind, deploy.Name)
-		klog.Error(readyErr)
-		return fmt.Errorf(readyErr)
-	}
-	// get the pods of the deployment to collect the pod IPs
-	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-	if err != nil {
-		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	for _, pod := range pods {
-		if len(pod.Status.PodIPs) == 0 {
-			continue
-		}
-		klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
-		if err = c.cleanBgpEdgeRouterAdvertisementRule(key, pod.Name, advertisement.Spec.Subnet); err != nil {
-			klog.Error(err)
-			return err
+	} else {
+		for _, pod := range pods {
+			if len(pod.Status.PodIPs) == 0 {
+				continue
+			}
+			klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
+			if err = c.cleanBgpEdgeRouterAdvertisementRule(key, pod.Name, advertisement.Spec.Subnet); err != nil {
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -269,10 +235,6 @@ func (c *Controller) handleDelBgpEdgeRouterAdvertisement(key string) error {
 }
 
 func (c *Controller) cleanBgpEdgeRouterAdvertisementRule(key, podName string, subnetNames []string) error {
-	// externalIDs := map[string]string{
-	// 	ovs.ExternalIDVendor:        util.CniTypeName,
-	// 	ovs.ExternalIDBgpEdgeRouter: key,
-	// }
 
 	if podName == "" {
 		err := fmt.Errorf("failed to get pod name %s", podName)
@@ -285,27 +247,107 @@ func (c *Controller) cleanBgpEdgeRouterAdvertisementRule(key, podName string, su
 			klog.Error(err)
 			return err
 		} else {
-			if subnet.Spec.CIDRBlock != key {
+			if subnet.Spec.CIDRBlock != "" {
 				//delete bgp advertised ipblock
 			}
 			klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
 		}
 
 	}
-	// if err = c.OVNNbClient.DeleteLogicalRouterPolicies(podName, -1, externalIDs); err != nil {
-	// 	klog.Error(err)
-	// 	return err
-	// }
-	// if err = c.OVNNbClient.DeletePortGroup(berPortGroupName(key)); err != nil {
-	// 	klog.Error(err)
-	// 	return err
-	// }
-	// for _, af := range [...]int{4, 6} {
-	// 	if err = c.OVNNbClient.DeleteAddressSet(berAddressSetName(key, af)); err != nil {
-	// 		klog.Error(err)
-	// 		return err
-	// 	}
-	// }
 
 	return nil
+}
+
+func (c *Controller) addBgpEdgeRouterAdvertisementRule(key, podName string, subnetNames []string) error {
+
+	if podName == "" {
+		err := fmt.Errorf("failed to get pod name %s", podName)
+		klog.Error(err)
+		return err
+	}
+	for _, subnetName := range subnetNames {
+		if subnet, err := c.subnetsLister.Get(subnetName); err != nil {
+			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+			klog.Error(err)
+			return err
+		} else {
+			if subnet.Spec.CIDRBlock != "" {
+				//delete bgp advertised ipblock
+			}
+			klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
+		}
+
+	}
+
+	return nil
+}
+
+func (c *Controller) validateBgpEdgeRouterAdvertisement(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) ([]*corev1.Pod, error) {
+
+	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
+	if err != nil {
+		advertisement.Status.Ready = false
+		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
+		advertisement.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "BgpEdgeRouterDeployNotFound", msg, advertisement.Generation)
+		_, _ = c.updatebgpEdgeRouterAdvertisementStatus(advertisement)
+		klog.Error(err)
+		return nil, err
+	}
+
+	ready := util.DeploymentIsReady(deploy)
+	if !ready {
+		advertisement.Status.Ready = false
+		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
+		advertisement.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "BgpEdgeRouterNotEnabled", msg, advertisement.Generation)
+		_, _ = c.updatebgpEdgeRouterAdvertisementStatus(advertisement)
+		readyErr := fmt.Sprintf("Kind %s, Deployment %s is not ready", deploy.Kind, deploy.Name)
+		klog.Error(readyErr)
+		return nil, fmt.Errorf("%s", readyErr)
+	}
+	// get the pods of the deployment to collect the pod IPs
+	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
+	if err != nil {
+		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	if ready {
+		advertisement.Status.Ready = true
+		advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
+		if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
+			return pods, err
+		}
+	}
+
+	return pods, nil
+}
+
+func (c *Controller) initBgpEdgeRouterAdvertisementStatus(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) (*kubeovnv1.BgpEdgeRouterAdvertisement, error) {
+	var err error
+	advertisement, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement)
+	return advertisement, err
+}
+
+func (c *Controller) updatebgpEdgeRouterAdvertisementStatus(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) (*kubeovnv1.BgpEdgeRouterAdvertisement, error) {
+	if len(advertisement.Status.Conditions) == 0 {
+		advertisement.Status.Conditions.SetCondition(kubeovnv1.Init, corev1.ConditionUnknown, "Processing", "", advertisement.Generation)
+	}
+
+	updateAdvertisement, err := c.config.KubeOvnClient.KubeovnV1().BgpEdgeRouterAdvertisements(advertisement.Namespace).
+		UpdateStatus(context.Background(), advertisement, metav1.UpdateOptions{})
+	if err != nil {
+		err = fmt.Errorf("failed to update status of bgp-edge-router %s/%s: %w", advertisement.Namespace, advertisement.Name, err)
+		klog.Error(err)
+		return nil, err
+	}
+
+	return updateAdvertisement, nil
 }
