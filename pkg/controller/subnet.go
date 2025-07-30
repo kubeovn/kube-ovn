@@ -1825,7 +1825,7 @@ func (c *Controller) reconcileCustomVpcStaticRoute(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
-	if subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection {
+	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway && subnet.Spec.U2OInterconnection {
 		if err = c.addCustomVPCStaticRouteForSubnet(subnet); err != nil {
 			klog.Errorf("failed to add static route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
 			return err

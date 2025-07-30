@@ -535,76 +535,6 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
-	// reconcile OVN port group
-	ports := set.New[string]()
-	for _, selector := range gw.Spec.Selectors {
-		sel := labels.Everything()
-		if selector.NamespaceSelector != nil {
-			if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
-				err = fmt.Errorf("failed to create label selector for namespace selector %#v: %w", selector.NamespaceSelector, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		namespaces, err := c.namespacesLister.List(sel)
-		if err != nil {
-			err = fmt.Errorf("failed to list namespaces with selector %s: %w", sel, err)
-			klog.Error(err)
-			return err
-		}
-		sel = labels.Everything()
-		if selector.PodSelector != nil {
-			if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
-				err = fmt.Errorf("failed to create label selector for pod selector %#v: %w", selector.PodSelector, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		for _, ns := range namespaces {
-			pods, err := c.podsLister.Pods(ns.Name).List(sel)
-			if err != nil {
-				err = fmt.Errorf("failed to list pods with selector %s in namespace %s: %w", sel, ns.Name, err)
-				klog.Error(err)
-				return err
-			}
-			for _, pod := range pods {
-				if pod.Spec.HostNetwork ||
-					pod.Annotations[util.AllocatedAnnotation] != "true" ||
-					pod.Annotations[util.LogicalRouterAnnotation] != gw.VPC(c.config.ClusterRouter) ||
-					!isPodAlive(pod) {
-					continue
-				}
-				podName := c.getNameByPod(pod)
-				ports.Insert(ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider))
-			}
-		}
-	}
-	key := cache.MetaObjectToName(gw).String()
-	pgName := vegPortGroupName(key)
-	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
-		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
-		err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
-		klog.Error(err)
-		return err
-	}
-
-	// reconcile OVN address set
-	asName := vegAddressSetName(key, af)
-	if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
-		err = fmt.Errorf("failed to create address set %s: %w", asName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
-		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
-		klog.Error(err)
-		return err
-	}
-
 	// reconcile OVN BFD entries
 	bfdIDs := set.New[string]()
 	staleBFDIDs := set.New[string]()
@@ -635,127 +565,169 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 	}
 
-	// reconcile LR policy
-	if gw.Spec.TrafficPolicy == kubeovnv1.TrafficPolicyLocal {
-		rules := make(map[string]string, len(nextHops))
-		for nodeName, nexthop := range nextHops {
-			node, err := c.nodesLister.Get(nodeName)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					continue
+	if lrName == c.config.ClusterRouter {
+		// reconcile OVN port group
+		ports := set.New[string]()
+		for _, selector := range gw.Spec.Selectors {
+			sel := labels.Everything()
+			if selector.NamespaceSelector != nil {
+				if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
+					err = fmt.Errorf("failed to create label selector for namespace selector %#v: %w", selector.NamespaceSelector, err)
+					klog.Error(err)
+					return err
 				}
-				klog.Errorf("failed to get node %s: %v", nodeName, err)
-				return err
 			}
-			portName := node.Annotations[util.PortNameAnnotation]
-			if portName == "" {
-				err = fmt.Errorf("node %s does not have port name annotation", nodeName)
+			namespaces, err := c.namespacesLister.List(sel)
+			if err != nil {
+				err = fmt.Errorf("failed to list namespaces with selector %s: %w", sel, err)
 				klog.Error(err)
 				return err
 			}
-			localPgName := strings.ReplaceAll(portName, "-", ".")
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nexthop
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nexthop
+			sel = labels.Everything()
+			if selector.PodSelector != nil {
+				if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
+					err = fmt.Errorf("failed to create label selector for pod selector %#v: %w", selector.PodSelector, err)
+					klog.Error(err)
+					return err
+				}
+			}
+			for _, ns := range namespaces {
+				pods, err := c.podsLister.Pods(ns.Name).List(sel)
+				if err != nil {
+					err = fmt.Errorf("failed to list pods with selector %s in namespace %s: %w", sel, ns.Name, err)
+					klog.Error(err)
+					return err
+				}
+				for _, pod := range pods {
+					if pod.Spec.HostNetwork ||
+						pod.Annotations[util.AllocatedAnnotation] != "true" ||
+						pod.Annotations[util.LogicalRouterAnnotation] != gw.VPC(c.config.ClusterRouter) ||
+						!isPodAlive(pod) {
+						continue
+					}
+					podName := c.getNameByPod(pod)
+					ports.Insert(ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider))
+				}
+			}
 		}
-		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
+		key := cache.MetaObjectToName(gw).String()
+		pgName := vegPortGroupName(key)
+		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+
+		// reconcile OVN address set
+		asName := vegAddressSetName(key, af)
+		if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create address set %s: %w", asName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
+			err = fmt.Errorf("failed to update address set %s: %w", asName, err)
+			klog.Error(err)
+			return err
+		}
+
+		// reconcile LR policy
+		if gw.Spec.TrafficPolicy == kubeovnv1.TrafficPolicyLocal {
+			rules := make(map[string]string, len(nextHops))
+			for nodeName, nexthop := range nextHops {
+				node, err := c.nodesLister.Get(nodeName)
+				if err != nil {
+					if k8serrors.IsNotFound(err) {
+						continue
+					}
+					klog.Errorf("failed to get node %s: %v", nodeName, err)
+					return err
+				}
+				portName := node.Annotations[util.PortNameAnnotation]
+				if portName == "" {
+					err = fmt.Errorf("node %s does not have port name annotation", nodeName)
+					klog.Error(err)
+					return err
+				}
+				localPgName := strings.ReplaceAll(portName, "-", ".")
+				rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nexthop
+				rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nexthop
+			}
+			policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			// update/delete existing policies
+			for _, policy := range policies {
+				nexthop := rules[policy.Match]
+				bfdSessions := set.New(bfdMap[nexthop]).Delete("")
+				if nexthop == "" {
+					if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+						err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
+						klog.Error(err)
+						return err
+					}
+				} else {
+					var changed bool
+					if len(policy.Nexthops) != 1 || policy.Nexthops[0] != nexthop {
+						policy.Nexthops = []string{nexthop}
+						changed = true
+					}
+					if !bfdSessions.Equal(set.New(policy.BFDSessions...)) {
+						policy.BFDSessions = bfdSessions.UnsortedList()
+						changed = true
+					}
+					if changed {
+						if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+							err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
+							klog.Error(err)
+							return err
+						}
+					}
+				}
+				delete(rules, policy.Match)
+			}
+			// create new policies
+			for match, nexthop := range rules {
+				if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
+					ovnnb.LogicalRouterPolicyActionReroute, []string{nexthop}, []string{bfdMap[nexthop]}, externalIDs); err != nil {
+					klog.Error(err)
+					return err
+				}
+			}
+		} else {
+			if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
+				klog.Error(err)
+				return err
+			}
+		}
+		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
 		if err != nil {
 			klog.Error(err)
 			return err
 		}
-		// update/delete existing policies
+		matches := set.New(
+			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
+			fmt.Sprintf("ip%d.src == $%s", af, asName),
+		)
+		bfdIPs := set.New(slices.Collect(maps.Values(nextHops))...)
+		bfdSessions := bfdIDs.UnsortedList()
 		for _, policy := range policies {
-			nexthop := rules[policy.Match]
-			bfdSessions := set.New(bfdMap[nexthop]).Delete("")
-			if nexthop == "" {
-				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
-					klog.Error(err)
-					return err
-				}
-			} else {
-				var changed bool
-				if len(policy.Nexthops) != 1 || policy.Nexthops[0] != nexthop {
-					policy.Nexthops = []string{nexthop}
-					changed = true
-				}
-				if !bfdSessions.Equal(set.New(policy.BFDSessions...)) {
-					policy.BFDSessions = bfdSessions.UnsortedList()
-					changed = true
-				}
-				if changed {
+			if matches.Has(policy.Match) {
+				if !bfdIPs.Equal(set.New(policy.Nexthops...)) || !bfdIDs.Equal(set.New(policy.BFDSessions...)) {
+					policy.Nexthops, policy.BFDSessions = bfdIPs.UnsortedList(), bfdSessions
 					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
-						err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
+						err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
 						klog.Error(err)
 						return err
 					}
 				}
-			}
-			delete(rules, policy.Match)
-		}
-		// create new policies
-		for match, nexthop := range rules {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
-				ovnnb.LogicalRouterPolicyActionReroute, []string{nexthop}, []string{bfdMap[nexthop]}, externalIDs); err != nil {
-				klog.Error(err)
-				return err
-			}
-		}
-	} else {
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	matches := set.New(
-		fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-		fmt.Sprintf("ip%d.src == $%s", af, asName),
-	)
-	bfdIPs := set.New(slices.Collect(maps.Values(nextHops))...)
-	bfdSessions := bfdIDs.UnsortedList()
-	for _, policy := range policies {
-		if matches.Has(policy.Match) {
-			if !bfdIPs.Equal(set.New(policy.Nexthops...)) || !bfdIDs.Equal(set.New(policy.BFDSessions...)) {
-				policy.Nexthops, policy.BFDSessions = bfdIPs.UnsortedList(), bfdSessions
-				if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
-					err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
-					klog.Error(err)
-					return err
-				}
-			}
-			matches.Delete(policy.Match)
-			continue
-		}
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-			err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	for _, match := range matches.UnsortedList() {
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
-			ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-
-	if gw.Spec.BFD.Enabled {
-		// drop traffic if no nexthop is available
-		if policies, err = c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		matches = set.New(
-			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-			fmt.Sprintf("ip%d.src == $%s", af, asName),
-		)
-		for _, policy := range policies {
-			if matches.Has(policy.Match) {
 				matches.Delete(policy.Match)
 				continue
 			}
@@ -766,22 +738,88 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			}
 		}
 		for _, match := range matches.UnsortedList() {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
-				ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
+			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
+				ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
 				klog.Error(err)
 				return err
 			}
 		}
-	} else if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
-		klog.Error(err)
-		return err
-	}
 
-	for _, bfdID := range staleBFDIDs.UnsortedList() {
-		if err = c.OVNNbClient.DeleteBFD(bfdID); err != nil {
-			err = fmt.Errorf("failed to delete bfd %s: %w", bfdID, err)
+		if gw.Spec.BFD.Enabled {
+			// drop traffic if no nexthop is available
+			if policies, err = c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
+				klog.Error(err)
+				return err
+			}
+			matches = set.New(
+				fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
+				fmt.Sprintf("ip%d.src == $%s", af, asName),
+			)
+			for _, policy := range policies {
+				if matches.Has(policy.Match) {
+					matches.Delete(policy.Match)
+					continue
+				}
+				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
+					klog.Error(err)
+					return err
+				}
+			}
+			for _, match := range matches.UnsortedList() {
+				if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
+					ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
+					klog.Error(err)
+					return err
+				}
+			}
+		} else if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
 			klog.Error(err)
 			return err
+		}
+
+		for _, bfdID := range staleBFDIDs.UnsortedList() {
+			if err = c.OVNNbClient.DeleteBFD(bfdID); err != nil {
+				err = fmt.Errorf("failed to delete bfd %s: %w", bfdID, err)
+				klog.Error(err)
+				return err
+			}
+		}
+	} else {
+		// reconcile LR static route
+		routes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", externalIDs)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		expected := make(map[string]set.Set[string], len(nextHops))
+		for _, nextHop := range nextHops {
+			expected[nextHop] = sources.Clone()
+		}
+		for _, route := range routes {
+			if expected[route.Nexthop].Has(route.IPPrefix) {
+				if !reflect.DeepEqual(route.BFD, bfdMap[route.Nexthop]) {
+					route.BFD = ptr.To(bfdMap[route.Nexthop])
+					if err = c.OVNNbClient.UpdateLogicalRouterStaticRoute(route, &route.BFD); err != nil {
+						klog.Error(err)
+						return err
+					}
+				}
+				expected[route.Nexthop].Delete(route.IPPrefix)
+				continue
+			}
+			if err = c.OVNNbClient.DeleteLogicalRouterStaticRouteByUUID(lrName, route.UUID); err != nil {
+				klog.Error(err)
+				return err
+			}
+		}
+		for nextHop, sources := range expected {
+			for _, src := range sources.UnsortedList() {
+				if err = c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, util.MainRouteTable, ovnnb.LogicalRouterStaticRoutePolicySrcIP, src, ptr.To(bfdMap[nextHop]), externalIDs, nextHop); err != nil {
+					klog.Error(err)
+					return err
+				}
+			}
 		}
 	}
 
