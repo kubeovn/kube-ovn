@@ -3816,21 +3816,21 @@ metadata:
   name: secret-reader-ovn-ipsec
   namespace: kube-system
 rules:
-- apiGroups: 
+- apiGroups:
     - ""
-  resources: 
+  resources:
     - "secrets"
   resourceNames:
     - "ovn-ipsec-ca"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "watch"
-- apiGroups: 
+- apiGroups:
     - "cert-manager.io"
-  resources: 
+  resources:
     - "certificaterequests"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "create"
