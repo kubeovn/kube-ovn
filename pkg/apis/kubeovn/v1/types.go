@@ -822,9 +822,6 @@ type VipSpec struct {
 	V4ip          string   `json:"v4ip"`
 	V6ip          string   `json:"v6ip"`
 	MacAddress    string   `json:"macAddress"`
-	ParentV4ip    string   `json:"parentV4ip"`
-	ParentV6ip    string   `json:"parentV6ip"`
-	ParentMac     string   `json:"parentMac"`
 	Selector      []string `json:"selector"`
 	AttachSubnets []string `json:"attachSubnets"`
 }
@@ -845,9 +842,6 @@ type VipStatus struct {
 	V4ip  string `json:"v4ip" patchStrategy:"merge"`
 	V6ip  string `json:"v6ip" patchStrategy:"merge"`
 	Mac   string `json:"mac" patchStrategy:"merge"`
-	Pv4ip string `json:"pv4ip" patchStrategy:"merge"`
-	Pv6ip string `json:"pv6ip" patchStrategy:"merge"`
-	Pmac  string `json:"pmac" patchStrategy:"merge"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

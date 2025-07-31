@@ -2082,6 +2082,9 @@ spec:
       - name: Type
         type: string
         jsonPath: .status.type
+      - name: Ready
+        jsonPath: .status.ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -2091,6 +2094,8 @@ spec:
               properties:
                 type:
                   type: string
+                ready:
+                  type: boolean
                 v4ip:
                   type: string
                 v6ip:
