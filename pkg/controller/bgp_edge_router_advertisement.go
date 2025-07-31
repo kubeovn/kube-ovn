@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,22 +18,55 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type updateVerObject struct {
+	key    string
+	oldVer *kubeovnv1.BgpEdgeRouterAdvertisement
+	newVer *kubeovnv1.BgpEdgeRouterAdvertisement
+}
+
 func (c *Controller) enqueueAddBgpEdgeRouterAdvertisement(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.BgpEdgeRouterAdvertisement)).String()
 	klog.V(3).Infof("enqueue add bgp-edge-router-advertisement %s", key)
 	c.addBgpEdgeRouterAdvertisementQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateBgpEdgeRouterAdvertisement(_, newObj any) {
+func (c *Controller) enqueueUpdateBgpEdgeRouterAdvertisement(oldObj, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.BgpEdgeRouterAdvertisement)).String()
 	klog.V(3).Infof("enqueue update bgp-edge-router-advertisement %s", key)
-	c.updateBgpEdgeRouterAdvertisementQueue.Add(key)
+
+	if oldObj == nil || newObj == nil {
+		klog.Warningf("enqueue update bgp-edge-router-advertisement %s, but old object is nil", key)
+		return
+	}
+
+	oldRouter := oldObj.(*kubeovnv1.BgpEdgeRouterAdvertisement)
+	newRouter := newObj.(*kubeovnv1.BgpEdgeRouterAdvertisement)
+	updateVer := &updateVerObject{
+		key:    key,
+		oldVer: oldRouter,
+		newVer: newRouter,
+	}
+
+	c.updateBgpEdgeRouterAdvertisementQueue.Add(updateVer)
 }
 
 func (c *Controller) enqueueDeleteBgpEdgeRouterAdvertisement(obj any) {
+	var berAd *kubeovnv1.BgpEdgeRouterAdvertisement
+	switch t := obj.(type) {
+	case *kubeovnv1.BgpEdgeRouterAdvertisement:
+		berAd = t
+	case cache.DeletedFinalStateUnknown:
+		if v, ok := t.Obj.(*kubeovnv1.BgpEdgeRouterAdvertisement); ok {
+			berAd = v
+		}
+	}
+	if berAd == nil {
+		klog.Warning("enqueueDeleteBgpEdgeRouterAdvertisement: object is not BgpEdgeRouterAdvertisement")
+		return
+	}
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.BgpEdgeRouterAdvertisement)).String()
 	klog.V(3).Infof("enqueue delete bgp-edge-router-advertisement %s", key)
-	c.delBgpEdgeRouterAdvertisementQueue.Add(key)
+	c.deleteBgpEdgeRouterAdvertisementQueue.Add(key)
 }
 
 func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
@@ -54,9 +89,10 @@ func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 	}
 
 	if !cachedAdvertisement.DeletionTimestamp.IsZero() {
-		c.delBgpEdgeRouterAdvertisementQueue.Add(key)
+		c.deleteBgpEdgeRouterAdvertisementQueue.Add(key)
 		return nil
 	}
+	klog.V(3).Infof("debug bgp-edge-router-advertisement %s", cachedAdvertisement.Name)
 
 	if _, err := c.initBgpEdgeRouterAdvertisementStatus(cachedAdvertisement); err != nil {
 		klog.Error(err)
@@ -77,28 +113,35 @@ func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 		advertisement = updatedAdvertisement
 	}
 
-	if pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement); err != nil || pods == nil {
+	pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement)
+	if err != nil || pods == nil {
 		klog.Error(err)
 		return err
-	} else {
-		for _, pod := range pods {
-			if len(pod.Status.PodIPs) == 0 {
-				continue
-			}
-			klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
-			if err = c.addBgpEdgeRouterAdvertisementRule(key, pod.Name, advertisement.Spec.Subnet); err != nil {
-				klog.Error(err)
-				return err
-			}
+	}
+
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		klog.Infof("handle adding bgp-edge-router-advertisement %s", key)
+		if err = c.addOrDeleteBgpEdgeRouterAdvertisementRule("add", key, pod, advertisement.Spec.Subnet); err != nil {
+			klog.Error(err)
+			return err
 		}
 	}
 
+	advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
+	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
+		return err
+	}
 	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
 	return nil
 }
 
-func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(key string) error {
+func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(updatedObj *updateVerObject) error {
+	key := updatedObj.key
+
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -118,53 +161,15 @@ func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(key string) error {
 	}
 
 	if !cachedAdvertisement.DeletionTimestamp.IsZero() {
-		c.delBgpEdgeRouterAdvertisementQueue.Add(key)
+		c.deleteBgpEdgeRouterAdvertisementQueue.Add(key)
 		return nil
 	}
 
 	klog.Infof("reconciling bgp-edge-router-advertisement %s", key)
 	advertisement := cachedAdvertisement.DeepCopy()
 
-	if controllerutil.AddFinalizer(advertisement, util.KubeOVNControllerFinalizer) {
-		updatedAdvertisement, err := c.config.KubeOvnClient.KubeovnV1().BgpEdgeRouterAdvertisements(advertisement.Namespace).
-			Update(context.Background(), advertisement, metav1.UpdateOptions{})
-		if err != nil {
-			err = fmt.Errorf("failed to add finalizer for bgp-edge-router %s/%s: %w", advertisement.Namespace, advertisement.Name, err)
-			klog.Error(err)
-			return err
-		}
-		advertisement = updatedAdvertisement
-	}
-
-	// reconcile the bgp edge router workload and get the route sources for later OVN resources reconciliation
-	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	ready := util.DeploymentIsReady(deploy)
-	if !ready {
-		advertisement.Status.Ready = false
-		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
-		// advertisement.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, advertisement.Generation)
-		advertisement.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "BgpEdgeRouterNotEnabled", msg, advertisement.Generation)
-		_, _ = c.updatebgpEdgeRouterAdvertisementStatus(advertisement)
-		readyErr := fmt.Sprintf("Kind %s, Deployment %s is not ready", deploy.Kind, deploy.Name)
-		klog.Error(readyErr)
-		return fmt.Errorf("%s", readyErr)
-	}
-	// get the pods of the deployment to collect the pod IPs
-	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-	if err != nil {
-		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+	pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement)
+	if err != nil || pods == nil {
 		klog.Error(err)
 		return err
 	}
@@ -173,8 +178,17 @@ func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(key string) error {
 		if len(pod.Status.PodIPs) == 0 {
 			continue
 		}
+		klog.Infof("handle adding bgp-edge-router-advertisement %s", key)
+		if err = c.updateBgpEdgeRouterAdvertisementRule(key, pod, updatedObj.oldVer, updatedObj.newVer); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
+	advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
+	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
+		return err
+	}
 	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
 	return nil
@@ -199,27 +213,23 @@ func (c *Controller) handleDelBgpEdgeRouterAdvertisement(key string) error {
 		return nil
 	}
 
-	if !cachedAdvertisement.DeletionTimestamp.IsZero() {
-		c.delBgpEdgeRouterAdvertisementQueue.Add(key)
-		return nil
-	}
-
 	klog.Infof("reconciling bgp-edge-router-advertisement %s", key)
 	advertisement := cachedAdvertisement.DeepCopy()
 
-	if pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement); err != nil || pods == nil {
+	pods, err := c.validateBgpEdgeRouterAdvertisement(advertisement)
+	if err != nil || pods == nil {
 		klog.Error(err)
 		return err
-	} else {
-		for _, pod := range pods {
-			if len(pod.Status.PodIPs) == 0 {
-				continue
-			}
-			klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
-			if err = c.cleanBgpEdgeRouterAdvertisementRule(key, pod.Name, advertisement.Spec.Subnet); err != nil {
-				klog.Error(err)
-				return err
-			}
+	}
+
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		klog.Infof("handle deleting bgp-edge-router-advertisement %s", key)
+		if err = c.addOrDeleteBgpEdgeRouterAdvertisementRule("del", key, pod, advertisement.Spec.Subnet); err != nil {
+			klog.Error(err)
+			return err
 		}
 	}
 
@@ -231,59 +241,96 @@ func (c *Controller) handleDelBgpEdgeRouterAdvertisement(key string) error {
 			klog.Error(err)
 		}
 	}
-	return nil
-}
 
-func (c *Controller) cleanBgpEdgeRouterAdvertisementRule(key, podName string, subnetNames []string) error {
-
-	if podName == "" {
-		err := fmt.Errorf("failed to get pod name %s", podName)
-		klog.Error(err)
+	advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
+	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
 		return err
 	}
-	for _, subnetName := range subnetNames {
-		if subnet, err := c.subnetsLister.Get(subnetName); err != nil {
-			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
-			klog.Error(err)
-			return err
-		} else {
-			if subnet.Spec.CIDRBlock != "" {
-				//delete bgp advertised ipblock
-			}
-			klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
-		}
-
-	}
+	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
 	return nil
 }
 
-func (c *Controller) addBgpEdgeRouterAdvertisementRule(key, podName string, subnetNames []string) error {
-
-	if podName == "" {
-		err := fmt.Errorf("failed to get pod name %s", podName)
+func (c *Controller) updateBgpEdgeRouterAdvertisementRule(key string, pod *corev1.Pod, oldBerAd, newBerAd *kubeovnv1.BgpEdgeRouterAdvertisement) error {
+	if pod.Name == "" {
+		err := fmt.Errorf("failed to get pod name %s", pod.Name)
 		klog.Error(err)
 		return err
 	}
-	for _, subnetName := range subnetNames {
-		if subnet, err := c.subnetsLister.Get(subnetName); err != nil {
+	var oldSubnetArray []string
+	var newSubnetArray []string
+
+	for _, subnetName := range oldBerAd.Spec.Subnet {
+		var subnet *kubeovnv1.Subnet
+		var err error
+		if subnet, err = c.subnetsLister.Get(subnetName); err != nil {
 			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
 			klog.Error(err)
 			return err
-		} else {
-			if subnet.Spec.CIDRBlock != "" {
-				//delete bgp advertised ipblock
-			}
-			klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
 		}
+		if subnet.Spec.CIDRBlock != "" {
+			oldSubnetArray = append(oldSubnetArray, subnet.Spec.CIDRBlock)
+		}
+		klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
+	}
 
+	for _, subnetName := range newBerAd.Spec.Subnet {
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+			klog.Error(err)
+			return err
+		}
+		if subnet.Spec.CIDRBlock != "" {
+			newSubnetArray = append(newSubnetArray, subnet.Spec.CIDRBlock)
+		}
+		klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
+	}
+
+	if err := c.execUpdateBgpRoute(pod, oldSubnetArray, newSubnetArray); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) addOrDeleteBgpEdgeRouterAdvertisementRule(op, key string, pod *corev1.Pod, subnetNames []string) error {
+	if pod.Name == "" {
+		err := fmt.Errorf("failed to get pod name %s", pod.Name)
+		klog.Error(err)
+		return err
+	}
+	SubnetCidrArray := []string{}
+	for _, subnetName := range subnetNames {
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+			klog.Error(err)
+			return err
+		}
+		if subnet.Spec.CIDRBlock != "" {
+			SubnetCidrArray = append(SubnetCidrArray, subnet.Spec.CIDRBlock)
+		}
+		klog.Infof("cleaning bgp-edge-router-advertisement %s for subnet %s", key, subnet.Name)
+	}
+
+	if op == "add" {
+		if err := c.execUpdateBgpRoute(pod, nil, SubnetCidrArray); err != nil {
+			klog.Error(err)
+			return err
+		}
+	} else {
+		if err := c.execUpdateBgpRoute(pod, SubnetCidrArray, nil); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
 }
 
 func (c *Controller) validateBgpEdgeRouterAdvertisement(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) ([]*corev1.Pod, error) {
-
 	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
 	if err != nil {
 		advertisement.Status.Ready = false
@@ -321,10 +368,6 @@ func (c *Controller) validateBgpEdgeRouterAdvertisement(advertisement *kubeovnv1
 
 	if ready {
 		advertisement.Status.Ready = true
-		advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
-		if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
-			return pods, err
-		}
 	}
 
 	return pods, nil
@@ -350,4 +393,43 @@ func (c *Controller) updatebgpEdgeRouterAdvertisementStatus(advertisement *kubeo
 	}
 
 	return updateAdvertisement, nil
+}
+
+func (c *Controller) execUpdateBgpRoute(pod *corev1.Pod, oldCidrs, newCidrs []string) error {
+	// add_announced_route
+	cmdArs := []string{}
+	if len(oldCidrs) > 0 {
+		cmdArs = append(cmdArs, "del_announced_route="+strings.Join(oldCidrs, ","))
+	}
+	if len(newCidrs) > 0 {
+		cmdArs = append(cmdArs, "add_announced_route="+strings.Join(newCidrs, ","))
+	}
+	cmdArs = append(cmdArs, "list_announced_route")
+	cmd := fmt.Sprintf("bash /kube-ovn/update-bgp-route.sh %s", strings.Join(cmdArs, " "))
+
+	klog.Infof("exec command : %s", cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "bgp-router-speaker", []string{"/bin/bash", "-c", cmd}...)
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		if len(stdOutput) > 0 {
+			klog.Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+		}
+		klog.Error(err)
+		return err
+	}
+
+	if len(stdOutput) > 0 {
+		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+	}
+
+	if len(errOutput) > 0 {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return errors.New(errOutput)
+	}
+
+	// list the current rule and check if the routes are updated
+
+	return nil
 }

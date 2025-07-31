@@ -1142,6 +1142,14 @@ func bgpEdgeRouterContainerBGP(speakerImage, routerName string, speakerParams *k
 				MountPath: "/var/log/kube-ovn",
 			},
 		},
+		SecurityContext: &corev1.SecurityContext{
+			Privileged: ptr.To(false),
+			RunAsUser:  ptr.To[int64](0),
+			Capabilities: &corev1.Capabilities{
+				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
 	}
 
 	return container, nil

@@ -3599,10 +3599,7 @@ spec:
     listKind: BgpEdgeRouterAdvertisementList
   scope: Namespaced
   versions:
-    - name: v1
-      served: true
-      storage: true
-      additionalPrinterColumns:
+    - additionalPrinterColumns:
         - jsonPath: .spec.subnet
           name: SUBNET
           type: string
@@ -3615,12 +3612,11 @@ spec:
         - jsonPath: .metadata.creationTimestamp
           name: AGE
           type: date
+      name: v1
+      served: true
+      storage: true
       subresources:
         status: {}
-        scale:
-          specReplicasPath: .spec.replicas
-          statusReplicasPath: .status.replicas
-          labelSelectorPath: .status.labelSelector
       schema:
         openAPIV3Schema:
           type: object
@@ -3630,6 +3626,8 @@ spec:
               properties:
                 subnet:
                   type: array
+                  minItems: 1
+                  x-kubernetes-list-type: set
                   items:
                     type: string
                 bgpEdgeRouter:
@@ -3638,41 +3636,38 @@ spec:
                 - subnet
                 - bgpEdgeRouter
             status:
-              type: object
               properties:
                 conditions:
-                  type: array
                   items:
-                    type: object
                     properties:
                       lastTransitionTime:
-                        type: string
                         format: date-time
+                        type: string
                       lastUpdateTime:
-                        type: string
                         format: date-time
-                      message:
                         type: string
+                      message:
                         maxLength: 32768
+                        type: string
                       observedGeneration:
-                        type: integer
                         format: int64
                         minimum: 0
+                        type: integer
                       reason:
-                        type: string
-                        minLength: 1
                         maxLength: 1024
+                        minLength: 1
                         pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                      status:
                         type: string
+                      status:
                         enum:
                           - "True"
                           - "False"
                           - Unknown
-                      type:
                         type: string
+                      type:
                         maxLength: 316
                         pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
                     required:
                       - lastTransitionTime
                       - lastUpdateTime
@@ -3680,6 +3675,8 @@ spec:
                       - reason
                       - status
                       - type
+                    type: object
+                  type: array
                   x-kubernetes-list-map-keys:
                     - type
                   x-kubernetes-list-type: map
@@ -3688,4 +3685,4 @@ spec:
                   default: false
               required:
                 - conditions
-                - ready
+              type: object
