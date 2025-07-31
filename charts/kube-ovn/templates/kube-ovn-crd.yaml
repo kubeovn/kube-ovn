@@ -1838,6 +1838,9 @@ spec:
       - name: Type
         type: string
         jsonPath: .status.type
+      - name: Ready
+        jsonPath: .status.ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
