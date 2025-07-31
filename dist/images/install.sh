@@ -2505,6 +2505,9 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
+      - name: Namespace
+        type: string
+        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
