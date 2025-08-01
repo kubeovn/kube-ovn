@@ -101,8 +101,6 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
-    # northd: add nb option version_compatibility
-    git apply $SRC_DIR/bc8cbb9d2f55d8555a2d5b82cd0d3ccc8b1d50b3.patch && \
     # add support for conditionally skipping conntrack
     git apply $SRC_DIR/78cade01874292e2c101c39b975290ef6c812a50.patch && \
     # northd: skip conntrack when access node local dns ip
@@ -111,18 +109,20 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch && \
     # direct output to lsp for dnat packets in logical switch ingress pipelines
     git apply $SRC_DIR/a297b840c2c9f118c7ce6133077087b5999f12dd.patch && \
-    # fix lr-lb dnat with multiple distributed gateway ports
-    git apply $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
-   # northd: skip arp/nd request for lrp addresses from localnet ports
-    git apply $SRC_DIR/af3062f68c62eca2dd2c0d2710d8c31051faf979.patch && \
     # ovn-controller: make activation strategy work for single chassis
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
-    # support dedicated BFD LRP
-    git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \
-    # skip node local dns ip conntrack when set acl
+	# skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-    # select local backend first
-    git apply $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch
+	# select local backend first
+    git apply $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch && \
+    # fix lr-lb dnat with multiple distributed gateway ports
+    git apply $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
+    # support dedicated BFD LRP
+    git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \	
+    # northd: add nb option version_compatibility
+    git apply $SRC_DIR/bc8cbb9d2f55d8555a2d5b82cd0d3ccc8b1d50b3.patch && \
+    # northd: skip arp/nd request for lrp addresses from localnet ports
+    git apply $SRC_DIR/af3062f68c62eca2dd2c0d2710d8c31051faf979.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
