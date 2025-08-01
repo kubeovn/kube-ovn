@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -440,11 +439,6 @@ func (c *Controller) execUpdateBgpRoute(pod *corev1.Pod, oldCidrs, newCidrs []st
 }
 
 func (c *Controller) resyncBgpEdgeRouterAdvertisement() {
-	defer func() {
-		if r := recover(); r != nil {
-			klog.Errorf("panic in resyncBgpEdgeRouterAdvertisement: %v\n%s", r, debug.Stack())
-		}
-	}()
 	klog.Info("resync bgp edge router")
 	// resync all vpc edge routers
 	berAds, err := c.bgpEdgeRouterAdvertisementLister.List(labels.Everything())
