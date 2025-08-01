@@ -42,7 +42,8 @@ type ProviderNetworkSpec struct {
 type ProviderNetworkCondition struct {
 	// Node name
 	Node string `json:"node"`
-	Condition
+
+	Condition `json:"condition"`
 }
 
 type ProviderNetworkStatus struct {

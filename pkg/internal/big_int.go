@@ -6,7 +6,7 @@ import (
 )
 
 type BigInt struct {
-	big.Int
+	big.Int `json:"bigInt"`
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
