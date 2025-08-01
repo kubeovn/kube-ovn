@@ -1,4 +1,4 @@
-From 5593e614e51a5dce28941e5bf760f9ee5397cede Mon Sep 17 00:00:00 2001
+From e889d46924085ca0fe38a2847da973dfe6ea100e Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
 Date: Thu, 10 Apr 2025 01:29:00 +0000
 Subject: [PATCH] fix reaching resubmit limit in underlay
@@ -6,14 +6,14 @@ Subject: [PATCH] fix reaching resubmit limit in underlay
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
  northd/en-global-config.c |  5 ++++
- northd/northd.c           | 53 +++++++++++++++++++++++++++++++++++++++
- 2 files changed, 58 insertions(+)
+ northd/northd.c           | 54 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 59 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index a6d0d2f008..0439c522ed 100644
+index f08c612962..23d559f27d 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -543,6 +543,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+@@ -644,6 +644,11 @@ check_nb_options_out_of_sync(
          return true;
      }
  
@@ -26,19 +26,20 @@ index a6d0d2f008..0439c522ed 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index b67f8ccad9..5e828bcbf4 100644
+index 882f9475f8..4a4d75415b 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -90,6 +90,8 @@ static bool use_ct_inv_match = true;
-  */
- static bool default_acl_drop;
+@@ -98,6 +98,9 @@ static bool vxlan_mode;
+ 
+ static bool vxlan_ic_mode;
  
 +static bool bcast_arp_req_flood = true;
++
 +
  #define MAX_OVN_TAGS 4096
  
  
-@@ -8714,6 +8716,11 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
+@@ -9337,6 +9340,11 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                        "outport == \"none\"",
                        "outport = \""MC_UNKNOWN "\"; output;",
                        lflow_ref);
@@ -48,9 +49,9 @@ index b67f8ccad9..5e828bcbf4 100644
 +                          lflow_ref);
 +        }
      } else {
-         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
-                       "outport == \"none\"",  debug_drop_action(),
-@@ -9140,6 +9147,49 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
+         ovn_lflow_add_drop_with_desc(
+             lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50, "outport == \"none\"",
+@@ -9776,6 +9784,49 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
                    lflow_ref);
  }
  
@@ -100,7 +101,7 @@ index b67f8ccad9..5e828bcbf4 100644
  /* Ingress table 19: ARP/ND responder for service monitor source ip.
   * (priority 110)*/
  static void
-@@ -15944,6 +15994,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+@@ -17609,6 +17660,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
      build_lswitch_arp_nd_responder_skip_local(op, lflows, match);
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
@@ -108,7 +109,7 @@ index b67f8ccad9..5e828bcbf4 100644
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
      build_lswitch_external_port(op, lflows);
      build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
-@@ -17584,6 +17635,8 @@ ovnnb_db_run(struct northd_input *input_data,
+@@ -19045,6 +19097,8 @@ ovnnb_db_run(struct northd_input *input_data,
  
      use_ct_inv_match = smap_get_bool(input_data->nb_options,
                                       "use_ct_inv_match", true);
