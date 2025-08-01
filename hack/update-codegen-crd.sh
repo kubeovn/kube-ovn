@@ -3,7 +3,7 @@ set -eux
 # usage: bash ./hack/update-codegen-crd.sh
 
 # set GOPROXY you like
-export GOPROXY=https://goproxy.cn
+export GOPROXY=${GOPROXY:-"https://goproxy.cn"}
 # use controller-gen to generate CRDs
 # ensure controller-gen is installed
 CONTROLLER_TOOLS_VERSION=${CONTROLLER_TOOLS_VERSION:-"v0.17.3"}
