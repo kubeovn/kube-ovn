@@ -1270,6 +1270,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("add bgp edge router advertisement", c.addBgpEdgeRouterAdvertisementQueue, c.handleAddBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(runWorker("update bgp edge router advertisement", c.updateBgpEdgeRouterAdvertisementQueue, c.handleUpdateBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteBgpEdgeRouterAdvertisementQueue, c.handleDelBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
+	go wait.Until(c.resyncBgpEdgeRouterAdvertisement, 60*time.Second, ctx.Done())
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())

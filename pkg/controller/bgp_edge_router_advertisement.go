@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"runtime/debug"
+	"slices"
+	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -432,4 +437,192 @@ func (c *Controller) execUpdateBgpRoute(pod *corev1.Pod, oldCidrs, newCidrs []st
 	// list the current rule and check if the routes are updated
 
 	return nil
+}
+
+func (c *Controller) resyncBgpEdgeRouterAdvertisement() {
+	defer func() {
+		if r := recover(); r != nil {
+			klog.Errorf("panic in resyncBgpEdgeRouterAdvertisement: %v\n%s", r, debug.Stack())
+		}
+	}()
+	klog.Info("resync bgp edge router")
+	// resync all vpc edge routers
+	berAds, err := c.bgpEdgeRouterAdvertisementLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc edge routers: %v", err)
+		return
+	}
+
+	for _, berAd := range berAds {
+		// Check router.Spec.BGP.AdvertisedRoutes same with pods bgp advertised routes
+		if err := c.syncAdvertisedRoutes(berAd); err != nil {
+			klog.Errorf("failed to sync advertised routes for vpc edge router %s: %v", berAd.Name, err)
+			continue
+		}
+		klog.Infof("resync vpc edge router %s", berAd.Name)
+	}
+}
+
+func (c *Controller) syncAdvertisedRoutes(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) error {
+	key := cache.MetaObjectToName(advertisement).String()
+
+	c.bgpEdgeRouterAdvertisementKeyMutex.LockKey(key)
+	defer func() { _ = c.bgpEdgeRouterAdvertisementKeyMutex.UnlockKey(key) }()
+
+	if !advertisement.DeletionTimestamp.IsZero() {
+		c.deleteBgpEdgeRouterAdvertisementQueue.Add(key)
+		return nil
+	}
+	klog.Infof("reconciling bgp-edge-router %s", key)
+	// Deep copy because we might mutate Status below.
+	cachedAdvertisement := advertisement.DeepCopy()
+
+	pods, err := c.validateBgpEdgeRouterAdvertisement(cachedAdvertisement)
+	if err != nil || pods == nil {
+		klog.Error(err)
+		return err
+	}
+	cidrBlock, err := c.getSubnetCidrBlock(cachedAdvertisement)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		podCidr, err := c.execGetBgpRoute(pod)
+		if err != nil {
+			return err
+		}
+		klog.Infof("current router advertised routes: %v", cidrBlock)
+		klog.Infof("router pod %s/%s advertised routes: %v", pod.Namespace, pod.Name, podCidr)
+		routesDiff := !slicesEqual(podCidr, cidrBlock)
+		if routesDiff {
+			if err := c.execUpdateBgpRoute(pod, podCidr, cidrBlock); err != nil {
+				return err
+			}
+			klog.Infof("synced advertised routes for bgp-router-speaker %s pod %s/%s", key, pod.Namespace, pod.Name)
+		}
+	}
+
+	klog.Infof("finished sync bgp-edge-router %s advertised routes", key)
+	return nil
+}
+
+func (c *Controller) execGetBgpRoute(routerPod *corev1.Pod) ([]string, error) {
+	cmd := "bash /kube-ovn/update-bgp-route.sh list_announced_route"
+	klog.Infof("exec command : %s", cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, routerPod.Namespace, routerPod.Name, "bgp-router-speaker", []string{"/bin/bash", "-c", cmd}...)
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		klog.Error(err)
+		return nil, err
+	}
+
+	if len(stdOutput) > 0 {
+		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+	}
+	if len(errOutput) > 0 {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return nil, errors.New(errOutput)
+	}
+
+	// Parse the output to extract announced routes
+	announcedRoutes, err := c.parseBgpAnnouncedRoutes(stdOutput)
+	if err != nil {
+		klog.Errorf("failed to parse BGP announced routes: %v", err)
+		return nil, err
+	}
+
+	return announcedRoutes, nil
+}
+
+func (c *Controller) getSubnetCidrBlock(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) ([]string, error) {
+	var cirdBlock []string
+	for _, subnetName := range advertisement.Spec.Subnet {
+		var subnet *kubeovnv1.Subnet
+		var err error
+		subnet, err = c.subnetsLister.Get(subnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+			klog.Error(err)
+			return nil, err
+		}
+		if subnet.Spec.CIDRBlock != "" {
+			cirdBlock = append(cirdBlock, subnet.Spec.CIDRBlock)
+		}
+	}
+	return cirdBlock, nil
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Create copies and sort them
+	aCopy := make([]string, len(a))
+	bCopy := make([]string, len(b))
+	copy(aCopy, a)
+	copy(bCopy, b)
+
+	sort.Strings(aCopy)
+	sort.Strings(bCopy)
+
+	return slices.Equal(aCopy, bCopy)
+}
+
+func (c *Controller) parseBgpAnnouncedRoutes(output string) ([]string, error) {
+	var routes []string
+
+	// Look for the specific section with next-hop routes
+	lines := strings.Split(output, "\n")
+	inTargetSection := false
+	foundRoutesSection := false
+
+	// Regex to match route lines starting with "*>" followed by CIDR
+	routeRegex := regexp.MustCompile(`^\*>\s+(\d+\.\d+\.\d+\.\d+/\d+)`)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Start parsing when we find the target section with any IP address
+		if strings.Contains(line, "--- Routes with Next-Hop") && strings.Contains(line, "---") {
+			inTargetSection = true
+			continue
+		}
+
+		// Look for the IPv4 routes subsection
+		if inTargetSection && strings.Contains(line, "IPv4 routes with next-hop") {
+			foundRoutesSection = true
+			continue
+		}
+
+		// Stop parsing if we hit another section starting with "---" or "==="
+		if inTargetSection && foundRoutesSection && (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "===")) {
+			break
+		}
+
+		// Skip header lines (Network, Next Hop, AS_PATH, etc.)
+		if inTargetSection && (strings.Contains(line, "Network") && strings.Contains(line, "Next Hop")) {
+			continue
+		}
+
+		// Parse route lines in the target section that start with "*>"
+		if inTargetSection && foundRoutesSection && routeRegex.MatchString(line) {
+			matches := routeRegex.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				routes = append(routes, matches[1])
+			}
+		}
+	}
+
+	if len(routes) == 0 {
+		return nil, errors.New("no announced routes found in BGP output")
+	}
+
+	return routes, nil
 }
