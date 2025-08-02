@@ -2269,8 +2269,6 @@ spec:
               properties:
                 type:
                   type: string
-                ready:
-                  type: boolean
                 v4ip:
                   type: string
                 v6ip:
