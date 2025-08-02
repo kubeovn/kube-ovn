@@ -120,6 +120,7 @@ const (
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
 	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
+	ServiceHealthCheck                    = "ovn.kubernetes.io/service_health_check"
 
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
