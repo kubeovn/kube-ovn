@@ -102,7 +102,7 @@ function add_eip() {
         eip=${rule}
         eip_without_prefix=(${eip//\// })
         exec_cmd "ip addr replace $eip dev net1"
-        exec_cmd "arping -I net1 -c 3 -D $eip_without_prefix"
+        exec_cmd "arping -I net1 -c 3 -U $eip_without_prefix"
     done
 }
 
