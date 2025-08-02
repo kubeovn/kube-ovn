@@ -131,19 +131,15 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 
 func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	if !slices.Equal(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
-		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
 		return true
 	}
 	if !slices.Equal(gw.Spec.Selector, gw.Status.Selector) {
-		gw.Status.Selector = gw.Spec.Selector
 		return true
 	}
 	if !reflect.DeepEqual(gw.Spec.Tolerations, gw.Status.Tolerations) {
-		gw.Status.Tolerations = gw.Spec.Tolerations
 		return true
 	}
 	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
-		gw.Status.Affinity = gw.Spec.Affinity
 		return true
 	}
 	return false
