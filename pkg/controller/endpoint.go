@@ -64,7 +64,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	c.epKeyMutex.LockKey(key)
 	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update endpoint %s", key)
+	klog.V(5).Infof("handle update endpoint %s", key)
 
 	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
