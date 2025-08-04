@@ -24,6 +24,27 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type ACLErrorType int
+
+const (
+	ACLErrorNotFound ACLErrorType = iota
+	ACLErrorDuplicated
+	ACLErrorDatabase
+)
+
+type ACLError struct {
+	Type ACLErrorType
+	Msg  string
+}
+
+func (e *ACLError) Error() string {
+	return e.Msg
+}
+
+func NewACLError(errType ACLErrorType, msg string) *ACLError {
+	return &ACLError{Type: errType, Msg: msg}
+}
+
 func setACLName(acl *ovnnb.ACL, name string) {
 	if len(name) > 63 {
 		// ACL name length limit is 63
@@ -820,7 +841,7 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNo
 		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
 	}).List(ctx, &aclList); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("get acl with 'parent %s direction %s priority %s match %s': %w", parent, direction, priority, match, err)
+		return nil, NewACLError(ACLErrorDatabase, fmt.Sprintf("get acl with 'parent %s direction %s priority %s match %s': %v", parent, direction, priority, match, err))
 	}
 
 	// not found
@@ -828,11 +849,11 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNo
 		if ignoreNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("not found acl with 'parent %s direction %s priority %s match %s'", parent, direction, priority, match)
+		return nil, NewACLError(ACLErrorNotFound, fmt.Sprintf("not found acl with 'parent %s direction %s priority %s match %s'", parent, direction, priority, match))
 	}
 
 	if len(aclList) > 1 {
-		return nil, fmt.Errorf("more than one acl with same 'parent %s direction %s priority %s match %s'", parent, direction, priority, match)
+		return nil, NewACLError(ACLErrorDuplicated, fmt.Sprintf("more than one acl with same 'parent %s direction %s priority %s match %s'", parent, direction, priority, match))
 	}
 
 	// #nosec G602
@@ -860,7 +881,14 @@ func (c *OVNNbClient) ListAcls(direction string, externalIDs map[string]string) 
 
 func (c *OVNNbClient) ACLExists(parent, direction, priority, match string) (bool, error) {
 	acl, err := c.GetACL(parent, direction, priority, match, true)
-	return acl != nil, err
+	if err != nil {
+		var aclErr *ACLError
+		if errors.As(err, &aclErr) && aclErr.Type == ACLErrorDuplicated {
+			return true, nil
+		}
+		return false, err
+	}
+	return acl != nil, nil
 }
 
 // newACL return acl with basic information
