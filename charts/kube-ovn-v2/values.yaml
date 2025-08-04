@@ -187,7 +187,7 @@ features:
   enableNetworkPolicies: true
   # -- Enable external VPCs
   # @section -- Opt-in/out Features
-  enableExternalVpcs: true
+  enableExternalVpcs: false
   # -- Enable hardware offloads
   # @section -- Opt-in/out Features
   enableHardwareOffload: false
