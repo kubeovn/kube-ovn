@@ -72,7 +72,7 @@ Get IP-addresses of master nodes
   {{- end -}}
   {{- end }}
 {{- end -}}
-{{- if eq (len $ips) 0 -}}
+{{- if and (eq (len $ips) 0) (not $.Values.masterNodes) -}}
   {{- fail (printf "No nodes found with label '%s'. Please check your masterNodesLabels configuration or ensure master nodes are properly labeled." $.Values.masterNodesLabels) -}}
 {{- end -}}
 {{ join "," $ips }}
