@@ -50,6 +50,10 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj interface{}) {
 	oldVpc := oldObj.(*kubeovnv1.Vpc)
 	newVpc := newObj.(*kubeovnv1.Vpc)
 
+	if newVpc.Labels[util.VpcExternalLabel] == "true" {
+		return
+	}
+
 	if !newVpc.DeletionTimestamp.IsZero() ||
 		!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
