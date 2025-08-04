@@ -181,7 +181,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
-		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
