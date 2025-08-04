@@ -51,7 +51,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 	oldVpc := oldObj.(*kubeovnv1.Vpc)
 	newVpc := newObj.(*kubeovnv1.Vpc)
 
-	if newVpc.Labels[util.VpcExternalLabel] == "true" {
+	if newVpc.Labels != nil && newVpc.Labels[util.VpcExternalLabel] == "true" {
 		return
 	}
 
