@@ -1,10 +1,10 @@
 SHELL = /bin/bash
 
-include build.mk
-include ut.mk
-include kind.mk
-include talos.mk
-include e2e.mk
+include makefiles/build.mk
+include makefiles/ut.mk
+include makefiles/kind.mk
+include makefiles/talos.mk
+include makefiles/e2e.mk
 
 COMMA = ,
 
