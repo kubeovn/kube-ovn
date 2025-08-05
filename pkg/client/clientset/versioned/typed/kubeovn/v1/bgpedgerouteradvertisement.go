@@ -51,7 +51,7 @@ type BgpEdgeRouterAdvertisementInterface interface {
 	GetScale(ctx context.Context, bgpEdgeRouterAdvertisementName string, options metav1.GetOptions) (*autoscalingv1.Scale, error)
 	UpdateScale(ctx context.Context, bgpEdgeRouterAdvertisementName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error)
 
-	BgpEdgeRouterAdrvertisementExpansion
+	BgpEdgeRouterAdvertisementExpansion
 }
 
 // bgpEdgeRouterAdvertisements implements BgpEdgeRouterAdvertisementInterface
