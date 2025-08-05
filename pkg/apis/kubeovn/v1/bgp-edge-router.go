@@ -156,4 +156,6 @@ type BgpEdgeRouterBGPConfig struct {
 	Password              string          `json:"password"`
 	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
 	ExtraArgs             []string        `json:"extraArgs"`
+	EdgeRouterMode        bool            `json:"edgeRouterMode"`
+	RouteServerClient     bool            `json:"routeServerClient"`
 }
