@@ -6,23 +6,34 @@ package ovnnb
 const LogicalRouterStaticRouteTable = "Logical_Router_Static_Route"
 
 type (
-	LogicalRouterStaticRoutePolicy = string
+	LogicalRouterStaticRoutePolicy          = string
+	LogicalRouterStaticRouteSelectionFields = string
 )
 
 var (
-	LogicalRouterStaticRoutePolicySrcIP LogicalRouterStaticRoutePolicy = "src-ip"
-	LogicalRouterStaticRoutePolicyDstIP LogicalRouterStaticRoutePolicy = "dst-ip"
+	LogicalRouterStaticRoutePolicySrcIP            LogicalRouterStaticRoutePolicy          = "src-ip"
+	LogicalRouterStaticRoutePolicyDstIP            LogicalRouterStaticRoutePolicy          = "dst-ip"
+	LogicalRouterStaticRouteSelectionFieldsEthSrc  LogicalRouterStaticRouteSelectionFields = "eth_src"
+	LogicalRouterStaticRouteSelectionFieldsEthDst  LogicalRouterStaticRouteSelectionFields = "eth_dst"
+	LogicalRouterStaticRouteSelectionFieldsIPProto LogicalRouterStaticRouteSelectionFields = "ip_proto"
+	LogicalRouterStaticRouteSelectionFieldsIPSrc   LogicalRouterStaticRouteSelectionFields = "ip_src"
+	LogicalRouterStaticRouteSelectionFieldsIPDst   LogicalRouterStaticRouteSelectionFields = "ip_dst"
+	LogicalRouterStaticRouteSelectionFieldsIpv6Src LogicalRouterStaticRouteSelectionFields = "ipv6_src"
+	LogicalRouterStaticRouteSelectionFieldsIpv6Dst LogicalRouterStaticRouteSelectionFields = "ipv6_dst"
+	LogicalRouterStaticRouteSelectionFieldsTpSrc   LogicalRouterStaticRouteSelectionFields = "tp_src"
+	LogicalRouterStaticRouteSelectionFieldsTpDst   LogicalRouterStaticRouteSelectionFields = "tp_dst"
 )
 
 // LogicalRouterStaticRoute defines an object in Logical_Router_Static_Route table
 type LogicalRouterStaticRoute struct {
-	UUID        string                          `ovsdb:"_uuid"`
-	BFD         *string                         `ovsdb:"bfd"`
-	ExternalIDs map[string]string               `ovsdb:"external_ids"`
-	IPPrefix    string                          `ovsdb:"ip_prefix"`
-	Nexthop     string                          `ovsdb:"nexthop"`
-	Options     map[string]string               `ovsdb:"options"`
-	OutputPort  *string                         `ovsdb:"output_port"`
-	Policy      *LogicalRouterStaticRoutePolicy `ovsdb:"policy"`
-	RouteTable  string                          `ovsdb:"route_table"`
+	UUID            string                                    `ovsdb:"_uuid"`
+	BFD             *string                                   `ovsdb:"bfd"`
+	ExternalIDs     map[string]string                         `ovsdb:"external_ids"`
+	IPPrefix        string                                    `ovsdb:"ip_prefix"`
+	Nexthop         string                                    `ovsdb:"nexthop"`
+	Options         map[string]string                         `ovsdb:"options"`
+	OutputPort      *string                                   `ovsdb:"output_port"`
+	Policy          *LogicalRouterStaticRoutePolicy           `ovsdb:"policy"`
+	RouteTable      string                                    `ovsdb:"route_table"`
+	SelectionFields []LogicalRouterStaticRouteSelectionFields `ovsdb:"selection_fields"`
 }

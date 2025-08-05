@@ -20,6 +20,7 @@ type LogicalFlow struct {
 	Actions         string              `ovsdb:"actions"`
 	ControllerMeter *string             `ovsdb:"controller_meter"`
 	ExternalIDs     map[string]string   `ovsdb:"external_ids"`
+	FlowDesc        *string             `ovsdb:"flow_desc"`
 	LogicalDatapath *string             `ovsdb:"logical_datapath"`
 	LogicalDpGroup  *string             `ovsdb:"logical_dp_group"`
 	Match           string              `ovsdb:"match"`

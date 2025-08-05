@@ -8,6 +8,7 @@ const LogicalRouterPortTable = "Logical_Router_Port"
 // LogicalRouterPort defines an object in Logical_Router_Port table
 type LogicalRouterPort struct {
 	UUID           string            `ovsdb:"_uuid"`
+	DhcpRelay      *string           `ovsdb:"dhcp_relay"`
 	Enabled        *bool             `ovsdb:"enabled"`
 	ExternalIDs    map[string]string `ovsdb:"external_ids"`
 	GatewayChassis []string          `ovsdb:"gateway_chassis"`
