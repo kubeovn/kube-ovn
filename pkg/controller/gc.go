@@ -1022,15 +1022,18 @@ func (c *Controller) getVMLsps() []string {
 				vmLsps = append(vmLsps, vmLsp)
 			}
 
-			attachNets, err := nadutils.ParseNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot], vm.Namespace)
-			if err != nil {
-				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
-				continue
-			}
-			for _, multiNet := range attachNets {
-				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
-				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
-				vmLsps = append(vmLsps, vmLsp)
+			nadAnnotation := vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot]
+			if nadAnnotation != "" {
+				attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vm.Namespace)
+				if err != nil {
+					klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
+					continue
+				}
+				for _, multiNet := range attachNets {
+					provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
+					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
+					vmLsps = append(vmLsps, vmLsp)
+				}
 			}
 
 			for _, network := range vm.Spec.Template.Spec.Networks {
