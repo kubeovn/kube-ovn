@@ -1639,6 +1639,10 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			return nil, err
 		}
 
+		if network.Spec.Config == "" {
+			continue
+		}
+
 		netCfg, err := loadNetConf([]byte(network.Spec.Config))
 		if err != nil {
 			klog.Errorf("failed to load config of net-attach-def %s, %v", attach.Name, err)
