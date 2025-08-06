@@ -190,13 +190,18 @@ func main() {
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
+	cniConfPath := filepath.Join(configDir, confName)
+	if _, err := os.Stat(cniConfPath); err == nil {
+		klog.Infof("CNI config file %q already exists, skipping copying CNI config file", cniConfPath)
+		return nil
+	}
+
 	data, err := os.ReadFile(configFile) // #nosec G304
 	if err != nil {
 		klog.Errorf("failed to read cni config file %s, %v", configFile, err)
 		return err
 	}
 
-	cniConfPath := filepath.Join(configDir, confName)
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
 	return os.WriteFile(cniConfPath, data, 0o644) // #nosec G306
 }
