@@ -60,6 +60,12 @@ func Test_getIPFamilies(t *testing.T) {
 			expectedFamilies:     []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol},
 			expectedFamilyPolicy: corev1.IPFamilyPolicyPreferDualStack,
 		},
+		{
+			name:                 "Invalid",
+			vip:                  "invalid",
+			expectedFamilies:     []corev1.IPFamily{},
+			expectedFamilyPolicy: corev1.IPFamilyPolicySingleStack,
+		},
 	}
 
 	for _, tt := range tests {
