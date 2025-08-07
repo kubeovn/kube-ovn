@@ -117,7 +117,16 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if v.allowLiveMigration(o.GetAnnotations()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	name := o.GetName()
+	// If the pod is created by a VM, we need to get the VM name from owner references
+	for _, owner := range o.GetOwnerReferences() {
+		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+			name = owner.Name
+			klog.V(3).Infof("pod %s is created by vm %s", o.GetName(), name)
+			break
+		}
+	}
+	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, name, o.GetNamespace())
 }
 
 func (v *ValidatingHook) allowLiveMigration(annotations map[string]string) bool {
