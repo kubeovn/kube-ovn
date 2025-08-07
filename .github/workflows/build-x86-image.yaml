@@ -200,7 +200,7 @@ jobs:
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn-base
 
@@ -213,7 +213,7 @@ jobs:
 
       - name: Download dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn-dpdk-base
 
@@ -556,7 +556,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -754,7 +754,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -923,7 +923,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1111,7 +1111,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1306,7 +1306,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1465,7 +1465,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1566,7 +1566,7 @@ jobs:
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1618,7 +1618,7 @@ jobs:
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1668,7 +1668,7 @@ jobs:
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1720,7 +1720,7 @@ jobs:
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -1818,12 +1818,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: vpc-nat-gateway
 
@@ -1963,7 +1963,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2036,7 +2036,7 @@ jobs:
           install_only: true
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2112,7 +2112,7 @@ jobs:
           sudo apt install qemu-kvm libvirt-daemon-system
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2235,7 +2235,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2392,7 +2392,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2496,7 +2496,7 @@ jobs:
         run: curl -Ls https://get.submariner.io | bash
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2616,7 +2616,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -2792,12 +2792,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: vpc-nat-gateway
 
@@ -2937,7 +2937,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -3082,7 +3082,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -3222,7 +3222,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -3366,7 +3366,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -3475,7 +3475,7 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
@@ -3593,18 +3593,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: kube-ovn
 
       - name: Download kube-ovn-dpdk image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: vpc-nat-gateway
 
