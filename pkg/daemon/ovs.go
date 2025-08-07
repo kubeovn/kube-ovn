@@ -1389,3 +1389,13 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 	}
 	return nil
 }
+
+func linkExists(name string) (bool, error) {
+	if _, err := netlink.LinkByName(name); err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
