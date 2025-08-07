@@ -1632,18 +1632,18 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 
 		switch subnet.Spec.Protocol {
 		case kubeovnv1.ProtocolDual:
-			if subnet.Status.V6AvailableIPs == 0 {
+			if subnet.Status.V6AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 			fallthrough
 		case kubeovnv1.ProtocolIPv4:
-			if subnet.Status.V4AvailableIPs == 0 {
+			if subnet.Status.V4AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv4 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 		case kubeovnv1.ProtocolIPv6:
-			if subnet.Status.V6AvailableIPs == 0 {
+			if subnet.Status.V6AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
@@ -1651,6 +1651,36 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return subnet, nil
 	}
 	return nil, ipam.ErrNoAvailable
+}
+
+func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
+	if ipAddr := pod.Annotations[util.IPAddressAnnotation]; ipAddr != "" {
+		return c.checkIPsInExcludeList(ipAddr, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	}
+	if ipPool := pod.Annotations[util.IPPoolAnnotation]; ipPool != "" {
+		return c.checkIPsInExcludeList(ipPool, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	}
+
+	return false
+}
+
+func (c *Controller) checkIPsInExcludeList(ips string, excludeIPs []string, cidr string) bool {
+	expandedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, cidr)
+
+	for ipAddr := range strings.SplitSeq(strings.TrimSpace(ips), ",") {
+		ipAddr = strings.TrimSpace(ipAddr)
+		if ipAddr == "" {
+			continue
+		}
+
+		for _, excludeIP := range expandedExcludeIPs {
+			if util.ContainsIPs(excludeIP, ipAddr) {
+				klog.V(3).Infof("IP %s is found in exclude IP %s, allowing allocation", ipAddr, excludeIP)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type providerType int

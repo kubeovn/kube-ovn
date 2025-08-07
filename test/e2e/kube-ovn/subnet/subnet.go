@@ -289,6 +289,71 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
+	framework.ConformanceIt("should allow pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
+		ginkgo.By("Creating a small subnet with very limited IP range")
+		var smallCIDR string
+		var excludeIPs []string
+		var usableIPs []string
+
+		switch f.ClusterIPFamily {
+		case "ipv4":
+			smallCIDR = "192.168.200.0/30"
+			excludeIPs = []string{"192.168.200.1", "192.168.200.2"}
+			usableIPs = []string{"192.168.200.2"}
+		case "ipv6":
+			smallCIDR = "fd00:192:168:200::/126"
+			excludeIPs = []string{"fd00:192:168:200::1", "fd00:192:168:200::2"}
+			usableIPs = []string{"fd00:192:168:200::2"}
+		case "dual":
+			smallCIDR = "192.168.200.0/30,fd00:192:168:200::/126"
+			excludeIPs = []string{"192.168.200.1", "192.168.200.2", "fd00:192:168:200::1", "fd00:192:168:200::2"}
+			usableIPs = []string{"192.168.200.2", "fd00:192:168:200::2"}
+		}
+
+		subnetName = "small-subnet-" + framework.RandomSuffix()
+		ginkgo.By(fmt.Sprintf("Creating small subnet %s with exclude IPs %v", subnetName, excludeIPs))
+		smallSubnet := framework.MakeSubnet(subnetName, "", smallCIDR, "", "", "", excludeIPs, nil, []string{namespaceName})
+		smallSubnet = subnetClient.CreateSync(smallSubnet)
+
+		ginkgo.By("Verifying available IPs is 0 after excluding the only usable IPs")
+		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs + smallSubnet.Status.V6AvailableIPs)
+
+		// Test cases: both fixed IP and IP pool annotations
+		testCases := []struct {
+			name            string
+			annotationKey   string
+			annotationValue string
+		}{
+			{
+				name:            "fix ip",
+				annotationKey:   util.IPAddressAnnotation,
+				annotationValue: strings.Join(usableIPs, ","),
+			},
+			{
+				name:            "fix ip pool",
+				annotationKey:   util.IPPoolAnnotation,
+				annotationValue: strings.Join(usableIPs, ","),
+			},
+		}
+
+		for _, tc := range testCases {
+			ginkgo.By(fmt.Sprintf("Creating pod with %s annotation that matches excludeIPs", tc.name))
+			podName = fmt.Sprintf("pod-%s-%s", strings.ReplaceAll(tc.name, " ", "-"), framework.RandomSuffix())
+			annotations := map[string]string{
+				tc.annotationKey: tc.annotationValue,
+			}
+			cmd := []string{"sleep", "infinity"}
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+			pod = podClient.CreateSync(pod)
+
+			ginkgo.By(fmt.Sprintf("Verifying pod gets the %s IPs despite availableIPs being 0", tc.name))
+			framework.ExpectHaveKeyWithValue(pod.Annotations, tc.annotationKey, tc.annotationValue)
+
+			ginkgo.By(fmt.Sprintf("Cleaning up test pod for %s", tc.name))
+			podClient.DeleteSync(podName)
+		}
+	})
+
 	framework.ConformanceIt("should create subnet with centralized gateway", func() {
 		ginkgo.By("Getting nodes")
 		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
