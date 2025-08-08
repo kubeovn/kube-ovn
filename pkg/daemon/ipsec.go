@@ -590,7 +590,7 @@ func (c *Controller) SyncIPSecKeys(key string) error {
 		return err
 	}
 
-	c.ipsecQueue.AddAfter("expiry", untilRefresh)
+	c.ipsecQueue.AddAfter(key, untilRefresh)
 
 	return nil
 }
