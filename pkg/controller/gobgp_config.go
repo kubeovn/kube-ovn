@@ -337,10 +337,10 @@ func (c *Controller) handleDelGobgpConfig(key string) error {
 // }
 
 func (c *Controller) validateGobgpConfig(gobgpConfig *kubeovnv1.GobgpConfig) ([]*corev1.Pod, error) {
-	ber, err := c.bgpEdgeRouterLister.BgpEdgeRouters(gobgpConfig.Namespace).Get(gobgpConfig.Spec.BgpEdgeRouterName)
+	ber, err := c.bgpEdgeRouterLister.BgpEdgeRouters(gobgpConfig.Spec.BgpEdgeRouterInfo.Namespace).Get(gobgpConfig.Spec.BgpEdgeRouterInfo.Name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil, fmt.Errorf("bgp edge router %s not found: %w", gobgpConfig.Spec.BgpEdgeRouterName, err)
+			return nil, fmt.Errorf("bgp edge router %s not found: %w", gobgpConfig.Spec.BgpEdgeRouterInfo.Name, err)
 		}
 	}
 	berNeighbors := ber.Spec.BGP.Neighbors
@@ -354,12 +354,12 @@ func (c *Controller) validateGobgpConfig(gobgpConfig *kubeovnv1.GobgpConfig) ([]
 	}
 
 	if !neighborFlag {
-		err = fmt.Errorf("no matching neighbor found in BgpEdgeRouter %s for GobgpConfig %s", gobgpConfig.Spec.BgpEdgeRouterName, gobgpConfig.Name)
+		err = fmt.Errorf("no matching neighbor found in BgpEdgeRouter %s for GobgpConfig %s", gobgpConfig.Spec.BgpEdgeRouterInfo.Name, gobgpConfig.Name)
 		klog.Error(err)
 		return nil, err
 	}
 
-	deploy, err := c.berDeploymentsLister.Deployments(gobgpConfig.Namespace).Get(gobgpConfig.Spec.BgpEdgeRouterName)
+	deploy, err := c.berDeploymentsLister.Deployments(gobgpConfig.Spec.BgpEdgeRouterInfo.Namespace).Get(gobgpConfig.Spec.BgpEdgeRouterInfo.Name)
 	if err != nil {
 		gobgpConfig.Status.Ready = false
 		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)

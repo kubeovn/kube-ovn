@@ -41,8 +41,8 @@ func (g *GobgpConfig) Subnet(subnets []string) []string {
 // }
 
 type GobgpConfigSpec struct {
-	BgpEdgeRouterName string      `json:"bgpEdgeRouterName"`
-	Neighbors         []Neighbors `json:"neighbors,omitempty"`
+	BgpEdgeRouterInfo BgpEdgeRouterInfo `json:"bgpEdgeRouterName"`
+	Neighbors         []Neighbors       `json:"neighbors,omitempty"`
 }
 
 type GobgpConfigStatus struct {
@@ -50,6 +50,14 @@ type GobgpConfigStatus struct {
 	Conditions Conditions `json:"conditions,omitempty"`
 }
 
+type BgpEdgeRouterInfo struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
+// Neighbors defines the BGP neighbors configuration
+// +k8s:openapi-gen=true
+// +genclient:nonNamespaced
 type Neighbors struct {
 	Address     string      `json:"address"`
 	ToAdvertise ToAdvertise `json:"toAdvertise"`
