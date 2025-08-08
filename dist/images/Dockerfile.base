@@ -51,13 +51,13 @@ ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
 ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
 ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
-ADD patches/bc8cbb9d2f55d8555a2d5b82cd0d3ccc8b1d50b3.patch $SRC_DIR
+ADD patches/e76880e792af56b2a3836098105079f5f8f1ff26.patch $SRC_DIR
 ADD patches/78cade01874292e2c101c39b975290ef6c812a50.patch $SRC_DIR
 ADD patches/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch $SRC_DIR
 ADD patches/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch $SRC_DIR
 ADD patches/a297b840c2c9f118c7ce6133077087b5999f12dd.patch $SRC_DIR
 ADD patches/e5916eb53abc3b7d28c407c3c47566c46116090a.patch $SRC_DIR
-ADD patches/af3062f68c62eca2dd2c0d2710d8c31051faf979.patch $SRC_DIR
+ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
 ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
@@ -120,9 +120,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # support dedicated BFD LRP
     git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \	
     # northd: add nb option version_compatibility
-    git apply $SRC_DIR/bc8cbb9d2f55d8555a2d5b82cd0d3ccc8b1d50b3.patch && \
+    git apply $SRC_DIR/e76880e792af56b2a3836098105079f5f8f1ff26.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
-    git apply $SRC_DIR/af3062f68c62eca2dd2c0d2710d8c31051faf979.patch
+    git apply $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
