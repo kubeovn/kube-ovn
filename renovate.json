@@ -56,15 +56,18 @@
       "automerge": true
     },
     {
-      "matchBaseBranches": [
-        "release-*"
-      ],
       "matchPackageNames": [
         "golang.org/x/**",
         "go"
       ],
       "enabled": true,
       "automerge": true
+    },
+    {
+      "matchDatasources": ["golang-version"],
+      "rangeStrategy": "bump",
+      "automerge": true,
+      "enabled": true
     },
     {
       "matchUpdateTypes": [
