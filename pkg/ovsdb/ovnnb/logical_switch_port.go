@@ -19,6 +19,7 @@ type LogicalSwitchPort struct {
 	Name             string            `ovsdb:"name"`
 	Options          map[string]string `ovsdb:"options"`
 	ParentName       *string           `ovsdb:"parent_name"`
+	Peer             *string           `ovsdb:"peer"`
 	PortSecurity     []string          `ovsdb:"port_security"`
 	Tag              *int              `ovsdb:"tag"`
 	TagRequest       *int              `ovsdb:"tag_request"`

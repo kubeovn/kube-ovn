@@ -14,5 +14,6 @@ type SSL struct {
 	ExternalIDs     map[string]string `ovsdb:"external_ids"`
 	PrivateKey      string            `ovsdb:"private_key"`
 	SSLCiphers      string            `ovsdb:"ssl_ciphers"`
+	SSLCiphersuites string            `ovsdb:"ssl_ciphersuites"`
 	SSLProtocols    string            `ovsdb:"ssl_protocols"`
 }

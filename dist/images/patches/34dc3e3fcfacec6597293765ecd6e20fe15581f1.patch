@@ -1,4 +1,4 @@
-From 505dc82f54d4ce54e0378fd3bac1052ee644ac59 Mon Sep 17 00:00:00 2001
+From 34dc3e3fcfacec6597293765ecd6e20fe15581f1 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
 Date: Thu, 10 Apr 2025 01:31:32 +0000
 Subject: [PATCH] lflow: do not send direct traffic between lports to conntrack
@@ -10,10 +10,10 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  2 files changed, 109 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index b73c14517a..8ec0be0d13 100644
+index 6be1991330..6503239ed6 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -558,6 +558,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+@@ -654,6 +654,11 @@ check_nb_options_out_of_sync(
          return true;
      }
  
@@ -26,19 +26,19 @@ index b73c14517a..8ec0be0d13 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index 86f92bf01f..b4364f8698 100644
+index fe895ea151..4a7fdf80b9 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -99,6 +99,8 @@ static bool compatible_21_06 = false;
- static bool compatible_22_03 = false;
- static bool compatible_22_12 = false;
+@@ -103,6 +103,8 @@ static bool bcast_arp_req_flood = true;
+ static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
+ static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
  
 +static bool ls_ct_skip_dst_lport_ips = false;
 +
  #define MAX_OVN_TAGS 4096
  
  
-@@ -6266,6 +6268,104 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+@@ -6293,6 +6295,104 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
              free(match);
          }
          free(array);
@@ -143,14 +143,14 @@ index 86f92bf01f..b4364f8698 100644
      }
  }
  
-@@ -17738,6 +17838,10 @@ ovnnb_db_run(struct northd_input *input_data,
-     use_common_zone = smap_get_bool(input_data->nb_options, "use_common_zone",
-                                     false);
+@@ -19168,6 +19268,10 @@ ovnnb_db_run(struct northd_input *input_data,
+     vxlan_mode = is_vxlan_mode(input_data->nb_options,
+                                input_data->sbrec_chassis_table);
  
 +    ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
 +                                             "ls_ct_skip_dst_lport_ips",
 +                                             false);
 +
-     const char *s = smap_get_def(input_data->nb_options,
-                                  "version_compatibility", "");
-     int major, minor;
+     build_datapaths(ovnsb_txn,
+                     input_data->nbrec_logical_switch_table,
+                     input_data->nbrec_logical_router_table,

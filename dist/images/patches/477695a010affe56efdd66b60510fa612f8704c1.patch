@@ -1,4 +1,4 @@
-From 4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018 Mon Sep 17 00:00:00 2001
+From 477695a010affe56efdd66b60510fa612f8704c1 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
 Date: Fri, 23 May 2025 06:09:31 +0000
 Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
@@ -10,10 +10,10 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  1 file changed, 52 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index d434118be2..193a4e2253 100644
+index 6f521f382d..e5fb3ab896 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9316,6 +9316,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
+@@ -9919,6 +9919,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
              return;
          }
  

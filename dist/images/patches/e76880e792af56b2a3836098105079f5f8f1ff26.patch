@@ -1,19 +1,19 @@
-From 53d961492036f1d41d9d1b04bab628375a9c6eb5 Mon Sep 17 00:00:00 2001
-From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Thu, 24 Apr 2025 02:20:03 +0000
-Subject: [PATCH] northd: add nb option version_compatibility
+From e76880e792af56b2a3836098105079f5f8f1ff26 Mon Sep 17 00:00:00 2001
+From: clyi <clyi@alauda.io>
+Date: Fri, 8 Aug 2025 17:27:38 +0800
+Subject: [PATCH] [PATCH] northd: add nb option version_compatibility
 
-Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+Signed-off-by: clyi <clyi@alauda.io>
 ---
  northd/en-global-config.c |   5 ++
- northd/northd.c           | 112 +++++++++++++++++++++++++++-----------
- 2 files changed, 85 insertions(+), 32 deletions(-)
+ northd/northd.c           | 137 +++++++++++++++++++++++++++-----------
+ 2 files changed, 103 insertions(+), 39 deletions(-)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index 9f743ad3b1..e76ce47e9b 100644
+index 26d89b6676..3f934ccfff 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -558,6 +558,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+@@ -664,6 +664,11 @@ check_nb_options_out_of_sync(
          return true;
      }
  
@@ -26,21 +26,33 @@ index 9f743ad3b1..e76ce47e9b 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index 3491ab6222..c489ddf051 100644
+index 8ab525b8be..505e27103f 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -92,6 +92,10 @@ static bool default_acl_drop;
+@@ -107,6 +107,11 @@ static bool ls_ct_skip_dst_lport_ips = false;
  
- static bool bcast_arp_req_flood = true;
+ static bool ls_dnat_mod_dl_dst = false;
  
-+static bool compatible_21_06 = false;
++
 +static bool compatible_22_03 = false;
 +static bool compatible_22_12 = false;
++static bool compatible_24_03 = false;
 +
  #define MAX_OVN_TAGS 4096
  
  
-@@ -5754,8 +5758,11 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
+@@ -140,6 +145,10 @@ static bool ls_dnat_mod_dl_dst = false;
+ #define REGBIT_ACL_PERSIST_ID     "reg0[20]"
+ #define REGBIT_ACL_HINT_ALLOW_PERSISTED "reg0[21]"
+ 
++#define REG_ORIG_DIP_IPV4         "reg1"
++#define REG_ORIG_DIP_IPV6         "xxreg1"
++#define REG_ORIG_TP_DPORT         "reg2[0..15]"
++
+ /* Register definitions for switches and routers. */
+ 
+ /* Registers used for LB Affinity.
+@@ -5769,8 +5778,11 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                                            op->key, &op->nbsp->header_,
                                            op->lflow_ref);
      } else if (queue_id) {
@@ -54,7 +66,7 @@ index 3491ab6222..c489ddf051 100644
          ovn_lflow_add_with_lport_and_hint(lflows, op->od,
                                            S_SWITCH_IN_CHECK_PORT_SEC, 70,
                                            ds_cstr(match), ds_cstr(actions),
-@@ -5810,7 +5817,7 @@ build_lswitch_learn_fdb_op(
+@@ -5831,7 +5843,7 @@ build_lswitch_learn_fdb_op(
          ds_clear(match);
          ds_clear(actions);
          ds_put_format(match, "inport == %s", op->json_key);
@@ -63,7 +75,7 @@ index 3491ab6222..c489ddf051 100644
              ds_put_cstr(actions, "flags.localnet = 1; ");
          }
          ds_put_format(actions, REGBIT_LKUP_FDB
-@@ -5858,8 +5865,10 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
+@@ -5888,8 +5900,10 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
      ovn_lflow_add(lflows, od, S_SWITCH_OUT_CHECK_PORT_SEC, 100,
                    "eth.mcast", REGBIT_PORT_SEC_DROP" = 0; next;",
                    lflow_ref);
@@ -74,48 +86,71 @@ index 3491ab6222..c489ddf051 100644
 +                  action,
                    lflow_ref);
  
-     ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 50,
-@@ -6818,7 +6827,7 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
-                                    : "ct_label.blocked";
-     bool ingress = !strcmp(acl->direction, "from-lport") ? true :false;
-     bool log_related = smap_get_bool(&acl->options, "log-related",
--                                     false);
-+                                     false) && !compatible_21_06;
+     ovn_lflow_add_drop_with_desc(
+@@ -8346,7 +8360,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+                struct ds *match, struct ds *action,
+                const struct shash *meter_groups,
+                const struct hmap *svc_monitor_map,
+-               struct hmap *ls_ports)
++               const struct hmap *ls_ports)
+ {
+     const struct ovn_northd_lb *lb = lb_dps->lb;
+     for (size_t i = 0; i < lb->n_vips; i++) {
+@@ -8578,6 +8592,7 @@ build_stateful(struct ovn_datapath *od,
+                struct lflow_ref *lflow_ref)
+ {
+     struct ds actions = DS_EMPTY_INITIALIZER;
++    const char *ct_block_action = "ct_mark.blocked";
  
-     if (!strcmp(acl->action, "allow-stateless") || !has_stateful) {
-         /* Not stateful */
-@@ -7805,9 +7814,14 @@ build_stateful(struct ovn_datapath *od,
+     /* Ingress LB, Ingress and Egress stateful Table (Priority 0): Packets are
+      * allowed by default. */
+@@ -8593,15 +8608,22 @@ build_stateful(struct ovn_datapath *od,
       * We always set ct_mark.blocked to 0 here as
       * any packet that makes it this far is part of a connection we
       * want to allow to continue. */
--    ds_put_format(&actions, "ct_commit { %s = 0; "
--                            "ct_label.label = " REG_LABEL "; }; next;",
--                  ct_block_action);
-+    if (!compatible_21_06) {
-+        ds_put_format(&actions, "ct_commit { %s = 0; "
-+                                "ct_label.label = " REG_LABEL "; }; next;",
-+                      ct_block_action);
-+    } else {
+-    ds_put_cstr(&actions,
+-                 "ct_commit { "
+-                    "ct_mark.blocked = 0; "
+-                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
+-                    "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
+-                    "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
+-                    "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
+-                    "ct_label.acl_id = " REG_ACL_ID "; "
+-                  "}; next;");
++    if (compatible_24_03 || compatible_22_03 || compatible_22_12) {
 +        ds_put_format(&actions, "ct_commit { %s = 0; }; next;",
 +                      ct_block_action);
++
++    } else {
++        ds_put_cstr(&actions,
++            "ct_commit { "
++               "ct_mark.blocked = 0; "
++               "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
++               "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
++               "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
++               "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
++               "ct_label.acl_id = " REG_ACL_ID "; "
++             "}; next;");
 +    }
++
      ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                    REGBIT_CONNTRACK_COMMIT" == 1 && "
                    REGBIT_ACL_LABEL" == 1",
-@@ -7869,16 +7883,18 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
+@@ -8668,16 +8690,19 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
           * after conntrack.  It is the kernel datapath conntrack behavior.
           * We need to find a better way to handle the fragmented packets.
           * */
 -        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
 -                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip4",
--                      REG_ORIG_DIP_IPV4 " = ct_nw_dst(); "
--                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+-                      REG_LB_IPV4 " = ct_nw_dst(); "
+-                      REG_LB_PORT " = ct_tp_dst(); next;",
 -                      lflow_ref);
 -        ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
 -                      "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip6",
--                      REG_ORIG_DIP_IPV6 " = ct_ip6_dst(); "
--                      REG_ORIG_TP_DPORT " = ct_tp_dst(); next;",
+-                      REG_LB_IPV6 " = ct_ip6_dst(); "
+-                      REG_LB_PORT " = ct_tp_dst(); next;",
 -                      lflow_ref);
++
 +        if (!compatible_22_12) {
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_LB, 110,
 +                          "ct.trk && !ct.rpl && "REGBIT_IP_FRAG" == 1 && ip4",
@@ -131,7 +166,7 @@ index 3491ab6222..c489ddf051 100644
  
          /* Set REGBIT_HAIRPIN in the original direction and
           * REGBIT_HAIRPIN_REPLY in the reply direction.
-@@ -8188,8 +8204,9 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
+@@ -8987,8 +9012,9 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
  
      ds_put_format(&match,
                    "eth.src == %s && eth.dst == ff:ff:ff:ff:ff:ff && "
@@ -143,15 +178,17 @@ index 3491ab6222..c489ddf051 100644
      ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority, ds_cstr(&match),
                    "outport = \""MC_FLOOD_L2"\"; output;", lflow_ref);
  
-@@ -8786,11 +8803,13 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+@@ -9713,12 +9739,14 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
  {
      ovs_assert(od->nbs);
  
 -    /* Default action for recirculated ICMP error 'packet too big'. */
--    ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
--                  "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
--                  " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
--                  " flags.tunnel_rx == 1", debug_drop_action(), lflow_ref);
+-    ovn_lflow_add_drop_with_desc(
+-        lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
+-        "((ip4 && icmp4.type == 3 && icmp4.code == 4) ||"
+-        " (ip6 && icmp6.type == 2 && icmp6.code == 0)) &&"
+-        " flags.tunnel_rx == 1", "ICMP: packet too big", lflow_ref);
++
 +    if (!compatible_22_12) {
 +        /* Default action for recirculated ICMP error 'packet too big'. */
 +        ovn_lflow_add(lflows, od, S_SWITCH_IN_CHECK_PORT_SEC, 105,
@@ -162,9 +199,9 @@ index 3491ab6222..c489ddf051 100644
  
      /* Logical VLANs not supported. */
      if (!is_vlan_transparent(od)) {
-@@ -8805,8 +8824,10 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
-                   "eth.src[40]", debug_drop_action(),
-                   lflow_ref);
+@@ -9736,8 +9764,10 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+         "eth.src[40]", "Incoming Broadcast/multicast source"
+         " address is invalid", lflow_ref);
  
 +    const char *action = compatible_22_03 ? "next;" :
 +                         REGBIT_PORT_SEC_DROP " = check_in_port_sec(); next;";
@@ -173,8 +210,8 @@ index 3491ab6222..c489ddf051 100644
 +                  action,
                    lflow_ref);
  
-     ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 50,
-@@ -12034,6 +12055,10 @@ build_lrouter_icmp_packet_toobig_admin_flows(
+     ovn_lflow_add_drop_with_desc(
+@@ -13411,6 +13441,10 @@ build_lrouter_icmp_packet_toobig_admin_flows(
  {
      ovs_assert(op->nbrp);
  
@@ -182,10 +219,10 @@ index 3491ab6222..c489ddf051 100644
 +        return;
 +    }
 +
-     if (!is_l3dgw_port(op)) {
+     if (!lrp_is_l3dgw(op)) {
          return;
      }
-@@ -12059,6 +12084,10 @@ build_lswitch_icmp_packet_toobig_admin_flows(
+@@ -13436,6 +13470,10 @@ build_lswitch_icmp_packet_toobig_admin_flows(
  {
      ovs_assert(op->nbsp);
  
@@ -196,7 +233,7 @@ index 3491ab6222..c489ddf051 100644
      if (!lsp_is_router(op->nbsp)) {
          for (size_t i = 0; i < op->n_lsp_addrs; i++) {
              ds_clear(match);
-@@ -12291,11 +12320,13 @@ build_adm_ctrl_flows_for_lrouter(
+@@ -13702,11 +13740,13 @@ build_adm_ctrl_flows_for_lrouter(
  {
      ovs_assert(od->nbr);
  
@@ -215,7 +252,7 @@ index 3491ab6222..c489ddf051 100644
  
      /* Logical VLANs not supported.
       * Broadcast/multicast source address is invalid. */
-@@ -12558,8 +12589,11 @@ build_neigh_learning_flows_for_lrouter(
+@@ -13971,8 +14011,11 @@ build_neigh_learning_flows_for_lrouter(
      ds_put_format(match, REGBIT_LOOKUP_NEIGHBOR_RESULT" == 1%s",
                    learn_from_arp_request ? "" :
                    " || "REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" == 0");
@@ -228,22 +265,24 @@ index 3491ab6222..c489ddf051 100644
                    lflow_ref);
  
      ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
-@@ -17710,6 +17744,20 @@ ovnnb_db_run(struct northd_input *input_data,
-     use_common_zone = smap_get_bool(input_data->nb_options, "use_common_zone",
-                                     false);
+@@ -19540,6 +19583,22 @@ ovnnb_db_run(struct northd_input *input_data,
+     ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
+                                        "ls_dnat_mod_dl_dst", false);
  
 +    const char *s = smap_get_def(input_data->nb_options,
 +                                 "version_compatibility", "");
 +    int major, minor;
 +    int n = sscanf(s, "%2d.%2d", &major, &minor);
 +    if (n == 2) {
-+        compatible_21_06 = (major < 21 || (major == 21 && minor <= 6));
++
 +        compatible_22_03 = (major < 22 || (major == 22 && minor <= 3));
 +        compatible_22_12 = (major < 22 || (major == 22 && minor <= 12));
++        compatible_24_03 = (major < 24 || (major == 24 && minor <= 3));
 +    } else {
-+        compatible_21_06 = false;
++
 +        compatible_22_03 = false;
 +        compatible_22_12 = false;
++        compatible_24_03 = false;
 +    }
 +
      build_datapaths(ovnsb_txn,

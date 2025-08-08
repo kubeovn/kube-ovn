@@ -27,6 +27,8 @@ type NAT struct {
 	GatewayPort       *string           `ovsdb:"gateway_port"`
 	LogicalIP         string            `ovsdb:"logical_ip"`
 	LogicalPort       *string           `ovsdb:"logical_port"`
+	Match             string            `ovsdb:"match"`
 	Options           map[string]string `ovsdb:"options"`
+	Priority          int               `ovsdb:"priority"`
 	Type              NATType           `ovsdb:"type"`
 }
