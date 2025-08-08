@@ -2765,6 +2765,72 @@ func (mr *MockNATMockRecorder) UpdateSnat(lrName, externalIP, logicalIP any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSnat", reflect.TypeOf((*MockNAT)(nil).UpdateSnat), lrName, externalIP, logicalIP)
 }
 
+// MockQos is a mock of Qos interface.
+type MockQos struct {
+	ctrl     *gomock.Controller
+	recorder *MockQosMockRecorder
+	isgomock struct{}
+}
+
+// MockQosMockRecorder is the mock recorder for MockQos.
+type MockQosMockRecorder struct {
+	mock *MockQos
+}
+
+// NewMockQos creates a new mock instance.
+func NewMockQos(ctrl *gomock.Controller) *MockQos {
+	mock := &MockQos{ctrl: ctrl}
+	mock.recorder = &MockQosMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQos) EXPECT() *MockQosMockRecorder {
+	return m.recorder
+}
+
+// AddQos mocks base method.
+func (m *MockQos) AddQos(vpcName, externalSubnetName, v4Eip string, burstMax, rateMax int, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddQos", vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddQos indicates an expected call of AddQos.
+func (mr *MockQosMockRecorder) AddQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddQos", reflect.TypeOf((*MockQos)(nil).AddQos), vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+}
+
+// DeleteQos mocks base method.
+func (m *MockQos) DeleteQos(vpcName, externalSubnetName, v4Eip, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteQos", vpcName, externalSubnetName, v4Eip, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteQos indicates an expected call of DeleteQos.
+func (mr *MockQosMockRecorder) DeleteQos(vpcName, externalSubnetName, v4Eip, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQos", reflect.TypeOf((*MockQos)(nil).DeleteQos), vpcName, externalSubnetName, v4Eip, direction)
+}
+
+// UpdateQos mocks base method.
+func (m *MockQos) UpdateQos(vpcName, externalSubnetName, v4Eip string, burstMax, rateMax int, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateQos", vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateQos indicates an expected call of UpdateQos.
+func (mr *MockQosMockRecorder) UpdateQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateQos", reflect.TypeOf((*MockQos)(nil).UpdateQos), vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+}
+
 // MockDHCPOptions is a mock of DHCPOptions interface.
 type MockDHCPOptions struct {
 	ctrl     *gomock.Controller
@@ -2934,6 +3000,20 @@ func (m *MockNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac
 func (mr *MockNbClientMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNbClient)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+}
+
+// AddQos mocks base method.
+func (m *MockNbClient) AddQos(vpcName, externalSubnetName, v4Eip string, burstMax, rateMax int, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddQos", vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddQos indicates an expected call of AddQos.
+func (mr *MockNbClientMockRecorder) AddQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddQos", reflect.TypeOf((*MockNbClient)(nil).AddQos), vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
 }
 
 // AddressSetUpdateAddress mocks base method.
@@ -3832,6 +3912,20 @@ func (m *MockNbClient) DeletePortGroup(pgName ...string) error {
 func (mr *MockNbClientMockRecorder) DeletePortGroup(pgName ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortGroup", reflect.TypeOf((*MockNbClient)(nil).DeletePortGroup), pgName...)
+}
+
+// DeleteQos mocks base method.
+func (m *MockNbClient) DeleteQos(vpcName, externalSubnetName, v4Eip, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteQos", vpcName, externalSubnetName, v4Eip, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteQos indicates an expected call of DeleteQos.
+func (mr *MockNbClientMockRecorder) DeleteQos(vpcName, externalSubnetName, v4Eip, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQos", reflect.TypeOf((*MockNbClient)(nil).DeleteQos), vpcName, externalSubnetName, v4Eip, direction)
 }
 
 // DeleteSecurityGroup mocks base method.
@@ -5386,6 +5480,20 @@ func (mr *MockNbClientMockRecorder) UpdateNbGlobal(nbGlobal any, fields ...any) 
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{nbGlobal}, fields...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNbGlobal", reflect.TypeOf((*MockNbClient)(nil).UpdateNbGlobal), varargs...)
+}
+
+// UpdateQos mocks base method.
+func (m *MockNbClient) UpdateQos(vpcName, externalSubnetName, v4Eip string, burstMax, rateMax int, direction string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateQos", vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateQos indicates an expected call of UpdateQos.
+func (mr *MockNbClientMockRecorder) UpdateQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateQos", reflect.TypeOf((*MockNbClient)(nil).UpdateQos), vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
 }
 
 // UpdateSgACL mocks base method.
