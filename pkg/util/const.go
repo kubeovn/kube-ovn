@@ -116,6 +116,7 @@ const (
 	VpcEgressGatewayLabel           = "ovn.kubernetes.io/vpc-egress-gateway"
 	BgpEdgeRouterLabel              = "ovn.kubernetes.io/bgp-edge-router"
 	BgpEdgeRouterAdvertisementLabel = "ovn.kubernetes.io/bgp-edge-router-advertisement"
+	GobgpConfigLabel                = "ovn.kubernetes.io/gobgp-config"
 	GenerateHashAnnotation          = "ovn.kubernetes.io/generate-hash"
 
 	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"

@@ -3686,3 +3686,164 @@ spec:
               required:
                 - conditions
               type: object
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gobgp-configs.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: gobgp-configs
+    singular: gobgp-config
+    shortNames:
+      - bgp-config
+    kind: GobgpConfig
+    listKind: GobgpConfigList
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: bgp-edge-router
+          type: string
+          jsonPath: .spec.bgpEdgeRouter
+        - name: neighbor-address
+          type: string
+          jsonPath: .spec.neighbors[*].address
+        - name: toReceive-mode
+          type: string
+          jsonPath: .spec.neighbors[*].toReceive.allowed.mode
+        - name: toReceive-prefixes
+          type: string
+          jsonPath: .spec.neighbors[*].toReceive.allowed.prefixes
+        - name: toAdvertise-mode
+          type: string
+          jsonPath: .spec.neighbors[*].toAdvertise.allowed.mode
+        - name: toAdvertise-prefixes
+          type: string
+          jsonPath: .spec.neighbors[*].toAdvertise.allowed.prefixes
+        - name: READY
+          type: boolean
+          jsonPath: .status.ready
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - bgpEdgeRouter
+                - neighbors
+              properties:
+                bgpEdgeRouter:
+                  type: string
+                neighbors:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - address
+                      - toAdvertise
+                      - toReceive
+                    properties:
+                      address:
+                        type: string
+                        pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-fA-F:]+)$'
+                      toAdvertise:
+                        type: object
+                        required:
+                          - allowed
+                        properties:
+                          allowed:
+                            type: object
+                            required:
+                              - mode
+                            properties:
+                              mode:
+                                type: string
+                              prefixes:
+                                type: array
+                                x-kubernetes-list-type: set
+                                items:
+                                  type: string
+                                  pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}(\/\d{1,2})?|([0-9a-fA-F:]+(\/\d{1,3})?))$'
+                            x-kubernetes-validations:
+                              - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
+                                message: "prefixes must be set and non-empty when mode is 'filtered'"
+                      toReceive:
+                        type: object
+                        required:
+                          - allowed
+                        properties:
+                          allowed:
+                            type: object
+                            required:
+                              - mode
+                            properties:
+                              mode:
+                                type: string
+                              prefixes:
+                                type: array
+                                x-kubernetes-list-type: set
+                                items:
+                                  type: string
+                                  pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}(\/\d{1,2})?|([0-9a-fA-F:]+(\/\d{1,3})?))$'
+                            x-kubernetes-validations:
+                              - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
+                                message: "prefixes must be set and non-empty when mode is 'filtered'"
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                  default: false
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: '^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$'
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: '^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$'
+                      message:
+                        type: string
+                        maxLength: 32768
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      lastUpdateTime:
+                        type: string
+                        format: date-time
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0

@@ -334,6 +334,25 @@ func (c *Controller) addOrDeleteBgpEdgeRouterAdvertisementRule(op, key string, p
 	return nil
 }
 
+func (c *Controller) resyncBgpRules() {
+	klog.Info("resync bgp edge router")
+	// resync all bgp edge routers
+	bgpEdgeRouterAds, err := c.bgpEdgeRouterAdvertisementLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list bgp edge routers: %v", err)
+		return
+	}
+
+	for _, bgpEdgeRouterAd := range bgpEdgeRouterAds {
+		// Check router.Spec.BGP.AdvertisedRoutes same with pods bgp advertised routes
+		if err := c.syncAdvertisedRoutes(bgpEdgeRouterAd); err != nil {
+			klog.Errorf("failed to sync advertised routes for bgp edge router %s: %v", bgpEdgeRouterAd.Name, err)
+			continue
+		}
+		klog.Infof("resync bgp edge router %s", bgpEdgeRouterAd.Name)
+	}
+}
+
 func (c *Controller) validateBgpEdgeRouterAdvertisement(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) ([]*corev1.Pod, error) {
 	deploy, err := c.berDeploymentsLister.Deployments(advertisement.Namespace).Get(advertisement.Spec.BgpEdgeRouter)
 	if err != nil {
@@ -436,25 +455,6 @@ func (c *Controller) execUpdateBgpRoute(pod *corev1.Pod, oldCidrs, newCidrs []st
 	// list the current rule and check if the routes are updated
 
 	return nil
-}
-
-func (c *Controller) resyncBgpEdgeRouterAdvertisement() {
-	klog.Info("resync bgp edge router")
-	// resync all vpc edge routers
-	berAds, err := c.bgpEdgeRouterAdvertisementLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list vpc edge routers: %v", err)
-		return
-	}
-
-	for _, berAd := range berAds {
-		// Check router.Spec.BGP.AdvertisedRoutes same with pods bgp advertised routes
-		if err := c.syncAdvertisedRoutes(berAd); err != nil {
-			klog.Errorf("failed to sync advertised routes for vpc edge router %s: %v", berAd.Name, err)
-			continue
-		}
-		klog.Infof("resync vpc edge router %s", berAd.Name)
-	}
 }
 
 func (c *Controller) syncAdvertisedRoutes(advertisement *kubeovnv1.BgpEdgeRouterAdvertisement) error {

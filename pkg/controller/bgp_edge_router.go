@@ -1092,7 +1092,12 @@ func bgpEdgeRouterContainerBGP(speakerImage, routerName string, speakerParams *k
 	if speakerParams.HoldTime != (metav1.Duration{}) {
 		args = append(args, "--holdtime="+speakerParams.HoldTime.Duration.String())
 	}
-
+	if speakerParams.EdgeRouterMode {
+		args = append(args, "--edge-router-mode=true")
+	}
+	if speakerParams.RouteServerClient {
+		args = append(args, "--route-server-client=true")
+	}
 	args = append(args, fmt.Sprintf("--cluster-as=%d", speakerParams.ASN))
 	args = append(args, fmt.Sprintf("--neighbor-as=%d", speakerParams.RemoteASN))
 

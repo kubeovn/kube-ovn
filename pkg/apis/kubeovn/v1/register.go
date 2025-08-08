@@ -77,6 +77,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&BgpEdgeRouterList{},
 		&BgpEdgeRouterAdvertisement{},
 		&BgpEdgeRouterAdvertisementList{},
+		&GobgpConfig{},
+		&GobgpConfigList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

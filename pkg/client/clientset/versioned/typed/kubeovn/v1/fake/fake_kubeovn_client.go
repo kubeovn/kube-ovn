@@ -120,8 +120,12 @@ func (c *FakeKubeovnV1) BgpEdgeRouterAdvertisements(namespace string) v1.BgpEdge
 	return newFakeBgpEdgeRouterAdvertisements(c, namespace)
 }
 
+func (c *FakeKubeovnV1) GobgpConfigs(namespace string) v1.GobgpConfigInterface {
+	return newFakeGobgpConfigs(c, namespace)
+}
+
 // RESTClient returns a RESTClient that is used to communicate
-// with API server by this client implementation.
+// with API server by this client implementation.p
 func (c *FakeKubeovnV1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret

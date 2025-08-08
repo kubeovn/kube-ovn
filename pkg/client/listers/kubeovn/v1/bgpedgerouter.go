@@ -42,6 +42,7 @@ type BgpEdgeRouterLister interface {
 	// List lists all BgpEdgeRouters in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*kubeovnv1.BgpEdgeRouter, err error)
+	// Get(name string) (*kubeovnv1.BgpEdgeRouter, error)
 	// BgpEdgeRouters returns an object that can list and get BgpEdgeRouters.
 	BgpEdgeRouters(namespace string) BgpEdgeRouterNamespaceLister
 	BgpEdgeRouterListerExpansion

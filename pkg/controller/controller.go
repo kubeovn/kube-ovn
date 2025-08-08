@@ -120,6 +120,13 @@ type Controller struct {
 	deleteBgpEdgeRouterAdvertisementQueue workqueue.TypedRateLimitingInterface[string]
 	bgpEdgeRouterAdvertisementKeyMutex    keymutex.KeyMutex
 
+	gobgpConfigLister      kubeovnlister.GobgpConfigLister
+	gobgpConfigSynced      cache.InformerSynced
+	addGobgpConfigQueue    workqueue.TypedRateLimitingInterface[string]
+	updateGobgpConfigQueue workqueue.TypedRateLimitingInterface[*updateVerGobgpConfigObject]
+	deleteGobgpConfigQueue workqueue.TypedRateLimitingInterface[string]
+	gobgpConfigKeyMutex    keymutex.KeyMutex
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
@@ -380,6 +387,7 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
 	bgpEdgeRouterInformer := kubeovnInformerFactory.Kubeovn().V1().BgpEdgeRouters()
 	bgpEdgeRouterAdvertisementInformer := kubeovnInformerFactory.Kubeovn().V1().BgpEdgeRouterAdvertisements()
+	gobgpConfigInformer := kubeovnInformerFactory.Kubeovn().V1().GobgpConfigs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -457,6 +465,13 @@ func Run(ctx context.Context, config *Configuration) {
 		updateBgpEdgeRouterAdvertisementQueue: newTypedRateLimitingQueue[*updateVerObject]("UpdateBgpEdgeRouterAdvertisement", nil),
 		deleteBgpEdgeRouterAdvertisementQueue: newTypedRateLimitingQueue("DeleteBgpEdgeRouterAdvertisement", custCrdRateLimiter),
 		bgpEdgeRouterAdvertisementKeyMutex:    keymutex.NewHashed(numKeyLocks),
+
+		gobgpConfigLister:      gobgpConfigInformer.Lister(),
+		gobgpConfigSynced:      gobgpConfigInformer.Informer().HasSynced,
+		addGobgpConfigQueue:    newTypedRateLimitingQueue("AddGobgpConfig", custCrdRateLimiter),
+		updateGobgpConfigQueue: newTypedRateLimitingQueue[*updateVerGobgpConfigObject]("UpdateGobgpConfig", nil),
+		deleteGobgpConfigQueue: newTypedRateLimitingQueue("DeleteGobgpConfig", custCrdRateLimiter),
+		gobgpConfigKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -816,6 +831,14 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add bgp edge router advertisement event handler")
 	}
 
+	if _, err = gobgpConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddGobgpConfig,
+		UpdateFunc: controller.enqueueUpdateGobgpConfig,
+		DeleteFunc: controller.enqueueDeleteGobgpConfig,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add gobgp config event handler")
+	}
+
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpcEgressGateway,
 		UpdateFunc: controller.enqueueUpdateVpcEgressGateway,
@@ -1172,6 +1195,10 @@ func (c *Controller) shutdown() {
 	c.updateBgpEdgeRouterAdvertisementQueue.ShutDown()
 	c.deleteBgpEdgeRouterAdvertisementQueue.ShutDown()
 
+	c.addGobgpConfigQueue.ShutDown()
+	c.updateGobgpConfigQueue.ShutDown()
+	c.deleteGobgpConfigQueue.ShutDown()
+
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
@@ -1270,7 +1297,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("add bgp edge router advertisement", c.addBgpEdgeRouterAdvertisementQueue, c.handleAddBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(runWorker("update bgp edge router advertisement", c.updateBgpEdgeRouterAdvertisementQueue, c.handleUpdateBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteBgpEdgeRouterAdvertisementQueue, c.handleDelBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
-	go wait.Until(c.resyncBgpEdgeRouterAdvertisement, 60*time.Second, ctx.Done())
+	go wait.Until(c.resyncBgpRules, 60*time.Second, ctx.Done())
+	go wait.Until(runWorker("add bgp edge router advertisement", c.addGobgpConfigQueue, c.handleAddGobgpConfig), time.Second, ctx.Done())
+	go wait.Until(runWorker("update bgp edge router advertisement", c.updateGobgpConfigQueue, c.handleUpdateGobgpConfig), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteGobgpConfigQueue, c.handleDelGobgpConfig), time.Second, ctx.Done())
+
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())

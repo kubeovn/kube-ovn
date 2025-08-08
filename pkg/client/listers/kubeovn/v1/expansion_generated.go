@@ -121,3 +121,11 @@ type BgpEdgeRouterAdvertisementListerExpansion interface{}
 // BgpEdgeRouterNamespaceListerExpansion allows custom methods to be added to
 // BgpEdgeRouterNamespaceLister.
 type BgpEdgeRouterAdvertisementNamespaceListerExpansion interface{}
+
+// BgpEdgeRouterListerExpansion allows custom methods to be added to
+// BgpEdgeRouterLister.
+type GobgpConfigListerExpansion interface{}
+
+// BgpEdgeRouterNamespaceListerExpansion allows custom methods to be added to
+// BgpEdgeRouterNamespaceLister.
+type GobgpConfigNamespaceListerExpansion interface{}

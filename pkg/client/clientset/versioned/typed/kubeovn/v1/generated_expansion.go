@@ -62,4 +62,6 @@ type VpcNatGatewayExpansion interface{}
 
 type BgpEdgeRouterExpansion interface{}
 
-type BgpEdgeRouterAdrvertisementExpansion interface{}
+type BgpEdgeRouterAdvertisementExpansion interface{}
+
+type GobgpConfigExpansion interface{}
