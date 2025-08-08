@@ -69,28 +69,26 @@ jobs:
           CGO_ENABLED: "0"
           GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
+          go mod tidy
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
+          export GOBIN=`dirname "$dockerfile"`
           cni_plugins_version=`go list -m -f '{{.Version}}' github.com/containernetworking/plugins`
           cni_plugins_build_flags="-ldflags '-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=$cni_plugins_version'"
           jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
             bin=`basename $f`
-            go_bin_dir=`go env GOPATH`/bin
             case $bin in
               loopback|macvlan)
                 echo "Building $bin@$cni_plugins_version from source..."
                 sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin@$cni_plugins_version"
                 echo "COPY $bin /$f" >> "$dockerfile"
-                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
                 ;;
               portmap)
                 echo "Building $bin@$cni_plugins_version from source..."
                 sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin@$cni_plugins_version"
                 echo "COPY $bin /$f" >> "$dockerfile"
-                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
                 ;;
               kubectl)
-                go mod tidy
                 version=`go list -m -f '{{.Version}}' k8s.io/kubernetes`
                 mod_dir=`go list -m -f '{{.Dir}}' k8s.io/kubernetes`
                 source "$mod_dir/hack/lib/util.sh"
@@ -114,7 +112,12 @@ jobs:
                 echo "Building $bin@$version from source..."
                 $GO_INSTALL -ldflags="${goldflags}" k8s.io/kubernetes/cmd/kubectl
                 echo "COPY $bin /$f" >> "$dockerfile"
-                cp -a $go_bin_dir/$bin `dirname "$dockerfile"`
+                ;;
+              gobgp)
+                version=`go list -m -f '{{.Version}}' github.com/osrg/gobgp/v3`
+                echo "Building $bin@$version from source..."
+                $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$bin
+                echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               *)
                 ;;
