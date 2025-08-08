@@ -3743,7 +3743,12 @@ spec:
                 - neighbors
               properties:
                 bgpEdgeRouter:
-                  type: string
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
                 neighbors:
                   type: array
                   items:
