@@ -110,7 +110,8 @@ type NatOutGoingPolicyMatch struct {
 
 type NatOutgoingPolicyRuleStatus struct {
 	RuleID string `json:"ruleID"`
-	NatOutgoingPolicyRule
+
+	NatOutgoingPolicyRule `json:"natOutgoingPolicyRule"`
 }
 type SubnetStatus struct {
 	// Conditions represents the latest state of the object
