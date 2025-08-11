@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.14.5 (2025-08-11)
+
+ * [3ca45970f](https://github.com/kubeovn/kube-ovn/commit/3ca45970fa80976cb4587041a3146ed51be52619) release v1.14.5
+ * [e855bcfef](https://github.com/kubeovn/kube-ovn/commit/e855bcfef6bf22d46f424b87e1b8f495122121e1) ci: rebuild gobgp for arm64 (#5583)
+ * [da23a342c](https://github.com/kubeovn/kube-ovn/commit/da23a342cbf09a4a751f72cd97cf8994383a08e3) chore(deps): update dependency go to v1.24.6 (#5581)
+ * [ff4ce47f1](https://github.com/kubeovn/kube-ovn/commit/ff4ce47f139ad7edc175befaf85e821e72ffb97c) fix(deps): update golang (#5574)
+ * [8bc76be74](https://github.com/kubeovn/kube-ovn/commit/8bc76be744d7a1f368fe5ecca81dd62737311d03) vm static ip validate should use vm name (#5569)
+ * [c61e4ec57](https://github.com/kubeovn/kube-ovn/commit/c61e4ec57b277203dbff281496c3c3cb43c1033c) chore(deps): update dependency go to v1.24.6 (#5564)
+ * [42bbf139d](https://github.com/kubeovn/kube-ovn/commit/42bbf139d147d4ece924f44af5f572e6b480b23f) Fix the problem that if available ip is 0 but there is a value in excludeIPs, the fixed ip is used as the ip in excludeIPs but the error noAddressAvaliable is still reported. (#5565)
+ * [b0f333c80](https://github.com/kubeovn/kube-ovn/commit/b0f333c80d9da02e3db23e1e84dbdbf751fc79ba) Do not garbage collect IPs of stopped VMs using non-default multus networks (#5557)
+ * [63b8dcd36](https://github.com/kubeovn/kube-ovn/commit/63b8dcd36d1a5871289553893415cf7a0e16b89a) skip mv if config file already exists (#5558)
+ * [574c59057](https://github.com/kubeovn/kube-ovn/commit/574c59057d5dc9d4d6ec188829474f6a106f466f) skip nad without config (#5560)
+ * [ae1b53f72](https://github.com/kubeovn/kube-ovn/commit/ae1b53f729af54beb5db47e9d3609d17f113735e) tolerate duplicate ACLs (#5552)
+ * [c26027037](https://github.com/kubeovn/kube-ovn/commit/c2602703735ce9d28b67f18ef48d7b9ac49d09b2) fix(helm): static master ips wouldn't work anymore (#5554)
+ * [dbc6a9e91](https://github.com/kubeovn/kube-ovn/commit/dbc6a9e91f925c50c11e68b55499971565602a8a) disable external sync by default
+ * [917e7510e](https://github.com/kubeovn/kube-ovn/commit/917e7510e529c184409befb7035e60480506c4a7) do not handle update external vpcs
+ * [ca18d733c](https://github.com/kubeovn/kube-ovn/commit/ca18d733c7857865101b64a679ed0ad10961683c) fix nat-gateway arping (#5546)
+ * [c1ff836ac](https://github.com/kubeovn/kube-ovn/commit/c1ff836ac7880c711f9327a23f75a58f33d52c18) fix vpcNatGw status cannot be updated (#5547)
+ * [1094f8fd4](https://github.com/kubeovn/kube-ovn/commit/1094f8fd49e0ee1814e5a655e8b7424d5c7160ef) Handle missing files gracefully in metric functions by returning early on os.IsNotExist errors (#5529)
+ * [5b68f08d7](https://github.com/kubeovn/kube-ovn/commit/5b68f08d726aee672f79bee35e81a88c13887cc2) CVE fix
+ * [283a293fd](https://github.com/kubeovn/kube-ovn/commit/283a293fd631c9ed57209ee60ab2fa02cf61fcdc) check underlay nic exist before config external bridge (#5520)
+ * [0dae9b010](https://github.com/kubeovn/kube-ovn/commit/0dae9b010011e9c014b1368c34696e3b6d579f9e) delay timer is incorrect (#5499)
+ * [1ea9d09a4](https://github.com/kubeovn/kube-ovn/commit/1ea9d09a4197191956d5479805663efc67686995) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * andrewlee1089
+ * changluyi
+ * renovate[bot]
+ * xieyanker
+ * zbb88888
+ * 张祖建
+
 ## v1.14.4 (2025-07-23)
 
  * [839f68c34](https://github.com/kubeovn/kube-ovn/commit/839f68c34aaae682eb21d44484edd098641042f2) release v1.14.4
