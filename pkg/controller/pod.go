@@ -714,7 +714,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 	name := pod.Name
 	podName := c.getNameByPod(pod)
 
-	klog.Infof("sync pod %s/%s routed", namespace, name)
+	klog.Infof("sync pod %s/%s routed", namespace.Name, name)
 
 	node, err := c.nodesLister.Get(pod.Spec.NodeName)
 	if err != nil {
@@ -742,7 +742,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 	for _, podNet := range needRoutePodNets {
 		// in case update handler overlap the annotation when cache is not in sync
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "" {
-			return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+			return fmt.Errorf("no address has been allocated to %s/%s", namespace.Name, name)
 		}
 
 		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
@@ -974,7 +974,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
 		}
-		klog.Errorf("failed to patch pod %s/%s: %v", namespace, name, err)
+		klog.Errorf("failed to patch pod %s/%s: %v", namespace.Name, name, err)
 		return err
 	}
 	return nil
