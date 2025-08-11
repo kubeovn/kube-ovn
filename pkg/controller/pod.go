@@ -706,7 +706,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		return nil
 	}
 
-	namespace := pod.Namespace
+	namespace, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s for pod %s: %v", pod.Namespace, pod.Name, err)
+		return err
+	}
 	name := pod.Name
 	podName := c.getNameByPod(pod)
 
@@ -800,7 +804,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
-			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
+			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
 					klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -933,7 +937,12 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							return err
 						}
 					}
-					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
+					var eip string
+					if eip = pod.Annotations[util.SnatAnnotation]; eip == "" {
+						eip = namespace.Annotations[util.SnatAnnotation]
+					}
+
+					if eip == "" {
 						if err = c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
@@ -956,11 +965,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 
 		patch[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] = "true"
 	}
-	if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(namespace), name, patch); err != nil {
+	if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(namespace.Name), name, patch); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := strings.Join([]string{namespace, name}, "/")
+			key := strings.Join([]string{namespace.Name, name}, "/")
 			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
@@ -979,6 +988,11 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	now := time.Now()
 	klog.Infof("handle delete pod %s", key)
 	podName := c.getNameByPod(pod)
+	namespace, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s for pod %s: %v", pod.Namespace, pod.Name, err)
+		return err
+	}
 	c.podKeyMutex.LockKey(key)
 	defer func() {
 		_ = c.podKeyMutex.UnlockKey(key)
@@ -1125,7 +1139,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}
-					if pod.Annotations[util.SnatAnnotation] != "" {
+					if (pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "") {
 						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
