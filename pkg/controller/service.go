@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"reflect"
 	"slices"
@@ -281,19 +282,20 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			klog.Errorf("failed to get LB %s: %v", lbName, err)
 			return err
 		}
-		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
+		lbVIPs := maps.Clone(lb.Vips)
+		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lbVIPs)
 		for _, vip := range svcVips {
 			if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
 
-			if _, ok := lb.Vips[vip]; !ok {
+			if _, ok := lbVIPs[vip]; !ok {
 				klog.Infof("add vip %s to LB %s", vip, lbName)
 				needUpdateEndpointQueue = true
 			}
 		}
-		for vip := range lb.Vips {
+		for vip := range lbVIPs {
 			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
 				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
@@ -312,8 +314,9 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			klog.Errorf("failed to get LB %s: %v", oLbName, err)
 			return err
 		}
-		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, lb.Vips)
-		for vip := range oLb.Vips {
+		oLbVIPs := maps.Clone(oLb.Vips)
+		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, oLbVIPs)
+		for vip := range oLbVIPs {
 			if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
 				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
