@@ -2,7 +2,7 @@
 # update-bgp-policy.sh - Hybrid Version
 # shellcheck disable=SC2086,SC2155
 
-set -euo pipefail
+set -u
 
 GOBGP_BIN=${GOBGP_BIN:-$(command -v gobgp || true)}
 [[ -z "$GOBGP_BIN" ]] && { echo "ERROR: gobgp binary not found" >&2; exit 1; }
@@ -17,6 +17,7 @@ Usage:
   $0 flush-prefix-in <NEIGHBOR_IP>
   $0 flush-prefix-out <NEIGHBOR_IP>
   $0 add-prefix <in|out> <NEIGHBOR_IP> <PREFIXES...>
+  $0 set-default-action <accept|reject>
   $0 --batch <COMMAND1> [ARGS1...] -- <COMMAND2> [ARGS2...] -- ...
 
 Examples:
@@ -179,6 +180,28 @@ add_prefix() {
   echo "=== Done ==="
 }
 
+validate_action() {
+  local action=$1
+  if [[ "$action" != "accept" && "$action" != "reject" ]]; then
+    die "Invalid action: $action. Must be 'accept' or 'reject'"
+  fi
+}
+
+set_default_action() {
+  local action=$1; validate_action "$action"
+
+  echo "=== Setting default action to $action ==="
+
+  echo "-> Applying default policy to global import"
+  exec_cmd $GOBGP_BIN global policy import add default $action
+
+  echo "-> Applying default policy to global export"
+  exec_cmd $GOBGP_BIN global policy export add default $action
+
+  echo "=== Default action set to $action successfully ==="
+}
+
+
 # Execute a single command
 execute_single_command() {
   local cmd=$1; shift
@@ -204,6 +227,10 @@ execute_single_command() {
       [[ $# -lt 3 ]] && die "add-prefix requires at least 3 arguments (in|out NEIGHBOR_IP PREFIXES...)"
       add_prefix "$@"
       ;;
+    set-default-action)
+      [[ $# -ne 1 ]] && die "set-default-action requires exactly 1 argument (accept|reject)"
+      set_default_action "$1"
+      ;;
     *)
       die "Unknown command: $cmd"
       ;;
@@ -214,7 +241,8 @@ execute_single_command() {
 parse_batch_commands() {
   local -a current_cmd=()
   local -a all_commands=()
-for arg in "$@"; do
+  
+  for arg in "$@"; do
     if [[ "$arg" == "--" ]]; then
       if [[ ${#current_cmd[@]} -gt 0 ]]; then
         all_commands+=("$(printf '%s\n' "${current_cmd[@]}")")
@@ -234,7 +262,7 @@ for arg in "$@"; do
   local cmd_count=1
   for cmd_str in "${all_commands[@]}"; do
     echo ""
-    echo "🔸 Executing batch command #$cmd_count"
+    echo "Executing batch command #$cmd_count"
     echo "-----------------------------------"
     
     # Convert newline-separated string back to array
@@ -259,11 +287,11 @@ main() {
     shift
     [[ $# -lt 1 ]] && die "Batch mode requires at least one command"
     
-    echo "🚀 Starting batch execution mode"
+    echo "Starting batch execution mode"
     echo "================================="
     parse_batch_commands "$@"
     echo ""
-    echo "✅ All batch commands completed successfully"
+    echo "All batch commands completed successfully"
     
   else
     # Single command mode (original behavior)
