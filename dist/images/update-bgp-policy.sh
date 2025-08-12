@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-bgp-policy.sh
+# update-bgp-policy.sh - Hybrid Version
 # shellcheck disable=SC2086,SC2155
 
 set -euo pipefail
@@ -16,14 +16,20 @@ Usage:
   $0 flush-neighbor-policy <NEIGHBOR_IP>
   $0 flush-prefix-in <NEIGHBOR_IP>
   $0 flush-prefix-out <NEIGHBOR_IP>
-  $0 add-prefix <in|out> <NEIGHBOR_IP> <PREFIXS...>
+  $0 add-prefix <in|out> <NEIGHBOR_IP> <PREFIXES...>
+  $0 --batch <COMMAND1> [ARGS1...] -- <COMMAND2> [ARGS2...] -- ...
 
 Examples:
+  # Single command execution
   $0 set-neighbor-policy 1.1.1.1
   $0 flush-neighbor-policy 1.1.1.1
   $0 flush-prefix-in 1.1.1.1
   $0 flush-prefix-out 1.1.1.1
   $0 add-prefix in 1.1.1.1 "0.0.0.0/0 0..32","1.1.1.0/24","10.0.0.0/8 16..32"
+  
+  # Batch execution (multiple commands in one run)
+  $0 --batch set-neighbor-policy 1.1.1.1 -- add-prefix in 1.1.1.1 "10.0.0.0/8"
+  $0 --batch flush-prefix-in 1.1.1.1 -- add-prefix in 1.1.1.1 "192.168.0.0/16" -- flush-prefix-out 1.1.1.1
 EOF
   exit 1
 }
@@ -154,10 +160,11 @@ add_prefix() {
 
   echo "=== Adding prefixes to $prefix_name ==="
   for entry in "${entries[@]}"; do
+    # Clean quotes and whitespace
     entry="${entry%\"}"
     entry="${entry#\"}"
-    entry="${entry##*( )}"
-    entry="${entry%%*( )}"
+    entry="${entry##( )}"
+    entry="${entry%%( )}"
 
     if [[ $entry =~ ^([^[:space:]]+)[[:space:]]+(.+)$ ]]; then
       local ip_pref=${BASH_REMATCH[1]}
@@ -172,34 +179,96 @@ add_prefix() {
   echo "=== Done ==="
 }
 
-main() {
-  [[ $# -lt 1 ]] && usage
-  case "$1" in
+# Execute a single command
+execute_single_command() {
+  local cmd=$1; shift
+  
+  case "$cmd" in
     set-neighbor-policy)
-      [[ $# -ne 2 ]] && usage
-      set_neighbor_policy "$2"
+      [[ $# -ne 1 ]] && die "set-neighbor-policy requires exactly 1 argument (NEIGHBOR_IP)"
+      set_neighbor_policy "$1"
       ;;
     flush-neighbor-policy)
-      [[ $# -ne 2 ]] && usage
-      flush_neighbor_policy "$2"
+      [[ $# -ne 1 ]] && die "flush-neighbor-policy requires exactly 1 argument (NEIGHBOR_IP)"
+      flush_neighbor_policy "$1"
       ;;
     flush-prefix-in)
-      [[ $# -ne 2 ]] && usage
-      flush_prefix_in "$2"
+      [[ $# -ne 1 ]] && die "flush-prefix-in requires exactly 1 argument (NEIGHBOR_IP)"
+      flush_prefix_in "$1"
       ;;
     flush-prefix-out)
-      [[ $# -ne 2 ]] && usage
-      flush_prefix_out "$2"
+      [[ $# -ne 1 ]] && die "flush-prefix-out requires exactly 1 argument (NEIGHBOR_IP)"
+      flush_prefix_out "$1"
       ;;
     add-prefix)
-      [[ $# -lt 4 ]] && usage
-      shift
+      [[ $# -lt 3 ]] && die "add-prefix requires at least 3 arguments (in|out NEIGHBOR_IP PREFIXES...)"
       add_prefix "$@"
       ;;
     *)
-      usage
+      die "Unknown command: $cmd"
       ;;
   esac
+}
+
+# Parse batch commands separated by --
+parse_batch_commands() {
+  local -a current_cmd=()
+  local -a all_commands=()
+for arg in "$@"; do
+    if [[ "$arg" == "--" ]]; then
+      if [[ ${#current_cmd[@]} -gt 0 ]]; then
+        all_commands+=("$(printf '%s\n' "${current_cmd[@]}")")
+        current_cmd=()
+      fi
+    else
+      current_cmd+=("$arg")
+    fi
+  done
+  
+  # Add the last command if exists
+  if [[ ${#current_cmd[@]} -gt 0 ]]; then
+    all_commands+=("$(printf '%s\n' "${current_cmd[@]}")")
+  fi
+  
+  # Execute all commands
+  local cmd_count=1
+  for cmd_str in "${all_commands[@]}"; do
+    echo ""
+    echo "🔸 Executing batch command #$cmd_count"
+    echo "-----------------------------------"
+    
+    # Convert newline-separated string back to array
+    local -a cmd_args=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && cmd_args+=("$line")
+    done <<< "$cmd_str"
+    
+    if [[ ${#cmd_args[@]} -gt 0 ]]; then
+      execute_single_command "${cmd_args[@]}"
+    fi
+    
+    ((cmd_count++))
+  done
+}
+
+main() {
+  [[ $# -lt 1 ]] && usage
+  
+  # Check for batch mode
+  if [[ "$1" == "--batch" ]]; then
+    shift
+    [[ $# -lt 1 ]] && die "Batch mode requires at least one command"
+    
+    echo "🚀 Starting batch execution mode"
+    echo "================================="
+    parse_batch_commands "$@"
+    echo ""
+    echo "✅ All batch commands completed successfully"
+    
+  else
+    # Single command mode (original behavior)
+    execute_single_command "$@"
+  fi
 }
 
 main "$@"

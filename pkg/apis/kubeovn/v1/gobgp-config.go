@@ -41,7 +41,7 @@ func (g *GobgpConfig) Subnet(subnets []string) []string {
 // }
 
 type GobgpConfigSpec struct {
-	BgpEdgeRouterInfo BgpEdgeRouterInfo `json:"bgpEdgeRouterName"`
+	BgpEdgeRouterInfo BgpEdgeRouterInfo `json:"bgpEdgeRouterInfo"`
 	Neighbors         []Neighbors       `json:"neighbors,omitempty"`
 }
 

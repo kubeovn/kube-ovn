@@ -3710,7 +3710,7 @@ spec:
       additionalPrinterColumns:
         - name: bgp-edge-router
           type: string
-          jsonPath: .spec.bgpEdgeRouter
+          jsonPath: .spec.bgpEdgeRouterInfo.name
         - name: neighbor-address
           type: string
           jsonPath: .spec.neighbors[*].address
@@ -3742,7 +3742,7 @@ spec:
                 - bgpEdgeRouter
                 - neighbors
               properties:
-                bgpEdgeRouter:
+                bgpEdgeRouterInfo:
                   type: object
                   properties:
                     name:

@@ -2,8 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -125,10 +127,10 @@ func (c *Controller) handleAddGobgpConfig(key string) error {
 			continue
 		}
 		klog.Infof("handle adding gobgp-config %s", key)
-		// if err = c.addOrDeleteGobgpConfigRule("add", key, pod, gobgpConfig); err != nil {
-		// 	klog.Error(err)
-		// 	return err
-		// }
+		if err = c.execUpdateBgpPolicy(key, pod, nil, gobgpConfig); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	gobgpConfig.Status.Conditions.SetReady("ReconcileSuccess", gobgpConfig.Generation)
@@ -175,16 +177,16 @@ func (c *Controller) handleUpdateGobgpConfig(updatedObj *updateVerGobgpConfigObj
 		return err
 	}
 
-	// for _, pod := range pods {
-	// 	if len(pod.Status.PodIPs) == 0 {
-	// 		continue
-	// 	}
-	// 	klog.Infof("handle adding gobgp-configs %s", key)
-	// 	if err = c.updateGobgpConfigRule(key, pod, updatedObj.oldVer, updatedObj.newVer); err != nil {
-	// 		klog.Error(err)
-	// 		return err
-	// 	}
-	// }
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		klog.Infof("handle adding gobgp-configs %s", key)
+		if err = c.execUpdateBgpPolicy(key, pod, updatedObj.oldVer, updatedObj.newVer); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
 
 	gobgpConfig.Status.Conditions.SetReady("ReconcileSuccess", gobgpConfig.Generation)
 	if _, err = c.updateGobgpConfigStatus(gobgpConfig); err != nil {
@@ -228,10 +230,10 @@ func (c *Controller) handleDelGobgpConfig(key string) error {
 			continue
 		}
 		klog.Infof("handle deleting gobgp-configs %s", key)
-		// if err = c.addOrDeleteGobgpConfigRule("del", key, pod, gobgpConfig); err != nil {
-		// 	klog.Error(err)
-		// 	return err
-		// }
+		if err = c.execUpdateBgpPolicy(key, pod, gobgpConfig, nil); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	gobgpConfig = cachedGobgpConfig.DeepCopy()
@@ -243,100 +245,89 @@ func (c *Controller) handleDelGobgpConfig(key string) error {
 		}
 	}
 
-	gobgpConfig.Status.Conditions.SetReady("ReconcileSuccess", gobgpConfig.Generation)
-	if _, err = c.updateGobgpConfigStatus(gobgpConfig); err != nil {
-		return err
-	}
 	klog.Infof("finished reconciling gobgp-config %s", key)
 
 	return nil
 }
 
-// func (c *Controller) updateGobgpConfigRule(key string, pod *corev1.Pod, oldGobgpConfig, newGobgpConfig *kubeovnv1.GobgpConfig) error {
-// 	if pod.Name == "" {
-// 		err := fmt.Errorf("failed to get pod name %s", pod.Name)
-// 		klog.Error(err)
-// 		return err
-// 	}
-// 	// klog.Infof("update gobgp-config %s %s %s", key, oldGobgpConfig, newGobgpConfig)
+func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpConfig, newGobgpConfig *kubeovnv1.GobgpConfig) error {
+	klog.Infof("execUpdateBgpPolicy %s", key)
 
-// 	// var oldSubnetArray []string
-// 	// var newSubnetArray []string
+	if pod.Name == "" {
+		err := fmt.Errorf("failed to get pod name %s", pod.Name)
+		klog.Error(err)
+		return err
+	}
+	klog.Infof("execUpdateBgpPolicy %s", key)
 
-// 	// for _, neighbor := range oldGobgpConfig.Spec.Neighbors {
-// 	// 	toAdvertisePrefixes := neighbor.ToAdvertise.Allowed.Prefixes
-// 	// 	toReceivePrefixes := neighbor.ToReceive.Allowed.Prefixes
+	cmdArs := []string{}
+	if oldGobgpConfig != nil {
+		klog.Infof("execUpdateBgpPolicy %s", key)
 
-// 	// 	klog.Infof("cleaning gobgp-config %s for subnet %s", key, prefix)
-// 	// }
+		for _, neighbor := range oldGobgpConfig.Spec.Neighbors {
+			nbrIP := neighbor.Address
+			if len(nbrIP) == 0 {
+				klog.Warningf("neighbor address is empty for gobgp-config %s", key)
+				continue
+			}
+			// erase neighbor.
+			cmdArs = append(cmdArs, "--", "flush-neighbor-policy", nbrIP)
+			// cmdArs = append(cmdArs, "--", "flush-prefix-out", nbrIP)
+			// cmdArs = append(cmdArs, "--", "flush-prefix-in", nbrIP)
+			// rcvMode := neighbor.ToReceive.Allowed.Mode
+			// rcvPrefixes := neighbor.ToReceive.Allowed.Prefixes
+			// if rcvMode == "all" {
+			// 	rcvPrefixes = []string{"0.0.0.0/0 0..32"}
+			// }
+			// cmdArs = append(cmdArs, append([]string{"--", "flush-prefix-in"}, rcvPrefixes...)...)
+		}
+	}
+	if newGobgpConfig != nil {
+		for _, neighbor := range newGobgpConfig.Spec.Neighbors {
+			nbrIP := neighbor.Address
+			if len(nbrIP) == 0 {
+				klog.Warningf("neighbor address is empty for gobgp-config %s", key)
+				continue
+			}
+			cmdArs = append(cmdArs, "--", "set-neighbor-policy", nbrIP)
 
-// 	// for _, prefix := range newGobgpConfig.Spec.ToAdvertise.Allowed.Prefixes {
-// 	// 	subnet, err := c.subnetsLister.Get(prefix)
-// 	// 	if err != nil {
-// 	// 		err = fmt.Errorf("failed to get subnet %s: %w", prefix, err)
-// 	// 		klog.Error(err)
-// 	// 		return err
-// 	// 	}
-// 	// 	if subnet.Spec.CIDRBlock != "" {
-// 	// 		newSubnetArray = append(newSubnetArray, subnet.Spec.CIDRBlock)
-// 	// 	}
-// 	// 	klog.Infof("cleaning gobgp-config %s for subnet %s", key, subnet.Name)
-// 	// }
+			// toAdvertise
+			advMode := neighbor.ToAdvertise.Allowed.Mode
+			advPrefixes := neighbor.ToAdvertise.Allowed.Prefixes
+			quoted := make([]string, len(advPrefixes))
 
-// 	// if err := c.execUpdateBgpRoute(pod, oldSubnetArray, newSubnetArray); err != nil {
-// 	// 	klog.Error(err)
-// 	// 	return err
-// 	// }
+			if advMode == "all" {
+				advPrefixes = []string{"0.0.0.0/0 0..32"}
+			}
+			for i, p := range advPrefixes {
+				quoted[i] = fmt.Sprintf("\"%s\"", p)
+			}
+			cmdArs = append(cmdArs, "--", "add-prefix", "out", nbrIP, strings.Join(quoted, ","))
 
-// 	return nil
-// }
+			// toReceive
+			recvMode := neighbor.ToReceive.Allowed.Mode
+			recvPrefixes := neighbor.ToReceive.Allowed.Prefixes
+			if recvMode == "all" {
+				recvPrefixes = []string{"0.0.0.0/0 0..32"}
+			}
+			quoted = make([]string, len(recvPrefixes))
+			for i, p := range recvPrefixes {
+				quoted[i] = fmt.Sprintf("\"%s\"", p)
+			}
+			cmdArs = append(cmdArs, "--", "add-prefix", "in", nbrIP, strings.Join(quoted, ","))
+		}
+	}
 
-// func (c *Controller) addOrDeleteGobgpConfigRule(op, key string, pod *corev1.Pod, gobgpConfig *kubeovnv1.GobgpConfig) error {
-// 	neighbors := gobgpConfig.Spec.Neighbors
-// 	klog.Infof("add delete gobgp-config %s", key)
-
-// 	subnetCidrArray := []string{}
-// 	for _, neighbor := range neighbors {
-// 		// address := neighbor.Address
-// 		toAdvertise := neighbor.ToAdvertise.Allowed
-// 		toReceive := neighbor.ToReceive.Allowed
-// 		if toAdvertise.Mode == "all" {
-// 			// toAdvertisePrefixes := toAdvertise.Prefixes
-// 			// toReceivePrefixes := toReceive.Prefixes
-// 			// Exec gobgpConfig command to advertise prefixes
-// 		} else {
-// 			// toAdvertisePrefixes := toAdvertise.Prefixes
-// 			// toReceivePrefixes := toReceive.Prefixes
-// 			// Exec gobgpConfig command to advertise prefixes
-// 		}
-
-// 		if toReceive.Mode == "all" {
-// 			// toAdvertisePrefixes := toAdvertise.Prefixes
-// 			// toReceivePrefixes := toReceive.Prefixes
-// 			// Exec gobgpConfig command to advertise prefixes
-// 		} else {
-// 			// toAdvertisePrefixes := toAdvertise.Prefixes
-// 			// toReceivePrefixes := toReceive.Prefixes
-// 			// Exec gobgpConfig command to advertise prefixes
-// 		}
-// 	}
-
-// 	if op == "add" {
-// 		if err := c.execUpdateBgpRoute(pod, nil, subnetCidrArray); err != nil {
-// 			klog.Error(err)
-// 			return err
-// 		}
-// 	} else {
-// 		if err := c.execUpdateBgpRoute(pod, subnetCidrArray, nil); err != nil {
-// 			klog.Error(err)
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
+	// cmdArs = append(cmdArs, "list_announced_route")
+	if err := c.execCmd(pod, cmdArs); err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
 
 func (c *Controller) validateGobgpConfig(gobgpConfig *kubeovnv1.GobgpConfig) ([]*corev1.Pod, error) {
+	klog.Infof("gobgpConfignamespace: %s name: %s", gobgpConfig.Spec.BgpEdgeRouterInfo.Namespace, gobgpConfig.Spec.BgpEdgeRouterInfo.Name)
 	ber, err := c.bgpEdgeRouterLister.BgpEdgeRouters(gobgpConfig.Spec.BgpEdgeRouterInfo.Namespace).Get(gobgpConfig.Spec.BgpEdgeRouterInfo.Name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -421,6 +412,34 @@ func (c *Controller) updateGobgpConfigStatus(gobgpConfig *kubeovnv1.GobgpConfig)
 	}
 
 	return updatedGobgpConfig, nil
+}
+
+func (c *Controller) execCmd(pod *corev1.Pod, cmdArs []string) error {
+	cmd := fmt.Sprintf("bash /kube-ovn/update-bgp-policy.sh --batch %s", strings.Join(cmdArs, " "))
+
+	klog.Infof("exec command : %s", cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "bgp-router-speaker", []string{"/bin/bash", "-c", cmd}...)
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		if len(stdOutput) > 0 {
+			klog.Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+		}
+		klog.Error(err)
+		return err
+	}
+
+	if len(stdOutput) > 0 {
+		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+	}
+
+	if len(errOutput) > 0 {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return errors.New(errOutput)
+	}
+
+	return nil
 }
 
 func containsNeighbor(neighbors []string, address string) bool {
