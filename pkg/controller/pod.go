@@ -988,11 +988,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	now := time.Now()
 	klog.Infof("handle delete pod %s", key)
 	podName := c.getNameByPod(pod)
-	namespace, err := c.namespacesLister.Get(pod.Namespace)
-	if err != nil {
-		klog.Errorf("failed to get namespace %s for pod %s: %v", pod.Namespace, pod.Name, err)
-		return err
-	}
 	c.podKeyMutex.LockKey(key)
 	defer func() {
 		_ = c.podKeyMutex.UnlockKey(key)
@@ -1132,18 +1127,13 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 					klog.Errorf("failed to delete static route, %v", err)
 					return err
 				}
-
-				if c.config.EnableEipSnat {
-					if pod.Annotations[util.EipAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
-							klog.Errorf("failed to delete nat rules: %v", err)
-						}
-					}
-					if pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
-							klog.Errorf("failed to delete nat rules: %v", err)
-						}
-					}
+				// delete all NATTypeDNATAndSNAT
+				if err := c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, address.IP); err != nil {
+					klog.Errorf("failed to delete NAT roules of type DNAT & SNAT for ip %s, %v", address.IP, err)
+				}
+				// delete all NATTypeSNAT
+				if err := c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, address.IP); err != nil {
+					klog.Errorf("failed to delete NAT roules of type SNAT for ip %s, %v", address.IP, err)
 				}
 			}
 		}
