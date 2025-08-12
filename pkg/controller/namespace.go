@@ -76,6 +76,20 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 		klog.Warningf("no logical switch annotation for ns %s", newNs.Name)
 		c.addNamespaceQueue.Add(newNs.Name)
 	}
+
+	// in case annotations of namespace changed
+	if !maps.Equal(oldNs.Annotations, newNs.Annotations) {
+		// handle SnatAnnotation changes
+		if newNs.Annotations[util.SnatAnnotation] != oldNs.Annotations[util.SnatAnnotation] {
+			pods, err := c.podsLister.Pods(newNs.Name).List(labels.Everything())
+			if err != nil {
+				klog.Errorf("failed to get pods in namespace %s: %v", newNs.Name, err)
+			}
+			for _, p := range pods {
+				c.addOrUpdatePodQueue.Add(p.Name)
+			}
+		}
+	}
 }
 
 func (c *Controller) handleAddNamespace(key string) error {

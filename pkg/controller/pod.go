@@ -1139,7 +1139,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}
-					if (pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "") {
+					if pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "" {
 						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
