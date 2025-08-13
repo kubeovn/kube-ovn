@@ -25,7 +25,7 @@ RUN apt update && apt install -y git curl
 
 # The support for AVX-512 depends on your build machine's CPU. judge it support the avx512 use the command 'cat /proc/cpuinfo | grep avx512'
 RUN cd /usr/src/ && \
-    git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.5 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
     git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
@@ -48,7 +48,7 @@ RUN cd /usr/src/ && \
     # increase the default probe interval for large cluster
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
-RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # modify src route priority
     git apply $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
