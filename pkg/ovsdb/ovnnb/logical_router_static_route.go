@@ -10,7 +10,7 @@ type (
 	LogicalRouterStaticRouteSelectionFields = string
 )
 
-var (
+const (
 	LogicalRouterStaticRoutePolicySrcIP            LogicalRouterStaticRoutePolicy          = "src-ip"
 	LogicalRouterStaticRoutePolicyDstIP            LogicalRouterStaticRoutePolicy          = "dst-ip"
 	LogicalRouterStaticRouteSelectionFieldsEthSrc  LogicalRouterStaticRouteSelectionFields = "eth_src"
@@ -33,7 +33,7 @@ type LogicalRouterStaticRoute struct {
 	Nexthop         string                                    `ovsdb:"nexthop"`
 	Options         map[string]string                         `ovsdb:"options"`
 	OutputPort      *string                                   `ovsdb:"output_port"`
-	Policy          *LogicalRouterStaticRoutePolicy           `ovsdb:"policy"`
+	Policy          *LogicalRouterStaticRoutePolicy           `ovsdb:"policy" validate:"omitempty,oneof='src-ip' 'dst-ip'"`
 	RouteTable      string                                    `ovsdb:"route_table"`
-	SelectionFields []LogicalRouterStaticRouteSelectionFields `ovsdb:"selection_fields"`
+	SelectionFields []LogicalRouterStaticRouteSelectionFields `ovsdb:"selection_fields" validate:"dive,oneof='eth_src' 'eth_dst' 'ip_proto' 'ip_src' 'ip_dst' 'ipv6_src' 'ipv6_dst' 'tp_src' 'tp_dst'"`
 }

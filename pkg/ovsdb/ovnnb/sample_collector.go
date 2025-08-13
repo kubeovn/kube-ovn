@@ -9,8 +9,8 @@ const SampleCollectorTable = "Sample_Collector"
 type SampleCollector struct {
 	UUID        string            `ovsdb:"_uuid"`
 	ExternalIDs map[string]string `ovsdb:"external_ids"`
-	ID          int               `ovsdb:"id"`
+	ID          int               `ovsdb:"id" validate:"min=1,max=255"`
 	Name        string            `ovsdb:"name"`
-	Probability int               `ovsdb:"probability"`
-	SetID       int               `ovsdb:"set_id"`
+	Probability int               `ovsdb:"probability" validate:"min=0,max=65535"`
+	SetID       int               `ovsdb:"set_id" validate:"min=1,max=4294967295"`
 }

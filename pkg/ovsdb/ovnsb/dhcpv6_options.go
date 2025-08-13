@@ -9,7 +9,7 @@ type (
 	DHCPv6OptionsType = string
 )
 
-var (
+const (
 	DHCPv6OptionsTypeIpv6   DHCPv6OptionsType = "ipv6"
 	DHCPv6OptionsTypeStr    DHCPv6OptionsType = "str"
 	DHCPv6OptionsTypeMAC    DHCPv6OptionsType = "mac"
@@ -19,7 +19,7 @@ var (
 // DHCPv6Options defines an object in DHCPv6_Options table
 type DHCPv6Options struct {
 	UUID string            `ovsdb:"_uuid"`
-	Code int               `ovsdb:"code"`
+	Code int               `ovsdb:"code" validate:"min=0,max=254"`
 	Name string            `ovsdb:"name"`
-	Type DHCPv6OptionsType `ovsdb:"type"`
+	Type DHCPv6OptionsType `ovsdb:"type" validate:"oneof='ipv6' 'str' 'mac' 'domain'"`
 }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -50,9 +50,9 @@ func TestConstructWaitForUniqueOperation(t *testing.T) {
 func (suite *OvnClientTestSuite) testNewOvnNbClient() {
 	t := suite.T()
 
-	ovnNbTimeout := 10
+	ovnNbTimeout := 5
 	ovsDbConTimeout := 10
-	ovsDbInactivityTimeout := 10
+	ovsDbInactivityTimeout := 20
 
 	clientSchema := ovnnb.Schema()
 	clientDBModel, err := ovnnb.FullDatabaseModel()
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testNewOvnNbClient() {
 	})
 
 	t.Run("ovsdb client error with max retry", func(t *testing.T) {
-		client, err := NewOvnNbClient("invalid addr", 10, 10, 10, 1)
+		client, err := NewOvnNbClient("invalid addr", 5, 10, 20, 1)
 		require.Error(t, err)
 		require.Nil(t, client)
 	})
@@ -79,9 +79,9 @@ func (suite *OvnClientTestSuite) testNewOvnNbClient() {
 func (suite *OvnClientTestSuite) testNewOvnSbClient() {
 	t := suite.T()
 
-	ovnSbTimeout := 10
+	ovnSbTimeout := 5
 	ovsDbConTimeout := 10
-	ovsDbInactivityTimeout := 10
+	ovsDbInactivityTimeout := 20
 
 	clientSchema := ovnsb.Schema()
 	clientDBModel, err := ovnsb.FullDatabaseModel()
@@ -99,7 +99,7 @@ func (suite *OvnClientTestSuite) testNewOvnSbClient() {
 	})
 
 	t.Run("ovsdb client error with max retry", func(t *testing.T) {
-		client, err := NewOvnSbClient("invalid addr", 10, 10, 10, 1)
+		client, err := NewOvnSbClient("invalid addr", 5, 10, 20, 1)
 		require.Error(t, err)
 		require.Nil(t, client)
 	})

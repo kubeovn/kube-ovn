@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -294,7 +295,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		lb1 := &ovnnb.LoadBalancer{
 			UUID:     ovsclient.NamedUUID(),
 			Name:     lbName,
-			Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 		}
 		ops, err := nbClient.Create(lb1)
 		require.NoError(t, err)
@@ -305,7 +306,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		lb2 := &ovnnb.LoadBalancer{
 			UUID:     ovsclient.NamedUUID(),
 			Name:     lbName,
-			Protocol: &ovnnb.LoadBalancerProtocolTCP,
+			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 		}
 		ops, err = nbClient.Create(lb2)
 		require.NoError(t, err)
@@ -366,7 +367,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
@@ -377,7 +378,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 			lb2 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
@@ -508,7 +509,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
@@ -519,7 +520,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			lb2 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: &ovnnb.LoadBalancerProtocolTCP,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
@@ -594,7 +595,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb1 := &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
-		Protocol: &ovnnb.LoadBalancerProtocolTCP,
+		Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 	}
 	ops, err := nbClient.Create(lb1)
 	require.NoError(t, err)
@@ -605,7 +606,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb2 := &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
-		Protocol: &ovnnb.LoadBalancerProtocolTCP,
+		Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
 	}
 	ops, err = nbClient.Create(lb2)
 	require.NoError(t, err)
