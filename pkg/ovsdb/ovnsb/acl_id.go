@@ -8,5 +8,5 @@ const ACLIDTable = "ACL_ID"
 // ACLID defines an object in ACL_ID table
 type ACLID struct {
 	UUID string `ovsdb:"_uuid"`
-	ID   int    `ovsdb:"id"`
+	ID   int    `ovsdb:"id" validate:"min=0,max=32767"`
 }
