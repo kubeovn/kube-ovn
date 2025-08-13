@@ -3714,18 +3714,6 @@ spec:
         - name: neighbor-address
           type: string
           jsonPath: .spec.neighbors[*].address
-        - name: toReceive-mode
-          type: string
-          jsonPath: .spec.neighbors[*].toReceive.allowed.mode
-        - name: toReceive-prefixes
-          type: string
-          jsonPath: .spec.neighbors[*].toReceive.allowed.prefixes
-        - name: toAdvertise-mode
-          type: string
-          jsonPath: .spec.neighbors[*].toAdvertise.allowed.mode
-        - name: toAdvertise-prefixes
-          type: string
-          jsonPath: .spec.neighbors[*].toAdvertise.allowed.prefixes
         - name: READY
           type: boolean
           jsonPath: .status.ready
@@ -3739,7 +3727,7 @@ spec:
             spec:
               type: object
               required:
-                - bgpEdgeRouter
+                - bgpEdgeRouterInfo
                 - neighbors
               properties:
                 bgpEdgeRouterInfo:
@@ -3751,6 +3739,9 @@ spec:
                       type: string
                 neighbors:
                   type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - address
                   items:
                     type: object
                     required:
@@ -3782,6 +3773,8 @@ spec:
                             x-kubernetes-validations:
                               - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
                                 message: "prefixes must be set and non-empty when mode is 'filtered'"
+                              - rule: "self.mode != 'all' || !has(self.prefixes) || size(self.prefixes) == 0"
+                                message: "If mode is 'all', cannot set prefixes"
                       toReceive:
                         type: object
                         required:
@@ -3803,6 +3796,8 @@ spec:
                             x-kubernetes-validations:
                               - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
                                 message: "prefixes must be set and non-empty when mode is 'filtered'"
+                              - rule: "self.mode != 'all' || !has(self.prefixes) || size(self.prefixes) == 0"
+                                message: "If mode is 'all', cannot set prefixes"
             status:
               type: object
               properties:
