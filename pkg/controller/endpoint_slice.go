@@ -134,6 +134,22 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
 	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
 	// TODO: Identify how endpoints are constructed, by deafult, endpoints has IP address of eth0 inteface
+	if c.config.EnableSecondaryCNI {
+		var pods []*v1.Pod
+		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
+			klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
+			return err
+		}
+		err = c.replaceEndpointAddressesWithSecondaryIPs(endpointSlices, pods)
+		if err != nil {
+			klog.Errorf("failed to update endpointSlice: %v", err)
+			return err
+		}
+	}
+
+	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
+	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
+	// TODO: Identify how endpoints are constructed, by deafult, endpoints has IP address of eth0 inteface
 	if c.config.EnableNonPrimaryCNI {
 		var pods []*v1.Pod
 		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
@@ -311,8 +327,10 @@ func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlice []*d
 							if replacedEndpoints[address] {
 								continue
 							}
-							// check if the endpoint address is the same as the pod IP address
-							if address == pod.Status.PodIP {
+							// Endpoints received here are from cache and can be either primary or secondary network IP address
+							// Replace the primary network IP address with the secondary network IP address
+							// Secondary IP address is already seen when the endpoint has been already created/updated
+							if address == pod.Status.PodIP || address == ipAddress {
 								klog.Infof("updating pod %s/%s ip address %s to %s", pod.Namespace, pod.Name, pod.Status.PodIP, ipAddress)
 								// update the endpoint IP address with the secondary IP address
 								endpointSlice[i].Endpoints[j].Addresses[k] = ipAddress
@@ -322,6 +340,7 @@ func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlice []*d
 								break
 							}
 						}
+						// We should always find the pod IP address in the endpoint slice
 						if !found {
 							return fmt.Errorf("failed to find pod %s/%s ip address %s in endpoint slice %s", pod.Namespace, pod.Name, pod.Status.PodIP, endpointSlice[i].Name)
 						}

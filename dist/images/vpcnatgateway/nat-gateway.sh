@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# TODO: Interfaces used in this script are hard coded. Should we make them configurable?
-#       For now, we assume the following:
-#       - net1 is the interface that connects to the VPC
-#       - net2 is the interface that connects to the external network
-#       - A VPC gateway cannot be part of more than one VPC and external network
+# Network interfaces configuration
+
+# Read interfaces from persistent file
+if [ -f /usr/bin/kube-ovn/nat-gateway.env ]; then
+    # shellcheck disable=SC1091
+    source /usr/bin/kube-ovn/nat-gateway.env
+fi
+# Default interfaces
+VPC_INTERFACE=${VPC_INTERFACE:-"eth0"}
+EXTERNAL_INTERFACE=${EXTERNAL_INTERFACE:-"net1"}
 
 iptables_cmd=$(which iptables)
 iptables_save_cmd=$(which iptables-save)
@@ -12,6 +17,46 @@ if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then
     iptables_cmd=$(which iptables-legacy)
     iptables_save_cmd=$(which iptables-legacy-save)
 fi
+
+function show_help() {
+    echo "NAT Gateway Configuration Script"
+    echo ""
+    echo "Environment Variables:"
+    echo "  VPC_INTERFACE       - Interface connecting to VPC (default: eth0)"
+    echo "  EXTERNAL_INTERFACE  - Interface connecting to external network (default: net1)"
+    echo ""
+    echo "Usage: $0 [COMMAND] [ARGS...]"
+    echo ""
+    echo "Commands:"
+    echo "  init                     - Initialize iptables chains"
+    echo "  subnet-route-add         - Add VPC internal routes"
+    echo "  subnet-route-del         - Delete VPC internal routes"
+    echo "  eip-add                  - Add external IP"
+    echo "  eip-del                  - Delete external IP"
+    echo "  floating-ip-add          - Add floating IP mapping"
+    echo "  floating-ip-del          - Delete floating IP mapping"
+    echo "  dnat-add                 - Add DNAT rule"
+    echo "  dnat-del                 - Delete DNAT rule"
+    echo "  snat-add                 - Add SNAT rule"
+    echo "  snat-del                 - Delete SNAT rule"
+    echo "  qos-add                  - Add QoS rule"
+    echo "  qos-del                  - Delete QoS rule"
+    echo "  eip-ingress-qos-add      - Add EIP ingress QoS"
+    echo "  eip-egress-qos-add       - Add EIP egress QoS"
+    echo "  eip-ingress-qos-del      - Delete EIP ingress QoS"
+    echo "  eip-egress-qos-del       - Delete EIP egress QoS"
+    echo "  get-iptables-version     - Show iptables version"
+    echo ""
+    echo "Examples:"
+    echo "  # Use custom interfaces"
+    echo "  $0 init net1, net2"
+    echo ""
+    echo "  # Use default interfaces (eth0,net1)"
+    echo "  $0 init"
+    echo ""
+    echo "  # Environment variable override"
+    echo "  VPC_INTERFACE=net1 EXTERNAL_INTERFACE=net2 $0 init"
+}
 
 function exec_cmd() {
     cmd=${@:1:${#}}
@@ -32,6 +77,33 @@ function check_inited() {
 }
 
 function init() {
+    interfaces=$1
+    if [ -n "$interfaces" ]; then
+        IFS=',' read -r -a interface_array <<< "$interfaces"
+        if [ ${#interface_array[@]} -ne 2 ]; then
+            >&2 echo "Error: Expected two interfaces separated by a comma (e.g., net1,net2)"
+            exit 1
+        fi
+        # Trim whitespace
+        VPC_INTERFACE="${interface_array[0]// /}"
+        EXTERNAL_INTERFACE="${interface_array[1]// /}"
+    fi
+    echo "using VPC interface: $VPC_INTERFACE"
+    echo "using External interface: $EXTERNAL_INTERFACE"
+
+    # check if interfaces exist
+    if ! ip link show "$VPC_INTERFACE" >/dev/null 2>&1; then
+        >&2 echo "Error: VPC interface '$VPC_INTERFACE' not found"
+        exit 1
+    fi
+    if ! ip link show "$EXTERNAL_INTERFACE" >/dev/null 2>&1; then
+        >&2 echo "Error: External interface '$EXTERNAL_INTERFACE' not found"
+        exit 1
+    fi
+    # Store interfaces persistently
+    echo "VPC_INTERFACE=$VPC_INTERFACE" > /usr/bin/kube-ovn/nat-gateway.env
+    echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> /usr/bin/kube-ovn/nat-gateway.env
+
     # run once is enough
     $iptables_save_cmd | grep DNAT_FILTER && exit 0
     # add static chain
@@ -72,7 +144,7 @@ function add_vpc_internal_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr via $nextHop dev net1"
+        exec_cmd "ip route replace $cidr via $nextHop dev $VPC_INTERFACE"
     done
 }
 
@@ -84,7 +156,7 @@ function del_vpc_internal_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip route del $cidr dev net1"
+        exec_cmd "ip route del $cidr dev $VPC_INTERFACE"
     done
 }
 
@@ -97,9 +169,9 @@ function del_vpc_external_route() {
     # do
     #     arr=(${rule//,/ })
     #     cidr=${arr[0]}
-    #     exec_cmd "ip route del $cidr dev net2"
+    #     exec_cmd "ip route del $cidr dev $EXTERNAL_INTERFACE"
     #     sleep 1
-    #     exec_cmd "ip route del default dev net2"
+    #     exec_cmd "ip route del default dev $EXTERNAL_INTERFACE"
     # done
 }
 
@@ -110,8 +182,8 @@ function add_eip() {
     do
         eip=${rule}
         eip_without_prefix=(${eip//\// })
-        exec_cmd "ip addr replace $eip dev net1"
-        exec_cmd "arping -I net1 -c 3 -U $eip_without_prefix"
+        exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
+        exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
     done
 }
 
@@ -122,9 +194,9 @@ function del_eip() {
     do
         arr=(${rule//,/ })
         eip=${arr[0]}
-        ipCidr=`ip addr show net2 | grep $eip | awk '{print $2 }'`
+        ipCidr=`ip addr show $EXTERNAL_INTERFACE | grep $eip | awk '{print $2 }'`
         if [ -n "$ipCidr" ]; then
-            exec_cmd "ip addr del $ipCidr dev net2"
+            exec_cmd "ip addr del $ipCidr dev $EXTERNAL_INTERFACE"
         fi
     done
 }
@@ -174,7 +246,7 @@ function add_snat() {
         randomFullyOption=${arr[2]}
         # check if already exist
         $iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o net2 -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
@@ -235,7 +307,7 @@ function del_dnat() {
 
 
 # example usage:
-# delete_tc_u32_filter "net2" "1:0" "192.168.1.1" "src"
+# delete_tc_u32_filter "$EXTERNAL_INTERFACE" "1:0" "192.168.1.1" "src"
 function delete_tc_u32_filter() {
     dev=$1
     qdisc_id=$2
@@ -270,8 +342,8 @@ function delete_tc_u32_filter() {
 
 function eip_ingress_qos_add() {
     # ingress:
-    # external --> net2 --> qos -->
-    # dst ip is iptables eip on net2
+    # external --> $EXTERNAL_INTERFACE --> qos -->
+    # dst ip is iptables eip on $EXTERNAL_INTERFACE
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -279,7 +351,7 @@ function eip_ingress_qos_add() {
         priority=${arr[1]}
         rate=${arr[2]}
         burst=${arr[3]}
-        dev="net2"
+        dev="$EXTERNAL_INTERFACE"
         matchDirection="dst"
         tc qdisc add dev $dev ingress 2>/dev/nul || true
         # get qdisc id
@@ -295,8 +367,8 @@ function eip_ingress_qos_add() {
 
 function eip_egress_qos_add() {
     # egress:
-    # net2 --> qos --> external
-    # src ip is iptables eip on net2
+    # $EXTERNAL_INTERFACE --> qos --> external
+    # src ip is iptables eip on $EXTERNAL_INTERFACE
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -306,7 +378,7 @@ function eip_egress_qos_add() {
         burst=${arr[3]}
         qdisc_id="1:0"
         matchDirection="src"
-        dev="net2"
+        dev="$EXTERNAL_INTERFACE"
         tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/nul || true
         # del old filter
         tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $v4ip
@@ -394,7 +466,7 @@ function eip_ingress_qos_del() {
         arr=(${rule//,/ })
         cidr=(${arr[0]//\// })
         matchDirection="dst"
-        dev="net2"
+        dev="$EXTERNAL_INTERFACE"
         qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         # if qdisc_id is empty, this means ingress qdisc is not added, so we don't need to delete filter.
         if [ -n "$qdisc_id" ]; then
@@ -410,7 +482,7 @@ function eip_egress_qos_del() {
         cidr=(${arr[0]//\// })
         matchDirection="src"
         qdisc_id="1:0"
-        dev="net2"
+        dev="$EXTERNAL_INTERFACE"
         delete_tc_u32_filter $dev $qdisc_id $cidr $matchDirection
     done
 }
@@ -420,8 +492,10 @@ rules=${@:2:${#}}
 opt=$1
 case $opt in
     init)
-        echo "init $rules"
-        init $rules
+        # get user interfaces if provided from input
+        interfaces=$(echo $rules | awk '{print $1}')
+        echo "init $interfaces"
+        init $interfaces
         ;;
     subnet-route-add)
         echo "subnet-route-add $rules"
@@ -467,6 +541,9 @@ case $opt in
         echo "get-iptables-version $rules"
         get_iptables_version $rules
         ;;
+    help|--help|-h)
+        show_help
+        ;;
     eip-ingress-qos-add)
         echo "eip-ingress-qos-add $rules"
         eip_ingress_qos_add $rules
@@ -492,7 +569,9 @@ case $opt in
         qos_del $rules
         ;;
     *)
-        echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
+        echo "Unknown command: $opt"
+        echo ""
+        show_help
         exit 1
         ;;
 esac

@@ -319,7 +319,46 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
-	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
+	// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
+	// are properly configured. We extract the interfaces used from the pod annotations.
+	var interfaces []string
+	if c.config.EnableNonPrimaryCNI {
+		// extract external nad interface name
+		externalNadNs, externalNadName := c.getExternalSubnetNad(gw)
+		networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
+		externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
+		externalNadIfName, err := c.getNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
+		if err != nil {
+			klog.Errorf("failed to extract external nad interface name from annotations %v, %v", gw.Annotations, err)
+			return err
+		}
+		// extract vpc nad interface name
+		providers, err := c.getPodProviders(pod)
+		if err != nil || len(providers) == 0 {
+			klog.Errorf("failed to get providers for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			return fmt.Errorf("failed to get providers for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		}
+		// if more than one provider exists, use the first one
+		provider := providers[0]
+		providerParts := strings.Split(provider, ".")
+		if len(providerParts) < 2 {
+			klog.Errorf("failed to format provider %s for pod %s/%s", provider, pod.Namespace, pod.Name)
+			return fmt.Errorf("failed to format provider %s parts for pod %s/%s", provider, pod.Namespace, pod.Name)
+		}
+		vpcNadName, vpcNadNamespace := providerParts[0], providerParts[1]
+		vpcNadFullName := fmt.Sprintf("%s/%s", vpcNadNamespace, vpcNadName)
+		vpcNadIfName, err := c.getNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
+		if err != nil {
+			klog.Errorf("failed to extract internal nad interface name from annotations %v, %v", gw.Annotations, err)
+			return err
+		}
+
+		klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interface %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfName)
+		interfaces = []string{
+			strings.Join([]string{vpcNadIfName, externalNadIfName}, ","),
+		}
+	}
+	if err = c.execNatGwRules(pod, natGwInit, interfaces); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		klog.Error(err)
 		return err

@@ -533,8 +533,21 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+	providerName := util.OvnProvider
+	// In non-primary CNI mode, we extract the provider from the pod's annotation.
+	if c.config.EnableNonPrimaryCNI {
+		// get providers
+		providers, err := c.getPodProviders(pod)
+		if err != nil || len(providers) == 0 {
+			klog.Warningf("no pod providers found for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+		} else {
+			// use the first provider
+			providerName = providers[0]
+		}
+	}
+	if vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]; isVpcNatGw {
 		if needRestartNatGatewayPod(pod) {
+			klog.Infof("restarting vpc nat gateway %s", vpcGwName)
 			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
 		}
 	}
@@ -710,11 +723,21 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	}
 
 	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
-	for _, podNet := range needAllocatePodNets {
-		if vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, podNet.ProviderName)]; isVpcNatGw {
-			c.initVpcNatGatewayQueue.Add(vpcGwName)
-			break
+	providerName := util.OvnProvider
+	// In non-primary CNI mode, we extract the provider from the pod's annotation.
+	if c.config.EnableNonPrimaryCNI {
+		// get providers
+		providers, err := c.getPodProviders(pod)
+		if err != nil || len(providers) == 0 {
+			klog.Warningf("no pod providers found for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+		} else {
+			// use the first provider
+			providerName = providers[0]
 		}
+	}
+	if vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]; isVpcNatGw {
+		klog.Infof("init vpc nat gateway pod %s/%s with name %s", namespace, name, vpcGwName)
+		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
 
 	return pod, nil
@@ -2420,4 +2443,31 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 	annotations[key] = string(buf)
 
 	return nil
+}
+
+func (c *Controller) getNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName string) (string, error) {
+	var interfaceName string
+	if networkStatus == "" {
+		return "", fmt.Errorf("no network status annotation found for pod")
+	}
+
+	var status []map[string]interface{}
+	if err := json.Unmarshal([]byte(networkStatus), &status); err != nil {
+		klog.Errorf("failed to unmarshal network status annotation: %v", err)
+		return interfaceName, err
+	}
+
+	for _, s := range status {
+		if s["name"] == nadName {
+			if iface, ok := s["interface"].(string); ok {
+				interfaceName = iface
+			}
+			break
+		}
+	}
+	if interfaceName == "" {
+		return "", fmt.Errorf("no interface name found for secondary network %s", nadName)
+	}
+
+	return interfaceName, nil
 }
