@@ -2505,6 +2505,9 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
+      - name: Namespace
+        type: string
+        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
@@ -3816,21 +3819,21 @@ metadata:
   name: secret-reader-ovn-ipsec
   namespace: kube-system
 rules:
-- apiGroups: 
+- apiGroups:
     - ""
-  resources: 
+  resources:
     - "secrets"
   resourceNames:
     - "ovn-ipsec-ca"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "watch"
-- apiGroups: 
+- apiGroups:
     - "cert-manager.io"
-  resources: 
+  resources:
     - "certificaterequests"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "create"

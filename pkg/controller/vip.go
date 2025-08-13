@@ -200,11 +200,6 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			klog.Error(err)
 			return err
 		}
-		ready := true
-		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
-			klog.Error(err)
-			return err
-		}
 		if err = c.handleAddVipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle vip finalizer %v", err)
 			return err
@@ -359,8 +354,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	} else {
 		vip := vipCR.DeepCopy()
-		if vip.Status.Mac == "" && mac != "" {
-			// vip not support to update, just delete and create
+		if vip.Status.Mac == "" && mac != "" ||
+			vip.Status.V4ip == "" && v4ip != "" ||
+			vip.Status.V6ip == "" && v6ip != "" {
+			// vip spec mac or ip not support to update
+			// only set once during creation
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip
 			vip.Spec.V6ip = v6ip
@@ -370,6 +368,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Status.V6ip = v6ip
 			vip.Status.Mac = mac
 			vip.Status.Type = vip.Spec.Type
+			// TODO:// Ready = true as subnet.Status.Ready
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update vip '%s', %w", key, err)
 				klog.Error(err)
@@ -404,32 +403,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	}
 	c.updateSubnetStatusQueue.Add(subnet)
-	return nil
-}
-
-func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
-	oriVip, err := c.virtualIpsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vip := oriVip.DeepCopy()
-	var changed bool
-
-	if ready && v4ip != "" && vip.Status.V4ip != v4ip {
-		vip.Status.V4ip = v4ip
-		changed = true
-	}
-
-	if changed {
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update status for vip '%s', %v", key, err)
-			return err
-		}
-	}
 	return nil
 }
 
