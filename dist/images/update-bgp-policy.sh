@@ -164,10 +164,6 @@ flush_neighbor_policy() {
   exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_in
   exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_out
 
-  # Phase 6: Apply policy to neighbor (safe mode)
-  echo "-> Soft reset neighbor policy"
-  exec_cmd_safe $GOBGP_BIN neighbor $nbr_ip softreset
-
   # Check if any commands failed and need retry
   if [[ ${#FAILED_COMMANDS[@]} -eq 0 ]]; then
     echo ""

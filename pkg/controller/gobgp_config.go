@@ -180,8 +180,6 @@ func (c *Controller) handleUpdateGobgpConfig(updatedObj *updateVerGobgpConfigObj
 	}
 
 	klog.Infof("reconciling gobgp-configs %s for update", key)
-	klog.Infof("debug gobgp-config old version : %v", updatedObj.oldVer)
-	klog.Infof("debug gobgp-config new version : %v", updatedObj.newVer)
 	gobgpConfig := cachedGobgpConfig.DeepCopy()
 
 	pods, err := c.validateGobgpConfig(gobgpConfig)
