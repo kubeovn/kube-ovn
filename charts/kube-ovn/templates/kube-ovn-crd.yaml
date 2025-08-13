@@ -3739,7 +3739,7 @@ spec:
             spec:
               type: object
               required:
-                - bgpEdgeRouter
+                - bgpEdgeRouterInfo
                 - neighbors
               properties:
                 bgpEdgeRouterInfo:
