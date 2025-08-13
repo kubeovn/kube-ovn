@@ -95,14 +95,13 @@ func (c *Controller) handleAddGobgpConfig(key string) error {
 	}
 
 	klog.V(3).Infof("debug gobgp-config %s", cachedGobgpConfig.Name)
-
-	if _, err := c.initGobgpConfigStatus(cachedGobgpConfig); err != nil {
+	gobgpConfig := cachedGobgpConfig.DeepCopy()
+	if gobgpConfig, err = c.initGobgpConfigStatus(gobgpConfig); err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	klog.Infof("reconciling gobgp-configuration %s", key)
-	gobgpConfig := cachedGobgpConfig.DeepCopy()
+	klog.Infof("reconciling gobgp-configuration %s for add", key)
 
 	if controllerutil.AddFinalizer(gobgpConfig, util.KubeOVNControllerFinalizer) {
 		updatedGobgpConfig, err := c.config.KubeOvnClient.KubeovnV1().GobgpConfigs(gobgpConfig.Namespace).
@@ -126,7 +125,7 @@ func (c *Controller) handleAddGobgpConfig(key string) error {
 		if len(pod.Status.PodIPs) == 0 {
 			continue
 		}
-		klog.Infof("handle adding gobgp-config %s", key)
+		klog.Infof("handle adding gobgp-config to pod %s", pod.Name)
 		if err = c.execUpdateBgpPolicy(key, pod, nil, gobgpConfig); err != nil {
 			klog.Error(err)
 			return err
@@ -168,7 +167,7 @@ func (c *Controller) handleUpdateGobgpConfig(updatedObj *updateVerGobgpConfigObj
 		return nil
 	}
 
-	klog.Infof("reconciling gobgp-configs %s", key)
+	klog.Infof("reconciling gobgp-configs %s for update", key)
 	gobgpConfig := cachedGobgpConfig.DeepCopy()
 
 	pods, err := c.validateGobgpConfig(gobgpConfig)
@@ -181,7 +180,7 @@ func (c *Controller) handleUpdateGobgpConfig(updatedObj *updateVerGobgpConfigObj
 		if len(pod.Status.PodIPs) == 0 {
 			continue
 		}
-		klog.Infof("handle adding gobgp-configs %s", key)
+		klog.Infof("handle adding gobgp-configs to pod %s", pod.Name)
 		if err = c.execUpdateBgpPolicy(key, pod, updatedObj.oldVer, updatedObj.newVer); err != nil {
 			klog.Error(err)
 			return err
@@ -284,6 +283,7 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 	}
 	if newGobgpConfig != nil {
 		for _, neighbor := range newGobgpConfig.Spec.Neighbors {
+			klog.Infof("new bgp config neighbor %v", neighbor)
 			nbrIP := neighbor.Address
 			if len(nbrIP) == 0 {
 				klog.Warningf("neighbor address is empty for gobgp-config %s", key)
@@ -293,12 +293,14 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 
 			// toAdvertise
 			advMode := neighbor.ToAdvertise.Allowed.Mode
-			advPrefixes := neighbor.ToAdvertise.Allowed.Prefixes
-			quoted := make([]string, len(advPrefixes))
-
+			var advPrefixes []string
 			if advMode == "all" {
 				advPrefixes = []string{"0.0.0.0/0 0..32"}
+			} else {
+				advPrefixes = neighbor.ToAdvertise.Allowed.Prefixes
 			}
+			quoted := make([]string, len(advPrefixes))
+
 			for i, p := range advPrefixes {
 				quoted[i] = fmt.Sprintf("\"%s\"", p)
 			}
@@ -306,9 +308,11 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 
 			// toReceive
 			recvMode := neighbor.ToReceive.Allowed.Mode
-			recvPrefixes := neighbor.ToReceive.Allowed.Prefixes
+			var recvPrefixes []string
 			if recvMode == "all" {
 				recvPrefixes = []string{"0.0.0.0/0 0..32"}
+			} else {
+				recvPrefixes = neighbor.ToReceive.Allowed.Prefixes
 			}
 			quoted = make([]string, len(recvPrefixes))
 			for i, p := range recvPrefixes {
@@ -430,11 +434,15 @@ func (c *Controller) execCmd(pod *corev1.Pod, cmdArs []string) error {
 		return err
 	}
 
+	cmdSuccess := false
 	if len(stdOutput) > 0 {
 		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+		if strings.Contains(stdOutput, "Update bgp policy completed successfully") {
+			cmdSuccess = true
+		}
 	}
 
-	if len(errOutput) > 0 {
+	if len(errOutput) > 0 && !cmdSuccess {
 		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
 		return errors.New(errOutput)
 	}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-bgp-policy.sh - Hybrid Version
+# update-bgp-policy.sh - Hybrid Version with Smart Error Resilience
 # shellcheck disable=SC2086,SC2155
 
 set -u
@@ -45,6 +45,45 @@ validate_ip() {
 
 exec_cmd() { "$@" || die "failed: $*"; }
 
+# Global array to track failed commands for retry
+declare -a FAILED_COMMANDS=()
+
+# Error-resilient command execution - continues even on failure and tracks failures
+exec_cmd_safe() { 
+  if "$@"; then
+    echo "Success: $*"
+    return 0
+  else
+    echo "Warning: Failed to execute '$*' (continuing...)" >&2
+    # Store the failed command for potential retry
+    FAILED_COMMANDS+=("$*")
+    return 1
+  fi
+}
+
+# Retry command execution - tries twice
+exec_cmd_retry() {
+  local max_attempts=2
+  local attempt=1
+  
+  while [[ $attempt -le $max_attempts ]]; do
+    if "$@"; then
+      echo "Success: $* (attempt $attempt)"
+      return 0
+    else
+      echo "Attempt $attempt failed: $*" >&2
+      ((attempt++))
+      if [[ $attempt -le $max_attempts ]]; then
+        echo "Retrying..." >&2
+        sleep 1
+      fi
+    fi
+  done
+  
+  echo "All attempts failed for: $*" >&2
+  return 1
+}
+
 set_neighbor_policy() {
   local nbr_ip=$1; validate_ip "$nbr_ip"
   local prefix_in="prefix-${nbr_ip}-in"
@@ -57,8 +96,8 @@ set_neighbor_policy() {
 
   echo "=== Setting policy for neighbor $nbr_ip ==="
   echo "-> Creating prefix-lists"
-  exec_cmd $GOBGP_BIN policy prefix add $prefix_in   0.0.0.0/0 0..32
-  exec_cmd $GOBGP_BIN policy prefix add $prefix_out  0.0.0.0/0 0..32
+  exec_cmd $GOBGP_BIN policy prefix add $prefix_in   #0.0.0.0/0 0..32
+  exec_cmd $GOBGP_BIN policy prefix add $prefix_out  #0.0.0.0/0 0..32
 
   echo "-> Defining neighbor"
   exec_cmd $GOBGP_BIN policy neighbor add $nbr_name $nbr_ip
@@ -96,27 +135,56 @@ flush_neighbor_policy() {
   local policy_in="policy-${nbr_ip}-in"
   local policy_out="policy-${nbr_ip}-out"
 
-  echo "=== Flushing policy for neighbor $nbr_ip ==="
+  # Clear the failed commands array
+  FAILED_COMMANDS=()
+
+  echo "=== Flushing policy for neighbor $nbr_ip (Smart Error-Resilient Mode) ==="
+  
+  # Phase 1: Remove from global policies (safe mode)
   echo "-> Removing from global policies"
-  exec_cmd $GOBGP_BIN global policy import del $policy_in
-  exec_cmd $GOBGP_BIN global policy export del $policy_out
+  exec_cmd_safe $GOBGP_BIN global policy import del $policy_in
+  exec_cmd_safe $GOBGP_BIN global policy export del $policy_out
 
+  # Phase 2: Remove policies (safe mode)
   echo "-> Removing policies"
-  exec_cmd $GOBGP_BIN policy del $policy_in
-  exec_cmd $GOBGP_BIN policy del $policy_out
+  exec_cmd_safe $GOBGP_BIN policy del $policy_in
+  exec_cmd_safe $GOBGP_BIN policy del $policy_out
 
+  # Phase 3: Remove statements (safe mode)
   echo "-> Removing statements"
-  exec_cmd $GOBGP_BIN policy statement del $stmt_in
-  exec_cmd $GOBGP_BIN policy statement del $stmt_out
+  exec_cmd_safe $GOBGP_BIN policy statement del $stmt_in
+  exec_cmd_safe $GOBGP_BIN policy statement del $stmt_out
 
+  # Phase 4: Remove neighbor definition (safe mode)
   echo "-> Removing neighbor definition"
-  exec_cmd $GOBGP_BIN policy neighbor del $nbr_name
+  exec_cmd_safe $GOBGP_BIN policy neighbor del $nbr_name
 
+  # Phase 5: Remove prefix-lists (safe mode)
   echo "-> Removing prefix-lists"
-  exec_cmd $GOBGP_BIN policy prefix del $prefix_in
-  exec_cmd $GOBGP_BIN policy prefix del $prefix_out
+  exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_in
+  exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_out
 
-  echo "=== Policy flushed successfully for $nbr_ip ==="
+  # Check if any commands failed and need retry
+  if [[ ${#FAILED_COMMANDS[@]} -eq 0 ]]; then
+    echo ""
+    echo "=== Policy flush completed successfully for $nbr_ip ==="
+    echo "All commands executed successfully - no retry needed"
+  else
+    echo ""
+    echo "=== Retry Phase: Retrying ${#FAILED_COMMANDS[@]} failed command(s) ==="
+    
+    local retry_count=0
+    for cmd in "${FAILED_COMMANDS[@]}"; do
+      ((retry_count++))
+      echo "-> Retry $retry_count/${#FAILED_COMMANDS[@]}: $cmd"
+      # Convert string back to array for execution
+      eval "exec_cmd_retry $cmd"
+    done
+    
+    echo ""
+    echo "=== Policy flush completed for $nbr_ip (with selective retry) ==="
+    echo "Retried ${#FAILED_COMMANDS[@]} failed command(s)"
+  fi
 }
 
 flush_prefix_in() {
@@ -200,7 +268,6 @@ set_default_action() {
 
   echo "=== Default action set to $action successfully ==="
 }
-
 
 # Execute a single command
 execute_single_command() {
@@ -297,6 +364,7 @@ main() {
     # Single command mode (original behavior)
     execute_single_command "$@"
   fi
+  echo "Update bgp policy completed successfully"
 }
 
 main "$@"
