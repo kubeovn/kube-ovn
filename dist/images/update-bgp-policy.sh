@@ -57,8 +57,8 @@ set_neighbor_policy() {
 
   echo "=== Setting policy for neighbor $nbr_ip ==="
   echo "-> Creating prefix-lists"
-  exec_cmd $GOBGP_BIN policy prefix add $prefix_in   0.0.0.0/0 0..32
-  exec_cmd $GOBGP_BIN policy prefix add $prefix_out  0.0.0.0/0 0..32
+  # exec_cmd $GOBGP_BIN policy prefix add $prefix_in   0.0.0.0/0 0..32
+  # exec_cmd $GOBGP_BIN policy prefix add $prefix_out  0.0.0.0/0 0..32
 
   echo "-> Defining neighbor"
   exec_cmd $GOBGP_BIN policy neighbor add $nbr_name $nbr_ip
