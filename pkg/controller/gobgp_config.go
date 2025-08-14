@@ -50,6 +50,11 @@ func (c *Controller) enqueueUpdateGobgpConfig(oldObj, newObj any) {
 		newVer: newGobgpConfig,
 	}
 
+	if !newGobgpConfig.DeletionTimestamp.IsZero() {
+		c.deleteGobgpConfigQueue.Add(key)
+		return
+	}
+
 	if !reflect.DeepEqual(oldGobgpConfig.Spec, newGobgpConfig.Spec) {
 		klog.Infof("enqueue update gobgp-config %s", key)
 		c.updateGobgpConfigQueue.Add(updateConfigVer)
@@ -289,6 +294,10 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 			// }
 			// cmdArs = append(cmdArs, append([]string{"--", "flush-prefix-in"}, rcvPrefixes...)...)
 		}
+	} else {
+		// if oldGobgpConfig is nil, it means this is the first time to update the bgp policy
+		// so we need to set default action to reject
+		cmdArs = append(cmdArs, "--", "set-default-action", "reject")
 	}
 	if newGobgpConfig != nil {
 		for _, neighbor := range newGobgpConfig.Spec.Neighbors {
@@ -329,6 +338,10 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 			}
 			cmdArs = append(cmdArs, "--", "add-prefix", "in", nbrIP, strings.Join(quoted, ","))
 		}
+	} else {
+		// if newGobgpConfig is nil, it means the bgp policy is deleted
+		// so we need to set default action to accept
+		cmdArs = append(cmdArs, "--", "set-default-action", "accept")
 	}
 
 	// cmdArs = append(cmdArs, "list_announced_route")

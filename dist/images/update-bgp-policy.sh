@@ -164,6 +164,10 @@ flush_neighbor_policy() {
   exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_in
   exec_cmd_safe $GOBGP_BIN policy prefix del $prefix_out
 
+  # Phase 6: Apply policy to neighbor (safe mode)
+  echo "-> Soft reset neighbor policy"
+  exec_cmd_safe $GOBGP_BIN neighbor $nbr_ip softreset
+
   # Check if any commands failed and need retry
   if [[ ${#FAILED_COMMANDS[@]} -eq 0 ]]; then
     echo ""
@@ -198,7 +202,7 @@ flush_prefix_in() {
         echo "-> Deleting: $iprange $mask"
         exec_cmd $GOBGP_BIN policy prefix del $prefix_name $iprange $mask
       done
-
+  exec_cmd $GOBGP_BIN neighbor $nbr_ip softresetin
   echo "=== All entries removed from $prefix_name ==="
 }
 
@@ -213,7 +217,7 @@ flush_prefix_out() {
         echo "-> Deleting: $iprange $mask"
         exec_cmd $GOBGP_BIN policy prefix del $prefix_name $iprange $mask
       done
-
+  exec_cmd $GOBGP_BIN neighbor $nbr_ip softresetout
   echo "=== All entries removed from $prefix_name ==="
 }
 
@@ -245,6 +249,7 @@ add_prefix() {
       exec_cmd $GOBGP_BIN policy prefix add $prefix_name $entry
     fi
   done
+  exec_cmd $GOBGP_BIN neighbor $nbr_ip softreset$dir
   echo "=== Done ==="
 }
 
@@ -265,6 +270,9 @@ set_default_action() {
 
   echo "-> Applying default policy to global export"
   exec_cmd $GOBGP_BIN global policy export add default $action
+
+  echo "-> Soft reset neighbor policy"
+  exec_cmd $GOBGP_BIN neighbor $nbr_ip softreset
 
   echo "=== Default action set to $action successfully ==="
 }
