@@ -3,7 +3,7 @@
 TALOS_ARCH = $(shell go env GOHOSTARCH)
 TALOS_VERSION = $(shell talosctl version --client --short | awk '{print $$NF}' | tail -n 1)
 TALOS_IMAGE_DIR ?= /var/lib/talos
-TALOS_IMAGE_URL = https://github.com/siderolabs/talos/releases/download/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+TALOS_IMAGE_URL = https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
@@ -85,7 +85,7 @@ talos-prepare-images: talos-registry-mirror
 
 .PHONY: talos-libvirt-init
 talos-libvirt-init: talos-libvirt-clean
-	@if [ ! -f "$(TALOS_IMAGE_PATH)" ]; then \
+	@if [ ! -f "$(TALOS_IMAGE_PATH)" -o -w "$(TALOS_IMAGE_PATH)" ]; then \
 		sudo mkdir -p "$(TALOS_IMAGE_DIR)" && \
 		sudo chmod 777 "$(TALOS_IMAGE_DIR)" && \
 		echo ">>> Downloading Talos image $(TALOS_IMAGE_ISO) into $(TALOS_IMAGE_DIR)..." && \
