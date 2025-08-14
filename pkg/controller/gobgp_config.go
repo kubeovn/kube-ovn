@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -42,13 +43,19 @@ func (c *Controller) enqueueUpdateGobgpConfig(oldObj, newObj any) {
 
 	oldGobgpConfig := oldObj.(*kubeovnv1.GobgpConfig)
 	newGobgpConfig := newObj.(*kubeovnv1.GobgpConfig)
+
 	updateConfigVer := &updateVerGobgpConfigObject{
 		key:    key,
 		oldVer: oldGobgpConfig,
 		newVer: newGobgpConfig,
 	}
 
-	c.updateGobgpConfigQueue.Add(updateConfigVer)
+	if !reflect.DeepEqual(oldGobgpConfig.Spec, newGobgpConfig.Spec) {
+		klog.Infof("enqueue update gobgp-config %s", key)
+		c.updateGobgpConfigQueue.Add(updateConfigVer)
+	}
+
+	// c.updateGobgpConfigQueue.Add(updateConfigVer)
 }
 
 func (c *Controller) enqueueDeleteGobgpConfig(obj any) {
@@ -168,6 +175,8 @@ func (c *Controller) handleUpdateGobgpConfig(updatedObj *updateVerGobgpConfigObj
 	}
 
 	klog.Infof("reconciling gobgp-configs %s for update", key)
+	klog.Infof("debug gobgp-config old version : %v", updatedObj.oldVer)
+	klog.Infof("debug gobgp-config new version : %v", updatedObj.newVer)
 	gobgpConfig := cachedGobgpConfig.DeepCopy()
 
 	pods, err := c.validateGobgpConfig(gobgpConfig)
