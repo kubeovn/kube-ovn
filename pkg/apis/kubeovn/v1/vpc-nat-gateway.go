@@ -39,6 +39,7 @@ type VpcNatGatewaySpec struct {
 	Affinity        corev1.Affinity     `json:"affinity"`
 	QoSPolicy       string              `json:"qosPolicy"`
 	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
+	Routes          []Route             `json:"routes"`
 }
 
 type VpcBgpSpeaker struct {
@@ -59,6 +60,11 @@ type VpcNatGatewayStatus struct {
 	Selector        []string            `json:"selector" patchStrategy:"merge"`
 	Tolerations     []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
+}
+
+type Route struct {
+	CIDR      string `json:"cidr"`
+	NextHopIP string `json:"nextHopIP"`
 }
 
 func (s *VpcNatGatewayStatus) Bytes() ([]byte, error) {
