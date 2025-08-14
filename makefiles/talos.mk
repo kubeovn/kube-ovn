@@ -28,7 +28,8 @@ TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
 TALOS_CONTROL_PLANE_IPV4 = 172.99.99.10
 TALOS_CONTROL_PLANE_IPV6 = 2001:db8:99:99::10
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
-TALOS_K8S_VERSION ?= 1.32.7
+# renovate: datasource=github-releases depName=kubernetes packageName=kubernetes/kubernetes
+TALOS_K8S_VERSION ?= 1.32.8
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT ?= 1
@@ -56,7 +57,7 @@ endif
 talos-registry-mirror:
 	@if [ -z $$(docker ps -a -q -f name="^$(TALOS_REGISTRY_MIRROR_NAME)$$") ]; then \
 		echo ">>> Creating Talos registry mirror..."; \
-		docker run -d -p $(TALOS_REGISTRY_MIRROR_PORT):5000 --restart=always --name $(TALOS_REGISTRY_MIRROR_NAME) registry:2; \
+		docker run -d -p $(TALOS_REGISTRY_MIRROR_PORT):5000 --restart=always --name $(TALOS_REGISTRY_MIRROR_NAME) registry:3; \
 		echo ">>> Talos registry mirror created."; \
 	else \
 		echo ">>> Talos registry mirror already exists."; \
