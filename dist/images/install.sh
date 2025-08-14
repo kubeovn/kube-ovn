@@ -751,6 +751,8 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                noDefaultEIP:
+                  type: boolean
                 bgpSpeaker:
                   type: object
                   properties:
