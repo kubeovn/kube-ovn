@@ -40,6 +40,7 @@ type VpcNatGatewaySpec struct {
 	QoSPolicy       string              `json:"qosPolicy"`
 	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
 	Routes          []Route             `json:"routes"`
+	NoDefaultEIP    bool                `json:"noDefaultEIP"`
 }
 
 type VpcBgpSpeaker struct {
