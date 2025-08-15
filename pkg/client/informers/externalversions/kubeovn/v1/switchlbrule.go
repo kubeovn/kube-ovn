@@ -61,13 +61,25 @@ func NewFilteredSwitchLBRuleInformer(client versioned.Interface, resyncPeriod ti
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().SwitchLBRules().List(context.TODO(), options)
+				return client.KubeovnV1().SwitchLBRules().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().SwitchLBRules().Watch(context.TODO(), options)
+				return client.KubeovnV1().SwitchLBRules().Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().SwitchLBRules().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().SwitchLBRules().Watch(ctx, options)
 			},
 		},
 		&apiskubeovnv1.SwitchLBRule{},

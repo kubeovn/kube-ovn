@@ -5,40 +5,34 @@ import (
 	"testing"
 	"time"
 
-	"github.com/httprunner/httprunner/v4/hrp"
+	httprunner "github.com/httprunner/httprunner/v5"
 	"github.com/rs/zerolog"
 )
 
 type Report struct {
 	Index     int
 	Timestamp time.Time `json:"timestamp"`
-	*hrp.StepResult
+	*httprunner.StepResult
 }
 
 func init() {
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 }
 
-func runCaseOnce(runner *hrp.CaseRunner) (failure *Report) {
+func runCaseOnce(runner *httprunner.CaseRunner) (failure *Report) {
 	session := runner.NewSession()
 	startTime := time.Now()
 	failure = &Report{
 		Timestamp: startTime,
-		StepResult: &hrp.StepResult{
+		StepResult: &httprunner.StepResult{
 			Success:   false,
 			StartTime: startTime.Unix(),
 		},
 	}
-	if err := session.Start(nil); err != nil {
-		failure.Elapsed = time.Since(startTime).Milliseconds()
-		failure.Attachments = fmt.Errorf("failed to start session: %w", err).Error()
-		return
-	}
-
-	summary, err := session.GetSummary()
+	summary, err := session.Start(nil)
 	if err != nil {
 		failure.Elapsed = time.Since(startTime).Milliseconds()
-		failure.Attachments = fmt.Errorf("failed to get session summary: %w", err).Error()
+		failure.Attachments = fmt.Errorf("failed to start session: %w", err).Error()
 		return
 	}
 
@@ -61,14 +55,14 @@ func runCaseOnce(runner *hrp.CaseRunner) (failure *Report) {
 }
 
 func Loop(t *testing.T, name, url, method string, count, interval, requestTimeout, expectedStatusCode int, stopCh <-chan struct{}) ([]*Report, error) {
-	tc := &hrp.TestCase{
-		Config: hrp.NewConfig(name).SetRequestTimeout(float32(requestTimeout) / 1000),
-		TestSteps: []hrp.IStep{
-			hrp.NewStep(method).GET(url).Validate().AssertEqual("status_code", expectedStatusCode, "check status code"),
+	tc := httprunner.TestCase{
+		Config: httprunner.NewConfig(name).SetRequestTimeout(float32(requestTimeout) / 1000),
+		TestSteps: []httprunner.IStep{
+			httprunner.NewStep(method).GET(url).Validate().AssertEqual("status_code", expectedStatusCode, "check status code"),
 		},
 	}
 
-	runner, err := hrp.NewRunner(t).SetFailfast(false).NewCaseRunner(tc)
+	runner, err := httprunner.NewCaseRunner(tc, httprunner.NewRunner(t).SetFailfast(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new case runner: %w", err)
 	}

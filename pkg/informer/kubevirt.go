@@ -13,13 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright 2017, 2018 Red Hat, Inc.
+ * Copyright The KubeVirt Authors.
  *
  */
 
 package informer
 
 import (
+	"errors"
+	"fmt"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -36,6 +38,8 @@ import (
 	"kubevirt.io/client-go/log"
 )
 
+var errUnexpectedObject = errors.New("unexpected object")
+
 type newSharedInformer func() cache.SharedIndexInformer
 
 type KubeVirtInformerFactory interface {
@@ -46,11 +50,11 @@ type KubeVirtInformerFactory interface {
 	// Waits for all informers to sync
 	WaitForCacheSync(stopCh <-chan struct{})
 
+	// VirtualMachine handles the VMIs that are stopped or not running
+	VirtualMachine() cache.SharedIndexInformer
+
 	// Watches VirtualMachineInstanceMigration objects
 	VirtualMachineInstanceMigration() cache.SharedIndexInformer
-
-	// Watches VirtualMachine objects
-	VirtualMachine() cache.SharedIndexInformer
 }
 
 type kubeInformerFactory struct {
@@ -153,10 +157,42 @@ func (f *kubeInformerFactory) VirtualMachineInstanceMigration() cache.SharedInde
 	})
 }
 
+func GetVirtualMachineInformerIndexers() cache.Indexers {
+	return cache.Indexers{
+		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+		"dv": func(obj any) ([]string, error) {
+			vm, ok := obj.(*kubev1.VirtualMachine)
+			if !ok {
+				return nil, errUnexpectedObject
+			}
+			var dvs []string
+			for _, vol := range vm.Spec.Template.Spec.Volumes {
+				if vol.DataVolume != nil {
+					dvs = append(dvs, fmt.Sprintf("%s/%s", vm.Namespace, vol.DataVolume.Name))
+				}
+			}
+			return dvs, nil
+		},
+		"pvc": func(obj any) ([]string, error) {
+			vm, ok := obj.(*kubev1.VirtualMachine)
+			if !ok {
+				return nil, errUnexpectedObject
+			}
+			var pvcs []string
+			for _, vol := range vm.Spec.Template.Spec.Volumes {
+				if vol.PersistentVolumeClaim != nil {
+					pvcs = append(pvcs, fmt.Sprintf("%s/%s", vm.Namespace, vol.PersistentVolumeClaim.ClaimName))
+				}
+			}
+			return pvcs, nil
+		},
+	}
+}
+
 func (f *kubeInformerFactory) VirtualMachine() cache.SharedIndexInformer {
 	return f.getInformer("vmInformer", func() cache.SharedIndexInformer {
 		lw := cache.NewListWatchFromClient(f.restClient, "virtualmachines", k8sv1.NamespaceAll, fields.Everything())
-		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachine{}, f.defaultResync, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachine{}, f.defaultResync, GetVirtualMachineInformerIndexers())
 	})
 }
 
