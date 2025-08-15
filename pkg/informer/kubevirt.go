@@ -38,7 +38,7 @@ import (
 	"kubevirt.io/client-go/log"
 )
 
-var unexpectedObjectError = errors.New("unexpected object")
+var errUnexpectedObject = errors.New("unexpected object")
 
 type newSharedInformer func() cache.SharedIndexInformer
 
@@ -163,7 +163,7 @@ func GetVirtualMachineInformerIndexers() cache.Indexers {
 		"dv": func(obj interface{}) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
-				return nil, unexpectedObjectError
+				return nil, errUnexpectedObject
 			}
 			var dvs []string
 			for _, vol := range vm.Spec.Template.Spec.Volumes {
@@ -176,7 +176,7 @@ func GetVirtualMachineInformerIndexers() cache.Indexers {
 		"pvc": func(obj interface{}) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
-				return nil, unexpectedObjectError
+				return nil, errUnexpectedObject
 			}
 			var pvcs []string
 			for _, vol := range vm.Spec.Template.Spec.Volumes {
