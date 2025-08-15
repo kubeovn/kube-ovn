@@ -160,7 +160,7 @@ func (f *kubeInformerFactory) VirtualMachineInstanceMigration() cache.SharedInde
 func GetVirtualMachineInformerIndexers() cache.Indexers {
 	return cache.Indexers{
 		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
-		"dv": func(obj interface{}) ([]string, error) {
+		"dv": func(obj any) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
 				return nil, errUnexpectedObject
@@ -173,7 +173,7 @@ func GetVirtualMachineInformerIndexers() cache.Indexers {
 			}
 			return dvs, nil
 		},
-		"pvc": func(obj interface{}) ([]string, error) {
+		"pvc": func(obj any) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
 				return nil, errUnexpectedObject
