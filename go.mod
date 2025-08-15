@@ -15,7 +15,7 @@ require (
 	github.com/containernetworking/plugins v1.7.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20250625173537-a00eb8d2cfce
 	github.com/docker/docker v28.3.3+incompatible
-	github.com/emicklei/go-restful/v3 v3.12.2
+	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/stdr v1.2.2
