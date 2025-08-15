@@ -3,7 +3,7 @@
 TALOS_ARCH = $(shell go env GOHOSTARCH)
 TALOS_VERSION = $(shell talosctl version --client --short | awk '{print $$NF}' | tail -n 1)
 TALOS_IMAGE_DIR ?= /var/lib/talos
-TALOS_IMAGE_URL = https://github.com/siderolabs/talos/releases/download/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+TALOS_IMAGE_URL = https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
@@ -28,7 +28,8 @@ TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
 TALOS_CONTROL_PLANE_IPV4 = 172.99.99.10
 TALOS_CONTROL_PLANE_IPV6 = 2001:db8:99:99::10
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
-TALOS_K8S_VERSION ?= 1.32.7
+# renovate: datasource=github-releases depName=kubernetes packageName=kubernetes/kubernetes
+TALOS_K8S_VERSION ?= 1.32.8
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT ?= 1
@@ -56,7 +57,7 @@ endif
 talos-registry-mirror:
 	@if [ -z $$(docker ps -a -q -f name="^$(TALOS_REGISTRY_MIRROR_NAME)$$") ]; then \
 		echo ">>> Creating Talos registry mirror..."; \
-		docker run -d -p $(TALOS_REGISTRY_MIRROR_PORT):5000 --restart=always --name $(TALOS_REGISTRY_MIRROR_NAME) registry:2; \
+		docker run -d -p $(TALOS_REGISTRY_MIRROR_PORT):5000 --restart=always --name $(TALOS_REGISTRY_MIRROR_NAME) registry:3; \
 		echo ">>> Talos registry mirror created."; \
 	else \
 		echo ">>> Talos registry mirror already exists."; \
@@ -84,7 +85,7 @@ talos-prepare-images: talos-registry-mirror
 
 .PHONY: talos-libvirt-init
 talos-libvirt-init: talos-libvirt-clean
-	@if [ ! -f "$(TALOS_IMAGE_PATH)" ]; then \
+	@if [ ! -f "$(TALOS_IMAGE_PATH)" -o -w "$(TALOS_IMAGE_PATH)" ]; then \
 		sudo mkdir -p "$(TALOS_IMAGE_DIR)" && \
 		sudo chmod 777 "$(TALOS_IMAGE_DIR)" && \
 		echo ">>> Downloading Talos image $(TALOS_IMAGE_ISO) into $(TALOS_IMAGE_DIR)..." && \
