@@ -825,7 +825,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	subnetProvider := util.OvnProvider
-	if c.config.EnableSecondaryCNI {
+	if c.config.EnableNonPrimaryCNI {
 		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
 		var attachedNetworks string
 		// Get NetworkAttachmentDefinition if specified by user from pod annotations
