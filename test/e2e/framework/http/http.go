@@ -62,7 +62,7 @@ func Loop(t *testing.T, name, url, method string, count, interval, requestTimeou
 		},
 	}
 
-	runner, err := httprunner.NewRunner(t).SetFailfast(false).NewCaseRunner(tc)
+	runner, err := httprunner.NewCaseRunner(tc, httprunner.NewRunner(t).SetFailfast(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new case runner: %w", err)
 	}
