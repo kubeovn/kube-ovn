@@ -1279,6 +1279,10 @@ func (suite *OvnClientTestSuite) Test_ListQosQueueIDs() {
 	suite.testListQosQueueIDs()
 }
 
+func (suite *OvnClientTestSuite) Test_FipQos() {
+	suite.testFipQos()
+}
+
 func Test_scratch(t *testing.T) {
 	t.SkipNow()
 	endpoint := "tcp:[172.20.149.35]:6641"
@@ -1407,6 +1411,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.NAT{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.QoS{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Error(err)
