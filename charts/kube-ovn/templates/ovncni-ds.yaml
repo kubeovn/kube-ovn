@@ -272,5 +272,5 @@ spec:
         {{- if .Values.func.ENABLE_OVN_IPSEC }}
         - name: ovs-ipsec-keys
           hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
+            path: {{ .Values.OVN_IPSEC_KEY_DIR }}
         {{- end }}
