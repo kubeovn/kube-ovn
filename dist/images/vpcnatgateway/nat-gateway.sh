@@ -47,6 +47,10 @@ function init() {
     $iptables_cmd -t nat -A POSTROUTING -j SNAT_FILTER
     $iptables_cmd -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
+
+    # Send gratuitous ARP for all the IPs on the external network interface at initialization
+    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker 
+    ip -4 addr show dev net1 | awk '/inet /{print $2}' | cut -d/ -f1 | xargs -n1 arping -I net1 -c 3 -U
 }
 
 
