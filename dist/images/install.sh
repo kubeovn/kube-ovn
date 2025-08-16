@@ -772,6 +772,10 @@ spec:
                       type: array
                       items:
                         type: string
+                routes:
+                  type: array
+                  items:
+                    type: string
                 tolerations:
                   type: array
                   items:
