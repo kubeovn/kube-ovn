@@ -21,7 +21,7 @@ require (
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
-	github.com/httprunner/httprunner/v5 v5.0.0-20250803034321-856d2143672c
+	github.com/httprunner/httprunner/v5 v5.0.0-20250818135001-47996ed22fb1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
 	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf

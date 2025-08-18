@@ -591,8 +591,8 @@ github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSo
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/httprunner/funplugin v0.5.5 h1:VU1a6kj1AsJ/ucIhhI5NLHXOP4xnW2JGgk50vBV3Zis=
 github.com/httprunner/funplugin v0.5.5/go.mod h1:YZzBBSOSdLZEpHZz0P2E5SOQ+o1+Fbn30oWS4RGHBz0=
-github.com/httprunner/httprunner/v5 v5.0.0-20250803034321-856d2143672c h1:tFnw96iDjvpehDghAEquKZdzP46wnegOcWYmWDKsPbA=
-github.com/httprunner/httprunner/v5 v5.0.0-20250803034321-856d2143672c/go.mod h1:rOiemMUA9kOMuN9NNMJdbkZ1kLBpjPkIiGuDrguK3jU=
+github.com/httprunner/httprunner/v5 v5.0.0-20250818135001-47996ed22fb1 h1:6YHVl8jAobjhhu7qnvXsKWs8kIDNRze+ydIRe3nCwqU=
+github.com/httprunner/httprunner/v5 v5.0.0-20250818135001-47996ed22fb1/go.mod h1:rOiemMUA9kOMuN9NNMJdbkZ1kLBpjPkIiGuDrguK3jU=
 github.com/hudl/fargo v1.4.0/go.mod h1:9Ai6uvFy5fQNq6VPKtg+Ceq1+eTY4nKUlR2JElEOcDo=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
