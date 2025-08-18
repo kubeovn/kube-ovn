@@ -1298,6 +1298,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update bgp edge router advertisement", c.updateBgpEdgeRouterAdvertisementQueue, c.handleUpdateBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteBgpEdgeRouterAdvertisementQueue, c.handleDelBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
 	go wait.Until(c.resyncBgpRules, 60*time.Second, ctx.Done())
+	go wait.Until(c.resyncBgpPolicyRules, 60*time.Second, ctx.Done())
 	go wait.Until(runWorker("add bgp edge router advertisement", c.addGobgpConfigQueue, c.handleAddGobgpConfig), time.Second, ctx.Done())
 	go wait.Until(runWorker("update bgp edge router advertisement", c.updateGobgpConfigQueue, c.handleUpdateGobgpConfig), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteGobgpConfigQueue, c.handleDelGobgpConfig), time.Second, ctx.Done())

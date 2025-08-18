@@ -267,8 +267,8 @@ set_default_action() {
   echo "-> Applying default policy to global export"
   exec_cmd $GOBGP_BIN global policy export add default $action
 
-  echo "-> Soft reset neighbor policy"
-  exec_cmd $GOBGP_BIN neighbor $nbr_ip softreset
+  # echo "-> Soft reset neighbor policy"
+  # exec_cmd $GOBGP_BIN neighbor $nbr_ip softreset
 
   echo "=== Default action set to $action successfully ==="
 }

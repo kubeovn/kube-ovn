@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -269,7 +270,6 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 		klog.Error(err)
 		return err
 	}
-	klog.Infof("execUpdateBgpPolicy %s", key)
 
 	cmdArs := []string{}
 	if oldGobgpConfig != nil {
@@ -283,14 +283,6 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 			}
 			// erase neighbor.
 			cmdArs = append(cmdArs, "--", "flush-neighbor-policy", nbrIP)
-			// cmdArs = append(cmdArs, "--", "flush-prefix-out", nbrIP)
-			// cmdArs = append(cmdArs, "--", "flush-prefix-in", nbrIP)
-			// rcvMode := neighbor.ToReceive.Allowed.Mode
-			// rcvPrefixes := neighbor.ToReceive.Allowed.Prefixes
-			// if rcvMode == "all" {
-			// 	rcvPrefixes = []string{"0.0.0.0/0 0..32"}
-			// }
-			// cmdArs = append(cmdArs, append([]string{"--", "flush-prefix-in"}, rcvPrefixes...)...)
 		}
 	} else {
 		// if oldGobgpConfig is nil, it means this is the first time to update the bgp policy
@@ -342,11 +334,11 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 		cmdArs = append(cmdArs, "--", "set-default-action", "accept")
 	}
 
-	// cmdArs = append(cmdArs, "list_announced_route")
 	if err := c.execCmd(pod, cmdArs); err != nil {
 		klog.Error(err)
 		return err
 	}
+
 	return nil
 }
 
@@ -472,4 +464,58 @@ func (c *Controller) execCmd(pod *corev1.Pod, cmdArs []string) error {
 
 func containsNeighbor(neighbors []string, address string) bool {
 	return slices.Contains(neighbors, address)
+}
+
+func (c *Controller) resyncBgpPolicyRules() {
+	klog.Info("resync bgp edge router")
+	// resync all bgp edge routers
+	gobgpConfigs, err := c.gobgpConfigLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list bgp edge routers: %v", err)
+		return
+	}
+
+	for _, gobgpConfig := range gobgpConfigs {
+		// Check router.Spec.BGP.AdvertisedRoutes same with pods bgp advertised routes
+		if err := c.syncGobgpPolicy(gobgpConfig); err != nil {
+			klog.Errorf("failed to sync advertised routes for bgp edge router %s: %v", gobgpConfig.Name, err)
+			continue
+		}
+		klog.Infof("resync bgp edge router %s", gobgpConfig.Name)
+	}
+}
+
+func (c *Controller) syncGobgpPolicy(gobgpConfig *kubeovnv1.GobgpConfig) error {
+	key := cache.MetaObjectToName(gobgpConfig).String()
+
+	c.gobgpConfigKeyMutex.LockKey(key)
+	defer func() { _ = c.gobgpConfigKeyMutex.UnlockKey(key) }()
+
+	if !gobgpConfig.DeletionTimestamp.IsZero() {
+		c.deleteGobgpConfigQueue.Add(key)
+		return nil
+	}
+	klog.Infof("reconciling bgp-edge-router %s", key)
+	// Deep copy because we might mutate Status below.
+	cachedGobgpConfig := gobgpConfig.DeepCopy()
+
+	pods, err := c.validateGobgpConfig(cachedGobgpConfig)
+	if err != nil || pods == nil {
+		klog.Error(err)
+		return err
+	}
+
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 {
+			continue
+		}
+		err = c.execUpdateBgpPolicy(key, pod, cachedGobgpConfig, cachedGobgpConfig)
+		if err != nil {
+			return err
+		}
+		klog.Infof("router pod %s/%s policy: %v", pod.Namespace, pod.Name, gobgpConfig)
+	}
+
+	klog.Infof("finished sync bgp-edge-router %s advertised routes", key)
+	return nil
 }
