@@ -50,6 +50,12 @@ rules:
       - vpc-dnses/status
       - qos-policies
       - qos-policies/status
+      - bgp-edge-routers
+      - bgp-edge-routers/status
+      - bgp-edge-router-advertisements
+      - bgp-edge-router-advertisements/status
+      - gobgp-configs
+      - gobgp-configs/status
     verbs:
       - "*"
   - apiGroups:
