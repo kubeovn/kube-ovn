@@ -2448,7 +2448,7 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 func (c *Controller) getNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName string) (string, error) {
 	var interfaceName string
 	if networkStatus == "" {
-		return "", fmt.Errorf("no network status annotation found for pod")
+		return "", errors.New("no network status annotation found")
 	}
 
 	var status []map[string]interface{}
