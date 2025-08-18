@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -51,7 +52,15 @@ func (c *Controller) enqueueUpdateBgpEdgeRouterAdvertisement(oldObj, newObj any)
 		newVer: newRouter,
 	}
 
-	c.updateBgpEdgeRouterAdvertisementQueue.Add(updateVer)
+	if !newRouter.DeletionTimestamp.IsZero() {
+		c.deleteBgpEdgeRouterAdvertisementQueue.Add(key)
+		return
+	}
+
+	if !reflect.DeepEqual(oldRouter.Spec, newRouter.Spec) {
+		klog.Infof("enqueue update bgp-edge-router-advertisement %s", key)
+		c.updateBgpEdgeRouterAdvertisementQueue.Add(updateVer)
+	}
 }
 
 func (c *Controller) enqueueDeleteBgpEdgeRouterAdvertisement(obj any) {
