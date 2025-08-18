@@ -267,8 +267,27 @@ set_default_action() {
   echo "-> Applying default policy to global export"
   exec_cmd $GOBGP_BIN global policy export add default $action
 
-  # echo "-> Soft reset neighbor policy"
-  # exec_cmd $GOBGP_BIN neighbor $nbr_ip softreset
+  echo "-> Soft reset neighbor policy"
+  # Get all neighbor IPs and perform soft reset for each
+  local neighbors=()
+  while IFS= read -r line; do
+    # Extract IP address from gobgp neighbor output (assuming first column is IP)
+    local neighbor_ip=$(echo "$line" | awk '{print $1}')
+    # Skip header lines and empty lines, validate IP format
+    if [[ "$neighbor_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      neighbors+=("$neighbor_ip")
+    fi
+  done < <($GOBGP_BIN neighbor 2>/dev/null | tail -n +2)
+
+  if [[ ${#neighbors[@]} -eq 0 ]]; then
+    echo "   No neighbors found to reset"
+  else
+    echo "   Found ${#neighbors[@]} neighbor(s) to reset:"
+    for neighbor_ip in "${neighbors[@]}"; do
+      echo "   -> Soft resetting neighbor: $neighbor_ip"
+      exec_cmd_safe $GOBGP_BIN neighbor "$neighbor_ip" softreset
+    done
+  fi
 
   echo "=== Default action set to $action successfully ==="
 }
