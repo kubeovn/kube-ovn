@@ -60,12 +60,11 @@ func (c *Controller) enqueueUpdateGobgpConfig(oldObj, newObj any) {
 		klog.Infof("enqueue update gobgp-config %s", key)
 		c.updateGobgpConfigQueue.Add(updateConfigVer)
 	}
-
-	// c.updateGobgpConfigQueue.Add(updateConfigVer)
 }
 
 func (c *Controller) enqueueDeleteGobgpConfig(obj any) {
 	var gobgpConfig *kubeovnv1.GobgpConfig
+
 	switch t := obj.(type) {
 	case *kubeovnv1.GobgpConfig:
 		gobgpConfig = t
@@ -74,11 +73,14 @@ func (c *Controller) enqueueDeleteGobgpConfig(obj any) {
 			gobgpConfig = v
 		}
 	}
+
 	if gobgpConfig == nil {
 		klog.Warning("enqueueDeleteGobgpConfig: object is not GobgpConfig")
 		return
 	}
+
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.GobgpConfig)).String()
+
 	klog.V(3).Infof("enqueue delete gobgp-config %s", key)
 	c.deleteGobgpConfigQueue.Add(key)
 }
