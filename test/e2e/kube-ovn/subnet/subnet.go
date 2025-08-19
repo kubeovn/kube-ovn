@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -1432,6 +1433,65 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, int(subnet.Spec.Mtu))
+	})
+
+	framework.ConformanceIt("should fail to create pod with static MAC that conflicts with gateway MAC", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Getting subnet to find gateway MAC")
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectNotNil(subnet)
+
+		// Get the router port name to find gateway MAC
+		routerPortName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnetName)
+		if subnet.Spec.Vpc == "" {
+			routerPortName = fmt.Sprintf("ovn-cluster-%s", subnetName)
+		}
+
+		ginkgo.By("Getting gateway MAC from router port " + routerPortName)
+
+		output, err := exec.Command("kubectl", "ko", "nbctl", "--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", routerPortName)).CombinedOutput()
+		framework.Logf("Command output: %s", string(output))
+
+		if err != nil || strings.TrimSpace(string(output)) == "" {
+			ginkgo.Skip("Could not get gateway MAC, skipping test")
+		}
+
+		gatewayMAC := strings.TrimSpace(string(output))
+		framework.Logf("Gateway MAC: %s", gatewayMAC)
+
+		ginkgo.By("Creating pod with static MAC that conflicts with gateway MAC")
+		conflictingPodName := "conflict-pod-" + framework.RandomSuffix()
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+			util.MacAddressAnnotation:    gatewayMAC, // Use the same MAC as gateway
+		}
+
+		pod := framework.MakePod(namespaceName, conflictingPodName, nil, annotations, "", nil, nil)
+
+		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
+		_ = podClient.Create(pod)
+
+		time.Sleep(2 * time.Second)
+
+		events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", conflictingPodName, namespaceName),
+		})
+		framework.ExpectNoError(err)
+
+		// Check if there are any events with conflict information
+		hasConflictError := false
+		for _, event := range events.Items {
+			if event.Type == "Warning" && strings.Contains(event.Message, "AddressConflict") {
+				hasConflictError = true
+				framework.Logf("Found conflict event: %s", event.Message)
+				break
+			}
+		}
+
+		framework.ExpectTrue(hasConflictError, "Should have conflict error events")
 	})
 })
 
