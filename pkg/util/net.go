@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,15 @@ func GenerateMac() string {
 	buf[0] = (buf[0] | 0x02) & 0xfe
 
 	return net.HardwareAddr(buf).String()
+}
+
+func GenerateMacWithExclusion(exclusionMACs []string) string {
+	for {
+		mac := GenerateMac()
+		if !slices.Contains(exclusionMACs, mac) {
+			return mac
+		}
+	}
 }
 
 func Ip2BigInt(ipStr string) *big.Int {

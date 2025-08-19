@@ -136,6 +136,21 @@ func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
 	return nil
 }
 
+// GetLogicalRouterPortMAC get logical router port mac address
+func (c LegacyClient) GetLogicalRouterPortMAC(port string) (string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", port))
+	if err != nil {
+		return "", fmt.Errorf("failed to get logical router port %s mac: %v", port, err)
+	}
+
+	mac := strings.TrimSpace(output)
+	if mac == "" {
+		return "", fmt.Errorf("logical router port %s not found or has no mac address", port)
+	}
+
+	return mac, nil
+}
+
 func (c LegacyClient) CreateICLogicalRouterPort(az, ts, mac, subnet string, chassises []string) error {
 	lspName := fmt.Sprintf("%s-%s", ts, az)
 	lrpName := fmt.Sprintf("%s-%s", az, ts)
