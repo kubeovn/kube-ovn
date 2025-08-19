@@ -1190,8 +1190,8 @@ func (c *Controller) execNatGwQoSInPod(
 	}
 	var addRules []string
 	var classifierType, matchDirection, cidr string
-	switch {
-	case r.MatchType == "ip":
+	switch r.MatchType {
+	case "ip":
 		classifierType = "u32"
 		// matchValue: dst xxx.xxx.xxx.xxx/32
 		splitStr := strings.Split(r.MatchValue, " ")
@@ -1202,7 +1202,7 @@ func (c *Controller) execNatGwQoSInPod(
 		}
 		matchDirection = splitStr[0]
 		cidr = splitStr[1]
-	case r.MatchType == "":
+	case "":
 		classifierType = "matchall"
 	default:
 		err := fmt.Errorf("MatchType %s format error", r.MatchType)

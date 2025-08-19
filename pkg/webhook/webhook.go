@@ -81,10 +81,10 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 
 func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (resp admission.Response) {
 	defer func() {
-		if resp.AdmissionResponse.Allowed {
+		if resp.Allowed {
 			klog.V(3).Info("result: allowed")
 		} else {
-			klog.V(3).Infof("result: reject, reason: %s", resp.AdmissionResponse.Result.Reason)
+			klog.V(3).Infof("result: reject, reason: %s", resp.Result.Reason)
 		}
 	}()
 

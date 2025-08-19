@@ -94,7 +94,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj interface{}) {
 	}
 
 	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
-		!(oldSubnet.Spec.Vpc == "" && newSubnet.Spec.Vpc == c.config.ClusterRouter || oldSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Spec.Vpc == "") {
+		((oldSubnet.Spec.Vpc != "" || newSubnet.Spec.Vpc != c.config.ClusterRouter) && (oldSubnet.Spec.Vpc != c.config.ClusterRouter || newSubnet.Spec.Vpc != "")) {
 		if newSubnet.Annotations == nil {
 			newSubnet.Annotations = make(map[string]string)
 		}
@@ -1721,7 +1721,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 		}
 
-		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
+		if (!c.config.EnableLb || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
 			if err := c.addPolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
 				klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s %v", subnet.Name, err)

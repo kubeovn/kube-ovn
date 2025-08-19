@@ -107,10 +107,7 @@ func main() {
 	totalConnection := 0
 	go func() {
 		startTime := time.Now()
-		for {
-			if time.Since(startTime) > (time.Duration(config.DurationSeconds) * time.Second) {
-				break
-			}
+		for time.Since(startTime) <= (time.Duration(config.DurationSeconds) * time.Second) {
 			time.Sleep(100 * time.Millisecond)
 			totalConnection++
 			_, err := exec.Command("curl", "-m", "1", fmt.Sprintf("%s:%d", config.RemoteAddress, config.RemotePort)).CombinedOutput()

@@ -756,7 +756,7 @@ func (c *OVNNbClient) CreateBareACL(parentName, direction, priority, match, acti
 		return fmt.Errorf("new acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
 	}
 
-	op, err := c.ovsDbClient.Create(acl)
+	op, err := c.Create(acl)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
@@ -1191,7 +1191,7 @@ func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 		}
 	}
 
-	createAclsOp, err := c.ovsDbClient.Create(models...)
+	createAclsOp, err := c.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating acls: %w", err)
