@@ -736,6 +736,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	// Record the gateway MAC in ipam if router port exists
+	if needRouter {
+		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
+		if lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
+			if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+			}
+		} else {
+			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		}
+	}
+
 	if isMcastQuerierChanged {
 		if err := c.handleMcastQuerierChange(subnet); err != nil {
 			klog.Errorf("failed to handle mcast querier IP change for subnet %s: %v", subnet.Name, err)
