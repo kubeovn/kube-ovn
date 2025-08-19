@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,14 +52,7 @@ func GenerateMac() string {
 func GenerateMacWithExclusion(exclusionMACs []string) string {
 	for {
 		mac := GenerateMac()
-		conflict := false
-		for _, exclusionMAC := range exclusionMACs {
-			if mac == exclusionMAC {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
+		if !slices.Contains(exclusionMACs, mac) {
 			return mac
 		}
 	}
