@@ -37,6 +37,9 @@ linters:
       - linters:
           - revive
         text: VpcDnsList should be VpcDNSList
+      - linters:
+          - revive
+        text: avoid meaningless package names
       # Exclude gosec from running on tests files.
       - linters:
           - gosec
@@ -45,6 +48,12 @@ linters:
       - linters:
           - gosec
         path: test/
+      - linters:
+          - staticcheck
+        text: Endpoints is deprecated
+      - linters:
+          - staticcheck
+        text: EndpointSubset is deprecated
     paths:
       - third_party$
       - builtin$

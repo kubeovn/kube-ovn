@@ -190,10 +190,7 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 	errChan := make(chan error, 1)
 	macChan := make(chan net.HardwareAddr, 1)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		buf := make([]byte, ifi.MTU+14)
 		for {
 			n, _, err := conn.ReadFrom(buf)
@@ -224,7 +221,7 @@ func DuplicateAddressDetection(iface, ip string) (bool, net.HardwareAddr, error)
 			errChan <- fmt.Errorf("failed to read from connection: %w", err)
 			return
 		}
-	}()
+	})
 
 LOOP:
 	for i := range dadMaxMulticastSolicit {
