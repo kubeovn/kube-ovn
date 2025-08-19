@@ -434,7 +434,7 @@ func (c *OVNNbClient) AddLogicalRouterPort(lr, name, mac, networks string) error
 	waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Router_Port")
 	ops := []ovsdb.Operation{waitOp}
 
-	createOps, err := c.ovsDbClient.Create(lrp)
+	createOps, err := c.Create(lrp)
 	if err != nil {
 		klog.Error(err)
 		return err

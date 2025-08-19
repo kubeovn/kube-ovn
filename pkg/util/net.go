@@ -205,9 +205,10 @@ func CheckProtocol(address string) string {
 func AddressCount(network *net.IPNet) float64 {
 	prefixLen, bits := network.Mask.Size()
 	// Special case handling for /31 and /32 subnets
-	if bits-prefixLen == 1 {
+	switch bits - prefixLen {
+	case 1:
 		return 2 // /31 subnet
-	} else if bits-prefixLen == 0 {
+	case 0:
 		return 1 // /32 subnet
 	}
 	return math.Pow(2, float64(bits-prefixLen)) - 2

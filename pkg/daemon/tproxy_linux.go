@@ -382,12 +382,13 @@ func getProtocols(protocol string) []string {
 
 func GetDefaultRouteDst(protocol string) net.IPNet {
 	var dst net.IPNet
-	if protocol == kubeovnv1.ProtocolIPv4 {
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
 		dst = net.IPNet{
 			IP:   net.IPv4zero,
 			Mask: net.CIDRMask(0, 0),
 		}
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		dst = net.IPNet{
 			IP:   net.IPv6zero,
 			Mask: net.CIDRMask(0, 0),

@@ -19,7 +19,7 @@ func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 		return err
 	}
 
-	op, err := c.ovsDbClient.Create(nbGlobal)
+	op, err := c.Create(nbGlobal)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate operations for creating nb global: %w", err)

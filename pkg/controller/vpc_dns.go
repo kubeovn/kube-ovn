@@ -323,7 +323,7 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 		dep.Spec.Template.Annotations = maps.Clone(oldDeploy.Annotations)
 	}
 
-	dep.ObjectMeta.Labels = map[string]string{
+	dep.Labels = map[string]string{
 		util.VpcDNSNameLabel: "true",
 	}
 

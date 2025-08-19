@@ -707,7 +707,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			}
 		}
 
-		if (!c.config.EnableLb || !(subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb)) &&
+		if (!c.config.EnableLb || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
@@ -2041,9 +2041,9 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 			}
 			klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
 		}
-		if ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+		if ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
-			ownerRefSubnet = ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
+			ownerRefSubnet = ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation]
 		}
 
 	case util.VMInstance:

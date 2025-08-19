@@ -48,7 +48,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 		lb.SelectionFields = []string{selectFields}
 	}
 
-	if ops, err = c.ovsDbClient.Create(lb); err != nil {
+	if ops, err = c.Create(lb); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating load balancer %s: %w", lbName, err)
 	}

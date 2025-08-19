@@ -161,10 +161,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 		return err
 	}
 
-	change := false
-	if vpc.Status.DefaultLogicalSwitch != defaultSubnet {
-		change = true
-	}
+	change := vpc.Status.DefaultLogicalSwitch != defaultSubnet
 
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Subnets = subnets

@@ -60,9 +60,10 @@ func (e *Exporter) getOvnStatus() map[string]int {
 			result["ovn-northd"] = 0
 		} else {
 			status := strings.TrimSpace(strings.Split(string(output), ":")[1])
-			if status == "standby" {
+			switch status {
+			case "standby":
 				result["ovn-northd"] = 2
-			} else if status == "active" {
+			case "active":
 				result["ovn-northd"] = 1
 			}
 		}
