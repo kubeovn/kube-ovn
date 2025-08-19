@@ -769,6 +769,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	// Add routes to join the services (is this still needed?)
+	// It seems like the script inside the NAT GW already does that
 	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
 	routes := make([]request.Route, 0, 2)
 	if v4Gateway != "" && v4ClusterIPRange != "" {
@@ -797,7 +798,23 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
-	// Use this function is nat gw set route?
+	// Users can specify custom routes to inject in the NAT GW
+	for _, route := range gw.Spec.Routes {
+		nexthop := route.NextHopIP
+
+		// Users can specify "gateway" instead of an actual IP as the next hop, and
+		// we will auto-determine the address of the gateway based on the protocol
+		if nexthop == "gateway" {
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
+				nexthop = v4Gateway
+			} else {
+				nexthop = v6Gateway
+			}
+		}
+
+		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
+	}
+
 	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
@@ -818,6 +835,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if v6Gateway != "" {
 		routes = append(routes, request.Route{Destination: "::/0", Gateway: v6Gateway})
 	}
+
 	if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
 		klog.Error(err)
 		return nil, err

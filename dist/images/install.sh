@@ -772,6 +772,16 @@ spec:
                       type: array
                       items:
                         type: string
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                        format: cidr
+                      nextHopIP:
+                        type: string
                 tolerations:
                   type: array
                   items:
