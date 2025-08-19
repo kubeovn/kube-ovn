@@ -705,6 +705,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	// Record the gateway MAC in ipam if router port exists
+	if needRouter {
+		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
+		if mac, err := c.ovnClient.GetLogicalRouterPortMAC(routerPortName); err == nil {
+			if err := c.ipam.RecordGatewayMAC(subnet.Name, mac); err != nil {
+				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", mac, subnet.Name, err)
+			}
+		} else {
+			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		}
+	}
+
 	var mtu int
 	if subnet.Spec.Mtu > 0 {
 		mtu = int(subnet.Spec.Mtu)
