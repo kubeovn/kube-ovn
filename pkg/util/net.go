@@ -48,6 +48,22 @@ func GenerateMac() string {
 	return net.HardwareAddr(buf).String()
 }
 
+func GenerateMacWithExclusion(exclusionMACs []string) string {
+	for {
+		mac := GenerateMac()
+		conflict := false
+		for _, exclusionMAC := range exclusionMACs {
+			if mac == exclusionMAC {
+				conflict = true
+				break
+			}
+		}
+		if !conflict {
+			return mac
+		}
+	}
+}
+
 func IP2BigInt(ipStr string) *big.Int {
 	ipBigInt := big.NewInt(0)
 	if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
