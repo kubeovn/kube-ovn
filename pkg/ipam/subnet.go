@@ -37,6 +37,7 @@ type Subnet struct {
 	PodToNicList map[string][]string
 	V4Gw         string
 	V6Gw         string
+	GatewayMAC   string
 
 	IPPools map[string]*IPPool
 }
@@ -133,8 +134,14 @@ func (s *Subnet) GetRandomMac(podName, nicName string) string {
 	if mac, ok := s.NicToMac[nicName]; ok {
 		return mac
 	}
+
+	var exclusionMACs []string
+	if s.GatewayMAC != "" {
+		exclusionMACs = append(exclusionMACs, s.GatewayMAC)
+	}
+
 	for {
-		mac := util.GenerateMac()
+		mac := util.GenerateMacWithExclusion(exclusionMACs)
 		if _, ok := s.MacToPod[mac]; !ok {
 			s.MacToPod[mac] = podName
 			s.NicToMac[nicName] = mac
@@ -150,6 +157,11 @@ func (s *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) 
 	if checkConflict {
 		if p, ok := s.MacToPod[mac]; ok && p != podName {
 			klog.Errorf("mac %s has been allocated to pod %s", mac, p)
+			return ErrConflict
+		}
+		// Check if static MAC conflicts with gateway MAC
+		if s.GatewayMAC != "" && mac == s.GatewayMAC {
+			klog.Errorf("static MAC %s conflicts with gateway MAC", mac)
 			return ErrConflict
 		}
 	}
