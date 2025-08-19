@@ -566,7 +566,7 @@ func (c *Controller) syncGobgpPolicy(gobgpConfig *kubeovnv1.GobgpConfig) error {
 			return err
 		}
 
-		klog.Infof("router pod %s/%s policy: %v", pod.Namespace, pod.Name, gobgpConfig)
+		// klog.Infof("router pod %s/%s policy: %v", pod.Namespace, pod.Name, gobgpConfig)
 	}
 
 	klog.Infof("finished sync bgp-edge-router %s advertised routes", key)
