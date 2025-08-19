@@ -81,6 +81,7 @@ type VpcEgressGatewaySpec struct {
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 	// namespace/pod selectors
+	// currently it works only for the default vpc
 	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
 	// optional traffic policy used to control the traffic routing
 	// if not specified, the default traffic policy "Cluster" will be used
