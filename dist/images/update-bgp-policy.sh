@@ -325,6 +325,10 @@ execute_single_command() {
       [[ $# -ne 1 ]] && die "set-default-action requires exactly 1 argument (accept|reject)"
       set_default_action "$1"
       ;;
+    list-global-policy)
+      [[ $# -ne 0 ]] && die "list-global-policy requires exactly no argument"
+      list_global_policy
+      ;;
     *)
       die "Unknown command: $cmd"
       ;;
@@ -372,6 +376,15 @@ parse_batch_commands() {
     ((cmd_count++))
   done
 }
+
+list_global_policy() {
+  echo "=== Global Policy ==="
+  $GOBGP_BIN global policy
+  echo ""
+  echo "=== Policy Prefix ==="
+  $GOBGP_BIN policy prefix
+}
+
 
 main() {
   [[ $# -lt 1 ]] && usage

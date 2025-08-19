@@ -293,6 +293,7 @@ func (c *Controller) execUpdateBgpPolicy(key string, pod *corev1.Pod, oldGobgpCo
 		// so we need to set default action to reject
 		cmdArs = append(cmdArs, "--", "set-default-action", "reject")
 	}
+
 	if newGobgpConfig != nil {
 		for _, neighbor := range newGobgpConfig.Spec.Neighbors {
 			klog.Infof("new bgp config neighbor %v", neighbor)
@@ -434,6 +435,38 @@ func (c *Controller) updateGobgpConfigStatus(gobgpConfig *kubeovnv1.GobgpConfig)
 	return updatedGobgpConfig, nil
 }
 
+func (c *Controller) execGetCmd(pod *corev1.Pod, cmdArs []string) (string, error) {
+	cmd := fmt.Sprintf("bash /kube-ovn/update-bgp-policy.sh %s", strings.Join(cmdArs, " "))
+
+	klog.Infof("exec command : %s", cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "bgp-router-speaker", []string{"/bin/bash", "-c", cmd}...)
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		if len(stdOutput) > 0 {
+			klog.Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+		}
+		klog.Error(err)
+		return "", err
+	}
+
+	cmdSuccess := false
+	if len(stdOutput) > 0 {
+		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+		if strings.Contains(stdOutput, "Update bgp policy completed successfully") {
+			cmdSuccess = true
+		}
+	}
+
+	if len(errOutput) > 0 && !cmdSuccess {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return "", errors.New(errOutput)
+	}
+
+	return stdOutput, nil
+}
+
 func (c *Controller) execCmd(pod *corev1.Pod, cmdArs []string) error {
 	cmd := fmt.Sprintf("bash /kube-ovn/update-bgp-policy.sh --batch %s", strings.Join(cmdArs, " "))
 
@@ -472,6 +505,7 @@ func containsNeighbor(neighbors []string, address string) bool {
 
 func (c *Controller) resyncBgpPolicyRules() {
 	klog.Info("resync bgp edge router")
+
 	// resync all bgp edge routers
 	gobgpConfigs, err := c.gobgpConfigLister.List(labels.Everything())
 	if err != nil {
@@ -480,7 +514,6 @@ func (c *Controller) resyncBgpPolicyRules() {
 	}
 
 	for _, gobgpConfig := range gobgpConfigs {
-		// Check router.Spec.BGP.AdvertisedRoutes same with pods bgp advertised routes
 		if err := c.syncGobgpPolicy(gobgpConfig); err != nil {
 			klog.Errorf("failed to sync advertised routes for bgp edge router %s: %v", gobgpConfig.Name, err)
 			continue
@@ -513,13 +546,180 @@ func (c *Controller) syncGobgpPolicy(gobgpConfig *kubeovnv1.GobgpConfig) error {
 		if len(pod.Status.PodIPs) == 0 {
 			continue
 		}
-		err = c.execUpdateBgpPolicy(key, pod, cachedGobgpConfig, cachedGobgpConfig)
+
+		// execGetBgpPolicy
+		// if
+		cmdArs := []string{"list-global-policy"}
+		output, err := c.execGetCmd(pod, cmdArs)
 		if err != nil {
+			klog.Error(err)
 			return err
 		}
+
+		validate, err := c.validateSyncGobgpConfig(output, cachedGobgpConfig)
+		if !validate {
+			err = c.execUpdateBgpPolicy(key, pod, cachedGobgpConfig, cachedGobgpConfig)
+			if err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+
 		klog.Infof("router pod %s/%s policy: %v", pod.Namespace, pod.Name, gobgpConfig)
 	}
 
 	klog.Infof("finished sync bgp-edge-router %s advertised routes", key)
 	return nil
+}
+
+func (c *Controller) validateSyncGobgpConfig(output string, gobgpConfig *kubeovnv1.GobgpConfig) (bool, error) {
+	klog.Infof("output: %s", output)
+	// Parse the output to verify that all neighbors, statements, and prefixes in gobgpConfig.Spec.Neighbors exist in the output.
+	for _, neighbor := range gobgpConfig.Spec.Neighbors {
+		nbrIP := neighbor.Address
+		if nbrIP == "" {
+			klog.Warningf("neighbor address is empty for gobgpConfig %s", gobgpConfig.Name)
+			return false, errors.New("neighbor address is empty")
+		}
+
+		// Check Import policy statement and prefix
+		var inPrefixes, outPrefixes []string
+		inPrefixName := fmt.Sprintf("prefix-%s-in", nbrIP)
+		outPrefixName := fmt.Sprintf("prefix-%s-out", nbrIP)
+
+		if neighbor.ToReceive.Allowed.Mode == "all" || neighbor.ToReceive.Allowed.Mode == "filtered" {
+			importPolicy := fmt.Sprintf("policy-%s-in", nbrIP)
+			importStmt := fmt.Sprintf("stmt-%s-in", nbrIP)
+			importPrefix := fmt.Sprintf("prefix-%s-in", nbrIP)
+			if !strings.Contains(output, importPolicy) ||
+				!strings.Contains(output, importStmt) ||
+				!strings.Contains(output, importPrefix) {
+				klog.Warningf("missing import policy/statement/prefix for neighbor %s", nbrIP)
+				return false, nil
+			}
+		}
+
+		if neighbor.ToAdvertise.Allowed.Mode == "all" || neighbor.ToAdvertise.Allowed.Mode == "filtered" {
+			// Check Export policy statement and prefix
+			exportPolicy := fmt.Sprintf("policy-%s-out", nbrIP)
+			exportStmt := fmt.Sprintf("stmt-%s-out", nbrIP)
+			exportPrefix := fmt.Sprintf("prefix-%s-out", nbrIP)
+			if !strings.Contains(output, exportPolicy) ||
+				!strings.Contains(output, exportStmt) ||
+				!strings.Contains(output, exportPrefix) {
+				klog.Warningf("missing export policy/statement/prefix for neighbor %s", nbrIP)
+				return false, nil
+			}
+		}
+
+		// Parse global policy prefix lines for this neighbor
+		// Parse only the lines after "=== Global Policy Prefix ==="
+
+		lines := strings.Split(output, "\n")
+		startIdx := 0
+		for i, line := range lines {
+			if strings.Contains(line, "=== Policy Prefix ===") {
+				startIdx = i + 2
+				break
+			}
+		}
+
+		var inDir bool
+		if strings.HasPrefix(lines[startIdx], inPrefixName) {
+			inDir = true
+		} else {
+			inDir = false
+		}
+
+		for _, line := range lines[startIdx:] {
+			line = strings.TrimSpace(line)
+			// klog.Infof("line: %v, startIndex: %d", line, startIdx)
+
+			if strings.Contains(line, "Update bgp policy completed successfully") {
+				break
+			}
+
+			if strings.HasPrefix(line, inPrefixName) || inDir {
+				// klog.Infof("line: %v", line)
+				prefixPart := strings.TrimPrefix(line, inPrefixName+"  ")
+				// klog.Infof("prefixPart: %v", prefixPart)
+				inPrefixes = append(inPrefixes, prefixPart)
+				if strings.HasPrefix(lines[startIdx+1], outPrefixName) {
+					inDir = false
+				}
+			} else if strings.HasPrefix(line, outPrefixName) || !inDir {
+				klog.Infof("line: %v", line)
+				prefixPart := strings.TrimPrefix(line, outPrefixName+"  ")
+				klog.Infof("prefixPart: %v", prefixPart)
+				outPrefixes = append(outPrefixes, prefixPart)
+				if strings.HasPrefix(lines[startIdx+1], inPrefixName) {
+					inDir = true
+				}
+			}
+		}
+		klog.Warningf("inPrefixes: %v, outPrefixes: %v", inPrefixes, outPrefixes)
+
+		// Check advertised prefixes (out)
+		if neighbor.ToAdvertise.Allowed.Mode == "filtered" {
+			for _, p := range neighbor.ToAdvertise.Allowed.Prefixes {
+				found := false
+				for _, out := range outPrefixes {
+					if strings.Contains(out, p) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					klog.Warningf("missing advertised prefix %s for neighbor %s", p, nbrIP)
+					return false, nil
+				}
+			}
+		} else {
+			// Mode "all": should contain 0.0.0.0/0 0..32
+			found := false
+			for _, out := range outPrefixes {
+				if strings.Contains(out, "0.0.0.0/0") && strings.Contains(out, "0..32") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				klog.Warningf("missing advertised prefix 0.0.0.0/0 0..32 for neighbor %s", nbrIP)
+				return false, nil
+			}
+		}
+
+		// Check received prefixes (in)
+		if neighbor.ToReceive.Allowed.Mode == "filtered" {
+			for _, p := range neighbor.ToReceive.Allowed.Prefixes {
+				found := false
+				for _, in := range inPrefixes {
+					if strings.Contains(in, p) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					klog.Warningf("missing received prefix %s for neighbor %s", p, nbrIP)
+					return false, nil
+				}
+			}
+		} else {
+			// Mode "all": should contain 0.0.0.0/0 0..32
+			found := false
+			for _, in := range inPrefixes {
+				if strings.Contains(in, "0.0.0.0/0") && strings.Contains(in, "0..32") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				klog.Warningf("missing received prefix 0.0.0.0/0 0..32 for neighbor %s", nbrIP)
+				return false, nil
+			}
+		}
+	}
+	klog.Infof("Sync is not needed.")
+	return true, nil
 }
