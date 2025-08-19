@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -245,4 +246,18 @@ func (ipam *IPAM) IsIPAssignedToPod(ip, subnetName, podName string) bool {
 	} else {
 		return subnet.isIPAssignedToPod(ip, podName)
 	}
+}
+
+func (ipam *IPAM) RecordGatewayMAC(subnetName, gatewayMAC string) error {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return fmt.Errorf("subnet %s not found in ipam", subnetName)
+	}
+
+	subnet.GatewayMAC = gatewayMAC
+	klog.Infof("recorded gateway MAC %s for subnet %s", gatewayMAC, subnetName)
+	return nil
 }

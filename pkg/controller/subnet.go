@@ -648,6 +648,17 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	if needRouter {
+		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
+		if mac, err := c.ovnClient.GetLogicalRouterPortMAC(routerPortName); err == nil {
+			if err := c.ipam.RecordGatewayMAC(subnet.Name, mac); err != nil {
+				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", mac, subnet.Name, err)
+			}
+		} else {
+			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		}
+	}
+
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
 		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())

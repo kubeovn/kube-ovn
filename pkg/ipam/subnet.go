@@ -31,6 +31,7 @@ type Subnet struct {
 	NicToMac         map[string]string
 	MacToPod         map[string]string
 	PodToNicList     map[string][]string
+	GatewayMAC       string
 }
 
 func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
@@ -69,6 +70,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			MacToPod:         map[string]string{},
 			NicToMac:         map[string]string{},
 			PodToNicList:     map[string][]string{},
+			GatewayMAC:       "",
 		}
 		subnet.joinFreeWithReserve()
 	} else if protocol == kubeovnv1.ProtocolIPv6 {
@@ -90,6 +92,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			MacToPod:         map[string]string{},
 			NicToMac:         map[string]string{},
 			PodToNicList:     map[string][]string{},
+			GatewayMAC:       "",
 		}
 		subnet.joinFreeWithReserve()
 	} else {
@@ -118,6 +121,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			MacToPod:         map[string]string{},
 			NicToMac:         map[string]string{},
 			PodToNicList:     map[string][]string{},
+			GatewayMAC:       "",
 		}
 		subnet.joinFreeWithReserve()
 	}
@@ -129,7 +133,7 @@ func (subnet *Subnet) GetRandomMac(podName, nicName string) string {
 		return mac
 	}
 	for {
-		mac := util.GenerateMac()
+		mac := util.GenerateMacWithExclusion([]string{subnet.GatewayMAC})
 		if _, ok := subnet.MacToPod[mac]; !ok {
 			subnet.MacToPod[mac] = podName
 			subnet.NicToMac[nicName] = mac
@@ -139,6 +143,11 @@ func (subnet *Subnet) GetRandomMac(podName, nicName string) string {
 }
 
 func (subnet *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) error {
+	if subnet.GatewayMAC != "" && mac == subnet.GatewayMAC {
+		klog.Errorf("mac %s conflicts with gateway MAC %s", mac, subnet.GatewayMAC)
+		return ErrConflict
+	}
+
 	if checkConflict {
 		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
 			return ErrConflict

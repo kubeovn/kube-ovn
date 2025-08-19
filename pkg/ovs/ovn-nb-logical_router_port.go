@@ -83,3 +83,16 @@ func (c OvnClient) LogicalRouterPortExists(name string) (bool, error) {
 	lrp, err := c.GetLogicalRouterPort(name, true)
 	return lrp != nil, err
 }
+
+func (c OvnClient) GetLogicalRouterPortMAC(name string) (string, error) {
+	lrp, err := c.GetLogicalRouterPort(name, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logical router port %s: %v", name, err)
+	}
+
+	if lrp == nil {
+		return "", fmt.Errorf("logical router port %s not found", name)
+	}
+
+	return lrp.MAC, nil
+}
