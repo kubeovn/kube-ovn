@@ -102,6 +102,39 @@ func RandomCIDR(family string) string {
 	}
 }
 
+func CIDRGatewayIP(cidr string) string {
+	ginkgo.GinkgoHelper()
+
+	if cidr == "" {
+		Failf("cidr is empty")
+		return ""
+	}
+
+	_, ipNet, err := net.ParseCIDR(cidr)
+	ExpectNoError(err)
+
+	ip := ipNet.IP
+	ones, _ := ipNet.Mask.Size()
+	if ip.To4() != nil {
+		// IPv4
+		ip = ip.To4()
+		if ones == 24 {
+			ip[3] = 1
+		} else {
+			ip[3] = 1
+		}
+		return ip.String()
+	} else if ip.To16() != nil {
+		// IPv6
+		ip = ip.To16()
+		ip[15] = 1
+		return ip.String()
+	} else {
+		Failf("invalid cidr: %s", cidr)
+		return ""
+	}
+}
+
 func sortIPs(ips []string) {
 	ginkgo.GinkgoHelper()
 
