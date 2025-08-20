@@ -2444,30 +2444,3 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 
 	return nil
 }
-
-func (c *Controller) getNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName string) (string, error) {
-	var interfaceName string
-	if networkStatus == "" {
-		return "", errors.New("no network status annotation found")
-	}
-
-	var status []map[string]interface{}
-	if err := json.Unmarshal([]byte(networkStatus), &status); err != nil {
-		klog.Errorf("failed to unmarshal network status annotation: %v", err)
-		return interfaceName, err
-	}
-
-	for _, s := range status {
-		if s["name"] == nadName {
-			if iface, ok := s["interface"].(string); ok {
-				interfaceName = iface
-			}
-			break
-		}
-	}
-	if interfaceName == "" {
-		return "", fmt.Errorf("no interface name found for secondary network %s", nadName)
-	}
-
-	return interfaceName, nil
-}

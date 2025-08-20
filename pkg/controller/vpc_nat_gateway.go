@@ -327,7 +327,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		externalNadNs, externalNadName := c.getExternalSubnetNad(gw)
 		networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
 		externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
-		externalNadIfName, err := c.getNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
+		externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
 		if err != nil {
 			klog.Errorf("failed to extract external nad interface name from annotations %v, %v", gw.Annotations, err)
 			return err
@@ -347,7 +347,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		}
 		vpcNadName, vpcNadNamespace := providerParts[0], providerParts[1]
 		vpcNadFullName := fmt.Sprintf("%s/%s", vpcNadNamespace, vpcNadName)
-		vpcNadIfName, err := c.getNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
+		vpcNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
 		if err != nil {
 			klog.Errorf("failed to extract internal nad interface name from annotations %v, %v", gw.Annotations, err)
 			return err
