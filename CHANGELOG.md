@@ -3298,6 +3298,17 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.24 (2025-08-20)
+
+ * [d9154f1e1](https://github.com/kubeovn/kube-ovn/commit/d9154f1e145d71617eb77be2790dd7f9c3a1edf7) release v1.11.24
+ * [3056aa7fc](https://github.com/kubeovn/kube-ovn/commit/3056aa7fc2d63ac8c52bd4854dd2596b4b7fc160) fix cve (#5631)
+ * [6f029865e](https://github.com/kubeovn/kube-ovn/commit/6f029865ef7371ff819368d150fa9f6a5702b309) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.11.23 (2025-08-20)
 
  * [513a68d91](https://github.com/kubeovn/kube-ovn/commit/513a68d912553e8306735d82964f0d48e2fb1f40) release v1.11.23
