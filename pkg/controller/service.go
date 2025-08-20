@@ -348,6 +348,22 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 
 	if needUpdateEndpointQueue {
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+
+		// add the svc key which has the same vip
+		vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
+		if ok {
+			allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			for _, slr := range allSlrs {
+				if slr.Spec.Vip == vip {
+					slrKey := fmt.Sprintf("%s/slr-%s", svc.Namespace, slr.Name)
+					c.addOrUpdateEndpointSliceQueue.Add(slrKey)
+				}
+			}
+		}
 	}
 
 	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
