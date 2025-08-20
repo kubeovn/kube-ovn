@@ -3298,6 +3298,28 @@
  * 张祖建
  * 袁又袁
 
+## v1.11.23 (2025-08-20)
+
+ * [513a68d91](https://github.com/kubeovn/kube-ovn/commit/513a68d912553e8306735d82964f0d48e2fb1f40) release v1.11.23
+ * [cfe30482e](https://github.com/kubeovn/kube-ovn/commit/cfe30482ee90f08e7d8dd4fff2ad238cd36c9d21) Fix mac conflict 1.11 (#5622)
+ * [b1cae7830](https://github.com/kubeovn/kube-ovn/commit/b1cae7830ffd9c93f68be92ee6b9e5c598ffd407) Fix the problem that if available ip is 0 but there is a value in excludeIPs, the fixed ip is used as the ip in excludeIPs but the error noAddressAvaliable is still reported (#5570)
+ * [e41cae0a0](https://github.com/kubeovn/kube-ovn/commit/e41cae0a0a5e3863ddd142f0b00813f818a21f88) check underlay nic exist before config external bridge (#5520)
+ * [182ce19da](https://github.com/kubeovn/kube-ovn/commit/182ce19da72c46fcf0a842af9a759a5980479e81) Revert "fix dpdk base tag (#5211)"
+ * [325a42cdc](https://github.com/kubeovn/kube-ovn/commit/325a42cdcef8ef3dbece6d9448511e607ef8dd4a) fix dpdk base tag (#5211)
+ * [6e1782f1e](https://github.com/kubeovn/kube-ovn/commit/6e1782f1ecb69a649b826ae0c3b0c82b7eaf01e1) base: use local patch files (#5208)
+ * [460015bae](https://github.com/kubeovn/kube-ovn/commit/460015baef88d6a105869f07bbf8e91d5b3fac2e) fix underlay subnet kubectl ko trace error (#2773)
+ * [2539427eb](https://github.com/kubeovn/kube-ovn/commit/2539427eb1d59d4ca9b1e1d85dba90ebc7f938e5) kubectl-ko: fix conntrack state (#5038)
+ * [b3fb9a050](https://github.com/kubeovn/kube-ovn/commit/b3fb9a0501f5da0831fd31a18a0c5ca00cc3489f) ci: remove legacy network policy e2e (#5037)
+ * [28c8af1c2](https://github.com/kubeovn/kube-ovn/commit/28c8af1c212955aca497ef6d4bbac6ced8d67189) ci: bump aquasecurity/trivy-action to 0.29.0
+ * [70c8965f8](https://github.com/kubeovn/kube-ovn/commit/70c8965f8d539ef5932ecbeab3b8046b5a7b62d6) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.22 (2025-02-19)
 
  * [f8079e29e](https://github.com/kubeovn/kube-ovn/commit/f8079e29eaac69de8fb04a894d5cb0497f071aa4) release v1.11.22
