@@ -1838,6 +1838,31 @@
  * 张祖建
  * 袁又袁
 
+## v1.12.35 (2025-08-20)
+
+ * [112588fc3](https://github.com/kubeovn/kube-ovn/commit/112588fc35bd53ea50e005d9d9ed88275ac88582) release v1.12.35
+ * [828445a4e](https://github.com/kubeovn/kube-ovn/commit/828445a4e5a2ff410f2cfa8354d373b45a517f35) dump golang 1.23.12 (#5630)
+ * [47f8c01dd](https://github.com/kubeovn/kube-ovn/commit/47f8c01dd2f753dfedef799b8c4572d215312b5b) fix static mac pod conflict with gateway mac (#5623)
+ * [2898de112](https://github.com/kubeovn/kube-ovn/commit/2898de112fad3dc30ef74f18882e89538b05690d) Fix the problem that if available ip is 0 but there is a value in excludeIPs, the fixed ip is used as the ip in excludeIPs but the error noAddressAvaliable is still reported (#5568)
+ * [9c2d11580](https://github.com/kubeovn/kube-ovn/commit/9c2d115802e8cd304c0c06be8ecd4e6d31d58326) check underlay nic exist before config external bridge (#5520)
+ * [91c2578b9](https://github.com/kubeovn/kube-ovn/commit/91c2578b946084a97e053e09b8c2167d89c0fda3) bump github.com/go-viper/mapstructure/v2 to v2.3.0
+ * [a1377c821](https://github.com/kubeovn/kube-ovn/commit/a1377c821ebba035633248986461634186097221) fix setting LR option always_learn_from_arp_request (#5426)
+ * [0b4f2a380](https://github.com/kubeovn/kube-ovn/commit/0b4f2a380e3b6fa4a0578b9cb50a15def941bf47) controller: set always_learn_from_arp_request to false only when LR is not connected to external network (#5419)
+ * [f54fc8aaa](https://github.com/kubeovn/kube-ovn/commit/f54fc8aaa109a59cab21d142394a0d7575744251) fix parsing resolv.conf when systemd-resolved is running on the host (#5423)
+ * [78fb865eb](https://github.com/kubeovn/kube-ovn/commit/78fb865ebb673c189bbc89d43d365fe3e01c751d) fix duplicate acls because of parentkey
+ * [c56cfd8a7](https://github.com/kubeovn/kube-ovn/commit/c56cfd8a71721d6a719c5356e581d36a0ef5f928) fix(slr): deleting old entries from ipmapping to avoid clogging loadbalancer (#5380)
+ * [985e294f0](https://github.com/kubeovn/kube-ovn/commit/985e294f09b1cf9ef6a6733db6cedcd221b5fb0a) fix(slr): switchlbrule doesn't support multi-homed/ipv6-first pods (#5375)
+ * [4205ff744](https://github.com/kubeovn/kube-ovn/commit/4205ff744561c5b14469dfa8fefb288b139a7788) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * clyi
+ * zhangzujian
+ * 张祖建
+
 ## v1.12.34 (2025-06-11)
 
  * [2e5315080](https://github.com/kubeovn/kube-ovn/commit/2e5315080603750409d2114108c46967057b124b) release v1.12.34
