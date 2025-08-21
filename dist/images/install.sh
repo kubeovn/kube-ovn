@@ -3737,6 +3737,9 @@ spec:
                     edgeRouterMode:
                       type: boolean
                       default: false
+                    routeServerClient:
+                      type: boolean
+                      default: false
                     enabled:
                       type: boolean
                       default: false

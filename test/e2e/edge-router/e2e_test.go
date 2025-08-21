@@ -68,7 +68,7 @@ func TestE2E(t *testing.T) {
 const (
 	kindNetwork = "kind"
 
-	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
+// controlPlaneLabel = "node-role.kubernetes.io/control-plane"
 )
 
 var clusterName string

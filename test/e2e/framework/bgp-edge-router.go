@@ -199,8 +199,13 @@ func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubn
 				},
 			},
 			BGP: apiv1.BgpEdgeRouterBGPConfig{
-				Enabled:               true,
-				ASN:                   65000,
+				Enabled:        true,
+				ASN:            65000,
+				EdgeRouterMode: true,
+				RemoteASN:      65100,
+				Neighbors: []string{
+					"192.168.1.1",
+				},
 				EnableGracefulRestart: true,
 			},
 		},
