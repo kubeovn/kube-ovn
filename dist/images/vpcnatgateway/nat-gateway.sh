@@ -2,9 +2,9 @@
 # Network interfaces configuration
 
 # Read interfaces from persistent file
-if [ -f /usr/bin/kube-ovn/nat-gateway.env ]; then
+if [ -f /etc/kube-ovn/nat-gateway.env ]; then
     # shellcheck disable=SC1091
-    source /usr/bin/kube-ovn/nat-gateway.env
+    source /etc/kube-ovn/nat-gateway.env
 fi
 # Default interfaces
 VPC_INTERFACE=${VPC_INTERFACE:-"eth0"}
@@ -78,19 +78,28 @@ function check_inited() {
 
 function init() {
     interfaces=$1
+    echo "init $interfaces"
     if [ -n "$interfaces" ]; then
+        # First, remove all spaces around commas
+        interfaces=$(echo "$interfaces" | sed 's/[[:space:]]*,[[:space:]]*/,/g')
         IFS=',' read -r -a interface_array <<< "$interfaces"
         if [ ${#interface_array[@]} -ne 2 ]; then
             >&2 echo "Error: Expected two interfaces separated by a comma (e.g., net1,net2)"
             exit 1
         fi
-        # Trim whitespace
-        VPC_INTERFACE="${interface_array[0]// /}"
-        EXTERNAL_INTERFACE="${interface_array[1]// /}"
+        
+        # Trim any remaining leading and trailing whitespace
+        VPC_INTERFACE=$(echo "${interface_array[0]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        EXTERNAL_INTERFACE=$(echo "${interface_array[1]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        # Validate interface names are not empty after trimming
+        if [ -z "$VPC_INTERFACE" ] || [ -z "$EXTERNAL_INTERFACE" ]; then
+            >&2 echo "Error: Interface names cannot be empty"
+            exit 1
+        fi
     fi
     echo "using VPC interface: $VPC_INTERFACE"
     echo "using External interface: $EXTERNAL_INTERFACE"
-
     # check if interfaces exist
     if ! ip link show "$VPC_INTERFACE" >/dev/null 2>&1; then
         >&2 echo "Error: VPC interface '$VPC_INTERFACE' not found"
@@ -101,8 +110,9 @@ function init() {
         exit 1
     fi
     # Store interfaces persistently
-    echo "VPC_INTERFACE=$VPC_INTERFACE" > /usr/bin/kube-ovn/nat-gateway.env
-    echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> /usr/bin/kube-ovn/nat-gateway.env
+    mkdir -p /etc/kube-ovn
+    echo "VPC_INTERFACE=$VPC_INTERFACE" > /etc/kube-ovn/nat-gateway.env
+    echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> /etc/kube-ovn/nat-gateway.env
 
     # run once is enough
     $iptables_save_cmd | grep DNAT_FILTER && exit 0
@@ -493,9 +503,8 @@ opt=$1
 case $opt in
     init)
         # get user interfaces if provided from input
-        interfaces=$(echo $rules | awk '{print $1}')
-        echo "init $interfaces"
-        init $interfaces
+        interfaces="$rules"
+        init "$interfaces"
         ;;
     subnet-route-add)
         echo "subnet-route-add $rules"

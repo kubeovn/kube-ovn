@@ -279,57 +279,59 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlice []*discoveryv1.EndpointSlice, pods []*v1.Pod) error {
 	// store replaced endpoints in a map
 	replacedEndpoints := make(map[string]bool)
+	// store pod information in a map
+	podMap := make(map[string]*v1.Pod, len(pods))
+	for i := range pods {
+		podMap[pods[i].Name] = pods[i]
+	}
 	// iterate over all endpoint slices
 	for i, endpoint := range endpointSlice {
 		// iterate over all endpoints in the slice
 		for j, ep := range endpoint.Endpoints {
 			if ep.TargetRef != nil && ep.TargetRef.Kind == "Pod" {
 				podName := ep.TargetRef.Name
-				for _, pod := range pods {
-					// Find the matching pod
-					if podName == pod.Name {
-						// Retrieve all the providers of the pod
-						providers, err := c.getPodProviders(pod)
-						if err != nil {
-							return err
-						}
-						if len(providers) == 0 {
-							// pod has no providers
+				if pod, ok := podMap[podName]; ok {
+					// Retrieve all the providers of the pod
+					providers, err := c.getPodProviders(pod)
+					if err != nil {
+						return err
+					}
+					if len(providers) == 0 {
+						// pod has no providers
+						continue
+					}
+					// Get the network attachment definition associated IP address
+					// If multiple providers exist, use the first one.
+					ipAddress := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providers[0])]
+					if ipAddress == "" {
+						klog.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
+						return fmt.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
+					}
+					// Update the matching endpoint with the secondary IP address
+					found := false
+					for k, address := range ep.Addresses {
+						// skip if this specific endpoint has already been replaced
+						if replacedEndpoints[address] {
 							continue
 						}
-						// Get the network attachment definition associated IP address
-						// If multiple providers exist, use the first one.
-						ipAddress := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providers[0])]
-						if ipAddress == "" {
-							klog.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
-							return fmt.Errorf("failed to get pod %s/%s ip address", pod.Namespace, pod.Name)
+						// Endpoints received here are from cache and can be either primary or secondary network IP address
+						// Replace the primary network IP address with the secondary network IP address
+						// Secondary IP address is already seen when the endpoint has been already created/updated
+						if address == pod.Status.PodIP || address == ipAddress {
+							klog.Infof("updating pod %s/%s ip address %s to %s", pod.Namespace, pod.Name, pod.Status.PodIP, ipAddress)
+							// update the endpoint IP address with the secondary IP address
+							endpointSlice[i].Endpoints[j].Addresses[k] = ipAddress
+							// mark this specific endpoint position as replaced
+							replacedEndpoints[ipAddress] = true
+							found = true
+							break
 						}
-						// Update the matching endpoint with the secondary IP address
-						found := false
-						for k, address := range ep.Addresses {
-							// skip if this specific endpoint has already been replaced
-							if replacedEndpoints[address] {
-								continue
-							}
-							// Endpoints received here are from cache and can be either primary or secondary network IP address
-							// Replace the primary network IP address with the secondary network IP address
-							// Secondary IP address is already seen when the endpoint has been already created/updated
-							if address == pod.Status.PodIP || address == ipAddress {
-								klog.Infof("updating pod %s/%s ip address %s to %s", pod.Namespace, pod.Name, pod.Status.PodIP, ipAddress)
-								// update the endpoint IP address with the secondary IP address
-								endpointSlice[i].Endpoints[j].Addresses[k] = ipAddress
-								// mark this specific endpoint position as replaced
-								replacedEndpoints[ipAddress] = true
-								found = true
-								break
-							}
-						}
-						// We should always find the pod IP address in the endpoint slice
-						if !found {
-							return fmt.Errorf("failed to find pod %s/%s ip address %s in endpoint slice %s", pod.Namespace, pod.Name, pod.Status.PodIP, endpointSlice[i].Name)
-						}
-						break
 					}
+					// We should always find the pod IP address in the endpoint slice
+					if !found {
+						return fmt.Errorf("failed to find pod %s/%s ip address %s in endpoint slice %s", pod.Namespace, pod.Name, pod.Status.PodIP, endpointSlice[i].Name)
+					}
+					break
 				}
 			}
 		}
