@@ -114,22 +114,20 @@ func CIDRGatewayIP(cidr string) string {
 	ExpectNoError(err)
 
 	ip := ipNet.IP
-	ones, _ := ipNet.Mask.Size()
-	if ip.To4() != nil {
+	// ones, _ := ipNet.Mask.Size()
+	switch {
+	case ip.To4() != nil:
 		// IPv4
 		ip = ip.To4()
-		if ones == 24 {
-			ip[3] = 1
-		} else {
-			ip[3] = 1
-		}
+		ip[3] = 1
+
 		return ip.String()
-	} else if ip.To16() != nil {
-		// IPv6
+	case ip.To16() == nil:
+		// IPv4-mapped IPv6
 		ip = ip.To16()
 		ip[15] = 1
 		return ip.String()
-	} else {
+	default:
 		Failf("invalid cidr: %s", cidr)
 		return ""
 	}
