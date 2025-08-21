@@ -42,7 +42,7 @@ func GetNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName st
 	}
 
 	for _, s := range status {
-		if s["name"].(string) == nadName {
+		if name, ok := s["name"].(string); ok && name == nadName {
 			if iface, ok := s["interface"].(string); ok {
 				interfaceName = iface
 			}
