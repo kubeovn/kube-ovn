@@ -635,7 +635,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	}
 	// Get all the CIDRs that are already in the annotation using subnet providers
 	for annotation, value := range pod.Annotations {
-		if strings.HasPrefix(annotation, "vpc_cidrs") {
+		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
 			var existingCIDR []string
 			if err = json.Unmarshal([]byte(value), &existingCIDR); err != nil {
 				klog.Error(err)
@@ -678,6 +678,21 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	// For each subnet provider, generate vpc cidr annotation
 	patch := util.KVPatch{}
+
+	// Track existing vpc_cidrs annotations to identify stale ones
+	existingProviders := make(map[string]bool)
+	for annotation := range pod.Annotations {
+		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
+			// Extract provider name from annotation key: <provider>.kubernetes.io/vpc_cidrs
+			parts := strings.Split(annotation, ".kubernetes.io/vpc_cidrs")
+			if len(parts) == 2 && parts[1] == "" {
+				provider := parts[0]
+				existingProviders[provider] = true
+			}
+		}
+	}
+
+	// Add/update annotations for current providers
 	for provider, cidrs := range newProviderCIDRMap {
 		cidrBytes, err := json.Marshal(cidrs)
 		if err != nil {
@@ -685,12 +700,24 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 			return err
 		}
 		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = string(cidrBytes)
+		// Mark this provider as still active
+		delete(existingProviders, provider)
 	}
 
-	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
-		err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		klog.Error(err)
-		return err
+	// Remove annotations for providers that are no longer associated with the VPC
+	for provider := range existingProviders {
+		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = nil
+		klog.V(3).Infof("Removing stale vpc_cidrs annotation for provider %s from pod %s/%s", provider, pod.Namespace, pod.Name)
+	}
+
+	// Only patch if there are changes to make
+	if len(patch) > 0 {
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.V(3).Infof("Successfully patched %d vpc_cidrs annotations on pod %s/%s", len(patch), pod.Namespace, pod.Name)
 	}
 
 	return nil
