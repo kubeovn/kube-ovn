@@ -62,7 +62,7 @@ func TestE2E(t *testing.T) {
 const (
 	kindNetwork = "kind"
 
-	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
+	// controlPlaneLabel = "node-role.kubernetes.io/control-plane"
 )
 
 var clusterName string
@@ -399,7 +399,7 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	}
 }
 
-func vegTest(f *framework.Framework, bfd bool, bgp bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32) {
+func vegTest(f *framework.Framework, bfd, bgp bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32) {
 	ginkgo.GinkgoHelper()
 
 	namespaceName := f.Namespace.Name
