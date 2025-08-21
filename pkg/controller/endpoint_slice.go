@@ -134,7 +134,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
 	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
 	// TODO: Identify how endpoints are constructed, by default, endpoints has IP address of eth0 inteface
-	if c.config.EnableNonPrimaryCNI {
+	if c.config.EnableNonPrimaryCNI && serviceHasSelector(svc) {
 		var pods []*v1.Pod
 		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
 			klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
@@ -319,10 +319,14 @@ func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlice []*d
 						// Secondary IP address is already seen when the endpoint has been already created/updated
 						if address == pod.Status.PodIP || address == ipAddress {
 							klog.Infof("updating pod %s/%s ip address %s to %s", pod.Namespace, pod.Name, pod.Status.PodIP, ipAddress)
+							// deep copy the EndpointSlice object before modifying
+							copiedEndpointSlice := endpointSlice[i].DeepCopy()
 							// update the endpoint IP address with the secondary IP address
-							endpointSlice[i].Endpoints[j].Addresses[k] = ipAddress
+							copiedEndpointSlice.Endpoints[j].Addresses[k] = ipAddress
 							// mark this specific endpoint position as replaced
 							replacedEndpoints[ipAddress] = true
+							// replace the original slice with the modified copy
+							endpointSlice[i] = copiedEndpointSlice
 							found = true
 							break
 						}
