@@ -61,17 +61,17 @@ func (c *BgpEdgeRouterClient) Get(name string) *apiv1.BgpEdgeRouter {
 // Create creates a new bgp-edge-router according to the framework specifications
 func (c *BgpEdgeRouterClient) Create(router *apiv1.BgpEdgeRouter) *apiv1.BgpEdgeRouter {
 	ginkgo.GinkgoHelper()
-	r, err := c.BgpEdgeRouterInterface.Create(context.TODO(), router, metav1.CreateOptions{})
+	g, err := c.BgpEdgeRouterInterface.Create(context.TODO(), router, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating bgp-edge-router")
-	return r.DeepCopy()
+	return g.DeepCopy()
 }
 
 // CreateSync creates a new bgp-edge-router according to the framework specifications, and waits for it to be ready.
 func (c *BgpEdgeRouterClient) CreateSync(router *apiv1.BgpEdgeRouter) *apiv1.BgpEdgeRouter {
 	ginkgo.GinkgoHelper()
 	_ = c.Create(router)
-	return c.WaitUntil(router.Name, func(r *apiv1.BgpEdgeRouter) (bool, error) {
-		return r.Ready(), nil
+	return c.WaitUntil(router.Name, func(g *apiv1.BgpEdgeRouter) (bool, error) {
+		return g.Ready(), nil
 	}, "Ready", 2*time.Second, timeout)
 }
 
@@ -107,8 +107,8 @@ func (c *BgpEdgeRouterClient) Patch(original, modified *apiv1.BgpEdgeRouter) *ap
 func (c *BgpEdgeRouterClient) PatchSync(original, modified *apiv1.BgpEdgeRouter) *apiv1.BgpEdgeRouter {
 	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
-	return c.WaitUntil(original.Name, func(r *apiv1.BgpEdgeRouter) (bool, error) {
-		return r.Ready(), nil
+	return c.WaitUntil(original.Name, func(g *apiv1.BgpEdgeRouter) (bool, error) {
+		return g.Ready(), nil
 	}, "Ready", 2*time.Second, timeout)
 }
 
@@ -130,7 +130,7 @@ func (c *BgpEdgeRouterClient) DeleteSync(name string) {
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
-func (c *BgpEdgeRouterClient) WaitUntil(name string, cond func(r *apiv1.BgpEdgeRouter) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.BgpEdgeRouter {
+func (c *BgpEdgeRouterClient) WaitUntil(name string, cond func(g *apiv1.BgpEdgeRouter) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.BgpEdgeRouter {
 	var router *apiv1.BgpEdgeRouter
 	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, false, func(_ context.Context) (bool, error) {
 		Logf("Waiting for bgp-edge-router %s/%s to meet condition %q", c.namespace, name, condDesc)
@@ -168,12 +168,12 @@ func (c *BgpEdgeRouterClient) WaitToDisappear(name string, _, timeout time.Durat
 		return svc, err
 	})).WithTimeout(timeout).Should(gomega.BeNil())
 	if err != nil {
-		return fmt.Errorf("expected bgp-edge-router %s/%s to not be found: %w", c.namespace, name, err)
+		return fmt.Errorf("expected vpc-egress-gateway %s/%s to not be found: %w", c.namespace, name, err)
 	}
 	return nil
 }
 
-func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubnet, externalSubnet string) *apiv1.BgpEdgeRouter {
+func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubnet, externalSubnet, forwardSubnet string) *apiv1.BgpEdgeRouter {
 	return &apiv1.BgpEdgeRouter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -184,6 +184,30 @@ func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubn
 			VPC:            vpc,
 			InternalSubnet: internalSubnet,
 			ExternalSubnet: externalSubnet,
+			BFD: apiv1.BgpEdgeRouterBFDConfig{
+				Enabled:    true,
+				MinRX:      300,
+				MinTX:      300,
+				Multiplier: 3,
+			},
+			Policies: []apiv1.BgpEdgeRouterPolicy{
+				{
+					SNAT: false,
+					Subnets: []string{
+						forwardSubnet,
+					},
+				},
+			},
+			BGP: apiv1.BgpEdgeRouterBGPConfig{
+				Enabled:        true,
+				ASN:            65000,
+				EdgeRouterMode: true,
+				RemoteASN:      65100,
+				Neighbors: []string{
+					"192.168.1.1",
+				},
+				EnableGracefulRestart: true,
+			},
 		},
 	}
 }

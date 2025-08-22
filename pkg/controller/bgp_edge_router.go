@@ -1143,7 +1143,7 @@ func bgpEdgeRouterContainerBGP(speakerImage, routerName string, speakerParams *k
 				Name: "MULTI_NET_STATUS",
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.annotations['k8s.v1.cni.cncf.io/networks-status']",
+						FieldPath: "metadata.annotations['k8s.v1.cni.cncf.io/network-status']",
 					},
 				},
 			},
