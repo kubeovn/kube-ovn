@@ -173,7 +173,7 @@ func (c *BgpEdgeRouterClient) WaitToDisappear(name string, _, timeout time.Durat
 	return nil
 }
 
-func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubnet, externalSubnet string) *apiv1.BgpEdgeRouter {
+func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubnet, externalSubnet, forwardSubnet string) *apiv1.BgpEdgeRouter {
 	return &apiv1.BgpEdgeRouter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -194,7 +194,7 @@ func MakeBgpEdgeRouter(namespace, name, vpc string, replicas int32, internalSubn
 				{
 					SNAT: false,
 					Subnets: []string{
-						internalSubnet,
+						forwardSubnet,
 					},
 				},
 			},

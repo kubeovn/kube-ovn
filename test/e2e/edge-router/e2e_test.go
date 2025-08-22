@@ -2,6 +2,7 @@ package multus
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"maps"
@@ -40,6 +41,51 @@ import (
 	// "github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
+
+type GlobalConfig struct {
+	ASN             uint32   `json:"asn"`
+	RouterID        string   `json:"router_id"`
+	ListenPort      int      `json:"listen_port"`
+	ListenAddresses []string `json:"listen_addresses"`
+}
+
+type NeighborMessages struct {
+	Received struct {
+		Notification uint64 `json:"notification,omitempty"`
+		Open         uint64 `json:"open,omitempty"`
+		Update       uint64 `json:"update,omitempty"`
+		Keepalive    uint64 `json:"keepalive,omitempty"`
+		Total        uint64 `json:"total,omitempty"`
+	} `json:"received"`
+	Sent struct {
+		Open      uint64 `json:"open,omitempty"`
+		Update    uint64 `json:"update,omitempty"`
+		Keepalive uint64 `json:"keepalive,omitempty"`
+		Total     uint64 `json:"total,omitempty"`
+	} `json:"sent"`
+}
+
+type NeighborConfig struct {
+	LocalASN        uint32 `json:"local_asn"`
+	NeighborAddress string `json:"neighbor_address"`
+	PeerASN         uint32 `json:"peer_asn"`
+	Type            int    `json:"type"`
+}
+
+type NeighborState struct {
+	LocalASN        uint32           `json:"local_asn"`
+	Messages        NeighborMessages `json:"messages"`
+	NeighborAddress string           `json:"neighbor_address"`
+	PeerASN         uint32           `json:"peer_asn"`
+	Type            int              `json:"type"`
+	SessionState    int              `json:"session_state"`
+	RouterID        string           `json:"router_id,omitempty"`
+}
+
+type NeighborEntry struct {
+	Conf  NeighborConfig `json:"conf"`
+	State NeighborState  `json:"state"`
+}
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -124,142 +170,6 @@ var _ = framework.Describe("[group:ber]", func() {
 		replicas = min(int32(len(schedulableNodes)), 3)
 	})
 
-	// framework.ConformanceIt("should be able to create edge-router with both underlay and overlay subnet", func() {
-	// 	provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
-
-	// 	ginkgo.By("Creating network attachment definition " + nadName)
-	// 	nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Deleting network attachment definition " + nadName)
-	// 		nadClient.Delete(nadName)
-	// 	})
-	// 	nad = nadClient.Create(nad)
-	// 	framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
-
-	// 	dockerNetworkName := "net-" + framework.RandomSuffix()
-	// 	ginkgo.By("Creating docker network " + dockerNetworkName)
-	// 	dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, true, true)
-	// 	framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Deleting docker network " + dockerNetworkName)
-	// 		err = docker.NetworkRemove(dockerNetworkName)
-	// 		framework.ExpectNoError(err, "removing docker network "+dockerNetworkName)
-	// 	})
-
-	// 	ginkgo.By("Getting kind nodes")
-	// 	kindNodes, err := kind.ListNodes(clusterName, "")
-	// 	framework.ExpectNoError(err, "getting nodes in kind cluster")
-	// 	framework.ExpectNotEmpty(nodes)
-
-	// 	ginkgo.By("Connecting nodes to the docker network")
-	// 	err = kind.NetworkConnect(dockerNetwork.ID, kindNodes)
-	// 	framework.ExpectNoError(err, "connecting nodes to network "+dockerNetworkName)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		err = kind.NetworkDisconnect(dockerNetwork.ID, kindNodes)
-	// 		framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
-	// 	})
-
-	// 	ginkgo.By("Getting node links that belong to the docker network")
-	// 	kindNodes, err = kind.ListNodes(clusterName, "")
-	// 	framework.ExpectNoError(err, "getting nodes in kind cluster")
-	// 	linkMap := make(map[string]*iproute.Link, len(nodes))
-	// 	for _, node := range kindNodes {
-	// 		links, err := node.ListLinks()
-	// 		framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
-
-	// 		for _, link := range links {
-	// 			if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
-	// 				linkMap[node.Name()] = &link
-	// 				break
-	// 			}
-	// 		}
-	// 		framework.ExpectHaveKey(linkMap, node.Name())
-	// 	}
-
-	// 	providerNetworkName := "pn-" + framework.RandomSuffix()
-	// 	ginkgo.By("Creating provider network " + providerNetworkName)
-	// 	providerNetworkClient := f.ProviderNetworkClient()
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Deleting provider network " + providerNetworkName)
-	// 		providerNetworkClient.DeleteSync(providerNetworkName)
-	// 	})
-	// 	var defaultInterface string
-	// 	customInterfaces := make(map[string][]string, 0)
-	// 	for node, link := range linkMap {
-	// 		if defaultInterface == "" {
-	// 			defaultInterface = link.IfName
-	// 		} else if link.IfName != defaultInterface {
-	// 			customInterfaces[link.IfName] = append(customInterfaces[link.IfName], node)
-	// 		}
-	// 	}
-	// 	pn := framework.MakeProviderNetwork(providerNetworkName, false, defaultInterface, customInterfaces, nil)
-	// 	_ = providerNetworkClient.CreateSync(pn)
-
-	// 	vlanName := "vlan-" + framework.RandomSuffix()
-	// 	ginkgo.By("Creating vlan " + vlanName)
-	// 	vlanClient := f.VlanClient()
-	// 	vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-	// 	_ = vlanClient.Create(vlan)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Deleting vlan " + vlanName)
-	// 		vlanClient.Delete(vlanName)
-	// 	})
-
-	// 	ginkgo.By("Getting docker network " + dockerNetworkName)
-	// 	network, err := docker.NetworkInspect(dockerNetworkName)
-	// 	framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
-
-	// 	externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, f.HasIPv4(), f.HasIPv6())
-	// 	externalSubnet.Spec.Provider = provider
-	// 	externalSubnet.Spec.Vlan = vlanName
-
-	// 	ginkgo.By("Creating underlay subnet " + externalSubnetName)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Deleting external subnet " + externalSubnetName)
-	// 		subnetClient.DeleteSync(externalSubnetName)
-	// 	})
-	// 	_ = subnetClient.CreateSync(externalSubnet)
-
-	// 	vpcName := util.DefaultVpc
-	// 	cidr := framework.RandomCIDR(f.ClusterIPFamily)
-	// 	bfdIP := framework.RandomIPs(cidr, ";", 1)
-	// 	ginkgo.By("Enabling BFD Port with IP " + bfdIP + " for VPC " + vpcName)
-	// 	vpc := vpcClient.Get(vpcName)
-	// 	patchedVpc := vpc.DeepCopy()
-	// 	patchedVpc.Spec.BFDPort = &apiv1.BFDPort{
-	// 		Enabled: true,
-	// 		IP:      bfdIP,
-	// 		NodeSelector: &metav1.LabelSelector{
-	// 			MatchExpressions: []metav1.LabelSelectorRequirement{{
-	// 				Key:      controlPlaneLabel,
-	// 				Operator: metav1.LabelSelectorOpExists,
-	// 			}},
-	// 		},
-	// 	}
-	// 	updatedVpc := vpcClient.PatchSync(vpc, patchedVpc, 10*time.Second)
-	// 	ginkgo.DeferCleanup(func() {
-	// 		ginkgo.By("Disabling BFD Port for VPC " + vpcName)
-	// 		patchedVpc := updatedVpc.DeepCopy()
-	// 		patchedVpc.Spec.BFDPort = nil
-	// 		updatedVpc := vpcClient.PatchSync(updatedVpc, patchedVpc, 10*time.Second)
-	// 		framework.ExpectEmpty(updatedVpc.Status.BFDPort.Name)
-	// 		framework.ExpectEmpty(updatedVpc.Status.BFDPort.Nodes)
-	// 	})
-
-	// 	framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Name)
-	// 	for _, node := range nodes {
-	// 		if slices.Contains(updatedVpc.Status.BFDPort.Nodes, node.Name) {
-	// 			framework.ExpectHaveKey(node.Labels, controlPlaneLabel)
-	// 		} else {
-	// 			framework.ExpectNotHaveKey(node.Labels, controlPlaneLabel)
-	// 		}
-	// 	}
-
-	// 	// TODO: check ovn LRP
-
-	// 	berTest(f, true, provider, nadName, vpcName, vpc.Status.DefaultLogicalSwitch, externalSubnetName, replicas)
-	// })
-
 	framework.ConformanceIt("should be able to create edge-router with macvlan", func() {
 		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
 
@@ -273,16 +183,26 @@ var _ = framework.Describe("[group:ber]", func() {
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
 		vpcName := "vpc-" + framework.RandomSuffix()
-		ginkgo.By("Creating vpc " + vpcName)
+		vpcCidr := framework.RandomCIDR(f.ClusterIPFamily)
+		bfdIP := framework.RandomIPs(vpcCidr, ";", 1)
+		ginkgo.By("Creating vpc " + vpcName + ", enabling BFD Port with IP " + bfdIP + " for VPC " + vpcName)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting vpc " + vpcName)
 			vpcClient.DeleteSync(vpcName)
 		})
-		vpc := &apiv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: vpcName}}
+		vpc := &apiv1.Vpc{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: vpcName,
+			},
+			Spec: apiv1.VpcSpec{
+				BFDPort: &apiv1.BFDPort{
+					Enabled: true,
+					IP:      bfdIP,
+				},
+			},
+		}
 		vpc = vpcClient.CreateSync(vpc)
-		framework.ExpectEmpty(vpc.Status.BFDPort.Name)
-		framework.ExpectEmpty(vpc.Status.BFDPort.IP)
-		framework.ExpectEmpty(vpc.Status.BFDPort.Nodes)
+		framework.ExpectNotEmpty(vpc.Status.BFDPort.Name)
 
 		internalSubnetName := "int-" + framework.RandomSuffix()
 		ginkgo.By("Creating internal subnet " + internalSubnetName)
@@ -291,7 +211,7 @@ var _ = framework.Describe("[group:ber]", func() {
 			subnetClient.DeleteSync(internalSubnetName)
 		})
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
-		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", vpcName, nad.Name, nil, nil, nil)
+		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(internalSubnet)
 
 		ginkgo.By("Getting docker network " + kindNetwork)
@@ -308,7 +228,7 @@ var _ = framework.Describe("[group:ber]", func() {
 		})
 		_ = subnetClient.CreateSync(externalSubnet)
 
-		berTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas)
+		berTest(f, true, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas)
 	})
 })
 
@@ -434,6 +354,76 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	}
 }
 
+func parseGobgpOutput(output string) (*GlobalConfig, []NeighborEntry, error) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+
+	var globalJSON, neighborJSON string
+	var foundGlobal bool
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// global config starts with {
+		if strings.HasPrefix(line, "{") && !foundGlobal {
+			globalJSON = line
+			foundGlobal = true
+		} else if strings.HasPrefix(line, "[") {
+			// neighbor config starts with [
+			neighborJSON = line
+		}
+	}
+
+	if globalJSON == "" || neighborJSON == "" {
+		return nil, nil, fmt.Errorf("failed to extract JSON parts from output")
+	}
+
+	// GlobalConfig
+	var global GlobalConfig
+	if err := json.Unmarshal([]byte(globalJSON), &global); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal global config: %v", err)
+	}
+
+	// NeighborEntry
+	var neighbors []NeighborEntry
+	if err := json.Unmarshal([]byte(neighborJSON), &neighbors); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal neighbor config: %v", err)
+	}
+
+	return &global, neighbors, nil
+}
+
+func checkBgpInitSetting(ber *apiv1.BgpEdgeRouter, output string) {
+	ginkgo.GinkgoHelper()
+
+	global, neighbors, err := parseGobgpOutput(output)
+	framework.ExpectNoError(err, "parsing gobgp output")
+
+	remoteAsn := ber.Spec.BGP.RemoteASN
+
+	framework.ExpectEqual(global.ASN, ber.Spec.BGP.ASN, "global ASN mismatch")
+	if ber.Spec.BGP.RouterID != "" {
+		framework.ExpectEqual(global.RouterID, ber.Spec.BGP.RouterID, "global Router ID mismatch")
+	}
+	// TODO check when ber.Spec.BGP.RouterID is empty
+
+	for _, berNeighborAddr := range ber.Spec.BGP.Neighbors {
+		matchFound := false
+		for _, neighbor := range neighbors {
+			if neighbor.Conf.NeighborAddress == berNeighborAddr {
+				matchFound = true
+				framework.ExpectEqual(neighbor.Conf.PeerASN, remoteAsn, "neighbor %s peer ASN %d mismatch", berNeighborAddr, remoteAsn)
+				break
+			}
+		}
+		if !matchFound {
+			framework.Failf("neighbor address %s not found", berNeighborAddr)
+		}
+	}
+}
+
 func berTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32) {
 	ginkgo.GinkgoHelper()
 
@@ -457,37 +447,14 @@ func berTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 
 	berName := "ber-" + framework.RandomSuffix()
 	ginkgo.By("Creating bgp edge router " + berName)
-	ber := framework.MakeBgpEdgeRouter(namespaceName, berName, vpcName, replicas, internalSubnetName, externalSubnetName)
+	ber := framework.MakeBgpEdgeRouter(namespaceName, berName, vpcName, replicas, internalSubnetName, externalSubnetName, forwardSubnetName)
 	if rand.Int32N(2) == 0 {
 		ber.Spec.Prefix = fmt.Sprintf("e2e-%s-", framework.RandomSuffix())
 	}
 	ber.Spec.BFD.Enabled = bfd
-	ber.Spec.Policies = []apiv1.BgpEdgeRouterPolicy{{
-		SNAT:     false,
-		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
-	}}
 	if vpcName == util.DefaultVpc {
 		ber.Spec.VPC = "" // test whether the ber works without specifying VPC
 		ber.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
-	}
-	if util.IsOvnProvider(provider) {
-		ber.Spec.Selectors = []apiv1.BgpEdgeRouterSelector{{
-			NamespaceSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					corev1.LabelMetadataName: namespaceName,
-				},
-			},
-			PodSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"snat": strconv.FormatBool(true),
-				},
-			},
-		}}
-	} else {
-		ber.Spec.Policies = append(ber.Spec.Policies, apiv1.BgpEdgeRouterPolicy{
-			SNAT:    true,
-			Subnets: []string{forwardSubnetName},
-		})
 	}
 
 	ginkgo.DeferCleanup(func() {
@@ -520,8 +487,19 @@ func berTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		podNodes = append(podNodes, pod.Spec.NodeName)
 		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
+		// exec and list
+		ginkgo.By("Checking bgp setting " + pod.Name)
+		cmd := fmt.Sprintf("gobgp global -j && gobgp neighbor -j")
+		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
+		output := e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, cmd)
+		checkBgpInitSetting(ber, output)
 	}
 	framework.ExpectConsistOf(ber.Status.Workload.Nodes, podNodes)
+
+	// TODO
+	// Add route advertisement
+
+	// Add bgp policy
 
 	svrPodName := "svr-" + framework.RandomSuffix()
 	ginkgo.By("Creating netexec server pod " + svrPodName)
