@@ -359,7 +359,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 		for _, slr := range allSlrs {
 			if slr.Spec.Vip == vip {
-				slrKey := fmt.Sprintf("%s/slr-%s", svc.Namespace, slr.Name)
+slrKey := fmt.Sprintf("%s/slr-%s", slr.Spec.Namespace, slr.Name)
 				c.addOrUpdateEndpointSliceQueue.Add(slrKey)
 			}
 		}
