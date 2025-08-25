@@ -390,6 +390,9 @@ func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip
 			klog.Error(err)
 		} else if ipCR.Spec.NodeName != csh.Config.NodeName {
 			ipCR := ipCR.DeepCopy()
+			if ipCR.Labels == nil {
+				ipCR.Labels = map[string]string{}
+			}
 			ipCR.Spec.NodeName = csh.Config.NodeName
 			ipCR.Spec.AttachIPs = []string{}
 			ipCR.Labels[subnet] = ""
