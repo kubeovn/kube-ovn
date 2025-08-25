@@ -107,7 +107,23 @@ func (c *Controller) enqueueUpdateVpcNatGw(_, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcNatGateway)).String()
+	var gw *kubeovnv1.VpcNatGateway
+	switch t := obj.(type) {
+	case *kubeovnv1.VpcNatGateway:
+		gw = t
+	case cache.DeletedFinalStateUnknown:
+		g, ok := t.Obj.(*kubeovnv1.VpcNatGateway)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		gw = g
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 }

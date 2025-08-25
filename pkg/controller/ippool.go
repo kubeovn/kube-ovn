@@ -24,7 +24,22 @@ func (c *Controller) enqueueAddIPPool(obj any) {
 }
 
 func (c *Controller) enqueueDeleteIPPool(obj any) {
-	ippool := obj.(*kubeovnv1.IPPool)
+	var ippool *kubeovnv1.IPPool
+	switch t := obj.(type) {
+	case *kubeovnv1.IPPool:
+		ippool = t
+	case cache.DeletedFinalStateUnknown:
+		i, ok := t.Obj.(*kubeovnv1.IPPool)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		ippool = i
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.V(3).Infof("enqueue delete ippool %s", cache.MetaObjectToName(ippool).String())
 	c.deleteIPPoolQueue.Add(ippool)
 }

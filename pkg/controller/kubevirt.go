@@ -36,7 +36,23 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVM(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachine)).String()
+	var vm *kubevirtv1.VirtualMachine
+	switch t := obj.(type) {
+	case *kubevirtv1.VirtualMachine:
+		vm = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubevirtv1.VirtualMachine)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vm = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(vm).String()
 	klog.Infof("enqueue add VM %s", key)
 	c.deleteVMQueue.Add(key)
 }
