@@ -42,7 +42,23 @@ func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
+	var gw *kubeovnv1.VpcEgressGateway
+	switch t := obj.(type) {
+	case *kubeovnv1.VpcEgressGateway:
+		gw = t
+	case cache.DeletedFinalStateUnknown:
+		g, ok := t.Obj.(*kubeovnv1.VpcEgressGateway)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		gw = g
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)
 }

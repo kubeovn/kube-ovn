@@ -50,7 +50,23 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesFip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
+	var fip *kubeovnv1.IptablesFIPRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		fip = t
+	case cache.DeletedFinalStateUnknown:
+		f, ok := t.Obj.(*kubeovnv1.IptablesFIPRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		fip = f
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(fip).String()
 	klog.V(3).Infof("enqueue delete iptables fip %s", key)
 	c.delIptablesFipQueue.Add(key)
 }
@@ -90,7 +106,23 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
+	var dnat *kubeovnv1.IptablesDnatRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesDnatRule:
+		dnat = t
+	case cache.DeletedFinalStateUnknown:
+		d, ok := t.Obj.(*kubeovnv1.IptablesDnatRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		dnat = d
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(dnat).String()
 	klog.V(3).Infof("enqueue delete iptables dnat %s", key)
 	c.delIptablesDnatRuleQueue.Add(key)
 }
@@ -125,7 +157,23 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesSnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
+	var snat *kubeovnv1.IptablesSnatRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesSnatRule:
+		snat = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.IptablesSnatRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		snat = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(snat).String()
 	klog.V(3).Infof("enqueue delete iptables snat %s", key)
 	c.delIptablesSnatRuleQueue.Add(key)
 }

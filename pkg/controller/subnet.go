@@ -39,7 +39,22 @@ func (c *Controller) enqueueAddSubnet(obj any) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	subnet := obj.(*kubeovnv1.Subnet)
+	var subnet *kubeovnv1.Subnet
+	switch t := obj.(type) {
+	case *kubeovnv1.Subnet:
+		subnet = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.Subnet)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		subnet = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
 	c.deleteSubnetQueue.Add(subnet)
 }

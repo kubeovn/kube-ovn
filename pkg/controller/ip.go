@@ -98,7 +98,22 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIP(obj any) {
-	ipObj := obj.(*kubeovnv1.IP)
+	var ipObj *kubeovnv1.IP
+	switch t := obj.(type) {
+	case *kubeovnv1.IP:
+		ipObj = t
+	case cache.DeletedFinalStateUnknown:
+		ip, ok := t.Obj.(*kubeovnv1.IP)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		ipObj = ip
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}

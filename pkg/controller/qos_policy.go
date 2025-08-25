@@ -58,7 +58,23 @@ func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelQoSPolicy(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
+	var qos *kubeovnv1.QoSPolicy
+	switch t := obj.(type) {
+	case *kubeovnv1.QoSPolicy:
+		qos = t
+	case cache.DeletedFinalStateUnknown:
+		q, ok := t.Obj.(*kubeovnv1.QoSPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		qos = q
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(qos).String()
 	klog.V(3).Infof("enqueue delete qos policy %s", key)
 	c.delQoSPolicyQueue.Add(key)
 }
