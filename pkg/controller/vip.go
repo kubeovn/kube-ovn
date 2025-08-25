@@ -417,6 +417,9 @@ func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 		return err
 	}
 	vip := oriVip.DeepCopy()
+	if vip.Labels == nil {
+		vip.Labels = map[string]string{}
+	}
 	var op string
 
 	if vip.Labels[util.IPReservedLabel] != "" {

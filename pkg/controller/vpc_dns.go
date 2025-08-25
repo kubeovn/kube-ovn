@@ -402,6 +402,9 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 			if err != nil {
 				klog.Errorf("failed to marshal routes %+v: %v", routes, err)
 			} else {
+				if dp.Spec.Template.Annotations == nil {
+					dp.Spec.Template.Annotations = map[string]string{}
+				}
 				dp.Spec.Template.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, nadProvider)] = string(buf)
 			}
 			break
