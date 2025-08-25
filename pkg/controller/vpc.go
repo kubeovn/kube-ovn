@@ -79,7 +79,22 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelVpc(obj any) {
-	vpc := obj.(*kubeovnv1.Vpc)
+	var vpc *kubeovnv1.Vpc
+	switch t := obj.(type) {
+	case *kubeovnv1.Vpc:
+		vpc = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubeovnv1.Vpc)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vpc = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	if _, ok := vpc.Labels[util.VpcExternalLabel]; !vpc.Status.Default || !ok {
 		klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
 		c.delVpcQueue.Add(vpc)

@@ -28,13 +28,29 @@ func (c *Controller) enqueueAddNamespace(obj any) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj any) {
+	var ns *v1.Namespace
+	switch t := obj.(type) {
+	case *v1.Namespace:
+		ns = t
+	case cache.DeletedFinalStateUnknown:
+		n, ok := t.Obj.(*v1.Namespace)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		ns = n
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	if c.config.EnableNP {
-		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
+		for _, np := range c.namespaceMatchNetworkPolicies(ns) {
 			c.updateNpQueue.Add(np)
 		}
 	}
 	if c.config.EnableANP {
-		c.updateAnpsByLabelsMatch(obj.(*v1.Namespace).Labels, nil)
+		c.updateAnpsByLabelsMatch(ns.Labels, nil)
 	}
 }
 
