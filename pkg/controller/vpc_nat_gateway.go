@@ -952,7 +952,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
 	}
 
-	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
+	if err = setPodRoutesAnnotation(annotations, subnetProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

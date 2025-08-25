@@ -35,7 +35,7 @@ func GetNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName st
 		return "", errors.New("no network status annotation found")
 	}
 
-	var status []map[string]interface{}
+	var status []map[string]any
 	if err := json.Unmarshal([]byte(networkStatus), &status); err != nil {
 		klog.Errorf("failed to unmarshal network status annotation: %v", err)
 		return interfaceName, err
