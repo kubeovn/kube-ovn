@@ -332,6 +332,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 
 	if oldSvc != nil {
 		newSvc = oldSvc.DeepCopy()
+		if newSvc.Annotations == nil {
+			newSvc.Annotations = map[string]string{}
+		}
 		newSvc.Name = name
 		newSvc.Namespace = slr.Spec.Namespace
 		newSvc.Annotations[util.SwitchLBRuleVipsAnnotation] = slr.Spec.Vip
