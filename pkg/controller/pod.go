@@ -240,7 +240,21 @@ func (c *Controller) enqueueAddPod(obj any) {
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
-	p := obj.(*v1.Pod)
+	var p *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		p = t
+	case cache.DeletedFinalStateUnknown:
+		pod, ok := t.Obj.(*v1.Pod)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		p = pod
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -253,8 +267,8 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(obj.(*v1.Pod).Namespace)
-		c.updateAnpsByLabelsMatch(podNs.Labels, obj.(*v1.Pod).Labels)
+		podNs, _ := c.namespacesLister.Get(p.Namespace)
+		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
 	}
 
 	key := cache.MetaObjectToName(p).String()

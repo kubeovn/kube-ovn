@@ -70,7 +70,23 @@ func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVPCDNS(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
+	var dns *kubeovnv1.VpcDns
+	switch t := obj.(type) {
+	case *kubeovnv1.VpcDns:
+		dns = t
+	case cache.DeletedFinalStateUnknown:
+		d, ok := t.Obj.(*kubeovnv1.VpcDns)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		dns = d
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(dns).String()
 	klog.V(3).Infof("enqueue delete vpc-dns %s", key)
 	c.delVpcDNSQueue.Add(key)
 }

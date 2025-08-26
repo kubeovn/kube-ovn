@@ -33,7 +33,23 @@ func (c *Controller) enqueueAddNp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteNp(obj any) {
-	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	var np *netv1.NetworkPolicy
+	switch t := obj.(type) {
+	case *netv1.NetworkPolicy:
+		np = t
+	case cache.DeletedFinalStateUnknown:
+		n, ok := t.Obj.(*netv1.NetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		np = n
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
 	c.deleteNpQueue.Add(key)
 }

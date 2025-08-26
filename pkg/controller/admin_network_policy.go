@@ -50,7 +50,22 @@ func (c *Controller) enqueueAddAnp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteAnp(obj any) {
-	anp := obj.(*v1alpha1.AdminNetworkPolicy)
+	var anp *v1alpha1.AdminNetworkPolicy
+	switch t := obj.(type) {
+	case *v1alpha1.AdminNetworkPolicy:
+		anp = t
+	case cache.DeletedFinalStateUnknown:
+		a, ok := t.Obj.(*v1alpha1.AdminNetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		anp = a
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
 }

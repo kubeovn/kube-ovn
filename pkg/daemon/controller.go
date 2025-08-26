@@ -199,7 +199,22 @@ func (c *Controller) enqueueUpdateProviderNetwork(_, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteProviderNetwork(obj any) {
-	pn := obj.(*kubeovnv1.ProviderNetwork)
+	var pn *kubeovnv1.ProviderNetwork
+	switch t := obj.(type) {
+	case *kubeovnv1.ProviderNetwork:
+		pn = t
+	case cache.DeletedFinalStateUnknown:
+		p, ok := t.Obj.(*kubeovnv1.ProviderNetwork)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		pn = p
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(pn).String()
 	klog.V(3).Infof("enqueue delete provider network %s", key)
 	c.deleteProviderNetworkQueue.Add(pn)
@@ -559,7 +574,22 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
-	pod := obj.(*v1.Pod)
+	var pod *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		pod = t
+	case cache.DeletedFinalStateUnknown:
+		p, ok := t.Obj.(*v1.Pod)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		pod = p
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(pod).String()
 	c.deletePodQueue.Add(key)
 }

@@ -76,9 +76,25 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
+	var slr *kubeovnv1.SwitchLBRule
+	switch t := obj.(type) {
+	case *kubeovnv1.SwitchLBRule:
+		slr = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.SwitchLBRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		slr = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(slr).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
-	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))
+	c.delSwitchLBRuleQueue.Add(NewSlrInfo(slr))
 }
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
