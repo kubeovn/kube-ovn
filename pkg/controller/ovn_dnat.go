@@ -54,7 +54,23 @@ func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelOvnDnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnDnatRule)).String()
+	var dnat *kubeovnv1.OvnDnatRule
+	switch t := obj.(type) {
+	case *kubeovnv1.OvnDnatRule:
+		dnat = t
+	case cache.DeletedFinalStateUnknown:
+		d, ok := t.Obj.(*kubeovnv1.OvnDnatRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		dnat = d
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(dnat).String()
 	klog.Infof("enqueue delete ovn dnat %s", key)
 	c.delOvnDnatRuleQueue.Add(key)
 }

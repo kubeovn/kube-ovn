@@ -60,7 +60,22 @@ func (c *Controller) enqueueAddService(obj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	svc := obj.(*v1.Service)
+	var svc *v1.Service
+	switch t := obj.(type) {
+	case *v1.Service:
+		svc = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*v1.Service)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		svc = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]

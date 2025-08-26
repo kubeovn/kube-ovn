@@ -23,9 +23,24 @@ func (c *Controller) enqueueAddBanp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteBanp(obj any) {
-	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
-	klog.V(3).Infof("enqueue delete banp %s", cache.MetaObjectToName(banp).String())
-	c.deleteBanpQueue.Add(banp)
+	var bnp *v1alpha1.BaselineAdminNetworkPolicy
+	switch t := obj.(type) {
+	case *v1alpha1.BaselineAdminNetworkPolicy:
+		bnp = t
+	case cache.DeletedFinalStateUnknown:
+		b, ok := t.Obj.(*v1alpha1.BaselineAdminNetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		bnp = b
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	klog.V(3).Infof("enqueue delete bnp %s", cache.MetaObjectToName(bnp).String())
+	c.deleteBanpQueue.Add(bnp)
 }
 
 func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {

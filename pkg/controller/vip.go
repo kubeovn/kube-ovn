@@ -45,7 +45,22 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj any) {
-	vip := obj.(*kubeovnv1.Vip)
+	var vip *kubeovnv1.Vip
+	switch t := obj.(type) {
+	case *kubeovnv1.Vip:
+		vip = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubeovnv1.Vip)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vip = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)
 	c.delVirtualIPQueue.Add(vip)

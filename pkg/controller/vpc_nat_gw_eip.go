@@ -43,7 +43,22 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
-	eip := obj.(*kubeovnv1.IptablesEIP)
+	var eip *kubeovnv1.IptablesEIP
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesEIP:
+		eip = t
+	case cache.DeletedFinalStateUnknown:
+		e, ok := t.Obj.(*kubeovnv1.IptablesEIP)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		eip = e
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(key)
