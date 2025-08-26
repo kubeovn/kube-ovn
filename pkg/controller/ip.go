@@ -117,7 +117,9 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	ip = ip.DeepCopy()
 	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
+
 	if !ip.DeletionTimestamp.IsZero() {
 		klog.Infof("handle add process stop for deleting ip %s", ip.Name)
 		return nil
@@ -127,6 +129,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
 	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
 		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 		klog.Error(err)
@@ -177,16 +180,10 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if ip.Labels == nil {
+		ip.Labels = map[string]string{}
+	}
 	if ip.Labels[util.IPReservedLabel] != "false" {
-		cachedIP, err := c.ipsLister.Get(key)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Error(err)
-			return err
-		}
-		ip = cachedIP.DeepCopy()
 		ip.Labels[util.IPReservedLabel] = "true"
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, err := json.Marshal(ip.Labels)
