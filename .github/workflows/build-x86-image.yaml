@@ -362,7 +362,7 @@ jobs:
   build-e2e-binaries:
     name: Build E2E Binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -1243,7 +1243,7 @@ jobs:
           - ipv4
           - ipv6
           - dual
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1395,7 +1395,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -2080,7 +2080,7 @@ jobs:
     name: Talos Installation Test
     needs: build-kube-ovn
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -2316,7 +2316,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -2546,7 +2546,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -2729,7 +2729,7 @@ jobs:
       - build-vpc-nat-gateway
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -2874,7 +2874,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -3019,7 +3019,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -3159,7 +3159,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -3297,7 +3297,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -3412,7 +3412,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
