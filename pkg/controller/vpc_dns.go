@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"reflect"
 	"strconv"
@@ -221,7 +220,7 @@ func (c *Controller) createOrUpdateVpcDNSDep(vpcDNS *kubeovnv1.VpcDns) error {
 		deploy = nil
 	}
 
-	newDp, err := c.genVpcDNSDeployment(vpcDNS, deploy)
+	newDp, err := c.genVpcDNSDeployment(vpcDNS)
 	if err != nil {
 		klog.Errorf("failed to generate vpc-dns deployment, %v", err)
 		return err
@@ -288,7 +287,7 @@ func (c *Controller) createOrUpdateVpcDNSSlr(vpcDNS *kubeovnv1.VpcDns) error {
 	return nil
 }
 
-func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
+func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns) (*v1.Deployment, error) {
 	tmp := template.New("coredns")
 	tmp, err := tmp.Parse(corednsTemplateContent)
 	if err != nil {
@@ -318,10 +317,6 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 	}
 
 	dep.Spec.Template.Annotations = make(map[string]string)
-
-	if oldDeploy != nil && len(oldDeploy.Annotations) != 0 {
-		dep.Spec.Template.Annotations = maps.Clone(oldDeploy.Annotations)
-	}
 
 	dep.Labels = map[string]string{
 		util.VpcDNSNameLabel: "true",
