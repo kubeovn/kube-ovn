@@ -720,11 +720,15 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		return nil
 	}
 
-	namespace := pod.Namespace
+	namespace, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s for pod %s: %v", pod.Namespace, pod.Name, err)
+		return err
+	}
 	name := pod.Name
 	podName := c.getNameByPod(pod)
 
-	klog.Infof("sync pod %s/%s routed", namespace, name)
+	klog.Infof("sync pod %s/%s routed", namespace.Name, name)
 
 	node, err := c.nodesLister.Get(pod.Spec.NodeName)
 	if err != nil {
@@ -752,7 +756,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 	for _, podNet := range needRoutePodNets {
 		// in case update handler overlap the annotation when cache is not in sync
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "" {
-			return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+			return fmt.Errorf("no address has been allocated to %s/%s", namespace.Name, name)
 		}
 
 		podIP = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
@@ -814,7 +818,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
-			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
+			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" || namespace.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
 					klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -947,7 +951,12 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							return err
 						}
 					}
-					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
+					var eip string
+					if eip = pod.Annotations[util.SnatAnnotation]; eip == "" {
+						eip = namespace.Annotations[util.SnatAnnotation]
+					}
+
+					if eip == "" {
 						if err = c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
@@ -970,16 +979,16 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 
 		patch[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] = "true"
 	}
-	if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(namespace), name, patch); err != nil {
+	if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(namespace.Name), name, patch); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := strings.Join([]string{namespace, name}, "/")
+			key := strings.Join([]string{namespace.Name, name}, "/")
 			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
 		}
-		klog.Errorf("failed to patch pod %s/%s: %v", namespace, name, err)
+		klog.Errorf("failed to patch pod %s/%s: %v", namespace.Name, name, err)
 		return err
 	}
 	return nil
@@ -1132,18 +1141,13 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 					klog.Errorf("failed to delete static route, %v", err)
 					return err
 				}
-
-				if c.config.EnableEipSnat {
-					if pod.Annotations[util.EipAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
-							klog.Errorf("failed to delete nat rules: %v", err)
-						}
-					}
-					if pod.Annotations[util.SnatAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
-							klog.Errorf("failed to delete nat rules: %v", err)
-						}
-					}
+				// delete all NATTypeDNATAndSNAT
+				if err := c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, address.IP); err != nil {
+					klog.Errorf("failed to delete NAT roules of type DNAT & SNAT for ip %s, %v", address.IP, err)
+				}
+				// delete all NATTypeSNAT
+				if err := c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, address.IP); err != nil {
+					klog.Errorf("failed to delete NAT roules of type SNAT for ip %s, %v", address.IP, err)
 				}
 			}
 		}
