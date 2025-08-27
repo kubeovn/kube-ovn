@@ -29,7 +29,7 @@ func IsDefaultNet(defaultNetAnnotation string, attach *nadv1.NetworkSelectionEle
 	return false
 }
 
-func GetNadInterfaceFromNetworkStatusAnnotation(networkStatus string, nadName string) (string, error) {
+func GetNadInterfaceFromNetworkStatusAnnotation(networkStatus, nadName string) (string, error) {
 	var interfaceName string
 	if networkStatus == "" {
 		return "", errors.New("no network status annotation found")
