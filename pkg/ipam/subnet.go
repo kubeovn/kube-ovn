@@ -349,6 +349,50 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	} else {
 		v6 = s.V6CIDR != nil
 	}
+
+	// Release existing address for this nicName if it exists and is different from requested IP
+	// For dual-stack scenarios, preserve the other protocol's address
+	if v4 && s.V4NicToIP[nicName] != nil && !s.V4NicToIP[nicName].Equal(ip) {
+		// Preserve IPv6 address if it exists
+		var preservedV6IP IP
+		var preservedMac string
+		if s.V6NicToIP[nicName] != nil {
+			preservedV6IP = s.V6NicToIP[nicName]
+			preservedMac = s.NicToMac[nicName]
+		}
+
+		s.releaseAddr(podName, nicName)
+
+		// Restore IPv6 address if it was preserved
+		if preservedV6IP != nil {
+			s.V6NicToIP[nicName] = preservedV6IP
+			s.V6IPToPod[preservedV6IP.String()] = podName
+			if preservedMac != "" {
+				s.NicToMac[nicName] = preservedMac
+				s.MacToPod[preservedMac] = podName
+			}
+		}
+	} else if v6 && s.V6NicToIP[nicName] != nil && !s.V6NicToIP[nicName].Equal(ip) {
+		// Preserve IPv4 address if it exists
+		var preservedV4IP IP
+		var preservedMac string
+		if s.V4NicToIP[nicName] != nil {
+			preservedV4IP = s.V4NicToIP[nicName]
+			preservedMac = s.NicToMac[nicName]
+		}
+
+		s.releaseAddr(podName, nicName)
+
+		// Restore IPv4 address if it was preserved
+		if preservedV4IP != nil {
+			s.V4NicToIP[nicName] = preservedV4IP
+			s.V4IPToPod[preservedV4IP.String()] = podName
+			if preservedMac != "" {
+				s.NicToMac[nicName] = preservedMac
+				s.MacToPod[preservedMac] = podName
+			}
+		}
+	}
 	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
 		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
