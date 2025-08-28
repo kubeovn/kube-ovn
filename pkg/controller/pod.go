@@ -2433,15 +2433,19 @@ func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 	}
 	// default provider
 	providerName := util.OvnProvider
-	// get providers
-	providers, err := c.getPodProviders(pod)
-	if err != nil {
-		klog.Errorf("failed to get pod %s/%s providers, %v", pod.Namespace, pod.Name, err)
-		return false, ""
-	}
-	if len(providers) > 0 {
-		// use the first provider
-		providerName = providers[0]
+	// In non-primary CNI mode, we get the providers from the pod annotations
+	// We get the vpc nat gw name using the provider name
+	if c.config.EnableNonPrimaryCNI {
+		// get providers
+		providers, err := c.getPodProviders(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod %s/%s providers, %v", pod.Namespace, pod.Name, err)
+			return false, ""
+		}
+		if len(providers) > 0 {
+			// use the first provider
+			providerName = providers[0]
+		}
 	}
 	vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]
 	if isVpcNatGw {
