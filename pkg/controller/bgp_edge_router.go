@@ -985,7 +985,6 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 		return nil
 	}
 
-
 	router, err := c.bgpEdgeRouterLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list bgp edge router: %v", err)
@@ -997,7 +996,6 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 		if ber.VPC(c.config.ClusterRouter) != vpc {
 			continue
 		}
-
 	}
 	return nil
 }

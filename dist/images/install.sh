@@ -3745,7 +3745,7 @@ spec:
                       default: false
                     image:
                       type: string
-                    asn:
+                    localAsn:
                       type: integer
                       format: int32
                       minimum: 0

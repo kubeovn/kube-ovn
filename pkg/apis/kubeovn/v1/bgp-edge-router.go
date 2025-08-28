@@ -141,7 +141,7 @@ type BgpEdgeRouterBGPConfig struct {
 	// optional bgp image used by the workload
 	// if not specified, the default image passed in by kube-ovn-controller will be used
 	Image                 string          `json:"image,omitempty"`
-	ASN                   uint32          `json:"asn"`
+	ASN                   uint32          `json:"localAsn"`
 	RemoteASN             uint32          `json:"remoteAsn"`
 	Neighbors             []string        `json:"neighbors"`
 	HoldTime              metav1.Duration `json:"holdTime"`
