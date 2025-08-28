@@ -41,18 +41,13 @@ func (g *GobgpConfig) Subnet(subnets []string) []string {
 // }
 
 type GobgpConfigSpec struct {
-	BgpEdgeRouterInfo BgpEdgeRouterInfo `json:"bgpEdgeRouterInfo"`
-	Neighbors         []Neighbors       `json:"neighbors,omitempty"`
+	BgpEdgeRouter string      `json:"bgpEdgeRouter"`
+	Neighbors     []Neighbors `json:"neighbors,omitempty"`
 }
 
 type GobgpConfigStatus struct {
 	Ready      bool       `json:"ready"`
 	Conditions Conditions `json:"conditions,omitempty"`
-}
-
-type BgpEdgeRouterInfo struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
 }
 
 // Neighbors defines the BGP neighbors configuration

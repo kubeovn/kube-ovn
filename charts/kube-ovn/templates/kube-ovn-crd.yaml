@@ -3713,7 +3713,7 @@ spec:
       additionalPrinterColumns:
         - name: bgp-edge-router
           type: string
-          jsonPath: .spec.bgpEdgeRouterInfo.name
+          jsonPath: .spec.bgpEdgeRouter
         - name: neighbor-address
           type: string
           jsonPath: .spec.neighbors[*].address
@@ -3730,16 +3730,11 @@ spec:
             spec:
               type: object
               required:
-                - bgpEdgeRouterInfo
+                - bgpEdgeRouter
                 - neighbors
               properties:
-                bgpEdgeRouterInfo:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                    namespace:
-                      type: string
+                bgpEdgeRouter:
+                  type: string
                 neighbors:
                   type: array
                   x-kubernetes-list-type: map
