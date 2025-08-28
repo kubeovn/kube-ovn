@@ -562,48 +562,6 @@ func (c *Controller) reconcileBgpEdgeRouterOVNRoutes(router *kubeovnv1.BgpEdgeRo
 
 	// reconcile OVN port group
 	ports := set.New[string]()
-	for _, selector := range router.Spec.Selectors {
-		sel := labels.Everything()
-		if selector.NamespaceSelector != nil {
-			if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
-				err = fmt.Errorf("failed to create label selector for namespace selector %#v: %w", selector.NamespaceSelector, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		namespaces, err := c.namespacesLister.List(sel)
-		if err != nil {
-			err = fmt.Errorf("failed to list namespaces with selector %s: %w", sel, err)
-			klog.Error(err)
-			return err
-		}
-		sel = labels.Everything()
-		if selector.PodSelector != nil {
-			if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
-				err = fmt.Errorf("failed to create label selector for pod selector %#v: %w", selector.PodSelector, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		for _, ns := range namespaces {
-			pods, err := c.podsLister.Pods(ns.Name).List(sel)
-			if err != nil {
-				err = fmt.Errorf("failed to list pods with selector %s in namespace %s: %w", sel, ns.Name, err)
-				klog.Error(err)
-				return err
-			}
-			for _, pod := range pods {
-				if pod.Spec.HostNetwork ||
-					pod.Annotations[util.AllocatedAnnotation] != "true" ||
-					pod.Annotations[util.LogicalRouterAnnotation] != router.VPC(c.config.ClusterRouter) ||
-					!isPodAlive(pod) {
-					continue
-				}
-				podName := c.getNameByPod(pod)
-				ports.Insert(ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider))
-			}
-		}
-	}
 	key := cache.MetaObjectToName(router).String()
 	pgName := berPortGroupName(key)
 	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
@@ -1027,15 +985,6 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 		return nil
 	}
 
-	ns, err := c.namespacesLister.Get(pod.Namespace)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
-		utilruntime.HandleError(err)
-		return err
-	}
 
 	router, err := c.bgpEdgeRouterLister.List(labels.Everything())
 	if err != nil {
@@ -1049,15 +998,6 @@ func (c *Controller) handlePodEventForBgpEdgeRouter(pod *corev1.Pod) error {
 			continue
 		}
 
-		for _, selector := range ber.Spec.Selectors {
-			if selector.NamespaceSelector != nil && !util.ObjectMatchesLabelSelector(ns, selector.NamespaceSelector) {
-				continue
-			}
-			if selector.PodSelector != nil && !util.ObjectMatchesLabelSelector(pod, selector.PodSelector) {
-				continue
-			}
-			c.addOrUpdateBgpEdgeRouterQueue.Add(cache.MetaObjectToName(ber).String())
-		}
 	}
 	return nil
 }

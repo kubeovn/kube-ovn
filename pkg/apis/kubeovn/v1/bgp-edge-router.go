@@ -64,8 +64,6 @@ type BgpEdgeRouterSpec struct {
 	// the IPs count must NOT be less than the replicas count
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	ExternalIPs []string `json:"externalIPs,omitempty"`
-	// namespace/pod selectors
-	Selectors []BgpEdgeRouterSelector `json:"selectors,omitempty"`
 	// optional traffic policy used to control the traffic routing
 	// if not specified, the default traffic policy "Cluster" will be used
 	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
@@ -85,11 +83,6 @@ type BgpEdgeRouterSpec struct {
 
 	// TODO, subnet to access kube-apiserver. this will be used to reconcile routes to vpc
 	// KubeApiSubnet string `json:"kubeApiSubnet,omitempty"`
-}
-
-type BgpEdgeRouterSelector struct {
-	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
-	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`
 }
 
 type BgpEdgeRouterBFDConfig struct {

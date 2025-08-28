@@ -35,11 +35,6 @@ func (g *GobgpConfig) Subnet(subnets []string) []string {
 	return nil
 }
 
-// Ready returns true if the BgpEdgeRouter has been processed successfully and is ready to serve traffic
-// func (g *BgpEdgeRouterAdvertisement) Ready() bool {
-// 	return g.Status.Ready && g.Status.Conditions.IsReady(g.Generation)
-// }
-
 type GobgpConfigSpec struct {
 	BgpEdgeRouter string      `json:"bgpEdgeRouter"`
 	Neighbors     []Neighbors `json:"neighbors,omitempty"`
