@@ -17,6 +17,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -147,8 +148,105 @@ func (c *Controller) handleAddBgpEdgeRouterAdvertisement(key string) error {
 	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
 		return err
 	}
+
+	// update ber address_set
+	if err := c.updateAddressSetForBer(ns, advertisement, "add"); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
+	return nil
+}
+
+func (c *Controller) updateAddressSetForBer(ns string, advertisement *kubeovnv1.BgpEdgeRouterAdvertisement, op string) error {
+	// modify ber address_set
+	berName := advertisement.Spec.BgpEdgeRouter
+	cachedRouter, err := c.bgpEdgeRouterLister.BgpEdgeRouters(ns).Get(berName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	router := cachedRouter.DeepCopy()
+	// collect egress policies
+	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
+	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
+	for _, policy := range router.Spec.Policies {
+		ipv4, ipv6 := util.SplitIpsByProtocol(policy.IPBlocks)
+		if policy.SNAT {
+			ipv4SNATSrc.Insert(ipv4...)
+			ipv6SNATSrc.Insert(ipv6...)
+		} else {
+			ipv4ForwardSrc.Insert(ipv4...)
+			ipv6ForwardSrc.Insert(ipv6...)
+		}
+		for _, subnetName := range policy.Subnets {
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			if subnet.Status.IsNotValidated() {
+				err = fmt.Errorf("subnet %s is not validated", subnet.Name)
+				klog.Error(err)
+				return err
+			}
+			// TODO: check subnet's vpc and vlan
+			ipv4, ipv6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+			if policy.SNAT {
+				ipv4SNATSrc.Insert(ipv4)
+				ipv6SNATSrc.Insert(ipv6)
+			} else {
+				ipv4ForwardSrc.Insert(ipv4)
+				ipv6ForwardSrc.Insert(ipv6)
+			}
+		}
+	}
+
+	// collect advertisement subnets
+	if op == "add" {
+		advCidrBlocks, err := c.getSubnetCidrBlock(advertisement)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		for _, advCidrBlock := range advCidrBlocks {
+			ipv4adv, ipv6adv := util.SplitStringIP(advCidrBlock)
+			ipv4ForwardSrc.Insert(ipv4adv)
+			ipv6ForwardSrc.Insert(ipv6adv)
+		}
+	}
+
+	// calculate internal route destinations and forward source CIDR blocks
+	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
+	intRouteDstIPv4.Delete("")
+	intRouteDstIPv6.Delete("")
+	ipv4ForwardSrc.Delete("")
+	ipv6ForwardSrc.Delete("")
+
+	klog.Infof("setting address set for bgp edge router : %s, intRouteDstIPv4 %v, intRouteDstIPv6 %v", berName, intRouteDstIPv4, intRouteDstIPv6)
+	berKey := cache.MetaObjectToName(router).String()
+	klog.Infof("debug bgp-edge-router %s", berKey)
+	if intRouteDstIPv4.Len() > 0 {
+		asName := berAddressSetName(berKey, 4)
+		klog.Infof("address set name: %s", asName)
+		if err = c.OVNNbClient.AddressSetUpdateAddress(asName, intRouteDstIPv4.SortedList()...); err != nil {
+			klog.Error(err)
+			err = fmt.Errorf("failed to create or update address set %s: %w", asName, err)
+			klog.Error(err)
+			return err
+		}
+	}
+	if intRouteDstIPv6.Len() > 0 {
+		asName := berAddressSetName(berKey, 6)
+		if err = c.OVNNbClient.AddressSetUpdateAddress(asName, intRouteDstIPv6.SortedList()...); err != nil {
+			klog.Error(err)
+			err = fmt.Errorf("failed to create or update address set %s: %w", asName, err)
+			klog.Error(err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -198,10 +296,17 @@ func (c *Controller) handleUpdateBgpEdgeRouterAdvertisement(updatedObj *updateVe
 		}
 	}
 
+	// update ber address_set
+	if err := c.updateAddressSetForBer(ns, advertisement, "add"); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
 	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
 		return err
 	}
+
 	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
 	return nil
@@ -255,10 +360,17 @@ func (c *Controller) handleDelBgpEdgeRouterAdvertisement(key string) error {
 		}
 	}
 
-	advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
-	if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
+	// update ber address_set
+	if err := c.updateAddressSetForBer(ns, advertisement, "del"); err != nil {
+		klog.Error(err)
 		return err
 	}
+
+	// advertisement.Status.Conditions.SetReady("ReconcileSuccess", advertisement.Generation)
+	// if _, err = c.updatebgpEdgeRouterAdvertisementStatus(advertisement); err != nil {
+	// 	return err
+	// }
+
 	klog.Infof("finished reconciling bgp-edge-router-advertisement %s", key)
 
 	return nil

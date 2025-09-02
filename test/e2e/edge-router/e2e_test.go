@@ -3,6 +3,7 @@ package multus
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
@@ -377,19 +378,19 @@ func parseGobgpOutput(output string) (*GlobalConfig, []NeighborEntry, error) {
 	}
 
 	if globalJSON == "" || neighborJSON == "" {
-		return nil, nil, fmt.Errorf("failed to extract JSON parts from output")
+		return nil, nil, errors.New("failed to extract JSON parts from output")
 	}
 
 	// GlobalConfig
 	var global GlobalConfig
 	if err := json.Unmarshal([]byte(globalJSON), &global); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal global config: %v", err)
+		return nil, nil, fmt.Errorf("failed to unmarshal global config: %w", err)
 	}
 
 	// NeighborEntry
 	var neighbors []NeighborEntry
 	if err := json.Unmarshal([]byte(neighborJSON), &neighbors); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal neighbor config: %v", err)
+		return nil, nil, fmt.Errorf("failed to unmarshal neighbor config: %w", err)
 	}
 
 	return &global, neighbors, nil
@@ -489,7 +490,7 @@ func berTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
 		// exec and list
 		ginkgo.By("Checking bgp setting " + pod.Name)
-		cmd := fmt.Sprintf("gobgp global -j && gobgp neighbor -j")
+		cmd := "gobgp global -j && gobgp neighbor -j"
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 		output := e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, cmd)
 		checkBgpInitSetting(ber, output)
