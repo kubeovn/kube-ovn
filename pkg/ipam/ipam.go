@@ -252,7 +252,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				if name == "" {
 					continue
 				}
-				p.V4Free = ips.Intersect(p.V4IPs)
+				p.V4Using = p.V4Using.Intersect(ips)
+				p.V4Free = ips.Intersect(p.V4IPs).Separate(p.V4Using)
 				p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
 				p.V4Available = p.V4Free.Clone()
 				p.V4Released = NewEmptyIPRangeList()
@@ -298,7 +299,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				if name == "" {
 					continue
 				}
-				p.V6Free = ips.Intersect(p.V6IPs)
+				p.V6Using = p.V6Using.Intersect(ips)
+				p.V6Free = ips.Intersect(p.V6IPs).Separate(p.V6Using)
 				p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
 				p.V6Available = p.V6Free.Clone()
 				p.V6Released = NewEmptyIPRangeList()
