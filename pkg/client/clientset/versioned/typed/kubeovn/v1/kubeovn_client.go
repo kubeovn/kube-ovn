@@ -28,6 +28,7 @@ import (
 
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
+	DNSNameResolversGetter
 	IPsGetter
 	IPPoolsGetter
 	IptablesDnatRulesGetter
@@ -54,6 +55,10 @@ type KubeovnV1Interface interface {
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
 type KubeovnV1Client struct {
 	restClient rest.Interface
+}
+
+func (c *KubeovnV1Client) DNSNameResolvers() DNSNameResolverInterface {
+	return newDNSNameResolvers(c)
 }
 
 func (c *KubeovnV1Client) IPs() IPInterface {
