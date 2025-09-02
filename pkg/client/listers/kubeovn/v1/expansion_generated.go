@@ -18,6 +18,10 @@ limitations under the License.
 
 package v1
 
+// DNSNameResolverListerExpansion allows custom methods to be added to
+// DNSNameResolverLister.
+type DNSNameResolverListerExpansion interface{}
+
 // IPListerExpansion allows custom methods to be added to
 // IPLister.
 type IPListerExpansion interface{}
