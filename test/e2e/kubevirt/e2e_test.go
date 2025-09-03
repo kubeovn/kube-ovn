@@ -66,8 +66,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectNotNil(kubevirts)
 			framework.ExpectHaveLen(kubevirts.Items, 1, "there should be only one kubevirt instance")
 
-			kubevirtVersion, err = versionutil.ParseGeneric(kubevirts.Items[0].Status.ObservedKubeVirtVersion)
-			framework.ExpectNoError(err, "failed to parse kubevirt version")
+			if version := kubevirts.Items[0].Status.ObservedKubeVirtVersion; version == "" {
+				kubevirtVersion = versionutil.MustParseMajorMinor("1.6")
+			} else {
+				kubevirtVersion, err = versionutil.ParseGeneric(kubevirts.Items[0].Status.ObservedKubeVirtVersion)
+				framework.ExpectNoError(err, "failed to parse kubevirt version")
+			}
 		}
 
 		if kubevirtVersion.LessThan(versionutil.MustParseMajorMinor("1.7")) && !f.K8sVersionPriorTo(1, 34) {

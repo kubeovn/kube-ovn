@@ -515,6 +515,8 @@ kind-install-kubevirt:
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
 	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
 
+	kubectl -n kubevirt wait --timeout=120s --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt
+
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
