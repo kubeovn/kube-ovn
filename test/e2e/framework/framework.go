@@ -8,14 +8,16 @@ import (
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
-	"github.com/onsi/ginkgo/v2"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
+
+	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -58,16 +60,39 @@ type Framework struct {
 	MetallbClientSet  *MetallbClientSet
 	AttachNetClient   nad.Interface
 	ExtClientSet      *extClientSet.Clientset
-	// master/release-1.10/...
-	ClusterVersion string
-	// 999.999 for master
-	ClusterVersionMajor uint
-	ClusterVersionMinor uint
+	K8sServerVersion  *versionutil.Version
+	KubeOVNVersion    *versionutil.Version
 	// ipv4/ipv6/dual
 	ClusterIPFamily string
 	// overlay/underlay/underlay-hairpin
 	ClusterNetworkMode string
 	KubeOVNImage       string
+}
+
+func (f *Framework) dumpVersions() {
+	version, err := f.ClientSet.Discovery().ServerVersion()
+	if err != nil {
+		defer ginkgo.GinkgoRecover()
+		ginkgo.Fail(fmt.Sprintf("Failed to get k8s server version: %v", err))
+	}
+
+	versionString := fmt.Sprintf("%s.%s", version.Major, version.Minor)
+	f.K8sServerVersion, err = versionutil.ParseMajorMinor(versionString)
+	if err != nil {
+		defer ginkgo.GinkgoRecover()
+		ginkgo.Fail(fmt.Sprintf("Failed to parse k8s server version %q", versionString))
+	}
+
+	envBranch := os.Getenv("E2E_BRANCH")
+	if !strings.HasPrefix(envBranch, "release-") {
+		f.KubeOVNVersion = versionutil.MustParseMajorMinor("999.999")
+	} else {
+		f.KubeOVNVersion, err = versionutil.ParseMajorMinor(strings.TrimPrefix(envBranch, "release-"))
+		if err != nil {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version %q", envBranch))
+		}
+	}
 }
 
 func dumpEvents(ctx context.Context, f *framework.Framework, namespace string) {
@@ -91,18 +116,8 @@ func NewDefaultFramework(baseName string) *Framework {
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
-	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-
-	if strings.HasPrefix(f.ClusterVersion, "release-") {
-		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		if err != nil || n != 2 {
-			defer ginkgo.GinkgoRecover()
-			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
-		}
-	} else {
-		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
-	}
+	f.dumpVersions()
 
 	ginkgo.BeforeEach(f.BeforeEach)
 
@@ -144,18 +159,8 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
-	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-
-	if strings.HasPrefix(f.ClusterVersion, "release-") {
-		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		if err != nil || n != 2 {
-			defer ginkgo.GinkgoRecover()
-			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
-		}
-	} else {
-		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
-	}
+	f.dumpVersions()
 
 	return f
 }
@@ -258,13 +263,25 @@ func (f *Framework) BeforeEach() {
 }
 
 func (f *Framework) VersionPriorTo(major, minor uint) bool {
-	return f.ClusterVersionMajor < major || (f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor)
+	return f.KubeOVNVersion.LessThan(versionutil.MustParseMajorMinor(fmt.Sprintf("%d.%d", major, minor)))
+}
+
+func (f *Framework) K8sVersionPriorTo(major, minor uint) bool {
+	return f.K8sServerVersion.LessThan(versionutil.MustParseMajorMinor(fmt.Sprintf("%d.%d", major, minor)))
 }
 
 func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 	ginkgo.GinkgoHelper()
 
 	if f.VersionPriorTo(major, minor) {
+		ginkgo.Skip(reason)
+	}
+}
+
+func (f *Framework) SkipK8sVersionPriorTo(major, minor uint, reason string) {
+	ginkgo.GinkgoHelper()
+
+	if f.K8sVersionPriorTo(major, minor) {
 		ginkgo.Skip(reason)
 	}
 }
