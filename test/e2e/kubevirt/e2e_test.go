@@ -52,6 +52,14 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12.")
 
+		namespaceName = f.Namespace.Name
+		vmName = "vm-" + framework.RandomSuffix()
+		subnetName = "subnet-" + framework.RandomSuffix()
+		subnetClient = f.SubnetClient()
+		podClient = f.PodClientNS(namespaceName)
+		vmClient = f.VMClientNS(namespaceName)
+		ipClient = f.IPClient()
+
 		if kubevirtVersion == nil {
 			kubevirts, err := f.KubeVirtClientSet.KubeVirt(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 			framework.ExpectNoError(err)
@@ -65,14 +73,6 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		if kubevirtVersion.LessThan(versionutil.MustParseMajorMinor("1.7")) && !f.K8sVersionPriorTo(1, 34) {
 			ginkgo.Skip("KubeVirt version < 1.7 is not compatible with Kubernetes version >= 1.34")
 		}
-
-		namespaceName = f.Namespace.Name
-		vmName = "vm-" + framework.RandomSuffix()
-		subnetName = "subnet-" + framework.RandomSuffix()
-		subnetClient = f.SubnetClient()
-		podClient = f.PodClientNS(namespaceName)
-		vmClient = f.VMClientNS(namespaceName)
-		ipClient = f.IPClient()
 
 		ginkgo.By("Creating vm " + vmName)
 		vm := framework.MakeVM(vmName, image, "small", ptr.To(v1.RunStrategyAlways))

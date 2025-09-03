@@ -109,6 +109,10 @@ func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
 func (c *VMClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.VirtualMachineInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		Logf("vm %s not found, skip deleting", name)
+		return
+	}
 	ExpectNoError(err, "failed to delete vm %s", name)
 }
 

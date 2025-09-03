@@ -70,27 +70,30 @@ type Framework struct {
 }
 
 func (f *Framework) dumpVersions() {
-	version, err := f.ClientSet.Discovery().ServerVersion()
-	if err != nil {
-		defer ginkgo.GinkgoRecover()
-		ginkgo.Fail(fmt.Sprintf("Failed to get k8s server version: %v", err))
-	}
-
-	versionString := fmt.Sprintf("%s.%s", version.Major, version.Minor)
-	f.K8sServerVersion, err = versionutil.ParseMajorMinor(versionString)
-	if err != nil {
-		defer ginkgo.GinkgoRecover()
-		ginkgo.Fail(fmt.Sprintf("Failed to parse k8s server version %q", versionString))
-	}
-
-	envBranch := os.Getenv("E2E_BRANCH")
-	if !strings.HasPrefix(envBranch, "release-") {
-		f.KubeOVNVersion = versionutil.MustParseMajorMinor("999.999")
-	} else {
-		f.KubeOVNVersion, err = versionutil.ParseMajorMinor(strings.TrimPrefix(envBranch, "release-"))
+	if f.K8sServerVersion == nil {
+		version, err := f.ClientSet.Discovery().ServerVersion()
 		if err != nil {
 			defer ginkgo.GinkgoRecover()
-			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version %q", envBranch))
+			ginkgo.Fail(fmt.Sprintf("Failed to get k8s server version: %v", err))
+		}
+
+		versionString := fmt.Sprintf("%s.%s", version.Major, version.Minor)
+		if f.K8sServerVersion, err = versionutil.ParseMajorMinor(versionString); err != nil {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse k8s server version %q", versionString))
+		}
+	}
+
+	if f.KubeOVNVersion == nil {
+		envBranch := os.Getenv("E2E_BRANCH")
+		if !strings.HasPrefix(envBranch, "release-") {
+			f.KubeOVNVersion = versionutil.MustParseMajorMinor("999.999")
+		} else {
+			var err error
+			if f.KubeOVNVersion, err = versionutil.ParseMajorMinor(strings.TrimPrefix(envBranch, "release-")); err != nil {
+				defer ginkgo.GinkgoRecover()
+				ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version %q", envBranch))
+			}
 		}
 	}
 }
@@ -117,7 +120,6 @@ func NewDefaultFramework(baseName string) *Framework {
 	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-	f.dumpVersions()
 
 	ginkgo.BeforeEach(f.BeforeEach)
 
@@ -160,7 +162,6 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f.DumpAllNamespaceInfo = dumpEvents
 	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-	f.dumpVersions()
 
 	return f
 }
@@ -260,6 +261,7 @@ func (f *Framework) BeforeEach() {
 	}
 
 	framework.TestContext.Host = ""
+	f.dumpVersions()
 }
 
 func (f *Framework) VersionPriorTo(major, minor uint) bool {
