@@ -501,8 +501,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -593,8 +594,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -681,8 +683,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -847,8 +850,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -939,8 +943,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -1027,8 +1032,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -1145,7 +1151,8 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
+                  minimum: 0
+                  maximum: 10
                 labelSelector:
                   type: string
                 conditions:
@@ -1161,7 +1168,6 @@ spec:
                         maxLength: 32768
                         type: string
                       observedGeneration:
-                        format: int64
                         minimum: 0
                         type: integer
                       reason:
@@ -1242,7 +1248,6 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
@@ -1290,16 +1295,19 @@ spec:
                       default: false
                     minRX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     minTX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     multiplier:
                       type: integer
-                      format: int32
                       default: 3
+                      minimum: 1
+                      maximum: 3600000
                 selectors:
                   type: array
                   items:
