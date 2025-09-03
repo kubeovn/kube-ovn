@@ -152,9 +152,10 @@ func (f *Framework) useContext() error {
 }
 
 func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
-	innerFramework := framework.NewDefaultFramework(baseName)
-	ginkgo.BeforeEach(innerFramework.BeforeEach)
-	f := &Framework{KubeContext: kubeContext, Framework: innerFramework}
+	f := &Framework{
+		KubeContext: kubeContext,
+		Framework:   framework.NewDefaultFramework(baseName),
+	}
 	ginkgo.BeforeEach(f.BeforeEach)
 
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
