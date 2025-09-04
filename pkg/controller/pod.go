@@ -1242,11 +1242,11 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-        if macStr != "" {
-                if _, err := net.ParseMAC(macStr); err != nil {
-                        return "", "", "", podNet.Subnet, err
-                }
-        }
+	if macStr != "" {
+		if _, err := net.ParseMAC(macStr); err != nil {
+			return "", "", "", podNet.Subnet, err
+		}
+	}
 
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
