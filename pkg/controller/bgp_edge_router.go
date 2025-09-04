@@ -348,6 +348,10 @@ func (c *Controller) reconcileBgpEdgeRouterWorkload(router *kubeovnv1.BgpEdgeRou
 	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
 	// add routes for the internal networks
 	for _, dst := range intRouteDstIPv4.UnsortedList() {
+		// skip the route to the internal subnet itself
+		if intSubnet.Spec.CIDRBlock == dst {
+			continue
+		}
 		routes.Add(util.OvnProvider, dst, intGatewayIPv4)
 	}
 	for _, dst := range intRouteDstIPv6.UnsortedList() {
