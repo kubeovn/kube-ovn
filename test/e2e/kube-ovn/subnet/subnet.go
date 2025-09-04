@@ -1473,6 +1473,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
 		_ = podClient.Create(pod)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting pod " + conflictingPodName)
+			f.PodClient().DeleteSync(conflictingPodName)
+		})
 
 		time.Sleep(2 * time.Second)
 
@@ -1492,7 +1496,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		framework.ExpectTrue(hasConflictError, "Should have conflict error events")
-		podClient.DeleteSync(conflictingPodName)
 	})
 })
 
