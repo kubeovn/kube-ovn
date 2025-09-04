@@ -359,9 +359,15 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
 	// add routes for the internal networks
 	for _, dst := range intRouteDstIPv4.UnsortedList() {
+		if intSubnet.Spec.CIDRBlock == dst {
+			continue
+		}
 		routes.Add(util.OvnProvider, dst, intGatewayIPv4)
 	}
 	for _, dst := range intRouteDstIPv6.UnsortedList() {
+		if intSubnet.Spec.CIDRBlock == dst {
+			continue
+		}
 		routes.Add(util.OvnProvider, dst, intGatewayIPv6)
 	}
 	// add default routes to forward traffic to the external network
