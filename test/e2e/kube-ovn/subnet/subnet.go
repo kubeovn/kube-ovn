@@ -1492,6 +1492,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		framework.ExpectTrue(hasConflictError, "Should have conflict error events")
+		podClient.DeleteSync(conflictingPodName)
 	})
 })
 
