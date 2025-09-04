@@ -1463,13 +1463,12 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.Logf("Gateway MAC: %s", gatewayMAC)
 
 		ginkgo.By("Creating pod with static MAC that conflicts with gateway MAC")
-		conflictingPodName := "conflict-pod-" + framework.RandomSuffix()
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 			util.MacAddressAnnotation:    gatewayMAC, // Use the same MAC as gateway
 		}
 
-		pod := framework.MakePod(namespaceName, conflictingPodName, nil, annotations, "", nil, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
 
 		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
 		_ = podClient.Create(pod)
@@ -1481,7 +1480,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		time.Sleep(2 * time.Second)
 
 		events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
-			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", conflictingPodName, namespaceName),
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
 		})
 		framework.ExpectNoError(err)
 
