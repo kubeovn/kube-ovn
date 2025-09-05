@@ -357,15 +357,17 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
 	routes.Add(util.OvnProvider, bfdIPv4, intGatewayIPv4)
 	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
+
+	ipv4Cidr, ipv6Cidr := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
 	// add routes for the internal networks
 	for _, dst := range intRouteDstIPv4.UnsortedList() {
-		if intSubnet.Spec.CIDRBlock == dst {
+		if ipv4Cidr == dst {
 			continue
 		}
 		routes.Add(util.OvnProvider, dst, intGatewayIPv4)
 	}
 	for _, dst := range intRouteDstIPv6.UnsortedList() {
-		if intSubnet.Spec.CIDRBlock == dst {
+		if ipv6Cidr == dst {
 			continue
 		}
 		routes.Add(util.OvnProvider, dst, intGatewayIPv6)
