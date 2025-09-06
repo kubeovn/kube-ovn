@@ -131,6 +131,22 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		}
 	}
 
+	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
+	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
+	// TODO: Identify how endpoints are constructed, by default, endpoints has IP address of eth0 inteface
+	if c.config.EnableNonPrimaryCNI && serviceHasSelector(svc) {
+		var pods []*v1.Pod
+		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
+			klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
+			return err
+		}
+		err = c.replaceEndpointAddressesWithSecondaryIPs(endpointSlices, pods)
+		if err != nil {
+			klog.Errorf("failed to update endpointSlice: %v", err)
+			return err
+		}
+	}
+
 	vpcName, subnetName, err = c.getVpcAndSubnetForEndpoints(endpointSlices, svc)
 	if err != nil {
 		return err
@@ -251,6 +267,81 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(namespace), svc.Name, patch); err != nil {
 			klog.Errorf("failed to patch service %s: %v", key, err)
 			return err
+		}
+	}
+
+	return nil
+}
+
+// Update the endpoint IP address with the secondary IP address of the pod using the network attachment definition annotation
+// This is a temporary fix to allow consumers to use the secondary IP address of the pod
+// TODO: Remove this function and update the endpoint construction to use the secondary IP address of the pod
+func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlices []*discoveryv1.EndpointSlice, pods []*v1.Pod) error {
+	// Track which pods have been processed
+	processedPods := make(map[string]bool)
+	// Store pod information in a map
+	podMap := make(map[string]*v1.Pod, len(pods))
+	for i := range pods {
+		podMap[pods[i].Name] = pods[i]
+	}
+	// Pre-compute secondary IPs for all pods to avoid repeated annotation lookups
+	secondaryIPs := make(map[string]string, len(pods))
+	for _, pod := range pods {
+		providers, err := c.getPodProviders(pod)
+		if err != nil {
+			return err
+		}
+		if len(providers) > 0 {
+			ipAddress := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providers[0])]
+			if ipAddress != "" {
+				secondaryIPs[pod.Name] = ipAddress
+			}
+		}
+	}
+	// Process each endpoint slice
+	for i, endpoint := range endpointSlices {
+		var copiedSlice *discoveryv1.EndpointSlice
+		needsUpdate := false
+		// Check if any endpoints need updating first
+		for j, ep := range endpoint.Endpoints {
+			if ep.TargetRef != nil && ep.TargetRef.Kind == "Pod" {
+				podName := ep.TargetRef.Name
+				// Skip if already processed this pod
+				// Include slice index to handle pod in multiple slices
+				podKey := fmt.Sprintf("%s/%d", podName, i)
+				if processedPods[podKey] {
+					continue
+				}
+				if secondaryIP, hasSecondaryIP := secondaryIPs[podName]; hasSecondaryIP {
+					if pod, ok := podMap[podName]; ok {
+						// Check if any address needs replacement
+						for k, address := range ep.Addresses {
+							// Only replace if it's the primary IP
+							if address == pod.Status.PodIP {
+								// Lazy deep copy
+								if !needsUpdate {
+									copiedSlice = endpoint.DeepCopy()
+									needsUpdate = true
+								}
+								klog.Infof("updating pod %s/%s ip address %s to %s",
+									pod.Namespace, pod.Name, pod.Status.PodIP, secondaryIP)
+								copiedSlice.Endpoints[j].Addresses[k] = secondaryIP
+								processedPods[podKey] = true
+								// Only one primary IP per endpoint
+								break
+							} else if address == secondaryIP {
+								// Already has secondary IP, mark as processed
+								processedPods[podKey] = true
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+		// Replace the slice if we made changes
+		if needsUpdate {
+			endpointSlices[i] = copiedSlice
 		}
 	}
 

@@ -251,6 +251,11 @@ cni:
   # Should be a string representing a double-digit integer.
   # @section -- CNI configuration
   configPriority: "01"
+  # -- Whether to use Kube-OVN as non-primary CNI. When set to true, Kube-OVN will not allocate/handle primary network interfaces.
+  # Interfaces are created using Network Attachment Definitions (NADs)
+  # @section -- CNI configuration
+  nonPrimaryCNI: false
+
 
 # -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
 # Make sure cert-manager is installed for the generation of certificates for the webhook.

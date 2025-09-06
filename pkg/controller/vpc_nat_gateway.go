@@ -319,7 +319,46 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
-	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
+	// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
+	// are properly configured. We extract the interfaces used from the pod annotations.
+	var interfaces []string
+	if c.config.EnableNonPrimaryCNI {
+		// extract external nad interface name
+		externalNadNs, externalNadName := c.getExternalSubnetNad(gw)
+		networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
+		externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
+		externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
+		if err != nil {
+			klog.Errorf("failed to extract external nad interface name from annotations %v, %v", gw.Annotations, err)
+			return err
+		}
+		// extract vpc nad interface name
+		providers, err := c.getPodProviders(pod)
+		if err != nil || len(providers) == 0 {
+			klog.Errorf("failed to get providers for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			return fmt.Errorf("failed to get providers for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		}
+		// if more than one provider exists, use the first one
+		provider := providers[0]
+		providerParts := strings.Split(provider, ".")
+		if len(providerParts) < 2 {
+			klog.Errorf("failed to format provider %s for pod %s/%s", provider, pod.Namespace, pod.Name)
+			return fmt.Errorf("failed to format provider %s parts for pod %s/%s", provider, pod.Namespace, pod.Name)
+		}
+		vpcNadName, vpcNadNamespace := providerParts[0], providerParts[1]
+		vpcNadFullName := fmt.Sprintf("%s/%s", vpcNadNamespace, vpcNadName)
+		vpcNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
+		if err != nil {
+			klog.Errorf("failed to extract internal nad interface name from annotations %v, %v", gw.Annotations, err)
+			return err
+		}
+
+		klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interface %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfName)
+		interfaces = []string{
+			strings.Join([]string{vpcNadIfName, externalNadIfName}, ","),
+		}
+	}
+	if err = c.execNatGwRules(pod, natGwInit, interfaces); err != nil {
 		err = fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		klog.Error(err)
 		return err
@@ -570,6 +609,9 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	// update route table
 	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
+	// Store the subnet providers to get CIDRs from pod annotations
+	newProviderCIDRMap := make(map[string][]string)
+
 	if len(vpc.Status.Subnets) > 0 {
 		for _, s := range vpc.Status.Subnets {
 			subnet, err := c.subnetsLister.Get(s)
@@ -586,13 +628,20 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 			}
 			if v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock); v4Cidr != "" {
 				newCIDRS = append(newCIDRS, v4Cidr)
+				// Store the provider and CIDR for later use to generate annotations
+				newProviderCIDRMap[subnet.Spec.Provider] = append(newProviderCIDRMap[subnet.Spec.Provider], v4Cidr)
 			}
 		}
 	}
-	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
-		if err = json.Unmarshal([]byte(cidrs), &oldCIDRs); err != nil {
-			klog.Error(err)
-			return err
+	// Get all the CIDRs that are already in the annotation using subnet providers
+	for annotation, value := range pod.Annotations {
+		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
+			var existingCIDR []string
+			if err = json.Unmarshal([]byte(value), &existingCIDR); err != nil {
+				klog.Error(err)
+				return err
+			}
+			oldCIDRs = append(oldCIDRs, existingCIDR...)
 		}
 	}
 	for _, old := range oldCIDRs {
@@ -627,17 +676,48 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		}
 	}
 
-	cidrBytes, err := json.Marshal(newCIDRS)
-	if err != nil {
-		klog.Errorf("marshal eip annotation failed %v", err)
-		return err
+	// For each subnet provider, generate vpc cidr annotation
+	patch := util.KVPatch{}
+
+	// Track existing vpc_cidrs annotations to identify stale ones
+	existingProviders := make(map[string]bool)
+	for annotation := range pod.Annotations {
+		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
+			// Extract provider name from annotation key: <provider>.kubernetes.io/vpc_cidrs
+			parts := strings.Split(annotation, ".kubernetes.io/vpc_cidrs")
+			if len(parts) == 2 && parts[1] == "" {
+				provider := parts[0]
+				existingProviders[provider] = true
+			}
+		}
 	}
 
-	patch := util.KVPatch{util.VpcCIDRsAnnotation: string(cidrBytes)}
-	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
-		err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		klog.Error(err)
-		return err
+	// Add/update annotations for current providers
+	for provider, cidrs := range newProviderCIDRMap {
+		cidrBytes, err := json.Marshal(cidrs)
+		if err != nil {
+			klog.Errorf("marshal eip annotation failed %v", err)
+			return err
+		}
+		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = string(cidrBytes)
+		// Mark this provider as still active
+		delete(existingProviders, provider)
+	}
+
+	// Remove annotations for providers that are no longer associated with the VPC
+	for provider := range existingProviders {
+		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = nil
+		klog.V(3).Infof("Removing stale vpc_cidrs annotation for provider %s from pod %s/%s", provider, pod.Namespace, pod.Name)
+	}
+
+	// Only patch if there are changes to make
+	if len(patch) > 0 {
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.V(3).Infof("Successfully patched %d vpc_cidrs annotations on pod %s/%s", len(patch), pod.Namespace, pod.Name)
 	}
 
 	return nil
@@ -743,6 +823,18 @@ func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespac
 	return nil
 }
 
+func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+	}
+	// Make sure the subnet is an OVN subnet
+	if !isOvnSubnet(subnet) {
+		return "", fmt.Errorf("subnet %s is not an OVN subnet", subnetName)
+	}
+	return subnet.Spec.Provider, nil
+}
+
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
 	annotations := make(map[string]string, 7)
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
@@ -757,6 +849,35 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
 			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
 		}
+	}
+
+	subnetProvider := util.OvnProvider
+	if c.config.EnableNonPrimaryCNI {
+		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
+		var attachedNetworks string
+		// Get NetworkAttachmentDefinition if specified by user from pod annotations
+		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
+			attachedNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot] + ", "
+		}
+		// Attach the external network to attachedNetworks
+		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+		// Check if we have a subnet provider, if so, use it to set the routes annotation
+		// This is useful when running in secondary CNI mode, as the subnet provider will be the
+		// one that has the routes to the subnet
+		var err error
+		subnetProvider, err = c.GetSubnetProvider(gw.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("%v", err)
+			return nil, err
+		}
+		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, subnetProvider)
+		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnetProvider)
+		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
+		// Merge new annotations with existing ones
+		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
+		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
+		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
 	}
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
@@ -831,7 +952,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
 	}
 
-	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, routes); err != nil {
+	if err = setPodRoutesAnnotation(annotations, subnetProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
