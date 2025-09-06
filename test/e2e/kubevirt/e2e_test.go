@@ -9,10 +9,12 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 
 	"github.com/onsi/ginkgo/v2"
@@ -41,6 +43,7 @@ func TestE2E(t *testing.T) {
 var _ = framework.Describe("[group:kubevirt]", func() {
 	f := framework.NewDefaultFramework("kubevirt")
 
+	var kubevirtVersion *versionutil.Version
 	var vmName, subnetName, namespaceName string
 	var subnetClient *framework.SubnetClient
 	var podClient *framework.PodClient
@@ -57,8 +60,26 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		vmClient = f.VMClientNS(namespaceName)
 		ipClient = f.IPClient()
 
+		if kubevirtVersion == nil {
+			kubevirts, err := f.KubeVirtClientSet.KubeVirt(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+			framework.ExpectNotNil(kubevirts)
+			framework.ExpectHaveLen(kubevirts.Items, 1, "there should be only one kubevirt instance")
+
+			if version := kubevirts.Items[0].Status.ObservedKubeVirtVersion; version == "" {
+				kubevirtVersion = versionutil.MustParseMajorMinor("1.6")
+			} else {
+				kubevirtVersion, err = versionutil.ParseGeneric(kubevirts.Items[0].Status.ObservedKubeVirtVersion)
+				framework.ExpectNoError(err, "failed to parse kubevirt version")
+			}
+		}
+
+		if kubevirtVersion.LessThan(versionutil.MustParseMajorMinor("1.7")) && !f.K8sVersionPriorTo(1, 34) {
+			ginkgo.Skip("KubeVirt version < 1.7 is not compatible with Kubernetes version >= 1.34")
+		}
+
 		ginkgo.By("Creating vm " + vmName)
-		vm := framework.MakeVM(vmName, image, "small", true)
+		vm := framework.MakeVM(vmName, image, "small", ptr.To(v1.RunStrategyAlways))
 		_ = vmClient.CreateSync(vm)
 	})
 	ginkgo.AfterEach(func() {

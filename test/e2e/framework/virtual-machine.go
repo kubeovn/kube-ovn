@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -64,16 +65,13 @@ func (c *VMClient) CreateSync(vm *v1.VirtualMachine) *v1.VirtualMachine {
 func (c *VMClient) Start(name string) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
 
-	vm := c.Get(name)
-	if vm.Spec.Running != nil && *vm.Spec.Running {
-		Logf("vm %s has already been started", name)
+	if vm := c.Get(name); vm.Status.PrintableStatus == v1.VirtualMachineStatusRunning {
+		Logf("vm %s has already been running", name)
 		return vm
 	}
 
-	running := true
-	vm.Spec.Running = &running
-	_, err := c.Update(context.TODO(), vm, metav1.UpdateOptions{})
-	ExpectNoError(err, "failed to update vm %s", name)
+	err := c.VirtualMachineInterface.Start(context.TODO(), name, &v1.StartOptions{})
+	ExpectNoError(err, "failed to start vm %s", name)
 	return c.Get(name)
 }
 
@@ -89,16 +87,13 @@ func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
 func (c *VMClient) Stop(name string) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
 
-	vm := c.Get(name)
-	if vm.Spec.Running != nil && !*vm.Spec.Running {
+	if vm := c.Get(name); vm.Status.PrintableStatus == v1.VirtualMachineStatusStopped {
 		Logf("vm %s has already been stopped", name)
 		return vm
 	}
 
-	running := false
-	vm.Spec.Running = &running
-	_, err := c.Update(context.TODO(), vm, metav1.UpdateOptions{})
-	ExpectNoError(err, "failed to update vm %s", name)
+	err := c.VirtualMachineInterface.Stop(context.TODO(), name, &v1.StopOptions{})
+	ExpectNoError(err, "failed to stop vm %s", name)
 	return c.Get(name)
 }
 
@@ -114,6 +109,10 @@ func (c *VMClient) StopSync(name string) *v1.VirtualMachine {
 func (c *VMClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.VirtualMachineInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		Logf("vm %s not found, skip deleting", name)
+		return
+	}
 	ExpectNoError(err, "failed to delete vm %s", name)
 }
 
@@ -178,13 +177,13 @@ func (c *VMClient) WaitToDisappear(name string, _, timeout time.Duration) error 
 	return nil
 }
 
-func MakeVM(name, image, size string, running bool) *v1.VirtualMachine {
+func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
 	vm := &v1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: v1.VirtualMachineSpec{
-			Running: &running,
+			RunStrategy: runStrategy,
 			Template: &v1.VirtualMachineInstanceTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -222,7 +221,7 @@ func MakeVM(name, image, size string, running bool) *v1.VirtualMachine {
 						},
 						Resources: v1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("64M"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
 							},
 						},
 					},
@@ -251,6 +250,7 @@ func MakeVM(name, image, size string, running bool) *v1.VirtualMachine {
 							},
 						},
 					},
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				},
 			},
 		},
