@@ -518,6 +518,28 @@ func CIDROverlap(a, b string) bool {
 	return false
 }
 
+// CIDRContainsCIDR checks whether CIDR a contains CIDR b
+// if a and b are not the same protocol, return an error directly
+// if a and b are the same protocol, but a doesn't contain b, return false
+// if a contains b, return true
+// if a and b are the same CIDR, return true
+func CIDRContainsCIDR(a, b string) (bool, error) {
+	_, ca, err := net.ParseCIDR(a)
+	if err != nil {
+		return false, err
+	}
+	_, cb, err := net.ParseCIDR(b)
+	if err != nil {
+		return false, err
+	}
+	oa, ba := ca.Mask.Size()
+	ob, bb := cb.Mask.Size()
+	if ba != bb {
+		return false, fmt.Errorf("protocol of cidr %s and %s not match", a, b)
+	}
+	return oa <= ob && ca.Contains(cb.IP), nil
+}
+
 func CIDRGlobalUnicast(cidr string) error {
 	for cidrBlock := range strings.SplitSeq(cidr, ",") {
 		if CIDROverlap(cidrBlock, IPv4Broadcast) {
