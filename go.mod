@@ -46,7 +46,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	go.uber.org/mock v0.5.2
 	golang.org/x/mod v0.28.0
-	golang.org/x/net v0.43.0
+	golang.org/x/net v0.44.0
 	golang.org/x/sys v0.36.0
 	golang.org/x/time v0.13.0
 	golang.org/x/tools v0.36.0
