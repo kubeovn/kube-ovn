@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.14.6 (2025-09-09)
+
+ * [bd38cc13f](https://github.com/kubeovn/kube-ovn/commit/bd38cc13f86ad2de670c073624e065e7060354b0) release v1.14.6
+ * [5858c490c](https://github.com/kubeovn/kube-ovn/commit/5858c490c936157ffafe5571189aadc550ac91ee) veg: fix init failure when the a cidr applied is a sub network of the internal subnet (#5685)
+ * [e3e6aea2d](https://github.com/kubeovn/kube-ovn/commit/e3e6aea2dd29890b4e5225b288b379477635c382) controller: fix marking ip resource as reserved incorrectly (#5698)
+ * [bbe4f790d](https://github.com/kubeovn/kube-ovn/commit/bbe4f790d5ae64476c34200899f2f616b236d6bb) bump k8s to v1.32.8 (#5696)
+ * [d455ee86d](https://github.com/kubeovn/kube-ovn/commit/d455ee86d967464a50b287bfde5a2da5da417e6e) fix(deps): update golang (#5695)
+ * [41e2c37af](https://github.com/kubeovn/kube-ovn/commit/41e2c37afa66f3cba171e4d86900666cf315cc9e) fix(deps): update golang (#5692)
+ * [a2dba9a5a](https://github.com/kubeovn/kube-ovn/commit/a2dba9a5af206fc9c73777d45f98720a35faf476) crd: fix unrecognized format int32/int64 (#5671)
+ * [ce1bd7b2a](https://github.com/kubeovn/kube-ovn/commit/ce1bd7b2ab3089e3d5e37aa7b347248d35d65005) chore(deps): update dependency go to v1.25.1 (#5675)
+ * [cdedd5ad2](https://github.com/kubeovn/kube-ovn/commit/cdedd5ad29304fba1f1a4056aad7c7a0b1fd25ef) ipam: fix ippool using/free ips after subnet update (#5668)
+ * [1152eac13](https://github.com/kubeovn/kube-ovn/commit/1152eac13561a3c244816add10c346d54f3aae44) release address when acquire a new static address (#5658)
+ * [4b79814c4](https://github.com/kubeovn/kube-ovn/commit/4b79814c48f1653bfcbe435f31edb568fb0f473c) fix vpc-dns annotations update revision (#5655)
+ * [d9a99348f](https://github.com/kubeovn/kube-ovn/commit/d9a99348fc38619826a535657350c6b46055bf2a) handle delete final state unknown object in enqueue handler (#5649)
+ * [40489e222](https://github.com/kubeovn/kube-ovn/commit/40489e2224c32501fca683b4a0f8b6d6b8d839f9) Initialize annotations immediately before assignment in setVpcDNSRoute (#5648)
+ * [4eac3c5c5](https://github.com/kubeovn/kube-ovn/commit/4eac3c5c5c74d6baf6b771a7ed77a9b7a39fec5b) fix bug for issuse #5597: when slr update, the same vip will be delete too (#5646)
+ * [c2dc2adaa](https://github.com/kubeovn/kube-ovn/commit/c2dc2adaa8ada66b344e6ed74be5e4d940c3158a)  fix bug for issuse #5597 (#5616)
+ * [ca0ad1687](https://github.com/kubeovn/kube-ovn/commit/ca0ad16877e36779d587d4dd9f0421008837ecbe) fix ovn ipsec when restart cni (#5603)
+ * [03ba1faf4](https://github.com/kubeovn/kube-ovn/commit/03ba1faf4611fd9e3f116bbd72f9c5a8fa8a1d54) fix static mac pod conflict with gateway mac (#5623)
+ * [cfd7e53d7](https://github.com/kubeovn/kube-ovn/commit/cfd7e53d731148ff91e07ee8ef81a1e2b6fa125d) feat(vpcnatgw): send gratuitous arp for nexthops at natgw initialization (#5607)
+ * [653e033e4](https://github.com/kubeovn/kube-ovn/commit/653e033e4a88289e02ae879dd864273f55c04a3a) modernize waitGroup
+ * [9825bfa0f](https://github.com/kubeovn/kube-ovn/commit/9825bfa0fe76ca071946d517c71883ebe87863fd) chore(deps): update dependency go to v1.25.0
+ * [6ec1c7c1f](https://github.com/kubeovn/kube-ovn/commit/6ec1c7c1f08ec2eaa57e01124c524bfae164cf8b) ci: ignore goveralls failure (#5606)
+ * [00bb73ffe](https://github.com/kubeovn/kube-ovn/commit/00bb73ffe9c68d3468fa238626a1c4f7d34fa154) reduce probability of maps conncurrent iteration and write (#5585)
+ * [4f1bdd7da](https://github.com/kubeovn/kube-ovn/commit/4f1bdd7daf3464165e299303d563d1473ebe7642) remove lsp when gw nodes change (#5591)
+ * [2aee1e3b0](https://github.com/kubeovn/kube-ovn/commit/2aee1e3b09beb1be90e97727dd1cc2fb50bbdb22) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * pengpeng wu
+ * renovate[bot]
+ * xieyanker
+ * zhangzujian
+ * 张祖建
+
 ## v1.14.5 (2025-08-11)
 
  * [3ca45970f](https://github.com/kubeovn/kube-ovn/commit/3ca45970fa80976cb4587041a3146ed51be52619) release v1.14.5
@@ -5035,6 +5073,25 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.41 (2025-09-04)
+
+ * [196493105](https://github.com/kubeovn/kube-ovn/commit/1964931052c344a48e5634da926b0211bd8202cb) release v1.9.41
+ * [3702b2645](https://github.com/kubeovn/kube-ovn/commit/3702b26455368d04b300e0f5bbfcd0c5bab94c39) add ignore cve
+ * [9c92021a1](https://github.com/kubeovn/kube-ovn/commit/9c92021a1778acd035531ea7bbf1f924cca28e2f) add env
+ * [8faa5c4c3](https://github.com/kubeovn/kube-ovn/commit/8faa5c4c39ba27d33d4cc03762f1e475a35ae55a) fix gofmt
+ * [f76784685](https://github.com/kubeovn/kube-ovn/commit/f76784685fd783bf1be6fb86ebf8270d1307b60a) Support only configure static mac_address
+ * [567f7a57f](https://github.com/kubeovn/kube-ovn/commit/567f7a57f121703dee87eed5453280469592c6d9) Fix mac conflict 1.11 (#5622)
+ * [600995c27](https://github.com/kubeovn/kube-ovn/commit/600995c27299788ed56dfdc0d71747d747f3c0a6) Fix the problem that if available ip is 0 but there is a value in excludeIPs, the fixed ip is used as the ip in excludeIPs but the error noAddressAvaliable is still reported (#5571)
+ * [80bab4153](https://github.com/kubeovn/kube-ovn/commit/80bab4153631456c320ccf580641e049affc11bc) check underlay nic exist before config external bridge (#5520)
+ * [cfaca3dac](https://github.com/kubeovn/kube-ovn/commit/cfaca3daca462704ebfd27e28e74dbeeaeb9ca80) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * chestack
+ * clyi
 
 ## v1.9.40 (2025-05-09)
 
