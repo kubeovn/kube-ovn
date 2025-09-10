@@ -114,7 +114,8 @@ func (c *Controller) needNewCert(p *pkiFiles) (bool, error) {
 			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		})
 	if err != nil {
-		return false, fmt.Errorf("failed to verify cert: %w", err)
+		klog.Infof("certificate failed to validate: %v", err)
+		return true, nil
 	}
 
 	if len(chain) == 0 {
