@@ -25,6 +25,7 @@ const (
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
 	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayAnnotationTemplate         = "%s.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
@@ -33,6 +34,7 @@ const (
 	VpcDnatMd5Annotation                    = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation                    = "ovn.kubernetes.io/vpc_snat_md5"
 	VpcCIDRsAnnotation                      = "ovn.kubernetes.io/vpc_cidrs"
+	VpcCIDRsAnnotationTemplate              = "%s.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation                         = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel                        = "ovn.kubernetes.io/vpc_external"
 	VpcEipAnnotation                        = "ovn.kubernetes.io/vpc_eip"

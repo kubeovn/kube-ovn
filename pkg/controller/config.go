@@ -124,6 +124,9 @@ type Configuration struct {
 	TLSMinVersion   string
 	TLSMaxVersion   string
 	TLSCipherSuites []string
+
+	// Non Primary CNI flag
+	EnableNonPrimaryCNI bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -212,6 +215,8 @@ func ParseFlags() (*Configuration, error) {
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
+
+		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -303,6 +308,7 @@ func ParseFlags() (*Configuration, error) {
 		TLSMinVersion:                  *argTLSMinVersion,
 		TLSMaxVersion:                  *argTLSMaxVersion,
 		TLSCipherSuites:                *argTLSCipherSuites,
+		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
 	}
 	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")

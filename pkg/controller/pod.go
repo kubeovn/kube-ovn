@@ -438,13 +438,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
-	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	attachmentNets, err := c.getPodAttachmentNet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	attachmentNets, err := c.getPodAttachmentNet(pod)
+	podNets := attachmentNets
+	// When Kube-OVN is run as non-primary CNI, we do not add default network configuration to pod.
+	// We only add network attachment defined by the user to pod.
+	if c.config.EnableNonPrimaryCNI {
+		return podNets, nil
+	}
+
+	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -456,7 +463,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return attachmentNets, nil
 	}
 
-	podNets := attachmentNets
 	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
 		podNets = append(attachmentNets, &kubeovnNet{
 			Type:         providerTypeOriginal,
@@ -527,8 +533,10 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
+	if isVpcNatGw {
 		if needRestartNatGatewayPod(pod) {
+			klog.Infof("restarting vpc nat gateway %s", vpcGwName)
 			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
 		}
 	}
@@ -703,9 +711,13 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
+	if isVpcNatGw {
+		klog.Infof("init vpc nat gateway pod %s/%s with name %s", namespace, name, vpcGwName)
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
+
 	return pod, nil
 }
 
@@ -2409,4 +2421,39 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 	annotations[key] = string(buf)
 
 	return nil
+}
+
+// Check if pod is a VPC NAT gateway using pod annotations
+func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
+	if pod == nil {
+		return false, ""
+	}
+	if pod.Annotations == nil {
+		return false, ""
+	}
+	// default provider
+	providerName := util.OvnProvider
+	// In non-primary CNI mode, we get the providers from the pod annotations
+	// We get the vpc nat gw name using the provider name
+	if c.config.EnableNonPrimaryCNI {
+		// get providers
+		providers, err := c.getPodProviders(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod %s/%s providers, %v", pod.Namespace, pod.Name, err)
+			return false, ""
+		}
+		if len(providers) > 0 {
+			// use the first provider
+			providerName = providers[0]
+		}
+	}
+	vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]
+	if isVpcNatGw {
+		if vpcGwName == "" {
+			klog.Errorf("pod %s is vpc nat gateway but name is empty", pod.Name)
+			return false, ""
+		}
+		klog.Infof("pod %s is vpc nat gateway %s", pod.Name, vpcGwName)
+	}
+	return isVpcNatGw, vpcGwName
 }

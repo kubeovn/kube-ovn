@@ -158,6 +158,7 @@ spec:
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
           - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
           - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false
