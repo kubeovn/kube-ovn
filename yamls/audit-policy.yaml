@@ -13,6 +13,7 @@ rules:
           - nodes
           - namespaces
           - pods
+          - pods/status
     verbs:
       - patch
       - update
@@ -32,7 +33,13 @@ rules:
       - group: kubevirt.io
         resources:
           - virtualmachines
+          - virtualmachines/status
+          - virtualmachines/start
+          - virtualmachines/stop
+          - virtualmachines/restart
+          - virtualmachines/migrate
           - virtualmachineinstances
+          - virtualmachineinstances/status
       - group: kubeovn.io
         resources:
           - vpcs
