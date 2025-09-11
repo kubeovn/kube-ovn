@@ -10,7 +10,7 @@ endif
 endif
 
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
-K8S_VERSION = v1.33.2
+K8S_VERSION ?= v1.34.0
 
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
@@ -514,6 +514,8 @@ kind-install-kubevirt:
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-api)
 	$(call kubectl_wait_exist_and_ready,kubevirt,deployment,virt-controller)
 	$(call kubectl_wait_exist_and_ready,kubevirt,daemonset,virt-handler)
+
+	kubectl -n kubevirt wait --timeout=120s --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt
 
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc:
