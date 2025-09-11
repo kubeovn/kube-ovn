@@ -88,6 +88,14 @@ func (c *AnpClient) Create(anp *netpolv1alpha1.AdminNetworkPolicy) *netpolv1alph
 	return anp
 }
 
+// Update updates the AdminNetworkPolicy.
+func (c *AnpClient) Update(anp *netpolv1alpha1.AdminNetworkPolicy) *netpolv1alpha1.AdminNetworkPolicy {
+	ginkgo.GinkgoHelper()
+	anp, err := c.AdminNetworkPolicyInterface.Update(context.TODO(), anp, metav1.UpdateOptions{})
+	ExpectNoError(err)
+	return anp
+}
+
 // Delete deletes the AdminNetworkPolicy.
 func (c *AnpClient) Delete(name string) {
 	ginkgo.GinkgoHelper()

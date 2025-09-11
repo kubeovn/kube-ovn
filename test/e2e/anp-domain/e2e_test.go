@@ -81,7 +81,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By(description)
 
 		ctx := context.Background()
-		cmd := fmt.Sprintf("curl -s --connect-timeout 5 --max-time 10 %s", target)
+		cmd := fmt.Sprintf("curl -s --connect-timeout 5 --max-time 5 %s", target)
 
 		for i := range maxRetries {
 			stdout, stderr, err := framework.ExecShellInPod(ctx, f, namespaceName, podName, cmd)
@@ -117,7 +117,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 	// testNetworkConnectivity tests network connectivity with default retry mechanism
 	testNetworkConnectivity := func(target string, shouldSucceed bool, description string) {
-		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 10, 2*time.Second)
+		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 20, 2*time.Second)
 	}
 
 	framework.ConformanceIt("should create ANP with domainName deny rule and verify connectivity behavior", func() {
@@ -271,6 +271,91 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		// Test connectivity after deleting both ANPs (should succeed for both)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting both ANPs (should succeed)")
 		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after deleting both ANPs (should succeed)")
+	})
+
+	framework.ConformanceIt("should dynamically add and remove domainName deny rules in a single ANP", func() {
+		f.SkipVersionPriorTo(1, 15, "AdminNetworkPolicy domainName support was introduced in v1.15")
+
+		ginkgo.By("Creating test namespace " + namespaceName)
+		labels := map[string]string{
+			"kubernetes.io/metadata.name": namespaceName,
+		}
+		ns := framework.MakeNamespace(namespaceName, labels, nil)
+		_ = nsClient.Create(ns)
+
+		ginkgo.By("Creating test pod " + podName + " in namespace " + namespaceName)
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		_ = podClient.CreateSync(pod)
+
+		// Test connectivity to both domains before applying any ANP (should succeed)
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com before applying ANP (should succeed)")
+
+		ginkgo.By("Creating AdminNetworkPolicy without any domainName rules initially")
+		namespaceSelector := &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"kubernetes.io/metadata.name": namespaceName,
+			},
+		}
+		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
+			framework.MakeAdminNetworkPolicyPort(443, corev1.ProtocolTCP),
+		}
+
+		// Create ANP without any egress rules initially
+		anp := framework.MakeAdminNetworkPolicy(anpName, 50, namespaceSelector, nil, nil)
+		createdANP := anpClient.CreateSync(anp)
+		framework.Logf("Successfully created AdminNetworkPolicy: %s", createdANP.Name)
+
+		// Test connectivity after creating ANP without rules (should still succeed)
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after creating ANP without rules (should succeed)")
+		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after creating ANP without rules (should succeed)")
+
+		ginkgo.By("Adding domainName deny rule for baidu.com to the existing ANP")
+		domainNames := []netpolv1alpha1.DomainName{"*.baidu.com."}
+		egressRule := framework.MakeAdminNetworkPolicyEgressRule("deny-baidu", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames)
+
+		// Update the ANP to add the egress rule
+		createdANP.Spec.Egress = []netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule}
+		updatedANP := anpClient.Update(createdANP)
+		framework.Logf("Successfully updated AdminNetworkPolicy with baidu.com deny rule: %s", updatedANP.Name)
+
+		// Test connectivity after adding baidu.com deny rule
+		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding deny rule (should be blocked)")
+		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after adding baidu.com deny rule (should still succeed)")
+
+		ginkgo.By("Adding domainName deny rule for qq.com to the existing ANP")
+		domainNames2 := []netpolv1alpha1.DomainName{"*.qq.com."}
+		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("deny-qq", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames2)
+
+		// Update the ANP to add the second egress rule
+		updatedANP.Spec.Egress = append(updatedANP.Spec.Egress, egressRule2)
+		updatedANP2 := anpClient.Update(updatedANP)
+		framework.Logf("Successfully updated AdminNetworkPolicy with both deny rules: %s", updatedANP2.Name)
+
+		// Test connectivity after adding both deny rules
+		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding both deny rules (should be blocked)")
+		testNetworkConnectivity("https://www.qq.com", false, "Testing connectivity to qq.com after adding both deny rules (should be blocked)")
+
+		ginkgo.By("Removing baidu.com deny rule from the ANP")
+		// Remove the first egress rule (baidu.com deny)
+		updatedANP2.Spec.Egress = []netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule2}
+		updatedANP3 := anpClient.Update(updatedANP2)
+		framework.Logf("Successfully updated AdminNetworkPolicy removing baidu.com deny rule: %s", updatedANP3.Name)
+
+		// Test connectivity after removing baidu.com deny rule
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after removing deny rule (should succeed)")
+		testNetworkConnectivity("https://www.qq.com", false, "Testing connectivity to qq.com after removing baidu.com deny rule (should still be blocked)")
+
+		ginkgo.By("Removing all domainName deny rules from the ANP")
+		// Remove all egress rules
+		updatedANP3.Spec.Egress = nil
+		updatedANP4 := anpClient.Update(updatedANP3)
+		framework.Logf("Successfully updated AdminNetworkPolicy removing all deny rules: %s", updatedANP4.Name)
+
+		// Test connectivity after removing all deny rules
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after removing all deny rules (should succeed)")
+		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after removing all deny rules (should succeed)")
 	})
 })
 
