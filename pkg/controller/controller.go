@@ -268,7 +268,6 @@ type Controller struct {
 	dnsNameResolversSynced          cache.InformerSynced
 	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
 	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
-	domainAddressCache              *DomainAddressCache
 
 	banpsLister     anplister.BaselineAdminNetworkPolicyLister
 	banpsSynced     cache.InformerSynced
@@ -661,7 +660,6 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
 		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
-		controller.domainAddressCache = NewDomainAddressCache()
 	}
 
 	defer controller.shutdown()

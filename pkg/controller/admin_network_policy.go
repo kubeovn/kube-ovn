@@ -745,32 +745,40 @@ func (c *Controller) fetchEgressSelectedAddressesCommon(namespaces *metav1.Label
 	return v4Addresses, v6Addresses, nil
 }
 
-// resolveDomainNames resolves domain names to IP addresses using domain address cache
+// resolveDomainNames resolves domain names to IP addresses using DNSNameResolver lister
 func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]string, []string, error) {
 	var allV4Addresses, allV6Addresses []string
 
 	for _, domainName := range domainNames {
-		// Get addresses from domain address cache
-		addresses := c.domainAddressCache.GetDomainAddresses(string(domainName))
-		if len(addresses) == 0 {
-			klog.V(3).Infof("No cached addresses found for domain %s, skipping", domainName)
+		// Find DNSNameResolver for this domain name
+		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("Failed to list DNSNameResolvers: %v", err)
 			continue
 		}
 
-		// Separate IPv4 and IPv6 addresses
-		for _, addr := range addresses {
-			ip := net.ParseIP(addr)
-			if ip == nil {
-				klog.Warningf("Invalid IP address in cache for domain %s: %s", domainName, addr)
-				continue
-			}
-
-			if ip.To4() != nil {
-				allV4Addresses = append(allV4Addresses, addr)
-			} else {
-				allV6Addresses = append(allV6Addresses, addr)
+		var foundResolver *kubeovnv1.DNSNameResolver
+		for _, resolver := range dnsNameResolvers {
+			if string(resolver.Spec.Name) == string(domainName) {
+				foundResolver = resolver
+				break
 			}
 		}
+
+		if foundResolver == nil {
+			klog.V(3).Infof("No DNSNameResolver found for domain %s, skipping", domainName)
+			continue
+		}
+
+		// Get resolved addresses from DNSNameResolver
+		v4Addresses, v6Addresses, err := getResolvedAddressesFromDNSNameResolver(foundResolver)
+		if err != nil {
+			klog.Errorf("Failed to get resolved addresses from DNSNameResolver %s: %v", foundResolver.Name, err)
+			continue
+		}
+
+		allV4Addresses = append(allV4Addresses, v4Addresses...)
+		allV6Addresses = append(allV6Addresses, v6Addresses...)
 	}
 
 	return allV4Addresses, allV6Addresses, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,59 +15,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-// DomainAddressCache stores resolved IP addresses for domain names
-type DomainAddressCache struct {
-	mu        sync.RWMutex
-	addresses map[string][]string // domain name -> list of IP addresses
-	refCounts map[string]int      // domain name -> reference count
-}
-
-// NewDomainAddressCache creates a new domain address cache
-func NewDomainAddressCache() *DomainAddressCache {
-	return &DomainAddressCache{
-		addresses: make(map[string][]string),
-		refCounts: make(map[string]int),
-	}
-}
-
-// SetDomainAddresses sets IP addresses for a domain
-func (c *DomainAddressCache) SetDomainAddresses(domain string, addresses []string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.addresses[domain] = addresses
-}
-
-// AddDomainReference adds a reference to a domain
-func (c *DomainAddressCache) AddDomainReference(domain string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.refCounts[domain]++
-}
-
-// RemoveDomainReference removes a reference to a domain
-// Returns true if the domain should be removed from cache (ref count reached 0)
-func (c *DomainAddressCache) RemoveDomainReference(domain string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if _, exists := c.refCounts[domain]; exists {
-		c.refCounts[domain]--
-		if c.refCounts[domain] <= 0 {
-			delete(c.refCounts, domain)
-			delete(c.addresses, domain)
-			return true
-		}
-	}
-	return false
-}
-
-// GetDomainAddresses gets IP addresses for a domain
-func (c *DomainAddressCache) GetDomainAddresses(domain string) []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.addresses[domain]
-}
 
 func (c *Controller) enqueueAddDNSNameResolver(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.DNSNameResolver)).String()
@@ -133,9 +79,7 @@ func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {
 	}
 
 	allAddresses := append(v4Addresses, v6Addresses...)
-	c.domainAddressCache.SetDomainAddresses(domainName, allAddresses)
-	c.domainAddressCache.AddDomainReference(domainName)
-	klog.V(3).Infof("Updated domain address cache for %s: %v", domainName, allAddresses)
+	klog.V(3).Infof("DNSNameResolver %s resolved addresses for %s: %v", key, domainName, allAddresses)
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
 	klog.V(3).Infof("Triggered ANP %s re-sync after DNSNameResolver %s update", anpName, key)
@@ -153,12 +97,7 @@ func (c *Controller) handleDeleteDNSNameResolver(dnsNameResolver *kubeovnv1.DNSN
 	}
 
 	domainName := string(dnsNameResolver.Spec.Name)
-	removed := c.domainAddressCache.RemoveDomainReference(domainName)
-	if removed {
-		klog.V(3).Infof("Removed domain %s from address cache (ref count reached 0)", domainName)
-	} else {
-		klog.V(3).Infof("Decremented reference count for domain %s", domainName)
-	}
+	klog.V(3).Infof("DNSNameResolver %s deleted for domain %s", dnsNameResolver.Name, domainName)
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
 	klog.V(3).Infof("Triggered ANP %s re-sync after DNSNameResolver %s deletion", anpName, dnsNameResolver.Name)
