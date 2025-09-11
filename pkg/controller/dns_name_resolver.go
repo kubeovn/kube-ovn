@@ -21,12 +21,14 @@ import (
 type DomainAddressCache struct {
 	mu        sync.RWMutex
 	addresses map[string][]string // domain name -> list of IP addresses
+	refCounts map[string]int      // domain name -> reference count
 }
 
 // NewDomainAddressCache creates a new domain address cache
 func NewDomainAddressCache() *DomainAddressCache {
 	return &DomainAddressCache{
 		addresses: make(map[string][]string),
+		refCounts: make(map[string]int),
 	}
 }
 
@@ -37,18 +39,35 @@ func (c *DomainAddressCache) SetDomainAddresses(domain string, addresses []strin
 	c.addresses[domain] = addresses
 }
 
+// AddDomainReference adds a reference to a domain
+func (c *DomainAddressCache) AddDomainReference(domain string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refCounts[domain]++
+}
+
+// RemoveDomainReference removes a reference to a domain
+// Returns true if the domain should be removed from cache (ref count reached 0)
+func (c *DomainAddressCache) RemoveDomainReference(domain string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, exists := c.refCounts[domain]; exists {
+		c.refCounts[domain]--
+		if c.refCounts[domain] <= 0 {
+			delete(c.refCounts, domain)
+			delete(c.addresses, domain)
+			return true
+		}
+	}
+	return false
+}
+
 // GetDomainAddresses gets IP addresses for a domain
 func (c *DomainAddressCache) GetDomainAddresses(domain string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.addresses[domain]
-}
-
-// RemoveDomainAddresses removes IP addresses for a domain
-func (c *DomainAddressCache) RemoveDomainAddresses(domain string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.addresses, domain)
 }
 
 func (c *Controller) enqueueAddDNSNameResolver(obj any) {
@@ -115,6 +134,7 @@ func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {
 
 	allAddresses := append(v4Addresses, v6Addresses...)
 	c.domainAddressCache.SetDomainAddresses(domainName, allAddresses)
+	c.domainAddressCache.AddDomainReference(domainName)
 	klog.V(3).Infof("Updated domain address cache for %s: %v", domainName, allAddresses)
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
@@ -133,8 +153,12 @@ func (c *Controller) handleDeleteDNSNameResolver(dnsNameResolver *kubeovnv1.DNSN
 	}
 
 	domainName := string(dnsNameResolver.Spec.Name)
-	c.domainAddressCache.RemoveDomainAddresses(domainName)
-	klog.V(3).Infof("Removed domain %s from address cache", domainName)
+	removed := c.domainAddressCache.RemoveDomainReference(domainName)
+	if removed {
+		klog.V(3).Infof("Removed domain %s from address cache (ref count reached 0)", domainName)
+	} else {
+		klog.V(3).Infof("Decremented reference count for domain %s", domainName)
+	}
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
 	klog.V(3).Infof("Triggered ANP %s re-sync after DNSNameResolver %s deletion", anpName, dnsNameResolver.Name)
