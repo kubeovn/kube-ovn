@@ -15,6 +15,7 @@ Kube-OVN, a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/), integ
 
 ## Features
 
+- **Non-Primary CNI Mode**: Kube-OVN can work as a secondary CNI alongside other primary CNIs (Cilium, Calico, etc.), providing additional network interfaces and advanced networking features via Network Attachment Definitions (NADs).
 - **VPC Support**: Multi-tenant network with independent address spaces, where each tenant has its own network infrastructure such as eips, nat gateways, security groups and loadbalancers.
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
 - **Vlan/Underlay Support**: In addition to overlay network, Kube-OVN also supports underlay and vlan mode network for better performance and direct connectivity with physical network.
@@ -45,6 +46,7 @@ Kube-OVN is easy to install, please refer to the [Installation Guide](https://ku
 ## Documents
 
 - [CNI Selection Recommendations](https://kubeovn.github.io/docs/stable/en/#cni-selection-recommendations)
+- [Non-Primary CNI Mode](docs/NON-PRIMARY-CNI.md) - Use Kube-OVN as secondary CNI alongside other primary CNIs ([Quick Start](docs/NON-PRIMARY-CNI-QUICKSTART.md))
 - [Getting Start](https://kubeovn.github.io/docs/stable/en/start/prepare/)
 - [KubeVirt Usage](https://kubeovn.github.io/docs/stable/en/kubevirt/static-ip/)
 - [VPC Network](https://kubeovn.github.io/docs/stable/en/vpc/vpc/)

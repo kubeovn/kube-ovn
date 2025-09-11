@@ -1,0 +1,72 @@
+# VPC Simple Configuration for Non-Primary CNI Testing
+# This configuration creates basic VPC resources for testing non-primary CNI functionality
+
+apiVersion: kubeovn.io/v1
+kind: Vpc
+metadata:
+  name: vpc-simple
+  labels:
+    config-stage: "0"
+spec:
+  namespaces:
+    - kube-system
+  enableBfd: false
+---
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: vpc-simple-subnet
+  labels:
+    config-stage: "0"
+spec:
+  vpc: vpc-simple
+  cidrBlock: 10.100.0.0/16
+  default: false
+  excludeIps:
+    - 10.100.0.1
+  gateway: 10.100.0.1
+  gatewayType: distributed
+  protocol: IPv4
+  provider: ovn
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: vpc-simple-nad
+  namespace: kube-system
+  labels:
+    config-stage: "1"
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.0",
+      "name": "kube-ovn",
+      "type": "kube-ovn",
+      "ipam": {
+        "type": "kube-ovn",
+        "subnet": "vpc-simple-subnet"
+      }
+    }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vpc-simple-test-pod
+  namespace: kube-system
+  labels:
+    config-stage: "1"
+  annotations:
+    k8s.v1.cni.cncf.io/networks: kube-system/vpc-simple-nad
+spec:
+  containers:
+  - name: test-container
+    image: busybox:1.35
+    command: ["sleep", "3600"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+  restartPolicy: Always
