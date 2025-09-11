@@ -49,7 +49,7 @@ require (
 	golang.org/x/net v0.44.0
 	golang.org/x/sys v0.36.0
 	golang.org/x/time v0.13.0
-	golang.org/x/tools v0.36.0
+	golang.org/x/tools v0.37.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.1
