@@ -18,6 +18,8 @@ limitations under the License.
 
 package v1
 
+type DNSNameResolverExpansion interface{}
+
 type IPExpansion interface{}
 
 type IPPoolExpansion interface{}

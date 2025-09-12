@@ -96,6 +96,7 @@ type Configuration struct {
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
+	EnableDNSNameResolver       bool
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
@@ -191,6 +192,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
+		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
@@ -303,6 +305,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
 		EnableANP:                      *argEnableANP,
+		EnableDNSNameResolver:          *argEnableDNSNameResolver,
 		Image:                          *argImage,
 		LogPerm:                        *argLogPerm,
 		TLSMinVersion:                  *argTLSMinVersion,
