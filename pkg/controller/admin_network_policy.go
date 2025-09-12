@@ -320,9 +320,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 			v6Addrs = append(v6Addrs, v6Addr...)
 
 			// Check if this peer has domain names
-			if len(anprpeer.DomainNames) > 0 {
-				hasDomainNames = true
-			}
+			hasDomainNames = len(anprpeer.DomainNames) > 0
 		}
 		klog.Infof("anp %s, egress rule %s, selected v4 address %v, v6 address %v", anpName, anpr.Name, v4Addrs, v6Addrs)
 
