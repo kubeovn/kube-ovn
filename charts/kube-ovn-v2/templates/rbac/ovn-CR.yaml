@@ -48,6 +48,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - dnsnameresolvers
+      - dnsnameresolvers/status
       - qos-policies
       - qos-policies/status
     verbs:

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/onsi/ginkgo/v2"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
@@ -16,8 +17,7 @@ import (
 	"k8s.io/kubernetes/test/utils/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
-
-	"github.com/onsi/ginkgo/v2"
+	anpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -60,7 +60,13 @@ type Framework struct {
 	MetallbClientSet  *MetallbClientSet
 	AttachNetClient   nad.Interface
 	ExtClientSet      *extClientSet.Clientset
+	AnpClientSet      anpclient.Interface
 	KubeOVNVersion    *versionutil.Version
+	// master/release-1.10/...
+	ClusterVersion string
+	// 999.999 for master
+	ClusterVersionMajor uint
+	ClusterVersionMinor uint
 	// ipv4/ipv6/dual
 	ClusterIPFamily string
 	// overlay/underlay/underlay-hairpin
@@ -235,6 +241,17 @@ func (f *Framework) BeforeEach() {
 		config.QPS = f.Options.ClientQPS
 		config.Burst = f.Options.ClientBurst
 		f.MetallbClientSet, err = NewMetallbClientSet(config)
+		ExpectNoError(err)
+	}
+
+	if f.AnpClientSet == nil {
+		ginkgo.By("Creating an AdminNetworkPolicy client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.AnpClientSet, err = anpclient.NewForConfig(config)
 		ExpectNoError(err)
 	}
 

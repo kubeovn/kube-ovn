@@ -264,6 +264,15 @@ kube-ovn-ipsec-cert-mgr-e2e:
 kube-ovn-anp-e2e:
 	KUBECONFIG=$(KUBECONFIG) ./test/anp/conformance.sh
 
+.PHONY: kube-ovn-anp-domain-e2e
+kube-ovn-anp-domain-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
+		--focus=CNI:Kube-OVN ./test/e2e/anp-domain/anp-domain.test -- $(TEST_BIN_ARGS)
+
 .PHONY: kube-ovn-connectivity-e2e
 kube-ovn-connectivity-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \

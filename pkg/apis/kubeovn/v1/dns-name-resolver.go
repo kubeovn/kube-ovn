@@ -115,7 +115,7 @@ type DNSNameResolverList struct {
 
 	// metadata is the standard list's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata"`
 
 	// items gives the list of DNSNameResolvers.
 	Items []DNSNameResolver `json:"items"`

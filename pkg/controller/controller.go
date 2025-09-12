@@ -264,6 +264,12 @@ type Controller struct {
 	deleteAnpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.AdminNetworkPolicy]
 	anpKeyMutex    keymutex.KeyMutex
 
+	dnsNameResolversLister          kubeovnlister.DNSNameResolverLister
+	dnsNameResolversSynced          cache.InformerSynced
+	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
+	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
+	domainAddressCache              *DomainAddressCache
+
 	banpsLister     anplister.BaselineAdminNetworkPolicyLister
 	banpsSynced     cache.InformerSynced
 	addBanpQueue    workqueue.TypedRateLimitingInterface[string]
@@ -380,6 +386,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
+	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
@@ -649,6 +656,14 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
+	if config.EnableDNSNameResolver {
+		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
+		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
+		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
+		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
+		controller.domainAddressCache = NewDomainAddressCache()
+	}
+
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -680,6 +695,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableANP {
 		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
+	}
+	if controller.config.EnableDNSNameResolver {
+		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
@@ -925,6 +943,16 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpNamePrioMap = make(map[string]int32, 100)
 	}
 
+	if config.EnableDNSNameResolver {
+		if _, err = dnsNameResolverInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddDNSNameResolver,
+			UpdateFunc: controller.enqueueUpdateDNSNameResolver,
+			DeleteFunc: controller.enqueueDeleteDNSNameResolver,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add dns name resolver event handler")
+		}
+	}
+
 	if config.EnableOVNIPSec {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
@@ -1167,6 +1195,11 @@ func (c *Controller) shutdown() {
 		c.deleteBanpQueue.ShutDown()
 	}
 
+	if c.config.EnableDNSNameResolver {
+		c.addOrUpdateDNSNameResolverQueue.ShutDown()
+		c.deleteDNSNameResolverQueue.ShutDown()
+	}
+
 	c.addOrUpdateSgQueue.ShutDown()
 	c.delSgQueue.ShutDown()
 	c.syncSgPortsQueue.ShutDown()
@@ -1380,6 +1413,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
+	}
+
+	if c.config.EnableDNSNameResolver {
+		go wait.Until(runWorker("add or update dns name resolver", c.addOrUpdateDNSNameResolverQueue, c.handleAddOrUpdateDNSNameResolver), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete dns name resolver", c.deleteDNSNameResolverQueue, c.handleDeleteDNSNameResolver), time.Second, ctx.Done())
 	}
 
 	if c.config.EnableLiveMigrationOptimize {
