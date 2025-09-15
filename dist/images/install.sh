@@ -45,6 +45,7 @@ CERT_MANAGER_IPSEC_CERT=${CERT_MANAGER_IPSEC_CERT:-false}
 IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
+ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
@@ -3520,6 +3521,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - dnsnameresolvers
+      - dnsnameresolvers/status
       - qos-policies
       - qos-policies/status
     verbs:
@@ -4702,6 +4705,7 @@ spec:
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
+          - --enable-dns-name-resolver=$ENABLE_DNS_NAME_RESOLVER
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE

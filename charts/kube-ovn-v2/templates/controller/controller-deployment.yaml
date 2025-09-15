@@ -153,6 +153,7 @@ spec:
           - --secure-serving={{- .Values.features.enableSecureServing }}
           - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
           - --enable-anp={{- .Values.features.ENABLE_ANP }}
+          - --enable-dns-name-resolver={{- .Values.features.ENABLE_DNS_NAME_RESOLVER }}
           - --ovsdb-con-timeout={{- .Values.features.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
