@@ -197,7 +197,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity to both domains before applying ANPs (should succeed)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com before applying ANPs (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com before applying ANPs (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com before applying ANPs (should succeed)")
 
 		ginkgo.By("Creating first AdminNetworkPolicy with domainName to deny baidu.com")
 		namespaceSelector := &metav1.LabelSelector{
@@ -217,8 +217,8 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		createdANP1 := anpClient.CreateSync(anp1)
 		framework.Logf("Successfully created first AdminNetworkPolicy: %s", createdANP1.Name)
 
-		ginkgo.By("Creating second AdminNetworkPolicy with domainName to allow qq.com")
-		domainNames2 := []netpolv1alpha1.DomainName{"*.qq.com."}
+		ginkgo.By("Creating second AdminNetworkPolicy with domainName to allow google.com")
+		domainNames2 := []netpolv1alpha1.DomainName{"*.google.com."}
 		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("allow-qq", netpolv1alpha1.AdminNetworkPolicyRuleActionAllow, ports, domainNames2)
 		anp2 := framework.MakeAdminNetworkPolicy(anpName2, 45, namespaceSelector, []netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule2}, nil)
 
@@ -243,15 +243,15 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		framework.ExpectEqual(len(anp2EgressRule.To), 1)
 		peer2 := anp2EgressRule.To[0]
 		framework.ExpectEqual(len(peer2.DomainNames), 1)
-		framework.ExpectEqual(string(peer2.DomainNames[0]), "*.qq.com.")
+		framework.ExpectEqual(string(peer2.DomainNames[0]), "*.google.com.")
 		framework.ExpectEqual(anp2.Spec.Priority, int32(45))
 
 		// Test connectivity after applying both ANPs
 		// baidu.com should be blocked (deny rule with higher priority)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying both ANPs (should be blocked)")
 
-		// qq.com should be allowed (allow rule)
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after applying both ANPs (should be allowed)")
+		// google.com should be allowed (allow rule)
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying both ANPs (should be allowed)")
 
 		// Delete the first ANP (baidu.com deny rule)
 		ginkgo.By("Deleting first AdminNetworkPolicy " + anpName)
@@ -261,16 +261,16 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		// baidu.com should be allowed now (no deny rule)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting first ANP (should be allowed)")
 
-		// qq.com should still be allowed
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after deleting first ANP (should still be allowed)")
+		// google.com should still be allowed
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after deleting first ANP (should still be allowed)")
 
-		// Delete the second ANP (qq.com allow rule)
+		// Delete the second ANP (google.com allow rule)
 		ginkgo.By("Deleting second AdminNetworkPolicy " + anpName2)
 		anpClient.Delete(anpName2)
 
 		// Test connectivity after deleting both ANPs (should succeed for both)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting both ANPs (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after deleting both ANPs (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after deleting both ANPs (should succeed)")
 	})
 
 	framework.ConformanceIt("should dynamically add and remove domainName deny rules in a single ANP", func() {
@@ -290,7 +290,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity to both domains before applying any ANP (should succeed)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com before applying ANP (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com before applying ANP (should succeed)")
 
 		ginkgo.By("Creating AdminNetworkPolicy without any domainName rules initially")
 		namespaceSelector := &metav1.LabelSelector{
@@ -309,7 +309,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity after creating ANP without rules (should still succeed)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after creating ANP without rules (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after creating ANP without rules (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after creating ANP without rules (should succeed)")
 
 		ginkgo.By("Adding domainName deny rule for baidu.com to the existing ANP")
 		domainNames := []netpolv1alpha1.DomainName{"*.baidu.com."}
@@ -322,10 +322,10 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity after adding baidu.com deny rule
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding deny rule (should be blocked)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after adding baidu.com deny rule (should still succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after adding baidu.com deny rule (should still succeed)")
 
-		ginkgo.By("Adding domainName deny rule for qq.com to the existing ANP")
-		domainNames2 := []netpolv1alpha1.DomainName{"*.qq.com."}
+		ginkgo.By("Adding domainName deny rule for google.com to the existing ANP")
+		domainNames2 := []netpolv1alpha1.DomainName{"*.google.com."}
 		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("deny-qq", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames2)
 
 		// Update the ANP to add the second egress rule
@@ -335,7 +335,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity after adding both deny rules
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding both deny rules (should be blocked)")
-		testNetworkConnectivity("https://www.qq.com", false, "Testing connectivity to qq.com after adding both deny rules (should be blocked)")
+		testNetworkConnectivity("https://www.google.com", false, "Testing connectivity to google.com after adding both deny rules (should be blocked)")
 
 		ginkgo.By("Removing baidu.com deny rule from the ANP")
 		// Remove the first egress rule (baidu.com deny)
@@ -345,7 +345,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity after removing baidu.com deny rule
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after removing deny rule (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", false, "Testing connectivity to qq.com after removing baidu.com deny rule (should still be blocked)")
+		testNetworkConnectivity("https://www.google.com", false, "Testing connectivity to google.com after removing baidu.com deny rule (should still be blocked)")
 
 		ginkgo.By("Removing all domainName deny rules from the ANP")
 		// Remove all egress rules
@@ -355,7 +355,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		// Test connectivity after removing all deny rules
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after removing all deny rules (should succeed)")
-		testNetworkConnectivity("https://www.qq.com", true, "Testing connectivity to qq.com after removing all deny rules (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after removing all deny rules (should succeed)")
 	})
 })
 
