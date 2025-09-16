@@ -780,7 +780,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 					require.Contains(t, lb.IPPortMappings, backend)
 				}
 
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
+				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
@@ -806,10 +806,29 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	t.Run("delete ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
 			for vip, backends := range vips {
-				list := strings.Split(backends, ",")
+				var (
+					list        []string
+					vhost, host string
+				)
+				list = strings.Split(backends, ",")
 				mappings = make(map[string]string)
 
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
+				for _, backend := range list {
+					host, _, err = net.SplitHostPort(backend)
+					require.NoError(t, err)
+
+					mappings[host] = host
+				}
+
+				vhost, _, err = net.SplitHostPort(vip)
+				require.NoError(t, err)
+				err = nbClient.LoadBalancerAddVip(lbName, vhost, list...)
+				require.NoError(t, err)
+
+				err = nbClient.LoadBalancerAddIPPortMapping(lbName, vhost, mappings)
+				require.NoError(t, err)
+
+				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
@@ -826,16 +845,45 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 	)
 
 	vips = map[string]string{
-		"[fd00:10:96::e86f]:8080": "",
+		"[fd00:10:96::e86f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 	t.Run("delete ip port mappings from load balancer repeatedly",
 		func(t *testing.T) {
-			for vip := range vips {
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
+			for vip, backends := range vips {
+				var (
+					list        []string
+					vhost, host string
+				)
+				list = strings.Split(backends, ",")
+				mappings = make(map[string]string)
+
+				for _, backend := range list {
+					host, _, err = net.SplitHostPort(backend)
+					require.NoError(t, err)
+
+					mappings[host] = host
+				}
+
+				vhost, _, err = net.SplitHostPort(vip)
+				require.NoError(t, err)
+				err = nbClient.LoadBalancerAddVip(lbName, vhost, list...)
+				require.NoError(t, err)
+
+				err = nbClient.LoadBalancerAddIPPortMapping(lbName, vhost, mappings)
+				require.NoError(t, err)
+
+				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
 				require.NoError(t, err)
+
+				for _, backend := range list {
+					backend, _, err = net.SplitHostPort(backend)
+					require.NoError(t, err)
+
+					require.NotContains(t, lb.IPPortMappings, backend)
+				}
 			}
 		},
 	)
