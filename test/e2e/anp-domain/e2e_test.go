@@ -219,7 +219,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Creating second AdminNetworkPolicy with domainName to allow google.com")
 		domainNames2 := []netpolv1alpha1.DomainName{"*.google.com."}
-		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("allow-qq", netpolv1alpha1.AdminNetworkPolicyRuleActionAllow, ports, domainNames2)
+		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("allow-google", netpolv1alpha1.AdminNetworkPolicyRuleActionAllow, ports, domainNames2)
 		anp2 := framework.MakeAdminNetworkPolicy(anpName2, 45, namespaceSelector, []netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule2}, nil)
 
 		// Create the second ANP in the cluster
@@ -326,7 +326,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Adding domainName deny rule for google.com to the existing ANP")
 		domainNames2 := []netpolv1alpha1.DomainName{"*.google.com."}
-		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("deny-qq", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames2)
+		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("deny-google", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames2)
 
 		// Update the ANP to add the second egress rule
 		updatedANP.Spec.Egress = append(updatedANP.Spec.Egress, egressRule2)
