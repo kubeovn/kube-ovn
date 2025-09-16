@@ -573,7 +573,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		testSubnet := framework.MakeSubnet(subnetName2, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
 		subnetClient.CreateSync(testSubnet)
 
-		ginkgo.By("Creating IPPool resources ")
+		ginkgo.By("Creating IPPool resources")
 		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
 		ipsRange2 := framework.RandomIPPool(testCidr, ipsCount)
 		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
@@ -607,7 +607,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		replicas := 1
 		ipsCount := 1
 
-		ginkgo.By("Creating IPPool resources ")
+		ginkgo.By("Creating IPPool resources")
 		ipsRange := framework.RandomIPPool(cidr, ipsCount*2)
 		ipv4Range, ipv6Range := util.SplitIpsByProtocol(ipsRange)
 		var ipsRange1, ipsRange2 []string
@@ -666,5 +666,28 @@ var _ = framework.Describe("[group:ipam]", func() {
 				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
 			}
 		}
+	})
+
+	framework.ConformanceIt("should block IP allocation if the ippool bound by namespace annotation has no available IPs", func() {
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
+
+		ginkgo.By("Creating IPPool")
+		ipsCount := 1
+		ips := framework.RandomIPPool(cidr, ipsCount)
+		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Creating deployment with replicas equal to the number of IPs in the ippool")
+		labels := map[string]string{"app": deployName}
+		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
+		_ = deployClient.CreateSync(deploy)
+
+		ginkgo.By("Creating pod which should be blocked for IP allocation")
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for pod to have event indicating IP allocation failure")
+		eventClient := f.EventClient()
+		_ = eventClient.WaitToHaveEvent("Pod", podName, "Warning", "AcquireAddressFailed", "kube-ovn-controller", "")
 	})
 })
