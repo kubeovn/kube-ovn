@@ -472,6 +472,7 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string) error {
 	lb, err := c.getLoadBalancerForDeletion(lbName)
 	if err != nil {
+		klog.Errorf("failed to get load balancer for deletion: %v", err)
 		return err
 	}
 	if lb == nil {
@@ -480,6 +481,7 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 
 	targetBackendIPs, err := c.extractBackendIPsFromVIP(lb, vipEndpoint)
 	if err != nil {
+		klog.Errorf("failed to extract backend IPs from VIP: %v", err)
 		return err
 	}
 	if len(targetBackendIPs) == 0 {
