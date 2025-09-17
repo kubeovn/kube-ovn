@@ -1032,7 +1032,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
