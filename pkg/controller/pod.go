@@ -1932,6 +1932,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		macPointer = ptr.To("")
 	}
 
+	var err error
+	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
 	if ippoolStr == "" {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
@@ -1942,6 +1944,15 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 		if len(ns.Annotations) != 0 {
 			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
+				if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+					klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+					return "", "", "", podNet.Subnet, err
+				}
+				subnetNames := make([]string, 0, len(nsNets))
+				for _, net := range nsNets {
+					subnetNames = append(subnetNames, net.Subnet.Name)
+				}
+
 				for ipPoolName := range strings.SplitSeq(ipPoolList, ",") {
 					ippool, err := c.ippoolLister.Get(ipPoolName)
 					if err != nil {
@@ -1965,13 +1976,17 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 						}
 					}
 
-					if ippool.Spec.Subnet == podNet.Subnet.Name {
-						ippoolStr = ippool.Name
-						break
+					for _, net := range nsNets {
+						if net.Subnet.Name == ippool.Spec.Subnet {
+							ippoolStr = ippool.Name
+							podNet.Subnet = net.Subnet
+							break
+						}
 					}
+					break
 				}
 				if ippoolStr == "" {
-					klog.Infof("no available ippool in subnet %s for pod %s/%s", podNet.Subnet.Name, pod.Namespace, pod.Name)
+					klog.Infof("no available ippool in subnets %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
 					return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 				}
 			}
@@ -2011,9 +2026,14 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	// The static ip can be assigned from any subnet after ns supports multi subnets
-	nsNets, _ := c.getNsAvailableSubnets(pod, podNet)
+	if nsNets == nil {
+		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
+	}
+
 	var v4IP, v6IP, mac string
-	var err error
 
 	// Static allocate
 	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != "" {
@@ -2045,9 +2065,13 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 		if len(ipPool) == 1 && (!strings.ContainsRune(ipPool[0], ',') && net.ParseIP(ipPool[0]) == nil) {
 			var skippedAddrs []string
+			pool, err := c.ippoolLister.Get(ipPool[0])
+			if err != nil {
+				klog.Errorf("failed to get ippool %s: %v", ipPool[0], err)
+				return "", "", "", podNet.Subnet, err
+			}
 			for {
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, pool.Spec.Subnet, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
 				if err != nil {
 					klog.Error(err)
 					return "", "", "", podNet.Subnet, err
@@ -2297,9 +2321,8 @@ func (c *Controller) getNameByPod(pod *v1.Pod) string {
 
 // When subnet's v4availableIPs is 0 but still there's available ip in exclude-ips, the static ip in exclude-ips can be allocated normal.
 func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*kubeovnNet, error) {
-	var result []*kubeovnNet
 	// keep the annotation subnet of the pod in first position
-	result = append(result, podNet)
+	result := []*kubeovnNet{podNet}
 
 	ns, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
@@ -2307,7 +2330,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 		return nil, err
 	}
 	if ns.Annotations == nil {
-		return nil, nil
+		return []*kubeovnNet{}, nil
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]

@@ -671,23 +671,52 @@ var _ = framework.Describe("[group:ipam]", func() {
 	framework.ConformanceIt("should block IP allocation if the ippool bound by namespace annotation has no available IPs", func() {
 		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
 
-		ginkgo.By("Creating IPPool")
+		ginkgo.By("Creating IPPool " + ippoolName)
 		ipsCount := 1
 		ips := framework.RandomIPPool(cidr, ipsCount)
 		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
 		_ = ippoolClient.CreateSync(ippool)
 
-		ginkgo.By("Creating deployment with replicas equal to the number of IPs in the ippool")
+		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool")
 		labels := map[string]string{"app": deployName}
 		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
 		_ = deployClient.CreateSync(deploy)
 
-		ginkgo.By("Creating pod which should be blocked for IP allocation")
+		ginkgo.By("Creating pod " + podName + " which should be blocked for IP allocation")
 		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
 		_ = podClient.Create(pod)
 
-		ginkgo.By("Waiting for pod to have event indicating IP allocation failure")
+		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP allocation failure")
 		eventClient := f.EventClient()
 		_ = eventClient.WaitToHaveEvent("Pod", podName, "Warning", "AcquireAddressFailed", "kube-ovn-controller", "")
+	})
+
+	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", func() {
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
+		ipsCount := 1
+
+		ginkgo.By("Creating subnet " + subnetName2)
+		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
+		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet2)
+
+		ginkgo.By("Creating IPPool " + ippoolName)
+		ips := framework.RandomIPPool(cidr, ipsCount)
+		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Creating IPPool " + ippoolName2)
+		ips2 := framework.RandomIPPool(cidr2, ipsCount)
+		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ips2, []string{namespaceName})
+		_ = ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool " + ippoolName)
+		labels := map[string]string{"app": deployName}
+		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
+		_ = deployClient.CreateSync(deploy)
+
+		ginkgo.By("Creating pod " + podName + " which should have IP allocated from ippool " + ippoolName2)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		_ = podClient.CreateSync(pod)
 	})
 })
