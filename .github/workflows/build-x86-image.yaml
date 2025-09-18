@@ -1536,6 +1536,162 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
+  non-primary-cni-e2e:
+    name: Non-Primary CNI E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v5
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v6
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v5
+        with:
+          name: kube-ovn
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v5
+        with:
+          name: vpc-nat-gateway
+
+      - name: Load image
+        run: |
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
+
+      - name: Create kind cluster and install CNIs
+        id: install
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-install-cilium-multus-kubeovn-secondary-${{ matrix.ip-family }}
+
+      - name: Run non-primary CNI e2e
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: overlay
+          KUBE_OVN_PRIMARY_CNI: "false"
+        run: make kube-ovn-non-primary-cni-e2e
+
+      - name: Collect k8s events
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          kubectl get events -A -o yaml > non-primary-cni-e2e-${{ matrix.ip-family }}-events.yaml
+          tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-events.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: non-primary-cni-e2e-${{ matrix.ip-family }}-events
+          path: non-primary-cni-e2e-${{ matrix.ip-family }}-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log
+          path: non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && steps.e2e.conclusion == 'failure'
+        working-directory: ${{ env.E2E_DIR }}
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
+          path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
   chart-test:
     name: Chart Installation/Uninstallation Test
     needs: build-kube-ovn
@@ -3564,6 +3720,7 @@ jobs:
       - kube-ovn-ipsec-cert-mgr-e2e
       - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
+      - non-primary-cni-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e
