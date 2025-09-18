@@ -1935,25 +1935,32 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var err error
 	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
-	logicalSwitch := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
-	if ippoolStr == "" && logicalSwitch == "" && podNet.IsDefault {
+	subnetStr := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+	if ippoolStr == "" && podNet.IsDefault {
+		// no ippool specified by pod annotation, use namespace ippools or ippools in the subnet specified by pod annotation
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
 			return "", "", "", podNet.Subnet, err
 		}
+		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		subnetNames := make([]string, 0, len(nsNets))
+		for _, net := range nsNets {
+			if net.Subnet.Name == subnetStr {
+				// allocate from ippools in the subnet specified by pod annotation
+				podNet.Subnet = net.Subnet
+				subnetNames = []string{net.Subnet.Name}
+				break
+			}
+			subnetNames = append(subnetNames, net.Subnet.Name)
+		}
 
-		if len(ns.Annotations) != 0 {
+		if subnetStr == "" || slices.Contains(subnetNames, subnetStr) {
+			// no subnet specified by pod annotation or specified subnet is in namespace subnets
 			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
-				if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-					klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-					return "", "", "", podNet.Subnet, err
-				}
-				subnetNames := make([]string, 0, len(nsNets))
-				for _, net := range nsNets {
-					subnetNames = append(subnetNames, net.Subnet.Name)
-				}
-
 				for ipPoolName := range strings.SplitSeq(ipPoolList, ",") {
 					ippool, err := c.ippoolLister.Get(ipPoolName)
 					if err != nil {
@@ -1987,7 +1994,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					break
 				}
 				if ippoolStr == "" {
-					klog.Infof("no available ippool in subnets %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
+					klog.Infof("no available ippool in subnet(s) %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
 					return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 				}
 			}
