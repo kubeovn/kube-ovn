@@ -2,12 +2,13 @@ package non_primary_cni
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,6 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -93,8 +93,7 @@ func removeFinalizers(configStage string) {
 		return
 	}
 
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -147,7 +146,7 @@ func readVersionFile() string {
 	}
 
 	for _, path := range possiblePaths {
-		if content, err := ioutil.ReadFile(path); err == nil {
+		if content, err := os.ReadFile(path); err == nil {
 			return strings.TrimSpace(string(content))
 		}
 	}
@@ -166,17 +165,16 @@ func detectKindBridgeNetwork() (*KindBridgeNetwork, error) {
 
 	network, err := docker.NetworkInspect(kind.NetworkName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to inspect KIND network: %v", err)
+		return nil, fmt.Errorf("failed to inspect KIND network: %w", err)
 	}
 
 	for _, config := range network.IPAM.Config {
-		if config.Subnet != "" && util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
+		if config.Subnet != "" && util.CheckProtocol(config.Subnet) == kubeovnv1.ProtocolIPv4 {
 			ginkgo.By(fmt.Sprintf("Detected KIND bridge network: CIDR=%s, Gateway=%s", config.Subnet, config.Gateway))
 			return &KindBridgeNetwork{CIDR: config.Subnet, Gateway: config.Gateway}, nil
 		}
 	}
-	return nil, fmt.Errorf("no IPv4 subnet found in KIND network")
-
+	return nil, errors.New("no IPv4 subnet found in KIND network")
 }
 
 // generateExcludeIPs creates a YAML list of IPs to exclude based on the gateway
@@ -200,7 +198,7 @@ func createEth1Interfaces() error {
 	// Get KIND network bridge name
 	network, err := docker.NetworkInspect(kind.NetworkName)
 	if err != nil {
-		return fmt.Errorf("failed to inspect KIND network: %v", err)
+		return fmt.Errorf("failed to inspect KIND network: %w", err)
 	}
 
 	bridgeName := "br-" + network.ID[:12]
@@ -209,7 +207,7 @@ func createEth1Interfaces() error {
 	// Get all KIND nodes
 	nodes, err := kind.ListNodes("kube-ovn", "")
 	if err != nil {
-		return fmt.Errorf("failed to get KIND nodes: %v", err)
+		return fmt.Errorf("failed to get KIND nodes: %w", err)
 	}
 
 	for _, node := range nodes {
@@ -220,7 +218,7 @@ func createEth1Interfaces() error {
 		pidCmd := fmt.Sprintf("docker inspect -f '{{.State.Pid}}' %s", nodeName)
 		pidOutput, err := runBashCommand(pidCmd)
 		if err != nil {
-			return fmt.Errorf("failed to get container PID for node %s: %v", nodeName, err)
+			return fmt.Errorf("failed to get container PID for node %s: %w", nodeName, err)
 		}
 		containerPID := strings.TrimSpace(pidOutput)
 
@@ -246,31 +244,31 @@ func createEth1Interfaces() error {
 		// Create veth pair
 		createVethCmd := fmt.Sprintf("ip link add %s type veth peer name eth1", vethHost)
 		if _, err := runBashCommand(createVethCmd); err != nil {
-			return fmt.Errorf("failed to create veth pair for node %s: %v", nodeName, err)
+			return fmt.Errorf("failed to create veth pair for node %s: %w", nodeName, err)
 		}
 
 		// Connect host veth to bridge
 		attachToBridgeCmd := fmt.Sprintf("ip link set %s master %s", vethHost, bridgeName)
 		if _, err := runBashCommand(attachToBridgeCmd); err != nil {
-			return fmt.Errorf("failed to attach %s to bridge %s: %v", vethHost, bridgeName, err)
+			return fmt.Errorf("failed to attach %s to bridge %s: %w", vethHost, bridgeName, err)
 		}
 
 		// Bring up host veth
 		upHostVethCmd := fmt.Sprintf("ip link set %s up", vethHost)
 		if _, err := runBashCommand(upHostVethCmd); err != nil {
-			return fmt.Errorf("failed to bring up %s: %v", vethHost, err)
+			return fmt.Errorf("failed to bring up %s: %w", vethHost, err)
 		}
 
 		// Move eth1 into container namespace
 		moveToNsCmd := fmt.Sprintf("ip link set eth1 netns %s", containerPID)
 		if _, err := runBashCommand(moveToNsCmd); err != nil {
-			return fmt.Errorf("failed to move eth1 to container %s: %v", nodeName, err)
+			return fmt.Errorf("failed to move eth1 to container %s: %w", nodeName, err)
 		}
 
 		// Bring up eth1 inside container
 		upEth1Cmd := fmt.Sprintf("nsenter -t %s -n ip link set eth1 up", containerPID)
 		if _, err := runBashCommand(upEth1Cmd); err != nil {
-			return fmt.Errorf("failed to bring up eth1 in container %s: %v", nodeName, err)
+			return fmt.Errorf("failed to bring up eth1 in container %s: %w", nodeName, err)
 		}
 
 		ginkgo.By(fmt.Sprintf("Successfully added eth1 interface to node: %s", nodeName))
@@ -283,9 +281,9 @@ func createEth1Interfaces() error {
 func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork) (string, error) {
 	ginkgo.By(fmt.Sprintf("Processing config file %s with KIND bridge network", yamlPath))
 
-	content, err := ioutil.ReadFile(yamlPath)
+	content, err := os.ReadFile(yamlPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read config file: %v", err)
+		return "", fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	yamlContent := string(content)
@@ -330,14 +328,14 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 		tmpDir = tmpDirEnv
 	}
 
-	tmpFile, err := ioutil.TempFile(tmpDir, "kind-config-*.yaml")
+	tmpFile, err := os.CreateTemp(tmpDir, "kind-config-*.yaml")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temporary config file: %v", err)
+		return "", fmt.Errorf("failed to create temporary config file: %w", err)
 	}
 	defer tmpFile.Close()
 
 	if _, err := tmpFile.WriteString(yamlContent); err != nil {
-		return "", fmt.Errorf("failed to write updated config: %v", err)
+		return "", fmt.Errorf("failed to write updated config: %w", err)
 	}
 
 	ginkgo.By(fmt.Sprintf("Created dynamic config file: %s", tmpFile.Name()))
@@ -345,7 +343,7 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 }
 
 // Helper function to wait for resource to be ready with Eventually
-func waitForResourceReady(name string, getFunc func(string) interface{}, readyFunc func(interface{}) bool) {
+func waitForResourceReady(name string, getFunc func(string) any, readyFunc func(any) bool) {
 	gomega.Eventually(func() bool {
 		resource := getFunc(name)
 		if resource == nil {
@@ -402,7 +400,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
 			for stage := 1; stage >= 0; stage-- {
-				removeFinalizers(fmt.Sprintf("%d", stage))
+				removeFinalizers(strconv.Itoa(stage))
 				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
 				_, _ = runBashCommand(cmd)
 			}
@@ -500,7 +498,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
 			for stage := 3; stage >= 0; stage-- {
-				removeFinalizers(fmt.Sprintf("%d", stage))
+				removeFinalizers(strconv.Itoa(stage))
 				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
 				_, _ = runBashCommand(cmd)
 			}
@@ -514,8 +512,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			ginkgo.By("Verify EIPs are created")
 			for _, eipName := range eipNames {
 				waitForResourceReady(eipName,
-					func(name string) interface{} { return ipTablesEipClient.Get(name) },
-					func(r interface{}) bool {
+					func(name string) any { return ipTablesEipClient.Get(name) },
+					func(r any) bool {
 						if eip, ok := r.(*kubeovnv1.IptablesEIP); ok {
 							return eip.Status.Ready && eip.Status.IP != ""
 						}
@@ -540,8 +538,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			ginkgo.By("Verify SNAT rules")
 			for _, snatName := range snatNames {
 				waitForResourceReady(snatName,
-					func(name string) interface{} { return ipTablesSnatRuleClient.Get(name) },
-					func(r interface{}) bool {
+					func(name string) any { return ipTablesSnatRuleClient.Get(name) },
+					func(r any) bool {
 						if snat, ok := r.(*kubeovnv1.IptablesSnatRule); ok {
 							return snat.Status.Ready
 						}
@@ -551,6 +549,9 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				snatObjs = append(snatObjs, snat)
 			}
 			snatList, err := ipTablesSnatRuleClient.List(context.Background(), metav1.ListOptions{})
+			if err != nil {
+				framework.Failf("Failed to list SNAT rules: %v", err)
+			}
 			for i, snatRule := range snatList.Items {
 				ginkgo.By(fmt.Sprintf("Testing SNAT rule %s", snatRule.Name))
 
@@ -580,8 +581,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			ginkgo.By("Verify DNAT rules")
 			for _, dnatName := range dnatNames {
 				waitForResourceReady(dnatName,
-					func(name string) interface{} { return ipTablesDnatRuleClient.Get(name) },
-					func(r interface{}) bool {
+					func(name string) any { return ipTablesDnatRuleClient.Get(name) },
+					func(r any) bool {
 						if dnat, ok := r.(*kubeovnv1.IptablesDnatRule); ok {
 							return dnat.Status.Ready
 						}
@@ -698,7 +699,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
 			for stage := 1; stage >= 0; stage-- {
-				removeFinalizers(fmt.Sprintf("%d", stage))
+				removeFinalizers(strconv.Itoa(stage))
 				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
 				_, _ = runBashCommand(cmd)
 			}
@@ -748,8 +749,7 @@ func getPodNonPrimaryIP(pod *corev1.Pod, interfaceName string) string {
 
 	// Simple JSON parsing to find the interface and extract IP
 	// Look for the interface name and then find the corresponding ips array
-	parts := strings.Split(networkStatus, "},{")
-	for _, part := range parts {
+	for part := range strings.SplitSeq(networkStatus, "},{") {
 		// Check if this part contains our target interface
 		if strings.Contains(part, fmt.Sprintf(`"interface": "%s"`, interfaceName)) {
 			// Extract IP from the ips array in this interface block
@@ -820,13 +820,12 @@ func testPodConnectivityWithInterface(sourcePod *corev1.Pod, targetIP, descripti
 		cmd = fmt.Sprintf("ping -c 3 %s", targetIP)
 		_, _, err := framework.KubectlExec(sourcePod.Namespace, sourcePod.Name, cmd)
 		return err
-	} else {
-		// For non-primary CNI, use specific interface
-		if interfaceName == "" {
-			interfaceName = DefaultNetworkInterface
-		}
-		cmd = fmt.Sprintf("ping -I %s -c 3 %s", interfaceName, targetIP)
-		_, _, err := framework.KubectlExec(sourcePod.Namespace, sourcePod.Name, cmd)
-		return err
 	}
+	// For non-primary CNI, use specific interface
+	if interfaceName == "" {
+		interfaceName = DefaultNetworkInterface
+	}
+	cmd = fmt.Sprintf("ping -I %s -c 3 %s", interfaceName, targetIP)
+	_, _, err := framework.KubectlExec(sourcePod.Namespace, sourcePod.Name, cmd)
+	return err
 }
