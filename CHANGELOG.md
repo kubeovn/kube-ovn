@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.14.7 (2025-09-18)
+
+ * [7f2af0a97](https://github.com/kubeovn/kube-ovn/commit/7f2af0a97f0d0c8fa0ad8f2f1dac4284a98d726d) release v1.14.7
+ * [47f0b30f9](https://github.com/kubeovn/kube-ovn/commit/47f0b30f9e2f10ac3a587daf424f1a825cfc5217) ipam: fix allocating from ippool (#5731)
+ * [42f70e9d9](https://github.com/kubeovn/kube-ovn/commit/42f70e9d93c33116fc80d127d22f5b06a4d66cd8) controller: fix ip allocation from IPPools (#5729)
+ * [31c620ca7](https://github.com/kubeovn/kube-ovn/commit/31c620ca74a661f9095841cd16a8c06fce5735f6) use arp for ipve network ready check (#5716)
+ * [b5dc7251d](https://github.com/kubeovn/kube-ovn/commit/b5dc7251d32b24b8b83d3f0c72b41279a65eee91) fix(deps): update module golang.org/x/tools to v0.37.0 (#5714)
+ * [96b08d582](https://github.com/kubeovn/kube-ovn/commit/96b08d582959ce79799fccebb50ee602bf16c5b8) gc ip by different types (#5702)
+ * [8c5e18b52](https://github.com/kubeovn/kube-ovn/commit/8c5e18b529cbeac32b4971ff1786715bbee6e5f9) fix(deps): update module golang.org/x/net to v0.44.0 (#5705)
+ * [0343e64b6](https://github.com/kubeovn/kube-ovn/commit/0343e64b6e04c44ac9bcef29b8b539d2be126ad0) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.6 (2025-09-09)
 
  * [bd38cc13f](https://github.com/kubeovn/kube-ovn/commit/bd38cc13f86ad2de670c073624e065e7060354b0) release v1.14.6
