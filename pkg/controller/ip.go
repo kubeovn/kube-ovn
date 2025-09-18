@@ -33,12 +33,7 @@ func (c *Controller) enqueueAddIP(obj interface{}) {
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
-	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
-	for _, as := range ipObj.Spec.AttachSubnets {
-		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -323,6 +318,14 @@ func (c *Controller) handleAddReservedIP(key string) error {
 			return err
 		}
 	}
+
+	klog.V(3).Infof("enqueue update status subnet %s", ip.Spec.Subnet)
+	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
+	for _, as := range ip.Spec.AttachSubnets {
+		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
+		c.updateSubnetStatusQueue.Add(as)
+	}
+
 	return nil
 }
 
