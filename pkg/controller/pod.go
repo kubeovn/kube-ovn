@@ -1898,6 +1898,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
@@ -1909,7 +1910,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
 			return "", "", "", podNet.Subnet, err
 		}
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if c.config.EnableKeepVMIP {
 			checkVMPod, _ = isVMPod(pod)
 		}
@@ -1935,7 +1935,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var err error
 	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
-	if ippoolStr == "" {
+	logicalSwitch := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+	if ippoolStr == "" && logicalSwitch == "" && podNet.IsDefault {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
@@ -1998,8 +1999,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ippoolStr == "" {
 		var skippedAddrs []string
 		for {
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				klog.Error(err)
@@ -2023,8 +2022,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 	// The static ip can be assigned from any subnet after ns supports multi subnets
 	if nsNets == nil {
 		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
@@ -2036,9 +2033,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var v4IP, v6IP, mac string
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-
+	if ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]; ipStr != "" {
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
