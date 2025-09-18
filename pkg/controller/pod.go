@@ -1893,6 +1893,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
@@ -1904,7 +1905,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
 			return "", "", "", podNet.Subnet, err
 		}
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if c.config.EnableKeepVMIP {
 			checkVMPod, _ = isVMPod(pod)
 		}
@@ -1930,24 +1930,32 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var err error
 	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
-	if ippoolStr == "" {
+	subnetStr := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+	if ippoolStr == "" && podNet.IsDefault {
+		// no ippool specified by pod annotation, use namespace ippools or ippools in the subnet specified by pod annotation
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
 			return "", "", "", podNet.Subnet, err
 		}
+		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		subnetNames := make([]string, 0, len(nsNets))
+		for _, net := range nsNets {
+			if net.Subnet.Name == subnetStr {
+				// allocate from ippools in the subnet specified by pod annotation
+				podNet.Subnet = net.Subnet
+				subnetNames = []string{net.Subnet.Name}
+				break
+			}
+			subnetNames = append(subnetNames, net.Subnet.Name)
+		}
 
-		if len(ns.Annotations) != 0 {
+		if subnetStr == "" || slices.Contains(subnetNames, subnetStr) {
+			// no subnet specified by pod annotation or specified subnet is in namespace subnets
 			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
-				if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-					klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-					return "", "", "", podNet.Subnet, err
-				}
-				subnetNames := make([]string, 0, len(nsNets))
-				for _, net := range nsNets {
-					subnetNames = append(subnetNames, net.Subnet.Name)
-				}
-
 				for ipPoolName := range strings.SplitSeq(ipPoolList, ",") {
 					ippool, err := c.ippoolLister.Get(ipPoolName)
 					if err != nil {
@@ -1972,16 +1980,18 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					}
 
 					for _, net := range nsNets {
-						if net.Subnet.Name == ippool.Spec.Subnet {
+						if net.Subnet.Name == ippool.Spec.Subnet && slices.Contains(subnetNames, net.Subnet.Name) {
 							ippoolStr = ippool.Name
 							podNet.Subnet = net.Subnet
 							break
 						}
 					}
-					break
+					if ippoolStr != "" {
+						break
+					}
 				}
 				if ippoolStr == "" {
-					klog.Infof("no available ippool in subnets %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
+					klog.Infof("no available ippool in subnet(s) %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
 					return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 				}
 			}
@@ -1993,8 +2003,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ippoolStr == "" {
 		var skippedAddrs []string
 		for {
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				klog.Error(err)
@@ -2018,8 +2026,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 	// The static ip can be assigned from any subnet after ns supports multi subnets
 	if nsNets == nil {
 		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
@@ -2031,9 +2037,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var v4IP, v6IP, mac string
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-
+	if ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]; ipStr != "" {
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
