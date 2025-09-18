@@ -1985,7 +1985,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					}
 
 					for _, net := range nsNets {
-						if net.Subnet.Name == ippool.Spec.Subnet {
+						if net.Subnet.Name == ippool.Spec.Subnet && slices.Contains(subnetNames, net.Subnet.Name) {
 							ippoolStr = ippool.Name
 							podNet.Subnet = net.Subnet
 							break
