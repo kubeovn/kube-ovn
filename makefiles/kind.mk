@@ -2,6 +2,10 @@
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
+# Cilium configuration variables (fallback if not defined in main Makefile)
+CILIUM_VERSION ?= v1.18.1
+CILIUM_IMAGE_REPO ?= quay.io/cilium
+
 OS_LINUX = 0
 ifneq ($(OS),Windows_NT)
 ifeq ($(shell uname -s),Linux)
@@ -41,10 +45,24 @@ define kind_create_cluster
 endef
 
 define kind_load_image
+	@echo "Loading image $(2) into KIND cluster $(1)..."
 	@if [ "x$(3)" = "x1" ]; then \
 		$(call docker_ensure_image_exists,$(2)); \
 	fi
-	kind load docker-image --name $(1) $(2)
+	if kind load docker-image --name $(1) $(2) 2>/dev/null; then \
+		echo "Successfully loaded $(2) using docker-image method"; \
+	else \
+		echo "docker-image method failed, trying image-archive method..."; \
+		if docker save $(2) | kind load image-archive --name $(1) /dev/stdin; then \
+			echo "Successfully loaded $(2) using image-archive method"; \
+		else \
+			echo "Both methods failed. Trying direct node loading..."; \
+			for node in $$(kind get nodes --name $(1)); do \
+				echo "Loading $(2) into node $$node..."; \
+				docker save $(2) | docker exec -i $$node ctr -n k8s.io images import -; \
+			done; \
+		fi; \
+	fi
 endef
 
 define kind_load_submariner_images
@@ -101,8 +119,19 @@ kind-iptables-accepct-underlay:
 	$(call docker_network_info,kind-underlay,kube-ovn-control-plane)
 	$(call add_docker_iptables_rule,iptables,-s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV4_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV4_SUBNET) -j ACCEPT)
 	$(call add_docker_iptables_rule,iptables,-d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV4_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV4_SUBNET) -j ACCEPT)
-	$(call add_docker_iptables_rule,ip6tables,-s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT)
-	$(call add_docker_iptables_rule,ip6tables,-d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT)
+	@$(MAKE) kind-iptables-accepct-underlay-ipv6
+
+.PHONY: kind-iptables-accepct-underlay-ipv6
+kind-iptables-accepct-underlay-ipv6:
+	@if [ -n "$(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET)" ] && [ -n "$(DOCKER_NETWORK_KIND_IPV6_SUBNET)" ]; then \
+		echo "Adding IPv6 iptables rules..."; \
+		sudo ip6tables -t filter -C DOCKER-USER -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT 2>/dev/null || sudo ip6tables -t filter -I DOCKER-USER -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT; \
+		sudo ip6tables -t raw -C PREROUTING -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT 2>/dev/null || sudo ip6tables -t raw -I PREROUTING -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT; \
+		sudo ip6tables -t filter -C DOCKER-USER -d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT 2>/dev/null || sudo ip6tables -t filter -I DOCKER-USER -d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT; \
+		sudo ip6tables -t raw -C PREROUTING -d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT 2>/dev/null || sudo ip6tables -t raw -I PREROUTING -d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT; \
+	else \
+		echo "Skipping IPv6 iptables rules (IPv6 subnets not available)"; \
+	fi
 
 .PHONY: kind-generate-config
 kind-generate-config:
@@ -577,57 +606,54 @@ kind-install-cilium-chaining-%:
 		--set cni.chainingTarget=kube-ovn \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
-		kubectl -n kube-system rollout status ds cilium --timeout 120s
-
-.PHONY: kind-install-cilium-non-exclusive
-kind-install-cilium-non-exclusive: kind-install-cilium-non-exclusive-ipv4
-
-.PHONY: kind-install-cilium-non-exclusive-%
-kind-install-cilium-non-exclusive-%:
-	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:$(CILIUM_VERSION),1)
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:$(CILIUM_VERSION),1)
-	helm repo add cilium https://helm.cilium.io/
-	helm repo update cilium
-	helm install cilium cilium/cilium --wait 
-		--version $(CILIUM_VERSION:v%=%) 
-		--namespace kube-system 
-		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) 
-		--set k8sServicePort=6443 
-		--set kubeProxyReplacement=false 
-		--set image.useDigest=false 
-		--set operator.image.useDigest=false 
-		--set operator.replicas=1 
-		--set socketLB.enabled=true 
-		--set nodePort.enabled=true 
-		--set externalIPs.enabled=true 
-		--set hostPort.enabled=false 
-		--set sessionAffinity=true 
-		--set enableIPv4Masquerade=false 
-		--set enableIPv6Masquerade=false 
-		--set hubble.enabled=true 
-		--set envoy.enabled=false 
-		--set sctp.enabled=true 
-		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) 
-		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) 
-		--set routingMode=native 
-		--set devices="eth+ ovn0 genev_sys_6081 vxlan_sys_4789" 
-		--set forceDeviceDetection=true 
-		--set ipam.mode=cluster-pool 
-		--set-json ipam.operator.clusterPoolIPv4PodCIDRList='["100.64.0.0/16"]' 
-		--set-json ipam.operator.clusterPoolIPv6PodCIDRList='["fd00:100:64::/112"]' 
-		--set cni.exclusive=false 
-		--set cni.install=true 
-		--set cni.confPath=/etc/cni/net.d 
-		--set cni.binPath=/opt/cni/bin
 	kubectl -n kube-system rollout status ds cilium --timeout 120s
-
-.PHONY: kind-install-kubevirt
 	@$(MAKE) ENABLE_LB=false ENABLE_NP=false \
 		CNI_CONFIG_PRIORITY=10 WITHOUT_KUBE_PROXY=true \
 		KIND_NETWORK_UNDERLAY=kind-underlay \
 		kind-install-$*
 	kubectl describe no
+
+.PHONY: kind-install-cilium-primary
+kind-install-cilium-primary: kind-install-cilium-primary-ipv4
+
+.PHONY: kind-install-cilium-primary-%
+kind-install-cilium-primary-%:
+	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:$(CILIUM_VERSION),1)
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:$(CILIUM_VERSION),1)
+	helm repo add cilium https://helm.cilium.io/
+	helm repo update cilium
+	helm install cilium cilium/cilium \
+		--version $(CILIUM_VERSION:v%=%) \
+		--namespace kube-system \
+		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
+		--set k8sServicePort=6443 \
+		--set kubeProxyReplacement=true \
+		--set image.useDigest=false \
+		--set operator.image.useDigest=false \
+		--set operator.replicas=1 \
+		--set socketLB.enabled=true \
+		--set nodePort.enabled=true \
+		--set externalIPs.enabled=true \
+		--set hostPort.enabled=true \
+		--set sessionAffinity=true \
+		--set enableIPv4Masquerade=true \
+		--set enableIPv6Masquerade=true \
+		--set hubble.enabled=true \
+		--set envoy.enabled=false \
+		--set sctp.enabled=true \
+		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
+		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
+		--set routingMode=native \
+		--set ipv4NativeRoutingCIDR=10.244.0.0/16 \
+		--set devices="eth+" \
+		--set forceDeviceDetection=true \
+		--set ipam.mode=kubernetes \
+		--set cni.exclusive=true \
+		--set cni.install=true \
+		--set cni.confPath=/etc/cni/net.d \
+		--set cni.binPath=/opt/cni/bin
+	kubectl -n kube-system rollout status ds cilium --timeout 120s
 
 .PHONY: kind-install-bgp
 kind-install-bgp: kind-install
@@ -733,6 +759,13 @@ kind-install-anp: kind-load-image
 	kubectl apply -f "$(BANP_CR_YAML)"
 	@$(MAKE) ENABLE_ANP=true kind-install
 
+.PHONY: kind-install-anp-dns-resolver
+kind-install-anp-dns-resolver: kind-load-image
+	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
+	kubectl apply -f "$(ANP_CR_YAML)"
+	kubectl apply -f "$(BANP_CR_YAML)"
+	@$(MAKE) ENABLE_ANP=true ENABLE_DNS_NAME_RESOLVER=true kind-install
+
 .PHONY: kind-reload
 kind-reload: kind-reload-ovs
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
@@ -800,8 +833,8 @@ kind-install-cilium-multus-kubeovn-secondary-%: kind-network-create-underlay
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
 	@$(MAKE) kind-iptables-accepct-underlay
 	@$(MAKE) kind-network-connect-underlay
-	@echo "2. Installing Cilium as non-exclusive CNI..."
-	@$(MAKE) kind-install-cilium-non-exclusive-$*
+	@echo "2. Installing Cilium as primary CNI..."
+	@$(MAKE) kind-install-cilium-primary-$*
 	@echo "3. Installing Multus for multi-CNI support..."
 	@$(MAKE) kind-install-multus
 	@echo "4. Installing Kube-OVN as secondary/non-primary CNI..."
@@ -825,8 +858,8 @@ kind-install-cilium-multus-kubeovn-secondary-v2-%: kind-network-create-underlay
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
 	@$(MAKE) kind-iptables-accepct-underlay
 	@$(MAKE) kind-network-connect-underlay
-	@echo "2. Installing Cilium as non-exclusive CNI..."
-	@$(MAKE) kind-install-cilium-non-exclusive-$*
+	@echo "2. Installing Cilium as primary CNI..."
+	@$(MAKE) kind-install-cilium-primary-$*
 	@echo "3. Installing Multus for multi-CNI support..."
 	@$(MAKE) kind-install-multus
 	@echo "4. Installing Kube-OVN as secondary/non-primary CNI (v2 chart)..."
