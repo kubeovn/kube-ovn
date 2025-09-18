@@ -113,16 +113,16 @@ kind-network-connect-underlay:
 		docker exec $$node ip address flush dev eth1; \
 	done
 
-.PHONY: kind-iptables-accepct-underlay
-kind-iptables-accepct-underlay:
+.PHONY: kind-iptables-accept-underlay
+kind-iptables-accept-underlay:
 	$(call docker_network_info,kind,kube-ovn-control-plane)
 	$(call docker_network_info,kind-underlay,kube-ovn-control-plane)
 	$(call add_docker_iptables_rule,iptables,-s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV4_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV4_SUBNET) -j ACCEPT)
 	$(call add_docker_iptables_rule,iptables,-d $(DOCKER_NETWORK_KIND_UNDERLAY_IPV4_SUBNET) -s $(DOCKER_NETWORK_KIND_IPV4_SUBNET) -j ACCEPT)
-	@$(MAKE) kind-iptables-accepct-underlay-ipv6
+	@$(MAKE) kind-iptables-accept-underlay-ipv6
 
-.PHONY: kind-iptables-accepct-underlay-ipv6
-kind-iptables-accepct-underlay-ipv6:
+.PHONY: kind-iptables-accept-underlay-ipv6
+kind-iptables-accept-underlay-ipv6:
 	@if [ -n "$(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET)" ] && [ -n "$(DOCKER_NETWORK_KIND_IPV6_SUBNET)" ]; then \
 		echo "Adding IPv6 iptables rules..."; \
 		sudo ip6tables -t filter -C DOCKER-USER -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT 2>/dev/null || sudo ip6tables -t filter -I DOCKER-USER -s $(DOCKER_NETWORK_KIND_UNDERLAY_IPV6_SUBNET) -d $(DOCKER_NETWORK_KIND_IPV6_SUBNET) -j ACCEPT; \
@@ -172,7 +172,7 @@ kind-init-cilium-chaining: kind-init-cilium-chaining-ipv4
 .PHONY: kind-init-cilium-chaining-%
 kind-init-cilium-chaining-%: kind-network-create-underlay
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
-	@$(MAKE) kind-iptables-accepct-underlay
+	@$(MAKE) kind-iptables-accept-underlay
 	@$(MAKE) kind-network-connect-underlay
 
 .PHONY: kind-init-ovn-submariner
@@ -824,7 +824,7 @@ kind-install-cilium-multus-kubeovn-secondary-%: kind-network-create-underlay
 	@echo "Setting up KIND cluster with Cilium non-exclusive CNI, Multus, and Kube-OVN secondary CNI..."
 	@echo "1. Creating KIND cluster and initializing with no CNI..."
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
-	@$(MAKE) kind-iptables-accepct-underlay
+	@$(MAKE) kind-iptables-accept-underlay
 	@$(MAKE) kind-network-connect-underlay
 	@echo "2. Installing Cilium as primary CNI..."
 	@$(MAKE) kind-install-cilium-primary-$*
@@ -849,7 +849,7 @@ kind-install-cilium-multus-kubeovn-secondary-v2-%: kind-network-create-underlay
 	@echo "Setting up KIND cluster with Cilium non-exclusive CNI, Multus, and Kube-OVN secondary CNI (v2 chart)..."
 	@echo "1. Creating KIND cluster and initializing with no CNI..."
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
-	@$(MAKE) kind-iptables-accepct-underlay
+	@$(MAKE) kind-iptables-accept-underlay
 	@$(MAKE) kind-network-connect-underlay
 	@echo "2. Installing Cilium as primary CNI..."
 	@$(MAKE) kind-install-cilium-primary-$*

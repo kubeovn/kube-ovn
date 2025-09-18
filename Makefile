@@ -253,7 +253,6 @@ install-chart-v2:
 		--set cni.configPriority=$(or $(CNI_CONFIG_PRIORITY),01)
 
 .PHONY: upgrade-chart-v2
-.PHONY: upgrade-chart-v2
 upgrade-chart-v2:
 	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
