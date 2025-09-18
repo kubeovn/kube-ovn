@@ -1991,7 +1991,9 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 							break
 						}
 					}
-					break
+					if ippoolStr != "" {
+						break
+					}
 				}
 				if ippoolStr == "" {
 					klog.Infof("no available ippool in subnet(s) %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
