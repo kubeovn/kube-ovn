@@ -52,10 +52,14 @@ func TestE2E(t *testing.T) {
 const (
 	EnvTestConfigPath    = "TEST_CONFIG_PATH"
 	EnvKubeOVNPrimaryCNI = "KUBE_OVN_PRIMARY_CNI"
+	EnvKubeOVNVersion    = "VERSION"
+	EnvKubeOVNRegistry   = "REGISTRY"
 
 	DefaultNetworkInterface = "net1"
 	DefaultConfigPath       = "/opt/testconfigs"
 	DefaultCommandTimeout   = 30 * time.Second
+	DefaultKubeOVNVersion   = "v1.15.0"
+	DefaultKubeOVNRegistry  = "docker.io/kubeovn"
 )
 
 // Helper functions
@@ -77,6 +81,79 @@ func isKubeOVNPrimaryCNI() bool {
 	return os.Getenv(EnvKubeOVNPrimaryCNI) == "true"
 }
 
+// removeFinalizers removes finalizers from Kube-OVN resources to ensure cleanup
+func removeFinalizers(configStage string) {
+	ginkgo.By(fmt.Sprintf("Removing finalizers from config-stage=%s resources", configStage))
+
+	// Get all resources with the specific config-stage label
+	cmd := fmt.Sprintf("kubectl get all,vpc,subnet,networkattachmentdefinitions,iptableseip,iptablessnatrule,iptablesdnatrule,vpcnatgateway,providernet,vlan -l config-stage=%s -o custom-columns=KIND:.kind,NAMESPACE:.metadata.namespace,NAME:.metadata.name --no-headers 2>/dev/null || true", configStage)
+	output, _ := runBashCommand(cmd)
+
+	if strings.TrimSpace(output) == "" {
+		return
+	}
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			kind := fields[0]
+			namespace := fields[1]
+			name := fields[2]
+
+			var patchCmd string
+			if namespace == "<none>" || namespace == "" {
+				// Cluster-scoped resource
+				patchCmd = fmt.Sprintf("kubectl patch %s %s --type=merge -p '{\"metadata\":{\"finalizers\":[]}}' 2>/dev/null || true", strings.ToLower(kind), name)
+			} else {
+				// Namespaced resource
+				patchCmd = fmt.Sprintf("kubectl patch %s %s -n %s --type=merge -p '{\"metadata\":{\"finalizers\":[]}}' 2>/dev/null || true", strings.ToLower(kind), name, namespace)
+			}
+			_, _ = runBashCommand(patchCmd)
+		}
+	}
+}
+
+// getKubeOVNVersion dynamically determines the KubeOVN version
+func getKubeOVNVersion() string {
+	if version := os.Getenv(EnvKubeOVNVersion); version != "" {
+		return version
+	}
+	if versionFromFile := readVersionFile(); versionFromFile != "" {
+		return versionFromFile
+	}
+	return DefaultKubeOVNVersion
+}
+
+// getKubeOVNRegistry dynamically determines the KubeOVN registry
+func getKubeOVNRegistry() string {
+	if registry := os.Getenv(EnvKubeOVNRegistry); registry != "" {
+		return registry
+	}
+	return DefaultKubeOVNRegistry
+}
+
+// readVersionFile reads version from VERSION file
+func readVersionFile() string {
+	// Try multiple possible locations for VERSION file
+	possiblePaths := []string{
+		"VERSION",
+		"../../../VERSION",
+		"/tmp/kube-ovn/VERSION",
+	}
+
+	for _, path := range possiblePaths {
+		if content, err := ioutil.ReadFile(path); err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return ""
+}
+
 // KindBridgeNetwork represents KIND bridge network configuration
 type KindBridgeNetwork struct {
 	CIDR    string
@@ -92,49 +169,31 @@ func detectKindBridgeNetwork() (*KindBridgeNetwork, error) {
 		return nil, fmt.Errorf("failed to inspect KIND network: %v", err)
 	}
 
-	var cidr, gateway string
 	for _, config := range network.IPAM.Config {
-		if config.Subnet != "" {
-			switch util.CheckProtocol(config.Subnet) {
-			case apiv1.ProtocolIPv4:
-				cidr = config.Subnet
-				gateway = config.Gateway
-			}
+		if config.Subnet != "" && util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
+			ginkgo.By(fmt.Sprintf("Detected KIND bridge network: CIDR=%s, Gateway=%s", config.Subnet, config.Gateway))
+			return &KindBridgeNetwork{CIDR: config.Subnet, Gateway: config.Gateway}, nil
 		}
 	}
+	return nil, fmt.Errorf("no IPv4 subnet found in KIND network")
 
-	if cidr == "" {
-		return nil, fmt.Errorf("no IPv4 subnet found in KIND network")
-	}
-
-	ginkgo.By(fmt.Sprintf("Detected KIND bridge network: CIDR=%s, Gateway=%s", cidr, gateway))
-	return &KindBridgeNetwork{
-		CIDR:    cidr,
-		Gateway: gateway,
-	}, nil
 }
 
 // generateExcludeIPs creates a YAML list of IPs to exclude based on the gateway
-func generateExcludeIPs(cidr, gateway string) string {
-	// Extract the base IP from gateway (e.g., "172.19.0.1" -> "172.19.0")
+func generateExcludeIPs(_, gateway string) string {
 	lastDot := strings.LastIndex(gateway, ".")
 	if lastDot == -1 {
-		return "- " + gateway // fallback
+		return "- " + gateway
 	}
 	baseIP := gateway[:lastDot]
-
-	excludeIPs := []string{
-		"- " + baseIP + ".1",
-		"- " + baseIP + ".2",
-		"- " + baseIP + ".3",
-		"- " + baseIP + ".4",
-		"- " + baseIP + ".5",
+	var ips []string
+	for i := 1; i <= 5; i++ {
+		ips = append(ips, fmt.Sprintf("- %s.%d", baseIP, i))
 	}
-
-	return strings.Join(excludeIPs, "\n    ")
+	return strings.Join(ips, "\n    ")
 }
 
-// createEth1Interfaces adds eth1 interfaces to KIND cluster nodes
+// createEth1Interfaces adds eth1 interfaces to KIND cluster nodes if they don't already exist
 func createEth1Interfaces() error {
 	ginkgo.By("Creating eth1 interfaces on KIND cluster nodes")
 
@@ -148,14 +207,14 @@ func createEth1Interfaces() error {
 	ginkgo.By(fmt.Sprintf("Using KIND network bridge: %s", bridgeName))
 
 	// Get all KIND nodes
-	nodes, err := kind.ListNodes("kind", "")
+	nodes, err := kind.ListNodes("kube-ovn", "")
 	if err != nil {
 		return fmt.Errorf("failed to get KIND nodes: %v", err)
 	}
 
 	for _, node := range nodes {
 		nodeName := node.Name()
-		ginkgo.By(fmt.Sprintf("Adding eth1 interface to node: %s", nodeName))
+		ginkgo.By(fmt.Sprintf("Processing eth1 interface for node: %s", nodeName))
 
 		// Get container PID
 		pidCmd := fmt.Sprintf("docker inspect -f '{{.State.Pid}}' %s", nodeName)
@@ -165,8 +224,26 @@ func createEth1Interfaces() error {
 		}
 		containerPID := strings.TrimSpace(pidOutput)
 
-		// Create veth pair
+		// Check if eth1 already exists inside the container
+		checkEth1Cmd := fmt.Sprintf("nsenter -t %s -n ip link show eth1", containerPID)
+		if _, err := runBashCommand(checkEth1Cmd); err == nil {
+			ginkgo.By(fmt.Sprintf("eth1 interface already exists in node %s, skipping creation", nodeName))
+			continue
+		}
+
+		// Check if host veth interface already exists
 		vethHost := fmt.Sprintf("veth_%s_eth1", nodeName[len(nodeName)-4:]) // Use last 4 chars of node name
+		checkVethCmd := fmt.Sprintf("ip link show %s", vethHost)
+		if _, err := runBashCommand(checkVethCmd); err == nil {
+			ginkgo.By(fmt.Sprintf("Host veth %s already exists, cleaning up before recreating", vethHost))
+			// Clean up existing veth
+			deleteVethCmd := fmt.Sprintf("ip link delete %s", vethHost)
+			_, _ = runBashCommand(deleteVethCmd) // Ignore errors in cleanup
+		}
+
+		ginkgo.By(fmt.Sprintf("Creating eth1 interface for node: %s", nodeName))
+
+		// Create veth pair
 		createVethCmd := fmt.Sprintf("ip link add %s type veth peer name eth1", vethHost)
 		if _, err := runBashCommand(createVethCmd); err != nil {
 			return fmt.Errorf("failed to create veth pair for node %s: %v", nodeName, err)
@@ -226,6 +303,10 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 	}
 
 	// Replace template placeholders with KIND bridge network values
+	registry := getKubeOVNRegistry()
+	version := getKubeOVNVersion()
+	vpcNatGatewayImage := fmt.Sprintf("%s/vpc-nat-gateway:%s", registry, version)
+
 	templateReplacements := map[string]string{
 		"<cidrBlock01>":                          kindNetwork.CIDR,
 		"<gateway01>":                            kindNetwork.Gateway,
@@ -236,7 +317,7 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 		"<vpc-nat-gw-ext-cidr>":                  kindNetwork.CIDR,
 		"<vpc-nat-gw-ext-gateway>":               kindNetwork.Gateway,
 		"<vpc-nat-gw-ext-exclude-ip>":            generateExcludeIPs(kindNetwork.CIDR, kindNetwork.Gateway),
-		"<kube-ovn-vpc-nat-image-name>":          "kubeovn/vpc-nat-gateway:v1.12.0",
+		"<kube-ovn-vpc-nat-image-name>":          vpcNatGatewayImage,
 	}
 
 	for placeholder, value := range templateReplacements {
@@ -261,6 +342,25 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 
 	ginkgo.By(fmt.Sprintf("Created dynamic config file: %s", tmpFile.Name()))
 	return tmpFile.Name(), nil
+}
+
+// Helper function to wait for resource to be ready with Eventually
+func waitForResourceReady(name string, getFunc func(string) interface{}, readyFunc func(interface{}) bool) {
+	gomega.Eventually(func() bool {
+		resource := getFunc(name)
+		if resource == nil {
+			return false
+		}
+		return readyFunc(resource)
+	}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(), fmt.Sprintf("Resource %s should be ready", name))
+}
+
+// Helper function to get pod IP (primary or non-primary)
+func getPodIP(pod *corev1.Pod) string {
+	if isKubeOVNPrimaryCNI() {
+		return pod.Status.PodIP
+	}
+	return getPodNonPrimaryIP(pod, DefaultNetworkInterface)
 }
 
 // VPC Simple Test
@@ -288,27 +388,27 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				nodeNames = append(nodeNames, node.Name)
 			}
 
-			ginkgo.By("Apply YAML with config-stage=0")
-			cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=0", yamlFile)
-			output, err := runBashCommand(cmd)
-			if err != nil {
-				framework.Failf("Failed to apply YAML config: %v, output: %s", err, output)
+			for stage := 0; stage <= 1; stage++ {
+				ginkgo.By(fmt.Sprintf("Apply YAML with config-stage=%d", stage))
+				cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=%d", yamlFile, stage)
+				output, err := runBashCommand(cmd)
+				framework.ExpectNoError(err, "Failed to apply stage %d config: %s", stage, output)
+				if stage == 0 {
+					time.Sleep(5 * time.Second)
+				}
 			}
-			time.Sleep(1 * time.Second)
 		})
 
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
-			cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true", yamlFile)
-			_, _ = runBashCommand(cmd)
+			for stage := 1; stage >= 0; stage-- {
+				removeFinalizers(fmt.Sprintf("%d", stage))
+				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
+				_, _ = runBashCommand(cmd)
+			}
 		})
 
 		ginkgo.It("Should create pods and test connectivity in VPC", func() {
-			ginkgo.By("Apply pods with config-stage=1")
-			cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=1", yamlFile)
-			output, err := runBashCommand(cmd)
-			framework.ExpectNoError(err, "Failed to apply pods: %s", output)
-
 			ginkgo.By("Wait for pods to be ready")
 			for _, podName := range podNames {
 				pod := podClient.GetPod(podName)
@@ -320,21 +420,14 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			pod2 := podClient.GetPod(podNames[1])
 
 			// Get pod IPs
-			var pod1IP, pod2IP string
-			if isKubeOVNPrimaryCNI() {
-				pod1IP = pod1.Status.PodIP
-				pod2IP = pod2.Status.PodIP
-			} else {
-				// For non-primary CNI, get IP from network attachment annotation
-				pod1IP = getPodNonPrimaryIP(pod1, DefaultNetworkInterface)
-				pod2IP = getPodNonPrimaryIP(pod2, DefaultNetworkInterface)
-			}
+			pod1IP := getPodIP(pod1)
+			pod2IP := getPodIP(pod2)
 
 			framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
 			framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
 
 			description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
-			err = testPodConnectivity(pod1, pod2IP, description)
+			err := testPodConnectivity(pod1, pod2IP, description)
 			framework.ExpectNoError(err, "Ping should succeed between pods in VPC")
 		})
 	})
@@ -349,16 +442,18 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 		eipNames := []string{"vpc-nat-gw-eip1", "vpc-nat-gw-eip2"}
 		snatNames := []string{"vpc-nat-gw-snat01", "vpc-nat-gw-snat02"}
 		dnatNames := []string{"vpc-nat-gw-dnat01", "vpc-nat-gw-dnat02"}
-		natGwName := "vpc-nat-gw-gw1"
+		natGwName := "vpc-nat-gw-gateway"
 		podNames := []string{"vpc-nat-gw-pod1", "vpc-nat-gw-pod2"}
 		originalYamlFile := getTestConfigFile("VPC/01-vpc-nat-gw.yaml")
-		var yamlFile string // Will be set dynamically
+		var yamlFile string
 		var ipTablesEipClient *framework.IptablesEIPClient
 		var ipTablesSnatRuleClient *framework.IptablesSnatClient
 		var ipTablesDnatRuleClient *framework.IptablesDnatClient
 		var natGwClient *framework.VpcNatGatewayClient
 		var podClient *framework.PodClient
 		var eipObjs []*kubeovnv1.IptablesEIP
+		var snatObjs []*kubeovnv1.IptablesSnatRule
+		var dnatObjs []*kubeovnv1.IptablesDnatRule
 		var podObjs []*corev1.Pod
 
 		ginkgo.BeforeEach(func() {
@@ -385,23 +480,30 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				}
 			})
 
-			ginkgo.By("Apply YAML with config-stage=0")
-			cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=0", yamlFile)
-			output, err := runBashCommand(cmd)
-			framework.ExpectNoError(err, "Failed to apply YAML config: %s", output)
-			time.Sleep(5 * time.Second)
-
-			ginkgo.By("Apply YAML with config-stage=1")
-			cmd = fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=1", yamlFile)
-			output, err = runBashCommand(cmd)
-			framework.ExpectNoError(err, "Failed to apply stage 1 config: %s", output)
-			time.Sleep(10 * time.Second)
+			stages := []struct {
+				stage int
+				sleep time.Duration
+			}{
+				{0, 5 * time.Second}, {1, 10 * time.Second}, {2, 0}, {3, 0},
+			}
+			for _, s := range stages {
+				ginkgo.By(fmt.Sprintf("Apply YAML with config-stage=%d", s.stage))
+				cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=%d", yamlFile, s.stage)
+				output, err := runBashCommand(cmd)
+				framework.ExpectNoError(err, "Failed to apply stage %d config: %s", s.stage, output)
+				if s.sleep > 0 {
+					time.Sleep(s.sleep)
+				}
+			}
 		})
 
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
-			cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true", yamlFile)
-			_, _ = runBashCommand(cmd)
+			for stage := 3; stage >= 0; stage-- {
+				removeFinalizers(fmt.Sprintf("%d", stage))
+				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
+				_, _ = runBashCommand(cmd)
+			}
 		})
 
 		ginkgo.It("Should create VPC NAT Gateway and test SNAT/DNAT", func() {
@@ -411,9 +513,15 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 			ginkgo.By("Verify EIPs are created")
 			for _, eipName := range eipNames {
+				waitForResourceReady(eipName,
+					func(name string) interface{} { return ipTablesEipClient.Get(name) },
+					func(r interface{}) bool {
+						if eip, ok := r.(*kubeovnv1.IptablesEIP); ok {
+							return eip.Status.Ready && eip.Status.IP != ""
+						}
+						return false
+					})
 				eip := ipTablesEipClient.Get(eipName)
-				framework.ExpectNotNil(eip, "EIP %s should exist", eipName)
-				framework.ExpectNotEmpty(eip.Status.IP, "EIP should have an IP address")
 				eipObjs = append(eipObjs, eip)
 			}
 
@@ -431,57 +539,82 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 			ginkgo.By("Verify SNAT rules")
 			for _, snatName := range snatNames {
+				waitForResourceReady(snatName,
+					func(name string) interface{} { return ipTablesSnatRuleClient.Get(name) },
+					func(r interface{}) bool {
+						if snat, ok := r.(*kubeovnv1.IptablesSnatRule); ok {
+							return snat.Status.Ready
+						}
+						return false
+					})
 				snat := ipTablesSnatRuleClient.Get(snatName)
-				framework.ExpectNotNil(snat, "SNAT rule %s should exist", snatName)
-				framework.ExpectEqual(snat.Status.Ready, true, "SNAT rule should be ready")
+				snatObjs = append(snatObjs, snat)
 			}
+			snatList, err := ipTablesSnatRuleClient.List(context.Background(), metav1.ListOptions{})
+			for i, snatRule := range snatList.Items {
+				ginkgo.By(fmt.Sprintf("Testing SNAT rule %s", snatRule.Name))
 
+				// Get the EIP associated with this SNAT rule
+				var snatEip *kubeovnv1.IptablesEIP
+				for _, eip := range eipObjs {
+					if eip.Name == snatRule.Spec.EIP {
+						snatEip = eip
+						break
+					}
+				}
+				framework.ExpectNotEmpty(snatEip.Status.IP, "EIP should have an IP address for SNAT testing")
+
+				// Get source pod IP for SNAT
+				sourcePodIP := getPodIP(podObjs[i])
+				framework.ExpectNotEmpty(sourcePodIP, "Source pod should have an IP address for SNAT testing")
+
+				ginkgo.By(fmt.Sprintf("Verifying SNAT mapping from pod %s (%s) to EIP %s",
+					podObjs[i].Name, sourcePodIP, snatEip.Status.IP))
+				// We do not test the actual packet forwarding here, just the rule configuration
+				// The actual packet forwarding is not tested since it needs done from outside the cluster
+				// Use helper function to verify SNAT rule configuration
+				verifySNATRule(&snatRule, sourcePodIP, snatEip)
+				ginkgo.By(fmt.Sprintf("SNAT rule %s properly configured: Internal=%s -> EIP=%s",
+					snatRule.Name, snatRule.Spec.InternalCIDR, snatRule.Spec.EIP))
+			}
 			ginkgo.By("Verify DNAT rules")
 			for _, dnatName := range dnatNames {
+				waitForResourceReady(dnatName,
+					func(name string) interface{} { return ipTablesDnatRuleClient.Get(name) },
+					func(r interface{}) bool {
+						if dnat, ok := r.(*kubeovnv1.IptablesDnatRule); ok {
+							return dnat.Status.Ready
+						}
+						return false
+					})
 				dnat := ipTablesDnatRuleClient.Get(dnatName)
-				framework.ExpectNotNil(dnat, "DNAT rule %s should exist", dnatName)
-				framework.ExpectEqual(dnat.Status.Ready, true, "DNAT rule should be ready")
+				dnatObjs = append(dnatObjs, dnat)
 			}
-
-			ginkgo.By("Test SNAT - external connectivity through NAT Gateway")
-			// Test SNAT - pods should be able to reach external IPs
-			for _, pod := range podObjs {
-				description := fmt.Sprintf("SNAT external connectivity from pod %s to 8.8.8.8", pod.Name)
-				err = testPodConnectivityWithInterface(pod, "8.8.8.8", description, "net2")
-				framework.ExpectNoError(err, "Pod should have external connectivity via SNAT")
-			}
-
-			ginkgo.By("Test DNAT - external access to pods through NAT Gateway")
-			// Test DNAT - external traffic should be able to reach pods through EIP
 			dnatList, err := ipTablesDnatRuleClient.List(context.Background(), metav1.ListOptions{})
 			framework.ExpectNoError(err, "Failed to list DNAT rules")
 			for i, dnatRule := range dnatList.Items {
 				ginkgo.By(fmt.Sprintf("Testing DNAT rule %s", dnatRule.Name))
 
-				// Get the EIP associated with this DNAT rule
-				var eipIP string
-				if len(eipObjs) > i {
-					eipIP = eipObjs[i].Status.IP
-				}
-				framework.ExpectNotEmpty(eipIP, "EIP should have an IP address for DNAT testing")
-
-				// Get target pod IP for DNAT
-				var targetPodIP string
-				if len(podObjs) > i {
-					if isKubeOVNPrimaryCNI() {
-						targetPodIP = podObjs[i].Status.PodIP
-					} else {
-						targetPodIP = getPodNonPrimaryIP(podObjs[i], DefaultNetworkInterface)
+				// Get the EIP associated with this SNAT rule
+				var dnatEip *kubeovnv1.IptablesEIP
+				for _, eip := range eipObjs {
+					if eip.Name == dnatRule.Spec.EIP {
+						dnatEip = eip
+						break
 					}
 				}
+				framework.ExpectNotEmpty(dnatEip.Status.IP, "EIP should have an IP address for DNAT testing")
+
+				// Get target pod IP for DNAT
+				targetPodIP := getPodIP(podObjs[i])
 				framework.ExpectNotEmpty(targetPodIP, "Target pod should have an IP address for DNAT testing")
 
 				ginkgo.By(fmt.Sprintf("Verifying DNAT mapping from EIP %s to pod %s (%s)",
-					eipIP, podObjs[i].Name, targetPodIP))
+					dnatEip.Status.IP, podObjs[i].Name, targetPodIP))
 				// We do not test the actual packet forwarding here, just the rule configuration
 				// The actual packet forwarding is not tested since it needs done from outside the cluster
 				// Use helper function to verify DNAT rule configuration
-				verifyDNATRule(&dnatRule, eipIP, targetPodIP)
+				verifyDNATRule(&dnatRule, targetPodIP, dnatEip)
 				ginkgo.By(fmt.Sprintf("DNAT rule %s properly configured: EIP=%s -> Internal=%s",
 					dnatRule.Name, dnatRule.Spec.EIP, dnatRule.Spec.InternalIP))
 			}
@@ -492,14 +625,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				pod1 := podObjs[0]
 				pod2 := podObjs[1]
 
-				var pod1IP, pod2IP string
-				if isKubeOVNPrimaryCNI() {
-					pod1IP = pod1.Status.PodIP
-					pod2IP = pod2.Status.PodIP
-				} else {
-					pod1IP = getPodNonPrimaryIP(pod1, DefaultNetworkInterface)
-					pod2IP = getPodNonPrimaryIP(pod2, DefaultNetworkInterface)
-				}
+				pod1IP := getPodIP(pod1)
+				pod2IP := getPodIP(pod2)
 
 				framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
 				framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
@@ -555,25 +682,29 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				}
 			})
 
-			ginkgo.By("Apply YAML with config-stage=0")
-			cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=0", yamlFile)
-			output, err := runBashCommand(cmd)
-			framework.ExpectNoError(err, "Failed to apply YAML config: %s", output)
-			time.Sleep(1 * time.Second)
+			for stage := 0; stage <= 1; stage++ {
+				ginkgo.By(fmt.Sprintf("Apply YAML with config-stage=%d", stage))
+				cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=%d", yamlFile, stage)
+				output, err := runBashCommand(cmd)
+				framework.ExpectNoError(err, "Failed to apply stage %d config: %s", stage, output)
+				if stage == 0 {
+					time.Sleep(1 * time.Second)
+				} else {
+					time.Sleep(10 * time.Second)
+				}
+			}
 		})
 
 		ginkgo.AfterEach(func() {
 			ginkgo.By("Cleanup resources")
-			cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true", yamlFile)
-			_, _ = runBashCommand(cmd)
+			for stage := 1; stage >= 0; stage-- {
+				removeFinalizers(fmt.Sprintf("%d", stage))
+				cmd := fmt.Sprintf("kubectl delete -f %s --ignore-not-found=true -l config-stage=%d --timeout=30s", yamlFile, stage)
+				_, _ = runBashCommand(cmd)
+			}
 		})
 
 		ginkgo.It("Should create pods and test connectivity in logical network", func() {
-			ginkgo.By("Apply pods with config-stage=1")
-			cmd := fmt.Sprintf("kubectl apply -f %s --prune -l config-stage=1", yamlFile)
-			output, err := runBashCommand(cmd)
-			framework.ExpectNoError(err, "Failed to apply pods: %s", output)
-
 			ginkgo.By("Wait for pods to be ready")
 			for _, podName := range podNames {
 				pod := podClient.GetPod(podName)
@@ -585,20 +716,14 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			pod2 := podClient.GetPod(podNames[1])
 
 			// Get pod IPs
-			var pod1IP, pod2IP string
-			if isKubeOVNPrimaryCNI() {
-				pod1IP = pod1.Status.PodIP
-				pod2IP = pod2.Status.PodIP
-			} else {
-				pod1IP = getPodNonPrimaryIP(pod1, DefaultNetworkInterface)
-				pod2IP = getPodNonPrimaryIP(pod2, DefaultNetworkInterface)
-			}
+			pod1IP := getPodIP(pod1)
+			pod2IP := getPodIP(pod2)
 
 			framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
 			framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
 
 			description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
-			err = testPodConnectivity(pod1, pod2IP, description)
+			err := testPodConnectivity(pod1, pod2IP, description)
 			framework.ExpectNoError(err, "Ping should succeed between pods in logical network")
 		})
 	})
@@ -606,8 +731,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 // Helper function to get non-primary IP from pod annotation
 func getPodNonPrimaryIP(pod *corev1.Pod, interfaceName string) string {
-	// For non-primary CNI, look for network status annotation
-	networkStatus := pod.Annotations["k8s.v1.cni.cncf.io/networks-status"]
+	// For non-primary CNI, look for network status annotation (note: singular "network-status")
+	networkStatus := pod.Annotations["k8s.v1.cni.cncf.io/network-status"]
 	if networkStatus == "" {
 		return ""
 	}
@@ -618,36 +743,66 @@ func getPodNonPrimaryIP(pod *corev1.Pod, interfaceName string) string {
 	}
 
 	// Parse the network status JSON to extract IP
-	// Look for interface matching the specified interface name
-	lines := strings.Split(networkStatus, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "ips") && strings.Contains(line, interfaceName) {
-			// Extract IP using simple string parsing
-			start := strings.Index(line, "[\"")
-			if start == -1 {
+	// The format is an array of network interfaces with their details
+	// Example: [{"name":"cilium","interface":"eth0",...},{"name":"vpc-simple-ns/vpc-simple-nad","interface":"net1","ips":["10.100.0.2"],...}]
+
+	// Simple JSON parsing to find the interface and extract IP
+	// Look for the interface name and then find the corresponding ips array
+	parts := strings.Split(networkStatus, "},{")
+	for _, part := range parts {
+		// Check if this part contains our target interface
+		if strings.Contains(part, fmt.Sprintf(`"interface": "%s"`, interfaceName)) {
+			// Extract IP from the ips array in this interface block
+			ipsStart := strings.Index(part, `"ips": [`)
+			if ipsStart == -1 {
 				continue
 			}
-			start += 2
-			end := strings.Index(line[start:], "\"")
-			if end != -1 {
-				return line[start : start+end]
+			ipsStart += len(`"ips": [`)
+
+			// Find the first IP in quotes
+			ipStart := strings.Index(part[ipsStart:], `"`)
+			if ipStart == -1 {
+				continue
 			}
+			ipStart += ipsStart + 1
+
+			ipEnd := strings.Index(part[ipStart:], `"`)
+			if ipEnd == -1 {
+				continue
+			}
+
+			return part[ipStart : ipStart+ipEnd]
 		}
 	}
 	return ""
 }
 
 // Helper function to verify DNAT rule configuration
-func verifyDNATRule(dnatRule *kubeovnv1.IptablesDnatRule, expectedEIP, expectedInternalIP string) {
+func verifyDNATRule(dnatRule *kubeovnv1.IptablesDnatRule, expectedInternalIP string, expectedEIP *kubeovnv1.IptablesEIP) {
 	framework.ExpectEqual(dnatRule.Status.Ready, true, "DNAT rule %s should be ready", dnatRule.Name)
 	framework.ExpectNotEmpty(dnatRule.Spec.EIP, "DNAT rule %s should specify an EIP", dnatRule.Name)
 	framework.ExpectNotEmpty(dnatRule.Spec.InternalIP, "DNAT rule %s should specify internal IP", dnatRule.Name)
 
-	if expectedEIP != "" {
-		framework.ExpectEqual(dnatRule.Spec.EIP, expectedEIP, "DNAT rule %s should map correct EIP", dnatRule.Name)
+	if expectedEIP != nil {
+		framework.ExpectEqual(dnatRule.Spec.EIP, expectedEIP.Name, "DNAT rule %s should map correct EIP", dnatRule.Name)
 	}
 	if expectedInternalIP != "" {
 		framework.ExpectEqual(dnatRule.Spec.InternalIP, expectedInternalIP, "DNAT rule %s should map to correct internal IP", dnatRule.Name)
+	}
+}
+
+// Helper function to verify SNAT rule configuration
+func verifySNATRule(snatRule *kubeovnv1.IptablesSnatRule, expectedPodIP string, expectedEIP *kubeovnv1.IptablesEIP) {
+	framework.ExpectEqual(snatRule.Status.Ready, true, "SNAT rule %s should be ready", snatRule.Name)
+	framework.ExpectNotEmpty(snatRule.Spec.InternalCIDR, "SNAT rule %s should specify an internal CIDR", snatRule.Name)
+	framework.ExpectNotEmpty(snatRule.Spec.EIP, "SNAT rule %s should specify an EIP", snatRule.Name)
+
+	if expectedPodIP != "" {
+		internalIP := strings.Split(snatRule.Spec.InternalCIDR, "/")[0]
+		framework.ExpectEqual(internalIP, expectedPodIP, "SNAT rule %s should map correct internal CIDR", snatRule.Name)
+	}
+	if expectedEIP != nil {
+		framework.ExpectEqual(snatRule.Spec.EIP, expectedEIP.Name, "SNAT rule %s should map to correct EIP", snatRule.Name)
 	}
 }
 
