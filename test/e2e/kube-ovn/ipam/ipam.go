@@ -571,7 +571,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating a new subnet " + subnetName2)
 		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
 		testSubnet := framework.MakeSubnet(subnetName2, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
-		subnetClient.CreateSync(testSubnet)
+		testSubnet = subnetClient.CreateSync(testSubnet)
 
 		ginkgo.By("Creating IPPool resources")
 		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
@@ -584,7 +584,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating statefulset " + stsName + " with logical switch annotation and no ippool annotation")
 		labels := map[string]string{"app": stsName}
 		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName2}
 		sts = stsClient.CreateSync(sts)
 
 		ginkgo.By("Getting pods for statefulset " + stsName)
@@ -593,10 +593,10 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
-			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, testSubnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, testSubnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName2)
+			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], testSubnet.Spec.CIDRBlock)
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
