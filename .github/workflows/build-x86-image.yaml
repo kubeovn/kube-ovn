@@ -2213,7 +2213,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
