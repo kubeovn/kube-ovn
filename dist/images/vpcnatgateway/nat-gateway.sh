@@ -50,7 +50,7 @@ function init() {
 
     # Send gratuitous ARP for all the IPs on the external network interface at initialization
     # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker 
-    ip -4 addr show dev net1 | awk '/inet /{print $2}' | cut -d/ -f1 | xargs -n1 arping -I net1 -c 3 -U
+    ip -4 addr show dev $EXTERNAL_INTERFACE | awk '/inet /{print $2}' | cut -d/ -f1 | xargs -n1 arping -I $EXTERNAL_INTERFACE -c 3 -U
 }
 
 
@@ -108,6 +108,14 @@ function add_eip() {
         exec_cmd "ip addr replace $eip dev net1"
         exec_cmd "arping -I net1 -c 3 -U $eip_without_prefix"
     done
+    
+    if [ -n "$GATEWAY_V4" ]; then
+        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
+    fi
+    
+    if [ -n "$GATEWAY_V6" ]; then
+        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
+    fi 
 }
 
 function del_eip() {

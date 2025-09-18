@@ -192,14 +192,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	var natGwPodContainerRestartCount int32
-	pod, _err := c.getNatGwPod(key)
-	if _err == nil {
-		for _, psc := range pod.Status.ContainerStatuses {
-			if psc.Name != "vpc-nat-gw" {
-				continue
+	pod, err := c.getNatGwPod(key)
+	if err == nil {
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.Name == "vpc-nat-gw" {
+				natGwPodContainerRestartCount = containerStatus.RestartCount
+				break
 			}
-			natGwPodContainerRestartCount = psc.RestartCount
-			break
 		}
 	}
 
@@ -834,9 +833,13 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if v6Gateway != "" {
 		routes = append(routes, request.Route{Destination: "::/0", Gateway: v6Gateway})
 	}
-	if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
-		klog.Error(err)
-		return nil, err
+	if !gw.Spec.NoDefaultEIP {
+		if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+	} else {
+		annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 	}
 
 	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
@@ -874,6 +877,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								},
 							},
 							ImagePullPolicy: corev1.PullIfNotPresent,
+							Env: []corev1.EnvVar{
+								{
+									Name:  "GATEWAY_V4",
+									Value: v4Gateway,
+								},
+								{
+									Name:  "GATEWAY_V6",
+									Value: v6Gateway,
+								},
+							},
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(true),
