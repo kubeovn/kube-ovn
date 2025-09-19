@@ -1360,7 +1360,7 @@ func (suite *OvnClientTestSuite) testCreateAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, append(acls, nil)...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, append(acls, nil)...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1503,14 +1503,14 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 5)
 
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, "", nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, "", nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1539,7 +1539,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1547,7 +1547,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1555,7 +1555,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport, nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionFromLport, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1580,7 +1580,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		acls = append(acls, acl)
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1592,7 +1592,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1601,7 +1601,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	})
 
 	t.Run("should no err when acls does not exist", func(t *testing.T) {
-		err = nbClient.DeleteAcls("test-nonexist-ls", logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"})
+		err = nbClient.DeleteAcls("test-nonexist-ls", LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"})
 		require.NoError(t, err)
 	})
 
@@ -1620,10 +1620,10 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		acls = append(acls, acl)
 
-		err = failedNbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = failedNbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.Error(t, err)
 		// TODO:// should err but not for now
-		err = failedNbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
+		err = failedNbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
 		require.NoError(t, err)
 	})
 }
@@ -1674,14 +1674,14 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		acl, err := nbClient.newACL(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		require.NoError(t, err)
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acl)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acl)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 1)
 
-		err = nbClient.DeleteACL(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match)
+		err = nbClient.DeleteACL(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)

@@ -1080,6 +1080,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) DeleteLogicalSwitchPort(lspName any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).DeleteLogicalSwitchPort), lspName)
 }
 
+// DeleteLogicalSwitchPortByUUID mocks base method.
+func (m *MockLogicalSwitchPort) DeleteLogicalSwitchPortByUUID(lsName, lspUUID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalSwitchPortByUUID", lsName, lspUUID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalSwitchPortByUUID indicates an expected call of DeleteLogicalSwitchPortByUUID.
+func (mr *MockLogicalSwitchPortMockRecorder) DeleteLogicalSwitchPortByUUID(lsName, lspUUID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPortByUUID", reflect.TypeOf((*MockLogicalSwitchPort)(nil).DeleteLogicalSwitchPortByUUID), lsName, lspUUID)
+}
+
 // DeleteLogicalSwitchPorts mocks base method.
 func (m *MockLogicalSwitchPort) DeleteLogicalSwitchPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalSwitchPort) bool) error {
 	m.ctrl.T.Helper()
@@ -3772,6 +3786,20 @@ func (m *MockNbClient) DeleteLogicalSwitchPort(lspName string) error {
 func (mr *MockNbClientMockRecorder) DeleteLogicalSwitchPort(lspName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalSwitchPort), lspName)
+}
+
+// DeleteLogicalSwitchPortByUUID mocks base method.
+func (m *MockNbClient) DeleteLogicalSwitchPortByUUID(lsName, lspUUID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalSwitchPortByUUID", lsName, lspUUID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalSwitchPortByUUID indicates an expected call of DeleteLogicalSwitchPortByUUID.
+func (mr *MockNbClientMockRecorder) DeleteLogicalSwitchPortByUUID(lsName, lspUUID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPortByUUID", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalSwitchPortByUUID), lsName, lspUUID)
 }
 
 // DeleteLogicalSwitchPorts mocks base method.

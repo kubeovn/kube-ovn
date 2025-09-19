@@ -489,8 +489,8 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 
-		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+		klog.Infof("gc logical switch port %s with uuid %s", lsp.Name, lsp.UUID)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPortByUUID(lsp.ExternalIDs[ovs.LogicalSwitchKey], lsp.UUID); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}

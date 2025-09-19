@@ -49,7 +49,7 @@ func NewOvsDbClient(
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
 ) (client.Client, error) {
-	logger := klog.NewKlogr().WithName("libovsdb").WithValues("db", db)
+	logger := klog.NewKlogr().WithName("libovsdb").WithValues("db", db).V(3)
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
 	options := []client.Option{
