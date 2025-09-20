@@ -65,10 +65,11 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	dbModel.SetIndexes(map[string][]model.ClientIndex{
-		ovnnb.LogicalRouterPolicyTable: {{Columns: []model.ColumnKey{
-			{Column: "match"},
-			{Column: "priority"},
-		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
+		ovnnb.LogicalRouterPolicyTable: {
+			{Columns: []model.ColumnKey{{Column: "match"}, {Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "match"}}},
+		},
 	})
 	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
 
