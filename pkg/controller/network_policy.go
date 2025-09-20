@@ -173,6 +173,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasIngressRule(np) {
+		blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(npName, pgName, ovnnb.ACLDirectionToLport, logEnable)
+		if err != nil {
+			klog.Errorf("failed to set default ingress block acl: %v", err)
+			return fmt.Errorf("failed to set default ingress block acl: %w", err)
+		}
+		ingressACLOps = append(ingressACLOps, blockACLOps...)
+
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -214,7 +221,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(key, pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -236,7 +243,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(key, pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -302,6 +309,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasEgressRule(np) {
+		blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(npName, pgName, ovnnb.ACLDirectionFromLport, logEnable)
+		if err != nil {
+			klog.Errorf("failed to set default egress block acl: %v", err)
+			return fmt.Errorf("failed to set default egress block acl: %w", err)
+		}
+		egressACLOps = append(egressACLOps, blockACLOps...)
+
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -343,7 +357,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(key, pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -365,7 +379,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(key, pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err

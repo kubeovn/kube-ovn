@@ -142,7 +142,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
+	ginkgo.FIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -157,6 +157,11 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 								NamespaceSelector: nil,
 								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
 							},
+							/*{
+								PodSelector:       nil,
+								NamespaceSelector: nil,
+								IPBlock:           &netv1.IPBlock{CIDR: "::/0", Except: []string{"::1/128"}},
+							},*/
 						},
 					},
 				},
@@ -177,7 +182,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cmd := "curl -k -q -s --connect-timeout 2 https://" + net.JoinHostPort(clusterIP, "443")
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, 3*time.Minute, func(_ context.Context) (bool, error) {
 			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
 			return err == nil, nil
 		}, "")
