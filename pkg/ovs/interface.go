@@ -104,6 +104,7 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
 	EnablePortLayer2forward(lspName string) error
 	DeleteLogicalSwitchPort(lspName string) error
+	DeleteLogicalSwitchPortByUUID(lsName, lspUUID string) error
 	DeleteLogicalSwitchPorts(externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) error
 	ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error)
 	ListNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error)

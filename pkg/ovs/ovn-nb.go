@@ -14,7 +14,7 @@ import (
 
 const (
 	logicalRouterKey      = "lr"
-	logicalSwitchKey      = "ls"
+	LogicalSwitchKey      = "ls"
 	portGroupKey          = "pg"
 	aclParentKey          = "parent"
 	associatedSgKeyPrefix = "associated_sg_"
@@ -194,10 +194,17 @@ func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 // RemoveLogicalPatchPort delete logical router port and associated logical switch port which type is router
 func (c *OVNNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	/* delete logical switch port*/
-	lspDelOp, err := c.DeleteLogicalSwitchPortOp(lspName)
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		klog.Error(err)
-		return err
+		return fmt.Errorf("failed to get logical switch port %s: %w", lspName, err)
+	}
+	var lspDelOp []ovsdb.Operation
+	if lsp != nil {
+		if lspDelOp, err = c.DeleteLogicalSwitchPortOp(lsp.ExternalIDs[LogicalSwitchKey], lsp.UUID); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	/* delete logical router port*/

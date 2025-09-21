@@ -181,7 +181,7 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 	case len(pgName) != 0:
 		parentName, parentType = pgName, portGroupKey
 	case len(lsName) != 0:
-		parentName, parentType = lsName, logicalSwitchKey
+		parentName, parentType = lsName, LogicalSwitchKey
 	default:
 		return errors.New("one of port group name and logical switch name must be specified")
 	}
@@ -472,7 +472,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 
 func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
 	if len(subnetAcls) == 0 {
-		if err := c.DeleteAcls(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
+		if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", map[string]string{"subnet": lsName}); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("delete subnet acls from %s: %w", lsName, err)
 		}
@@ -529,13 +529,13 @@ func (c *OVNNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcl
 		acls = append(acls, acl)
 	}
 
-	delOps, err := c.DeleteAclsOps(lsName, logicalSwitchKey, "", map[string]string{"subnet": lsName})
+	delOps, err := c.DeleteAclsOps(lsName, LogicalSwitchKey, "", map[string]string{"subnet": lsName})
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	addOps, err := c.CreateAclsOps(lsName, logicalSwitchKey, acls...)
+	addOps, err := c.CreateAclsOps(lsName, LogicalSwitchKey, acls...)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -572,7 +572,7 @@ func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
 func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	// clear acls
-	if err := c.DeleteAcls(lsName, logicalSwitchKey, "", nil); err != nil {
+	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
@@ -687,7 +687,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 		}
 	}
 
-	if err := c.CreateAcls(lsName, logicalSwitchKey, acls...); err != nil {
+	if err := c.CreateAcls(lsName, LogicalSwitchKey, acls...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("add ingress acls to logical switch %s: %w", lsName, err)
 	}
@@ -1174,8 +1174,8 @@ func aclFilter(direction string, externalIDs map[string]string) func(acl *ovnnb.
 // CreateAcls return operations which create several acl once
 // parentType is 'ls' or 'pg'
 func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnnb.ACL) ([]ovsdb.Operation, error) {
-	if parentType != portGroupKey && parentType != logicalSwitchKey {
-		return nil, fmt.Errorf("acl parent type must be '%s' or '%s'", portGroupKey, logicalSwitchKey)
+	if parentType != portGroupKey && parentType != LogicalSwitchKey {
+		return nil, fmt.Errorf("acl parent type must be '%s' or '%s'", portGroupKey, LogicalSwitchKey)
 	}
 
 	if len(acls) == 0 {
