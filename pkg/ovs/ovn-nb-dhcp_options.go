@@ -224,7 +224,7 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 		protocol = ""
 	}
 	externalIDs := map[string]string{
-		logicalSwitchKey: lsName,
+		LogicalSwitchKey: lsName,
 		"protocol":       protocol, // list all protocol dhcp options when protocol is ""
 	}
 
@@ -254,7 +254,7 @@ func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound boo
 	}
 
 	dhcpOptList, err := c.ListDHCPOptions(true, map[string]string{
-		logicalSwitchKey: lsName,
+		LogicalSwitchKey: lsName,
 		"protocol":       protocol,
 	})
 	if err != nil {
@@ -307,7 +307,7 @@ func newDHCPOptions(lsName, cidr, options string) (*ovnnb.DHCPOptions, error) {
 	return &ovnnb.DHCPOptions{
 		Cidr: cidr,
 		ExternalIDs: map[string]string{
-			logicalSwitchKey: lsName,
+			LogicalSwitchKey: lsName,
 			"protocol":       protocol,
 			"vendor":         util.CniTypeName,
 		},

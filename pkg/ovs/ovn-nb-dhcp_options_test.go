@@ -320,7 +320,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptionsByUUIDs() {
 		require.NoError(t, err)
 	}
 
-	out, err := nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName})
+	out, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName})
 	require.NoError(t, err)
 	require.Len(t, out, 3)
 	for _, o := range out {
@@ -330,7 +330,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptionsByUUIDs() {
 	err = nbClient.DeleteDHCPOptionsByUUIDs(uuidList...)
 	require.NoError(t, err)
 
-	out, err = nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName})
+	out, err = nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName})
 	require.NoError(t, err)
 	require.Empty(t, out)
 }
@@ -365,11 +365,11 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptions() {
 		err := nbClient.DeleteDHCPOptions(lsName, "IPv4")
 		require.NoError(t, err)
 
-		out, err := nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName, "protocol": "IPv4"})
+		out, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName, "protocol": "IPv4"})
 		require.NoError(t, err)
 		require.Empty(t, out)
 
-		out, err = nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName, "protocol": "IPv6"})
+		out, err = nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName, "protocol": "IPv6"})
 		require.NoError(t, err)
 		require.Len(t, out, 2)
 
@@ -377,7 +377,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptions() {
 		err = nbClient.DeleteDHCPOptions(lsName, "IPv6")
 		require.NoError(t, err)
 
-		out, err = nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName, "protocol": "IPv6"})
+		out, err = nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName, "protocol": "IPv6"})
 		require.NoError(t, err)
 		require.Empty(t, out)
 	})
@@ -388,7 +388,7 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptions() {
 		err := nbClient.DeleteDHCPOptions(lsName, kubeovnv1.ProtocolDual)
 		require.NoError(t, err)
 
-		out, err := nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName, "protocol": "IPv6"})
+		out, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName, "protocol": "IPv6"})
 		require.NoError(t, err)
 		require.Empty(t, out)
 	})
@@ -483,7 +483,7 @@ func (suite *OvnClientTestSuite) testListDHCPOptions() {
 	}
 
 	/* list all direction acl */
-	out, err := nbClient.ListDHCPOptions(true, map[string]string{logicalSwitchKey: lsName})
+	out, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: lsName})
 	require.NoError(t, err)
 	require.Len(t, out, 3)
 }
@@ -517,7 +517,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		// create three ipv4 dhcp options with other logical switch name
 		for _, cidr := range v4CidrBlock {
 			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
-			dhcpOpt.ExternalIDs[logicalSwitchKey] = lsName + "-test"
+			dhcpOpt.ExternalIDs[LogicalSwitchKey] = lsName + "-test"
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
 		}
@@ -551,7 +551,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		require.Equal(t, count, 8)
 
 		/* include same ls dhcp options */
-		filterFunc = dhcpOptionsFilter(true, map[string]string{logicalSwitchKey: lsName})
+		filterFunc = dhcpOptionsFilter(true, map[string]string{LogicalSwitchKey: lsName})
 		count = 0
 		for _, dhcpOpt := range dhcpOpts {
 			if filterFunc(dhcpOpt) {
@@ -561,7 +561,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		require.Equal(t, count, 5)
 
 		/* include same protocol dhcp options */
-		filterFunc = dhcpOptionsFilter(true, map[string]string{logicalSwitchKey: lsName, "protocol": "IPv4"})
+		filterFunc = dhcpOptionsFilter(true, map[string]string{LogicalSwitchKey: lsName, "protocol": "IPv4"})
 		count = 0
 		for _, dhcpOpt := range dhcpOpts {
 			if filterFunc(dhcpOpt) {
@@ -571,7 +571,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		require.Equal(t, count, 3)
 
 		/* include all protocol dhcp options */
-		filterFunc = dhcpOptionsFilter(true, map[string]string{logicalSwitchKey: lsName, "protocol": ""})
+		filterFunc = dhcpOptionsFilter(true, map[string]string{LogicalSwitchKey: lsName, "protocol": ""})
 		count = 0
 		for _, dhcpOpt := range dhcpOpts {
 			if filterFunc(dhcpOpt) {
@@ -588,7 +588,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 		require.NoError(t, err)
 
 		filterFunc := dhcpOptionsFilter(true, map[string]string{
-			logicalSwitchKey: lsName,
+			LogicalSwitchKey: lsName,
 			"key":            "value",
 		})
 
