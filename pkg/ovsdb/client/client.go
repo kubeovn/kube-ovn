@@ -41,8 +41,14 @@ func init() {
 	}
 	namedUUIDCounter = binary.LittleEndian.Uint32(buff)
 
-	zc := zap.NewDevelopmentConfig()
+	zc := zap.NewProductionConfig()
 	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-3))
+	zc.EncoderConfig.EncodeLevel = func(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+		if l < zapcore.InfoLevel {
+			l = zapcore.InfoLevel
+		}
+		enc.AppendString(l.String())
+	}
 	z, err := zc.Build()
 	if err != nil {
 		panic(err)
