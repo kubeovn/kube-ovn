@@ -72,5 +72,5 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 		framework.Logf("stderr:\n%s", string(stderr))
 	}
 
-	return
+	return stdout, stderr, err
 }

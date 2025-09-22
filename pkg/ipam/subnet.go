@@ -807,7 +807,7 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 
 	p := s.IPPools[ippool]
 	if p == nil {
-		return
+		return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 	}
 
 	v4Available = p.V4Available.Count()
@@ -819,5 +819,5 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 	v4UsingRange = p.V4Using.String()
 	v6UsingRange = p.V6Using.String()
 
-	return
+	return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 }

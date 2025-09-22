@@ -377,7 +377,7 @@ func (csh cniServerHandler) rollbackOvsPort(hostNicName, containerNicName, nicTy
 		klog.Warningf("failed to delete down ovs port %v, %q", err, output)
 	}
 	klog.Infof("rollback ovs port success %s", nicName)
-	return
+	return err
 }
 
 func generateNicName(containerID, ifname string) (string, string) {
