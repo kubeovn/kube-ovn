@@ -191,7 +191,7 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 			denied = true
 		}
 	}
-	return
+	return approved, denied
 }
 
 func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {

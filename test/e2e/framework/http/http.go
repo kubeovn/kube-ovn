@@ -33,7 +33,7 @@ func runCaseOnce(runner *httprunner.CaseRunner) (failure *Report) {
 	if err != nil {
 		failure.Elapsed = time.Since(startTime).Milliseconds()
 		failure.Attachments = fmt.Errorf("failed to start session: %w", err).Error()
-		return
+		return failure
 	}
 
 	if !summary.Success {
@@ -43,7 +43,7 @@ func runCaseOnce(runner *httprunner.CaseRunner) (failure *Report) {
 			failure.Elapsed = time.Since(startTime).Milliseconds()
 			failure.Attachments = "unexpected empty summary records"
 		}
-		return
+		return failure
 	}
 
 	if len(summary.Records) != 1 {

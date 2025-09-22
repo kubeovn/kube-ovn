@@ -1123,7 +1123,7 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 	for _, item := range existRouteMap {
 		routeNeedDel = append(routeNeedDel, item)
 	}
-	return
+	return routeNeedDel, routeNeedAdd, err
 }
 
 func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) string {
@@ -1272,7 +1272,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 		}
 	}
 	sort.Strings(subnets)
-	return
+	return subnets, defaultSubnet, err
 }
 
 // createVpcRouter create router to connect logical switches in vpc

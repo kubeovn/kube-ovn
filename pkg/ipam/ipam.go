@@ -467,7 +467,7 @@ func (ipam *IPAM) IPPoolStatistics(subnet, ippool string) (
 
 	s := ipam.Subnets[subnet]
 	if s == nil {
-		return
+		return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 	}
 	return s.IPPoolStatistics(ippool)
 }

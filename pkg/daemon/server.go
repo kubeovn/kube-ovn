@@ -91,5 +91,5 @@ func getRequestURI(request *restful.Request) (uri string) {
 	if request.Request.URL != nil {
 		uri = request.Request.URL.RequestURI()
 	}
-	return
+	return uri
 }
