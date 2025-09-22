@@ -53,6 +53,94 @@ func setACLName(acl *ovnnb.ACL, name string) {
 	acl.Name = ptr.To(name)
 }
 
+// CreateNpBaseACLOps creates the base ACLs of a NetworkPolicy to allow ARP/ICMP/VRRP
+// We allow those protocols because the standard for NetworkPolicies excepts to only block
+// based on the IP/TCP/UDP/SCTP protocols.
+func (c *OVNNbClient) CreateNpBaseACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+	portDirection := "outport"
+	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
+	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
+
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		portDirection = "inport"
+		dhcpv4UdpSrc, dhcpv4UdpDst = dhcpv4UdpDst, dhcpv4UdpSrc
+		dhcpv6UdpSrc, dhcpv6UdpDst = dhcpv6UdpDst, dhcpv6UdpSrc
+	}
+
+	acls := make([]*ovnnb.ACL, 0)
+
+	newACL := func(match string) {
+		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, npName)
+		}
+
+		acl, err := c.newACL(pgName, direction, util.IngressAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			klog.Error(err)
+			klog.Errorf("failed to create new base ingress acl for network policy %s/%s: %v", npNamespace, npName, err)
+			return
+		}
+		acls = append(acls, acl)
+	}
+
+	// Allow ARP
+	allArpMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("arp", "", "", ""),
+	)
+	newACL(allArpMatch.String())
+
+	// Allow VRRP
+	vrrpMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip.proto", "==", "112", ""),
+	)
+	newACL(vrrpMatch.String())
+
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		// Allow  ICMPv6
+		icmpv6Match := NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("icmp6", "", "", ""),
+		)
+		newACL(icmpv6Match.String())
+
+		// Allow DHCPv6
+		dhcpv6Match := NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("udp.src", "==", dhcpv6UdpSrc, ""),
+			NewACLMatch("udp.dst", "==", dhcpv6UdpDst, ""),
+			NewACLMatch("ip6", "", "", ""),
+		)
+		newACL(dhcpv6Match.String())
+	}
+
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		// Allow  ICMPv4
+		icmpv6Match := NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("icmp4", "", "", ""),
+		)
+		newACL(icmpv6Match.String())
+
+		// Allow DHCPv4
+		dhcpv4Match := NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("udp.src", "==", dhcpv4UdpSrc, ""),
+			NewACLMatch("udp.dst", "==", dhcpv4UdpDst, ""),
+			NewACLMatch("ip4", "", "", ""),
+		)
+		newACL(dhcpv4Match.String())
+	}
+
+	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to create ingress acl for port group %s: %w", pgName, err)
+	}
+	return ops, nil
+}
+
 // UpdateIngressACLOps return operation that creates an ingress ACL
 func (c *OVNNbClient) UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
