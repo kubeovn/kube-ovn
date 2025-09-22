@@ -2064,18 +2064,33 @@ func (mr *MockACLMockRecorder) UpdateAnpRuleACLOps(pgName, asName, protocol, acl
 }
 
 // UpdateDefaultBlockACLOps mocks base method.
-func (m *MockACL) UpdateDefaultBlockACLOps(netpol, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
+func (m *MockACL) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDefaultBlockACLOps", netpol, pgName, direction, loggingEnabled)
+	ret := m.ctrl.Call(m, "UpdateDefaultBlockACLOps", npName, pgName, direction, loggingEnabled)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateDefaultBlockACLOps indicates an expected call of UpdateDefaultBlockACLOps.
-func (mr *MockACLMockRecorder) UpdateDefaultBlockACLOps(netpol, pgName, direction, loggingEnabled any) *gomock.Call {
+func (mr *MockACLMockRecorder) UpdateDefaultBlockACLOps(npName, pgName, direction, loggingEnabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockACLOps", reflect.TypeOf((*MockACL)(nil).UpdateDefaultBlockACLOps), netpol, pgName, direction, loggingEnabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockACLOps", reflect.TypeOf((*MockACL)(nil).UpdateDefaultBlockACLOps), npName, pgName, direction, loggingEnabled)
+}
+
+// UpdateDefaultBlockExceptionsACLOps mocks base method.
+func (m *MockACL) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDefaultBlockExceptionsACLOps", npName, pgName, npNamespace, direction, protocol)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDefaultBlockExceptionsACLOps indicates an expected call of UpdateDefaultBlockExceptionsACLOps.
+func (mr *MockACLMockRecorder) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockExceptionsACLOps", reflect.TypeOf((*MockACL)(nil).UpdateDefaultBlockExceptionsACLOps), npName, pgName, npNamespace, direction, protocol)
 }
 
 // UpdateEgressACLOps mocks base method.
@@ -5237,18 +5252,33 @@ func (mr *MockNbClientMockRecorder) UpdateDHCPOptions(subnet, mtu any) *gomock.C
 }
 
 // UpdateDefaultBlockACLOps mocks base method.
-func (m *MockNbClient) UpdateDefaultBlockACLOps(netpol, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDefaultBlockACLOps", netpol, pgName, direction, loggingEnabled)
+	ret := m.ctrl.Call(m, "UpdateDefaultBlockACLOps", npName, pgName, direction, loggingEnabled)
 	ret0, _ := ret[0].([]ovsdb.Operation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateDefaultBlockACLOps indicates an expected call of UpdateDefaultBlockACLOps.
-func (mr *MockNbClientMockRecorder) UpdateDefaultBlockACLOps(netpol, pgName, direction, loggingEnabled any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) UpdateDefaultBlockACLOps(npName, pgName, direction, loggingEnabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateDefaultBlockACLOps), netpol, pgName, direction, loggingEnabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateDefaultBlockACLOps), npName, pgName, direction, loggingEnabled)
+}
+
+// UpdateDefaultBlockExceptionsACLOps mocks base method.
+func (m *MockNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDefaultBlockExceptionsACLOps", npName, pgName, npNamespace, direction, protocol)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDefaultBlockExceptionsACLOps indicates an expected call of UpdateDefaultBlockExceptionsACLOps.
+func (mr *MockNbClientMockRecorder) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDefaultBlockExceptionsACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateDefaultBlockExceptionsACLOps), npName, pgName, npNamespace, direction, protocol)
 }
 
 // UpdateDnatAndSnat mocks base method.

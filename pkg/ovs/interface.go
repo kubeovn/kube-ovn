@@ -158,7 +158,8 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	UpdateDefaultBlockACLOps(netpol, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error)
+	UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error)
+	UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error)
 	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error
