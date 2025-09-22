@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.14.8 (2025-09-22)
+
+ * [12c136b8e](https://github.com/kubeovn/kube-ovn/commit/12c136b8e1ea149e7b73fa64d83a8b7b1412676b) release v1.14.8
+ * [75a1eac11](https://github.com/kubeovn/kube-ovn/commit/75a1eac11164b6e782903bea698728403094a793) controller: fix lsp not deleted in gc (#5735)
+ * [e33b6d386](https://github.com/kubeovn/kube-ovn/commit/e33b6d3869a45ede9d0b4d00a83e6eb5d3546718) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.7 (2025-09-18)
 
  * [7f2af0a97](https://github.com/kubeovn/kube-ovn/commit/7f2af0a97f0d0c8fa0ad8f2f1dac4284a98d726d) release v1.14.7
