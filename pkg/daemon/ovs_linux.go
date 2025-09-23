@@ -669,6 +669,15 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		return fmt.Errorf("can not find nic %s: %w", util.NodeNic, err)
 	}
 
+	actualMac := hostLink.Attrs().HardwareAddr
+	if actualMac.String() != macAddr.String() {
+		macAddr = actualMac
+		err := fmt.Errorf("MAC address mismatch on %s: expected %s, actual %s", util.NodeNic, macAddr.String(), actualMac.String())
+		klog.Error(err)
+		return err
+	}
+	klog.Infof("MAC address %s successfully set on %s", macAddr.String(), util.NodeNic)
+
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen: %w", util.NodeNic, err)
 	}
