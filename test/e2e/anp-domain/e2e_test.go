@@ -357,6 +357,148 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after removing all deny rules (should succeed)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after removing all deny rules (should succeed)")
 	})
+
+	framework.ConformanceIt("should create ANP with domainName and CIDR rules and verify they work together", func() {
+		f.SkipVersionPriorTo(1, 15, "AdminNetworkPolicy domainName support was introduced in v1.15")
+
+		ginkgo.By("Creating test namespace " + namespaceName)
+		labels := map[string]string{
+			"kubernetes.io/metadata.name": namespaceName,
+		}
+		ns := framework.MakeNamespace(namespaceName, labels, nil)
+		_ = nsClient.Create(ns)
+
+		ginkgo.By("Creating test pod " + podName + " in namespace " + namespaceName)
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		_ = podClient.CreateSync(pod)
+
+		// Test connectivity before applying ANP (should succeed)
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com before applying ANP (should succeed)")
+
+		ginkgo.By("Creating AdminNetworkPolicy with both domainName and CIDR rules")
+		namespaceSelector := &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"kubernetes.io/metadata.name": namespaceName,
+			},
+		}
+		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
+			framework.MakeAdminNetworkPolicyPort(443, corev1.ProtocolTCP),
+		}
+
+		// Create domainName rule: deny baidu.com
+		domainNames := []netpolv1alpha1.DomainName{"*.baidu.com."}
+		egressRule1 := framework.MakeAdminNetworkPolicyEgressRule("deny-baidu", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames)
+
+		// Create CIDR rule: allow 8.8.8.8/32 (Google DNS)
+		egressRule2 := netpolv1alpha1.AdminNetworkPolicyEgressRule{
+			Name:   "allow-google-dns",
+			Action: netpolv1alpha1.AdminNetworkPolicyRuleActionAllow,
+			To: []netpolv1alpha1.AdminNetworkPolicyEgressPeer{
+				{
+					Networks: []netpolv1alpha1.CIDR{"8.8.8.8/32"},
+				},
+			},
+			Ports: &ports,
+		}
+
+		anp := framework.MakeAdminNetworkPolicy(anpName, 80, namespaceSelector,
+			[]netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule1, egressRule2}, nil)
+
+		// Create the ANP in the cluster
+		ginkgo.By("Creating AdminNetworkPolicy in the cluster")
+		createdANP := anpClient.CreateSync(anp)
+		framework.Logf("Successfully created AdminNetworkPolicy: %s", createdANP.Name)
+
+		ginkgo.By("Verifying ANP structure is correct")
+		framework.ExpectEqual(len(anp.Spec.Egress), 2)
+		framework.ExpectEqual(anp.Spec.Priority, int32(80))
+
+		// Test connectivity after applying ANP
+		// baidu.com should be blocked (domainName deny rule)
+		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying ANP (should be blocked)")
+
+		// google.com should be allowed (no specific rule against it)
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying ANP (should be allowed)")
+	})
+
+	framework.ConformanceIt("should create ANP with wildcard domainName rules and verify they work correctly", func() {
+		f.SkipVersionPriorTo(1, 15, "AdminNetworkPolicy domainName support was introduced in v1.15")
+
+		ginkgo.By("Creating test namespace " + namespaceName)
+		labels := map[string]string{
+			"kubernetes.io/metadata.name": namespaceName,
+		}
+		ns := framework.MakeNamespace(namespaceName, labels, nil)
+		_ = nsClient.Create(ns)
+
+		ginkgo.By("Creating test pod " + podName + " in namespace " + namespaceName)
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
+		_ = podClient.CreateSync(pod)
+
+		// Test connectivity to various domains before applying ANP (should succeed)
+		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to www.baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://api.baidu.com", true, "Testing connectivity to api.baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://blog.baidu.com", true, "Testing connectivity to blog.baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to www.google.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://mail.google.com", true, "Testing connectivity to mail.google.com before applying ANP (should succeed)")
+
+		ginkgo.By("Creating AdminNetworkPolicy with wildcard domainName rules")
+		namespaceSelector := &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"kubernetes.io/metadata.name": namespaceName,
+			},
+		}
+		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
+			framework.MakeAdminNetworkPolicyPort(443, corev1.ProtocolTCP),
+		}
+
+		// Create wildcard rule: deny all baidu.com subdomains
+		domainNames1 := []netpolv1alpha1.DomainName{"*.baidu.com."}
+		egressRule1 := framework.MakeAdminNetworkPolicyEgressRule("deny-baidu-wildcard", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames1)
+
+		// Create specific rule: allow www.google.com (more specific than wildcard)
+		domainNames2 := []netpolv1alpha1.DomainName{"www.google.com."}
+		egressRule2 := framework.MakeAdminNetworkPolicyEgressRule("allow-www-google", netpolv1alpha1.AdminNetworkPolicyRuleActionAllow, ports, domainNames2)
+
+		// Create wildcard rule: deny all google.com subdomains
+		domainNames3 := []netpolv1alpha1.DomainName{"*.google.com."}
+		egressRule3 := framework.MakeAdminNetworkPolicyEgressRule("deny-google-wildcard", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames3)
+
+		anp := framework.MakeAdminNetworkPolicy(anpName, 85, namespaceSelector,
+			[]netpolv1alpha1.AdminNetworkPolicyEgressRule{egressRule1, egressRule2, egressRule3}, nil)
+
+		// Create the ANP in the cluster
+		ginkgo.By("Creating AdminNetworkPolicy in the cluster")
+		createdANP := anpClient.CreateSync(anp)
+		framework.Logf("Successfully created AdminNetworkPolicy: %s", createdANP.Name)
+
+		ginkgo.By("Verifying ANP structure is correct")
+		framework.ExpectEqual(len(anp.Spec.Egress), 3)
+		framework.ExpectEqual(anp.Spec.Priority, int32(85))
+
+		// Test connectivity after applying ANP with wildcard rules
+		// All baidu.com subdomains should be blocked (wildcard deny rule)
+		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to www.baidu.com after applying ANP (should be blocked by wildcard)")
+		testNetworkConnectivity("https://api.baidu.com", false, "Testing connectivity to api.baidu.com after applying ANP (should be blocked by wildcard)")
+		testNetworkConnectivity("https://blog.baidu.com", false, "Testing connectivity to blog.baidu.com after applying ANP (should be blocked by wildcard)")
+
+		// www.google.com should be allowed (specific allow rule overrides wildcard deny)
+		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to www.google.com after applying ANP (should be allowed by specific rule)")
+
+		// Other google.com subdomains should be blocked (wildcard deny rule)
+		testNetworkConnectivity("https://mail.google.com", false, "Testing connectivity to mail.google.com after applying ANP (should be blocked by wildcard)")
+
+		ginkgo.By("Testing edge cases with wildcard rules")
+		// Test that exact domain matches work
+		testNetworkConnectivity("https://baidu.com", true, "Testing connectivity to baidu.com (exact domain, should be allowed)")
+
+		// Test that subdomain matching works correctly
+		testNetworkConnectivity("https://subdomain.baidu.com", false, "Testing connectivity to subdomain.baidu.com (should be blocked by wildcard)")
+	})
+
 })
 
 func init() {
