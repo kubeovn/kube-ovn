@@ -498,7 +498,6 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		// Test that subdomain matching works correctly
 		testNetworkConnectivity("https://subdomain.baidu.com", false, "Testing connectivity to subdomain.baidu.com (should be blocked by wildcard)")
 	})
-
 })
 
 func init() {
