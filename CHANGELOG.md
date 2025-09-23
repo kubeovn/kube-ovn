@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.14.9 (2025-09-23)
+
+ * [238d0ef8b](https://github.com/kubeovn/kube-ovn/commit/238d0ef8b6dd49992f389bafea4ac378b617f287) release v1.14.9
+ * [244e28268](https://github.com/kubeovn/kube-ovn/commit/244e2826835623c8fbde8ba91b406acf435da9e4) check ovn0 mac should be set expected (#5749)
+ * [c85a490db](https://github.com/kubeovn/kube-ovn/commit/c85a490db05758d5e743915cd95353bbcf625de4) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.14.8 (2025-09-22)
 
  * [12c136b8e](https://github.com/kubeovn/kube-ovn/commit/12c136b8e1ea149e7b73fa64d83a8b7b1412676b) release v1.14.8
