@@ -441,7 +441,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		// Test connectivity to various domains before applying ANP (should succeed)
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to www.baidu.com before applying ANP (should succeed)")
 		testNetworkConnectivity("https://api.baidu.com", true, "Testing connectivity to api.baidu.com before applying ANP (should succeed)")
-		testNetworkConnectivity("https://blog.baidu.com", true, "Testing connectivity to blog.baidu.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://news.baidu.com", true, "Testing connectivity to news.baidu.com before applying ANP (should succeed)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to www.google.com before applying ANP (should succeed)")
 		testNetworkConnectivity("https://mail.google.com", true, "Testing connectivity to mail.google.com before applying ANP (should succeed)")
 
@@ -483,7 +483,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		// All baidu.com subdomains should be blocked (wildcard deny rule)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to www.baidu.com after applying ANP (should be blocked by wildcard)")
 		testNetworkConnectivity("https://api.baidu.com", false, "Testing connectivity to api.baidu.com after applying ANP (should be blocked by wildcard)")
-		testNetworkConnectivity("https://blog.baidu.com", false, "Testing connectivity to blog.baidu.com after applying ANP (should be blocked by wildcard)")
+		testNetworkConnectivity("https://news.baidu.com", false, "Testing connectivity to news.baidu.com after applying ANP (should be blocked by wildcard)")
 
 		// www.google.com should be allowed (specific allow rule overrides wildcard deny)
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to www.google.com after applying ANP (should be allowed by specific rule)")
