@@ -336,6 +336,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com before applying ANP (should succeed)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com before applying ANP (should succeed)")
+		testNetworkConnectivity("https://8.8.8.8", true, "Testing connectivity to 8.8.8.8 before applying ANP (should succeed)")
 
 		ginkgo.By("Creating AdminNetworkPolicy with both domainName and CIDR rules")
 		namespaceSelector := &metav1.LabelSelector{
@@ -351,8 +352,8 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		egressRule1 := framework.MakeAdminNetworkPolicyEgressRule("deny-baidu", netpolv1alpha1.AdminNetworkPolicyRuleActionDeny, ports, domainNames)
 
 		egressRule2 := netpolv1alpha1.AdminNetworkPolicyEgressRule{
-			Name:   "allow-google-dns",
-			Action: netpolv1alpha1.AdminNetworkPolicyRuleActionAllow,
+			Name:   "deny-google-dns",
+			Action: netpolv1alpha1.AdminNetworkPolicyRuleActionDeny,
 			To: []netpolv1alpha1.AdminNetworkPolicyEgressPeer{
 				{
 					Networks: []netpolv1alpha1.CIDR{"8.8.8.8/32"},
@@ -374,6 +375,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying ANP (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying ANP (should be allowed)")
+		testNetworkConnectivity("https://8.8.8.8", false, "Testing connectivity to 8.8.8.8 after applying ANP (should be blocked by CIDR rule)")
 	})
 
 	framework.ConformanceIt("should create ANP with wildcard domainName rules and verify they work correctly", func() {
