@@ -1636,7 +1636,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-install-cilium-multus-kubeovn-secondary-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-install-multus-cilium-kubeovn-non-primary-${{ matrix.ip-family }}
 
       - name: Run non-primary CNI e2e
         id: e2e

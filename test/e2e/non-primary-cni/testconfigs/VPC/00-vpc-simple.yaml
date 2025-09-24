@@ -71,17 +71,8 @@ metadata:
     vpc-simple-nad.vpc-simple-ns.ovn/logical_switch: vpc-simple-subnet
 spec:
   containers:
-  - name: test-container
-    image: busybox:1.35
-    command: ["sleep", "3600"]
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "50m"
-      limits:
-        memory: "128Mi"
-        cpu: "100m"
-  restartPolicy: Always
+    - name: vpc-simple-pod1
+      image: docker.io/library/nginx:alpine
 ---
 # Test Pod 2
 apiVersion: v1
@@ -96,14 +87,5 @@ metadata:
     vpc-simple-nad.vpc-simple-ns.ovn/logical_switch: vpc-simple-subnet
 spec:
   containers:
-  - name: test-container
-    image: busybox:1.35
-    command: ["sleep", "3600"]
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "50m"
-      limits:
-        memory: "128Mi"
-        cpu: "100m"
-  restartPolicy: Always
+    - name: vpc-simple-pod2
+      image: docker.io/library/nginx:alpine

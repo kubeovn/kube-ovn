@@ -191,92 +191,6 @@ func generateExcludeIPs(_, gateway string) string {
 	return strings.Join(ips, "\n    ")
 }
 
-// createEth1Interfaces adds eth1 interfaces to KIND cluster nodes if they don't already exist
-func createEth1Interfaces() error {
-	ginkgo.By("Creating eth1 interfaces on KIND cluster nodes")
-
-	// Get KIND network bridge name
-	network, err := docker.NetworkInspect(kind.NetworkName)
-	if err != nil {
-		return fmt.Errorf("failed to inspect KIND network: %w", err)
-	}
-
-	bridgeName := "br-" + network.ID[:12]
-	ginkgo.By(fmt.Sprintf("Using KIND network bridge: %s", bridgeName))
-
-	// Get all KIND nodes
-	nodes, err := kind.ListNodes("kube-ovn", "")
-	if err != nil {
-		return fmt.Errorf("failed to get KIND nodes: %w", err)
-	}
-
-	for _, node := range nodes {
-		nodeName := node.Name()
-		ginkgo.By(fmt.Sprintf("Processing eth1 interface for node: %s", nodeName))
-
-		// Get container PID
-		pidCmd := fmt.Sprintf("docker inspect -f '{{.State.Pid}}' %s", nodeName)
-		pidOutput, err := runBashCommand(pidCmd)
-		if err != nil {
-			return fmt.Errorf("failed to get container PID for node %s: %w", nodeName, err)
-		}
-		containerPID := strings.TrimSpace(pidOutput)
-
-		// Check if eth1 already exists inside the container
-		checkEth1Cmd := fmt.Sprintf("nsenter -t %s -n ip link show eth1", containerPID)
-		if _, err := runBashCommand(checkEth1Cmd); err == nil {
-			ginkgo.By(fmt.Sprintf("eth1 interface already exists in node %s, skipping creation", nodeName))
-			continue
-		}
-
-		// Check if host veth interface already exists
-		vethHost := fmt.Sprintf("veth_%s_eth1", nodeName[len(nodeName)-4:]) // Use last 4 chars of node name
-		checkVethCmd := fmt.Sprintf("ip link show %s", vethHost)
-		if _, err := runBashCommand(checkVethCmd); err == nil {
-			ginkgo.By(fmt.Sprintf("Host veth %s already exists, cleaning up before recreating", vethHost))
-			// Clean up existing veth
-			deleteVethCmd := fmt.Sprintf("ip link delete %s", vethHost)
-			_, _ = runBashCommand(deleteVethCmd) // Ignore errors in cleanup
-		}
-
-		ginkgo.By(fmt.Sprintf("Creating eth1 interface for node: %s", nodeName))
-
-		// Create veth pair
-		createVethCmd := fmt.Sprintf("ip link add %s type veth peer name eth1", vethHost)
-		if _, err := runBashCommand(createVethCmd); err != nil {
-			return fmt.Errorf("failed to create veth pair for node %s: %w", nodeName, err)
-		}
-
-		// Connect host veth to bridge
-		attachToBridgeCmd := fmt.Sprintf("ip link set %s master %s", vethHost, bridgeName)
-		if _, err := runBashCommand(attachToBridgeCmd); err != nil {
-			return fmt.Errorf("failed to attach %s to bridge %s: %w", vethHost, bridgeName, err)
-		}
-
-		// Bring up host veth
-		upHostVethCmd := fmt.Sprintf("ip link set %s up", vethHost)
-		if _, err := runBashCommand(upHostVethCmd); err != nil {
-			return fmt.Errorf("failed to bring up %s: %w", vethHost, err)
-		}
-
-		// Move eth1 into container namespace
-		moveToNsCmd := fmt.Sprintf("ip link set eth1 netns %s", containerPID)
-		if _, err := runBashCommand(moveToNsCmd); err != nil {
-			return fmt.Errorf("failed to move eth1 to container %s: %w", nodeName, err)
-		}
-
-		// Bring up eth1 inside container
-		upEth1Cmd := fmt.Sprintf("nsenter -t %s -n ip link set eth1 up", containerPID)
-		if _, err := runBashCommand(upEth1Cmd); err != nil {
-			return fmt.Errorf("failed to bring up eth1 in container %s: %w", nodeName, err)
-		}
-
-		ginkgo.By(fmt.Sprintf("Successfully added eth1 interface to node: %s", nodeName))
-	}
-
-	return nil
-}
-
 // processConfigWithKindBridge dynamically updates YAML configuration with KIND bridge network
 func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork) (string, error) {
 	ginkgo.By(fmt.Sprintf("Processing config file %s with KIND bridge network", yamlPath))
@@ -358,7 +272,7 @@ func getPodIP(pod *corev1.Pod) string {
 	if isKubeOVNPrimaryCNI() {
 		return pod.Status.PodIP
 	}
-	return getPodNonPrimaryIP(pod, DefaultNetworkInterface)
+	return getPodNonPrimaryIP(pod)
 }
 
 // VPC Simple Test
@@ -461,10 +375,6 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			ipTablesSnatRuleClient = f.IptablesSnatClient()
 			ipTablesDnatRuleClient = f.IptablesDnatClient()
 			natGwClient = f.VpcNatGatewayClient()
-
-			ginkgo.By("Create eth1 interfaces on KIND nodes")
-			err := createEth1Interfaces()
-			framework.ExpectNoError(err)
 
 			ginkgo.By("Detect KIND bridge network and generate dynamic config")
 			kindNetwork, err := detectKindBridgeNetwork()
@@ -667,10 +577,6 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				nodeNames = append(nodeNames, node.Name)
 			}
 
-			ginkgo.By("Create eth1 interfaces on KIND nodes")
-			err = createEth1Interfaces()
-			framework.ExpectNoError(err)
-
 			ginkgo.By("Detect KIND bridge network and generate dynamic config")
 			kindNetwork, err := detectKindBridgeNetwork()
 			framework.ExpectNoError(err)
@@ -731,49 +637,37 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 })
 
 // Helper function to get non-primary IP from pod annotation
-func getPodNonPrimaryIP(pod *corev1.Pod, interfaceName string) string {
-	// For non-primary CNI, look for network status annotation (note: singular "network-status")
-	networkStatus := pod.Annotations["k8s.v1.cni.cncf.io/network-status"]
+func getPodNonPrimaryIP(pod *corev1.Pod) string {
+	// For non-primary CNI, look for k8s.v1.cni.cncf.io/networks annotation
+	networkStatus := pod.Annotations["k8s.v1.cni.cncf.io/networks"]
 	if networkStatus == "" {
 		return ""
 	}
+	// For Kube-OVN non-primary CNI, the IP is stored in a specific annotation format:
+	// {network-attachment-name}.{namespace}.ovn.kubernetes.io/ip_address
+	// Example: vpc-simple-nad.vpc-simple-ns.ovn.kubernetes.io/ip_address: 10.100.0.2
+	// Extract the network attachment definition name from the networks annotation
+	// Format: namespace/nad-name (e.g., "vpc-simple-ns/vpc-simple-nad")
+	nadName := networkStatus
+	if nadName == "" {
+		return ""
+	}
+	// Convert namespace/nad-name to nad-name.namespace.ovn.kubernetes.io/ip_address format
+	parts := strings.Split(nadName, "/")
+	if len(parts) != 2 {
+		return ""
+	}
+	namespace := parts[0]
+	name := parts[1]
 
-	// Use provided interface name or default
-	if interfaceName == "" {
-		interfaceName = DefaultNetworkInterface
+	// Construct the Kube-OVN IP annotation key
+	ipAnnotationKey := fmt.Sprintf("%s.%s.ovn.kubernetes.io/ip_address", name, namespace)
+	// Get the IP from the annotation
+	ip := pod.Annotations[ipAnnotationKey]
+	if ip != "" {
+		return ip
 	}
 
-	// Parse the network status JSON to extract IP
-	// The format is an array of network interfaces with their details
-	// Example: [{"name":"cilium","interface":"eth0",...},{"name":"vpc-simple-ns/vpc-simple-nad","interface":"net1","ips":["10.100.0.2"],...}]
-
-	// Simple JSON parsing to find the interface and extract IP
-	// Look for the interface name and then find the corresponding ips array
-	for part := range strings.SplitSeq(networkStatus, "},{") {
-		// Check if this part contains our target interface
-		if strings.Contains(part, fmt.Sprintf(`"interface": "%s"`, interfaceName)) {
-			// Extract IP from the ips array in this interface block
-			ipsStart := strings.Index(part, `"ips": [`)
-			if ipsStart == -1 {
-				continue
-			}
-			ipsStart += len(`"ips": [`)
-
-			// Find the first IP in quotes
-			ipStart := strings.Index(part[ipsStart:], `"`)
-			if ipStart == -1 {
-				continue
-			}
-			ipStart += ipsStart + 1
-
-			ipEnd := strings.Index(part[ipStart:], `"`)
-			if ipEnd == -1 {
-				continue
-			}
-
-			return part[ipStart : ipStart+ipEnd]
-		}
-	}
 	return ""
 }
 

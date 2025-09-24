@@ -491,6 +491,25 @@ kind-install-multus:
 	kubectl -n kube-system set resources ds/kube-multus-ds -c kube-multus --limits=cpu=200m,memory=200Mi
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
+.PHONY: kind-install-multus-primary
+kind-install-multus-primary:
+	@echo "Installing Multus as primary CNI..."
+	kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
+	@echo "Waiting for Multus daemonset to be ready..."
+	kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=300s
+
+.PHONY: kind-update-multus-cilium-config
+kind-update-multus-cilium-config:
+	@echo "Creating Cilium CNI configuration and updating Multus conflist..."
+	@for node in $$(kubectl get nodes --no-headers -o custom-columns=":metadata.name"); do \
+		echo "Creating Cilium CNI config on node: $$node"; \
+		docker exec $$node sh -c 'mkdir -p /host/etc/cni/multus/net.d'; \
+		docker exec $$node sh -c 'printf "{\n  \"cniVersion\": \"0.3.1\",\n  \"name\": \"cilium\",\n  \"plugins\": [\n    {\n      \"type\": \"cilium-cni\",\n      \"enable-debug\": false,\n      \"log-file\": \"/var/run/cilium/cilium-cni.log\"\n    }\n  ]\n}" > /host/etc/cni/multus/net.d/05-cilium.conflist'; \
+		echo "Updating Multus CNI configuration on node: $$node"; \
+		docker exec $$node sh -c 'printf "{\n  \"cniVersion\": \"0.3.1\",\n  \"name\": \"multus-cni-network\",\n  \"type\": \"multus\",\n  \"cniConf\": \"/host/etc/cni/multus/net.d\",\n  \"kubeconfig\": \"/etc/cni/net.d/multus.d/multus.kubeconfig\",\n  \"delegates\": [\n    {\n      \"cniVersion\": \"0.3.1\",\n      \"name\": \"cilium\",\n      \"plugins\": [\n        {\n          \"enable-debug\": false,\n          \"log-file\": \"/var/run/cilium/cilium-cni.log\",\n          \"type\": \"cilium-cni\"\n        }\n      ]\n    }\n  ]\n}" > /etc/cni/net.d/00-multus.conf'; \
+	done
+	@echo "Cilium CNI configuration and Multus conflist created on all nodes"
+
 .PHONY: kind-install-metallb
 kind-install-metallb:
 	$(call docker_network_info,kind,kube-ovn-control-plane)
@@ -613,47 +632,28 @@ kind-install-cilium-chaining-%:
 		kind-install-$*
 	kubectl describe no
 
-.PHONY: kind-install-cilium-primary
-kind-install-cilium-primary: kind-install-cilium-primary-ipv4
+.PHONY: kind-install-cilium-delegate
+kind-install-cilium-delegate: kind-install-cilium-delegate-ipv4
 
-.PHONY: kind-install-cilium-primary-%
-kind-install-cilium-primary-%:
+.PHONY: kind-install-cilium-delegate-%
+kind-install-cilium-delegate-%:
+	@echo "Installing Cilium as delegate CNI through Multus using Helm..."
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/cilium:$(CILIUM_VERSION),1)
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO)/operator-generic:$(CILIUM_VERSION),1)
 	helm repo add cilium https://helm.cilium.io/
 	helm repo update cilium
+	@echo "Installing Cilium via Helm with delegate configuration..."
 	helm install cilium cilium/cilium \
-		--version $(CILIUM_VERSION:v%=%) \
 		--namespace kube-system \
-		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
-		--set k8sServicePort=6443 \
-		--set kubeProxyReplacement=true \
-		--set image.useDigest=false \
-		--set operator.image.useDigest=false \
-		--set operator.replicas=1 \
-		--set socketLB.enabled=true \
-		--set nodePort.enabled=true \
-		--set externalIPs.enabled=true \
-		--set hostPort.enabled=true \
-		--set sessionAffinity=true \
-		--set enableIPv4Masquerade=true \
-		--set enableIPv6Masquerade=true \
-		--set hubble.enabled=true \
-		--set envoy.enabled=false \
-		--set sctp.enabled=true \
-		--set ipv4.enabled=$(shell if echo $* | grep -q ipv6; then echo false; else echo true; fi) \
-		--set ipv6.enabled=$(shell if echo $* | grep -q ipv4; then echo false; else echo true; fi) \
-		--set routingMode=native \
-		--set ipv4NativeRoutingCIDR=10.244.0.0/16 \
-		--set devices="eth+" \
-		--set forceDeviceDetection=true \
-		--set ipam.mode=kubernetes \
-		--set cni.exclusive=true \
-		--set cni.install=true \
-		--set cni.confPath=/etc/cni/net.d \
-		--set cni.binPath=/opt/cni/bin
-	kubectl -n kube-system rollout status ds cilium --timeout 120s
+		--version $(CILIUM_VERSION:v%=%) \
+		--set cni.exclusive=false \
+		--set envoy.enabled=false
+	@echo "Waiting for Cilium to be ready..."
+	kubectl wait --namespace kube-system --for=condition=ready pod -l k8s-app=cilium --timeout=300s
+	@echo "Redeploying Multus..."
+	kubectl -n kube-system set resources ds/kube-multus-ds -c kube-multus --limits=cpu=200m,memory=200Mi
+	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-bgp
 kind-install-bgp: kind-install
@@ -816,58 +816,61 @@ kind-ghcr-pull:
 	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
 	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 
-.PHONY: kind-install-cilium-multus-kubeovn-secondary
-kind-install-cilium-multus-kubeovn-secondary: kind-install-cilium-multus-kubeovn-secondary-ipv4
+.PHONY: kind-install-multus-cilium-kubeovn-non-primary
+kind-install-multus-cilium-kubeovn-non-primary: kind-install-multus-cilium-kubeovn-non-primary-ipv4
 
-.PHONY: kind-install-cilium-multus-kubeovn-secondary-%
-kind-install-cilium-multus-kubeovn-secondary-%: kind-network-create-underlay
-	@echo "Setting up KIND cluster with Cilium non-exclusive CNI, Multus, and Kube-OVN secondary CNI..."
+.PHONY: kind-install-multus-cilium-kubeovn-non-primary-%
+kind-install-multus-cilium-kubeovn-non-primary-%:
+	@echo "Setting up KIND cluster with Multus primary CNI, Cilium delegate, and Kube-OVN secondary CNI..."
 	@echo "1. Creating KIND cluster and initializing with no CNI..."
-	@kube_proxy_mode=none $(MAKE) kind-init-$*
-	@$(MAKE) kind-iptables-accept-underlay
+	$(MAKE) kind-init-$*
+	@echo "2. Create underlay network and connect nodes..."
+	@$(MAKE) kind-network-create-underlay
 	@$(MAKE) kind-network-connect-underlay
-	@echo "2. Installing Cilium as primary CNI..."
-	@$(MAKE) kind-install-cilium-primary-$*
-	@echo "3. Installing Multus for multi-CNI support..."
-	@$(MAKE) kind-install-multus
-	@echo "4. Installing Kube-OVN as secondary/non-primary CNI..."
+	@echo "3. Installing Multus as Cilium configuration..."
+	@$(MAKE) kind-update-multus-cilium-config
+	@echo "4. Installing Multus as primary CNI..."
+	@$(MAKE) kind-install-multus-primary
+	@echo "5. Installing Cilium as delegate through Multus..."
+	@$(MAKE) kind-install-cilium-delegate-$*
+	@echo "6. Installing Kube-OVN as secondary/non-primary CNI..."
 	@$(MAKE) ENABLE_NON_PRIMARY_CNI=true CNI_CONFIG_PRIORITY=10 kind-install-chart
 	@echo "KIND cluster setup complete!"
-	@echo "  - Cilium: Non-exclusive CNI (allows other CNIs to coexist)"
-	@echo "  - Multus: Multi-CNI support for network attachments"
+	@echo "  - Multus: Primary CNI for multi-CNI support"
+	@echo "  - Cilium: Delegate CNI for primary networking"
 	@echo "  - Kube-OVN: Secondary CNI for additional network interfaces"
 	@echo ""
 	@echo "You can now run non-primary CNI tests with:"
 	@echo "  make kube-ovn-non-primary-cni-e2e"
 
 # v2 chart variant for non-primary CNI deployment
-.PHONY: kind-install-cilium-multus-kubeovn-secondary-v2
-kind-install-cilium-multus-kubeovn-secondary-v2: kind-install-cilium-multus-kubeovn-secondary-v2-ipv4
+.PHONY: kind-install-multus-cilium-kubeovn-non-primary-v2
+kind-install-multus-cilium-kubeovn-non-primary-v2: kind-install-multus-cilium-kubeovn-non-primary-v2-ipv4
 
-.PHONY: kind-install-cilium-multus-kubeovn-secondary-v2-%
-kind-install-cilium-multus-kubeovn-secondary-v2-%: kind-network-create-underlay
-	@echo "Setting up KIND cluster with Cilium non-exclusive CNI, Multus, and Kube-OVN secondary CNI (v2 chart)..."
+.PHONY: kind-install-multus-cilium-kubeovn-non-primary-v2-%
+kind-install-multus-cilium-kubeovn-non-primary-v2-%:
+	@echo "Setting up KIND cluster with Multus primary CNI, Cilium delegate, and Kube-OVN secondary CNI..."
 	@echo "1. Creating KIND cluster and initializing with no CNI..."
 	@kube_proxy_mode=none $(MAKE) kind-init-$*
-	@$(MAKE) kind-iptables-accept-underlay
-	@$(MAKE) kind-network-connect-underlay
-	@echo "2. Installing Cilium as primary CNI..."
-	@$(MAKE) kind-install-cilium-primary-$*
-	@echo "3. Installing Multus for multi-CNI support..."
-	@$(MAKE) kind-install-multus
-	@echo "4. Installing Kube-OVN as secondary/non-primary CNI (v2 chart)..."
-	@$(MAKE) ENABLE_NON_PRIMARY_CNI=true CNI_CONFIG_PRIORITY=10 kind-install-chart-v2
+		@echo "2. Installing Multus as Cilium configuration..."
+	@$(MAKE) kind-update-multus-cilium-config
+	@echo "3. Installing Multus as primary CNI..."
+	@$(MAKE) kind-install-multus-primary
+	@echo "4. Installing Cilium as delegate through Multus..."
+	@$(MAKE) kind-install-cilium-delegate-$*
+	@echo "5. Installing Kube-OVN as secondary/non-primary CNI..."
+	@$(MAKE) ENABLE_NON_PRIMARY_CNI=true CNI_CONFIG_PRIORITY=10 kind-install-chart
 	@echo "KIND cluster setup complete!"
-	@echo "  - Cilium: Non-exclusive CNI (allows other CNIs to coexist)"
-	@echo "  - Multus: Multi-CNI support for network attachments"
-	@echo "  - Kube-OVN: Secondary CNI for additional network interfaces (v2 chart)"
+	@echo "  - Multus: Primary CNI for multi-CNI support"
+	@echo "  - Cilium: Delegate CNI for primary networking"
+	@echo "  - Kube-OVN: Secondary CNI for additional network interfaces"
 	@echo ""
 	@echo "You can now run non-primary CNI tests with:"
 	@echo "  make kube-ovn-non-primary-cni-e2e"
 
 # Convenience target for the most common use case (IPv4)
-.PHONY: kind-setup-secondary-cni
-kind-setup-secondary-cni: kind-install-cilium-multus-kubeovn-secondary
+.PHONY: kind-setup-non-primary-cni
+kind-setup-non-primary-cni: kind-install-multus-cilium-kubeovn-non-primary
 
-.PHONY: kind-setup-secondary-cni-v2
-kind-setup-secondary-cni-v2: kind-install-cilium-multus-kubeovn-secondary-v2
+.PHONY: kind-setup-non-primary-cni-v2
+kind-setup-non-primary-cni-v2: kind-install-multus-cilium-kubeovn-non-primary-v2
