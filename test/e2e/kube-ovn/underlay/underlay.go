@@ -1323,6 +1323,123 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectNoError(err)
 		}
 	})
+
+	framework.ConformanceIt("should create and delete keepSrcMac OpenFlow rules when u2oInterconnection is enabled", func() {
+		f.SkipVersionPriorTo(1, 14, "keepSrcMac OpenFlow rules were introduced in v1.14")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			underlayCidr = append(underlayCidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		ginkgo.By("Creating underlay subnet with u2oInterconnection enabled " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		subnet.Spec.U2OInterconnection = true
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Waiting for U2OInterconnection status to be ready")
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+
+		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		underlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)
+		underlayPod = podClient.CreateSync(underlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules exist after pod creation")
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, true)
+
+		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
+		podClient.DeleteSync(u2oPodNameUnderlay)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules are deleted after pod deletion")
+		// Wait a bit for the flow rules to be cleaned up
+		time.Sleep(2 * time.Second)
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, false)
+
+		ginkgo.By("Disabling u2oInterconnection")
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = false
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Waiting for U2OInterconnection status to be disabled")
+		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
+
+		ginkgo.By("Creating underlay pod with u2oInterconnection disabled " + u2oPodNameUnderlay)
+		underlayPod = podClient.CreateSync(underlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules do not exist when u2oInterconnection is disabled")
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, false)
+
+		ginkgo.By("Re-enabling u2oInterconnection")
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Waiting for U2OInterconnection status to be enabled again")
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+
+		ginkgo.By("Deleting and recreating pod to verify flow rules are created again")
+		podClient.DeleteSync(u2oPodNameUnderlay)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+
+		underlayPod = podClient.CreateSync(underlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules exist again after re-enabling u2oInterconnection")
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, true)
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool, pnName string) {

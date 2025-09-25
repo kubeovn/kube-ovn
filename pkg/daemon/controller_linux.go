@@ -972,26 +972,23 @@ func (c *Controller) handleUpdatePod(key string) error {
 }
 
 func (c *Controller) handleDeletePod(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+
+	podObj, ok := c.deletingPodObjMap.Load(key)
+	if !ok {
+		return nil
+	}
+	pod := podObj.(*v1.Pod)
+
+	defer func() {
+		c.deletingPodObjMap.Delete(key)
+	}()
+
+	logicalSwitch, ok := pod.Annotations[util.LogicalSwitchAnnotation]
+	if !ok {
 		return nil
 	}
 
-	pod, err := c.podsLister.Pods(namespace).Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-
-	if _, ok := pod.Annotations[util.LogicalSwitchAnnotation]; !ok {
-		return nil
-	}
-
-	subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
+	subnet, err := c.subnetsLister.Get(logicalSwitch)
 	if err != nil {
 		klog.Error(err)
 		return err

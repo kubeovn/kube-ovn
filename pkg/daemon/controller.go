@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -53,10 +54,11 @@ type Controller struct {
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
-	podsLister     listerv1.PodLister
-	podsSynced     cache.InformerSynced
-	updatePodQueue workqueue.TypedRateLimitingInterface[string]
-	deletePodQueue workqueue.TypedRateLimitingInterface[string]
+	podsLister        listerv1.PodLister
+	podsSynced        cache.InformerSynced
+	updatePodQueue    workqueue.TypedRateLimitingInterface[string]
+	deletePodQueue    workqueue.TypedRateLimitingInterface[string]
+	deletingPodObjMap *sync.Map
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -124,10 +126,11 @@ func NewController(config *Configuration,
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
-		podsLister:     podInformer.Lister(),
-		podsSynced:     podInformer.Informer().HasSynced,
-		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
-		deletePodQueue: newTypedRateLimitingQueue[string]("DeletePod", nil),
+		podsLister:        podInformer.Lister(),
+		podsSynced:        podInformer.Informer().HasSynced,
+		updatePodQueue:    newTypedRateLimitingQueue[string]("UpdatePod", nil),
+		deletePodQueue:    newTypedRateLimitingQueue[string]("DeletePod", nil),
+		deletingPodObjMap: &sync.Map{},
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -638,6 +641,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	key := cache.MetaObjectToName(pod).String()
+	c.deletingPodObjMap.Store(key, pod)
 	c.deletePodQueue.Add(key)
 }
 
