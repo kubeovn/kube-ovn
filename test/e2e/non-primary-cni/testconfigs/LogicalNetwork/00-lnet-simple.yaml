@@ -1,0 +1,101 @@
+# Logical Network Simple Configuration for Non-Primary CNI Testing
+# This configuration creates basic logical network resources for testing non-primary CNI functionality
+# 
+# NOTE: This configuration supports DYNAMIC KIND bridge network detection
+# The e2e test will automatically detect your KIND cluster's bridge network and update CIDRs accordingly
+
+# Create a namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lnet-simple-ns
+  labels:
+    config-stage: "0"
+---
+# Create provider network
+apiVersion: kubeovn.io/v1
+kind: ProviderNetwork
+metadata:
+  name: lnet-pn-net1
+  labels:
+    config-stage: "0"
+spec:
+  defaultInterface: eth1
+---
+# VLAN configuration
+apiVersion: kubeovn.io/v1
+kind: Vlan
+metadata:
+  name: lnet-simple-vlan1
+  labels:
+    config-stage: "0"
+spec:
+  id: 0 # Using VLAN ID 0 for untagged traffic
+  provider: lnet-pn-net1
+---
+# Network attachment definition for logical network subnet
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: lnet-simple-pod-nad
+  namespace: lnet-simple-ns
+  labels:
+    config-stage: "0"
+spec:
+  config: '{
+      "cniVersion": "0.3.1",
+      "name": "kube-ovn",
+      "type": "kube-ovn",
+      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+      "provider": "lnet-simple-pod-nad.lnet-simple-ns.ovn"
+    }'
+---
+# Subnet with dynamic KIND bridge network detection
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: lnet-simple-subnet1
+  labels:
+    config-stage: "0"
+spec:
+  protocol: IPv4
+  cidrBlock: <00-lnet-simple-subnet1-cidr>
+  gateway: <00-lnet-simple-subnet1-gateway>
+  provider: lnet-simple-pod-nad.lnet-simple-ns.ovn
+  vlan: lnet-simple-vlan1
+  namespaces:
+    - lnet-simple-ns
+  excludeIps:
+    <00-lnet-simple-subnet1-exclude-ip>
+---
+# Pod 1
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lnet-simple-pod1
+  namespace: lnet-simple-ns
+  annotations:
+    k8s.v1.cni.cncf.io/networks: lnet-simple-ns/lnet-simple-pod-nad
+  labels:
+    config-stage: "1"
+    app: lnet-simple-pod1
+spec:
+  containers:
+  - name: lnet-simple-pod1
+    image: docker.io/library/nginx:alpine
+---
+# Pod 2
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lnet-simple-pod2
+  namespace: lnet-simple-ns
+  annotations:
+    k8s.v1.cni.cncf.io/networks: lnet-simple-ns/lnet-simple-pod-nad
+  labels:
+    config-stage: "1"
+    app: lnet-simple-pod2
+spec:
+  containers:
+  - name: lnet-simple-pod2
+    image: docker.io/library/nginx:alpine
