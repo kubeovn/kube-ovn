@@ -174,6 +174,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasIngressRule(np) {
 		for _, protocol := range protocolSet.List() {
+			standardACLOps, err := c.OVNNbClient.CreateNpBaseACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
+			if err != nil {
+				klog.Errorf("failed to set base ingress acl: %v", err)
+				return fmt.Errorf("failed to set default ingress block acl: %w", err)
+			}
+			klog.Infof("standard acl ops of len %d: %v", len(standardACLOps), standardACLOps)
+			ingressACLOps = append(ingressACLOps, standardACLOps...)
+
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 				ingressAllowAsName := fmt.Sprintf("%s.%s.%d", ingressAllowAsNamePrefix, protocol, idx)
@@ -303,6 +311,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		for _, protocol := range protocolSet.List() {
+			standardACLOps, err := c.OVNNbClient.CreateNpBaseACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
+			if err != nil {
+				klog.Errorf("failed to set base ingress acl: %v", err)
+				return fmt.Errorf("failed to set default ingress block acl: %w", err)
+			}
+			egressACLOps = append(egressACLOps, standardACLOps...)
+
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 				egressAllowAsName := fmt.Sprintf("%s.%s.%d", egressAllowAsNamePrefix, protocol, idx)
