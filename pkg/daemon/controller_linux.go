@@ -972,7 +972,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 }
 
 func (c *Controller) handleDeletePod(key string) error {
-
 	podObj, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
 		return nil
