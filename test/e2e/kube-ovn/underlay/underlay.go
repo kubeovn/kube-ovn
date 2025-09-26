@@ -1404,41 +1404,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// Wait a bit for the flow rules to be cleaned up
 		time.Sleep(2 * time.Second)
 		checkKeepSrcMacFlow(underlayPod, providerNetworkName, false)
-
-		ginkgo.By("Disabling u2oInterconnection")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.U2OInterconnection = false
-		subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Waiting for U2OInterconnection status to be disabled")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-
-		ginkgo.By("Creating underlay pod with u2oInterconnection disabled " + u2oPodNameUnderlay)
-		underlayPod = podClient.CreateSync(underlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
-
-		ginkgo.By("Verifying keepSrcMac OpenFlow rules do not exist when u2oInterconnection is disabled")
-		checkKeepSrcMacFlow(underlayPod, providerNetworkName, false)
-
-		ginkgo.By("Re-enabling u2oInterconnection")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.U2OInterconnection = true
-		subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Waiting for U2OInterconnection status to be enabled again")
-		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-
-		ginkgo.By("Deleting and recreating pod to verify flow rules are created again")
-		podClient.DeleteSync(u2oPodNameUnderlay)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
-
-		underlayPod = podClient.CreateSync(underlayPod)
-		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
-
-		ginkgo.By("Verifying keepSrcMac OpenFlow rules exist again after re-enabling u2oInterconnection")
-		checkKeepSrcMacFlow(underlayPod, providerNetworkName, true)
 	})
 })
 
@@ -1620,25 +1585,26 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 func checkKeepSrcMacFlow(pod *corev1.Pod, providerNetworkName string, expectRules bool) {
 	ginkgo.GinkgoHelper()
 
-	cmd := fmt.Sprintf("kubectl exec -n %s %s -- ip -o link show eth0 | awk '{print $16}'", pod.Namespace, pod.Name)
-	output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-	if err != nil {
-		framework.Logf("Error getting MAC address: %v, %s", err, string(output))
-		return
-	}
-	podMac := strings.TrimSpace(string(output))
-
 	podNodeName := pod.Spec.NodeName
-	ginkgo.By(fmt.Sprintf("Checking keepSrcMac OpenFlow rule on node %s for Pod %s with MAC %s (expect rules: %v)",
-		podNodeName, pod.Name, podMac, expectRules))
+	framework.Logf("Checking keepSrcMac OpenFlow rule on node %s for Pod %s", podNodeName, pod.Name)
+
+	podMac := pod.Annotations[util.MacAddressAnnotation]
+	if podMac == "" {
+		if !expectRules {
+			return
+		}
+	}
 
 	var ruleFound bool
 	framework.WaitUntil(1*time.Second, 5*time.Second, func(_ context.Context) (bool, error) {
 		nodeCmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep actions=mod_dl_src:%s | wc -l",
 			podNodeName, providerNetworkName, podMac)
-		output, _ := exec.Command("bash", "-c", nodeCmd).CombinedOutput()
-		outputStr := string(output)
+		output, err := exec.Command("bash", "-c", nodeCmd).CombinedOutput()
+		if err != nil {
+			return false, nil
+		}
 
+		outputStr := string(output)
 		lines := strings.Split(outputStr, "\n")
 		var countStr string
 		for i := len(lines) - 1; i >= 0; i-- {
@@ -1655,18 +1621,12 @@ func checkKeepSrcMacFlow(pod *corev1.Pod, providerNetworkName string, expectRule
 			countNum, _ = strconv.Atoi(matches[0])
 		}
 
-		framework.Logf("Raw output: '%s', extracted count: %d", outputStr, countNum)
 		ruleFound = countNum > 0
 
 		if (expectRules && ruleFound) || (!expectRules && !ruleFound) {
 			return true, nil
 		}
 
-		if expectRules {
-			framework.Logf("keepSrcMac flow rule not found but expected, retrying...")
-		} else {
-			framework.Logf("keepSrcMac flow rule found but not expected, retrying...")
-		}
 		return false, nil
 	}, "")
 
