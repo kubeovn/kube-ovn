@@ -54,7 +54,7 @@ type Controller struct {
 	podsLister     listerv1.PodLister
 	podsSynced     cache.InformerSynced
 	updatePodQueue workqueue.TypedRateLimitingInterface[string]
-	deletePodQueue workqueue.TypedRateLimitingInterface[string]
+	deletePodQueue workqueue.TypedRateLimitingInterface[*podEvent]
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -116,7 +116,7 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
 		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
-		deletePodQueue: newTypedRateLimitingQueue[string]("DeletePod", nil),
+		deletePodQueue: newTypedRateLimitingQueue[*podEvent]("DeletePod", nil),
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -458,6 +458,10 @@ type serviceEvent struct {
 	oldObj, newObj any
 }
 
+type podEvent struct {
+	oldObj any
+}
+
 func (c *Controller) enqueueAddSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
@@ -590,8 +594,8 @@ func (c *Controller) enqueueDeletePod(obj any) {
 		return
 	}
 
-	key := cache.MetaObjectToName(pod).String()
-	c.deletePodQueue.Add(key)
+	klog.V(3).Infof("enqueue delete pod %s", pod.Name)
+	c.deletePodQueue.Add(&podEvent{oldObj: pod})
 }
 
 func (c *Controller) runUpdatePodWorker() {
@@ -627,20 +631,20 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 }
 
 func (c *Controller) processNextDeletePodWorkItem() bool {
-	key, shutdown := c.deletePodQueue.Get()
+	event, shutdown := c.deletePodQueue.Get()
 	if shutdown {
 		return false
 	}
 
-	err := func(key string) error {
-		defer c.deletePodQueue.Done(key)
-		if err := c.handleDeletePod(key); err != nil {
-			c.deletePodQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
+	err := func(event *podEvent) error {
+		defer c.deletePodQueue.Done(event)
+		if err := c.handleDeletePod(event); err != nil {
+			c.deletePodQueue.AddRateLimited(event)
+			return fmt.Errorf("error syncing pod event: %w, requeuing", err)
 		}
-		c.deletePodQueue.Forget(key)
+		c.deletePodQueue.Forget(event)
 		return nil
-	}(key)
+	}(event)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
