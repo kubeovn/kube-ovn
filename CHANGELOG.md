@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.14.10 (2025-09-29)
+
+ * [3b2bee7d0](https://github.com/kubeovn/kube-ovn/commit/3b2bee7d02ff49c381d743ac6d6ae1f59ea990d8) release v1.14.10
+ * [8cb0a7875](https://github.com/kubeovn/kube-ovn/commit/8cb0a7875c07189ce1a5fd4107983dda93ff8d31) Increase timeout
+ * [144b772ae](https://github.com/kubeovn/kube-ovn/commit/144b772ae7f780412471ea4338261a354a145b5a) fix gabage u2o openflow (#5757)
+ * [74ca5981f](https://github.com/kubeovn/kube-ovn/commit/74ca5981fbbf63b6d4eedae01a0fe4591c62dca1) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.14.9 (2025-09-23)
 
  * [238d0ef8b](https://github.com/kubeovn/kube-ovn/commit/238d0ef8b6dd49992f389bafea4ac378b617f287) release v1.14.9
