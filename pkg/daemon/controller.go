@@ -506,7 +506,7 @@ type serviceEvent struct {
 }
 
 type podEvent struct {
-	oldObj, newObj any
+	oldObj any
 }
 
 func (c *Controller) enqueueAddSubnet(obj any) {
