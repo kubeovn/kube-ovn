@@ -74,7 +74,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, deployName, containerName, serviceName, containerID, metallbIPPoolName string
+	var clusterName, providerNetworkName, vlanName, subnetName, deployName, containerName, serviceName, serviceName2, containerID, metallbIPPoolName string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
 	var subnetClient *framework.SubnetClient
@@ -100,6 +100,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		deployName = "deploy-" + framework.RandomSuffix()
 		metallbIPPoolName = "metallb-ip-pool-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
+		serviceName2 = "service2-" + framework.RandomSuffix()
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
@@ -177,6 +178,15 @@ var _ = framework.Describe("[group:metallb]", func() {
 		clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Delete service")
+		if serviceName != "" {
+			f.ServiceClient().DeleteSync(serviceName)
+		}
+
+		if serviceName2 != "" {
+			f.ServiceClient().DeleteSync(serviceName2)
+		}
+
 		ginkgo.By("Deleting the IPAddressPool for metallb")
 		f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName) // nolint:errcheck
 
@@ -354,7 +364,6 @@ var _ = framework.Describe("[group:metallb]", func() {
 		}, "first lb service ip is not empty")
 
 		ginkgo.By("Creating the second service for the same deployment")
-		serviceName2 := "service2-" + framework.RandomSuffix()
 		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
 		service2.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {
