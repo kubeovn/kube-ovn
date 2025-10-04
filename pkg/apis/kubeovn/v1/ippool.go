@@ -37,14 +37,19 @@ type IPPoolSpec struct {
 }
 
 type IPPoolStatus struct {
+	// TODO:// make Subnet and IP Pool AvailableIPs and UsingIPs type consistent
+	// +kubebuilder:validation:Type=string
 	V4AvailableIPs     internal.BigInt `json:"v4AvailableIPs"`
 	V4AvailableIPRange string          `json:"v4AvailableIPRange"`
-	V4UsingIPs         internal.BigInt `json:"v4UsingIPs"`
-	V4UsingIPRange     string          `json:"v4UsingIPRange"`
+	// +kubebuilder:validation:Type=string
+	V4UsingIPs     internal.BigInt `json:"v4UsingIPs"`
+	V4UsingIPRange string          `json:"v4UsingIPRange"`
+	// +kubebuilder:validation:Type=string
 	V6AvailableIPs     internal.BigInt `json:"v6AvailableIPs"`
 	V6AvailableIPRange string          `json:"v6AvailableIPRange"`
-	V6UsingIPs         internal.BigInt `json:"v6UsingIPs"`
-	V6UsingIPRange     string          `json:"v6UsingIPRange"`
+	// +kubebuilder:validation:Type=string
+	V6UsingIPs     internal.BigInt `json:"v6UsingIPs"`
+	V6UsingIPRange string          `json:"v6UsingIPRange"`
 
 	// Conditions represents the latest state of the object
 	// +optional
