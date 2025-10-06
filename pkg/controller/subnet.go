@@ -1008,8 +1008,28 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	err := c.handleDeleteLogicalSwitch(subnet.Name)
+	klog.Infof("cleaning up IPs for subnet %s", subnet.Name)
+	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
+		klog.Errorf("failed to list ips: %v", err)
+		return err
+	}
+	for _, ip := range ips {
+		if ip.Spec.Subnet == subnet.Name {
+			// Delete with foreground propagation to wait for finalizer cleanup
+			deletePolicy := metav1.DeletePropagationForeground
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(
+				context.Background(),
+				ip.Name,
+				metav1.DeleteOptions{PropagationPolicy: &deletePolicy},
+			); err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s: %v", ip.Name, err)
+				return err
+			}
+		}
+	}
+
+	if err := c.handleDeleteLogicalSwitch(subnet.Name); err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
 		return err
 	}
