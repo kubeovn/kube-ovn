@@ -126,7 +126,7 @@ Get IPs of master nodes from values
     {{- $imageVersion := (index $ds.spec.template.spec.containers 0).image | splitList ":" | last | trimPrefix "v" -}}
     {{- $versionRegex := `^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)` -}}
     {{- if and (ne $newChartVersion $chartVersion) (regexMatch $versionRegex $imageVersion) -}}
-      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.15.0" -}}
+      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.16.0" -}}
         25.03
       {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.13.0" -}}
         24.03

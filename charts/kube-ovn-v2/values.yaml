@@ -302,7 +302,7 @@ natGw:
       repository: docker.io/kubeovn/kube-ovn
       # -- Image tag.
       # @section -- NAT gateways configuration
-      tag: v1.15.0
+      tag: v1.16.0
       # -- Image pull policy.
       # @section -- NAT gateways configuration
       pullPolicy: IfNotPresent
