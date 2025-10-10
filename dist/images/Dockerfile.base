@@ -38,6 +38,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
 
 ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
+ADD patches/5e52d4373a819ea739ace68219b771445e2813bd.patch $SRC_DIR
 ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
 ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
 ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
@@ -98,6 +99,8 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     cd ovn && \
     # change hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
+    # modify route offset 
+    git apply $SRC_DIR/5e52d4373a819ea739ace68219b771445e2813bd.patch && \
     # modify src route priority
     git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
     # fix reaching resubmit limit in underlay
