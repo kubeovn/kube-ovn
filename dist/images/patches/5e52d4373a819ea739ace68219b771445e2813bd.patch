@@ -1,0 +1,29 @@
+From 5e52d4373a819ea739ace68219b771445e2813bd Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <liumengxinfly@gmail.com>
+Date: Fri, 10 Oct 2025 08:38:02 +0000
+Subject: [PATCH] change route offset
+
+---
+ northd/northd.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 59b3b286a..414d0737c 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -289,9 +289,9 @@ static const char *reg_ct_state[] = {
+  * same ip_prefix values:
+  *  -  connected route overrides static one;
+  *  -  static route overrides connected route. */
+-#define ROUTE_PRIO_OFFSET_MULTIPLIER 3
+-#define ROUTE_PRIO_OFFSET_STATIC 1
+-#define ROUTE_PRIO_OFFSET_CONNECTED 2
++#define ROUTE_PRIO_OFFSET_MULTIPLIER 8
++#define ROUTE_PRIO_OFFSET_STATIC 4
++#define ROUTE_PRIO_OFFSET_CONNECTED 6
+ 
+ /* Returns the type of the datapath to which a flow with the given 'stage' may
+  * be added. */
+-- 
+2.34.1
+
