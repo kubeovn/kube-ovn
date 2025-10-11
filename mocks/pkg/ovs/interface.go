@@ -1934,6 +1934,21 @@ func (mr *MockACLMockRecorder) CreateNodeACL(pgName, nodeIPStr, joinIPStr any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNodeACL", reflect.TypeOf((*MockACL)(nil).CreateNodeACL), pgName, nodeIPStr, joinIPStr)
 }
 
+// CreateNpBaseACLOps mocks base method.
+func (m *MockACL) CreateNpBaseACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateNpBaseACLOps", npName, pgName, npNamespace, direction, protocol)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateNpBaseACLOps indicates an expected call of CreateNpBaseACLOps.
+func (mr *MockACLMockRecorder) CreateNpBaseACLOps(npName, pgName, npNamespace, direction, protocol any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNpBaseACLOps", reflect.TypeOf((*MockACL)(nil).CreateNpBaseACLOps), npName, pgName, npNamespace, direction, protocol)
+}
+
 // CreateSgBaseACL mocks base method.
 func (m *MockACL) CreateSgBaseACL(sgName, direction string) error {
 	m.ctrl.T.Helper()
@@ -3338,6 +3353,21 @@ func (m *MockNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error 
 func (mr *MockNbClientMockRecorder) CreateNodeACL(pgName, nodeIPStr, joinIPStr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNodeACL", reflect.TypeOf((*MockNbClient)(nil).CreateNodeACL), pgName, nodeIPStr, joinIPStr)
+}
+
+// CreateNpBaseACLOps mocks base method.
+func (m *MockNbClient) CreateNpBaseACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateNpBaseACLOps", npName, pgName, npNamespace, direction, protocol)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateNpBaseACLOps indicates an expected call of CreateNpBaseACLOps.
+func (mr *MockNbClientMockRecorder) CreateNpBaseACLOps(npName, pgName, npNamespace, direction, protocol any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNpBaseACLOps", reflect.TypeOf((*MockNbClient)(nil).CreateNpBaseACLOps), npName, pgName, npNamespace, direction, protocol)
 }
 
 // CreatePeerRouterPort mocks base method.
