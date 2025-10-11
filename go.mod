@@ -75,7 +75,7 @@ require (
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.76
 	kubevirt.io/api v1.6.2
 	kubevirt.io/client-go v1.6.2
-	sigs.k8s.io/controller-runtime v0.22.2
+	sigs.k8s.io/controller-runtime v0.22.3
 	sigs.k8s.io/network-policy-api v0.1.7
 )
 
