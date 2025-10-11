@@ -2,69 +2,69 @@ package http
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
-	httprunner "github.com/httprunner/httprunner/v5"
 	"github.com/rs/zerolog"
 )
 
 type Report struct {
-	Index     int
-	Timestamp time.Time `json:"timestamp"`
-	*httprunner.StepResult
+	Index       int       `json:"index"`
+	Name        string    `json:"name"`
+	Timestamp   time.Time `json:"timestamp"`
+	Success     bool      `json:"success"`
+	StartTime   int64     `json:"start_time"`
+	Elapsed     int64     `json:"elapsed"`
+	Attachments string    `json:"attachments,omitempty"`
 }
 
 func init() {
 	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 }
 
-func runCaseOnce(runner *httprunner.CaseRunner) (failure *Report) {
-	session := runner.NewSession()
+func runCaseOnce(client *http.Client, method, url string, expectedStatusCode int) (failure *Report) {
 	startTime := time.Now()
-	failure = &Report{
-		Timestamp: startTime,
-		StepResult: &httprunner.StepResult{
-			Success:   false,
-			StartTime: startTime.Unix(),
-		},
-	}
-	summary, err := session.Start(nil)
+
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		failure.Elapsed = time.Since(startTime).Milliseconds()
-		failure.Attachments = fmt.Errorf("failed to start session: %w", err).Error()
-		return failure
-	}
-
-	if !summary.Success {
-		if len(summary.Records) != 0 {
-			failure.StepResult = summary.Records[0]
-		} else {
-			failure.Elapsed = time.Since(startTime).Milliseconds()
-			failure.Attachments = "unexpected empty summary records"
+		return &Report{
+			Timestamp:   startTime,
+			Success:     false,
+			StartTime:   startTime.Unix(),
+			Elapsed:     time.Since(startTime).Milliseconds(),
+			Attachments: fmt.Sprintf("failed to create request: %v", err),
 		}
-		return failure
 	}
 
-	if len(summary.Records) != 1 {
-		failure.Elapsed = time.Since(startTime).Milliseconds()
-		failure.Attachments = fmt.Sprintf("record count should be 1, but got %#v", summary.Records)
+	resp, err := client.Do(req)
+	if err != nil {
+		return &Report{
+			Timestamp:   startTime,
+			Success:     false,
+			StartTime:   startTime.Unix(),
+			Elapsed:     time.Since(startTime).Milliseconds(),
+			Attachments: fmt.Sprintf("failed to send request: %v", err),
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != expectedStatusCode {
+		return &Report{
+			Timestamp:   startTime,
+			Success:     false,
+			StartTime:   startTime.Unix(),
+			Elapsed:     time.Since(startTime).Milliseconds(),
+			Attachments: fmt.Sprintf("expected status code %d, got %d", expectedStatusCode, resp.StatusCode),
+		}
 	}
 
 	return nil
 }
 
-func Loop(t *testing.T, name, url, method string, count, interval, requestTimeout, expectedStatusCode int, stopCh <-chan struct{}) ([]*Report, error) {
-	tc := httprunner.TestCase{
-		Config: httprunner.NewConfig(name).SetRequestTimeout(float32(requestTimeout) / 1000),
-		TestSteps: []httprunner.IStep{
-			httprunner.NewStep(method).GET(url).Validate().AssertEqual("status_code", expectedStatusCode, "check status code"),
-		},
-	}
-
-	runner, err := httprunner.NewCaseRunner(tc, httprunner.NewRunner(t).SetFailfast(false))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new case runner: %w", err)
+func Loop(_ *testing.T, name, url, method string, count, interval, requestTimeout, expectedStatusCode int, stopCh <-chan struct{}) ([]*Report, error) {
+	client := &http.Client{
+		Timeout: time.Duration(requestTimeout) * time.Millisecond,
 	}
 
 	var failures []*Report
@@ -78,11 +78,14 @@ LOOP:
 			}
 		}
 
-		result := runCaseOnce(runner)
+		result := runCaseOnce(client, method, url, expectedStatusCode)
 		if result != nil {
-			result.Index, result.Name = i, name
+			result.Index = i
+			result.Name = name
 			failures = append(failures, result)
-		} else if interval != 0 {
+		}
+
+		if interval != 0 {
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 	}

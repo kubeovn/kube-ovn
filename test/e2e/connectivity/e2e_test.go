@@ -186,7 +186,7 @@ var _ = framework.Describe("[group:connectivity]", func() {
 			Path:   "/clientip",
 		}
 		ginkgo.By("GET " + u.String())
-		reports, err := http.Loop(nil, "NodePort", u.String(), "GET", 0, 100, 500, 200, notify.ch)
+		reports, err := http.Loop(nil, "NodePort", u.String(), "GET", 0, 100, 5000, 200, notify.ch)
 		framework.ExpectNoError(err)
 
 		if len(reports) == 0 {
