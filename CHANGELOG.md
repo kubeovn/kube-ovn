@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.14.11 (2025-10-11)
+
+ * [879c670ea](https://github.com/kubeovn/kube-ovn/commit/879c670ea5f5bf9cccefd9b03f64307193c2122f) release v1.14.11
+ * [f9c8743da](https://github.com/kubeovn/kube-ovn/commit/f9c8743da113fa2b58988bc12c9b3c9bc1d8b2fb) fix sometimes e2e metallb err (#5761)
+ * [7be12912a](https://github.com/kubeovn/kube-ovn/commit/7be12912a92734696a04961d73b58ce3e380747d) bump k8s to v1.32.9 (#5780)
+ * [fc113898e](https://github.com/kubeovn/kube-ovn/commit/fc113898e1a22ba363917a20aeeec452a4183cdd) change the route offset to increase the priority of dst routes (#5781)
+ * [16df110ef](https://github.com/kubeovn/kube-ovn/commit/16df110ef996b5562896b56b1a3e35e72cadd457) fix(deps): update golang (#5774)
+ * [8921d8864](https://github.com/kubeovn/kube-ovn/commit/8921d886444f8749d41df5d130f5a3b96dc652c0) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.10 (2025-09-29)
 
  * [3b2bee7d0](https://github.com/kubeovn/kube-ovn/commit/3b2bee7d02ff49c381d743ac6d6ae1f59ea990d8) release v1.14.10
