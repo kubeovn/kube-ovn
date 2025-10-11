@@ -195,16 +195,16 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
-			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
-				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
-				return err
-			}
-
 			if c.config.EnableOVNLBPreferLocal {
 				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
 					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
+			}
+
+			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				return err
 			}
 		}
 	}
