@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -726,6 +727,39 @@ func (c *Controller) markAndCleanInternalPort() error {
 	return nil
 }
 
+func (c *Controller) gcInterfaces() {
+	interfacePodMap, err := ovs.ListInterfacePodMap()
+	if err != nil {
+		klog.Errorf("failed to list interface pod map: %v", err)
+		return
+	}
+	for iface, pod := range interfacePodMap {
+		parts := strings.Split(pod, "/")
+		if len(parts) < 3 {
+			klog.Errorf("malformed pod string %q for interface %s, expected format 'namespace/name/errText'", pod, iface)
+			continue
+		}
+
+		podNamespace, podName, errText := parts[0], parts[1], parts[2]
+		if strings.Contains(errText, "No such device") {
+			klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
+			if err := ovs.CleanInterface(iface); err != nil {
+				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
+			}
+			continue
+		}
+
+		if _, err := c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
+				if err := ovs.CleanInterface(iface); err != nil {
+					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
+				}
+			}
+		}
+	}
+}
+
 func (c *Controller) runIPSecWorker() {
 	if err := c.StartIPSecService(); err != nil {
 		klog.Errorf("starting ipsec service: %v", err)
@@ -767,7 +801,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
-	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
+	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
