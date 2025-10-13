@@ -3,10 +3,10 @@ package ovs
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/scylladb/go-set/strset"
-
 	"github.com/stretchr/testify/require"
+
+	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
@@ -197,7 +197,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 	t.Run("delete non-existent BFD", func(t *testing.T) {
 		t.Parallel()
 
-		err := nbClient.DeleteBFD(uuid.New().String())
+		err := nbClient.DeleteBFD(string(uuid.NewUUID()))
 		require.NoError(t, err)
 	})
 
@@ -206,7 +206,7 @@ func (suite *OvnClientTestSuite) testDeleteBFD() {
 
 		_, err := failedNbClient.CreateBFD(lrpName, dstIP1, minRx1, minTx1, detectMult1, nil)
 		require.Error(t, err)
-		err = failedNbClient.DeleteBFD(uuid.New().String())
+		err = failedNbClient.DeleteBFD(string(uuid.NewUUID()))
 		// cache db should be empty
 		require.NoError(t, err)
 	})
