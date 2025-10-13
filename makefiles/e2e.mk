@@ -24,6 +24,9 @@ ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
 VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)
 VER_MINOR = $(shell echo $(VERSION_NUM) | cut -f2 -d.)
+ifeq ($(shell test $(VER_MAJOR) -lt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -lt 14 \) && echo true),true)
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*EndpointSlice"
+endif
 ifeq ($(shell test $(VER_MAJOR) -lt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -lt 13 \) && echo true),true)
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*ServiceCIDR and IPAddress API"
 endif
