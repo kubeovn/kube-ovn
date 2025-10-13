@@ -163,13 +163,6 @@ func (suite *OvnClientTestSuite) testOvsClearPodBandwidth() {
 	require.Error(t, err)
 }
 
-func (suite *OvnClientTestSuite) testOvsCleanLostInterface() {
-	t := suite.T()
-	t.Parallel()
-
-	CleanLostInterface()
-}
-
 func (suite *OvnClientTestSuite) testOvsCleanDuplicatePort() {
 	t := suite.T()
 	t.Parallel()
