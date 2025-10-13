@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/util/uuid"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -1806,7 +1806,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	})
 
 	t.Run("delete nonexistent logical switch port", func(t *testing.T) {
-		_, err := nbClient.DeleteLogicalSwitchPortOp("", uuid.NewString())
+		_, err := nbClient.DeleteLogicalSwitchPortOp("", string(uuid.NewUUID()))
 		require.Error(t, err)
 	})
 
@@ -1814,7 +1814,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 		ops, err := failedNbClient.DeleteLogicalSwitchPortOp("", "")
 		require.Error(t, err)
 		require.Nil(t, ops)
-		_, err = failedNbClient.DeleteLogicalSwitchPortOp("", uuid.NewString())
+		_, err = failedNbClient.DeleteLogicalSwitchPortOp("", string(uuid.NewUUID()))
 		require.Error(t, err)
 	})
 

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"testing"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 type Report struct {
@@ -17,10 +15,6 @@ type Report struct {
 	StartTime   int64     `json:"start_time"`
 	Elapsed     int64     `json:"elapsed"`
 	Attachments string    `json:"attachments,omitempty"`
-}
-
-func init() {
-	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 }
 
 func runCaseOnce(client *http.Client, method, url string, expectedStatusCode int) (failure *Report) {
@@ -83,9 +77,7 @@ LOOP:
 			result.Index = i
 			result.Name = name
 			failures = append(failures, result)
-		}
-
-		if interval != 0 {
+		} else if interval != 0 {
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 	}
