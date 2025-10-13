@@ -173,12 +173,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasIngressRule(np) {
-		blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(npName, pgName, ovnnb.ACLDirectionToLport, logEnable)
-		if err != nil {
-			klog.Errorf("failed to set default ingress block acl: %v", err)
-			return fmt.Errorf("failed to set default ingress block acl: %w", err)
+		if protocolSet.Size() > 0 {
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable)
+			if err != nil {
+				klog.Errorf("failed to set default ingress block acl: %v", err)
+				return fmt.Errorf("failed to set default ingress block acl: %w", err)
+			}
+			ingressACLOps = append(ingressACLOps, blockACLOps...)
 		}
-		ingressACLOps = append(ingressACLOps, blockACLOps...)
 
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Ingress {
@@ -309,12 +311,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasEgressRule(np) {
-		blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(npName, pgName, ovnnb.ACLDirectionFromLport, logEnable)
-		if err != nil {
-			klog.Errorf("failed to set default egress block acl: %v", err)
-			return fmt.Errorf("failed to set default egress block acl: %w", err)
+		if protocolSet.Size() > 0 {
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable)
+			if err != nil {
+				klog.Errorf("failed to set default egress block acl: %v", err)
+				return fmt.Errorf("failed to set default egress block acl: %w", err)
+			}
+			egressACLOps = append(egressACLOps, blockACLOps...)
 		}
-		egressACLOps = append(egressACLOps, blockACLOps...)
 
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Egress {

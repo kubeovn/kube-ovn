@@ -142,7 +142,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		}
 	})
 
-	ginkgo.FIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
+	framework.ConformanceIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -157,11 +157,6 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 								NamespaceSelector: nil,
 								IPBlock:           &netv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"127.0.0.1/32"}},
 							},
-							/*{
-								PodSelector:       nil,
-								NamespaceSelector: nil,
-								IPBlock:           &netv1.IPBlock{CIDR: "::/0", Except: []string{"::1/128"}},
-							},*/
 						},
 					},
 				},
