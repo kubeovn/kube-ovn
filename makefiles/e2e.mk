@@ -96,6 +96,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/connectivity
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/metallb
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
