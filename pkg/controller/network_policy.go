@@ -183,12 +183,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		for _, protocol := range protocolSet.List() {
-			defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
-			if err != nil {
-				klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
-				return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+			if isNetworkPolicyEnforcementLax(np) {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				ingressACLOps = append(ingressACLOps, defaultBlockExceptions...)
 			}
-			ingressACLOps = append(ingressACLOps, defaultBlockExceptions...)
 
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -328,12 +330,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		for _, protocol := range protocolSet.List() {
-			defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionFromLport, protocol)
-			if err != nil {
-				klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
-				return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+			if isNetworkPolicyEnforcementLax(np) {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionFromLport, protocol)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				egressACLOps = append(egressACLOps, defaultBlockExceptions...)
 			}
-			egressACLOps = append(egressACLOps, defaultBlockExceptions...)
 
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -806,5 +810,14 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 			}
 		}
 	}
+	return false
+}
+
+func isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
+	// User provided a custom enforcement through annotations
+	if value, ok := policy.Annotations[util.NetworkPolicyEnforcementAnnotation]; ok {
+		return value == "lax"
+	}
+
 	return false
 }
