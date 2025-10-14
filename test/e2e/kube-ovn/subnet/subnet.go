@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1455,11 +1456,18 @@ var _ = framework.Describe("[group:subnet]", func() {
 		output, err := exec.Command("kubectl", "ko", "nbctl", "--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", routerPortName)).CombinedOutput()
 		framework.Logf("Command output: %s", string(output))
 
-		if err != nil || strings.TrimSpace(string(output)) == "" {
+		if err != nil {
 			ginkgo.Skip("Could not get gateway MAC, skipping test")
 		}
 
-		gatewayMAC := strings.TrimSpace(string(output))
+		// Extract MAC address from the output string
+		macRegex := regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}`)
+		gatewayMAC := macRegex.FindString(string(output))
+
+		if gatewayMAC == "" {
+			ginkgo.Skip("Could not find valid gateway MAC in output, skipping test")
+		}
+
 		framework.Logf("Gateway MAC: %s", gatewayMAC)
 
 		ginkgo.By("Creating pod with static MAC that conflicts with gateway MAC")
