@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -131,7 +131,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 	defer func() {
 		if err != nil {
-			if err := csh.rollbackOvsPort(hostNicName, containerNicName, nicType); err != nil {
+			if err := csh.rollbackOvsPort(hostNicName); err != nil {
 				klog.Errorf("failed to rollback ovs port %s, %v", hostNicName, err)
 				return
 			}
@@ -227,7 +227,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return nil, err
 	}
-	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
+	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, gwCheckMode, u2oInterconnectionIP)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -309,13 +309,8 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 
 		nicName = yusur.GetYusurNicVfRepresentor(pfIndex, vfIndex)
 	} else {
-		hostNicName, containerNicName := generateNicName(containerID, ifName)
-
-		if nicType == util.InternalType {
-			nicName = containerNicName
-		} else {
-			nicName = hostNicName
-		}
+		hostNicName, _ := generateNicName(containerID, ifName)
+		nicName = hostNicName
 	}
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
@@ -365,18 +360,12 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	return nil
 }
 
-func (csh cniServerHandler) rollbackOvsPort(hostNicName, containerNicName, nicType string) (err error) {
-	var nicName string
-	if nicType == util.InternalType {
-		nicName = containerNicName
-	} else {
-		nicName = hostNicName
-	}
-	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
+func (csh cniServerHandler) rollbackOvsPort(hostNicName string) (err error) {
+	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", hostNicName)
 	if err != nil {
 		klog.Warningf("failed to delete down ovs port %v, %q", err, output)
 	}
-	klog.Infof("rollback ovs port success %s", nicName)
+	klog.Infof("rollback ovs port success %s", hostNicName)
 	return err
 }
 
@@ -410,7 +399,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return nil, fmt.Errorf("can not find container nic %s: %w", nicName, err)
@@ -432,33 +421,14 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 	detectIPv4Conflict := !vmMigration && csh.Config.EnableArpDetectIPConflict
 	var finalRoutes []request.Route
 	err = ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
-		interfaceName := nicName
-		if nicType != util.InternalType {
-			interfaceName = ifName
-			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
-				klog.Error(err)
-				return err
-			}
+		if err = netlink.LinkSetName(containerLink, ifName); err != nil {
+			klog.Error(err)
+			return err
 		}
 
-		if nicType == util.InternalType {
-			if err = addAdditionalNic(ifName); err != nil {
-				klog.Error(err)
-				return err
-			}
-			if err = configureAdditionalNic(ifName, ipAddr); err != nil {
-				klog.Error(err)
-				return err
-			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, false, false); err != nil {
-				klog.Error(err)
-				return err
-			}
-		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
-				klog.Error(err)
-				return err
-			}
+		if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
+			klog.Error(err)
+			return err
 		}
 
 		if isDefaultRoute {
@@ -537,20 +507,20 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 
 		if gwCheckMode != gatewayCheckModeDisabled {
 			if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual {
-				addrsFlags, err := waitIPv6AddressPreferred(interfaceName, 10, 500*time.Millisecond, ipv6DAD)
+				addrsFlags, err := waitIPv6AddressPreferred(ifName, 10, 500*time.Millisecond, ipv6DAD)
 				if err != nil {
 					klog.Error(err)
 					return err
 				}
 				for addr, flags := range addrsFlags {
 					if flags&unix.IFA_F_DADFAILED == 0 {
-						klog.Errorf("address %s on interface %s is not ready, flags: 0x%x", addr, interfaceName, flags)
+						klog.Errorf("address %s on interface %s is not ready, flags: 0x%x", addr, ifName, flags)
 						continue
 					}
-					klog.Errorf("IPv6 DAD of address %s on interface %s failed, flags: 0x%x", addr, interfaceName, flags)
-					available, mac, err := util.DuplicateAddressDetection(interfaceName, addr)
+					klog.Errorf("IPv6 DAD of address %s on interface %s failed, flags: 0x%x", addr, ifName, flags)
+					available, mac, err := util.DuplicateAddressDetection(ifName, addr)
 					if err != nil {
-						klog.Errorf("failed to perform IPv6 DAD for address %s on interface %s: %v", addr, interfaceName, err)
+						klog.Errorf("failed to perform IPv6 DAD for address %s on interface %s: %v", addr, ifName, err)
 						return err
 					}
 					if !available && mac != nil {
@@ -558,17 +528,17 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 					}
 				}
 				if len(addrsFlags) != 0 {
-					return fmt.Errorf("ip address(es) %s on interface %s are not in preferred state", strings.Join(slices.Collect(maps.Keys(addrsFlags)), ","), interfaceName)
+					return fmt.Errorf("ip address(es) %s on interface %s are not in preferred state", strings.Join(slices.Collect(maps.Keys(addrsFlags)), ","), ifName)
 				}
 			}
 
 			if u2oInterconnectionIP != "" {
-				if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, true); err != nil {
+				if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, ifName, ipAddr, u2oInterconnectionIP, true); err != nil {
 					klog.Error(err)
 					return err
 				}
 			}
-			if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, interfaceName, ipAddr, gateway, true); err != nil {
+			if err = csh.checkGatewayReady(podName, podNamespace, gwCheckMode, ifName, ipAddr, gateway, true); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -1608,13 +1578,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		return err
 	}
 
-	scopeOrders := [...]netlink.Scope{
-		netlink.SCOPE_HOST,
-		netlink.SCOPE_LINK,
-		netlink.SCOPE_SITE,
-		netlink.SCOPE_UNIVERSE,
-	}
-	for _, scope := range scopeOrders {
+	for _, scope := range routeScopeOrders {
 		for _, route := range routes {
 			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
 				// skip 169.254.0.0/16 and fe80::/10
@@ -1796,57 +1760,6 @@ func renameLink(curName, newName string) error {
 	return netlink.LinkSetUp(link)
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, _, _ []string, ingress, egress, _, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, []request.Route, error) {
-	_, containerNicName := generateNicName(containerID, ifName)
-	ipStr := util.GetIPWithoutMask(ip)
-	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
-	ovs.CleanDuplicatePort(ifaceID, containerNicName)
-
-	// Add container iface to ovs port as internal port
-	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", containerNicName, "--",
-		"set", "interface", containerNicName, "type=internal", "--",
-		"set", "interface", containerNicName, "external_ids:iface-id="+ifaceID,
-		"external_ids:vendor="+util.CniTypeName,
-		"external_ids:pod_name="+podName,
-		"external_ids:pod_namespace="+podNamespace,
-		"external_ids:ip="+ipStr,
-		"external_ids:pod_netns="+netns)
-	if err != nil {
-		err := fmt.Errorf("add nic to ovs failed %w: %q", err, output)
-		klog.Error(err)
-		return containerNicName, nil, err
-	}
-	defer func() {
-		if err != nil {
-			if err := csh.rollbackOvsPort("", containerNicName, nicType); err != nil {
-				klog.Errorf("failed to rollback ovs port %s, %v", containerNicName, err)
-				return
-			}
-		}
-	}()
-
-	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default
-	macAddr, err := net.ParseMAC(mac)
-	if err != nil {
-		return containerNicName, nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
-	}
-
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
-		return containerNicName, nil, err
-	}
-
-	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss, jitter); err != nil {
-		return containerNicName, nil, err
-	}
-
-	podNS, err := ns.GetNS(netns)
-	if err != nil {
-		return containerNicName, nil, fmt.Errorf("failed to open netns %q: %w", netns, err)
-	}
-	routes, err = csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP)
-	return containerNicName, routes, err
-}
-
 func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) error {
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
@@ -1881,72 +1794,6 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 		}
 		return nil
 	})
-}
-
-// https://github.com/antrea-io/antrea/issues/1691
-func configureAdditionalNic(link, ip string) error {
-	nodeLink, err := netlink.LinkByName(link)
-	if err != nil {
-		return fmt.Errorf("can not find nic %s %w", link, err)
-	}
-
-	ipDelMap := make(map[string]netlink.Addr)
-	ipAddMap := make(map[string]netlink.Addr)
-	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
-	if err != nil {
-		return fmt.Errorf("can not get addr %s %w", nodeLink, err)
-	}
-	for _, ipAddr := range ipAddrs {
-		if ipAddr.IP.IsLinkLocalUnicast() {
-			// skip 169.254.0.0/16 and fe80::/10
-			continue
-		}
-		ipDelMap[ipAddr.IPNet.String()] = ipAddr
-	}
-
-	for ipStr := range strings.SplitSeq(ip, ",") {
-		// Do not reassign same address for link
-		if _, ok := ipDelMap[ipStr]; ok {
-			delete(ipDelMap, ipStr)
-			continue
-		}
-
-		ipAddr, err := netlink.ParseAddr(ipStr)
-		if err != nil {
-			return fmt.Errorf("can not parse %s %w", ipStr, err)
-		}
-		ipAddMap[ipStr] = *ipAddr
-	}
-
-	for _, addr := range ipDelMap {
-		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
-			return fmt.Errorf("delete address %s %w", addr, err)
-		}
-	}
-	for _, addr := range ipAddMap {
-		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
-			return fmt.Errorf("can not add address %v to nic %s, %w", addr, link, err)
-		}
-	}
-
-	return nil
-}
-
-func addAdditionalNic(ifName string) error {
-	dummy := &netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{
-			Name: ifName,
-		},
-	}
-
-	if err := netlink.LinkAdd(dummy); err != nil {
-		if err := netlink.LinkDel(dummy); err != nil {
-			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
-			return err
-		}
-		return fmt.Errorf("failed to create static iface %v, err %w", ifName, err)
-	}
-	return nil
 }
 
 func setVfMac(deviceID string, vfIndex int, mac string) error {

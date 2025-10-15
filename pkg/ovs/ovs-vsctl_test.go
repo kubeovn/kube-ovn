@@ -216,15 +216,6 @@ func (suite *OvnClientTestSuite) testConfigInterfaceMirror() {
 	require.Error(t, err)
 }
 
-func (suite *OvnClientTestSuite) testGetResidualInternalPorts() {
-	t := suite.T()
-	t.Parallel()
-
-	ret := GetResidualInternalPorts()
-	// ovs-vsctl cmd is not available in the test environment
-	require.Empty(t, ret)
-}
-
 func (suite *OvnClientTestSuite) testClearPortQosBinding() {
 	t := suite.T()
 	t.Parallel()

@@ -228,10 +228,9 @@ const (
 	NodeLocalDNSPolicyPriority       = 30100
 	SubnetRouterPolicyPriority       = 31000
 
-	OffloadType  = "offload-port"
-	InternalType = "internal-port"
-	DpdkType     = "dpdk-port"
-	VethType     = "veth-pair"
+	OffloadType = "offload-port"
+	DpdkType    = "dpdk-port"
+	VethType    = "veth-pair"
 
 	HostnameEnv    = "KUBE_NODE_NAME"
 	GatewayNameEnv = "GATEWAY_NAME"
