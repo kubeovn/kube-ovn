@@ -1263,10 +1263,6 @@ func (suite *OvnClientTestSuite) Test_ConfigInterfaceMirror() {
 	suite.testConfigInterfaceMirror()
 }
 
-func (suite *OvnClientTestSuite) Test_GetResidualInternalPorts() {
-	suite.testGetResidualInternalPorts()
-}
-
 func (suite *OvnClientTestSuite) Test_ClearPortQosBinding() {
 	suite.testClearPortQosBinding()
 }

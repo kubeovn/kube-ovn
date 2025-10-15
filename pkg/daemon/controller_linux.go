@@ -852,7 +852,7 @@ func (c *Controller) HandleU2OForSubnet(subnet *kubeovnv1.Subnet, isAdd bool) er
 
 func (c *Controller) CheckSubnetU2OChangeAction(oldSubnet, newSubnet *kubeovnv1.Subnet) (bool, bool) {
 	if newSubnet == nil ||
-		(oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.U2OInterconnection == newSubnet.Spec.U2OInterconnection) {
+		(oldSubnet != nil && oldSubnet.Spec.U2OInterconnection == newSubnet.Spec.U2OInterconnection) {
 		return false, false
 	}
 
