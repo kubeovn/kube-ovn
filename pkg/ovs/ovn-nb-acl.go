@@ -100,7 +100,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 }
 
 // UpdateDefaultBlockExceptionsACLOps updates the exceptions to the default block ACLs of a NetworkPolicy
-// to allow ARP/ICMP/DHCP. We allow these protocols because the standard for NetworkPolicies expects to only block
+// to allow ARP/ICMP/DHCP. We may allow these protocols because the standard for NetworkPolicies expects to only block
 // based on the IP/TCP/UDP/SCTP protocols.
 func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
@@ -123,21 +123,14 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 		acl, err := c.newACL(pgName, direction, util.IngressAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
 		if err != nil {
 			klog.Error(err)
-			klog.Errorf("failed to create new base ingress acl for network policy %s/%s: %v", npNamespace, npName, err)
+			klog.Errorf("failed to create new block exceptions acl for network policy %s/%s: %v", npNamespace, npName, err)
 			return
 		}
 		acls = append(acls, acl)
 	}
 
-	// Allow ARP
-	allArpMatch := NewAndACLMatch(
-		NewACLMatch(portDirection, "==", "@"+pgName, ""),
-		NewACLMatch("arp", "", "", ""),
-	)
-	newACL(allArpMatch.String())
-
 	if protocol == kubeovnv1.ProtocolIPv6 {
-		// Allow  ICMPv6
+		// Allow ICMPv6
 		icmpv6Match := NewAndACLMatch(
 			NewACLMatch(portDirection, "==", "@"+pgName, ""),
 			NewACLMatch("icmp6", "", "", ""),
@@ -155,7 +148,14 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 	}
 
 	if protocol == kubeovnv1.ProtocolIPv4 {
-		// Allow  ICMPv4
+		// Allow ARP
+		allArpMatch := NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("arp", "", "", ""),
+		)
+		newACL(allArpMatch.String())
+
+		// Allow ICMPv4
 		icmpv6Match := NewAndACLMatch(
 			NewACLMatch(portDirection, "==", "@"+pgName, ""),
 			NewACLMatch("icmp4", "", "", ""),
@@ -175,7 +175,7 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
 	if err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("failed to create ingress acl for port group %s: %w", pgName, err)
+		return nil, fmt.Errorf("failed to create block exceptions acl for port group %s: %w", pgName, err)
 	}
 	return ops, nil
 }
