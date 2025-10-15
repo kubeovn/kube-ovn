@@ -26,6 +26,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	NetworkPolicyEnforcementStandard = "standard"
+	NetworkPolicyEnforcementLax      = "lax"
+)
+
 func (c *Controller) enqueueAddNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
@@ -183,7 +188,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		for _, protocol := range protocolSet.List() {
-			if isNetworkPolicyEnforcementLax(np) {
+			if c.isNetworkPolicyEnforcementLax(np) {
 				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
@@ -330,7 +335,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		for _, protocol := range protocolSet.List() {
-			if isNetworkPolicyEnforcementLax(np) {
+			if c.isNetworkPolicyEnforcementLax(np) {
 				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionFromLport, protocol)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
@@ -813,11 +818,12 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 	return false
 }
 
-func isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
+func (c *Controller) isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
 	// User provided a custom enforcement through annotations
 	if value, ok := policy.Annotations[util.NetworkPolicyEnforcementAnnotation]; ok {
-		return value == "lax"
+		return value == NetworkPolicyEnforcementLax
 	}
 
-	return false
+	// Fallback to the configuration of the controller
+	return c.config.NetworkPolicyEnforcement == NetworkPolicyEnforcementLax
 }

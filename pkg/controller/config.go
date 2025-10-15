@@ -128,6 +128,9 @@ type Configuration struct {
 
 	// Non Primary CNI flag
 	EnableNonPrimaryCNI bool
+
+	// Enforcement level of network policies (standard, lax)
+	NetworkPolicyEnforcement string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -184,6 +187,7 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
+		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement (standard, lax), default is standard")
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
@@ -312,6 +316,7 @@ func ParseFlags() (*Configuration, error) {
 		TLSMaxVersion:                  *argTLSMaxVersion,
 		TLSCipherSuites:                *argTLSCipherSuites,
 		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
+		NetworkPolicyEnforcement:       *argNPEnforcement,
 	}
 	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
