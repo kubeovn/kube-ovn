@@ -65,6 +65,56 @@ func newACL(parentName, direction, priority, match, action string, tier int, opt
 	return acl
 }
 
+func (suite *OvnClientTestSuite) testUpdateDefaultBlockExceptionsACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
+
+	t.Run("ingress exceptions", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "ingress exceptions"
+		pgName := "test_ingress_exceptions"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionToLport)
+		require.NoError(t, err)
+		require.Len(t, ops, 3)
+
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 547 && udp.dst == 546 && ip6", pgName), util.IngressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 67 && udp.dst == 68 && ip4", pgName), util.IngressAllowPriority)
+	})
+
+	t.Run("egress exceptions", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "egress exceptions"
+		pgName := "test_egress_exceptions"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionFromLport)
+		require.NoError(t, err)
+		require.Len(t, ops, 3)
+
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 546 && udp.dst == 547 && ip6", pgName), util.EgressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 68 && udp.dst == 67 && ip4", pgName), util.EgressAllowPriority)
+	})
+}
+
 func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 	t := suite.T()
 	t.Parallel()
@@ -89,7 +139,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, false)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -105,11 +155,43 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, false)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
 		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip", pgName), util.EgressDefaultDrop)
+	})
+
+	t.Run("lax default block ingress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block ingress"
+		pgName := "test_create_lax_block_ingress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && (tcp || udp || sctp)", pgName), util.IngressDefaultDrop)
+	})
+
+	t.Run("lax default block egress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block egress"
+		pgName := "test_create_lax_block_egress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && (tcp || udp || sctp)", pgName), util.EgressDefaultDrop)
 	})
 }
 

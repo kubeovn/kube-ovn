@@ -312,6 +312,18 @@ natGw:
     # @section -- NAT gateways configuration
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
 
+
+# -- Configuration for network policies
+# @section -- Network Policies
+# @default -- "{}"
+networkPolicies:
+  # -- Enforcement level of network policies when they get applied (can be: standard, lax).
+  # Enforcement "standard" blocks everything except what is allowed by the network policies.
+  # Enforcement "lax" is similar to "standard" with the exception that ARP/DHCPv4/DHCPv6/ICMPv4/ICMPv6
+  # is allowed by default. This mode is useful when using Kubevirt and VMs with IPs configured via Kube-OVN's DHCP.
+  # @section -- Network Policies
+  enforcement: "standard"
+
 # -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API.
 # This requires Multus to be installed.
 # @section -- API Network Attachment Definition configuration

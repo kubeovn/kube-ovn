@@ -57,6 +57,7 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
+  NP_ENFORCEMENT: standard
   ENABLE_EXTERNAL_VPC: false
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false

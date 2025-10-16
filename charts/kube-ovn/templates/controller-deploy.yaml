@@ -121,6 +121,7 @@ spec:
           - --pod-nic-type={{- .Values.networking.POD_NIC_TYPE }}
           - --enable-lb={{- .Values.func.ENABLE_LB }}
           - --enable-np={{- .Values.func.ENABLE_NP }}
+          - --np-enforcement={{- .Values.func.NP_ENFORCEMENT }}
           - --enable-eip-snat={{- .Values.networking.ENABLE_EIP_SNAT }}
           - --enable-external-vpc={{- .Values.func.ENABLE_EXTERNAL_VPC }}
           - --enable-ecmp={{- .Values.networking.ENABLE_ECMP }}

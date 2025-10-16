@@ -26,6 +26,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	NetworkPolicyEnforcementStandard = "standard"
+	NetworkPolicyEnforcementLax      = "lax"
+)
+
 func (c *Controller) enqueueAddNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
@@ -174,12 +179,23 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasIngressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable)
+			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
+
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
 				return fmt.Errorf("failed to set default ingress block acl: %w", err)
 			}
 			ingressACLOps = append(ingressACLOps, blockACLOps...)
+
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionToLport)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				ingressACLOps = append(ingressACLOps, defaultBlockExceptions...)
+			}
 		}
 
 		for _, protocol := range protocolSet.List() {
@@ -312,12 +328,23 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable)
+			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
+
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
 				return fmt.Errorf("failed to set default egress block acl: %w", err)
 			}
 			egressACLOps = append(egressACLOps, blockACLOps...)
+
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				egressACLOps = append(egressACLOps, defaultBlockExceptions...)
+			}
 		}
 
 		for _, protocol := range protocolSet.List() {
@@ -793,4 +820,14 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		}
 	}
 	return false
+}
+
+func (c *Controller) isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
+	// User provided a custom enforcement through annotations
+	if value, ok := policy.Annotations[util.NetworkPolicyEnforcementAnnotation]; ok {
+		return value == NetworkPolicyEnforcementLax
+	}
+
+	// Fallback to the configuration of the controller
+	return c.config.NetworkPolicyEnforcement == NetworkPolicyEnforcementLax
 }

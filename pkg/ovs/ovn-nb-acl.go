@@ -54,7 +54,7 @@ func setACLName(acl *ovnnb.ACL, name string) {
 }
 
 // UpdateDefaultBlockACLOps returns operations to update/create the default block ACL
-func (c *OVNNbClient) UpdateDefaultBlockACLOps(netpol, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
 	priority := util.IngressDefaultDrop
 
@@ -63,14 +63,24 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(netpol, pgName, direction string,
 		priority = util.EgressDefaultDrop
 	}
 
-	// Block everything IP related (IPv4/IPv6/ICMPv4/ICMPv6/...)
-	allIPMatch := NewAndACLMatch(
-		NewACLMatch(portDirection, "==", "@"+pgName, ""),
-		NewACLMatch("ip", "", "", ""),
-	)
+	var match ACLMatch
+
+	if lax {
+		// This is the "lax" enforcement mode, we block only TCP/UDP/SCTP
+		match = NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("(tcp || udp || sctp)", "", "", ""),
+		)
+	} else {
+		// This is the "standard" enforcement mode, we block everything IP related (IPv4/IPv6/ICMPv4/ICMPv6/...)
+		match = NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("ip", "", "", ""),
+		)
+	}
 
 	options := func(acl *ovnnb.ACL) {
-		setACLName(acl, netpol)
+		setACLName(acl, npName)
 		if loggingEnabled {
 			acl.Log = true
 			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
@@ -84,7 +94,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(netpol, pgName, direction string,
 		}
 	}
 
-	defaultDropACL, err := c.newACLWithoutCheck(pgName, direction, priority, allIPMatch.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
+	defaultDropACL, err := c.newACLWithoutCheck(pgName, direction, priority, match.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to create drop acl for port group %s: %w", pgName, err)
@@ -96,6 +106,60 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(netpol, pgName, direction string,
 		return nil, fmt.Errorf("failed to create default drop acl ops for port group %s: %w", pgName, err)
 	}
 
+	return ops, nil
+}
+
+// UpdateDefaultBlockExceptionsACLOps updates the exceptions to the default block ACLs of a NetworkPolicy to allow DHCPv4/DHCPv6.
+func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error) {
+	portDirection := "outport"
+	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
+	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
+
+	if direction == ovnnb.ACLDirectionFromLport { // Egress rule
+		portDirection = "inport"
+		dhcpv4UdpSrc, dhcpv4UdpDst = dhcpv4UdpDst, dhcpv4UdpSrc
+		dhcpv6UdpSrc, dhcpv6UdpDst = dhcpv6UdpDst, dhcpv6UdpSrc
+	}
+
+	acls := make([]*ovnnb.ACL, 0)
+
+	newACL := func(match string) {
+		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, npName)
+		}
+
+		acl, err := c.newACL(pgName, direction, util.IngressAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			klog.Error(err)
+			klog.Errorf("failed to create new block exceptions acl for network policy %s/%s: %v", npNamespace, npName, err)
+			return
+		}
+		acls = append(acls, acl)
+	}
+
+	// Allow DHCPv6
+	dhcpv6Match := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("udp.src", "==", dhcpv6UdpSrc, ""),
+		NewACLMatch("udp.dst", "==", dhcpv6UdpDst, ""),
+		NewACLMatch("ip6", "", "", ""),
+	)
+	newACL(dhcpv6Match.String())
+
+	// Allow DHCPv4
+	dhcpv4Match := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("udp.src", "==", dhcpv4UdpSrc, ""),
+		NewACLMatch("udp.dst", "==", dhcpv4UdpDst, ""),
+		NewACLMatch("ip4", "", "", ""),
+	)
+	newACL(dhcpv4Match.String())
+
+	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to create block exceptions acl for port group %s: %w", pgName, err)
+	}
 	return ops, nil
 }
 
