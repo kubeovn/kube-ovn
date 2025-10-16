@@ -179,24 +179,26 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasIngressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable)
+			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
+
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
 				return fmt.Errorf("failed to set default ingress block acl: %w", err)
 			}
 			ingressACLOps = append(ingressACLOps, blockACLOps...)
-		}
 
-		for _, protocol := range protocolSet.List() {
-			if c.isNetworkPolicyEnforcementLax(np) {
-				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionToLport, protocol)
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionToLport)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
 					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
 				}
 				ingressACLOps = append(ingressACLOps, defaultBlockExceptions...)
 			}
+		}
 
+		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 				ingressAllowAsName := fmt.Sprintf("%s.%s.%d", ingressAllowAsNamePrefix, protocol, idx)
@@ -326,24 +328,26 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable)
+			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
+
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
 				return fmt.Errorf("failed to set default egress block acl: %w", err)
 			}
 			egressACLOps = append(egressACLOps, blockACLOps...)
-		}
 
-		for _, protocol := range protocolSet.List() {
-			if c.isNetworkPolicyEnforcementLax(np) {
-				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(npName, pgName, np.Namespace, ovnnb.ACLDirectionFromLport, protocol)
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
 					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
 				}
 				egressACLOps = append(egressACLOps, defaultBlockExceptions...)
 			}
+		}
 
+		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 				egressAllowAsName := fmt.Sprintf("%s.%s.%d", egressAllowAsNamePrefix, protocol, idx)

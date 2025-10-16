@@ -54,7 +54,7 @@ func setACLName(acl *ovnnb.ACL, name string) {
 }
 
 // UpdateDefaultBlockACLOps returns operations to update/create the default block ACL
-func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled bool) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
 	priority := util.IngressDefaultDrop
 
@@ -63,11 +63,21 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 		priority = util.EgressDefaultDrop
 	}
 
-	// Block everything IP related (IPv4/IPv6/ICMPv4/ICMPv6/...)
-	allIPMatch := NewAndACLMatch(
-		NewACLMatch(portDirection, "==", "@"+pgName, ""),
-		NewACLMatch("ip", "", "", ""),
-	)
+	var match ACLMatch
+
+	if lax {
+		// This is the "lax" enforcement mode, we block only TCP/UDP/SCTP
+		match = NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("(tcp || udp || sctp)", "", "", ""),
+		)
+	} else {
+		// This is the "standard" enforcement mode, we block everything IP related (IPv4/IPv6/ICMPv4/ICMPv6/...)
+		match = NewAndACLMatch(
+			NewACLMatch(portDirection, "==", "@"+pgName, ""),
+			NewACLMatch("ip", "", "", ""),
+		)
+	}
 
 	options := func(acl *ovnnb.ACL) {
 		setACLName(acl, npName)
@@ -84,7 +94,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 		}
 	}
 
-	defaultDropACL, err := c.newACLWithoutCheck(pgName, direction, priority, allIPMatch.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
+	defaultDropACL, err := c.newACLWithoutCheck(pgName, direction, priority, match.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to create drop acl for port group %s: %w", pgName, err)
@@ -99,10 +109,8 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 	return ops, nil
 }
 
-// UpdateDefaultBlockExceptionsACLOps updates the exceptions to the default block ACLs of a NetworkPolicy
-// to allow ARP/ICMP/DHCP. We may allow these protocols because the standard for NetworkPolicies expects to only block
-// based on the IP/TCP/UDP/SCTP protocols.
-func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction, protocol string) ([]ovsdb.Operation, error) {
+// UpdateDefaultBlockExceptionsACLOps updates the exceptions to the default block ACLs of a NetworkPolicy to allow DHCPv4/DHCPv6.
+func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
 	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
 	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
@@ -129,48 +137,23 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 		acls = append(acls, acl)
 	}
 
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		// Allow ICMPv6
-		icmpv6Match := NewAndACLMatch(
-			NewACLMatch(portDirection, "==", "@"+pgName, ""),
-			NewACLMatch("icmp6", "", "", ""),
-		)
-		newACL(icmpv6Match.String())
+	// Allow DHCPv6
+	dhcpv6Match := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("udp.src", "==", dhcpv6UdpSrc, ""),
+		NewACLMatch("udp.dst", "==", dhcpv6UdpDst, ""),
+		NewACLMatch("ip6", "", "", ""),
+	)
+	newACL(dhcpv6Match.String())
 
-		// Allow DHCPv6
-		dhcpv6Match := NewAndACLMatch(
-			NewACLMatch(portDirection, "==", "@"+pgName, ""),
-			NewACLMatch("udp.src", "==", dhcpv6UdpSrc, ""),
-			NewACLMatch("udp.dst", "==", dhcpv6UdpDst, ""),
-			NewACLMatch("ip6", "", "", ""),
-		)
-		newACL(dhcpv6Match.String())
-	}
-
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		// Allow ARP
-		allArpMatch := NewAndACLMatch(
-			NewACLMatch(portDirection, "==", "@"+pgName, ""),
-			NewACLMatch("arp", "", "", ""),
-		)
-		newACL(allArpMatch.String())
-
-		// Allow ICMPv4
-		icmpv6Match := NewAndACLMatch(
-			NewACLMatch(portDirection, "==", "@"+pgName, ""),
-			NewACLMatch("icmp4", "", "", ""),
-		)
-		newACL(icmpv6Match.String())
-
-		// Allow DHCPv4
-		dhcpv4Match := NewAndACLMatch(
-			NewACLMatch(portDirection, "==", "@"+pgName, ""),
-			NewACLMatch("udp.src", "==", dhcpv4UdpSrc, ""),
-			NewACLMatch("udp.dst", "==", dhcpv4UdpDst, ""),
-			NewACLMatch("ip4", "", "", ""),
-		)
-		newACL(dhcpv4Match.String())
-	}
+	// Allow DHCPv4
+	dhcpv4Match := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("udp.src", "==", dhcpv4UdpSrc, ""),
+		NewACLMatch("udp.dst", "==", dhcpv4UdpDst, ""),
+		NewACLMatch("ip4", "", "", ""),
+	)
+	newACL(dhcpv4Match.String())
 
 	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
 	if err != nil {

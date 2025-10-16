@@ -80,74 +80,38 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockExceptionsACLOps() {
 		require.Equal(t, intPriority, row["priority"])
 	}
 
-	t.Run("ipv6 ingress exceptions", func(t *testing.T) {
+	t.Run("ingress exceptions", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ingress ipv6 exceptions"
-		pgName := "test_ingress_ipv6_exceptions"
+		netpol := "ingress exceptions"
+		pgName := "test_ingress_exceptions"
 
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionToLport, kubeovnv1.ProtocolIPv6)
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionToLport)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
-		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && icmp6", pgName), util.IngressAllowPriority)
-		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 547 && udp.dst == 546 && ip6", pgName), util.IngressAllowPriority)
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 547 && udp.dst == 546 && ip6", pgName), util.IngressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 67 && udp.dst == 68 && ip4", pgName), util.IngressAllowPriority)
 	})
 
-	t.Run("ipv6 egress exceptions", func(t *testing.T) {
+	t.Run("egress exceptions", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "egress ipv6 exceptions"
-		pgName := "test_egress_ipv6_exceptions"
+		netpol := "egress exceptions"
+		pgName := "test_egress_exceptions"
 
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionFromLport, kubeovnv1.ProtocolIPv6)
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionFromLport)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
-		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && icmp6", pgName), util.EgressAllowPriority)
-		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 546 && udp.dst == 547 && ip6", pgName), util.EgressAllowPriority)
-	})
-
-	t.Run("ipv4 ingress exceptions", func(t *testing.T) {
-		t.Parallel()
-
-		netpol := "ingress ipv4 exceptions"
-		pgName := "test_ingress_ipv4_exceptions"
-
-		err := nbClient.CreatePortGroup(pgName, nil)
-		require.NoError(t, err)
-
-		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionToLport, kubeovnv1.ProtocolIPv4)
-		require.NoError(t, err)
-		require.Len(t, ops, 4)
-
-		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && arp", pgName), util.IngressAllowPriority)
-		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && icmp4", pgName), util.IngressAllowPriority)
-		expect(ops[2].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 67 && udp.dst == 68 && ip4", pgName), util.IngressAllowPriority)
-	})
-
-	t.Run("ipv4 egress exceptions", func(t *testing.T) {
-		t.Parallel()
-
-		netpol := "egress ipv4 exceptions"
-		pgName := "test_egress_ipv4_exceptions"
-
-		err := nbClient.CreatePortGroup(pgName, nil)
-		require.NoError(t, err)
-
-		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionFromLport, kubeovnv1.ProtocolIPv4)
-		require.NoError(t, err)
-		require.Len(t, ops, 4)
-
-		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && arp", pgName), util.EgressAllowPriority)
-		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && icmp4", pgName), util.EgressAllowPriority)
-		expect(ops[2].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 68 && udp.dst == 67 && ip4", pgName), util.EgressAllowPriority)
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 546 && udp.dst == 547 && ip6", pgName), util.EgressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 68 && udp.dst == 67 && ip4", pgName), util.EgressAllowPriority)
 	})
 }
 
@@ -175,7 +139,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, false)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -191,11 +155,43 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, false)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
 		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip", pgName), util.EgressDefaultDrop)
+	})
+
+	t.Run("lax default block ingress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block ingress"
+		pgName := "test_create_lax_block_ingress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && (tcp || udp || sctp)", pgName), util.IngressDefaultDrop)
+	})
+
+	t.Run("lax default block egress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block egress"
+		pgName := "test_create_lax_block_egress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && (tcp || udp || sctp)", pgName), util.EgressDefaultDrop)
 	})
 }
 

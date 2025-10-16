@@ -703,12 +703,12 @@ func (suite *OvnClientTestSuite) Test_BatchDeleteAddressSetByNames() {
 }
 
 /* acl unit test */
-func (suite *OvnClientTestSuite) Test_testUpdateDefaultBlockExceptionsACLOps() {
-	suite.testUpdateDefaultBlockExceptionsACLOps()
-}
-
 func (suite *OvnClientTestSuite) Test_testUpdateDefaultBlockAclOps() {
 	suite.testUpdateDefaultBlockACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_testUpdateDefaultBlockExceptionsACLOps() {
+	suite.testUpdateDefaultBlockExceptionsACLOps()
 }
 
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
