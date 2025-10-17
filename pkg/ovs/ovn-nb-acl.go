@@ -112,11 +112,13 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 // UpdateDefaultBlockExceptionsACLOps updates the exceptions to the default block ACLs of a NetworkPolicy to allow DHCPv4/DHCPv6.
 func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
+	priority := util.IngressAllowPriority
 	dhcpv4UdpSrc, dhcpv4UdpDst := "67", "68"
 	dhcpv6UdpSrc, dhcpv6UdpDst := "547", "546"
 
 	if direction == ovnnb.ACLDirectionFromLport { // Egress rule
 		portDirection = "inport"
+		priority = util.EgressAllowPriority
 		dhcpv4UdpSrc, dhcpv4UdpDst = dhcpv4UdpDst, dhcpv4UdpSrc
 		dhcpv6UdpSrc, dhcpv6UdpDst = dhcpv6UdpDst, dhcpv6UdpSrc
 	}
@@ -128,7 +130,7 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 			setACLName(acl, npName)
 		}
 
-		acl, err := c.newACL(pgName, direction, util.IngressAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		acl, err := c.newACLWithoutCheck(pgName, direction, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
 		if err != nil {
 			klog.Error(err)
 			klog.Errorf("failed to create new block exceptions acl for network policy %s/%s: %v", npNamespace, npName, err)
