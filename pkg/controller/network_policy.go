@@ -177,10 +177,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
+	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if hasIngressRule(np) {
 		if protocolSet.Size() > 0 {
-			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
-
 			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
@@ -328,8 +327,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		if protocolSet.Size() > 0 {
-			enforcementLax := c.isNetworkPolicyEnforcementLax(np)
-
 			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
@@ -470,10 +467,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	for _, subnet := range subnets {
-		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
-			klog.Errorf("create gateway acl: %v", err)
-			return err
+	if !enforcementLax {
+		for _, subnet := range subnets {
+			if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
+				klog.Errorf("create gateway acl: %v", err)
+				return err
+			}
 		}
 	}
 	return nil
