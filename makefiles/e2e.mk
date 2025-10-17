@@ -85,6 +85,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/multus
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/non-primary-cni
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vip
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vpc-egress-gateway
@@ -165,6 +166,17 @@ kube-ovn-multus-conformance-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=10m \
 		--focus=CNI:Kube-OVN ./test/e2e/multus/multus.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-non-primary-cni-e2e
+kube-ovn-non-primary-cni-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/non-primary-cni
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	TEST_CONFIG_PATH=$(shell echo $${TEST_CONFIG_PATH:-$(CURDIR)/test/e2e/non-primary-cni/testconfigs}) \
+	KUBE_OVN_PRIMARY_CNI=$(shell echo $${KUBE_OVN_PRIMARY_CNI:-false}) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=15m \
+		--focus="group:non-primary-cni" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
