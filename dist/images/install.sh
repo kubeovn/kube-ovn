@@ -13,6 +13,7 @@ VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
+NP_ENFORCEMENT=${NP_ENFORCEMENT:-standard}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
@@ -4691,6 +4692,7 @@ spec:
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP
+          - --np-enforcement=$NP_ENFORCEMENT
           - --enable-eip-snat=$ENABLE_EIP_SNAT
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false

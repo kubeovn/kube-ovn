@@ -695,6 +695,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        np-enforcement:
+          - standard
+          - lax
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -755,6 +758,8 @@ jobs:
             ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
       - name: Install kind
+        env:
+          NP_ENFORCEMENT: "${{ matrix.np-enforcement }}"
         uses: helm/kind-action@v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
@@ -890,6 +895,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        np-enforcement:
+          - standard
+          - lax
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -957,6 +965,8 @@ jobs:
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
+        env:
+          NP_ENFORCEMENT: "${{ matrix.np-enforcement }}"
         id: install
         run: make kind-install-${{ matrix.ip-family }}
 
