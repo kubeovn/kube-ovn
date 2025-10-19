@@ -778,11 +778,11 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
-	if !cachedIptablesFip.DeletionTimestamp.IsZero() || len(cachedIptablesFip.GetFinalizers()) != 0 {
+	if !cachedIptablesFip.DeletionTimestamp.IsZero()  {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
@@ -851,11 +851,11 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
-	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || len(cachedIptablesDnat.GetFinalizers()) != 0 {
+	if !cachedIptablesDnat.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
@@ -976,11 +976,11 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
-	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || len(cachedIptablesSnat.GetFinalizers()) != 0 {
+	if !cachedIptablesSnat.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
