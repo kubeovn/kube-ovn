@@ -30,13 +30,6 @@ func (c *Controller) enqueueAddIP(obj any) {
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
-	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
-	for _, as := range ipObj.Spec.AttachSubnets {
-		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
-	}
-
 	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue add ip %s", key)
 	c.addIPQueue.Add(key)
@@ -162,25 +155,6 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 
-	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
-	if portName != ip.Name {
-		// invalid ip or node ip, no need to handle it here
-		klog.V(3).Infof("port name %s is not equal to ip name %s", portName, ip.Name)
-		return nil
-	}
-
-	// not handle add the ip, which created in pod process, lsp created before ip
-	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
-	if err != nil {
-		klog.Errorf("failed to list logical switch ports %s, %v", portName, err)
-		return err
-	}
-	if lsp != nil {
-		// port already exists means the ip already created
-		klog.V(3).Infof("ip %s is ready", portName)
-		return nil
-	}
-
 	// v6 ip address can not use upper case
 	if util.ContainsUppercase(ip.Spec.V6IPAddress) {
 		err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", ip.Name, ip.Spec.V6IPAddress)
@@ -220,6 +194,14 @@ func (c *Controller) handleAddReservedIP(key string) error {
 			return err
 		}
 	}
+
+	klog.V(3).Infof("enqueue update status subnet %s", ip.Spec.Subnet)
+	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
+	for _, as := range ip.Spec.AttachSubnets {
+		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
+		c.updateSubnetStatusQueue.Add(as)
+	}
+
 	return nil
 }
 
