@@ -778,7 +778,7 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesFip.DeletionTimestamp.IsZero()  {
+	if !cachedIptablesFip.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesFip, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
@@ -851,7 +851,7 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesDnat.DeletionTimestamp.IsZero() {
+	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesDnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
@@ -976,7 +976,7 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesSnat.DeletionTimestamp.IsZero() {
+	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesSnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
