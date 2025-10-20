@@ -778,10 +778,11 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesFip.DeletionTimestamp.IsZero() || len(cachedIptablesFip.GetFinalizers()) != 0 {
+	if !cachedIptablesFip.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesFip, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
@@ -850,10 +851,11 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || len(cachedIptablesDnat.GetFinalizers()) != 0 {
+	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesDnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
@@ -974,12 +976,12 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || len(cachedIptablesSnat.GetFinalizers()) != 0 {
+	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesSnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
 	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
+	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)
