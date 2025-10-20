@@ -62,6 +62,14 @@ func (c *Controller) resyncProviderNetworkStatus() {
 					conditionsUpdated = true
 				}
 				readyNodes = append(readyNodes, node.Name)
+				// set node label ovn.kubernetes.io/external-gw=true for readyNode
+				if node.Labels[util.ExGatewayLabel] != "true" {
+					patch := util.KVPatch{util.ExGatewayLabel: "true"}
+					if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+						klog.Errorf("failed to patch external gw node %s: %v", node.Name, err)
+					}
+					klog.Infof("finish patch node %s label: ovn.kubernetes.io/external-gw=true", node.Name)
+				}
 			} else {
 				var errMsg string
 				if pod := podMap[node.Name]; pod == nil {
