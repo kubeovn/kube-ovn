@@ -152,11 +152,15 @@ const (
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
 
-	IngressAllowPriority = "2001"
-	IngressDefaultDrop   = "2000"
+	IngressSelectorAllowPriority = "2003"
+	IngressExceptDropPriority    = "2002"
+	IngressAllowPriority         = "2001"
+	IngressDefaultDrop           = "2000"
 
-	EgressAllowPriority = "2001"
-	EgressDefaultDrop   = "2000"
+	EgressSelectorAllowPriority = "2003"
+	EgressExceptDropPriority    = "2002"
+	EgressAllowPriority         = "2001"
+	EgressDefaultDrop           = "2000"
 
 	AllowEWTrafficPriority = "1900"
 

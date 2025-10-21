@@ -214,7 +214,8 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v4_ingress_acl_pg"
-		asIngressName := "test.default.ingress.allow.ipv4.all"
+		asSelectorName := "test.default.ingress.selector.ipv4.all"
+		asIPBlockName := "test.default.ingress.ipblock.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
@@ -222,13 +223,18 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
+		err = nbClient.CreateAddressSet(asIPBlockName, nil)
+		require.NoError(t, err)
+		err = nbClient.AddressSetUpdateAddress(asIPBlockName, "10.244.0.0/16")
+		require.NoError(t, err)
+
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
-		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asIPBlockName, protocol, ovnnb.ACLDirectionToLport, npp, nil)
 		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
@@ -241,7 +247,8 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v6_ingress_acl_pg"
-		asIngressName := "test.default.ingress.allow.ipv6.all"
+		asSelectorName := "test.default.ingress.selector.ipv6.all"
+		asIPBlockName := "test.default.ingress.ipblock.ipv6.all"
 		asExceptName := "test.default.ingress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
 		aclName := "test_create_v6_ingress_acl_pg"
@@ -249,11 +256,16 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		err = nbClient.CreateAddressSet(asIPBlockName, nil)
+		require.NoError(t, err)
+		err = nbClient.AddressSetUpdateAddress(asIPBlockName, "fd00::/64")
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
-		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asIPBlockName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
 		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
@@ -266,12 +278,13 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := ""
-		asIngressName := "test.default.ingress.allow.ipv4.all"
+		asSelectorName := "test.default.ingress.selector.ipv4.all"
+		asIPBlockName := "test.default.ingress.ipblock.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
@@ -279,12 +292,13 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		t.Parallel()
 
 		pgName := ""
-		asIngressName := "test.default.ingress.allow.ipv4"
+		asSelectorName := "test.default.ingress.selector.ipv4"
+		asIPBlockName := "test.default.ingress.ipblock.ipv4"
 		asExceptName := "test.default.ingress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -308,7 +322,8 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v4_egress_acl_pg"
-		asEgressName := "test.default.egress.allow.ipv4.all"
+		asSelectorName := "test.default.egress.selector.ipv4.all"
+		asIPBlockName := "test.default.egress.ipblock.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
@@ -316,13 +331,18 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
+		err = nbClient.CreateAddressSet(asIPBlockName, nil)
+		require.NoError(t, err)
+		err = nbClient.AddressSetUpdateAddress(asIPBlockName, "10.244.0.0/16")
+		require.NoError(t, err)
+
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
-		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asIPBlockName, protocol, ovnnb.ACLDirectionFromLport, npp, nil)
 		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
@@ -335,7 +355,8 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := "test_create_v6_egress_acl_pg"
-		asEgressName := "test.default.egress.allow.ipv6.all"
+		asSelectorName := "test.default.egress.selector.ipv6.all"
+		asIPBlockName := "test.default.egress.ipblock.ipv6.all"
 		asExceptName := "test.default.egress.except.ipv6.all"
 		protocol := kubeovnv1.ProtocolIPv6
 		aclName := "test_create_v6_egress_acl_pg"
@@ -343,11 +364,16 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		err = nbClient.CreateAddressSet(asIPBlockName, nil)
+		require.NoError(t, err)
+		err = nbClient.AddressSetUpdateAddress(asIPBlockName, "fd00::/64")
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
-		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, nil, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asIPBlockName, protocol, ovnnb.ACLDirectionFromLport, nil, nil)
 		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
@@ -360,12 +386,13 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := ""
-		asEgressName := "test.default.egress.allow.ipv4.all"
+		asSelectorName := "test.default.egress.selector.ipv4.all"
+		asIPBlockName := "test.default.egress.ipblock.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
@@ -373,12 +400,13 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		t.Parallel()
 
 		pgName := ""
-		asEgressName := "test.default.egress.allow.ipv4"
+		asSelectorName := "test.default.egress.selector.ipv4"
+		asIPBlockName := "test.default.egress.ipblock.ipv4"
 		asExceptName := "test.default.egress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asSelectorName, asIPBlockName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -1996,16 +2024,15 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 
 	pgName := "test-new-acl-m-pg"
 	asAllowName := "test.default.xx.allow.ipv4"
-	asExceptName := "test.default.xx.except.ipv4"
 
 	t.Run("has ingress network policy port", func(t *testing.T) {
 		t.Parallel()
 
 		npp := mockNetworkPolicyPort()
-		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
 		require.ElementsMatch(t, []string{
-			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
-			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && %d <= tcp.dst <= %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal, *npp[1].EndPort),
+			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, npp[0].Port.IntVal),
+			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && %d <= tcp.dst <= %d", pgName, asAllowName, npp[1].Port.IntVal, *npp[1].EndPort),
 		}, matches)
 	})
 
@@ -2014,19 +2041,19 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 
 		npp := mockNetworkPolicyPort()
 
-		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, npp, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, npp, nil)
 		require.ElementsMatch(t, []string{
-			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && ip4.dst != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
-			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && ip4.dst != $%s && %d <= tcp.dst <= %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal, *npp[1].EndPort),
+			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && tcp.dst == %d", pgName, asAllowName, npp[0].Port.IntVal),
+			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && %d <= tcp.dst <= %d", pgName, asAllowName, npp[1].Port.IntVal, *npp[1].EndPort),
 		}, matches)
 	})
 
 	t.Run("network policy port is nil", func(t *testing.T) {
 		t.Parallel()
 
-		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, nil, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, nil, nil)
 		require.ElementsMatch(t, []string{
-			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s", pgName, asAllowName, asExceptName),
+			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s", pgName, asAllowName),
 		}, matches)
 	})
 
@@ -2036,10 +2063,10 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 		npp := mockNetworkPolicyPort()
 		npp[1].Port = nil
 
-		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
 		require.ElementsMatch(t, []string{
-			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
-			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp", pgName, asAllowName, asExceptName),
+			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, npp[0].Port.IntVal),
+			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp", pgName, asAllowName),
 		}, matches)
 	})
 
@@ -2051,10 +2078,10 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 			npp := mockNetworkPolicyPort()
 			npp[1].EndPort = nil
 
-			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
+			matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
 			require.ElementsMatch(t, []string{
-				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
-				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal),
+				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, npp[0].Port.IntVal),
+				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, npp[1].Port.IntVal),
 			}, matches)
 		})
 
@@ -2076,9 +2103,9 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 					PortID: 13455,
 				},
 			}
-			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
+			matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 			require.ElementsMatch(t, []string{
-				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, 13455),
+				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, 13455),
 			}, matches)
 		})
 
@@ -2100,9 +2127,9 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 					PortID: 13455,
 				},
 			}
-			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
+			matches := newNetworkPolicyACLMatch(pgName, asAllowName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 			require.ElementsMatch(t, []string{
-				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, 0),
+				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && tcp.dst == %d", pgName, asAllowName, 0),
 			}, matches)
 		})
 	})
