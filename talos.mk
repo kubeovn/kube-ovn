@@ -155,7 +155,7 @@ talos-libvirt-clean:
 talos-apply-config-%:
 	$(eval TALOS_ENDPOINT_IP_FAMILY = $(shell echo $* | sed 's/dual/ipv4/'))
 	$(eval TALOS_CONTROL_PLANE_IP = $(TALOS_CONTROL_PLANE_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
-	$(eval TALOS_ENDPOINT = https://[$(TALOS_CONTROL_PLANE_IP)]:6443)
+	$(eval TALOS_ENDPOINT = https://$(if $(filter ipv6,$(TALOS_ENDPOINT_IP_FAMILY)),[$(TALOS_CONTROL_PLANE_IP)],$(TALOS_CONTROL_PLANE_IP)):6443)
 	$(eval TALOS_REGISTRY_MIRROR_URL = $(TALOS_REGISTRY_MIRROR_URL_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
 	@echo ">>> Generating Talos configuration..."
 	ip_family=$* jinjanate talos/cluster-config.yaml.j2 -o talos/cluster-config.yaml
