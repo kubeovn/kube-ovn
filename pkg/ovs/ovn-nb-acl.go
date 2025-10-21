@@ -128,6 +128,12 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 	newACL := func(match string) {
 		options := func(acl *ovnnb.ACL) {
 			setACLName(acl, npName)
+			if direction == ovnnb.ACLDirectionFromLport {
+				if acl.Options == nil {
+					acl.Options = make(map[string]string)
+				}
+				acl.Options["apply-after-lb"] = "true"
+			}
 		}
 
 		acl, err := c.newACLWithoutCheck(pgName, direction, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
