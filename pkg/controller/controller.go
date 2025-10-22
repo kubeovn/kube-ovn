@@ -101,6 +101,7 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
+	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -405,18 +406,18 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcStatusQueue: newTypedRateLimitingQueue[string]("UpdateVpcStatus", nil),
 		vpcKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
-		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
-		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,
-		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
-		initVpcNatGatewayQueue:        newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
-		delVpcNatGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
-		updateVpcEipQueue:             newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
-		updateVpcFloatingIPQueue:      newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
-		updateVpcDnatQueue:            newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
-		updateVpcSnatQueue:            newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
-		updateVpcSubnetQueue:          newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
-		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
-
+		vpcNatGatewayLister:              vpcNatGatewayInformer.Lister(),
+		vpcNatGatewaySynced:              vpcNatGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcNatGatewayQueue:    newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
+		initVpcNatGatewayQueue:           newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
+		delVpcNatGatewayQueue:            newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
+		updateVpcEipQueue:                newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
+		updateVpcFloatingIPQueue:         newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
+		updateVpcDnatQueue:               newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
+		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
+		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
+		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),

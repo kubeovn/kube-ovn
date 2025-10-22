@@ -723,6 +723,13 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 }
 
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
+	lockKey := fmt.Sprintf("nat-gw-exec:%s/%s", pod.Namespace, pod.Name)
+
+	c.vpcNatGwExecKeyMutex.LockKey(lockKey)
+	defer func() {
+		_ = c.vpcNatGwExecKeyMutex.UnlockKey(lockKey)
+	}()
+
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
 	klog.V(3).Info(cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
