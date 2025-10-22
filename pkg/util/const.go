@@ -112,6 +112,7 @@ const (
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
+	KubeVirtVMNameLabel                = "vm.kubevirt.io/name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
