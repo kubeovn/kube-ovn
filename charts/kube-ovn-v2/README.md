@@ -1404,7 +1404,7 @@ false
 true
 </pre>
 </td>
-			<td>Enable default gateway checks</td>
+			<td>Enable default gateway checks.</td>
 		</tr>
 		<tr>
 			<td>networking.pods.enableLogicalGateways</td>
@@ -1413,7 +1413,7 @@ true
 false
 </pre>
 </td>
-			<td>Enable logical gateways</td>
+			<td>Enable logical gateways.</td>
 		</tr>
 		<tr>
 			<td>networking.pods.gateways</td>
@@ -1441,6 +1441,15 @@ false
 </pre>
 </td>
 			<td>IPv6 gateway.</td>
+		</tr>
+		<tr>
+			<td>networking.pods.mtu</td>
+			<td>int</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+			<td>MTU of the subnet. If set to 0, the MTU is auto-detected.</td>
 		</tr>
 		<tr>
 			<td>networking.pods.subnetName</td>
