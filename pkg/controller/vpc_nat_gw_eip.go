@@ -141,6 +141,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
 	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4); err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
