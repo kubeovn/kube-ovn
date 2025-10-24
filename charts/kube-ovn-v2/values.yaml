@@ -154,6 +154,9 @@ networking:
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
+  # -- Comma-separated list of destination IP CIDRs that should skip conntrack processing.
+  # @section -- Network parameters of the CNI
+  skipConntrackDstCidrs: ""
   # -- Enable listening on the metrics endpoint for the CNI daemons.
   # @section -- Network parameters of the CNI
   enableMetrics: true

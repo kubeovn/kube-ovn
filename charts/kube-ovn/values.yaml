@@ -46,6 +46,8 @@ networking:
   ENABLE_METRICS: true
   # comma-separated string of nodelocal DNS ip addresses
   NODE_LOCAL_DNS_IP: ""
+  # comma-separated list of destination IP CIDRs that should skip conntrack processing
+  SKIP_CONNTRACK_DST_CIDRS: ""
   PROBE_INTERVAL: 180000
   OVN_NORTHD_PROBE_INTERVAL: 5000
   OVN_LEADER_PROBE_INTERVAL: 5

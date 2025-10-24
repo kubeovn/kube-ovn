@@ -1,0 +1,158 @@
+From 737d9f932edada5a91f315b5f382daada8dee952 Mon Sep 17 00:00:00 2001
+From: clyi <clyi@alauda.io>
+Date: Thu, 23 Oct 2025 13:15:48 +0800
+Subject: [PATCH] add skip conntrack destination ipcidrs
+
+Signed-off-by: clyi <clyi@alauda.io>
+---
+ northd/en-global-config.c |  5 ++
+ northd/northd.c           | 96 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 101 insertions(+)
+
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index 3f934ccff..96877614a 100644
+--- a/northd/en-global-config.c
++++ b/northd/en-global-config.c
+@@ -659,6 +659,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "skip_conntrack_dst_cidrs", false)) {
++        return true;
++    }
++
+     if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                            "ls_dnat_mod_dl_dst", false)) {
+         return true;
+diff --git a/northd/northd.c b/northd/northd.c
+index 8040a3875..6d5218272 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -103,6 +103,10 @@ static bool bcast_arp_req_flood = true;
+ static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
+ static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
+ 
++/* User-defined destination IP CIDRs that should skip conntrack processing */
++static struct sset skip_conntrack_dst_cidrs_v4 = SSET_INITIALIZER(&skip_conntrack_dst_cidrs_v4);
++static struct sset skip_conntrack_dst_cidrs_v6 = SSET_INITIALIZER(&skip_conntrack_dst_cidrs_v6);
++
+ static bool ls_ct_skip_dst_lport_ips = false;
+ 
+ static bool ls_dnat_mod_dl_dst = false;
+@@ -6358,6 +6362,35 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+         }
+         free(array);
+ 
++        /* Skip conntrack for user-defined destination IP CIDRs
++         *
++         * Add priority 105 flows to skip conntrack processing for destinations
++         * matching user-specified destination IP CIDRs. These flows take precedence over
++         * the priority 100 flow that sends all IP traffic to conntrack.
++         *
++         * This allows administrators to optimize performance by excluding
++         * high-volume cross-subnet traffic or services that don't need
++         * connection tracking (e.g., stateless services, monitoring traffic).
++         */
++        array = sset_array(&skip_conntrack_dst_cidrs_v4);
++        for (size_t i = 0; i < sset_count(&skip_conntrack_dst_cidrs_v4); i++) {
++            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++        array = sset_array(&skip_conntrack_dst_cidrs_v6);
++        for (size_t i = 0; i < sset_count(&skip_conntrack_dst_cidrs_v6); i++) {
++            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++
+         if (!ls_ct_skip_dst_lport_ips) {
+             return;
+         }
+@@ -19586,6 +19619,8 @@ ovnnb_db_run(struct northd_input *input_data,
+ 
+     sset_clear(&node_local_dns_ip_v4);
+     sset_clear(&node_local_dns_ip_v6);
++    sset_clear(&skip_conntrack_dst_cidrs_v4);
++    sset_clear(&skip_conntrack_dst_cidrs_v6);
+ 
+     const char *node_local_dns_ip = smap_get(input_data->nb_options,
+                                              "node_local_dns_ip");
+@@ -19612,6 +19647,67 @@ ovnnb_db_run(struct northd_input *input_data,
+         free(start);
+     }
+ 
++    /* Parse skip_conntrack_dst_cidrs option
++     *
++     * This option allows users to specify destination IP CIDRs that should skip conntrack
++     * processing in the ls_in_pre_lb table. This is useful for:
++     * - Reducing conntrack table usage for high-volume cross-subnet traffic
++     * - Avoiding connection tracking for services that don't need it
++     * - Performance optimization in large-scale deployments
++     *
++     * Format: "10.0.0.0/24,192.168.1.0/24,2001:db8::/64"
++     * Multiple IP CIDRs can be specified, separated by commas.
++     * Both IPv4 and IPv6 CIDR notation is supported.
++     */
++    const char *skip_conntrack_dst_cidrs = smap_get(input_data->nb_options,
++                                                  "skip_conntrack_dst_cidrs");
++    if (skip_conntrack_dst_cidrs) {
++        char *cur, *next, *start;
++        next = start = xstrdup(skip_conntrack_dst_cidrs);
++        struct ds s = DS_EMPTY_INITIALIZER;
++        while ((cur = strsep(&next, ",")) && *cur) {
++            /* Trim whitespace */
++            while (*cur == ' ' || *cur == '\t') {
++                cur++;
++            }
++            char *end = cur + strlen(cur) - 1;
++            while (end > cur && (*end == ' ' || *end == '\t')) {
++                *end = '\0';
++                end--;
++            }
++
++            if (strchr(cur, ':')) {
++                struct in6_addr ip6;
++                unsigned int plen;
++                char *slash = strchr(cur, '/');
++                if (slash) {
++                    *slash = '\0';
++                    if (ipv6_parse(cur, &ip6) &&
++                        sscanf(slash + 1, "%u", &plen) == 1 && plen <= 128) {
++                        ds_clear(&s);
++                        ds_put_format(&s, "%s/%u", cur, plen);
++                        sset_add(&skip_conntrack_dst_cidrs_v6, ds_cstr_ro(&s));
++                    }
++                }
++            } else {
++                ovs_be32 ip4;
++                unsigned int plen;
++                char *slash = strchr(cur, '/');
++                if (slash) {
++                    *slash = '\0';
++                    if (ip_parse(cur, &ip4) &&
++                        sscanf(slash + 1, "%u", &plen) == 1 && plen <= 32) {
++                        ds_clear(&s);
++                        ds_put_format(&s, IP_FMT"/%u", IP_ARGS(ip4), plen);
++                        sset_add(&skip_conntrack_dst_cidrs_v4, ds_cstr_ro(&s));
++                    }
++                }
++            }
++        }
++        ds_destroy(&s);
++        free(start);
++    }
++
+     /* deprecated, use --event instead */
+     controller_event_en = smap_get_bool(input_data->nb_options,
+                                         "controller_event", false);
+-- 
+2.34.1
+

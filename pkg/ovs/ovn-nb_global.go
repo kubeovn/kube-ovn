@@ -220,3 +220,28 @@ func (c *OVNNbClient) SetNodeLocalDNSIP(nodeLocalDNSIP string) error {
 
 	return nil
 }
+
+func (c *OVNNbClient) SetSkipConntrackCidrs(skipConntrackCidrs string) error {
+	if skipConntrackCidrs != "" {
+		return c.SetNbGlobalOptions("skip_conntrack_dst_cidrs", skipConntrackCidrs)
+	}
+
+	nbGlobal, err := c.GetNbGlobal()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to get nb global: %w", err)
+	}
+
+	options := make(map[string]string, len(nbGlobal.Options))
+	maps.Copy(options, nbGlobal.Options)
+
+	delete(options, "skip_conntrack_dst_cidrs")
+
+	nbGlobal.Options = options
+	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to remove NB_Global option skip_conntrack_dst_cidrs, %w", err)
+	}
+
+	return nil
+}
