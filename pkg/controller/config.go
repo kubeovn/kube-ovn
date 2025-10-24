@@ -131,6 +131,9 @@ type Configuration struct {
 
 	// Enforcement level of network policies (standard, lax)
 	NetworkPolicyEnforcement string
+
+	// Skip conntrack for specific destination IP CIDRs
+	SkipConntrackDstCidrs string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -223,6 +226,8 @@ func ParseFlags() (*Configuration, error) {
 		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
 
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
+
+		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -317,6 +322,7 @@ func ParseFlags() (*Configuration, error) {
 		TLSCipherSuites:                *argTLSCipherSuites,
 		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:       *argNPEnforcement,
+		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
 	}
 	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")

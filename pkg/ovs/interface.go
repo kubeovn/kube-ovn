@@ -24,6 +24,7 @@ type NBGlobal interface {
 	SetLsCtSkipDstLportIPs(enabled bool) error
 	SetOVNIPSec(enabled bool) error
 	SetNodeLocalDNSIP(nodeLocalDNSIP string) error
+	SetSkipConntrackCidrs(skipConntrackCidrs string) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
 

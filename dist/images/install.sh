@@ -26,6 +26,8 @@ ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
 ENABLE_METRICS=${ENABLE_METRICS:-true}
 # comma-separated string of nodelocal DNS ip addresses
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
+# comma-separated list of destination IP CIDRs that should skip conntrack processing
+SKIP_CONNTRACK_DST_CIDRS=${SKIP_CONNTRACK_DST_CIDRS:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
@@ -4705,6 +4707,7 @@ spec:
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
+          - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}

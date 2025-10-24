@@ -988,6 +988,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
 	}
 
+	if err := c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
+	}
+
 	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
 	}
