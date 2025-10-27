@@ -150,6 +150,7 @@ spec:
           - --keep-vm-ip={{- .Values.features.enableKeepVmIps }}
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
+          - --skip-conntrack-dst-cidrs={{- .Values.networking.skipConntrackDstCidrs }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
           - --enable-anp={{- .Values.features.ENABLE_ANP }}

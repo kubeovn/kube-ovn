@@ -147,6 +147,20 @@ func (mr *MockNBGlobalMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNBGlobal)(nil).SetOVNIPSec), enabled)
 }
 
+// SetSkipConntrackCidrs mocks base method.
+func (m *MockNBGlobal) SetSkipConntrackCidrs(skipConntrackCidrs string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetSkipConntrackCidrs", skipConntrackCidrs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetSkipConntrackCidrs indicates an expected call of SetSkipConntrackCidrs.
+func (mr *MockNBGlobalMockRecorder) SetSkipConntrackCidrs(skipConntrackCidrs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSkipConntrackCidrs", reflect.TypeOf((*MockNBGlobal)(nil).SetSkipConntrackCidrs), skipConntrackCidrs)
+}
+
 // SetUseCtInvMatch mocks base method.
 func (m *MockNBGlobal) SetUseCtInvMatch() error {
 	m.ctrl.T.Helper()
@@ -5158,6 +5172,20 @@ func (m *MockNbClient) SetOVNIPSec(enabled bool) error {
 func (mr *MockNbClientMockRecorder) SetOVNIPSec(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOVNIPSec", reflect.TypeOf((*MockNbClient)(nil).SetOVNIPSec), enabled)
+}
+
+// SetSkipConntrackCidrs mocks base method.
+func (m *MockNbClient) SetSkipConntrackCidrs(skipConntrackCidrs string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetSkipConntrackCidrs", skipConntrackCidrs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetSkipConntrackCidrs indicates an expected call of SetSkipConntrackCidrs.
+func (mr *MockNbClientMockRecorder) SetSkipConntrackCidrs(skipConntrackCidrs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSkipConntrackCidrs", reflect.TypeOf((*MockNbClient)(nil).SetSkipConntrackCidrs), skipConntrackCidrs)
 }
 
 // SetUseCtInvMatch mocks base method.
