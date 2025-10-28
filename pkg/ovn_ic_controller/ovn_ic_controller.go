@@ -291,6 +291,13 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	gwNodes := strings.Split(strings.Trim(config["gw-nodes"], ","), ",")
 	chassises := make([]string, len(gwNodes))
 
+	// Only set up LRPs and LSPs for default router if specified.
+	var interconnectDefaultRouter = true
+	val, ok := config["interconnect-default-router"]
+	if ok && val == "false" {
+		interconnectDefaultRouter = false
+	}
+
 	for i, tsName := range tsNames {
 		gwNodesOrdered := generateNewOrderGwNodes(gwNodes, i)
 		for j, gw := range gwNodesOrdered {
@@ -317,27 +324,29 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			}
 		}
 
-		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
-		exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
-		if err != nil {
-			klog.Errorf("failed to check logical switch port %q: %v", tsPort, err)
-			return err
-		}
-		if exist {
-			klog.Infof("ts port %s already exists", tsPort)
-			continue
-		}
+		if interconnectDefaultRouter {
+			tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
+			exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
+			if err != nil {
+				klog.Errorf("failed to check logical switch port %q: %v", tsPort, err)
+				return err
+			}
+			if exist {
+				klog.Infof("ts port %s already exists", tsPort)
+				continue
+			}
 
-		lrpAddr, err := c.acquireLrpAddress(tsName)
-		if err != nil {
-			klog.Errorf("failed to acquire lrp address for ts %q: %v", tsName, err)
-			return err
-		}
+			lrpAddr, err := c.acquireLrpAddress(tsName)
+			if err != nil {
+				klog.Errorf("failed to acquire lrp address for ts %q: %v", tsName, err)
+				return err
+			}
 
-		lrpName := fmt.Sprintf("%s-%s", config["az-name"], tsName)
-		if err := c.OVNNbClient.CreateLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
-			klog.Errorf("failed to create ovn-ic lrp %q: %v", lrpName, err)
-			return err
+			lrpName := fmt.Sprintf("%s-%s", config["az-name"], tsName)
+			if err := c.OVNNbClient.CreateLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
+				klog.Errorf("failed to create ovn-ic lrp %q: %v", lrpName, err)
+				return err
+			}
 		}
 	}
 
