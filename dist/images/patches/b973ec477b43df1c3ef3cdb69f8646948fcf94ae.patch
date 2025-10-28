@@ -20,7 +20,7 @@ index c1e6627e63..b67f8ccad9 100644
 +    if (is_src_route) {
 +        *priority = 1;
 +        if ((is_ipv4 && plen == 32) || (plen == 128)) {
-+            *priority = 2;
++            *priority = ROUTE_PRIO_OFFSET_STATIC + 1;
 +        }
 +    } else {
 +        *priority = (plen * ROUTE_PRIO_OFFSET_MULTIPLIER) + ofs;
