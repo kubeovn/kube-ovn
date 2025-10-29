@@ -1059,6 +1059,7 @@ func (c *OVNNbClient) CleanLogicalSwitchPortMigrateOptions(lspName string) error
 	// migrated pod port has requested-chassis, if pod force deleted, the vm pod may schedule to another node
 	// if not clean the requested-chassis, the pod has no network connectivity
 	delete(lsp.Options, "requested-chassis")
+	delete(lsp.Options, "activation-strategy")
 	klog.Infof("cleaned migrator logical switch port %s options: %v", lspName, lsp.Options)
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
 		err = fmt.Errorf("failed to clean options for migrator logical switch port %s: %w", lspName, err)
