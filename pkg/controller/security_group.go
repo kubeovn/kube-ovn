@@ -369,6 +369,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Warningf("no security group %s", key)
+			// The security group is gone, trigger an update of the deny-all security group
+			// to re-evaluate which ports should be included.
+			c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 			return nil
 		}
 		klog.Errorf("failed to get security group %s: %v", key, err)
