@@ -339,9 +339,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		staticExistedRoutes []*ovnnb.LogicalRouterStaticRoute
 		staticTargetRoutes  []*kubeovnv1.StaticRoute
 		staticRouteMapping  map[string][]*kubeovnv1.StaticRoute
+		externalIDs         = map[string]string{"vendor": util.CniTypeName}
 	)
 
-	staticExistedRoutes, err = c.OVNNbClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", nil)
+	// only manage static routes which are kube-ovn managed, by filtering for vendor util.CniTypeName
+	staticExistedRoutes, err = c.OVNNbClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", externalIDs)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 		return err
@@ -498,7 +500,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	var (
 		policyRouteExisted, policyRouteNeedDel, policyRouteNeedAdd []*kubeovnv1.PolicyRoute
 		policyRouteLogical                                         []*ovnnb.LogicalRouterPolicy
-		externalIDs                                                = map[string]string{"vendor": util.CniTypeName}
 	)
 
 	if vpc.Name == c.config.ClusterRouter {
@@ -948,10 +949,11 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 }
 
 func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRoute) error {
+	externalIDs := map[string]string{"vendor": util.CniTypeName}
 	if route.BfdID != "" {
 		klog.Infof("vpc %s add static ecmp route: %+v", name, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, nil, route.NextHopIP,
+			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, externalIDs, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add bfd static route to vpc %s , %v", name, err)
 			return err
