@@ -480,7 +480,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if item.BfdID != "" {
 			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, nil, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, externalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -488,7 +488,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		} else {
 			klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, nil, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, externalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -961,7 +961,7 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 	} else {
 		klog.Infof("vpc %s add static route: %+v", name, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, nil, route.NextHopIP,
+			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, externalIDs, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add normal static route to vpc %s , %v", name, err)
 			return err
