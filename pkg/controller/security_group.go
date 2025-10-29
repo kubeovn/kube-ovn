@@ -369,8 +369,8 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Warningf("no security group %s", key)
-			// All security groups bound to the virtual machine are removed, and the kubeovn_deny_all
-			// security group is updated (with logical port removed from the security group).
+			// The security group is gone, trigger an update of the deny-all security group
+			// to re-evaluate which ports should be included.
 			c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 			return nil
 		}
