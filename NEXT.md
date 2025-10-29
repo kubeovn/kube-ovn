@@ -4,6 +4,7 @@ This document lists the features merged into the master branch for the next mino
 
 ## Post-v1.14.0
 
+- Performace: skip conntrack for specific dst CIDRs. [#5821](https://github.com/kubeovn/kube-ovn/pull/5821)
 - NetworkPolicy supports `lax` mode which only deny traffic type of TCP, UDP and SCTP. That means ARP, ICMP and DHCP traffic are alaways allowed. [#5745](https://github.com/kubeovn/kube-ovn/pull/5745)
 - Remove internal-port type interface code. [#5794](https://github.com/kubeovn/kube-ovn/pull/5794)
 - IPPool
