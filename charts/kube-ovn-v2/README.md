@@ -528,7 +528,8 @@ false
       "support_arm": true,
       "tag": "v1.14.0",
       "thirdparty": true,
-      "vpcRepository": "vpc-nat-gateway"
+      "vpcRepository": "vpc-nat-gateway",
+      "vpcTag": ""
     }
   },
   "registry": {
@@ -1511,6 +1512,15 @@ false
 </pre>
 </td>
 			<td>IPv6 CIDR.</td>
+		</tr>
+		<tr>
+			<td>networking.skipConntrackDstCidrs</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Comma-separated list of destination IP CIDRs that should skip conntrack processing.</td>
 		</tr>
 		<tr>
 			<td>networking.stack</td>
