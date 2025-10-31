@@ -1644,12 +1644,12 @@ jobs:
         run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: vpc-nat-gateway
 
@@ -1683,7 +1683,7 @@ jobs:
           tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-events.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-events
@@ -1696,7 +1696,7 @@ jobs:
           tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log
@@ -1710,7 +1710,7 @@ jobs:
           mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
