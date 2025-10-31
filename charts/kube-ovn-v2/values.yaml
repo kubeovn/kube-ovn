@@ -9,6 +9,8 @@ global:
       repository: kube-ovn
       vpcRepository: vpc-nat-gateway
       tag: v1.14.0
+      # If empty, uses the same tag as kubeovn
+      vpcTag: ""
       support_arm: true
       thirdparty: true
 
@@ -264,7 +266,6 @@ cni:
   # @section -- CNI configuration
   nonPrimaryCNI: false
 
-
 # -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
 # Make sure cert-manager is installed for the generation of certificates for the webhook.
 # See https://kubeovn.github.io/docs/stable/en/guide/webhook/
@@ -318,7 +319,6 @@ natGw:
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
     # @section -- NAT gateways configuration
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
-
 
 # -- Configuration for network policies
 # @section -- Network Policies
