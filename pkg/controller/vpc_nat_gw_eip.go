@@ -38,8 +38,6 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
-	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -157,6 +155,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
