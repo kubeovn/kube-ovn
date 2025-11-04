@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -167,7 +168,20 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				return err
 			}
 		case kubevirtv1.MigrationSucceeded, kubevirtv1.MigrationFailed:
-			klog.Infof("migrate end clean options for lsp %s from %s to %s, migration completed with status: %s", portName, srcNodeName, targetNodeName, vmiMigration.Status.Phase)
+			klog.Infof("migrate end set options for lsp %s from %s to %s, migration completed with status: %s", portName, srcNodeName, targetNodeName, vmiMigration.Status.Phase)
+			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
+				err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
+				klog.Error(err)
+				return err
+			}
+
+			if err := c.waitForVMIReady(vmi); err != nil {
+				err = fmt.Errorf("failed to wait for VMI %s to be ready: %w", vmi.Name, err)
+				klog.Error(err)
+				return err
+			}
+
+			klog.Infof("vmi %s is ready, cleaning migrate options for lsp %s", vmi.Name, portName)
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
@@ -176,6 +190,55 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) waitForVMIReady(vmi *kubevirtv1.VirtualMachineInstance) error {
+	if vmi == nil {
+		return fmt.Errorf("VMI is nil")
+	}
+	if c.isVMIReady(vmi) {
+		klog.Infof("VMI %s is already ready", vmi.Name)
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for VMI %s to be ready: %w", vmi.Name, ctx.Err())
+		case <-ticker.C:
+			currentVMI, err := c.config.KubevirtClient.VirtualMachineInstance(vmi.Namespace).Get(ctx, vmi.Name, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get VMI %s: %v", vmi.Name, err)
+				continue
+			}
+
+			if c.isVMIReady(currentVMI) {
+				klog.Infof("VMI %s is ready", vmi.Name)
+				return nil
+			}
+
+			klog.V(3).Infof("VMI %s is not ready yet, continuing to wait...", vmi.Name)
+		}
+	}
+}
+
+func (c *Controller) isVMIReady(vmi *kubevirtv1.VirtualMachineInstance) bool {
+	if vmi == nil {
+		return false
+	}
+	for _, condition := range vmi.Status.Conditions {
+		if condition.Type == kubevirtv1.VirtualMachineInstanceReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+
+	return vmi.Status.Phase == kubevirtv1.Running
 }
 
 func (c *Controller) isKubevirtCRDInstalled() bool {
