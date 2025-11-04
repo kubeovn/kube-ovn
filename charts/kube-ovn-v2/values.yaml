@@ -7,12 +7,11 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      vpcRepository: vpc-nat-gateway
       tag: v1.14.0
-      # If empty, uses the same tag as kubeovn
-      vpcTag: ""
-      support_arm: true
-      thirdparty: true
+    natgateway:
+      repository: vpc-nat-gateway
+      # Falls back to the same tag as kubeovn if empty
+      tag: ""
 
 # -- Image configuration.
 # @section -- Global parameters
