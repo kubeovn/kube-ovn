@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -358,6 +359,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 			},
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
+		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
@@ -365,6 +367,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 		ginkgo.By("Creating the second service for the same deployment")
 		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
+		service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		service2.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
