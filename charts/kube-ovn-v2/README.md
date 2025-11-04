@@ -526,10 +526,6 @@ false
     "kubeovn": {
       "repository": "kube-ovn",
       "tag": "v1.14.0"
-    },
-    "natgateway": {
-      "repository": "vpc-nat-gateway",
-      "tag": ""
     }
   },
   "registry": {
@@ -1169,6 +1165,42 @@ false
 		</tr>
 		<tr>
 			<td>natGw.bgpSpeaker.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+"v1.15.0"
+</pre>
+</td>
+			<td>Image tag.</td>
+		</tr>
+		<tr>
+			<td>natGw.image</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Image used by the NAT gateway.</td>
+		</tr>
+		<tr>
+			<td>natGw.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+			<td>Image pull policy.</td>
+		</tr>
+		<tr>
+			<td>natGw.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+"docker.io/kubeovn/vpc-nat-gateway"
+</pre>
+</td>
+			<td>Image repository.</td>
+		</tr>
+		<tr>
+			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
 "v1.15.0"

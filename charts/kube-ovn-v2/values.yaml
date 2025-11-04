@@ -8,10 +8,6 @@ global:
     kubeovn:
       repository: kube-ovn
       tag: v1.14.0
-    natgateway:
-      repository: vpc-nat-gateway
-      # Falls back to the same tag as kubeovn if empty
-      tag: ""
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -296,6 +292,19 @@ natGw:
   # manually destroyed and recreated.
   # @section -- NAT gateways configuration
   namePrefix: "vpc-nat-gw"
+  # -- Image used by the NAT gateway.
+  # @section -- NAT gateways configuration
+  # @default -- "{}"
+  image:
+    # -- Image repository.
+    # @section -- NAT gateways configuration
+    repository: docker.io/kubeovn/vpc-nat-gateway
+    # -- Image tag.
+    # @section -- NAT gateways configuration
+    tag: v1.15.0
+    # -- Image pull policy.
+    # @section -- NAT gateways configuration
+    pullPolicy: IfNotPresent
   # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode.
   # @section -- NAT gateways configuration
   # @default -- "{}"
