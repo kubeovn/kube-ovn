@@ -1,0 +1,182 @@
+--- a/controller/binding.c
++++ b/controller/binding.c
+@@ -2160,6 +2160,14 @@
+                 } else {
+                     lbinding->multiple_bindings = true;
+                     static struct vlog_rate_limit rl =
+                         VLOG_RATE_LIMIT_INIT(1, 5);
++                    VLOG_INFO("CLYI BINDING: Multiple bindings for LSP %s: old=[%s] new=[%s]",
++                              iface_id, lbinding->iface->name, iface_rec->name);
++                    VLOG_INFO("CLYI BINDING: Old iface ofport=%lld, new iface ofport=%lld",
++                              lbinding->iface->n_ofport ? *lbinding->iface->ofport : 0,
++                              iface_rec->n_ofport ? *iface_rec->ofport : 0);
++                    VLOG_INFO("CLYI BINDING: LSP %s status - installed=%s",
++                              iface_id,
++                              (lbinding->iface && smap_get_bool(&lbinding->iface->external_ids, "ovn-installed", false)) ? "true" : "false");
+                     VLOG_WARN_RL(
+                         &rl,
+                         "Invalid configuration: iface-id is configured on "
+@@ -2931,6 +2939,15 @@
+     /* If multiple bindings to the same port, remove the "old" binding.
+      * This ensures that change tracking is correct.
+      */
+     if (lbinding->multiple_bindings) {
++        VLOG_INFO("CLYI BINDING: Removing related lport for %s due to multiple bindings",
++                  pb->logical_port);
++        VLOG_INFO("CLYI BINDING: LSP %s - current_chassis=%s, target_chassis=%s, up=%s",
++                  pb->logical_port,
++                  pb->chassis ? pb->chassis->name : "none",
++                  b_ctx_in->chassis_rec ? b_ctx_in->chassis_rec->name : "unknown",
++                  (pb->n_up && pb->up[0]) ? "true" : "false");
++        VLOG_INFO("CLYI BINDING: LSP %s addresses=%s",
++                  pb->logical_port,
++                  pb->n_mac ? pb->mac[0] : "none");
+         remove_related_lport(pb, b_ctx_out);
+     }
+     enum en_lport_type lport_type = get_lport_type(pb);
+@@ -2940,6 +2957,12 @@
+     if (lport_type == LP_VIF &&
+         !consider_vif_lport(pb, b_ctx_in, b_ctx_out, lbinding)) {
++        VLOG_INFO("CLYI BINDING: VIF consideration FAILED for %s - type=%d, chassis=%s",
++                  pb->logical_port, lport_type,
++                  pb->chassis ? pb->chassis->name : "none");
++        VLOG_INFO("CLYI BINDING: VIF failure - iface=%s, ofport=%lld, installed=%s",
++                  lbinding && lbinding->iface ? lbinding->iface->name : "no_iface",
++                  (lbinding && lbinding->iface && lbinding->iface->n_ofport) ? *lbinding->iface->n_ofport : 0,
++                  (lbinding && lbinding->iface && smap_get_bool(&lbinding->iface->external_ids, "ovn-installed", false)) ? "true" : "false");
+         return false;
+     }
++    VLOG_INFO("CLYI BINDING: VIF consideration SUCCESS for %s", pb->logical_port);
++
++    VLOG_INFO("CLYI BINDING: Final status for %s - pb_chassis=%s, iface_installed=%s",
++              pb->logical_port,
++              pb->chassis ? pb->chassis->name : "none",
++              (lbinding && lbinding->iface && smap_get_bool(&lbinding->iface->external_ids, "ovn-installed", false)) ? "true" : "false");
+
+--- a/controller/lport.c
++++ b/controller/lport.c
+@@ -76,6 +76,9 @@
+ lport_pb_is_chassis_resident(const struct sbrec_chassis *chassis,
+                              const struct sbrec_port_binding *pb)
+ {
++    VLOG_INFO("CLYI LPORT: lport_pb_is_chassis_resident called - port=%s, type=%s",
++              pb ? pb->logical_port : "NULL", pb ? pb->type : "NULL");
++
+     if (!pb || !pb->chassis) {
++        VLOG_INFO("CLYI LPORT: returning false - no pb(%p) or chassis(%p)", pb, pb ? pb->chassis : NULL);
+         return false;
+     }
+
+@@ -83,6 +86,13 @@
+      * when the underlying BFD state changes are only detected by some of the
+      * chassis in the associated HA_Chassis_Group. */
+     bool result = pb->chassis == chassis;
++    VLOG_INFO("CLYI LPORT: %s (type=%s) - pb_chassis=%s vs target_chassis=%s -> result=%s",
++              pb->logical_port, pb->type,
++              pb->chassis ? pb->chassis->name : "NULL",
++              chassis ? chassis->name : "NULL",
++              result ? "true" : "false");
++
+     return result;
+ }
+
+@@ -95,6 +105,8 @@
+ lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                           const struct sbrec_chassis *chassis,
+                           const char *port_name)
+ {
++    VLOG_INFO("CLYI LPORT: lport_is_chassis_resident called for port=%s", port_name);
++
+     const struct sbrec_port_binding *pb
+         = lport_lookup_by_name(sbrec_port_binding_by_name, port_name);
+     return lport_pb_is_chassis_resident(chassis, pb);
+@@ -115,6 +127,8 @@
+ lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                const struct sbrec_chassis *chassis,
+                const char *port_name)
+ {
++    VLOG_INFO("CLYI LPORT: lport_is_local called for port=%s", port_name);
++
+     const struct sbrec_port_binding *pb = lport_lookup_by_name(
+         sbrec_port_binding_by_name, port_name);
+
+@@ -124,6 +138,9 @@
+     if (lport_pb_is_chassis_resident(chassis, pb)) {
++        VLOG_INFO("CLYI LPORT: %s - direct check result=true", port_name);
+         return true;
+     }
++    VLOG_INFO("CLYI LPORT: %s - direct check result=false, checking cr_port", port_name);
+
+     const struct sbrec_port_binding *cr_pb =
+         lport_get_cr_port(sbrec_port_binding_by_name, pb, NULL);
+@@ -131,6 +148,10 @@
++    VLOG_INFO("CLYI LPORT: %s - cr_port=%s",
++              port_name,
++              cr_pb ? cr_pb->logical_port : "NULL");
++
+     return lport_pb_is_chassis_resident(chassis, cr_pb);
+ }
+
+--- a/controller/pinctrl.c
++++ b/controller/pinctrl.c
+@@ -1473,6 +1473,8 @@
+         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
+         bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
+                                                   chassis, redirect_name);
++        VLOG_INFO("CLYI PCTRL: IPv6 prefixd - %s -> %s resident=%s (pb_type=%s, pb_chassis=%s)",
++                  pb->logical_port, redirect_name, resident ? "true" : "false", pb->type, pb->chassis ? pb->chassis->name : "none");
+         free(redirect_name);
+         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
+             !resident) {
++            VLOG_INFO("CLYI PCTRL: IPv6 prefixd - SKIPPING %s due to resident check", pb->logical_port);
+             continue;
+         }
+
+@@ -8403,6 +8405,8 @@
+         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
+         bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
+                                                   chassis, redirect_name);
++        VLOG_INFO("CLYI PCTRL: BFD monitor - %s -> %s resident=%s (pb_type=%s, pb_chassis=%s)",
++                  pb->logical_port, redirect_name, resident ? "true" : "false", pb->type, pb->chassis ? pb->chassis->name : "none");
+         free(redirect_name);
+         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
+             !resident) {
++            VLOG_INFO("CLYI PCTRL: BFD monitor - SKIPPING %s due to resident check", pb->logical_port);
+             continue;
+         }
+
+--- a/controller/physical.c
++++ b/controller/physical.c
+@@ -873,6 +873,8 @@
+         char *cr_peer_name = xasprintf("cr-%s", rport_binding->logical_port);
+         if (lport_is_chassis_resident(ctx->sbrec_port_binding_by_name,
+                                       ctx->chassis, cr_peer_name)) {
++            VLOG_INFO("CLYI PHYSICAL: %s chassisredirect %s is resident - skipping MAC replace",
++                      localnet_port->logical_port, cr_peer_name);
+             /* If a router port's chassisredirect port is
+              * resident on this chassis, then we need not do mac replace. */
+             free(cr_peer_name);
+             continue;
+         }
++        VLOG_INFO("CLYI PHYSICAL: %s chassisredirect %s NOT resident - adding MAC replace flow",
++                  localnet_port->logical_port, cr_peer_name);
+         free(cr_peer_name);
+
+--- a/controller/if-status.c
++++ b/controller/if-status.c
+@@ -XXX,6 +XXX,8 @@
+ bool
+ if_status_is_port_claimed(struct if_status_mgr *if_mgr, const char *port_name)
+ {
++    VLOG_INFO("CLYI IFSTATUS: checking if port %s is claimed", port_name);
++
+     struct if_status_entry *entry = shash_find_data(&if_mgr->port_status,
+                                                     port_name);
+     if (!entry) {
++        VLOG_INFO("CLYI IFSTATUS: port %s not found in status manager", port_name);
+         return false;
+     }
+
++    VLOG_INFO("CLYI IFSTATUS: port %s claimed=%s", port_name, entry->claimed ? "true" : "false");
+     return entry->claimed;
+ }
