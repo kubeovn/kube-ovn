@@ -103,7 +103,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	var macPointer *string
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
 	if ipStr != "" || vip.Spec.MacAddress != "" {
-                if vip.Spec.MacAddress != "" {
+		if vip.Spec.MacAddress != "" {
 			macPointer = &vip.Spec.MacAddress
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
