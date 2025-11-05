@@ -324,10 +324,12 @@ natGw:
 # @section -- Network Policies
 # @default -- "{}"
 networkPolicies:
-  # -- Enforcement level of network policies when they get applied (can be: standard, lax).
+  # -- Enforcement level of network policies when they get applied (can be: standard, lax, none).
   # Enforcement "standard" blocks everything except what is allowed by the network policies.
   # Enforcement "lax" is similar to "standard" with the exception that ARP/DHCPv4/DHCPv6/ICMPv4/ICMPv6
   # is allowed by default. This mode is useful when using Kubevirt and VMs with IPs configured via Kube-OVN's DHCP.
+  # Enforcement "none" adds rules to authorize the traffic allowed within network policies, but doesn't block
+  # unauthorized traffic unless another network policy with a different enforcement also applies to the same pods.
   # @section -- Network Policies
   enforcement: "standard"
 
