@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.14.12 (2025-11-05)
+
+ * [a40eacfa8](https://github.com/kubeovn/kube-ovn/commit/a40eacfa84c25255215b34ab7c73e3ab9ad82452) release v1.14.12
+ * [0fdb2f198](https://github.com/kubeovn/kube-ovn/commit/0fdb2f19803fae02aa17565977d555e005a87ec3) fix talos e2e failure on ipv4 (#5812)
+ * [39c91c7f7](https://github.com/kubeovn/kube-ovn/commit/39c91c7f7ec1f5b7a75908d227502332100e0d80) Update the kubeovn_deny_all security group after the virtual machine … (#5831)
+ * [13ce09f3c](https://github.com/kubeovn/kube-ovn/commit/13ce09f3c7de3cc017b438fd191aa4088b54f1e1) Add OCI registry support for Helm charts (#5837)
+ * [77b60b90d](https://github.com/kubeovn/kube-ovn/commit/77b60b90d1953fb91950defba73a3511b74ffa61) clean migrate  state when migrate is done (#5833)
+ * [57823ccbd](https://github.com/kubeovn/kube-ovn/commit/57823ccbd9ca05c955b72a1157264991f48ebabc) modify route priority for /32 src route
+ * [7bcb504a0](https://github.com/kubeovn/kube-ovn/commit/7bcb504a0aaf6cc799e96159bb30b60994fcc4dc) chore(deps): update dependency go to v1.25.3 (#5793)
+ * [9459b6797](https://github.com/kubeovn/kube-ovn/commit/9459b6797ca5981799f2f75a35b4cee5e07ff45d) prepare for next release
+
+### Contributors
+
+ * Copilot
+ * Mengxin Liu
+ * changluyi
+ * narutoqq
+ * renovate[bot]
+
 ## v1.14.11 (2025-10-11)
 
  * [879c670ea](https://github.com/kubeovn/kube-ovn/commit/879c670ea5f5bf9cccefd9b03f64307193c2122f) release v1.14.11
