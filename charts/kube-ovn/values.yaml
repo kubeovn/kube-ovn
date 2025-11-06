@@ -8,10 +8,11 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      vpcRepository: vpc-nat-gateway
       tag: v1.15.0
-      support_arm: true
-      thirdparty: true
+    natgateway:
+      repository: vpc-nat-gateway
+      # Falls back to the same tag as kubeovn if empty
+      tag: ""
 
 image:
   pullPolicy: IfNotPresent
