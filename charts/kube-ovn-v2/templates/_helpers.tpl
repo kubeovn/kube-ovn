@@ -55,10 +55,12 @@ Create the name of the service account to use
 
 
 {{/*
-Get IP-addresses of master nodes
+Get IP-addresses of master nodes. If no nodes are returned, we assume this is
+a dry-run/template call and return nothing.
 */}}
 {{- define "kubeovn.nodeIPs" -}}
 {{- $nodes := lookup "v1" "Node" "" "" -}}
+{{- if $nodes -}}
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
   {{- range $label, $value := $.Values.masterNodesLabels }}
@@ -76,6 +78,7 @@ Get IP-addresses of master nodes
   {{- fail (printf "No nodes found with label '%s'. Please check your masterNodesLabels configuration or ensure master nodes are properly labeled." $.Values.masterNodesLabels) -}}
 {{- end -}}
 {{ join "," $ips }}
+{{- end -}}
 {{- end -}}
 
 {{/*
