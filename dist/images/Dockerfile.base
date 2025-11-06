@@ -94,8 +94,8 @@ RUN cd /usr/src/ && \
     # update ovs-sandbox for docker run
     git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
 
-RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
-    cd ovn && \
+RUN cd /usr/src/ && git clone -b branch-25.03 https://github.com/ovn-org/ovn.git && \
+    cd ovn && git reset --hard d6f67771b336f5e16ac3fa74258de96cbb748ff6 && \
     # modify src route priority
     git apply $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
     # fix reaching resubmit limit in underlay
