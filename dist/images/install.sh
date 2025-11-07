@@ -105,8 +105,8 @@ fi
 EXCLUDE_IPS=""                                    # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/control-plane"     # The node label to deploy OVN DB
 DEPRECATED_LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB in earlier versions
-NETWORK_TYPE="geneve"                             # geneve or vlan
-TUNNEL_TYPE="geneve"                              # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
+NETWORK_TYPE="geneve"                             # vlan or (geneve, vxlan or stt)
+TUNNEL_TYPE="geneve"                              # (geneve, vxlan or stt). ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
 POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
