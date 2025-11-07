@@ -159,13 +159,6 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
 		switch vmiMigration.Status.Phase {
-		case kubevirtv1.MigrationRunning:
-			klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
-				klog.Error(err)
-				return err
-			}
 		case kubevirtv1.MigrationSucceeded:
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
