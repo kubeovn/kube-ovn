@@ -146,7 +146,7 @@ spec:
           - --inspect-interval={{- .Values.performance.inspectInterval }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
-          - --enable-lb-svc={{- .Values.features.enableLoadbalancer }}
+          - --enable-lb-svc={{- .Values.features.enableLoadbalancerService }}
           - --keep-vm-ip={{- .Values.features.enableKeepVmIps }}
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
