@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.14.13 (2025-11-11)
+
+ * [76520efa5](https://github.com/kubeovn/kube-ovn/commit/76520efa519a407b634e4a59cedd40d1bb7c2561) release v1.14.13
+ * [ffd57ec66](https://github.com/kubeovn/kube-ovn/commit/ffd57ec66e4e43d9994b1d8bb51274d0bf2cf3ce) fix metallb underlay lflow rule is deleted unexpected (#5723)
+ * [11debb4d7](https://github.com/kubeovn/kube-ovn/commit/11debb4d7e6d2a2683c951d2076c1f76c8f50b66) fix: loadbalancerservice value (#5884)
+ * [52a26737a](https://github.com/kubeovn/kube-ovn/commit/52a26737a703a95b9e34f661c0fc3d3a0a049791) fix(deps): update golang (#5880)
+ * [25504091e](https://github.com/kubeovn/kube-ovn/commit/25504091efc3b14bbe630022ed75260256149fca) fix migrate failed (#5873)
+ * [daa0d3133](https://github.com/kubeovn/kube-ovn/commit/daa0d3133e8d45db5b7038b279505e249903908f) return empty nodeips during chart rendering dry-run (#5760)
+ * [2c7de8ac9](https://github.com/kubeovn/kube-ovn/commit/2c7de8ac9a0d11cf32eae1e5bf416d39a4b3c87e) update containerd
+ * [872a0ece7](https://github.com/kubeovn/kube-ovn/commit/872a0ece71a53dbfc82dcdc267ecb030ec4366ee) fix release permission
+ * [8463c9057](https://github.com/kubeovn/kube-ovn/commit/8463c9057e02f3491b1491eac1dfdf17471838c3) chore(deps): update dependency go to v1.25.4 (#5871)
+ * [b8a4e1ec6](https://github.com/kubeovn/kube-ovn/commit/b8a4e1ec6f60b0b1f6d459dc3837f4a551081cd2) prepare for next release
+
+### Contributors
+
+ * Abhishek Pandey
+ * Bryan Lee
+ * Mengxin Liu
+ * changluyi
+ * renovate[bot]
+
 ## v1.14.12 (2025-11-05)
 
  * [a40eacfa8](https://github.com/kubeovn/kube-ovn/commit/a40eacfa84c25255215b34ab7c73e3ab9ad82452) release v1.14.12
