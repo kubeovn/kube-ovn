@@ -41,7 +41,7 @@ jobs:
           for chart in charts/*/; do
             if [ -f "${chart}Chart.yaml" ]; then
               chart_name=$(basename "$chart")
-              chart_version=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}' | tr -d 'v')
+              chart_version=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
               
               echo "Packaging and pushing ${chart_name} version ${chart_version}..."
               helm package "$chart" -d /tmp/charts
