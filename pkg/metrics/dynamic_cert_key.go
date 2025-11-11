@@ -13,6 +13,8 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -25,6 +27,29 @@ import (
 	netutil "k8s.io/utils/net"
 	"k8s.io/utils/ptr"
 )
+
+var (
+	altDNS []string
+	altIPs = []net.IP{{127, 0, 0, 1}, net.IPv6loopback}
+)
+
+func init() {
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get hostname: %v", err))
+	}
+	altDNS = []string{hostname}
+	for podIP := range strings.SplitSeq(os.Getenv("POD_IPS"), ",") {
+		if podIP = strings.TrimSpace(podIP); podIP == "" {
+			continue
+		}
+		if ip := net.ParseIP(podIP); ip != nil {
+			altIPs = append(altIPs, ip)
+		} else {
+			panic(fmt.Sprintf("failed to parse POD_IPS %q", os.Getenv("POD_IPS")))
+		}
+	}
+}
 
 const caCommonName = "self-signed-ca"
 
@@ -45,7 +70,7 @@ func tlsGetConfigForClient(config *tls.Config) (func(*tls.ClientHelloInfo) (*tls
 		return nil, fmt.Errorf("failed to create static CA content provider: %w", err)
 	}
 
-	certKeyProvider, err := NewDynamicInMemoryCertKeyPairContent("localhost", caCert, caKey, []net.IP{{127, 0, 0, 1}}, nil)
+	certKeyProvider, err := NewDynamicInMemoryCertKeyPairContent("localhost", caCert, caKey, altIPs, altDNS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dynamic in-memory cert/key pair content provider: %w", err)
 	}
@@ -101,7 +126,7 @@ func GenerateSelfSignedCertKey(host string, caCert *x509.Certificate, caKey *rsa
 	template := x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: fmt.Sprintf("%s@%d", host, now.Unix()),
+			CommonName: host,
 		},
 		NotBefore: validFrom,
 		NotAfter:  validFrom.Add(maxAge),
