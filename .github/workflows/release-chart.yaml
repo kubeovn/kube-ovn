@@ -9,7 +9,7 @@ on:
 jobs:
   release:
     permissions:
-      contents: read # to push chart release and create a release (helm/chart-releaser-action)
+      contents: write # to push chart release and create a release (helm/chart-releaser-action)
       packages: write # to push chart to GitHub Container Registry (ghcr.io)
 
     runs-on: ubuntu-latest
