@@ -16,7 +16,7 @@ env:
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v3.19.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.21.1
+  SUBMARINER_VERSION: 0.21.2
 
 jobs:
   k8s-conformance-e2e:
