@@ -188,6 +188,11 @@ func (c *Controller) enqueueAddPod(obj any) {
 		return
 	}
 
+	if util.IgnoreCalicoPod(p) {
+		klog.Infof("ignore add calico pod %s/%s", p.Namespace, p.Name)
+		return
+	}
+
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
@@ -261,6 +266,11 @@ func (c *Controller) enqueueDeletePod(obj any) {
 		return
 	}
 
+	if util.IgnoreCalicoPod(p) {
+		klog.Infof("ignore del calico pod %s/%s", p.Namespace, p.Name)
+		return
+	}
+
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
@@ -285,6 +295,11 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+
+	if util.IgnoreCalicoPod(newPod) {
+		klog.Infof("ignore update calico pod %s/%s", newPod.Namespace, newPod.Name)
+		return
+	}
 
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
