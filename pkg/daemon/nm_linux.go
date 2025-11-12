@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"context"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/kubeovn/dbus/v5"
 	"github.com/kubeovn/gonetworkmanager/v3"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
@@ -20,6 +23,22 @@ const (
 	nmDBusObjectPathIPConfig6 = gonetworkmanager.NetworkManagerObjectPath + "/IP6Config/"
 )
 
+var dbusAvailable bool
+
+func init() {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	conn, err := dbus.SystemBus(dbus.WithContext(ctx))
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return
+		}
+		panic(err)
+	}
+
+	dbusAvailable = conn.Connected()
+}
+
 type networkManagerSyncer struct {
 	manager   gonetworkmanager.NetworkManager
 	workqueue workqueue.TypedInterface[string]
@@ -30,6 +49,9 @@ type networkManagerSyncer struct {
 
 func newNetworkManagerSyncer() *networkManagerSyncer {
 	syncer := &networkManagerSyncer{}
+	if !dbusAvailable {
+		return &networkManagerSyncer{}
+	}
 
 	manager, err := gonetworkmanager.NewNetworkManager()
 	if err != nil {
