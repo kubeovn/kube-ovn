@@ -188,6 +188,11 @@ func (c *Controller) enqueueAddPod(obj any) {
 		return
 	}
 
+	if util.IgnoreCalicoPod(p.Annotations) {
+		klog.V(3).Infof("ignore calico pod %s/%s", p.Namespace, p.Name)
+		return
+	}
+
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
@@ -261,6 +266,11 @@ func (c *Controller) enqueueDeletePod(obj any) {
 		return
 	}
 
+	if util.IgnoreCalicoPod(p.Annotations) {
+		klog.V(5).Infof("ignore calico pod %s/%s", p.Namespace, p.Name)
+		return
+	}
+
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
@@ -288,6 +298,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
+
+	if util.IgnoreCalicoPod(newPod.Annotations) {
+		klog.V(3).Infof("ignore calico pod %s/%s", newPod.Namespace, newPod.Name)
+		return
+	}
 
 	if oldPod.Annotations[util.AAPsAnnotation] != "" || newPod.Annotations[util.AAPsAnnotation] != "" {
 		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
