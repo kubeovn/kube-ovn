@@ -203,8 +203,12 @@ func main() {
 
 func mvCNIConf(configDir, configFile, confName string) error {
 	cniConfPath := filepath.Join(configDir, confName)
-	if _, err := os.Stat(cniConfPath); err == nil {
+	if info, err := os.Stat(cniConfPath); err == nil {
 		klog.Infof("CNI config file %q already exists, skipping copying CNI config file", cniConfPath)
+		if info.Mode().Perm() != 0o600 {
+			klog.Infof("Fixing permission of existing CNI config file %q to 600", cniConfPath)
+			return os.Chmod(cniConfPath, 0o600)
+		}
 		return nil
 	}
 
@@ -215,7 +219,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o644) // #nosec G306
+	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
