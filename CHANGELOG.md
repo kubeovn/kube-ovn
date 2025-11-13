@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.14.14 (2025-11-13)
+
+ * [46eb7fe04](https://github.com/kubeovn/kube-ovn/commit/46eb7fe04e8ce87a210114b2777fe9342202609d) release v1.14.14
+ * [f67115d54](https://github.com/kubeovn/kube-ovn/commit/f67115d5433384f688f9d13acab841aad44006af) fix(deps): update module golang.org/x/tools to v0.39.0 (#5904)
+ * [30fae6ec1](https://github.com/kubeovn/kube-ovn/commit/30fae6ec161a205eadd92a90471dfbb7af12201a) fix(deps): update kubernetes to v1.32.10 (#5902)
+ * [8cd2132d0](https://github.com/kubeovn/kube-ovn/commit/8cd2132d09432004c7ad615e54b70a84f2d3faf7) cni-server: detect if dbus is available (#5896)
+ * [1de7fb3f4](https://github.com/kubeovn/kube-ovn/commit/1de7fb3f48fad64adc2d2a5313542769ae3a9e00)  update chart-v2 release script
+ * [45e8b52bf](https://github.com/kubeovn/kube-ovn/commit/45e8b52bfbb687a319bf5488d8af1c4dcab6e26c) fix(deps): update golang (#5895)
+ * [9b80b9c61](https://github.com/kubeovn/kube-ovn/commit/9b80b9c6100a424d35bef779b03c2d2a8e4a8267) server: add hostname and pod IPs into TLS certificate SAN (#5888)
+ * [5b1dd6d30](https://github.com/kubeovn/kube-ovn/commit/5b1dd6d301647183a49a155dcea79a5bb1203761) fix version trim
+ * [b2878dd4a](https://github.com/kubeovn/kube-ovn/commit/b2878dd4ad094cd06901fda9f33b2987267c1849) rollback permission
+ * [263a8f373](https://github.com/kubeovn/kube-ovn/commit/263a8f373c6bf0165997b5b4716526bbdc43ecb2) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.13 (2025-11-11)
 
  * [76520efa5](https://github.com/kubeovn/kube-ovn/commit/76520efa519a407b634e4a59cedd40d1bb7c2561) release v1.14.13
