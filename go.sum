@@ -198,6 +198,8 @@ github.com/gobwas/pool v0.2.1/go.mod h1:q8bcK0KcYlCgd9e7WYLm9LpyS+YeLd8JVDW6Wezm
 github.com/gobwas/ws v1.2.1/go.mod h1:hRKAFb8wOxFROYNsT1bqfWnhX+b5MFeJM9r2ZSwg/KY=
 github.com/goccy/go-yaml v1.18.0 h1:8W7wMFS12Pcas7KU+VVkaiCng+kG8QiFeFwzFb+rwuw=
 github.com/goccy/go-yaml v1.18.0/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
+github.com/godbus/dbus/v5 v5.1.0 h1:4KLkAxT3aOY8Li4FRJe/KvhoNFFxo0m6fNuFUO8QJUk=
+github.com/godbus/dbus/v5 v5.1.0/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
@@ -329,8 +331,8 @@ github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf h1:YO+anuZKagUda5iej
 github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9nKVOFrjzVEWVd9XD1zzxOYrlxxZpO0fU=
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
-github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410050455-ce7c8d9ddfb1 h1:KK9Izptfje93um2VZTRC611sB8nFWv0b4mMpOdafstA=
-github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410050455-ce7c8d9ddfb1/go.mod h1:U2a1lvv3fgbO96u9d40IOS8YWTtPjUSJSxcJlAmCyL8=
+github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315 h1:PYwGGFO4GvDoae36Eofb41t+4msFfF8SsvA0DLTNEXU=
+github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20250507014510-dc51721a96f1 h1:1YNDKeqFhZWXjkghX7UVr1wPREeJk9u53OCLy8x7K98=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20250507014510-dc51721a96f1/go.mod h1:DVrs1zLknNZdh84KbAZvQlW2sxvcMF8DnkCBeddM7JU=
 github.com/kubeovn/libovsdb v0.0.0-20241120032411-25ef1bbc83a5 h1:JAw5BShtjd8o8+3wsdlbzt9dLUbIIY5DuhAMrdfM/zk=
