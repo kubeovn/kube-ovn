@@ -5403,13 +5403,15 @@ fi
 echo "-------------------------------"
 echo ""
 
-echo "Delete multus pods to reload CNI config"
-nad_count=$(kubectl get crd network-attachment-definitions.k8s.cni.cncf.io -A --no-headers 2>/dev/null | wc -l)
-if [ "$nad_count" -gt 0 ]; then
+echo "Check to delete multus pods to reload CNI config"
+nad_count=$(
+  kubectl get network-attachment-definitions.k8s.cni.cncf.io -A --no-headers 2>/dev/null \
+    | wc -l || true
+)
+nad_count=${nad_count:-0}
+if [[ "$nad_count" -gt 0 ]]; then
   echo "Detected $nad_count NetworkAttachmentDefinition(s), restarting Multus pods..."
-  kubectl delete pod -n kube-system -l app=multus
-else
-  echo "No NetworkAttachmentDefinitions found, skip restart Multus."
+  kubectl delete pod -n kube-system -l app=multus || true
 fi
 
 echo "Install Kube-ovn-pinger"
