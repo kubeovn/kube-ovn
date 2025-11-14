@@ -14,7 +14,7 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.30.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v3.19.2
+  HELM_VERSION: v4.0.0
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.21.2
 
