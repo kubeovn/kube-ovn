@@ -5582,7 +5582,6 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn-pinger.yaml
-kubectl rollout status deployment/coredns -n kube-system --timeout 300s
 
 if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
   echo "[Step 4/6] Delete pod that not in host network mode"
