@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REGISTRY="docker.io/kubeovn"
+VERSION="v1.15.0"
+
+DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
@@ -73,9 +77,7 @@ LOG_DIR=${LOG_DIR:-/var/log}
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
-REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
-VERSION="v1.15.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -5066,155 +5068,6 @@ spec:
             path: /usr/local/bin
 
 ---
-kind: DaemonSet
-apiVersion: apps/v1
-metadata:
-  name: kube-ovn-pinger
-  namespace: kube-system
-  annotations:
-    kubernetes.io/description: |
-      This daemon set launches the pinger daemon.
-spec:
-  selector:
-    matchLabels:
-      app: kube-ovn-pinger
-  updateStrategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        app: kube-ovn-pinger
-        component: network
-        type: infra
-    spec:
-      priorityClassName: system-node-critical
-      serviceAccountName: kube-ovn-app
-      hostPID: true
-      initContainers:
-        - name: hostpath-init
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          command:
-            - sh
-            - -c
-            - "chown -R nobody: /var/log/kube-ovn"
-          securityContext:
-            allowPrivilegeEscalation: true
-            capabilities:
-              drop:
-                - ALL
-            privileged: true
-            runAsUser: 0
-          volumeMounts:
-            - name: kube-ovn-log
-              mountPath: /var/log/kube-ovn
-      containers:
-        - name: pinger
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          command:
-          - /kube-ovn/kube-ovn-pinger
-          args:
-          - --external-address=$PINGER_EXTERNAL_ADDRESS
-          - --external-dns=$PINGER_EXTERNAL_DOMAIN
-          - --logtostderr=false
-          - --alsologtostderr=true
-          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
-          - --log_file_max_size=200
-          - --enable-metrics=$ENABLE_METRICS
-          imagePullPolicy: $IMAGE_PULL_POLICY
-          securityContext:
-            runAsUser: ${RUN_AS_USER}
-            privileged: false
-            capabilities:
-              add:
-                - NET_BIND_SERVICE
-                - NET_RAW
-          env:
-            - name: ENABLE_SSL
-              value: "$ENABLE_SSL"
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
-            - mountPath: /var/run/ovn
-              name: host-run-ovn
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
-              readOnly: true
-            - mountPath: /var/log/ovn
-              name: host-log-ovn
-              readOnly: true
-            - mountPath: /var/log/kube-ovn
-              name: kube-ovn-log
-            - mountPath: /etc/localtime
-              name: localtime
-              readOnly: true
-            - mountPath: /var/run/tls
-              name: kube-ovn-tls
-          resources:
-            requests:
-              cpu: 100m
-              memory: 100Mi
-            limits:
-              cpu: 200m
-              memory: 400Mi
-          livenessProbe:
-            httpGet:
-              path: /metrics
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /metrics
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-      nodeSelector:
-        kubernetes.io/os: "linux"
-      volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
-        - name: host-run-ovn
-          hostPath:
-            path: /run/ovn
-        - name: host-config-openvswitch
-          hostPath:
-            path: /etc/origin/openvswitch
-        - name: host-log-ovs
-          hostPath:
-            path: $LOG_DIR/openvswitch
-        - name: kube-ovn-log
-          hostPath:
-            path: $LOG_DIR/kube-ovn
-        - name: host-log-ovn
-          hostPath:
-            path: $LOG_DIR/ovn
-        - name: localtime
-          hostPath:
-            path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
----
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -5401,21 +5254,6 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: kube-ovn-pinger
-  namespace: kube-system
-  labels:
-    app: kube-ovn-pinger
-spec:
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-pinger
-  ports:
-    - port: 8080
-      name: metrics
----
-kind: Service
-apiVersion: v1
-metadata:
   name: kube-ovn-controller
   namespace: kube-system
   labels:
@@ -5565,12 +5403,192 @@ fi
 echo "-------------------------------"
 echo ""
 
-echo "[Step 4/6] Delete pod that not in host network mode"
-for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
-  for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-    kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
+echo "Delete multus pods to reload CNI config"
+multus=$(kubectl get daemonset -n kube-system -l app=multus -o jsonpath='{.items[0].metadata.name}')
+if [ ! -z "${multus}" ]; then
+  kubectl delete pod -n kube-system -l app=multus
+fi
+
+echo "Install Kube-ovn-pinger"
+cat <<EOF > kube-ovn-pinger.yaml
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  labels:
+    app: kube-ovn-pinger
+spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-pinger
+  ports:
+    - port: 8080
+      name: metrics
+
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the pinger daemon.
+spec:
+  selector:
+    matchLabels:
+      app: kube-ovn-pinger
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-pinger
+        component: network
+        type: infra
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: kube-ovn-app
+      hostPID: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: pinger
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+          - /kube-ovn/kube-ovn-pinger
+          args:
+          - --external-address=$PINGER_EXTERNAL_ADDRESS
+          - --external-dns=$PINGER_EXTERNAL_DOMAIN
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          securityContext:
+            runAsUser: ${RUN_AS_USER}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+              readOnly: true
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+              readOnly: true
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-log-ovs
+          hostPath:
+            path: $LOG_DIR/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: $LOG_DIR/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: $LOG_DIR/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+EOF
+
+kubectl apply -f kube-ovn-pinger.yaml
+kubectl rollout status deployment/coredns -n kube-system --timeout 300s
+
+if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
+  echo "[Step 4/6] Delete pod that not in host network mode"
+  for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
+    for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
+      kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
+    done
   done
-done
+fi
 
 kubectl rollout status deployment/coredns -n kube-system --timeout 300s
 while true; do
