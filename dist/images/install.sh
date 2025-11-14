@@ -5404,9 +5404,12 @@ echo "-------------------------------"
 echo ""
 
 echo "Delete multus pods to reload CNI config"
-multus=$(kubectl get daemonset -n kube-system -l app=multus -o jsonpath='{.items[0].metadata.name}')
-if [ ! -z "${multus}" ]; then
+nad_count=$(kubectl get crd network-attachment-definitions.k8s.cni.cncf.io -A --no-headers 2>/dev/null | wc -l)
+if [ "$nad_count" -gt 0 ]; then
+  echo "Detected $nad_count NetworkAttachmentDefinition(s), restarting Multus pods..."
   kubectl delete pod -n kube-system -l app=multus
+else
+  echo "No NetworkAttachmentDefinitions found, skip restart Multus."
 fi
 
 echo "Install Kube-ovn-pinger"
