@@ -431,6 +431,11 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 
+		if util.IgnoreCalicoPod(pod.Annotations) {
+			klog.V(3).Infof("ignore calico pod %s/%s during init", pod.Namespace, pod.Name)
+			continue
+		}
+
 		isAlive := isPodAlive(pod)
 		isStsPod, _, _ := isStatefulSetPod(pod)
 		if !isAlive && !isStsPod {

@@ -341,6 +341,9 @@ const (
 
 	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
 	MasqueradeCheckIP             = "0.0.0.0"
+
+	// Ignore Calico pods
+	CalicoPodIPAnnotation = "cni.projectcalico.org/podIP"
 )
 
 var KubeVirtCRD = []string{"virtualmachineinstancemigrations.kubevirt.io", "virtualmachines.kubevirt.io"}
