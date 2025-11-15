@@ -155,6 +155,19 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 
+	portName := ip.Name
+	// not handle add the ip, which created in pod process, lsp created before ip
+	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+	if err != nil {
+		klog.Errorf("failed to list logical switch ports %s, %v", portName, err)
+		return err
+	}
+	if lsp != nil {
+		// port already exists means the ip already created
+		klog.V(3).Infof("ip %s is ready", portName)
+		return nil
+	}
+
 	// v6 ip address can not use upper case
 	if util.ContainsUppercase(ip.Spec.V6IPAddress) {
 		err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", ip.Name, ip.Spec.V6IPAddress)

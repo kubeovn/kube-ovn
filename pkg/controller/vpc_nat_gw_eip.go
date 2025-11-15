@@ -330,6 +330,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		klog.Errorf("failed to handle add finalizer for eip, %v", err)
 		return err
 	}
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -655,6 +656,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			klog.Errorf("failed to handle add finalizer for eip, %v", err)
 			return err
 		}
+		c.updateSubnetStatusQueue.Add(externalNetwork)
 	}
 	return nil
 }
