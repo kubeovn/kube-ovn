@@ -37,7 +37,7 @@ jobs:
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
@@ -104,7 +104,7 @@ jobs:
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
@@ -162,7 +162,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - uses: actions/setup-go@v5
         id: setup-go
@@ -346,7 +346,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build
         run: |
@@ -364,7 +364,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -372,7 +372,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -444,7 +444,7 @@ jobs:
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         id: setup-go
         with:
@@ -500,7 +500,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -508,7 +508,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -696,7 +696,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -704,7 +704,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -887,7 +887,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -895,7 +895,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1054,7 +1054,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1062,7 +1062,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1247,7 +1247,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1255,7 +1255,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1404,7 +1404,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1412,7 +1412,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1548,7 +1548,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1598,7 +1598,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1646,7 +1646,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1696,7 +1696,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -1749,7 +1749,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1757,7 +1757,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1892,7 +1892,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1900,7 +1900,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2006,7 +2006,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install kind
         uses: helm/kind-action@v1.12.0
@@ -2079,7 +2079,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install talosctl
         run: curl -sL https://talos.dev/install | sh
@@ -2149,7 +2149,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: azure/setup-helm@v4.3.0
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -2160,7 +2160,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2316,7 +2316,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2324,7 +2324,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2435,7 +2435,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2443,7 +2443,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2536,7 +2536,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2544,7 +2544,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2710,7 +2710,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2718,7 +2718,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2853,7 +2853,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2861,7 +2861,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2996,7 +2996,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3004,7 +3004,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3138,7 +3138,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3146,7 +3146,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3245,7 +3245,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3253,7 +3253,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3409,7 +3409,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v4
