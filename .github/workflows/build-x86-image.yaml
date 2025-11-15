@@ -93,7 +93,7 @@ jobs:
 
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-base
           path: image-amd64.tar
@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload dpdk base images to artifact
         if: steps.check.outputs.build-dpdk-base == 1
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-dpdk-base
           path: image-amd64-dpdk.tar
@@ -320,13 +320,13 @@ jobs:
           make tar-kube-ovn-dpdk
 
       - name: Upload images to artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn
           path: kube-ovn.tar
 
       - name: Upload dpdk images to artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           name: kube-ovn-dpdk
@@ -354,7 +354,7 @@ jobs:
           make tar-vpc-nat-gateway
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
@@ -597,7 +597,7 @@ jobs:
           tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events
@@ -610,7 +610,7 @@ jobs:
           tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log
@@ -623,7 +623,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
@@ -789,7 +789,7 @@ jobs:
           tar zcf k8s-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-events
@@ -802,7 +802,7 @@ jobs:
           tar zcf k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-audit-log
@@ -815,7 +815,7 @@ jobs:
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -956,7 +956,7 @@ jobs:
           tar zcf cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-events
@@ -969,7 +969,7 @@ jobs:
           tar zcf cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-audit-log
@@ -982,7 +982,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
@@ -1149,7 +1149,7 @@ jobs:
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
@@ -1162,7 +1162,7 @@ jobs:
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
@@ -1175,7 +1175,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
@@ -1334,7 +1334,7 @@ jobs:
             `kind get clusters | xargs -I {} echo kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-{}-events.yaml`
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-events
@@ -1351,7 +1351,7 @@ jobs:
             `kind get clusters | xargs -I {} echo kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-{}-kube-apiserver-audit.log`
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-audit-log
@@ -1369,7 +1369,7 @@ jobs:
             `kind get clusters | xargs -I {} echo kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-{}-ko-log.tar.gz`
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log
@@ -1490,7 +1490,7 @@ jobs:
           tar zcf multus-conformance-e2e-${{ matrix.ip-family }}-events.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: multus-conformance-e2e-${{ matrix.ip-family }}-events
@@ -1503,7 +1503,7 @@ jobs:
           tar zcf multus-conformance-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: multus-conformance-e2e-${{ matrix.ip-family }}-audit-log
@@ -1516,7 +1516,7 @@ jobs:
           mv kubectl-ko-log.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log
@@ -1838,7 +1838,7 @@ jobs:
           tar zcf lb-svc-e2e-events.tar.gz lb-svc-e2e-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: lb-svc-e2e-events
@@ -1851,7 +1851,7 @@ jobs:
           tar zcf lb-svc-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: lb-svc-e2e-audit-log
@@ -1864,7 +1864,7 @@ jobs:
           mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: lb-svc-e2e-ko-log
@@ -1975,7 +1975,7 @@ jobs:
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: webhook-e2e-ko-log
@@ -2044,7 +2044,7 @@ jobs:
           mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.install.conclusion == 'failure'
         with:
           name: installation-compatibility-test-ko-log
@@ -2246,7 +2246,7 @@ jobs:
           tar zcf cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
@@ -2259,7 +2259,7 @@ jobs:
           tar zcf cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
@@ -2272,7 +2272,7 @@ jobs:
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: cilium-chaining-e2e-ko-log
@@ -2405,7 +2405,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
@@ -2498,7 +2498,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
@@ -2622,7 +2622,7 @@ jobs:
           tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-events
@@ -2635,7 +2635,7 @@ jobs:
           tar zcf vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-audit-log
@@ -2648,7 +2648,7 @@ jobs:
           mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
@@ -2799,7 +2799,7 @@ jobs:
           tar zcf iptables-vpc-nat-gw-conformance-e2e-events.tar.gz iptables-vpc-nat-gw-conformance-e2e-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-events
@@ -2812,7 +2812,7 @@ jobs:
           tar zcf iptables-vpc-nat-gw-conformance-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-audit-log
@@ -2825,7 +2825,7 @@ jobs:
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && steps.e2e.conclusion == 'failure'
         with:
           name: iptables-vpc-nat-gw-conformance-e2e-ko-log
@@ -2942,7 +2942,7 @@ jobs:
           tar zcf ovn-vpc-nat-gw-conformance-e2e-events.tar.gz ovn-vpc-nat-gw-conformance-e2e-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
         with:
           name: ovn-vpc-nat-gw-conformance-e2e-events
@@ -2955,7 +2955,7 @@ jobs:
           tar zcf ovn-vpc-nat-gw-conformance-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
         with:
           name: ovn-vpc-nat-gw-conformance-e2e-audit-log
@@ -2968,7 +2968,7 @@ jobs:
           mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')
         with:
           name: ovn-vpc-nat-gw-conformance-e2e-ko-log
@@ -3078,7 +3078,7 @@ jobs:
           tar zcf kube-ovn-ipsec-e2e-events.tar.gz kube-ovn-ipsec-e2e-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-ipsec-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-ipsec-e2e-events
@@ -3091,7 +3091,7 @@ jobs:
           tar zcf kube-ovn-ipsec-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-ipsec-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-ipsec-e2e-audit-log
@@ -3104,7 +3104,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-ipsec-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-ipsec-e2e-ko-log
@@ -3220,7 +3220,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-connectivity-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log
@@ -3335,7 +3335,7 @@ jobs:
           tar zcf kube-ovn-underlay-metallb-e2e-events.tar.gz kube-ovn-underlay-metallb-e2e-events.yaml
 
       - name: Upload k8s events
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-underlay-metallb-e2e-events
@@ -3348,7 +3348,7 @@ jobs:
           tar zcf kube-ovn-underlay-metallb-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-underlay-metallb-e2e-audit-log
@@ -3361,7 +3361,7 @@ jobs:
           mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-underlay-metallb-e2e-ko-log

@@ -166,13 +166,13 @@ jobs:
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make install"
 
       - name: Upload OVS
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ovs-win64
           path: ovs\windows\ovs-windows-installer\bin\x64\Release\OpenvSwitch.msi
 
       - name: Upload OVN
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ovn-win64
           path: C:\ovn
@@ -220,7 +220,7 @@ jobs:
           make build-go-windows
 
       - name: Upload Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-bin
           path: |
@@ -270,7 +270,7 @@ jobs:
           Copy-Item kube-ovn-daemon.exe -Destination kube-ovn/bin
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-win64
           path: |

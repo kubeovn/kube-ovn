@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: image-amd64-dpdk-${{ matrix.branch }}
           path: image-amd64-dpdk.tar
