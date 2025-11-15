@@ -29,6 +29,7 @@ import (
 const (
 	NetworkPolicyEnforcementStandard = "standard"
 	NetworkPolicyEnforcementLax      = "lax"
+	NetworkPolicyEnforcementNone     = "none"
 )
 
 func (c *Controller) enqueueAddNp(obj any) {
@@ -177,9 +178,22 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
+	// The enforcement level of the network policy determines how we handle traffic that is not
+	// explicitly permitted in the ingress/egress rules.
+	//
+	// There are multiple enforcement levels:
+	//   - If it's 'standard', we're blocking everything at L3 (IP) except what is allowed in the policy.
+	//     This includes protocols such as ICMP or DHCP. This enforcement mode may be problematic when
+	//     applied to VMs, as it blocks address advertisement, ICMP for PMTU discovery and error
+	//     signaling. This is the default enforcement.
+	//   - If it's 'lax', we're only blocking at L4 (TCP/UDP) and exclude DHCPv4/DHCPv6 from the block.
+	//   - If it's 'none', we do not block anything. If another network policy with a different enforcement
+	//     targets the same pods, it will take precedence over the current network policy.
+	enforcementLax := c.networkPolicyEnforcementLevel(np) == NetworkPolicyEnforcementLax
+	enforcementNone := c.networkPolicyEnforcementLevel(np) == NetworkPolicyEnforcementNone
+
 	if hasIngressRule(np) {
-		if protocolSet.Size() > 0 {
+		if !enforcementNone && protocolSet.Size() > 0 {
 			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
@@ -326,7 +340,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasEgressRule(np) {
-		if protocolSet.Size() > 0 {
+		if !enforcementNone && protocolSet.Size() > 0 {
 			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
@@ -821,12 +835,13 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 	return false
 }
 
-func (c *Controller) isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
+// networkPolicyEnforcementLevel returns the policy enforcement level of a network policy
+func (c *Controller) networkPolicyEnforcementLevel(policy *netv1.NetworkPolicy) string {
 	// User provided a custom enforcement through annotations
 	if value, ok := policy.Annotations[util.NetworkPolicyEnforcementAnnotation]; ok {
-		return value == NetworkPolicyEnforcementLax
+		return value
 	}
 
 	// Fallback to the configuration of the controller
-	return c.config.NetworkPolicyEnforcement == NetworkPolicyEnforcementLax
+	return c.config.NetworkPolicyEnforcement
 }
