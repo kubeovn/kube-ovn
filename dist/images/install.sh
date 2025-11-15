@@ -5414,6 +5414,25 @@ if [[ "$nad_count" -gt 0 ]]; then
   kubectl delete pod -n kube-system -l app=multus || true
 fi
 
+if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
+  echo "[Step 4/6] Delete pod that not in host network mode"
+  for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
+    for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
+      kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
+    done
+  done
+fi
+
+kubectl rollout status deployment/coredns -n kube-system --timeout 300s
+while true; do
+  pods=(`kubectl get pod -n kube-system -l app=kube-ovn-pinger --template '{{range .items}}{{if .metadata.deletionTimestamp}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}'`)
+  if [ ${#pods[@]} -eq 0 ]; then
+    break
+  fi
+  echo "Waiting for ${pods[@]} to be deleted..."
+  sleep 1
+done
+
 echo "Install Kube-ovn-pinger"
 cat <<EOF > kube-ovn-pinger.yaml
 ---
@@ -5584,25 +5603,6 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn-pinger.yaml
-
-if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
-  echo "[Step 4/6] Delete pod that not in host network mode"
-  for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
-    for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-      kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
-    done
-  done
-fi
-
-kubectl rollout status deployment/coredns -n kube-system --timeout 300s
-while true; do
-  pods=(`kubectl get pod -n kube-system -l app=kube-ovn-pinger --template '{{range .items}}{{if .metadata.deletionTimestamp}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}'`)
-  if [ ${#pods[@]} -eq 0 ]; then
-    break
-  fi
-  echo "Waiting for ${pods[@]} to be deleted..."
-  sleep 1
-done
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
 sleep 1
 kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 120s
