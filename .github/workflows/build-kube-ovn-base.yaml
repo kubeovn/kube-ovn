@@ -44,7 +44,7 @@ jobs:
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         id: setup-go
         with:
