@@ -182,8 +182,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
       - name: Unit test
         run: |

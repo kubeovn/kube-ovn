@@ -47,8 +47,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.ref_name }}-
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.base_ref }}-
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@0.31.0
