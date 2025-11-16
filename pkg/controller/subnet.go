@@ -2116,44 +2116,31 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		klog.Error(err)
 		return nil, err
 	}
-	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
-	lenIP = len(podUsedIPs)
-	usingIPNums := lenIP
 
-	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
-	noGWExcludeIPs := []string{}
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
+	noGWExcludeV4 := []string{}
+	noGWExcludeV6 := []string{}
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
-		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compare gateway ip with pod ip
+		if excludeIP == v4gw || excludeIP == v6gw {
 			continue
 		}
-		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
-	}
-	if noGWExcludeIPs != nil {
-		for _, podUsedIP := range podUsedIPs {
-			for _, excludeIP := range noGWExcludeIPs {
-				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
-					usingIPNums--
-					break
-				}
-			}
+		if util.CheckProtocol(excludeIP) == kubeovnv1.ProtocolIPv6 {
+			noGWExcludeV6 = append(noGWExcludeV6, excludeIP)
+		} else {
+			noGWExcludeV4 = append(noGWExcludeV4, excludeIP)
 		}
 	}
 
-	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
-	v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
-	// gateway always in excludeIPs
-	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
-	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
-	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
-	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs)
-	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs)
-
-	usingIPs := float64(usingIPNums)
+	usedV4IPs := map[string]struct{}{}
+	usedV6IPs := map[string]struct{}{}
+	for _, podIP := range podUsedIPs {
+		if v4 := strings.TrimSpace(podIP.Spec.V4IPAddress); v4 != "" && !ipInExcludedRanges(v4, noGWExcludeV4) {
+			usedV4IPs[v4] = struct{}{}
+		}
+		if v6 := strings.TrimSpace(podIP.Spec.V6IPAddress); v6 != "" && !ipInExcludedRanges(v6, noGWExcludeV6) {
+			usedV6IPs[v6] = struct{}{}
+		}
+	}
 
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
@@ -2163,46 +2150,82 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		klog.Error(err)
 		return nil, err
 	}
-	lenVip = len(vips)
-	usingIPs += float64(lenVip)
+	for _, vip := range vips {
+		if v4 := strings.TrimSpace(vip.Status.V4ip); v4 != "" {
+			usedV4IPs[v4] = struct{}{}
+		}
+		if v6 := strings.TrimSpace(vip.Status.V6ip); v6 != "" {
+			usedV6IPs[v6] = struct{}{}
+		}
+	}
 
 	if !isOvnSubnet(subnet) {
-		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
+		eips, err := c.iptablesEipsLister.List(labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
 			klog.Error(err)
 			return nil, err
 		}
-		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
+		for _, eip := range eips {
+			if v4 := strings.TrimSpace(eip.Status.IP); v4 != "" {
+				usedV4IPs[v4] = struct{}{}
+			}
+		}
 	}
+
 	if subnet.Spec.Vlan != "" {
-		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: subnet.Name,
-		}))
+		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
 			klog.Error(err)
 			return nil, err
 		}
-		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
+		for _, oeip := range ovnEips {
+			if v4 := strings.TrimSpace(oeip.Status.V4Ip); v4 != "" {
+				usedV4IPs[v4] = struct{}{}
+			}
+			if v6 := strings.TrimSpace(oeip.Status.V6Ip); v6 != "" {
+				usedV6IPs[v6] = struct{}{}
+			}
+		}
 	}
 
-	v4availableIPs -= usingIPs
-	if v4availableIPs < 0 {
-		v4availableIPs = 0
+	v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
+	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
+	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
+	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
+	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
+
+	v4AvailableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs) - float64(len(usedV4IPs))
+	if v4AvailableIPs < 0 {
+		v4AvailableIPs = 0
 	}
-	v6availableIPs -= usingIPs
-	if v6availableIPs < 0 {
-		v6availableIPs = 0
+	v6AvailableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs) - float64(len(usedV6IPs))
+	if v6AvailableIPs < 0 {
+		v6AvailableIPs = 0
 	}
 
-	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+	v4UsingIPStr, err := buildIPRangeString(usedV4IPs)
+	if err != nil {
+		klog.Errorf("failed to build IPv4 using range for subnet %s: %v", subnet.Name, err)
+		v4UsingIPStr = ""
+	}
+	v6UsingIPStr, err := buildIPRangeString(usedV6IPs)
+	if err != nil {
+		klog.Errorf("failed to build IPv6 using range for subnet %s: %v", subnet.Name, err)
+		v6UsingIPStr = ""
+	}
 
-	if subnet.Status.V4AvailableIPs == v4availableIPs &&
-		subnet.Status.V6AvailableIPs == v6availableIPs &&
-		subnet.Status.V4UsingIPs == usingIPs &&
-		subnet.Status.V6UsingIPs == usingIPs &&
+	v4InIpamUsingIPStr, v6InIpamUsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+	if v4InIpamUsingIPStr != v4UsingIPStr || v6InIpamUsingIPStr != v6UsingIPStr {
+		// todo:// need to sync ipam
+		klog.Errorf("subnet %s ipam using ip range %s,%s is not equal to calculated using ip range %s,%s",
+			subnet.Name, v4InIpamUsingIPStr, v6InIpamUsingIPStr, v4UsingIPStr, v6UsingIPStr)
+	}
+
+	if subnet.Status.V4AvailableIPs == v4AvailableIPs &&
+		subnet.Status.V6AvailableIPs == v6AvailableIPs &&
+		subnet.Status.V4UsingIPs == float64(len(usedV4IPs)) &&
+		subnet.Status.V6UsingIPs == float64(len(usedV6IPs)) &&
 		subnet.Status.V4UsingIPRange == v4UsingIPStr &&
 		subnet.Status.V6UsingIPRange == v6UsingIPStr &&
 		subnet.Status.V4AvailableIPRange == v4AvailableIPStr &&
@@ -2210,10 +2233,10 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		return subnet, nil
 	}
 
-	subnet.Status.V4AvailableIPs = v4availableIPs
-	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.V4UsingIPs = usingIPs
-	subnet.Status.V6UsingIPs = usingIPs
+	subnet.Status.V4AvailableIPs = v4AvailableIPs
+	subnet.Status.V6AvailableIPs = v6AvailableIPs
+	subnet.Status.V4UsingIPs = float64(len(usedV4IPs))
+	subnet.Status.V6UsingIPs = float64(len(usedV6IPs))
 	subnet.Status.V4UsingIPRange = v4UsingIPStr
 	subnet.Status.V6UsingIPRange = v6UsingIPStr
 	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
@@ -2233,41 +2256,33 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
+
 	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	lenIP = len(podUsedIPs)
-	usingIPNums := lenIP
 
-	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
 	noGWExcludeIPs := []string{}
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
-		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compare gateway ip with pod ip
+		if excludeIP == v4gw || excludeIP == v6gw {
 			continue
 		}
 		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
 	}
-	if noGWExcludeIPs != nil {
-		for _, podUsedIP := range podUsedIPs {
-			for _, excludeIP := range noGWExcludeIPs {
-				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
-					usingIPNums--
-					break
-				}
-			}
+
+	usedV4IPs := map[string]struct{}{}
+	usedV6IPs := map[string]struct{}{}
+	for _, podIP := range podUsedIPs {
+		if v4 := strings.TrimSpace(podIP.Spec.V4IPAddress); v4 != "" && !ipInExcludedRanges(v4, noGWExcludeIPs) {
+			usedV4IPs[v4] = struct{}{}
+		}
+		if v6 := strings.TrimSpace(podIP.Spec.V6IPAddress); v6 != "" && !ipInExcludedRanges(v6, noGWExcludeIPs) {
+			usedV6IPs[v6] = struct{}{}
 		}
 	}
 
-	// gateway always in excludeIPs
-	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs)
-	usingIPs := float64(usingIPNums)
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
 		util.IPReservedLabel: "",
@@ -2276,36 +2291,89 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	lenVip = len(vips)
-	usingIPs += float64(lenVip)
-	if !isOvnSubnet(subnet) {
-		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
+	for _, vip := range vips {
+		if v4 := strings.TrimSpace(vip.Status.V4ip); v4 != "" {
+			usedV4IPs[v4] = struct{}{}
 		}
-		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
-	}
-	if subnet.Spec.Vlan != "" {
-		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: subnet.Name,
-		}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
+		if v6 := strings.TrimSpace(vip.Status.V6ip); v6 != "" {
+			usedV6IPs[v6] = struct{}{}
 		}
-		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
 	}
 
-	availableIPs -= usingIPs
+	if !isOvnSubnet(subnet) {
+		eips, err := c.iptablesEipsLister.List(labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		for _, eip := range eips {
+			if v4 := strings.TrimSpace(eip.Status.IP); v4 != "" {
+				usedV4IPs[v4] = struct{}{}
+			}
+		}
+	}
+
+	if subnet.Spec.Vlan != "" {
+		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		for _, oeip := range ovnEips {
+			if v4 := strings.TrimSpace(oeip.Status.V4Ip); v4 != "" {
+				usedV4IPs[v4] = struct{}{}
+			}
+			if v6 := strings.TrimSpace(oeip.Status.V6Ip); v6 != "" {
+				usedV6IPs[v6] = struct{}{}
+			}
+		}
+	}
+
+	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	var usingIPs float64
+	var v4UsingIPStr, v6UsingIPStr string
+	v4InIpamUsingIPStr, v6InIpamUsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+		usingIPs = float64(len(usedV4IPs))
+		if usingIPs > 0 {
+			if str, err := buildIPRangeString(usedV4IPs); err != nil {
+				klog.Errorf("failed to build IPv4 using range for subnet %s: %v", subnet.Name, err)
+			} else {
+				v4UsingIPStr = str
+				if v4InIpamUsingIPStr != v4UsingIPStr {
+					// todo:// need to sync ipam
+					klog.Errorf("subnet %s ipam using ip range %s is not equal to calculated using ip range %s",
+						subnet.Name, v4InIpamUsingIPStr, v4UsingIPStr)
+				}
+			}
+		} else {
+			v4UsingIPStr = ""
+		}
+		v6UsingIPStr = ""
+	} else {
+		usingIPs = float64(len(usedV6IPs))
+		if usingIPs > 0 {
+			if str, err := buildIPRangeString(usedV6IPs); err != nil {
+				klog.Errorf("failed to build IPv6 using range for subnet %s: %v", subnet.Name, err)
+			} else {
+				v6UsingIPStr = str
+				if v6InIpamUsingIPStr != v6UsingIPStr {
+					// todo:// need to sync ipam
+					klog.Errorf("subnet %s ipam using ip range %s is not equal to calculated using ip range %s",
+						subnet.Name, v6InIpamUsingIPStr, v6UsingIPStr)
+				}
+			}
+		} else {
+			v6UsingIPStr = ""
+		}
+		v4UsingIPStr = ""
+	}
+
+	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs) - usingIPs
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
 
-	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
 	cachedFloatFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
@@ -2326,6 +2394,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
 		subnet.Status.V6UsingIPs = 0
+		subnet.Status.V6UsingIPRange = ""
+		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
@@ -2333,7 +2403,10 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
+		subnet.Status.V4UsingIPRange = ""
+		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	}
+
 	if cachedFloatFields == [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
@@ -2369,6 +2442,33 @@ func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 	return nil
+}
+
+func ipInExcludedRanges(ip string, exclude []string) bool {
+	if strings.TrimSpace(ip) == "" {
+		return false
+	}
+	for _, ex := range exclude {
+		if util.ContainsIPs(ex, ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildIPRangeString(ips map[string]struct{}) (string, error) {
+	if len(ips) == 0 {
+		return "", nil
+	}
+	rangeList := ipam.NewEmptyIPRangeList()
+	for ipStr := range ips {
+		addr, err := ipam.NewIP(ipStr)
+		if err != nil {
+			return "", err
+		}
+		rangeList.Add(addr)
+	}
+	return rangeList.String(), nil
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
