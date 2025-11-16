@@ -2199,6 +2199,23 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
 
+	// If IPAM has not recorded the allocated addresses yet, rebuild its state from existing IP CRs.
+	if usingIPs > 0 {
+		needRebuild := false
+		if subnet.Spec.Protocol != kubeovnv1.ProtocolIPv6 && v4UsingIPStr == "" {
+			needRebuild = true
+		}
+		if subnet.Spec.Protocol != kubeovnv1.ProtocolIPv4 && v6UsingIPStr == "" {
+			needRebuild = true
+		}
+		if needRebuild {
+			if err := c.rebuildSubnetIPUsage(subnet, podUsedIPs, noGWExcludeIPs); err != nil {
+				klog.Warningf("failed to rebuild ipam cache for subnet %s: %v", subnet.Name, err)
+			}
+			v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr = c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+		}
+	}
+
 	if subnet.Status.V4AvailableIPs == v4availableIPs &&
 		subnet.Status.V6AvailableIPs == v6availableIPs &&
 		subnet.Status.V4UsingIPs == usingIPs &&
@@ -2306,6 +2323,18 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	}
 
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+
+	// IPAM may lose its in-memory usage state across restarts before it rebuilds from Pods/IP CRs.
+	if usingIPs > 0 {
+		rebuildV4 := subnet.Spec.Protocol != kubeovnv1.ProtocolIPv6 && v4UsingIPStr == ""
+		rebuildV6 := subnet.Spec.Protocol != kubeovnv1.ProtocolIPv4 && v6UsingIPStr == ""
+		if rebuildV4 || rebuildV6 {
+			if err := c.rebuildSubnetIPUsage(subnet, podUsedIPs, noGWExcludeIPs); err != nil {
+				klog.Warningf("failed to rebuild ipam cache for subnet %s: %v", subnet.Name, err)
+			}
+			v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr = c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+		}
+	}
 	cachedFloatFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
@@ -2326,6 +2355,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
 		subnet.Status.V6UsingIPs = 0
+		subnet.Status.V6UsingIPRange = ""
+		subnet.Status.V6AvailableIPRange = ""
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
@@ -2333,6 +2364,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
+		subnet.Status.V4UsingIPRange = ""
+		subnet.Status.V4AvailableIPRange = ""
 	}
 	if cachedFloatFields == [4]float64{
 		subnet.Status.V4AvailableIPs,
@@ -2369,6 +2402,71 @@ func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Controller) rebuildSubnetIPUsage(subnet *kubeovnv1.Subnet, podIPs []*kubeovnv1.IP, excludeIPs []string) error {
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, ipObj := range podIPs {
+		if ipObj == nil {
+			continue
+		}
+		if ipObj.Spec.Subnet != subnet.Name {
+			continue
+		}
+
+		ipStr := strings.TrimSpace(ipObj.Spec.IPAddress)
+		if ipStr == "" {
+			ipStr = util.GetStringIP(ipObj.Spec.V4IPAddress, ipObj.Spec.V6IPAddress)
+		}
+		if ipStr == "" {
+			continue
+		}
+
+		if ipInExcludeRange(ipObj.Spec.V4IPAddress, excludeIPs) || ipInExcludeRange(ipObj.Spec.V6IPAddress, excludeIPs) {
+			continue
+		}
+
+		var macPtr *string
+		if mac := strings.TrimSpace(ipObj.Spec.MacAddress); mac != "" {
+			macCopy := mac
+			macPtr = &macCopy
+		}
+
+		podKey := strings.TrimSpace(ipObj.Spec.PodName)
+		if ipObj.Spec.Namespace != "" && ipObj.Spec.PodName != "" {
+			podKey = fmt.Sprintf("%s/%s", ipObj.Spec.Namespace, ipObj.Spec.PodName)
+		} else if podKey == "" {
+			if ipObj.Spec.NodeName != "" {
+				podKey = ipObj.Spec.NodeName
+			} else {
+				podKey = ipObj.Name
+			}
+		}
+
+		if _, _, _, err := c.ipam.GetStaticAddress(podKey, ipObj.Name, ipStr, macPtr, subnet.Name, true); err != nil {
+			err = fmt.Errorf("syncing ip %s for subnet %s in ipam: %w", ipObj.Name, subnet.Name, err)
+			klog.Warning(err)
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func ipInExcludeRange(ip string, exclude []string) bool {
+	if strings.TrimSpace(ip) == "" {
+		return false
+	}
+	for _, ex := range exclude {
+		if util.ContainsIPs(ex, ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
