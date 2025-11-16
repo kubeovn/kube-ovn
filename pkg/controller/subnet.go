@@ -900,6 +900,12 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		}
 	}
 
+	// Ensure subnet exists in IPAM before calculating status
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 		if _, err := c.calcDualSubnetStatusIP(subnet); err != nil {
 			klog.Error(err)
@@ -2326,6 +2332,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
 		subnet.Status.V6UsingIPs = 0
+		subnet.Status.V6UsingIPRange = ""
+		subnet.Status.V6AvailableIPRange = ""
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
@@ -2333,6 +2341,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
+		subnet.Status.V4UsingIPRange = ""
+		subnet.Status.V4AvailableIPRange = ""
 	}
 	if cachedFloatFields == [4]float64{
 		subnet.Status.V4AvailableIPs,
