@@ -2136,6 +2136,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	for _, podIP := range podUsedIPs {
 		if v4 := strings.TrimSpace(podIP.Spec.V4IPAddress); v4 != "" && !ipInExcludedRanges(v4, noGWExcludeV4) {
 			usedV4IPs[v4] = struct{}{}
+			continue
 		}
 		if v6 := strings.TrimSpace(podIP.Spec.V6IPAddress); v6 != "" && !ipInExcludedRanges(v6, noGWExcludeV6) {
 			usedV6IPs[v6] = struct{}{}
@@ -2153,6 +2154,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	for _, vip := range vips {
 		if v4 := strings.TrimSpace(vip.Status.V4ip); v4 != "" {
 			usedV4IPs[v4] = struct{}{}
+			continue
 		}
 		if v6 := strings.TrimSpace(vip.Status.V6ip); v6 != "" {
 			usedV6IPs[v6] = struct{}{}
@@ -2168,7 +2170,9 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		for _, eip := range eips {
 			if v4 := strings.TrimSpace(eip.Status.IP); v4 != "" {
 				usedV4IPs[v4] = struct{}{}
+				continue
 			}
+			// iptables eip only support ipv4 for now
 		}
 	}
 
@@ -2181,6 +2185,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		for _, oeip := range ovnEips {
 			if v4 := strings.TrimSpace(oeip.Status.V4Ip); v4 != "" {
 				usedV4IPs[v4] = struct{}{}
+				continue
 			}
 			if v6 := strings.TrimSpace(oeip.Status.V6Ip); v6 != "" {
 				usedV6IPs[v6] = struct{}{}
@@ -2277,6 +2282,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	for _, podIP := range podUsedIPs {
 		if v4 := strings.TrimSpace(podIP.Spec.V4IPAddress); v4 != "" && !ipInExcludedRanges(v4, noGWExcludeIPs) {
 			usedV4IPs[v4] = struct{}{}
+			continue
 		}
 		if v6 := strings.TrimSpace(podIP.Spec.V6IPAddress); v6 != "" && !ipInExcludedRanges(v6, noGWExcludeIPs) {
 			usedV6IPs[v6] = struct{}{}
@@ -2294,6 +2300,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	for _, vip := range vips {
 		if v4 := strings.TrimSpace(vip.Status.V4ip); v4 != "" {
 			usedV4IPs[v4] = struct{}{}
+			continue
 		}
 		if v6 := strings.TrimSpace(vip.Status.V6ip); v6 != "" {
 			usedV6IPs[v6] = struct{}{}
@@ -2322,6 +2329,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		for _, oeip := range ovnEips {
 			if v4 := strings.TrimSpace(oeip.Status.V4Ip); v4 != "" {
 				usedV4IPs[v4] = struct{}{}
+				continue
 			}
 			if v6 := strings.TrimSpace(oeip.Status.V6Ip); v6 != "" {
 				usedV6IPs[v6] = struct{}{}
@@ -2393,8 +2401,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4UsingIPRange = v4UsingIPStr
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
-		subnet.Status.V6UsingIPs = 0
-		subnet.Status.V6UsingIPRange = ""
+		subnet.Status.V6UsingIPs = float64(len(usedV6IPs))
+		subnet.Status.V6UsingIPRange = v6InIpamUsingIPStr
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
@@ -2402,8 +2410,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6UsingIPRange = v6UsingIPStr
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
-		subnet.Status.V4UsingIPs = 0
-		subnet.Status.V4UsingIPRange = ""
+		subnet.Status.V4UsingIPs = float64(len(usedV4IPs))
+		subnet.Status.V4UsingIPRange = v4InIpamUsingIPStr
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	}
 
@@ -2445,9 +2453,6 @@ func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
 }
 
 func ipInExcludedRanges(ip string, exclude []string) bool {
-	if strings.TrimSpace(ip) == "" {
-		return false
-	}
 	for _, ex := range exclude {
 		if util.ContainsIPs(ex, ip) {
 			return true
