@@ -8,17 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-
-	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
+
+const ippoolUpdateTimeout = 2 * time.Minute
 
 var _ = framework.Describe("[group:ipam]", func() {
 	f := framework.NewDefaultFramework("ipam")
@@ -718,5 +720,30 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating pod " + podName + " which should have IP allocated from ippool " + ippoolName2)
 		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
 		_ = podClient.CreateSync(pod)
+	})
+
+	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
+		ginkgo.By("Creating ippool " + ippoolName + " with EnableAddressSet enabled")
+		poolIPs := framework.RandomIPPool(cidr, 4)
+		framework.ExpectTrue(len(poolIPs) >= 2, "expected at least two IPs in pool")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, []string{namespaceName})
+		ippool.Spec.EnableAddressSet = true
+		ippool = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Verifying address set contains pool IPs")
+		framework.ExpectNoError(framework.WaitForAddressSetIPs(ippoolName, poolIPs))
+
+		ginkgo.By("Updating ippool to remove one IP entry")
+		updated := ippool.DeepCopy()
+		updated.Spec.IPs = updated.Spec.IPs[:len(updated.Spec.IPs)-1]
+		updated = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+
+		ginkgo.By("Checking address set reflects IP removal")
+		framework.ExpectNoError(framework.WaitForAddressSetIPs(ippoolName, updated.Spec.IPs))
+
+		ginkgo.By("Disabling EnableAddressSet to trigger address set deletion")
+		updated.Spec.EnableAddressSet = false
+		updated = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		framework.ExpectNoError(framework.WaitForAddressSetDeletion(ippoolName))
 	})
 })
