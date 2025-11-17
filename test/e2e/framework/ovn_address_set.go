@@ -1,11 +1,9 @@
 package framework
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"math/big"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +15,7 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -43,13 +42,13 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		return err
 	}
 
-	expectedEntries, err := canonicalizeIPPoolEntries(ips)
+	expectedEntries, err := util.CanonicalizeIPPoolEntries(ips)
 	if err != nil {
 		return err
 	}
-	expectedName := ippoolAddressSetName(ippoolName)
+	expectedName := util.IPPoolAddressSetName(ippoolName)
 
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(ctx context.Context) (bool, error) {
+	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
 		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
 		if err != nil {
 			return false, err
@@ -66,7 +65,7 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 			return false, fmt.Errorf("unexpected address set name %q for ippool %s, want %q", as.Name, ippoolName, expectedName)
 		}
 
-		actualEntries := normalizeAddressSetEntries(strings.Join(as.Addresses, " "))
+		actualEntries := util.NormalizeAddressSetEntries(strings.Join(as.Addresses, " "))
 		if len(actualEntries) != len(expectedEntries) {
 			return false, nil
 		}
@@ -88,7 +87,7 @@ func WaitForAddressSetDeletion(ippoolName string) error {
 		return err
 	}
 
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(ctx context.Context) (bool, error) {
+	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
 		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
 		if err != nil {
 			return false, err
@@ -186,7 +185,7 @@ func resolveOVNNbConnection() (string, error) {
 	}
 
 	if len(targets) == 0 {
-		return "", fmt.Errorf("failed to resolve OVN NB endpoints")
+		return "", errors.New("failed to resolve OVN NB endpoints")
 	}
 
 	return strings.Join(targets, ","), nil
@@ -202,173 +201,4 @@ func splitAndTrim(value string) []string {
 		}
 	}
 	return result
-}
-
-func canonicalizeIPPoolEntries(entries []string) (map[string]bool, error) {
-	set := make(map[string]bool)
-	seen := make(map[string]struct{})
-
-	for _, raw := range entries {
-		value := strings.TrimSpace(raw)
-		if value == "" {
-			continue
-		}
-
-		var tokens []string
-		switch {
-		case strings.Contains(value, ".."):
-			parts := strings.Split(value, "..")
-			if len(parts) != 2 {
-				return nil, fmt.Errorf("invalid IP range %q", value)
-			}
-			start, err := normalizeIPValue(parts[0])
-			if err != nil {
-				return nil, fmt.Errorf("invalid range start %q: %w", parts[0], err)
-			}
-			end, err := normalizeIPValue(parts[1])
-			if err != nil {
-				return nil, fmt.Errorf("invalid range end %q: %w", parts[1], err)
-			}
-			if (start.To4() != nil) != (end.To4() != nil) {
-				return nil, fmt.Errorf("range %q mixes IPv4 and IPv6", value)
-			}
-			if compareIP(start, end) > 0 {
-				return nil, fmt.Errorf("range %q start is greater than end", value)
-			}
-			rangeCIDRs, err := ipRangeToCIDRs(start, end)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert range %q: %w", value, err)
-			}
-			tokens = rangeCIDRs
-		case strings.Contains(value, "/"):
-			_, network, err := net.ParseCIDR(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid CIDR %q: %w", value, err)
-			}
-			tokens = []string{network.String()}
-		default:
-			ip, err := normalizeIPValue(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid IP address %q: %w", value, err)
-			}
-			tokens = []string{ip.String()}
-		}
-
-		for _, token := range tokens {
-			if _, exists := seen[token]; exists {
-				continue
-			}
-			seen[token] = struct{}{}
-			set[token] = true
-		}
-	}
-
-	return set, nil
-}
-
-func normalizeAddressSetEntries(raw string) map[string]bool {
-	clean := strings.ReplaceAll(raw, "\"", "")
-	tokens := strings.Fields(strings.TrimSpace(clean))
-	set := make(map[string]bool, len(tokens))
-	for _, token := range tokens {
-		set[token] = true
-	}
-	return set
-}
-
-func ippoolAddressSetName(ippoolName string) string {
-	return strings.ReplaceAll(ippoolName, "-", ".")
-}
-
-func normalizeIPValue(value string) (net.IP, error) {
-	ip := net.ParseIP(strings.TrimSpace(value))
-	if ip == nil {
-		return nil, fmt.Errorf("invalid IP address %q", value)
-	}
-	if v4 := ip.To4(); v4 != nil {
-		return v4, nil
-	}
-	return ip.To16(), nil
-}
-
-func ipRangeToCIDRs(start, end net.IP) ([]string, error) {
-	length := net.IPv4len
-	totalBits := 32
-	if start.To4() == nil {
-		length = net.IPv6len
-		totalBits = 128
-	}
-
-	startInt := ipToBigInt(start)
-	endInt := ipToBigInt(end)
-	if startInt.Cmp(endInt) > 0 {
-		return nil, fmt.Errorf("range %s..%s start is greater than end", start, end)
-	}
-
-	result := make([]string, 0)
-	tmp := new(big.Int)
-	for startInt.Cmp(endInt) <= 0 {
-		zeros := countTrailingZeros(startInt, totalBits)
-		diff := tmp.Sub(endInt, startInt)
-		diff.Add(diff, big.NewInt(1))
-
-		var maxDiff uint
-		if diff.Sign() > 0 {
-			maxDiff = uint(diff.BitLen() - 1)
-		}
-
-		size := zeros
-		if maxDiff < size {
-			size = maxDiff
-		}
-
-		prefix := totalBits - int(size)
-		networkInt := new(big.Int).Set(startInt)
-		networkIP := bigIntToIP(networkInt, length)
-		network := &net.IPNet{IP: networkIP, Mask: net.CIDRMask(prefix, totalBits)}
-		result = append(result, network.String())
-
-		increment := new(big.Int).Lsh(big.NewInt(1), size)
-		startInt.Add(startInt, increment)
-	}
-
-	return result, nil
-}
-
-func ipToBigInt(ip net.IP) *big.Int {
-	return new(big.Int).SetBytes(ip)
-}
-
-func bigIntToIP(value *big.Int, length int) net.IP {
-	bytes := value.Bytes()
-	if len(bytes) < length {
-		padded := make([]byte, length)
-		copy(padded[length-len(bytes):], bytes)
-		bytes = padded
-	} else if len(bytes) > length {
-		bytes = bytes[len(bytes)-length:]
-	}
-
-	ip := make(net.IP, length)
-	copy(ip, bytes)
-	if length == net.IPv4len {
-		return net.IP(ip).To4()
-	}
-	return net.IP(ip)
-}
-
-func countTrailingZeros(value *big.Int, totalBits int) uint {
-	if value.Sign() == 0 {
-		return uint(totalBits)
-	}
-
-	var zeros uint
-	for zeros < uint(totalBits) && value.Bit(int(zeros)) == 0 {
-		zeros++
-	}
-	return zeros
-}
-
-func compareIP(a, b net.IP) int {
-	return bytes.Compare(a, b)
 }

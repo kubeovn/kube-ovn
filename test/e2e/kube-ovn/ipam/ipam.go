@@ -743,7 +743,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Disabling EnableAddressSet to trigger address set deletion")
 		updated.Spec.EnableAddressSet = false
-		updated = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
 		framework.ExpectNoError(framework.WaitForAddressSetDeletion(ippoolName))
 	})
 })
