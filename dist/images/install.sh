@@ -5412,6 +5412,7 @@ nad_count=${nad_count:-0}
 if [[ "$nad_count" -gt 0 ]]; then
   echo "Detected $nad_count NetworkAttachmentDefinition(s), restarting Multus pods..."
   kubectl delete pod -n kube-system -l app=multus || true
+  kubectl wait --for=condition=Ready pod -n kube-system -l app=multus --timeout=60s
 fi
 
 if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
