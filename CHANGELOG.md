@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.14.15 (2025-11-17)
+
+ * [b31418851](https://github.com/kubeovn/kube-ovn/commit/b31418851ec95e89d1e39f2b37c960ec23be75aa) release v1.14.15
+ * [f039dcf97](https://github.com/kubeovn/kube-ovn/commit/f039dcf9774353d6ec5b33a557914289f7e453ac) cni-server: set cni config file permission to 600 (#5906)
+ * [2818ee850](https://github.com/kubeovn/kube-ovn/commit/2818ee8507d8c2ca768119afe21d3c1cbb47f4ef) fix go cache key and restore keys
+ * [896b19166](https://github.com/kubeovn/kube-ovn/commit/896b19166aee72835a58418ffc26fd6d9a211349) ci: bump actions/download-artifact to v6
+ * [15a9cbf20](https://github.com/kubeovn/kube-ovn/commit/15a9cbf2061f5bbdce616497422bbac160b652ab) ci: bump actions/upload-artifact to v5
+ * [5bf265580](https://github.com/kubeovn/kube-ovn/commit/5bf26558036c07b942d69d0e68f6841eb4dfdf45) ci: bump actions/setup-go to v6
+ * [0e226312d](https://github.com/kubeovn/kube-ovn/commit/0e226312d3622b7367b976ee14ab4f5ed00a2daa) ci: bump actions/checkout to v5
+ * [e8dbfd054](https://github.com/kubeovn/kube-ovn/commit/e8dbfd0546ff134223bd8af16979181a274505bb) fix: nat rule finalizer (#5806)
+ * [b41fc7dd0](https://github.com/kubeovn/kube-ovn/commit/b41fc7dd012961d7b351dabeefd14f8fa46c32e5) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.14.14 (2025-11-13)
 
  * [46eb7fe04](https://github.com/kubeovn/kube-ovn/commit/46eb7fe04e8ce87a210114b2777fe9342202609d) release v1.14.14
