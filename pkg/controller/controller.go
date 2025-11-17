@@ -59,6 +59,7 @@ const (
 	adminNetworkPolicyKey         = "anp"
 	baselineAdminNetworkPolicyKey = "banp"
 	ippoolKey                     = "ippool"
+	clusterNetworkPolicyKey       = "cnp"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -69,6 +70,8 @@ type Controller struct {
 	namedPort      *NamedPort
 	anpPrioNameMap map[int32]string
 	anpNamePrioMap map[string]int32
+	bnpPrioNameMap map[int32]string
+	bnpNamePrioMap map[string]int32
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
@@ -283,7 +286,7 @@ type Controller struct {
 	cnpsLister     anplisterv1alpha2.ClusterNetworkPolicyLister
 	cnpsSynced     cache.InformerSynced
 	addCnpQueue    workqueue.TypedRateLimitingInterface[string]
-	updateCnpQueue workqueue.TypedRateLimitingInterface[*AdminNetworkPolicyChangedDelta]
+	updateCnpQueue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta]
 	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1alpha2.ClusterNetworkPolicy]
 	cnpKeyMutex    keymutex.KeyMutex
 
@@ -669,7 +672,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.cnpsLister = cnpInformer.Lister()
 		controller.cnpsSynced = cnpInformer.Informer().HasSynced
 		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
-		controller.updateCnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
 		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
@@ -964,8 +967,11 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add cluster network policy event handler")
 		}
 
-		controller.anpPrioNameMap = make(map[int32]string, 100)
-		controller.anpNamePrioMap = make(map[string]int32, 100)
+		maxPriorityPerMap := util.CnpMaxPriority + 1
+		controller.anpPrioNameMap = make(map[int32]string, maxPriorityPerMap)
+		controller.anpNamePrioMap = make(map[string]int32, maxPriorityPerMap)
+		controller.bnpPrioNameMap = make(map[int32]string, maxPriorityPerMap)
+		controller.bnpNamePrioMap = make(map[string]int32, maxPriorityPerMap)
 	}
 
 	if config.EnableDNSNameResolver {

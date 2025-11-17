@@ -167,6 +167,8 @@ const (
 	DefaultDropPriority = "1000"
 
 	GwChassisMaxPriority = 100
+	CnpMaxRules          = 25
+	CnpMaxPriority       = 99
 	AnpMaxRules          = 100
 	AnpMaxPriority       = 99
 	AnpACLMaxPriority    = 30000
