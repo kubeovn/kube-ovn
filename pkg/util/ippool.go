@@ -157,13 +157,8 @@ func IPRangeToCIDRs(start, end net.IP) ([]string, error) {
 			maxDiff = bits - 1
 		}
 
-		size := zeros
-		if maxDiff < size {
-			size = maxDiff
-		}
-		if size > totalBits {
-			size = totalBits
-		}
+		size := min(zeros, maxDiff)
+		size = min(size, totalBits)
 		if size < 0 {
 			return nil, fmt.Errorf("calculated negative prefix size %d", size)
 		}
