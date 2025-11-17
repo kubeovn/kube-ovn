@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -70,6 +72,10 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	klog.Infof("handle add/update ippool %s", cachedIPPool.Name)
 
 	ippool := cachedIPPool.DeepCopy()
+	if err = c.handleAddIPPoolFinalizer(cachedIPPool); err != nil {
+		klog.Errorf("failed to add finalizer for ippool %s: %v", cachedIPPool.Name, err)
+		return err
+	}
 	ippool.Status.EnsureStandardConditions()
 	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
 		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
@@ -121,6 +127,11 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) error {
 		if ns.Annotations[util.IPPoolAnnotation] == ippool.Name {
 			c.enqueueAddNamespace(ns)
 		}
+	}
+
+	if err := c.handleDelIPPoolFinalizer(ippool); err != nil {
+		klog.Errorf("failed to remove finalizer for ippool %s: %v", ippool.Name, err)
+		return err
 	}
 
 	return nil
@@ -180,5 +191,65 @@ func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) syncIPPoolFinalizer(cl client.Client) error {
+	ippools := &kubeovnv1.IPPoolList{}
+	return migrateFinalizers(cl, ippools, func(i int) (client.Object, client.Object) {
+		if i < 0 || i >= len(ippools.Items) {
+			return nil, nil
+		}
+		return ippools.Items[i].DeepCopy(), ippools.Items[i].DeepCopy()
+	})
+}
+
+func (c *Controller) handleAddIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
+	if ippool == nil || !ippool.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	if controllerutil.ContainsFinalizer(ippool, util.KubeOVNControllerFinalizer) {
+		return nil
+	}
+
+	newIPPool := ippool.DeepCopy()
+	controllerutil.AddFinalizer(newIPPool, util.KubeOVNControllerFinalizer)
+	patch, err := util.GenerateMergePatchPayload(ippool, newIPPool)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add finalizer for ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDelIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
+	if ippool == nil || len(ippool.GetFinalizers()) == 0 {
+		return nil
+	}
+
+	newIPPool := ippool.DeepCopy()
+	controllerutil.RemoveFinalizer(newIPPool, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIPPool, util.KubeOVNControllerFinalizer)
+	patch, err := util.GenerateMergePatchPayload(ippool, newIPPool)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to remove finalizer from ippool %s: %v", ippool.Name, err)
+		return err
+	}
 	return nil
 }

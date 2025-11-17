@@ -31,9 +31,10 @@ type IPPool struct {
 }
 
 type IPPoolSpec struct {
-	Subnet     string   `json:"subnet,omitempty"`
-	Namespaces []string `json:"namespaces,omitempty"`
-	IPs        []string `json:"ips,omitempty"`
+	Subnet           string   `json:"subnet,omitempty"`
+	Namespaces       []string `json:"namespaces,omitempty"`
+	IPs              []string `json:"ips,omitempty"`
+	EnableAddressSet bool     `json:"enableAddressSet,omitempty"`
 }
 
 type IPPoolStatus struct {
