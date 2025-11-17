@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -17,8 +18,10 @@ var (
 func (c *Controller) resyncVpcNatConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
 	if err != nil {
-		err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
-		klog.Error(err)
+		if !k8serrors.IsNotFound(err) {
+			err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
+			klog.Error(err)
+		}
 		return
 	}
 
