@@ -50,8 +50,14 @@ func (c *Controller) enqueueDeleteIPPool(obj any) {
 func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	oldIPPool := oldObj.(*kubeovnv1.IPPool)
 	newIPPool := newObj.(*kubeovnv1.IPPool)
+	if oldIPPool.DeletionTimestamp.IsZero() && !newIPPool.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue delete ippool %s due to deletion timestamp", cache.MetaObjectToName(newIPPool).String())
+		c.deleteIPPoolQueue.Add(newIPPool.DeepCopy())
+		return
+	}
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
-		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) {
+		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) ||
+		oldIPPool.Spec.EnableAddressSet != newIPPool.Spec.EnableAddressSet {
 		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
@@ -76,6 +82,10 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	if err = c.handleAddIPPoolFinalizer(cachedIPPool); err != nil {
 		klog.Errorf("failed to add finalizer for ippool %s: %v", cachedIPPool.Name, err)
 		return err
+	}
+	if cachedIPPool.DeletionTimestamp != nil {
+		klog.Infof("ippool %s is being deleted, skip add/update handling", cachedIPPool.Name)
+		return nil
 	}
 	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
