@@ -16,6 +16,9 @@ import (
 // For example, ["10.0.0.1..10.0.0.5", "10.0.0.3..10.0.0.10"] will generate CIDRs covering both ranges
 // without merging them first, which may result in overlapping CIDRs in the output.
 //
+// OVN Limitation: OVN address sets only support either IPv4 or IPv6, not both. This function will return an error
+// if the input contains mixed IP families.
+//
 // Alternative: ipam.NewIPRangeListFrom(...).ToCIDRs() merges overlapping ranges before converting to CIDRs,
 // producing a more compact result. However, it cannot be used here due to circular dependency (ipam -> util).
 func ExpandIPPoolAddresses(entries []string) ([]string, error) {
@@ -24,10 +27,19 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 	}
 
 	seen := make(map[string]struct{})
+	hasIPv4 := false
+	hasIPv6 := false
+
 	var addUnique func(cidr string)
 	addUnique = func(cidr string) {
 		if _, exists := seen[cidr]; !exists {
 			seen[cidr] = struct{}{}
+			// Detect IP family
+			if strings.Contains(cidr, ":") {
+				hasIPv6 = true
+			} else {
+				hasIPv4 = true
+			}
 		}
 	}
 
@@ -59,6 +71,11 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 			}
 			addUnique(cidr)
 		}
+	}
+
+	// OVN address sets only support either IPv4 or IPv6, not both
+	if hasIPv4 && hasIPv6 {
+		return nil, fmt.Errorf("mixed IPv4 and IPv6 addresses are not supported in OVN address set")
 	}
 
 	// Convert set to sorted slice

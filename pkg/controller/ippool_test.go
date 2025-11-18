@@ -291,3 +291,58 @@ func TestNormalizeIP(t *testing.T) {
 		require.Equal(t, "::1", ip.String())
 	})
 }
+
+func TestExpandIPPoolAddressesIntegration(t *testing.T) {
+	t.Run("Mixed IPv4 and IPv6 - should fail", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"2001:db8::1",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixed IPv4 and IPv6 addresses are not supported")
+	})
+
+	t.Run("Pure IPv4 pool", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"192.168.1.0/30",
+			"10.0.0.1-10.0.0.5",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, addresses)
+		// Verify all are IPv4
+		for addr := range addresses {
+			require.NotContains(t, addr, ":")
+		}
+	})
+
+	t.Run("Pure IPv6 pool", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"2001:db8::/126",
+			"fd00::1-fd00::3",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, addresses)
+		// Verify all are IPv6
+		for addr := range addresses {
+			require.Contains(t, addr, ":")
+		}
+	})
+
+	t.Run("Mixed in range notation", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{
+			"10.0.0.1-10.0.0.5",
+			"fd00::1",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixed IPv4 and IPv6")
+	})
+
+	t.Run("Mixed in CIDR notation", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{
+			"192.168.1.0/24",
+			"2001:db8::/64",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixed IPv4 and IPv6")
+	})
+}
