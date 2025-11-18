@@ -352,9 +352,7 @@ func (c *Controller) InitIPAM() error {
 	subnetProviderMaps := make(map[string]string, len(subnets))
 	for _, subnet := range subnets {
 		klog.Infof("Init subnet %s", subnet.Name)
-
 		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
-
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
@@ -363,6 +361,7 @@ func (c *Controller) InitIPAM() error {
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			var mac *string
+			klog.Infof("Init U2O for subnet %s", subnet.Name)
 			if subnet.Status.U2OInterconnectionMAC != "" {
 				mac = ptr.To(subnet.Status.U2OInterconnectionMAC)
 			} else {
@@ -392,12 +391,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods: %v", err)
-		return err
-	}
-
+	klog.Infof("Init IPAM from StatefulSet or VM IP CR")
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list IPs: %v", err)
@@ -426,6 +420,12 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	klog.Infof("Init IPAM from pod")
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return err
+	}
 	for _, pod := range pods {
 		if pod.Spec.HostNetwork {
 			continue
@@ -466,6 +466,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	klog.Infof("Init IPAM from vip CR")
 	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vips: %v", err)
@@ -483,6 +484,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	klog.Infof("Init IPAM from iptables EIP CR")
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list EIPs: %v", err)
@@ -495,6 +497,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	klog.Infof("Init IPAM from ovn EIP CR")
 	oeips, err := c.ovnEipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ovn eips: %v", err)
@@ -506,6 +509,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	klog.Infof("Init IPAM from node annotation")
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
