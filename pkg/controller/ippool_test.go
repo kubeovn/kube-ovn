@@ -292,9 +292,10 @@ func TestNormalizeIP(t *testing.T) {
 	})
 }
 
-func TestExpandIPPoolAddressesIntegration(t *testing.T) {
+func TestExpandIPPoolAddressesForOVNIntegration(t *testing.T) {
+	// These tests use ExpandIPPoolAddressesForOVN which enforces OVN address set limitation
 	t.Run("Mixed IPv4 and IPv6 - should fail", func(t *testing.T) {
-		_, err := util.ExpandIPPoolAddresses([]string{
+		_, err := util.ExpandIPPoolAddressesForOVN([]string{
 			"10.0.0.1",
 			"2001:db8::1",
 		})
@@ -303,34 +304,34 @@ func TestExpandIPPoolAddressesIntegration(t *testing.T) {
 	})
 
 	t.Run("Pure IPv4 pool", func(t *testing.T) {
-		addresses, err := util.ExpandIPPoolAddresses([]string{
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
 			"192.168.1.0/30",
-			"10.0.0.1-10.0.0.5",
+			"10.0.0.1..10.0.0.5",
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, addresses)
 		// Verify all are IPv4
-		for addr := range addresses {
+		for _, addr := range addresses {
 			require.NotContains(t, addr, ":")
 		}
 	})
 
 	t.Run("Pure IPv6 pool", func(t *testing.T) {
-		addresses, err := util.ExpandIPPoolAddresses([]string{
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
 			"2001:db8::/126",
-			"fd00::1-fd00::3",
+			"fd00::1..fd00::3",
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, addresses)
 		// Verify all are IPv6
-		for addr := range addresses {
+		for _, addr := range addresses {
 			require.Contains(t, addr, ":")
 		}
 	})
 
 	t.Run("Mixed in range notation", func(t *testing.T) {
-		_, err := util.ExpandIPPoolAddresses([]string{
-			"10.0.0.1-10.0.0.5",
+		_, err := util.ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1..10.0.0.5",
 			"fd00::1",
 		})
 		require.Error(t, err)
@@ -338,11 +339,25 @@ func TestExpandIPPoolAddressesIntegration(t *testing.T) {
 	})
 
 	t.Run("Mixed in CIDR notation", func(t *testing.T) {
-		_, err := util.ExpandIPPoolAddresses([]string{
+		_, err := util.ExpandIPPoolAddressesForOVN([]string{
 			"192.168.1.0/24",
 			"2001:db8::/64",
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "mixed IPv4 and IPv6")
+	})
+}
+
+func TestExpandIPPoolAddressesGeneralUse(t *testing.T) {
+	// ExpandIPPoolAddresses (without ForOVN suffix) allows mixed IP families
+	t.Run("Mixed IPv4 and IPv6 - allowed for general use", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"2001:db8::1",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, addresses)
+		require.Contains(t, addresses, "10.0.0.1/32")
+		require.Contains(t, addresses, "2001:db8::1/128")
 	})
 }

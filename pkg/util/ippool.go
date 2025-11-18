@@ -16,12 +16,20 @@ import (
 // For example, ["10.0.0.1..10.0.0.5", "10.0.0.3..10.0.0.10"] will generate CIDRs covering both ranges
 // without merging them first, which may result in overlapping CIDRs in the output.
 //
-// OVN Limitation: OVN address sets only support either IPv4 or IPv6, not both. This function will return an error
-// if the input contains mixed IP families.
-//
 // Alternative: ipam.NewIPRangeListFrom(...).ToCIDRs() merges overlapping ranges before converting to CIDRs,
 // producing a more compact result. However, it cannot be used here due to circular dependency (ipam -> util).
 func ExpandIPPoolAddresses(entries []string) ([]string, error) {
+	return expandIPPoolAddressesInternal(entries, false)
+}
+
+// ExpandIPPoolAddressesForOVN expands IP pool entries for OVN address sets.
+// OVN Limitation: OVN address sets only support either IPv4 or IPv6, not both.
+// This function will return an error if the input contains mixed IP families.
+func ExpandIPPoolAddressesForOVN(entries []string) ([]string, error) {
+	return expandIPPoolAddressesInternal(entries, true)
+}
+
+func expandIPPoolAddressesInternal(entries []string, checkMixedIPFamily bool) ([]string, error) {
 	if len(entries) == 0 {
 		return nil, nil
 	}
@@ -34,11 +42,13 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 	addUnique = func(cidr string) {
 		if _, exists := seen[cidr]; !exists {
 			seen[cidr] = struct{}{}
-			// Detect IP family
-			if strings.Contains(cidr, ":") {
-				hasIPv6 = true
-			} else {
-				hasIPv4 = true
+			// Detect IP family if check is enabled
+			if checkMixedIPFamily {
+				if strings.Contains(cidr, ":") {
+					hasIPv6 = true
+				} else {
+					hasIPv4 = true
+				}
 			}
 		}
 	}
@@ -73,8 +83,8 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 		}
 	}
 
-	// OVN address sets only support either IPv4 or IPv6, not both
-	if hasIPv4 && hasIPv6 {
+	// Check for mixed IP families if enabled (OVN address set limitation)
+	if checkMixedIPFamily && hasIPv4 && hasIPv6 {
 		return nil, fmt.Errorf("mixed IPv4 and IPv6 addresses are not supported in OVN address set")
 	}
 
