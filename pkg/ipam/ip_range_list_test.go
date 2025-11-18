@@ -1305,9 +1305,13 @@ func TestIPRangeListToCIDRs(t *testing.T) {
 		result, err := rangeList.ToCIDRs()
 		require.NoError(t, err)
 		// Should be merged into 10.0.0.1..10.0.0.10
+		// Which converts to: 10.0.0.1/32, 10.0.0.2/31, 10.0.0.4/30, 10.0.0.8/31, 10.0.0.10/32
 		require.NotEmpty(t, result)
 		require.Contains(t, result, "10.0.0.1/32")
-		require.Contains(t, result, "10.0.0.8/30")
+		require.Contains(t, result, "10.0.0.2/31")
+		require.Contains(t, result, "10.0.0.4/30")
+		require.Contains(t, result, "10.0.0.8/31")
+		require.Contains(t, result, "10.0.0.10/32")
 	})
 
 	t.Run("Multiple separate ranges", func(t *testing.T) {
