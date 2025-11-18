@@ -79,8 +79,8 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	klog.Infof("handle add/update ippool %s", cachedIPPool.Name)
 
 	ippool := cachedIPPool.DeepCopy()
-	if err = c.handleAddIPPoolFinalizer(cachedIPPool); err != nil {
-		klog.Errorf("failed to add finalizer for ippool %s: %v", cachedIPPool.Name, err)
+	if err = c.handleAddIPPoolFinalizer(ippool); err != nil {
+		klog.Errorf("failed to add finalizer for ippool %s: %v", ippool.Name, err)
 		return err
 	}
 	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
@@ -96,15 +96,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		return err
 	}
 
-	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us := c.ipam.IPPoolStatistics(ippool.Spec.Subnet, ippool.Name)
-	ippool.Status.V4AvailableIPs = v4a
-	ippool.Status.V4UsingIPs = v4u
-	ippool.Status.V6AvailableIPs = v6a
-	ippool.Status.V6UsingIPs = v6u
-	ippool.Status.V4AvailableIPRange = v4as
-	ippool.Status.V4UsingIPRange = v4us
-	ippool.Status.V6AvailableIPRange = v6as
-	ippool.Status.V6UsingIPRange = v6us
+	c.updateIPPoolStatistics(ippool)
 
 	if err = c.patchIPPoolStatusCondition(ippool, "UpdateIPAMSucceeded", ""); err != nil {
 		klog.Error(err)
@@ -136,9 +128,6 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) error {
 	}
 
 	for _, ns := range namespaces {
-		if len(ns.Annotations) == 0 {
-			continue
-		}
 		if ns.Annotations[util.IPPoolAnnotation] == ippool.Name {
 			c.enqueueAddNamespace(ns)
 		}
@@ -166,15 +155,7 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 	}
 
 	ippool := cachedIPPool.DeepCopy()
-	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us := c.ipam.IPPoolStatistics(ippool.Spec.Subnet, ippool.Name)
-	ippool.Status.V4AvailableIPs = v4a
-	ippool.Status.V4UsingIPs = v4u
-	ippool.Status.V6AvailableIPs = v6a
-	ippool.Status.V6UsingIPs = v6u
-	ippool.Status.V4AvailableIPRange = v4as
-	ippool.Status.V4UsingIPRange = v4us
-	ippool.Status.V6AvailableIPRange = v6as
-	ippool.Status.V6UsingIPRange = v6us
+	c.updateIPPoolStatistics(ippool)
 	if reflect.DeepEqual(ippool.Status, cachedIPPool.Status) {
 		return nil
 	}
@@ -267,6 +248,18 @@ func (c *Controller) handleDelIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Controller) updateIPPoolStatistics(ippool *kubeovnv1.IPPool) {
+	v4a, v4u, v6a, v6u, v4as, v4us, v6as, v6us := c.ipam.IPPoolStatistics(ippool.Spec.Subnet, ippool.Name)
+	ippool.Status.V4AvailableIPs = v4a
+	ippool.Status.V4UsingIPs = v4u
+	ippool.Status.V6AvailableIPs = v6a
+	ippool.Status.V6UsingIPs = v6u
+	ippool.Status.V4AvailableIPRange = v4as
+	ippool.Status.V4UsingIPRange = v4us
+	ippool.Status.V6AvailableIPRange = v6as
+	ippool.Status.V6UsingIPRange = v6us
 }
 
 func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {

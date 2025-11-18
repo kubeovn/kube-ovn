@@ -16,7 +16,12 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 	}
 
 	seen := make(map[string]struct{})
-	addresses := make([]string, 0, len(entries))
+	var addUnique func(cidr string)
+	addUnique = func(cidr string) {
+		if _, exists := seen[cidr]; !exists {
+			seen[cidr] = struct{}{}
+		}
+	}
 
 	for _, raw := range entries {
 		value := strings.TrimSpace(raw)
@@ -26,62 +31,86 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 
 		switch {
 		case strings.Contains(value, ".."):
-			parts := strings.Split(value, "..")
-			if len(parts) != 2 {
-				return nil, fmt.Errorf("invalid IP range %q", value)
-			}
-
-			start, err := NormalizeIP(parts[0])
+			cidrs, err := expandIPRange(value)
 			if err != nil {
-				return nil, fmt.Errorf("invalid range start %q: %w", parts[0], err)
-			}
-			end, err := NormalizeIP(parts[1])
-			if err != nil {
-				return nil, fmt.Errorf("invalid range end %q: %w", parts[1], err)
-			}
-			if (start.To4() != nil) != (end.To4() != nil) {
-				return nil, fmt.Errorf("range %q mixes IPv4 and IPv6 addresses", value)
-			}
-			if compareIP(start, end) > 0 {
-				return nil, fmt.Errorf("range %q start is greater than end", value)
-			}
-
-			cidrs, err := IPRangeToCIDRs(start, end)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert IP range %q to CIDRs: %w", value, err)
+				return nil, err
 			}
 			for _, cidr := range cidrs {
-				if _, exists := seen[cidr]; exists {
-					continue
-				}
-				seen[cidr] = struct{}{}
-				addresses = append(addresses, cidr)
+				addUnique(cidr)
 			}
 		case strings.Contains(value, "/"):
-			_, network, err := net.ParseCIDR(value)
+			cidr, err := normalizeCIDR(value)
 			if err != nil {
-				return nil, fmt.Errorf("invalid CIDR %q: %w", value, err)
+				return nil, err
 			}
-			canonical := network.String()
-			if _, exists := seen[canonical]; !exists {
-				seen[canonical] = struct{}{}
-				addresses = append(addresses, canonical)
-			}
+			addUnique(cidr)
 		default:
-			ip, err := NormalizeIP(value)
+			cidr, err := ipToCIDR(value)
 			if err != nil {
-				return nil, fmt.Errorf("invalid IP address %q: %w", value, err)
+				return nil, err
 			}
-			canonical := ip.String()
-			if _, exists := seen[canonical]; !exists {
-				seen[canonical] = struct{}{}
-				addresses = append(addresses, canonical)
-			}
+			addUnique(cidr)
 		}
 	}
 
+	// Convert set to sorted slice
+	addresses := make([]string, 0, len(seen))
+	for cidr := range seen {
+		addresses = append(addresses, cidr)
+	}
 	sort.Strings(addresses)
 	return addresses, nil
+}
+
+// expandIPRange expands an IP range (e.g., "10.0.0.1..10.0.0.10") into CIDRs.
+func expandIPRange(value string) ([]string, error) {
+	parts := strings.Split(value, "..")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid IP range %q", value)
+	}
+
+	start, err := NormalizeIP(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid range start %q: %w", parts[0], err)
+	}
+	end, err := NormalizeIP(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid range end %q: %w", parts[1], err)
+	}
+	if (start.To4() != nil) != (end.To4() != nil) {
+		return nil, fmt.Errorf("range %q mixes IPv4 and IPv6 addresses", value)
+	}
+	if compareIP(start, end) > 0 {
+		return nil, fmt.Errorf("range %q start is greater than end", value)
+	}
+
+	cidrs, err := IPRangeToCIDRs(start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert IP range %q to CIDRs: %w", value, err)
+	}
+	return cidrs, nil
+}
+
+// normalizeCIDR normalizes a CIDR string to canonical form.
+func normalizeCIDR(value string) (string, error) {
+	_, network, err := net.ParseCIDR(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid CIDR %q: %w", value, err)
+	}
+	return network.String(), nil
+}
+
+// ipToCIDR converts a single IP to CIDR notation (/32 for IPv4, /128 for IPv6).
+func ipToCIDR(value string) (string, error) {
+	ip, err := NormalizeIP(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid IP address %q: %w", value, err)
+	}
+	bits := 32
+	if ip.To4() == nil {
+		bits = 128
+	}
+	return fmt.Sprintf("%s/%d", ip.String(), bits), nil
 }
 
 // CanonicalizeIPPoolEntries returns a set of canonical pool entries for comparison purposes.
