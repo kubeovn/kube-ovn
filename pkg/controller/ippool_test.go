@@ -18,9 +18,9 @@ func TestExpandIPPoolAddresses(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"10.0.0.1",
+		"10.0.0.1/32",
 		"192.168.1.0/24",
-		"2001:db8::1",
+		"2001:db8::1/128",
 	}, addresses)
 }
 
@@ -70,7 +70,8 @@ func TestExpandIPPoolAddressesEdgeCases(t *testing.T) {
 			"10.0.0.1",
 		})
 		require.NoError(t, err)
-		require.Equal(t, []string{"10.0.0.1/32"}, addresses)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "10.0.0.1/32", addresses[0])
 	})
 
 	t.Run("CIDR normalization", func(t *testing.T) {
@@ -363,6 +364,74 @@ func TestExpandIPPoolAddressesForOVNIntegration(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "mixed IPv4 and IPv6")
+	})
+
+	t.Run("Range expansion with simplification", func(t *testing.T) {
+		// Range that expands to /32 should be simplified
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1..10.0.0.1", // Single IP range
+		})
+		require.NoError(t, err)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "10.0.0.1", addresses[0])
+		require.NotContains(t, addresses[0], "/32")
+	})
+
+	t.Run("Range with multiple CIDRs - some simplified", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1..10.0.0.5",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, addresses)
+		// Should contain simplified /32 and non-simplified /31
+		require.Contains(t, addresses, "10.0.0.1")    // Simplified from /32
+		require.Contains(t, addresses, "10.0.0.2/31") // Not /32, keep as-is
+		require.Contains(t, addresses, "10.0.0.4/31") // Not /32, keep as-is
+	})
+
+	t.Run("Empty input", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{})
+		require.NoError(t, err)
+		require.Empty(t, addresses)
+	})
+
+	t.Run("Only whitespace entries", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{"", "  ", "\t"})
+		require.NoError(t, err)
+		require.Empty(t, addresses)
+	})
+
+	t.Run("IPv6 single IP simplified", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{"2001:db8::1"})
+		require.NoError(t, err)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "2001:db8::1", addresses[0])
+		require.NotContains(t, addresses[0], "/128")
+	})
+
+	t.Run("IPv6 range with /128 simplified", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{"fd00::1..fd00::1"})
+		require.NoError(t, err)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "fd00::1", addresses[0])
+	})
+
+	t.Run("Duplicate IPs deduplicated and simplified", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1",
+			"10.0.0.1",
+			" 10.0.0.1 ",
+		})
+		require.NoError(t, err)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "10.0.0.1", addresses[0])
+	})
+
+	t.Run("CIDR normalization preserved", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{"192.168.1.5/24"})
+		require.NoError(t, err)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "192.168.1.0/24", addresses[0])
 	})
 }
 

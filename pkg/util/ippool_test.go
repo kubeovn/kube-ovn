@@ -3,6 +3,7 @@ package util
 import (
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -256,6 +257,29 @@ func TestExpandIPPoolAddressesMixedAllowed(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, result)
+	})
+
+	t.Run("Complex mixed scenario", func(t *testing.T) {
+		result, err := ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"192.168.0.0/16",
+			"2001:db8::1..2001:db8::10",
+			"fd00::/64",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		// Should contain both IPv4 and IPv6
+		hasIPv4 := false
+		hasIPv6 := false
+		for _, addr := range result {
+			if strings.Contains(addr, ":") {
+				hasIPv6 = true
+			} else {
+				hasIPv4 = true
+			}
+		}
+		require.True(t, hasIPv4, "Should contain IPv4 addresses")
+		require.True(t, hasIPv6, "Should contain IPv6 addresses")
 	})
 }
 
@@ -600,6 +624,26 @@ func TestSimplifyOVNAddress(t *testing.T) {
 	t.Run("IPv6 /127", func(t *testing.T) {
 		result := simplifyOVNAddress("2001:db8::/127")
 		require.Equal(t, "2001:db8::/127", result)
+	})
+
+	t.Run("Edge case - /30", func(t *testing.T) {
+		result := simplifyOVNAddress("10.0.0.0/30")
+		require.Equal(t, "10.0.0.0/30", result)
+	})
+
+	t.Run("Edge case - /126", func(t *testing.T) {
+		result := simplifyOVNAddress("2001:db8::/126")
+		require.Equal(t, "2001:db8::/126", result)
+	})
+
+	t.Run("Empty string", func(t *testing.T) {
+		result := simplifyOVNAddress("")
+		require.Equal(t, "", result)
+	})
+
+	t.Run("No slash at all", func(t *testing.T) {
+		result := simplifyOVNAddress("10.0.0.1")
+		require.Equal(t, "10.0.0.1", result)
 	})
 }
 
