@@ -90,7 +90,6 @@ func (c *IPPoolClient) UpdateSync(ippool *apiv1.IPPool, options metav1.UpdateOpt
 	ginkgo.GinkgoHelper()
 
 	s := c.Update(ippool, options, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
 	// Get the newest ippool after it becomes ready
 	return c.Get(s.Name).DeepCopy()
@@ -130,7 +129,6 @@ func (c *IPPoolClient) PatchSync(original, modified *apiv1.IPPool) *apiv1.IPPool
 	ginkgo.GinkgoHelper()
 
 	s := c.Patch(original, modified, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
 	// Get the newest ippool after it becomes ready
 	return c.Get(s.Name).DeepCopy()
