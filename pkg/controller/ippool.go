@@ -83,6 +83,10 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Errorf("failed to add finalizer for ippool %s: %v", ippool.Name, err)
 		return err
 	}
+	if !ippool.DeletionTimestamp.IsZero() {
+		klog.Infof("ippool %s is being deleted, skip add/update handling", ippool.Name)
+		return nil
+	}
 	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
 		return err
