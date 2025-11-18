@@ -58,3 +58,236 @@ func TestIPPoolAddressSetName(t *testing.T) {
 	require.Equal(t, "foo.bar", util.IPPoolAddressSetName("foo-bar"))
 	require.Equal(t, "123pool", util.IPPoolAddressSetName("123pool"))
 }
+
+// Additional comprehensive tests for IPPool utilities
+
+func TestExpandIPPoolAddressesEdgeCases(t *testing.T) {
+	t.Run("Empty and whitespace entries", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"",
+			"   ",
+			"\t",
+			"10.0.0.1",
+		})
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.1/32"}, addresses)
+	})
+
+	t.Run("CIDR normalization", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"192.168.1.5/24", // non-canonical, should normalize to 192.168.1.0/24
+		})
+		require.NoError(t, err)
+		require.Equal(t, []string{"192.168.1.0/24"}, addresses)
+	})
+
+	t.Run("Large range", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"10.0.0.0..10.0.0.255",
+		})
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.0/24"}, addresses)
+	})
+
+	t.Run("Complex mixed input", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"10.0.0.5..10.0.0.10",
+			"192.168.1.0/24",
+			"2001:db8::1",
+			"2001:db8::100..2001:db8::103",
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(addresses), 5) // Should have multiple CIDRs
+		require.Contains(t, addresses, "10.0.0.1/32")
+		require.Contains(t, addresses, "192.168.1.0/24")
+		require.Contains(t, addresses, "2001:db8::1/128")
+	})
+}
+
+func TestExpandIPPoolAddressesRangeEdgeCases(t *testing.T) {
+	t.Run("Unaligned IPv4 range", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{"10.0.0.1..10.0.0.5"})
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"10.0.0.1/32",
+			"10.0.0.2/31",
+			"10.0.0.4/31",
+		}, addresses)
+	})
+
+	t.Run("Power of 2 range", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{"10.0.0.0..10.0.0.7"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.0/29"}, addresses)
+	})
+
+	t.Run("Single IP range", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{"10.0.0.1..10.0.0.1"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.1/32"}, addresses)
+	})
+
+	t.Run("IPv6 unaligned range", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddresses([]string{"2001:db8::1..2001:db8::4"})
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"2001:db8::1/128",
+			"2001:db8::2/127",
+			"2001:db8::4/128",
+		}, addresses)
+	})
+}
+
+func TestExpandIPPoolAddressesErrorConditions(t *testing.T) {
+	t.Run("Completely invalid input", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"totally-invalid"})
+		require.Error(t, err)
+	})
+
+	t.Run("Invalid range - missing end", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"10.0.0.1.."})
+		require.Error(t, err)
+	})
+
+	t.Run("Invalid range - missing start", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"..10.0.0.1"})
+		require.Error(t, err)
+	})
+
+	t.Run("Invalid CIDR - out of range prefix", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"10.0.0.0/33"})
+		require.Error(t, err)
+	})
+
+	t.Run("Invalid CIDR - IPv6 out of range", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"2001:db8::/129"})
+		require.Error(t, err)
+	})
+
+	t.Run("Mixed IP families in range", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"10.0.0.1..2001:db8::1"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixes IPv4 and IPv6")
+	})
+
+	t.Run("Range with end less than start", func(t *testing.T) {
+		_, err := util.ExpandIPPoolAddresses([]string{"10.0.0.100..10.0.0.1"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "start is greater than end")
+	})
+}
+
+func TestCanonicalizeIPPoolEntries(t *testing.T) {
+	t.Run("Basic functionality", func(t *testing.T) {
+		result, err := util.CanonicalizeIPPoolEntries([]string{
+			"10.0.0.1",
+			"192.168.1.0/24",
+		})
+		require.NoError(t, err)
+		require.True(t, result["10.0.0.1/32"])
+		require.True(t, result["192.168.1.0/24"])
+		require.False(t, result["10.0.0.2/32"])
+	})
+
+	t.Run("Empty input", func(t *testing.T) {
+		result, err := util.CanonicalizeIPPoolEntries([]string{})
+		require.NoError(t, err)
+		require.Empty(t, result)
+	})
+
+	t.Run("Duplicate detection", func(t *testing.T) {
+		result, err := util.CanonicalizeIPPoolEntries([]string{
+			"10.0.0.1",
+			"10.0.0.1",
+		})
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.True(t, result["10.0.0.1/32"])
+	})
+}
+
+func TestNormalizeAddressSetEntries(t *testing.T) {
+	t.Run("Standard OVN format", func(t *testing.T) {
+		result := util.NormalizeAddressSetEntries(`"10.0.0.1/32" "10.0.0.2/32"`)
+		require.Len(t, result, 2)
+		require.True(t, result["10.0.0.1/32"])
+		require.True(t, result["10.0.0.2/32"])
+	})
+
+	t.Run("Extra whitespace", func(t *testing.T) {
+		result := util.NormalizeAddressSetEntries(`  "10.0.0.1/32"   "10.0.0.2/32"  `)
+		require.Len(t, result, 2)
+		require.True(t, result["10.0.0.1/32"])
+	})
+
+	t.Run("Empty input", func(t *testing.T) {
+		result := util.NormalizeAddressSetEntries("")
+		require.Empty(t, result)
+	})
+
+	t.Run("No quotes", func(t *testing.T) {
+		result := util.NormalizeAddressSetEntries("10.0.0.1/32 10.0.0.2/32")
+		require.Len(t, result, 2)
+		require.True(t, result["10.0.0.1/32"])
+		require.True(t, result["10.0.0.2/32"])
+	})
+
+	t.Run("Mixed formats", func(t *testing.T) {
+		result := util.NormalizeAddressSetEntries(`"192.168.1.0/24" "2001:db8::1/128"`)
+		require.Len(t, result, 2)
+		require.True(t, result["192.168.1.0/24"])
+		require.True(t, result["2001:db8::1/128"])
+	})
+}
+
+func TestNormalizeIP(t *testing.T) {
+	t.Run("Standard IPv4", func(t *testing.T) {
+		ip, err := util.NormalizeIP("192.168.1.1")
+		require.NoError(t, err)
+		require.Equal(t, "192.168.1.1", ip.String())
+		require.NotNil(t, ip.To4())
+	})
+
+	t.Run("Standard IPv6", func(t *testing.T) {
+		ip, err := util.NormalizeIP("2001:db8::1")
+		require.NoError(t, err)
+		require.Equal(t, "2001:db8::1", ip.String())
+		require.Nil(t, ip.To4())
+	})
+
+	t.Run("IPv6 full form", func(t *testing.T) {
+		ip, err := util.NormalizeIP("2001:0db8:0000:0000:0000:0000:0000:0001")
+		require.NoError(t, err)
+		require.Equal(t, "2001:db8::1", ip.String())
+	})
+
+	t.Run("Whitespace handling", func(t *testing.T) {
+		ip, err := util.NormalizeIP("  10.0.0.1  ")
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.1", ip.String())
+	})
+
+	t.Run("Invalid IP", func(t *testing.T) {
+		_, err := util.NormalizeIP("999.999.999.999")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid IP address")
+	})
+
+	t.Run("Not an IP", func(t *testing.T) {
+		_, err := util.NormalizeIP("hostname")
+		require.Error(t, err)
+	})
+
+	t.Run("IPv4 loopback", func(t *testing.T) {
+		ip, err := util.NormalizeIP("127.0.0.1")
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", ip.String())
+	})
+
+	t.Run("IPv6 loopback", func(t *testing.T) {
+		ip, err := util.NormalizeIP("::1")
+		require.NoError(t, err)
+		require.Equal(t, "::1", ip.String())
+	})
+}
