@@ -1,23 +1,25 @@
 package controller
 
 import (
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
-	"testing"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestValidateCnpConfig(t *testing.T) {
 	t.Parallel()
 
 	var tooBigIngressList []v1alpha2.ClusterNetworkPolicyIngressRule
-	for i := 0; i < util.CnpMaxRules+1; i++ {
+	for range util.CnpMaxRules + 1 {
 		tooBigIngressList = append(tooBigIngressList, v1alpha2.ClusterNetworkPolicyIngressRule{Name: "test"})
 	}
 
 	var tooBigEgressList []v1alpha2.ClusterNetworkPolicyEgressRule
-	for i := 0; i < util.CnpMaxRules+1; i++ {
+	for range util.CnpMaxRules + 1 {
 		tooBigEgressList = append(tooBigEgressList, v1alpha2.ClusterNetworkPolicyEgressRule{Name: "test"})
 	}
 
@@ -110,6 +112,14 @@ func TestValidateCnpConfig(t *testing.T) {
 					Ingress:  tooBigIngressList[:util.CnpMaxRules], // We have one too much, remove it
 					Egress:   tooBigEgressList[:util.CnpMaxRules],  // We have one too much, remove it
 				},
+			},
+			error: false,
+		},
+		{
+			name:        "priority error",
+			priorityMap: map[int32]string{10: "test"},
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{Priority: 1000},
 			},
 			error: false,
 		},

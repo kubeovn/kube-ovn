@@ -3,21 +3,24 @@ package controller
 import (
 	"errors"
 	"fmt"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"net"
+	"reflect"
+	"strings"
+	"unicode"
+
 	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"net"
-	"reflect"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+
 	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
-	"strings"
-	"unicode"
 )
 
 // ClusterNetworkPolicyChangedDelta is used to determine what changed within a ClusterNetworkPolicy
@@ -817,7 +820,7 @@ func validateCnpConfig(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNe
 func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
 	// Sanitize the function input
 	if priorityNameMap == nil || cnp == nil {
-		err := fmt.Errorf("must provide a priorityMap and a CNP")
+		err := errors.New("must provide a priorityMap and a CNP")
 		klog.Error(err)
 		return err
 	}
