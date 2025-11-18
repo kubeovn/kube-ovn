@@ -5,8 +5,9 @@ import (
 	"math/big"
 )
 
+// +kubebuilder:validation:Type=string
 type BigInt struct {
-	big.Int
+	big.Int `json:"-"`
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {

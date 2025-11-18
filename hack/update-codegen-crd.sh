@@ -1,12 +1,13 @@
 #!/bin/bash
+# usage: bash -x ./hack/update-codegen-crd.sh
 set -eux
-# usage: bash ./hack/update-codegen-crd.sh
+cd "$(dirname "$0")/.."
 
 # set GOPROXY you like
 export GOPROXY=${GOPROXY:-"https://goproxy.cn"}
 # use controller-gen to generate CRDs
 # ensure controller-gen is installed
-CONTROLLER_TOOLS_VERSION=${CONTROLLER_TOOLS_VERSION:-"v0.17.3"}
+CONTROLLER_TOOLS_VERSION=${CONTROLLER_TOOLS_VERSION:-"v0.19.0"}
 go install sigs.k8s.io/controller-tools/cmd/controller-gen@"${CONTROLLER_TOOLS_VERSION}"
 go mod tidy
 
