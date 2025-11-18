@@ -21,6 +21,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -232,13 +233,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, kotypes.NewBigIntFromFloat(util.AddressCount(ipnet)-1))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, kotypes.NewBigIntFromFloat(util.AddressCount(ipnet)-1))
 		}
 
 		// TODO: check routes on ovn0
@@ -278,14 +279,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
 			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv4) - 1
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, expected)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, kotypes.NewBigIntFromFloat(expected))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
 			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, expected)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, kotypes.NewBigIntFromFloat(expected))
 		}
 	})
 

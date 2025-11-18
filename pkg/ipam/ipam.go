@@ -11,7 +11,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -457,7 +457,7 @@ func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
 }
 
 func (ipam *IPAM) IPPoolStatistics(subnet, ippool string) (
-	v4Available, v4Using, v6Available, v6Using internal.BigInt,
+	v4Available, v4Using, v6Available, v6Using types.BigInt,
 	v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange string,
 ) {
 	ipam.mutex.RLock()

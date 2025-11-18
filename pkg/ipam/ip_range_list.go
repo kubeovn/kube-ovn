@@ -9,7 +9,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 type IPRangeList struct {
@@ -87,8 +87,8 @@ func (r *IPRangeList) Len() int {
 	return len(r.ranges)
 }
 
-func (r *IPRangeList) Count() internal.BigInt {
-	var count internal.BigInt
+func (r *IPRangeList) Count() types.BigInt {
+	var count types.BigInt
 	for _, v := range r.ranges {
 		count = count.Add(v.Count())
 	}

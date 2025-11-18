@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -37,19 +37,18 @@ type IPPoolSpec struct {
 }
 
 type IPPoolStatus struct {
-	// TODO:// make Subnet and IP Pool AvailableIPs and UsingIPs type consistent
 	// +kubebuilder:validation:Type=string
-	V4AvailableIPs     internal.BigInt `json:"v4AvailableIPs"`
-	V4AvailableIPRange string          `json:"v4AvailableIPRange"`
+	V4AvailableIPs     kotypes.BigInt `json:"v4AvailableIPs"`
+	V4AvailableIPRange string         `json:"v4AvailableIPRange"`
 	// +kubebuilder:validation:Type=string
-	V4UsingIPs     internal.BigInt `json:"v4UsingIPs"`
-	V4UsingIPRange string          `json:"v4UsingIPRange"`
+	V4UsingIPs     kotypes.BigInt `json:"v4UsingIPs"`
+	V4UsingIPRange string         `json:"v4UsingIPRange"`
 	// +kubebuilder:validation:Type=string
-	V6AvailableIPs     internal.BigInt `json:"v6AvailableIPs"`
-	V6AvailableIPRange string          `json:"v6AvailableIPRange"`
+	V6AvailableIPs     kotypes.BigInt `json:"v6AvailableIPs"`
+	V6AvailableIPRange string         `json:"v6AvailableIPRange"`
 	// +kubebuilder:validation:Type=string
-	V6UsingIPs     internal.BigInt `json:"v6UsingIPs"`
-	V6UsingIPRange string          `json:"v6UsingIPRange"`
+	V6UsingIPs     kotypes.BigInt `json:"v6UsingIPs"`
+	V6UsingIPRange string         `json:"v6UsingIPRange"`
 
 	// Conditions represents the latest state of the object
 	// +optional
