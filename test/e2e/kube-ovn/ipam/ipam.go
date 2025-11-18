@@ -726,7 +726,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Creating ippool " + ippoolName + " with EnableAddressSet enabled")
 		poolIPs := framework.RandomIPPool(cidr, 4)
 		framework.ExpectTrue(len(poolIPs) >= 2, "expected at least two IPs in pool")
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, []string{namespaceName})
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
 		ippool.Spec.EnableAddressSet = true
 		ippool = ippoolClient.CreateSync(ippool)
 
