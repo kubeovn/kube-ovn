@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -48,8 +49,7 @@ func expandIPPoolAddressesInternal(entries []string, checkMixedIPFamily bool) ([
 	hasIPv4 := false
 	hasIPv6 := false
 
-	var addUnique func(cidr string)
-	addUnique = func(cidr string) {
+	addUnique := func(cidr string) {
 		if _, exists := seen[cidr]; !exists {
 			seen[cidr] = struct{}{}
 			// Detect IP family if check is enabled
@@ -95,7 +95,7 @@ func expandIPPoolAddressesInternal(entries []string, checkMixedIPFamily bool) ([
 
 	// Check for mixed IP families if enabled (OVN address set limitation)
 	if checkMixedIPFamily && hasIPv4 && hasIPv6 {
-		return nil, fmt.Errorf("mixed IPv4 and IPv6 addresses are not supported in OVN address set")
+		return nil, errors.New("mixed IPv4 and IPv6 addresses are not supported in OVN address set")
 	}
 
 	// Convert set to sorted slice
