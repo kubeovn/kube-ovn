@@ -10,6 +10,14 @@ import (
 )
 
 // ExpandIPPoolAddresses expands a list of pool entries (IPs, ranges, CIDRs) into canonical CIDR strings without duplicates.
+// This function provides the same parsing logic as ipam.NewIPRangeListFrom but returns CIDR strings suitable for OVN address sets.
+//
+// IMPORTANT: This function does NOT merge overlapping IP ranges. Each input entry is processed independently.
+// For example, ["10.0.0.1..10.0.0.5", "10.0.0.3..10.0.0.10"] will generate CIDRs covering both ranges
+// without merging them first, which may result in overlapping CIDRs in the output.
+//
+// Alternative: ipam.NewIPRangeListFrom(...).ToCIDRs() merges overlapping ranges before converting to CIDRs,
+// producing a more compact result. However, it cannot be used here due to circular dependency (ipam -> util).
 func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 	if len(entries) == 0 {
 		return nil, nil
