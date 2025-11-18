@@ -157,9 +157,11 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "start is greater than end")
 	})
+}
 
+func TestExpandIPPoolAddressesForOVN(t *testing.T) {
 	t.Run("Mixed IPv4 and IPv6 addresses - OVN limitation", func(t *testing.T) {
-		_, err := ExpandIPPoolAddresses([]string{
+		_, err := ExpandIPPoolAddressesForOVN([]string{
 			"10.0.0.1",
 			"2001:db8::1",
 		})
@@ -168,7 +170,7 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 	})
 
 	t.Run("Mixed IP families in multiple entries", func(t *testing.T) {
-		_, err := ExpandIPPoolAddresses([]string{
+		_, err := ExpandIPPoolAddressesForOVN([]string{
 			"192.168.1.0/24",
 			"10.0.0.1..10.0.0.10",
 			"2001:db8::/64",
@@ -178,7 +180,7 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 	})
 
 	t.Run("Pure IPv4 only - should succeed", func(t *testing.T) {
-		result, err := ExpandIPPoolAddresses([]string{
+		result, err := ExpandIPPoolAddressesForOVN([]string{
 			"10.0.0.1",
 			"192.168.1.0/24",
 			"172.16.0.1..172.16.0.10",
@@ -192,7 +194,7 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 	})
 
 	t.Run("Pure IPv6 only - should succeed", func(t *testing.T) {
-		result, err := ExpandIPPoolAddresses([]string{
+		result, err := ExpandIPPoolAddressesForOVN([]string{
 			"2001:db8::1",
 			"2001:db8::/64",
 			"fd00::1..fd00::10",
@@ -203,6 +205,37 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 		for _, cidr := range result {
 			require.Contains(t, cidr, ":")
 		}
+	})
+
+	t.Run("Mixed in single range", func(t *testing.T) {
+		// This is caught earlier in expandIPRange
+		_, err := ExpandIPPoolAddressesForOVN([]string{"10.0.0.1..2001:db8::1"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixes IPv4 and IPv6")
+	})
+}
+
+func TestExpandIPPoolAddressesMixedAllowed(t *testing.T) {
+	// When not using OVN address sets, mixed IP families should be allowed
+	t.Run("Mixed IPv4 and IPv6 - allowed without OVN", func(t *testing.T) {
+		result, err := ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"2001:db8::1",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		require.Contains(t, result, "10.0.0.1/32")
+		require.Contains(t, result, "2001:db8::1/128")
+	})
+
+	t.Run("Mixed families in multiple entries", func(t *testing.T) {
+		result, err := ExpandIPPoolAddresses([]string{
+			"192.168.1.0/24",
+			"10.0.0.1..10.0.0.3",
+			"2001:db8::/126",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
 	})
 }
 

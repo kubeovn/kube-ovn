@@ -274,7 +274,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return nil
 	}
 
-	addresses, err := util.ExpandIPPoolAddresses(ippool.Spec.IPs)
+	addresses, err := util.ExpandIPPoolAddressesForOVN(ippool.Spec.IPs)
 	if err != nil {
 		err = fmt.Errorf("failed to build address set entries for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)
