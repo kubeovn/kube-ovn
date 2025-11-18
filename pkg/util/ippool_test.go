@@ -157,6 +157,53 @@ func TestExpandIPPoolAddressesErrors(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "start is greater than end")
 	})
+
+	t.Run("Mixed IPv4 and IPv6 addresses - OVN limitation", func(t *testing.T) {
+		_, err := ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"2001:db8::1",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixed IPv4 and IPv6 addresses are not supported")
+	})
+
+	t.Run("Mixed IP families in multiple entries", func(t *testing.T) {
+		_, err := ExpandIPPoolAddresses([]string{
+			"192.168.1.0/24",
+			"10.0.0.1..10.0.0.10",
+			"2001:db8::/64",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mixed IPv4 and IPv6")
+	})
+
+	t.Run("Pure IPv4 only - should succeed", func(t *testing.T) {
+		result, err := ExpandIPPoolAddresses([]string{
+			"10.0.0.1",
+			"192.168.1.0/24",
+			"172.16.0.1..172.16.0.10",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		// All should be IPv4
+		for _, cidr := range result {
+			require.NotContains(t, cidr, ":")
+		}
+	})
+
+	t.Run("Pure IPv6 only - should succeed", func(t *testing.T) {
+		result, err := ExpandIPPoolAddresses([]string{
+			"2001:db8::1",
+			"2001:db8::/64",
+			"fd00::1..fd00::10",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		// All should be IPv6
+		for _, cidr := range result {
+			require.Contains(t, cidr, ":")
+		}
+	})
 }
 
 func TestCanonicalizeIPPoolEntries(t *testing.T) {
