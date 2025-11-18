@@ -187,10 +187,11 @@ func TestExpandIPPoolAddressesForOVN(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, result)
-		// All should be IPv4
-		for _, cidr := range result {
-			require.NotContains(t, cidr, ":")
-		}
+		// Single IP should not have /32 suffix
+		require.Contains(t, result, "10.0.0.1")
+		require.NotContains(t, result, "10.0.0.1/32")
+		// CIDR should be preserved
+		require.Contains(t, result, "192.168.1.0/24")
 	})
 
 	t.Run("Pure IPv6 only - should succeed", func(t *testing.T) {
@@ -201,9 +202,28 @@ func TestExpandIPPoolAddressesForOVN(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, result)
-		// All should be IPv6
-		for _, cidr := range result {
-			require.Contains(t, cidr, ":")
+		// Single IP should not have /128 suffix
+		require.Contains(t, result, "2001:db8::1")
+		require.NotContains(t, result, "2001:db8::1/128")
+		// CIDR should be preserved
+		require.Contains(t, result, "2001:db8::/64")
+	})
+
+	t.Run("Single IPs simplified", func(t *testing.T) {
+		result, err := ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1",
+			"10.0.0.2",
+			"192.168.1.1",
+		})
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+		// All should be simple IPs without /32
+		require.Contains(t, result, "10.0.0.1")
+		require.Contains(t, result, "10.0.0.2")
+		require.Contains(t, result, "192.168.1.1")
+		// None should have /32
+		for _, addr := range result {
+			require.NotContains(t, addr, "/32")
 		}
 	})
 
@@ -538,6 +558,48 @@ func TestCountTrailingZeros(t *testing.T) {
 		value := big.NewInt(256) // binary 100000000
 		zeros := countTrailingZeros(value, 32)
 		require.Equal(t, 8, zeros)
+	})
+}
+
+func TestSimplifyOVNAddress(t *testing.T) {
+	t.Run("IPv4 single IP with /32", func(t *testing.T) {
+		result := simplifyOVNAddress("10.0.0.1/32")
+		require.Equal(t, "10.0.0.1", result)
+	})
+
+	t.Run("IPv6 single IP with /128", func(t *testing.T) {
+		result := simplifyOVNAddress("2001:db8::1/128")
+		require.Equal(t, "2001:db8::1", result)
+	})
+
+	t.Run("IPv4 CIDR not /32", func(t *testing.T) {
+		result := simplifyOVNAddress("192.168.1.0/24")
+		require.Equal(t, "192.168.1.0/24", result)
+	})
+
+	t.Run("IPv6 CIDR not /128", func(t *testing.T) {
+		result := simplifyOVNAddress("2001:db8::/64")
+		require.Equal(t, "2001:db8::/64", result)
+	})
+
+	t.Run("Already simplified IPv4", func(t *testing.T) {
+		result := simplifyOVNAddress("10.0.0.1")
+		require.Equal(t, "10.0.0.1", result)
+	})
+
+	t.Run("Already simplified IPv6", func(t *testing.T) {
+		result := simplifyOVNAddress("fd00::1")
+		require.Equal(t, "fd00::1", result)
+	})
+
+	t.Run("IPv4 /31", func(t *testing.T) {
+		result := simplifyOVNAddress("10.0.0.0/31")
+		require.Equal(t, "10.0.0.0/31", result)
+	})
+
+	t.Run("IPv6 /127", func(t *testing.T) {
+		result := simplifyOVNAddress("2001:db8::/127")
+		require.Equal(t, "2001:db8::/127", result)
 	})
 }
 

@@ -25,8 +25,18 @@ func ExpandIPPoolAddresses(entries []string) ([]string, error) {
 // ExpandIPPoolAddressesForOVN expands IP pool entries for OVN address sets.
 // OVN Limitation: OVN address sets only support either IPv4 or IPv6, not both.
 // This function will return an error if the input contains mixed IP families.
+// For simplicity, single IP addresses are returned without /32 or /128 suffix.
 func ExpandIPPoolAddressesForOVN(entries []string) ([]string, error) {
-	return expandIPPoolAddressesInternal(entries, true)
+	addresses, err := expandIPPoolAddressesInternal(entries, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Simplify single IPs by removing /32 and /128 suffixes
+	for i, addr := range addresses {
+		addresses[i] = simplifyOVNAddress(addr)
+	}
+	return addresses, nil
 }
 
 func expandIPPoolAddressesInternal(entries []string, checkMixedIPFamily bool) ([]string, error) {
@@ -146,6 +156,18 @@ func ipToCIDR(value string) (string, error) {
 		bits = 128
 	}
 	return fmt.Sprintf("%s/%d", ip.String(), bits), nil
+}
+
+// simplifyOVNAddress removes /32 and /128 suffixes for single IP addresses in OVN address sets.
+// OVN accepts both "10.0.0.1" and "10.0.0.1/32", but the former is simpler.
+func simplifyOVNAddress(cidr string) string {
+	if strings.HasSuffix(cidr, "/32") {
+		return strings.TrimSuffix(cidr, "/32")
+	}
+	if strings.HasSuffix(cidr, "/128") {
+		return strings.TrimSuffix(cidr, "/128")
+	}
+	return cidr
 }
 
 // CanonicalizeIPPoolEntries returns a set of canonical pool entries for comparison purposes.

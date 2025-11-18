@@ -314,6 +314,8 @@ func TestExpandIPPoolAddressesForOVNIntegration(t *testing.T) {
 		for _, addr := range addresses {
 			require.NotContains(t, addr, ":")
 		}
+		// CIDR should be preserved
+		require.Contains(t, addresses, "192.168.1.0/30")
 	})
 
 	t.Run("Pure IPv6 pool", func(t *testing.T) {
@@ -327,6 +329,22 @@ func TestExpandIPPoolAddressesForOVNIntegration(t *testing.T) {
 		for _, addr := range addresses {
 			require.Contains(t, addr, ":")
 		}
+		// CIDR should be preserved
+		require.Contains(t, addresses, "2001:db8::/126")
+	})
+
+	t.Run("Single IPs are simplified", func(t *testing.T) {
+		addresses, err := util.ExpandIPPoolAddressesForOVN([]string{
+			"10.0.0.1",
+			"10.0.0.2",
+		})
+		require.NoError(t, err)
+		require.Len(t, addresses, 2)
+		// Should not have /32 suffix
+		require.Contains(t, addresses, "10.0.0.1")
+		require.Contains(t, addresses, "10.0.0.2")
+		require.NotContains(t, addresses, "10.0.0.1/32")
+		require.NotContains(t, addresses, "10.0.0.2/32")
 	})
 
 	t.Run("Mixed in range notation", func(t *testing.T) {
