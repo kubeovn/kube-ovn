@@ -176,13 +176,6 @@ func (suite *OvnClientTestSuite) testOvsClearPodBandwidth() {
 	require.Error(t, err)
 }
 
-func (suite *OvnClientTestSuite) testOvsCleanLostInterface() {
-	t := suite.T()
-	t.Parallel()
-
-	CleanLostInterface()
-}
-
 func (suite *OvnClientTestSuite) testOvsCleanDuplicatePort() {
 	t := suite.T()
 	t.Parallel()
@@ -221,15 +214,6 @@ func (suite *OvnClientTestSuite) testConfigInterfaceMirror() {
 	err = ConfigInterfaceMirror(false, "close", "iface-id")
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
-}
-
-func (suite *OvnClientTestSuite) testGetResidualInternalPorts() {
-	t := suite.T()
-	t.Parallel()
-
-	ret := GetResidualInternalPorts()
-	// ovs-vsctl cmd is not available in the test environment
-	require.Empty(t, ret)
 }
 
 func (suite *OvnClientTestSuite) testClearPortQosBinding() {

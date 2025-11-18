@@ -7,12 +7,14 @@ import (
 	"math/rand/v2"
 	"net"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -287,6 +289,71 @@ var _ = framework.Describe("[group:subnet]", func() {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
 			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
 			framework.ExpectEqual(subnet.Status.V6AvailableIPs, kotypes.NewBigIntFromFloat(expected))
+		}
+	})
+
+	framework.ConformanceIt("should allow pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
+		ginkgo.By("Creating a small subnet with very limited IP range")
+		var smallCIDR string
+		var excludeIPs []string
+		var usableIPs []string
+
+		switch f.ClusterIPFamily {
+		case "ipv4":
+			smallCIDR = "192.168.200.0/30"
+			excludeIPs = []string{"192.168.200.1", "192.168.200.2"}
+			usableIPs = []string{"192.168.200.2"}
+		case "ipv6":
+			smallCIDR = "fd00:192:168:200::/126"
+			excludeIPs = []string{"fd00:192:168:200::1", "fd00:192:168:200::2"}
+			usableIPs = []string{"fd00:192:168:200::2"}
+		case "dual":
+			smallCIDR = "192.168.200.0/30,fd00:192:168:200::/126"
+			excludeIPs = []string{"192.168.200.1", "192.168.200.2", "fd00:192:168:200::1", "fd00:192:168:200::2"}
+			usableIPs = []string{"192.168.200.2", "fd00:192:168:200::2"}
+		}
+
+		subnetName = "small-subnet-" + framework.RandomSuffix()
+		ginkgo.By(fmt.Sprintf("Creating small subnet %s with exclude IPs %v", subnetName, excludeIPs))
+		smallSubnet := framework.MakeSubnet(subnetName, "", smallCIDR, "", "", "", excludeIPs, nil, []string{namespaceName})
+		smallSubnet = subnetClient.CreateSync(smallSubnet)
+
+		ginkgo.By("Verifying available IPs is 0 after excluding the only usable IPs")
+		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs + smallSubnet.Status.V6AvailableIPs)
+
+		// Test cases: both fixed IP and IP pool annotations
+		testCases := []struct {
+			name            string
+			annotationKey   string
+			annotationValue string
+		}{
+			{
+				name:            "fix ip",
+				annotationKey:   util.IPAddressAnnotation,
+				annotationValue: strings.Join(usableIPs, ","),
+			},
+			{
+				name:            "fix ip pool",
+				annotationKey:   util.IPPoolAnnotation,
+				annotationValue: strings.Join(usableIPs, ","),
+			},
+		}
+
+		for _, tc := range testCases {
+			ginkgo.By(fmt.Sprintf("Creating pod with %s annotation that matches excludeIPs", tc.name))
+			podName = fmt.Sprintf("pod-%s-%s", strings.ReplaceAll(tc.name, " ", "-"), framework.RandomSuffix())
+			annotations := map[string]string{
+				tc.annotationKey: tc.annotationValue,
+			}
+			cmd := []string{"sleep", "infinity"}
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+			pod = podClient.CreateSync(pod)
+
+			ginkgo.By(fmt.Sprintf("Verifying pod gets the %s IPs despite availableIPs being 0", tc.name))
+			framework.ExpectHaveKeyWithValue(pod.Annotations, tc.annotationKey, tc.annotationValue)
+
+			ginkgo.By(fmt.Sprintf("Cleaning up test pod for %s", tc.name))
+			podClient.DeleteSync(podName)
 		}
 	})
 
@@ -1368,6 +1435,71 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, int(subnet.Spec.Mtu))
+	})
+
+	framework.ConformanceIt("should fail to create pod with static MAC that conflicts with gateway MAC", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Getting subnet to find gateway MAC")
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectNotNil(subnet)
+
+		// Get the router port name to find gateway MAC
+		routerPortName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnetName)
+		if subnet.Spec.Vpc == "" {
+			routerPortName = fmt.Sprintf("ovn-cluster-%s", subnetName)
+		}
+
+		ginkgo.By("Getting gateway MAC from router port " + routerPortName)
+
+		output, err := exec.Command("kubectl", "ko", "nbctl", "--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", routerPortName)).CombinedOutput()
+		framework.Logf("Command output: %s", string(output))
+
+		if err != nil {
+			ginkgo.Skip("Could not get gateway MAC, skipping test")
+		}
+
+		// Extract MAC address from the output string
+		macRegex := regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}`)
+		gatewayMAC := macRegex.FindString(string(output))
+
+		if gatewayMAC == "" {
+			ginkgo.Skip("Could not find valid gateway MAC in output, skipping test")
+		}
+
+		framework.Logf("Gateway MAC: %s", gatewayMAC)
+
+		ginkgo.By("Creating pod with static MAC that conflicts with gateway MAC")
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+			util.MacAddressAnnotation:    gatewayMAC, // Use the same MAC as gateway
+		}
+
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+
+		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
+		_ = podClient.Create(pod)
+
+		time.Sleep(2 * time.Second)
+
+		events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
+		})
+		framework.ExpectNoError(err)
+
+		// Check if there are any events with conflict information
+		hasConflictError := false
+		for _, event := range events.Items {
+			if event.Type == "Warning" && strings.Contains(event.Message, "AddressConflict") {
+				hasConflictError = true
+				framework.Logf("Found conflict event: %s", event.Message)
+				break
+			}
+		}
+
+		framework.ExpectTrue(hasConflictError, "Should have conflict error events")
 	})
 })
 

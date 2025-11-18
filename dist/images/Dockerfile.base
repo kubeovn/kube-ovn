@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 # renovate: datasource=golang-version depName=go
-ARG GO_VERSION=1.24.5
+ARG GO_VERSION=1.25.4
 
 FROM ubuntu:24.04 AS openssl-builder
 
@@ -48,28 +48,28 @@ ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
-ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
-ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
-ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
+ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
+ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
-ADD patches/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch $SRC_DIR
-ADD patches/44229317de74d1e97f7499b371a86c015be6b7a6.patch $SRC_DIR
-ADD patches/786756870f12ac69a5d7bc498693574c6591c5e9.patch $SRC_DIR
-ADD patches/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch $SRC_DIR
-ADD patches/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch $SRC_DIR
-ADD patches/b3af07690e7b2328c02318b1bd812c5665c0632b.patch $SRC_DIR
-ADD patches/4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018.patch $SRC_DIR
+ADD patches/e76880e792af56b2a3836098105079f5f8f1ff26.patch $SRC_DIR
+ADD patches/78cade01874292e2c101c39b975290ef6c812a50.patch $SRC_DIR
+ADD patches/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch $SRC_DIR
+ADD patches/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch $SRC_DIR
+ADD patches/a297b840c2c9f118c7ce6133077087b5999f12dd.patch $SRC_DIR
+ADD patches/e5916eb53abc3b7d28c407c3c47566c46116090a.patch $SRC_DIR
+ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
 ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
-ADD patches/b5e2975eb65f37315545300254fc0f58a9df52b1.patch $SRC_DIR
+ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
-ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
+ADD patches/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch $SRC_DIR
+ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt install -y git curl
 
 RUN cd /usr/src/ && \
-    git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.5 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
     git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
@@ -94,38 +94,38 @@ RUN cd /usr/src/ && \
     # update ovs-sandbox for docker run
     git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
 
-RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # change hash type from dp_hash to hash with field src_ip
-    git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
-    git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
+    git apply $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
     # fix reaching resubmit limit in underlay
-    git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
+    git apply $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
-    # northd: add nb option version_compatibility
-    git apply $SRC_DIR/53d961492036f1d41d9d1b04bab628375a9c6eb5.patch && \
     # add support for conditionally skipping conntrack
-    git apply $SRC_DIR/44229317de74d1e97f7499b371a86c015be6b7a6.patch && \
+    git apply $SRC_DIR/78cade01874292e2c101c39b975290ef6c812a50.patch && \
     # northd: skip conntrack when access node local dns ip
-    git apply $SRC_DIR/786756870f12ac69a5d7bc498693574c6591c5e9.patch && \
+    git apply $SRC_DIR/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch && \
     # lflow: do not send direct traffic between lports to conntrack
-    git apply $SRC_DIR/505dc82f54d4ce54e0378fd3bac1052ee644ac59.patch && \
+    git apply $SRC_DIR/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch && \
     # direct output to lsp for dnat packets in logical switch ingress pipelines
-    git apply $SRC_DIR/f4b1f5fbf0f5aff68299efaa2d0577c90cb2568e.patch && \
-    # fix lr-lb dnat with multiple distributed gateway ports
-    git apply $SRC_DIR/b3af07690e7b2328c02318b1bd812c5665c0632b.patch && \
-    # northd: skip arp/nd request for lrp addresses from localnet ports
-    git apply $SRC_DIR/4a8e051f2fde25ea558e0c4ccb9f5d2f1ea3c018.patch && \
+    git apply $SRC_DIR/a297b840c2c9f118c7ce6133077087b5999f12dd.patch && \
     # ovn-controller: make activation strategy work for single chassis
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
-    # support dedicated BFD LRP
-    git apply $SRC_DIR/b5e2975eb65f37315545300254fc0f58a9df52b1.patch && \
-    # skip node local dns ip conntrack when set acl
+	# skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-    # select local backend first
-    git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch
+	# select local backend first
+    git apply $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch && \
+    # fix lr-lb dnat with multiple distributed gateway ports
+    git apply $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
+    # support dedicated BFD LRP
+    git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \	
+    # northd: add nb option version_compatibility
+    git apply $SRC_DIR/e76880e792af56b2a3836098105079f5f8f1ff26.patch && \
+    # northd: skip arp/nd request for lrp addresses from localnet ports
+    git apply $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch && \
+    # add skip conntrack ipcidrs support
+    git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -179,11 +179,11 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
-ARG CNI_PLUGINS_VERSION=v1.7.1
+ARG CNI_PLUGINS_VERSION=v1.8.0
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.32.7
+ARG KUBECTL_VERSION=v1.34.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
-ARG GOBGP_VERSION=3.37.0
+ARG GOBGP_VERSION=4.0.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq

@@ -98,7 +98,22 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIP(obj any) {
-	ipObj := obj.(*kubeovnv1.IP)
+	var ipObj *kubeovnv1.IP
+	switch t := obj.(type) {
+	case *kubeovnv1.IP:
+		ipObj = t
+	case cache.DeletedFinalStateUnknown:
+		ip, ok := t.Obj.(*kubeovnv1.IP)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		ipObj = ip
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
 		return
 	}
@@ -117,16 +132,23 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
 	if !ip.DeletionTimestamp.IsZero() {
 		klog.Infof("handle add process stop for deleting ip %s", ip.Name)
 		return nil
 	}
+	if len(ip.Finalizers) != 0 {
+		// finalizer already added, no need to handle it again
+		return nil
+	}
+
+	klog.V(3).Infof("handle add reserved ip %s", ip.Name)
+
 	if ip.Spec.Subnet == "" {
 		err := errors.New("subnet parameter cannot be empty")
 		klog.Error(err)
 		return err
 	}
+
 	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
 		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 		klog.Error(err)
@@ -177,16 +199,12 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	ip = ip.DeepCopy()
+	if ip.Labels == nil {
+		ip.Labels = map[string]string{}
+	}
 	if ip.Labels[util.IPReservedLabel] != "false" {
-		cachedIP, err := c.ipsLister.Get(key)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Error(err)
-			return err
-		}
-		ip = cachedIP.DeepCopy()
 		ip.Labels[util.IPReservedLabel] = "true"
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, err := json.Marshal(ip.Labels)
@@ -278,28 +296,6 @@ func (c *Controller) syncIPFinalizer(cl client.Client) error {
 		}
 		return ips.Items[i].DeepCopy(), ips.Items[i].DeepCopy()
 	})
-}
-
-func (c *Controller) handleAddIPFinalizer(cachedIP *kubeovnv1.IP) error {
-	if !cachedIP.DeletionTimestamp.IsZero() || len(cachedIP.GetFinalizers()) != 0 {
-		return nil
-	}
-	newIP := cachedIP.DeepCopy()
-	controllerutil.AddFinalizer(newIP, util.KubeOVNControllerFinalizer)
-	patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
-	if err != nil {
-		klog.Errorf("failed to generate patch payload for ip %s, %v", cachedIP.Name, err)
-		return err
-	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), cachedIP.Name,
-		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to add finalizer for ip %s, %v", cachedIP.Name, err)
-		return err
-	}
-	return nil
 }
 
 func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
@@ -415,7 +411,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	}
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCR == nil {
-		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
+		ipCR = &kubeovnv1.IP{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ipName,
 				Labels: map[string]string{
@@ -424,6 +420,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 					subnetName:           "",
 					util.IPReservedLabel: "false", // ip create with pod or node, ip not reserved
 				},
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
 			},
 			Spec: kubeovnv1.IPSpec{
 				PodName:       key,
@@ -439,8 +436,8 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				AttachSubnets: []string{},
 				PodType:       podType,
 			},
-		}, metav1.CreateOptions{})
-		if err != nil {
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -472,17 +469,13 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
 			return nil
 		}
+		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
-		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{})
-		if err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update ip CR %s: %w", ipCRName, err)
 			klog.Error(err)
 			return err
 		}
-	}
-	if err := c.handleAddIPFinalizer(ipCR); err != nil {
-		klog.Errorf("failed to handle add ip finalizer %v", err)
-		return err
 	}
 	return nil
 }

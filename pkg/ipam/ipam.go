@@ -252,7 +252,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				if name == "" {
 					continue
 				}
-				p.V4Free = ips.Intersect(p.V4IPs)
+				p.V4Using = p.V4Using.Intersect(ips)
+				p.V4Free = ips.Intersect(p.V4IPs).Separate(p.V4Using)
 				p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
 				p.V4Available = p.V4Free.Clone()
 				p.V4Released = NewEmptyIPRangeList()
@@ -298,7 +299,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				if name == "" {
 					continue
 				}
-				p.V6Free = ips.Intersect(p.V6IPs)
+				p.V6Using = p.V6Using.Intersect(ips)
+				p.V6Free = ips.Intersect(p.V6IPs).Separate(p.V6Using)
 				p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
 				p.V6Available = p.V6Free.Clone()
 				p.V6Released = NewEmptyIPRangeList()
@@ -465,7 +467,21 @@ func (ipam *IPAM) IPPoolStatistics(subnet, ippool string) (
 
 	s := ipam.Subnets[subnet]
 	if s == nil {
-		return
+		return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 	}
 	return s.IPPoolStatistics(ippool)
+}
+
+func (ipam *IPAM) RecordGatewayMAC(subnetName, gatewayMAC string) error {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return fmt.Errorf("subnet %s not found in ipam", subnetName)
+	}
+
+	subnet.GatewayMAC = gatewayMAC
+	klog.Infof("recorded gateway MAC %s for subnet %s", gatewayMAC, subnetName)
+	return nil
 }

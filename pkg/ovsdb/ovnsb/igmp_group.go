@@ -13,4 +13,5 @@ type IGMPGroup struct {
 	ChassisName string   `ovsdb:"chassis_name"`
 	Datapath    *string  `ovsdb:"datapath"`
 	Ports       []string `ovsdb:"ports"`
+	Protocol    string   `ovsdb:"protocol"`
 }

@@ -71,7 +71,22 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj any) {
-	node := obj.(*v1.Node)
+	var node *v1.Node
+	switch t := obj.(type) {
+	case *v1.Node:
+		node = t
+	case cache.DeletedFinalStateUnknown:
+		n, ok := t.Obj.(*v1.Node)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		node = n
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue delete node %s", key)
 	c.deletingNodeObjMap.Store(key, node)
@@ -689,7 +704,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 	for ; ; i++ {
 		err = f(node)
 		if err == nil {
-			return
+			return err
 		}
 		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
 		if i >= (attempts - 1) {

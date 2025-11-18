@@ -1,8 +1,10 @@
 {{/*
-Get IP-addresses of master nodes
+Get IP-addresses of master nodes. If no nodes are returned, we assume this is
+a dry-run/template call and return nothing.
 */}}
 {{- define "kubeovn.nodeIPs" -}}
 {{- $nodes := lookup "v1" "Node" "" "" -}}
+{{- if $nodes -}}
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
   {{- $label := splitList "=" $.Values.MASTER_NODES_LABEL }}
@@ -20,10 +22,11 @@ Get IP-addresses of master nodes
     {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- if eq (len $ips) 0 -}}
+{{- if and (eq (len $ips) 0) (not $.Values.MASTER_NODES) -}}
   {{- fail (printf "No nodes found with label '%s'. Please check your MASTER_NODES_LABEL configuration or ensure master nodes are properly labeled." $.Values.MASTER_NODES_LABEL) -}}
 {{- end -}}
 {{ join "," $ips }}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -66,7 +69,9 @@ Number of master nodes
     {{- $imageVersion := (index $ds.spec.template.spec.containers 0).image | splitList ":" | last | trimPrefix "v" -}}
     {{- $versionRegex := `^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)` -}}
     {{- if and (ne $newChartVersion $chartVersion) (regexMatch $versionRegex $imageVersion) -}}
-      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.13.0" -}}
+      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.15.0" -}}
+        25.03
+      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.13.0" -}}
         24.03
       {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.12.0" -}}
         22.12

@@ -188,6 +188,9 @@ func (c *Controller) enqueueAddPod(obj any) {
 		return
 	}
 
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
+
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(p)
@@ -238,10 +241,28 @@ func (c *Controller) enqueueAddPod(obj any) {
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
-	p := obj.(*v1.Pod)
+	var p *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		p = t
+	case cache.DeletedFinalStateUnknown:
+		pod, ok := t.Obj.(*v1.Pod)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		p = pod
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	if p.Spec.HostNetwork {
 		return
 	}
+
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
 	if c.config.EnableNP {
 		c.namedPort.DeleteNamedPortByPod(p)
@@ -251,8 +272,8 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(obj.(*v1.Pod).Namespace)
-		c.updateAnpsByLabelsMatch(podNs.Labels, obj.(*v1.Pod).Labels)
+		podNs, _ := c.namespacesLister.Get(p.Namespace)
+		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -264,6 +285,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+
+	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
+	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
 
 	if oldPod.Annotations[util.AAPsAnnotation] != "" || newPod.Annotations[util.AAPsAnnotation] != "" {
 		oldAAPs := strings.Split(oldPod.Annotations[util.AAPsAnnotation], ",")
@@ -414,13 +438,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
-	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	attachmentNets, err := c.getPodAttachmentNet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	attachmentNets, err := c.getPodAttachmentNet(pod)
+	podNets := attachmentNets
+	// When Kube-OVN is run as non-primary CNI, we do not add default network configuration to pod.
+	// We only add network attachment defined by the user to pod.
+	if c.config.EnableNonPrimaryCNI {
+		return podNets, nil
+	}
+
+	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -432,7 +463,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return attachmentNets, nil
 	}
 
-	podNets := attachmentNets
 	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
 		podNets = append(attachmentNets, &kubeovnNet{
 			Type:         providerTypeOriginal,
@@ -503,8 +533,10 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
+	if isVpcNatGw {
 		if needRestartNatGatewayPod(pod) {
+			klog.Infof("restarting vpc nat gateway %s", vpcGwName)
 			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
 		}
 	}
@@ -632,6 +664,19 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				}
 			}
 
+			if isVMPod {
+				if _, ok := pod.Labels["kubevirt.io/migrationJobUID"]; ok {
+					if sourceNode, ok := pod.Labels["kubevirt.io/nodeName"]; ok && sourceNode != pod.Spec.NodeName {
+						klog.Infof("VM pod %s/%s is migrating from %s to %s",
+							pod.Namespace, pod.Name, sourceNode, pod.Spec.NodeName)
+						if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, pod.Spec.NodeName); err != nil {
+							klog.Errorf("failed to set migrate options for VM pod lsp %s: %v", portName, err)
+							return nil, err
+						}
+					}
+				}
+			}
+
 			if securityGroupAnnotation != "" || oldSgList != nil {
 				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 				newSgList := strings.Split(securityGroups, ",")
@@ -679,9 +724,13 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
-	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
+	if isVpcNatGw {
+		klog.Infof("init vpc nat gateway pod %s/%s with name %s", namespace, name, vpcGwName)
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
+
 	return pod, nil
 }
 
@@ -1632,18 +1681,18 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 
 		switch subnet.Spec.Protocol {
 		case kubeovnv1.ProtocolDual:
-			if subnet.Status.V6AvailableIPs.EqualInt64(0) {
+			if subnet.Status.V6AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 			fallthrough
 		case kubeovnv1.ProtocolIPv4:
-			if subnet.Status.V4AvailableIPs.EqualInt64(0) {
+			if subnet.Status.V4AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv4 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 		case kubeovnv1.ProtocolIPv6:
-			if subnet.Status.V6AvailableIPs.EqualInt64(0) {
+			if subnet.Status.V6AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
@@ -1651,6 +1700,36 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return subnet, nil
 	}
 	return nil, ipam.ErrNoAvailable
+}
+
+func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
+	if ipAddr := pod.Annotations[util.IPAddressAnnotation]; ipAddr != "" {
+		return c.checkIPsInExcludeList(ipAddr, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	}
+	if ipPool := pod.Annotations[util.IPPoolAnnotation]; ipPool != "" {
+		return c.checkIPsInExcludeList(ipPool, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	}
+
+	return false
+}
+
+func (c *Controller) checkIPsInExcludeList(ips string, excludeIPs []string, cidr string) bool {
+	expandedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, cidr)
+
+	for ipAddr := range strings.SplitSeq(strings.TrimSpace(ips), ",") {
+		ipAddr = strings.TrimSpace(ipAddr)
+		if ipAddr == "" {
+			continue
+		}
+
+		for _, excludeIP := range expandedExcludeIPs {
+			if util.ContainsIPs(excludeIP, ipAddr) {
+				klog.V(3).Infof("IP %s is found in exclude IP %s, allowing allocation", ipAddr, excludeIP)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type providerType int
@@ -1706,6 +1785,10 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		if err != nil {
 			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
 			return nil, err
+		}
+
+		if network.Spec.Config == "" {
+			continue
 		}
 
 		netCfg, err := loadNetConf([]byte(network.Spec.Config))
@@ -1828,6 +1911,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
@@ -1839,7 +1923,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
 			return "", "", "", podNet.Subnet, err
 		}
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		if c.config.EnableKeepVMIP {
 			checkVMPod, _ = isVMPod(pod)
 		}
@@ -1862,15 +1945,34 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		macPointer = ptr.To("")
 	}
 
+	var err error
+	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
-	if ippoolStr == "" {
+	subnetStr := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+	if ippoolStr == "" && podNet.IsDefault {
+		// no ippool specified by pod annotation, use namespace ippools or ippools in the subnet specified by pod annotation
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
 			return "", "", "", podNet.Subnet, err
 		}
+		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		subnetNames := make([]string, 0, len(nsNets))
+		for _, net := range nsNets {
+			if net.Subnet.Name == subnetStr {
+				// allocate from ippools in the subnet specified by pod annotation
+				podNet.Subnet = net.Subnet
+				subnetNames = []string{net.Subnet.Name}
+				break
+			}
+			subnetNames = append(subnetNames, net.Subnet.Name)
+		}
 
-		if len(ns.Annotations) != 0 {
+		if subnetStr == "" || slices.Contains(subnetNames, subnetStr) {
+			// no subnet specified by pod annotation or specified subnet is in namespace subnets
 			if ipPoolList, ok := ns.Annotations[util.IPPoolAnnotation]; ok {
 				for ipPoolName := range strings.SplitSeq(ipPoolList, ",") {
 					ippool, err := c.ippoolLister.Get(ipPoolName)
@@ -1895,10 +1997,20 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 						}
 					}
 
-					if ippool.Spec.Subnet == podNet.Subnet.Name {
-						ippoolStr = ippool.Name
+					for _, net := range nsNets {
+						if net.Subnet.Name == ippool.Spec.Subnet && slices.Contains(subnetNames, net.Subnet.Name) {
+							ippoolStr = ippool.Name
+							podNet.Subnet = net.Subnet
+							break
+						}
+					}
+					if ippoolStr != "" {
 						break
 					}
+				}
+				if ippoolStr == "" {
+					klog.Infof("no available ippool in subnet(s) %s for pod %s/%s", strings.Join(subnetNames, ","), pod.Namespace, pod.Name)
+					return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 				}
 			}
 		}
@@ -1909,8 +2021,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ippoolStr == "" {
 		var skippedAddrs []string
 		for {
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				klog.Error(err)
@@ -1934,17 +2044,18 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-
 	// The static ip can be assigned from any subnet after ns supports multi subnets
-	nsNets, _ := c.getNsAvailableSubnets(pod, podNet)
+	if nsNets == nil {
+		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
+	}
+
 	var v4IP, v6IP, mac string
-	var err error
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
-
+	if ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]; ipStr != "" {
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
@@ -1971,9 +2082,13 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 		if len(ipPool) == 1 && (!strings.ContainsRune(ipPool[0], ',') && net.ParseIP(ipPool[0]) == nil) {
 			var skippedAddrs []string
+			pool, err := c.ippoolLister.Get(ipPool[0])
+			if err != nil {
+				klog.Errorf("failed to get ippool %s: %v", ipPool[0], err)
+				return "", "", "", podNet.Subnet, err
+			}
 			for {
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, pool.Spec.Subnet, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
 				if err != nil {
 					klog.Error(err)
 					return "", "", "", podNet.Subnet, err
@@ -2223,9 +2338,8 @@ func (c *Controller) getNameByPod(pod *v1.Pod) string {
 
 // When subnet's v4availableIPs is 0 but still there's available ip in exclude-ips, the static ip in exclude-ips can be allocated normal.
 func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*kubeovnNet, error) {
-	var result []*kubeovnNet
 	// keep the annotation subnet of the pod in first position
-	result = append(result, podNet)
+	result := []*kubeovnNet{podNet}
 
 	ns, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
@@ -2233,7 +2347,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 		return nil, err
 	}
 	if ns.Annotations == nil {
-		return nil, nil
+		return []*kubeovnNet{}, nil
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
@@ -2351,4 +2465,39 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 	annotations[key] = string(buf)
 
 	return nil
+}
+
+// Check if pod is a VPC NAT gateway using pod annotations
+func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
+	if pod == nil {
+		return false, ""
+	}
+	if pod.Annotations == nil {
+		return false, ""
+	}
+	// default provider
+	providerName := util.OvnProvider
+	// In non-primary CNI mode, we get the providers from the pod annotations
+	// We get the vpc nat gw name using the provider name
+	if c.config.EnableNonPrimaryCNI {
+		// get providers
+		providers, err := c.getPodProviders(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod %s/%s providers, %v", pod.Namespace, pod.Name, err)
+			return false, ""
+		}
+		if len(providers) > 0 {
+			// use the first provider
+			providerName = providers[0]
+		}
+	}
+	vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]
+	if isVpcNatGw {
+		if vpcGwName == "" {
+			klog.Errorf("pod %s is vpc nat gateway but name is empty", pod.Name)
+			return false, ""
+		}
+		klog.Infof("pod %s is vpc nat gateway %s", pod.Name, vpcGwName)
+	}
+	return isVpcNatGw, vpcGwName
 }

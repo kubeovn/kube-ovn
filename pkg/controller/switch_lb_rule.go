@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -62,8 +61,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 		info   = NewSlrInfo(oldSlr)
 	)
 
-	if oldSlr.ResourceVersion == newSlr.ResourceVersion ||
-		reflect.DeepEqual(oldSlr.Spec, newSlr.Spec) {
+	if oldSlr.ResourceVersion == newSlr.ResourceVersion {
 		return
 	}
 
@@ -76,9 +74,25 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.SwitchLBRule)).String()
+	var slr *kubeovnv1.SwitchLBRule
+	switch t := obj.(type) {
+	case *kubeovnv1.SwitchLBRule:
+		slr = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.SwitchLBRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		slr = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(slr).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
-	c.delSwitchLBRuleQueue.Add(NewSlrInfo(obj.(*kubeovnv1.SwitchLBRule)))
+	c.delSwitchLBRuleQueue.Add(NewSlrInfo(slr))
 }
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
@@ -332,6 +346,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 
 	if oldSvc != nil {
 		newSvc = oldSvc.DeepCopy()
+		if newSvc.Annotations == nil {
+			newSvc.Annotations = map[string]string{}
+		}
 		newSvc.Name = name
 		newSvc.Namespace = slr.Spec.Namespace
 		newSvc.Annotations[util.SwitchLBRuleVipsAnnotation] = slr.Spec.Vip
@@ -362,6 +379,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 	// If the user supplies a VPC/subnet for the SLR, propagate it to the service
 	setUserDefinedNetwork(newSvc, slr)
 
+	// Set healthcheck annotation on the service if the setting is provided by the user
+	setHealthCheckAnnotation(newSvc, slr)
+
 	return newSvc
 }
 
@@ -381,6 +401,22 @@ func setUserDefinedNetwork(service *corev1.Service, slr *kubeovnv1.SwitchLBRule)
 
 	if subnet := slr.Annotations[util.LogicalSwitchAnnotation]; subnet != "" {
 		service.Annotations[util.LogicalSwitchAnnotation] = subnet
+	}
+}
+
+// setHealthCheckAnnotation propagates the healthcheck toggle from the SLR to the Service
+// Users can choose to disable health checks on their services using this annotation
+func setHealthCheckAnnotation(service *corev1.Service, slr *kubeovnv1.SwitchLBRule) {
+	if service == nil || slr == nil || slr.Annotations == nil {
+		return
+	}
+
+	if service.Annotations == nil {
+		service.Annotations = make(map[string]string)
+	}
+
+	if healthcheck := slr.Annotations[util.ServiceHealthCheck]; healthcheck != "" {
+		service.Annotations[util.ServiceHealthCheck] = healthcheck
 	}
 }
 

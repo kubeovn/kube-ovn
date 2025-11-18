@@ -101,6 +101,7 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
+	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -264,6 +265,11 @@ type Controller struct {
 	deleteAnpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.AdminNetworkPolicy]
 	anpKeyMutex    keymutex.KeyMutex
 
+	dnsNameResolversLister          kubeovnlister.DNSNameResolverLister
+	dnsNameResolversSynced          cache.InformerSynced
+	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
+	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
+
 	banpsLister     anplister.BaselineAdminNetworkPolicyLister
 	banpsSynced     cache.InformerSynced
 	addBanpQueue    workqueue.TypedRateLimitingInterface[string]
@@ -380,6 +386,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
+	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
@@ -399,18 +406,18 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcStatusQueue: newTypedRateLimitingQueue[string]("UpdateVpcStatus", nil),
 		vpcKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
-		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
-		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,
-		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
-		initVpcNatGatewayQueue:        newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
-		delVpcNatGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
-		updateVpcEipQueue:             newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
-		updateVpcFloatingIPQueue:      newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
-		updateVpcDnatQueue:            newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
-		updateVpcSnatQueue:            newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
-		updateVpcSubnetQueue:          newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
-		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
-
+		vpcNatGatewayLister:              vpcNatGatewayInformer.Lister(),
+		vpcNatGatewaySynced:              vpcNatGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcNatGatewayQueue:    newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
+		initVpcNatGatewayQueue:           newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
+		delVpcNatGatewayQueue:            newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
+		updateVpcEipQueue:                newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
+		updateVpcFloatingIPQueue:         newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
+		updateVpcDnatQueue:               newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
+		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
+		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
+		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -649,6 +656,13 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
+	if config.EnableDNSNameResolver {
+		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
+		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
+		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
+		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
+	}
+
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -680,6 +694,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableANP {
 		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
+	}
+	if controller.config.EnableDNSNameResolver {
+		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
@@ -925,6 +942,16 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpNamePrioMap = make(map[string]int32, 100)
 	}
 
+	if config.EnableDNSNameResolver {
+		if _, err = dnsNameResolverInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddDNSNameResolver,
+			UpdateFunc: controller.enqueueUpdateDNSNameResolver,
+			DeleteFunc: controller.enqueueDeleteDNSNameResolver,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add dns name resolver event handler")
+		}
+	}
+
 	if config.EnableOVNIPSec {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
@@ -959,6 +986,10 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.OVNNbClient.SetNodeLocalDNSIP(strings.Join(c.config.NodeLocalDNSIPs, ",")); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
+	}
+
+	if err := c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
 	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
@@ -1165,6 +1196,11 @@ func (c *Controller) shutdown() {
 		c.addBanpQueue.ShutDown()
 		c.updateBanpQueue.ShutDown()
 		c.deleteBanpQueue.ShutDown()
+	}
+
+	if c.config.EnableDNSNameResolver {
+		c.addOrUpdateDNSNameResolverQueue.ShutDown()
+		c.deleteDNSNameResolverQueue.ShutDown()
 	}
 
 	c.addOrUpdateSgQueue.ShutDown()
@@ -1380,6 +1416,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
+	}
+
+	if c.config.EnableDNSNameResolver {
+		go wait.Until(runWorker("add or update dns name resolver", c.addOrUpdateDNSNameResolverQueue, c.handleAddOrUpdateDNSNameResolver), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete dns name resolver", c.deleteDNSNameResolverQueue, c.handleDeleteDNSNameResolver), time.Second, ctx.Done())
 	}
 
 	if c.config.EnableLiveMigrationOptimize {

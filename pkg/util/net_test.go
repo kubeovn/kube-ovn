@@ -1446,3 +1446,76 @@ func TestInvalidNetworkMask(t *testing.T) {
 	err = InvalidNetworkMask(&validNet)
 	require.Error(t, err)
 }
+
+func TestCIDRContainsCIDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr1   string
+		cidr2   string
+		wantErr bool
+		wantRet bool
+	}{
+		{
+			name:    "different family",
+			cidr1:   "10.0.0.0/16",
+			cidr2:   "fd00::/64",
+			wantErr: true,
+			wantRet: false,
+		},
+		{
+			name:    "invalid cidr1",
+			cidr1:   "1.1.1.1/33",
+			cidr2:   "10.0.0.0/25",
+			wantErr: true,
+			wantRet: false,
+		},
+		{
+			name:    "invalid cidr2",
+			cidr1:   "10.0.0.0/24",
+			cidr2:   "1.1.1.1/33",
+			wantErr: true,
+			wantRet: false,
+		},
+		{
+			name:    "cidr1 contains cidr2",
+			cidr1:   "10.0.0.0/24",
+			cidr2:   "10.0.0.0/25",
+			wantErr: false,
+			wantRet: true,
+		},
+		{
+			name:    "cidr2 contains cidr1",
+			cidr1:   "10.0.0.0/24",
+			cidr2:   "10.0.0.0/23",
+			wantErr: false,
+			wantRet: false,
+		},
+		{
+			name:    "cidr1 does not contain cidr2",
+			cidr1:   "10.0.0.0/24",
+			cidr2:   "10.0.1.0/24",
+			wantErr: false,
+			wantRet: false,
+		},
+		{
+			name:    "cidr1 equals cidr2",
+			cidr1:   "10.0.0.0/24",
+			cidr2:   "10.0.0.0/24",
+			wantErr: false,
+			wantRet: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret, err := CIDRContainsCIDR(tt.cidr1, tt.cidr2)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CIDRContainsCIDR() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if ret != tt.wantRet {
+				t.Errorf("CIDRContainsCIDR() got = %v, want %v", ret, tt.wantRet)
+			}
+		})
+	}
+}

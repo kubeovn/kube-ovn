@@ -129,9 +129,10 @@ func (c *Controller) removeExternalGateway() error {
 		// provider network, underlay vlan control the external gateway switch
 		klog.Infof("should keep provider network underlay vlan external gateway switch %s", c.config.ExternalGatewaySwitch)
 		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
-		klog.Infof("delete logical router port %s", lrpName)
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(lrpName); err != nil {
-			klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
+		lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, c.config.ClusterRouter)
+		klog.Infof("delete logical patch port lsp %s lrp %s", lspName, lrpName)
+		if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+			klog.Errorf("failed to remove logical patch port %s/%s, %v", lspName, lrpName, err)
 			return err
 		}
 	}

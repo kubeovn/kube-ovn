@@ -7,10 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      vpcRepository: vpc-nat-gateway
       tag: v1.14.0
-      support_arm: true
-      thirdparty: true
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -85,12 +82,16 @@ networking:
       # -- IPv6 gateway.
       # @section -- Network parameters of the CNI
       v6: "fd00:10:16::1"
-    # -- Enable default gateway checks
+    # -- Enable default gateway checks.
     # @section -- Network parameters of the CNI
     enableGatewayChecks: true
-    # -- Enable logical gateways
+    # -- Enable logical gateways.
     # @section -- Network parameters of the CNI
     enableLogicalGateways: false
+    # -- MTU of the subnet.
+    # If set to 0, the MTU is auto-detected.
+    # @section -- Network parameters of the CNI
+    mtu: 0
   # -- Configuration for the service subnet.
   # If .networking.stack is set to IPv4, only the .v4 key is used.
   # If .networking.stack is set to IPv6, only the .v6 key is used.
@@ -154,6 +155,9 @@ networking:
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
+  # -- Comma-separated list of destination IP CIDRs that should skip conntrack processing.
+  # @section -- Network parameters of the CNI
+  skipConntrackDstCidrs: ""
   # -- Enable listening on the metrics endpoint for the CNI daemons.
   # @section -- Network parameters of the CNI
   enableMetrics: true
@@ -187,7 +191,7 @@ features:
   enableNetworkPolicies: true
   # -- Enable external VPCs
   # @section -- Opt-in/out Features
-  enableExternalVpcs: true
+  enableExternalVpcs: false
   # -- Enable hardware offloads
   # @section -- Opt-in/out Features
   enableHardwareOffload: false
@@ -223,6 +227,7 @@ features:
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
   ENABLE_ANP: false
+  ENABLE_DNS_NAME_RESOLVER: false
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
@@ -251,6 +256,10 @@ cni:
   # Should be a string representing a double-digit integer.
   # @section -- CNI configuration
   configPriority: "01"
+  # -- Whether to use Kube-OVN as non-primary CNI. When set to true, Kube-OVN will not allocate/handle primary network interfaces.
+  # Interfaces are created using Network Attachment Definitions (NADs)
+  # @section -- CNI configuration
+  nonPrimaryCNI: false
 
 # -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
 # Make sure cert-manager is installed for the generation of certificates for the webhook.
@@ -283,6 +292,19 @@ natGw:
   # manually destroyed and recreated.
   # @section -- NAT gateways configuration
   namePrefix: "vpc-nat-gw"
+  # -- Image used by the NAT gateway.
+  # @section -- NAT gateways configuration
+  # @default -- "{}"
+  image:
+    # -- Image repository.
+    # @section -- NAT gateways configuration
+    repository: docker.io/kubeovn/vpc-nat-gateway
+    # -- Image tag.
+    # @section -- NAT gateways configuration
+    tag: v1.15.0
+    # -- Image pull policy.
+    # @section -- NAT gateways configuration
+    pullPolicy: IfNotPresent
   # -- Configuration of the BGP sidecar for when a NAT gateway is running in BGP mode.
   # @section -- NAT gateways configuration
   # @default -- "{}"
@@ -305,6 +327,17 @@ natGw:
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
     # @section -- NAT gateways configuration
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+
+# -- Configuration for network policies
+# @section -- Network Policies
+# @default -- "{}"
+networkPolicies:
+  # -- Enforcement level of network policies when they get applied (can be: standard, lax).
+  # Enforcement "standard" blocks everything except what is allowed by the network policies.
+  # Enforcement "lax" is similar to "standard" with the exception that ARP/DHCPv4/DHCPv6/ICMPv4/ICMPv6
+  # is allowed by default. This mode is useful when using Kubevirt and VMs with IPs configured via Kube-OVN's DHCP.
+  # @section -- Network Policies
+  enforcement: "standard"
 
 # -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API.
 # This requires Multus to be installed.
@@ -370,6 +403,8 @@ ovsOvn:
   # -- Directory on the node where Open vSwitch (OVS) lives.
   # @section -- OVS/OVN daemons configuration
   ovsDirectory: "/etc/origin/openvswitch"
+  # -- Directory on the node where Open vSwitch (OVS) IPSEC keys live.
+  ovsIpsecKeysDirectory: "/etc/origin/ovs_ipsec_keys"
   # -- Directory on the node where Open Virtual Network (OVN) lives.
   # @section -- OVS/OVN daemons configuration
   ovnDirectory: "/etc/origin/ovn"

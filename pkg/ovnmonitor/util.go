@@ -159,7 +159,7 @@ func lspAddress(addresses []ovsdb.OvnLogicalSwitchPortAddress) (mac, ip string) 
 		ips = append(ips, address.String())
 	}
 	ip = strings.Join(ips, " ")
-	return
+	return mac, ip
 }
 
 func (e *Exporter) setLogicalSwitchPortInfoMetric() {

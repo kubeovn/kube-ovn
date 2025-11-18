@@ -38,6 +38,7 @@ type Subnet struct {
 	PodToNicList map[string][]string
 	V4Gw         string
 	V6Gw         string
+	GatewayMAC   string
 
 	IPPools map[string]*IPPool
 }
@@ -137,8 +138,14 @@ func (s *Subnet) GetRandomMac(podName, nicName string) string {
 	if mac, ok := s.NicToMac[nicName]; ok {
 		return mac
 	}
+
+	var exclusionMACs []string
+	if s.GatewayMAC != "" {
+		exclusionMACs = append(exclusionMACs, s.GatewayMAC)
+	}
+
 	for {
-		mac := util.GenerateMac()
+		mac := util.GenerateMacWithExclusion(exclusionMACs)
 		if _, ok := s.MacToPod[mac]; !ok {
 			s.MacToPod[mac] = podName
 			s.NicToMac[nicName] = mac
@@ -154,6 +161,11 @@ func (s *Subnet) GetStaticMac(podName, nicName, mac string, checkConflict bool) 
 	if checkConflict {
 		if p, ok := s.MacToPod[mac]; ok && p != podName {
 			klog.Errorf("mac %s has been allocated to pod %s", mac, p)
+			return ErrConflict
+		}
+		// Check if static MAC conflicts with gateway MAC
+		if s.GatewayMAC != "" && mac == s.GatewayMAC {
+			klog.Errorf("static MAC %s conflicts with gateway MAC", mac)
 			return ErrConflict
 		}
 	}
@@ -336,6 +348,50 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		v4 = s.V4CIDR != nil
 	} else {
 		v6 = s.V6CIDR != nil
+	}
+
+	// Release existing address for this nicName if it exists and is different from requested IP
+	// For dual-stack scenarios, preserve the other protocol's address
+	if v4 && s.V4NicToIP[nicName] != nil && !s.V4NicToIP[nicName].Equal(ip) {
+		// Preserve IPv6 address if it exists
+		var preservedV6IP IP
+		var preservedMac string
+		if s.V6NicToIP[nicName] != nil {
+			preservedV6IP = s.V6NicToIP[nicName]
+			preservedMac = s.NicToMac[nicName]
+		}
+
+		s.releaseAddr(podName, nicName)
+
+		// Restore IPv6 address if it was preserved
+		if preservedV6IP != nil {
+			s.V6NicToIP[nicName] = preservedV6IP
+			s.V6IPToPod[preservedV6IP.String()] = podName
+			if preservedMac != "" {
+				s.NicToMac[nicName] = preservedMac
+				s.MacToPod[preservedMac] = podName
+			}
+		}
+	} else if v6 && s.V6NicToIP[nicName] != nil && !s.V6NicToIP[nicName].Equal(ip) {
+		// Preserve IPv4 address if it exists
+		var preservedV4IP IP
+		var preservedMac string
+		if s.V4NicToIP[nicName] != nil {
+			preservedV4IP = s.V4NicToIP[nicName]
+			preservedMac = s.NicToMac[nicName]
+		}
+
+		s.releaseAddr(podName, nicName)
+
+		// Restore IPv4 address if it was preserved
+		if preservedV4IP != nil {
+			s.V4NicToIP[nicName] = preservedV4IP
+			s.V4IPToPod[preservedV4IP.String()] = podName
+			if preservedMac != "" {
+				s.NicToMac[nicName] = preservedMac
+				s.MacToPod[preservedMac] = podName
+			}
+		}
 	}
 	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
 		klog.Errorf("ip %s is out of range", ip)
@@ -751,7 +807,7 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 
 	p := s.IPPools[ippool]
 	if p == nil {
-		return
+		return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 	}
 
 	v4Available = p.V4Available.Count()
@@ -763,5 +819,5 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 	v4UsingRange = p.V4Using.String()
 	v6UsingRange = p.V6Using.String()
 
-	return
+	return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 }

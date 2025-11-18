@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -261,7 +261,7 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticR
 			continue
 		}
 		if route.Policy == nil {
-			route.Policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
+			route.Policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 		}
 
 		staticRoutesMap[createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)] = route.Nexthop
@@ -497,7 +497,7 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 		}
 
 		if route.Policy == nil {
-			route.Policy = &ovnnb.LogicalRouterStaticRoutePolicyDstIP
+			route.Policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 		}
 
 		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)

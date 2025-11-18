@@ -7,7 +7,7 @@ GOPROXY=${GOPROXY:-"https://goproxy.cn"}
 docker run -it --rm \
     -v ${PWD}:/app \
     -e GOPROXY=${GOPROXY} \
-    ghcr.io/slok/kube-code-generator:v0.7.0 \
+    ghcr.io/zhangzujian/kube-code-generator:v0.8.0 \
     --boilerplate-path ./hack/boilerplate.go.txt \
     --apis-in ./pkg/apis \
     --go-gen-out ./pkg/client

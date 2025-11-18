@@ -96,6 +96,7 @@ type Configuration struct {
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
+	EnableDNSNameResolver       bool
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
@@ -124,6 +125,15 @@ type Configuration struct {
 	TLSMinVersion   string
 	TLSMaxVersion   string
 	TLSCipherSuites []string
+
+	// Non Primary CNI flag
+	EnableNonPrimaryCNI bool
+
+	// Enforcement level of network policies (standard, lax)
+	NetworkPolicyEnforcement string
+
+	// Skip conntrack for specific destination IP CIDRs
+	SkipConntrackDstCidrs string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -180,14 +190,16 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
+		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement (standard, lax), default is standard")
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
-		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
+		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
@@ -212,6 +224,10 @@ func ParseFlags() (*Configuration, error) {
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
+
+		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
+
+		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -298,11 +314,18 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
 		EnableANP:                      *argEnableANP,
+		EnableDNSNameResolver:          *argEnableDNSNameResolver,
 		Image:                          *argImage,
 		LogPerm:                        *argLogPerm,
 		TLSMinVersion:                  *argTLSMinVersion,
 		TLSMaxVersion:                  *argTLSMaxVersion,
 		TLSCipherSuites:                *argTLSCipherSuites,
+		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
+		NetworkPolicyEnforcement:       *argNPEnforcement,
+		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
+	}
+	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
+		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

@@ -28,7 +28,7 @@ TALOS_CONTROL_PLANE_NODE = $(TALOS_CLUSTER_NAME)-control-plane
 TALOS_CONTROL_PLANE_IPV4 = 172.99.99.10
 TALOS_CONTROL_PLANE_IPV6 = 2001:db8:99:99::10
 TALOS_WORKER_NODE = $(TALOS_CLUSTER_NAME)-worker
-TALOS_K8S_VERSION ?= 1.32.7
+TALOS_K8S_VERSION ?= 1.34.1
 # DO NOT CHANGE CONTROL PLANE COUNT
 TALOS_CONTROL_PLANE_COUNT = 1
 TALOS_WORKER_COUNT ?= 1
@@ -155,7 +155,7 @@ talos-libvirt-clean:
 talos-apply-config-%:
 	$(eval TALOS_ENDPOINT_IP_FAMILY = $(shell echo $* | sed 's/dual/ipv4/'))
 	$(eval TALOS_CONTROL_PLANE_IP = $(TALOS_CONTROL_PLANE_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
-	$(eval TALOS_ENDPOINT = https://[$(TALOS_CONTROL_PLANE_IP)]:6443)
+	$(eval TALOS_ENDPOINT = https://$(if $(filter ipv6,$(TALOS_ENDPOINT_IP_FAMILY)),[$(TALOS_CONTROL_PLANE_IP)],$(TALOS_CONTROL_PLANE_IP)):6443)
 	$(eval TALOS_REGISTRY_MIRROR_URL = $(TALOS_REGISTRY_MIRROR_URL_$(shell echo $(TALOS_ENDPOINT_IP_FAMILY) | tr '[:lower:]' '[:upper:]')))
 	@echo ">>> Generating Talos configuration..."
 	ip_family=$* jinjanate talos/cluster-config.yaml.j2 -o talos/cluster-config.yaml

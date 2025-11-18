@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/ovn-org/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"

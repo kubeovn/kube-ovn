@@ -53,7 +53,8 @@ func (c *StatefulSetClient) Get(name string) *appsv1.StatefulSet {
 
 func (c *StatefulSetClient) GetPods(sts *appsv1.StatefulSet) *corev1.PodList {
 	ginkgo.GinkgoHelper()
-	pods := statefulset.GetPodList(context.Background(), c.f.ClientSet, sts)
+	pods, err := statefulset.GetPodList(context.Background(), c.f.ClientSet, sts)
+	ExpectNoError(err, "Error getting pods for statefulset %s/%s", sts.Namespace, sts.Name)
 	statefulset.SortStatefulPods(pods)
 	return pods
 }

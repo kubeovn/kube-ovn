@@ -24,12 +24,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return errors.New("DPDK is not supported on Windows")
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP string) (string, []request.Route, error) {
-	routes, err := csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, detectIPConflict, routes, dnsServer, dnsSuffix, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter, gwCheckMode, u2oInterconnectionIP, "")
-	return ifName, routes, err
-}
-
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, _ string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, _ string) ([]request.Route, error) {
 	if DeviceID != "" {
 		return nil, errors.New("SR-IOV is not supported on Windows")
 	}

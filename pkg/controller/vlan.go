@@ -29,7 +29,23 @@ func (c *Controller) enqueueUpdateVlan(_, newObj any) {
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
+	var vlan *kubeovnv1.Vlan
+	switch t := obj.(type) {
+	case *kubeovnv1.Vlan:
+		vlan = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubeovnv1.Vlan)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vlan = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(vlan).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
 	c.delVlanQueue.Add(key)
 }

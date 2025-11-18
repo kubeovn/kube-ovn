@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -65,10 +65,11 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	dbModel.SetIndexes(map[string][]model.ClientIndex{
-		ovnnb.LogicalRouterPolicyTable: {{Columns: []model.ColumnKey{
-			{Column: "match"},
-			{Column: "priority"},
-		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
+		ovnnb.LogicalRouterPolicyTable: {
+			{Columns: []model.ColumnKey{{Column: "match"}, {Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "match"}}},
+		},
 	})
 	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
 

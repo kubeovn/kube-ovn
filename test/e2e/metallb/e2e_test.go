@@ -22,6 +22,7 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	"k8s.io/utils/ptr"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -74,7 +75,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, deployName, containerName, serviceName, containerID, metallbIPPoolName string
+	var clusterName, providerNetworkName, vlanName, subnetName, deployName, containerName, serviceName, serviceName2, containerID, metallbIPPoolName string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
 	var subnetClient *framework.SubnetClient
@@ -100,6 +101,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		deployName = "deploy-" + framework.RandomSuffix()
 		metallbIPPoolName = "metallb-ip-pool-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
+		serviceName2 = "service2-" + framework.RandomSuffix()
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
@@ -177,6 +179,15 @@ var _ = framework.Describe("[group:metallb]", func() {
 		clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Delete service")
+		if serviceName != "" {
+			f.ServiceClient().DeleteSync(serviceName)
+		}
+
+		if serviceName2 != "" {
+			f.ServiceClient().DeleteSync(serviceName2)
+		}
+
 		ginkgo.By("Deleting the IPAddressPool for metallb")
 		f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName) // nolint:errcheck
 
@@ -258,7 +269,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		if f.HasIPv4() {
 			underlayCidr = append(underlayCidr, cidrV4)
 			gateway = append(gateway, gatewayV4)
-			for index := range 5 {
+			for index := range 10 {
 				startIP := strings.Split(cidrV4, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv4s = append(metallbVIPv4s, ip.Add(100+int64(index)).String())
@@ -268,7 +279,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		if f.HasIPv6() {
 			underlayCidr = append(underlayCidr, cidrV6)
 			gateway = append(gateway, gatewayV6)
-			for index := range 5 {
+			for index := range 10 {
 				startIP := strings.Split(cidrV6, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv6s = append(metallbVIPv6s, ip.Add(100+int64(index)).String())
@@ -338,7 +349,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		deploy.Spec.Template.Spec.Containers[0].Args = args
 		_ = deployClient.CreateSync(deploy)
 
-		ginkgo.By("Creating a service for the deployment")
+		ginkgo.By("Creating the first service for the deployment")
 		ports := []corev1.ServicePort{
 			{
 				Name:       "http",
@@ -348,16 +359,34 @@ var _ = framework.Describe("[group:metallb]", func() {
 			},
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
+		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
-		}, "lb service ip is not empty")
+		}, "first lb service ip is not empty")
 
-		ginkgo.By("Checking the service is reachable")
+		ginkgo.By("Creating the second service for the same deployment")
+		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
+		service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		service2.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {
+			return len(s.Status.LoadBalancer.Ingress) != 0, nil
+		}, "second lb service ip is not empty")
+
+		ginkgo.By("Checking both services are reachable")
 		service = f.ServiceClient().Get(serviceName)
+		service2 = f.ServiceClient().Get(serviceName2)
 		lbsvcIP := service.Status.LoadBalancer.Ingress[0].IP
+		lbsvcIP2 := service2.Status.LoadBalancer.Ingress[0].IP
 
 		checkReachable(f, containerID, clientip, lbsvcIP, "80", clusterName, true)
+		checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
+
+		ginkgo.By("Deleting the first service")
+		serviceClient.DeleteSync(serviceName)
+
+		ginkgo.By("Checking the second service is still reachable after first service deletion")
+		checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
 	})
 })
 

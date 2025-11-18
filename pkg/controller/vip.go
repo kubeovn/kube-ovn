@@ -45,7 +45,22 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj any) {
-	vip := obj.(*kubeovnv1.Vip)
+	var vip *kubeovnv1.Vip
+	switch t := obj.(type) {
+	case *kubeovnv1.Vip:
+		vip = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubeovnv1.Vip)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vip = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)
 	c.delVirtualIPQueue.Add(vip)
@@ -88,7 +103,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	var macPointer *string
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
 	if ipStr != "" || vip.Spec.MacAddress != "" {
-		macPointer = &vip.Spec.MacAddress
+		if vip.Spec.MacAddress != "" {
+			macPointer = &vip.Spec.MacAddress
+		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
 	} else {
 		// Random allocate
@@ -197,11 +214,6 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	if vip.Status.Mac == "" {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress); err != nil {
-			klog.Error(err)
-			return err
-		}
-		ready := true
-		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -359,8 +371,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	} else {
 		vip := vipCR.DeepCopy()
-		if vip.Status.Mac == "" && mac != "" {
-			// vip not support to update, just delete and create
+		if vip.Status.Mac == "" && mac != "" ||
+			vip.Status.V4ip == "" && v4ip != "" ||
+			vip.Status.V6ip == "" && v6ip != "" {
+			// vip spec mac or ip not support to update
+			// only set once during creation
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip
 			vip.Spec.V6ip = v6ip
@@ -370,6 +385,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Status.V6ip = v6ip
 			vip.Status.Mac = mac
 			vip.Status.Type = vip.Spec.Type
+			// TODO:// Ready = true as subnet.Status.Ready
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update vip '%s', %w", key, err)
 				klog.Error(err)
@@ -407,32 +423,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 	return nil
 }
 
-func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
-	oriVip, err := c.virtualIpsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vip := oriVip.DeepCopy()
-	var changed bool
-
-	if ready && v4ip != "" && vip.Status.V4ip != v4ip {
-		vip.Status.V4ip = v4ip
-		changed = true
-	}
-
-	if changed {
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update status for vip '%s', %v", key, err)
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 	// when pod use static vip, label vip reserved for pod
 	oriVip, err := c.virtualIpsLister.Get(vipName)
@@ -444,6 +434,9 @@ func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 		return err
 	}
 	vip := oriVip.DeepCopy()
+	if vip.Labels == nil {
+		vip.Labels = map[string]string{}
+	}
 	var op string
 
 	if vip.Labels[util.IPReservedLabel] != "" {

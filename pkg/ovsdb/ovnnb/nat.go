@@ -9,7 +9,7 @@ type (
 	NATType = string
 )
 
-var (
+const (
 	NATTypeDNAT        NATType = "dnat"
 	NATTypeSNAT        NATType = "snat"
 	NATTypeDNATAndSNAT NATType = "dnat_and_snat"
@@ -27,6 +27,8 @@ type NAT struct {
 	GatewayPort       *string           `ovsdb:"gateway_port"`
 	LogicalIP         string            `ovsdb:"logical_ip"`
 	LogicalPort       *string           `ovsdb:"logical_port"`
+	Match             string            `ovsdb:"match"`
 	Options           map[string]string `ovsdb:"options"`
-	Type              NATType           `ovsdb:"type"`
+	Priority          int               `ovsdb:"priority" validate:"min=0,max=32767"`
+	Type              NATType           `ovsdb:"type" validate:"oneof='dnat' 'snat' 'dnat_and_snat'"`
 }

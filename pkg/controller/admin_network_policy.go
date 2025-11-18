@@ -38,9 +38,10 @@ type ChangedName struct {
 }
 
 type AdminNetworkPolicyChangedDelta struct {
-	key       string
-	ruleNames [util.AnpMaxRules]ChangedName
-	field     ChangedField
+	key              string
+	ruleNames        [util.AnpMaxRules]ChangedName
+	field            ChangedField
+	DNSReconcileDone bool
 }
 
 func (c *Controller) enqueueAddAnp(obj any) {
@@ -50,7 +51,22 @@ func (c *Controller) enqueueAddAnp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteAnp(obj any) {
-	anp := obj.(*v1alpha1.AdminNetworkPolicy)
+	var anp *v1alpha1.AdminNetworkPolicy
+	switch t := obj.(type) {
+	case *v1alpha1.AdminNetworkPolicy:
+		anp = t
+	case cache.DeletedFinalStateUnknown:
+		a, ok := t.Obj.(*v1alpha1.AdminNetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		anp = a
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
 }
@@ -265,6 +281,27 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		klog.Errorf("failed to generate clear operations for anp %s egress acls: %v", key, err)
 		return err
 	}
+
+	// Reconcile DNSNameResolvers for all collected domain names
+	if c.config.EnableDNSNameResolver {
+		// Collect all domain names from egress rules
+		var allDomainNames []string
+		for _, anpr := range anp.Spec.Egress {
+			for _, anprpeer := range anpr.To {
+				if len(anprpeer.DomainNames) != 0 {
+					for _, domainName := range anprpeer.DomainNames {
+						allDomainNames = append(allDomainNames, string(domainName))
+					}
+				}
+			}
+		}
+
+		if err := c.reconcileDNSNameResolversForANP(anpName, allDomainNames); err != nil {
+			klog.Errorf("failed to reconcile DNSNameResolvers for ANP %s: %v", anpName, err)
+			return err
+		}
+	}
+
 	// create egress acl
 	for index, anpr := range anp.Spec.Egress {
 		// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -272,6 +309,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		desiredEgressAddrSet.Add(egressAsV4Name, egressAsV6Name)
 
 		var v4Addrs, v4Addr, v6Addrs, v6Addr []string
+		hasDomainNames := false
 		// This field must be defined and contain at least one item.
 		for _, anprpeer := range anpr.To {
 			if v4Addr, v6Addr, err = c.fetchEgressSelectedAddresses(&anprpeer); err != nil {
@@ -280,6 +318,9 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 			}
 			v4Addrs = append(v4Addrs, v4Addr...)
 			v6Addrs = append(v6Addrs, v6Addr...)
+
+			// Check if this peer has domain names
+			hasDomainNames = len(anprpeer.DomainNames) > 0
 		}
 		klog.Infof("anp %s, egress rule %s, selected v4 address %v, v6 address %v", anpName, anpr.Name, v4Addrs, v6Addrs)
 
@@ -299,7 +340,9 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 			rulePorts = *anpr.Ports
 		}
 
-		if len(v4Addrs) != 0 {
+		// Create ACL rules if we have IP addresses OR domain names
+		// Domain names may not be resolved initially but will be updated later
+		if len(v4Addrs) != 0 || hasDomainNames {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
 			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
@@ -309,7 +352,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 			egressACLOps = append(egressACLOps, ops...)
 		}
 
-		if len(v6Addrs) != 0 {
+		if len(v6Addrs) != 0 || hasDomainNames {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
 			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
@@ -360,6 +403,14 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 		return err
 	}
 
+	// Delete all DNSNameResolver CRs associated with this ANP
+	if c.config.EnableDNSNameResolver {
+		if err := c.reconcileDNSNameResolversForANP(anpName, []string{}); err != nil {
+			klog.Errorf("failed to delete DNSNameResolver CRs for anp %s: %v", anpName, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -367,6 +418,9 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// Only handle updates that do not affect acls.
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
+
+	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, DNSReconcileDone=%v",
+		changed.key, changed.field, changed.DNSReconcileDone)
 
 	cachedAnp, err := c.anpsLister.Get(changed.key)
 	if err != nil {
@@ -432,11 +486,30 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 
 	if changed.field == ChangedEgressRule {
 		for index, rule := range desiredAnp.Spec.Egress {
-			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch {
+			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
+			needAddrSetUpdate := rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch || changed.DNSReconcileDone
+
+			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
+			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
+
+			if needAddrSetUpdate {
 				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
 					klog.Errorf("failed to set egress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
+				}
+
+				if needDNSReconcile {
+					var currentDomainNames []string
+					for _, peer := range rule.To {
+						for _, domainName := range peer.DomainNames {
+							currentDomainNames = append(currentDomainNames, string(domainName))
+						}
+					}
+
+					if err := c.reconcileDNSNameResolversForANP(anpName, currentDomainNames); err != nil {
+						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", anpName, rule.Name, err)
+						return err
+					}
 				}
 
 				if changed.ruleNames[index].oldRuleName != "" {
@@ -607,12 +680,20 @@ func (c *Controller) fetchIngressSelectedAddresses(ingressPeer *v1alpha1.AdminNe
 }
 
 func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetworkPolicyEgressPeer) ([]string, []string, error) {
+	return c.fetchEgressSelectedAddressesCommon(egressPeer.Namespaces, egressPeer.Pods, egressPeer.Nodes, egressPeer.Networks, egressPeer.DomainNames)
+}
+
+func (c *Controller) fetchBaselineEgressSelectedAddresses(egressPeer *v1alpha1.BaselineAdminNetworkPolicyEgressPeer) ([]string, []string, error) {
+	return c.fetchEgressSelectedAddressesCommon(egressPeer.Namespaces, egressPeer.Pods, egressPeer.Nodes, egressPeer.Networks, nil)
+}
+
+func (c *Controller) fetchEgressSelectedAddressesCommon(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPod, nodes *metav1.LabelSelector, networks []v1alpha1.CIDR, domainNames []v1alpha1.DomainName) ([]string, []string, error) {
 	var v4Addresses, v6Addresses []string
 
 	// Exactly one of the selector pointers must be set for a given peer.
 	switch {
-	case egressPeer.Namespaces != nil:
-		nsSelector, err := metav1.LabelSelectorAsSelector(egressPeer.Namespaces)
+	case namespaces != nil:
+		nsSelector, err := metav1.LabelSelectorAsSelector(namespaces)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
@@ -621,12 +702,12 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
-	case egressPeer.Pods != nil:
-		nsSelector, err := metav1.LabelSelectorAsSelector(&egressPeer.Pods.NamespaceSelector)
+	case pods != nil:
+		nsSelector, err := metav1.LabelSelectorAsSelector(&pods.NamespaceSelector)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating ns label selector, %w", err)
 		}
-		podSelector, err := metav1.LabelSelectorAsSelector(&egressPeer.Pods.PodSelector)
+		podSelector, err := metav1.LabelSelectorAsSelector(&pods.PodSelector)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating pod label selector, %w", err)
 		}
@@ -635,8 +716,8 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
-	case egressPeer.Nodes != nil:
-		nodesSelector, err := metav1.LabelSelectorAsSelector(egressPeer.Nodes)
+	case nodes != nil:
+		nodesSelector, err := metav1.LabelSelectorAsSelector(nodes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating nodes label selector, %w", err)
 		}
@@ -644,13 +725,63 @@ func (c *Controller) fetchEgressSelectedAddresses(egressPeer *v1alpha1.AdminNetw
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to fetch egress peer addresses, %w", err)
 		}
-	case len(egressPeer.Networks) != 0:
-		v4Addresses, v6Addresses = fetchCIDRAddrs(egressPeer.Networks)
+	case len(networks) != 0:
+		v4Addresses, v6Addresses = fetchCIDRAddrs(networks)
+	case len(domainNames) != 0:
+		// DomainNames field is present - resolve addresses from DNSNameResolver
+		if !c.config.EnableDNSNameResolver {
+			return nil, nil, fmt.Errorf("DNSNameResolver is disabled but domain names are specified: %v", domainNames)
+		}
+		klog.Infof("DomainNames detected in egress peer: %v", domainNames)
+		var err error
+		v4Addresses, v6Addresses, err = c.resolveDomainNames(domainNames)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve domain names: %w", err)
+		}
 	default:
 		return nil, nil, errors.New("at least one egressPeer must be specified")
 	}
 
 	return v4Addresses, v6Addresses, nil
+}
+
+// resolveDomainNames resolves domain names to IP addresses using DNSNameResolver lister
+func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]string, []string, error) {
+	var allV4Addresses, allV6Addresses []string
+
+	for _, domainName := range domainNames {
+		// Find DNSNameResolver for this domain name
+		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("Failed to list DNSNameResolvers: %v", err)
+			continue
+		}
+
+		var foundResolver *kubeovnv1.DNSNameResolver
+		for _, resolver := range dnsNameResolvers {
+			if string(resolver.Spec.Name) == string(domainName) {
+				foundResolver = resolver
+				break
+			}
+		}
+
+		if foundResolver == nil {
+			klog.V(3).Infof("No DNSNameResolver found for domain %s, skipping", domainName)
+			continue
+		}
+
+		// Get resolved addresses from DNSNameResolver
+		v4Addresses, v6Addresses, err := getResolvedAddressesFromDNSNameResolver(foundResolver)
+		if err != nil {
+			klog.Errorf("Failed to get resolved addresses from DNSNameResolver %s: %v", foundResolver.Name, err)
+			continue
+		}
+
+		allV4Addresses = append(allV4Addresses, v4Addresses...)
+		allV6Addresses = append(allV6Addresses, v6Addresses...)
+	}
+
+	return allV4Addresses, allV6Addresses, nil
 }
 
 func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName string, addresses []string, isBanp bool) error {
@@ -735,6 +866,14 @@ func (c *Controller) deleteUnusedAddrSetForAnp(curAddrSet, desiredAddrSet *strse
 }
 
 func (c *Controller) setAddrSetForAnpRule(anpName, pgName, ruleName string, index int, from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.AdminNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
+	return c.setAddrSetForAnpRuleCommon(anpName, pgName, ruleName, index, from, to, nil, isIngress, isBanp)
+}
+
+func (c *Controller) setAddrSetForBaselineAnpRule(anpName, pgName, ruleName string, index int, from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
+	return c.setAddrSetForAnpRuleCommon(anpName, pgName, ruleName, index, from, nil, to, isIngress, isBanp)
+}
+
+func (c *Controller) setAddrSetForAnpRuleCommon(anpName, pgName, ruleName string, index int, from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.AdminNetworkPolicyEgressPeer, baselineTo []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
 	// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 
 	var v4Addrs, v4Addr, v6Addrs, v6Addr []string
@@ -760,13 +899,24 @@ func (c *Controller) setAddrSetForAnpRule(anpName, pgName, ruleName string, inde
 			return err
 		}
 	} else {
-		for _, anprpeer := range to {
-			if v4Addr, v6Addr, err = c.fetchEgressSelectedAddresses(&anprpeer); err != nil {
-				klog.Errorf("failed to fetch anp/banp egress selected addresses, %v", err)
-				return err
+		if to != nil {
+			for _, anprpeer := range to {
+				if v4Addr, v6Addr, err = c.fetchEgressSelectedAddresses(&anprpeer); err != nil {
+					klog.Errorf("failed to fetch anp/banp egress selected addresses, %v", err)
+					return err
+				}
+				v4Addrs = append(v4Addrs, v4Addr...)
+				v6Addrs = append(v6Addrs, v6Addr...)
 			}
-			v4Addrs = append(v4Addrs, v4Addr...)
-			v6Addrs = append(v6Addrs, v6Addr...)
+		} else {
+			for _, anprpeer := range baselineTo {
+				if v4Addr, v6Addr, err = c.fetchBaselineEgressSelectedAddresses(&anprpeer); err != nil {
+					klog.Errorf("failed to fetch baseline anp/banp egress selected addresses, %v", err)
+					return err
+				}
+				v4Addrs = append(v4Addrs, v4Addr...)
+				v6Addrs = append(v6Addrs, v6Addr...)
+			}
 		}
 		klog.Infof("update anp/banp egress rule %s, selected v4 address %v, v6 address %v", ruleName, v4Addrs, v6Addrs)
 
@@ -863,15 +1013,31 @@ func isLabelsMatch(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPo
 }
 
 func isLabelsMatchRulePeers(from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.AdminNetworkPolicyEgressPeer, nsLabels, podLabels map[string]string) bool {
+	return isLabelsMatchRulePeersCommon(from, to, nil, nsLabels, podLabels)
+}
+
+func isLabelsMatchBaselineRulePeers(from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, nsLabels, podLabels map[string]string) bool {
+	return isLabelsMatchRulePeersCommon(from, nil, to, nsLabels, podLabels)
+}
+
+func isLabelsMatchRulePeersCommon(from []v1alpha1.AdminNetworkPolicyIngressPeer, to []v1alpha1.AdminNetworkPolicyEgressPeer, baselineTo []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, nsLabels, podLabels map[string]string) bool {
 	for _, ingressPeer := range from {
 		if isLabelsMatch(ingressPeer.Namespaces, ingressPeer.Pods, nsLabels, podLabels) {
 			return true
 		}
 	}
 
-	for _, egressPeer := range to {
-		if isLabelsMatch(egressPeer.Namespaces, egressPeer.Pods, nsLabels, podLabels) {
-			return true
+	if to != nil {
+		for _, egressPeer := range to {
+			if isLabelsMatch(egressPeer.Namespaces, egressPeer.Pods, nsLabels, podLabels) {
+				return true
+			}
+		}
+	} else {
+		for _, egressPeer := range baselineTo {
+			if isLabelsMatch(egressPeer.Namespaces, egressPeer.Pods, nsLabels, podLabels) {
+				return true
+			}
 		}
 	}
 
@@ -879,6 +1045,14 @@ func isLabelsMatchRulePeers(from []v1alpha1.AdminNetworkPolicyIngressPeer, to []
 }
 
 func isLabelsMatchAnpRulePeers(ingress []v1alpha1.AdminNetworkPolicyIngressRule, egress []v1alpha1.AdminNetworkPolicyEgressRule, nsLabels, podLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
+	return isLabelsMatchAnpRulePeersCommon(ingress, egress, nil, nsLabels, podLabels)
+}
+
+func isLabelsMatchBaselineAnpRulePeers(_ []v1alpha1.BaselineAdminNetworkPolicyIngressRule, egress []v1alpha1.BaselineAdminNetworkPolicyEgressRule, nsLabels, podLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
+	return isLabelsMatchAnpRulePeersCommon(nil, nil, egress, nsLabels, podLabels)
+}
+
+func isLabelsMatchAnpRulePeersCommon(ingress []v1alpha1.AdminNetworkPolicyIngressRule, egress []v1alpha1.AdminNetworkPolicyEgressRule, baselineEgress []v1alpha1.BaselineAdminNetworkPolicyEgressRule, nsLabels, podLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
 	var changedIngressRuleNames, changedEgressRuleNames [util.AnpMaxRules]ChangedName
 
 	for index, anpr := range ingress {
@@ -888,10 +1062,19 @@ func isLabelsMatchAnpRulePeers(ingress []v1alpha1.AdminNetworkPolicyIngressRule,
 		}
 	}
 
-	for index, anpr := range egress {
-		if isLabelsMatchRulePeers([]v1alpha1.AdminNetworkPolicyIngressPeer{}, anpr.To, nsLabels, podLabels) {
-			changedEgressRuleNames[index].isMatch = true
-			changedEgressRuleNames[index].curRuleName = anpr.Name
+	if egress != nil {
+		for index, anpr := range egress {
+			if isLabelsMatchRulePeers([]v1alpha1.AdminNetworkPolicyIngressPeer{}, anpr.To, nsLabels, podLabels) {
+				changedEgressRuleNames[index].isMatch = true
+				changedEgressRuleNames[index].curRuleName = anpr.Name
+			}
+		}
+	} else {
+		for index, banpr := range baselineEgress {
+			if isLabelsMatchBaselineRulePeers([]v1alpha1.AdminNetworkPolicyIngressPeer{}, banpr.To, nsLabels, podLabels) {
+				changedEgressRuleNames[index].isMatch = true
+				changedEgressRuleNames[index].curRuleName = banpr.Name
+			}
 		}
 	}
 
@@ -899,23 +1082,7 @@ func isLabelsMatchAnpRulePeers(ingress []v1alpha1.AdminNetworkPolicyIngressRule,
 }
 
 func isLabelsMatchBanpRulePeers(ingress []v1alpha1.BaselineAdminNetworkPolicyIngressRule, egress []v1alpha1.BaselineAdminNetworkPolicyEgressRule, nsLabels, podLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
-	var changedIngressRuleNames, changedEgressRuleNames [util.AnpMaxRules]ChangedName
-
-	for index, banpr := range ingress {
-		if isLabelsMatchRulePeers(banpr.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, nsLabels, podLabels) {
-			changedIngressRuleNames[index].isMatch = true
-			changedIngressRuleNames[index].curRuleName = banpr.Name
-		}
-	}
-
-	for index, banpr := range egress {
-		if isLabelsMatchRulePeers([]v1alpha1.AdminNetworkPolicyIngressPeer{}, banpr.To, nsLabels, podLabels) {
-			changedEgressRuleNames[index].isMatch = true
-			changedEgressRuleNames[index].curRuleName = banpr.Name
-		}
-	}
-
-	return changedIngressRuleNames, changedEgressRuleNames
+	return isLabelsMatchBaselineAnpRulePeers(ingress, egress, nsLabels, podLabels)
 }
 
 func getAnpName(name string) string {

@@ -202,22 +202,32 @@ func main() {
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
+	cniConfPath := filepath.Join(configDir, confName)
+	if info, err := os.Stat(cniConfPath); err == nil {
+		// File exists, check permissions.
+		if info.Mode().Perm() == 0o600 {
+			klog.Infof("CNI config file %q already exists with correct permissions, skipping.", cniConfPath)
+			return nil
+		}
+		klog.Infof("Fixing permission of existing CNI config file %q to 600", cniConfPath)
+		return os.Chmod(cniConfPath, 0o600)
+	}
+
 	data, err := os.ReadFile(configFile) // #nosec G304
 	if err != nil {
 		klog.Errorf("failed to read cni config file %s, %v", configFile, err)
 		return err
 	}
 
-	cniConfPath := filepath.Join(configDir, confName)
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o644) // #nosec G306
+	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
 	for i := 0; ; i++ {
 		err = f(ctrl)
 		if err == nil {
-			return
+			return err
 		}
 		if i >= (attempts - 1) {
 			break

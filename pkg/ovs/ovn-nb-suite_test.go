@@ -11,12 +11,12 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/go-logr/stdr"
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/database/inmemory"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
-	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
-	"github.com/ovn-org/libovsdb/server"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/database/inmemory"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
+	"github.com/ovn-kubernetes/libovsdb/server"
 	"k8s.io/klog/v2"
 
 	"github.com/stretchr/testify/require"
@@ -703,6 +703,14 @@ func (suite *OvnClientTestSuite) Test_BatchDeleteAddressSetByNames() {
 }
 
 /* acl unit test */
+func (suite *OvnClientTestSuite) Test_testUpdateDefaultBlockAclOps() {
+	suite.testUpdateDefaultBlockACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_testUpdateDefaultBlockExceptionsACLOps() {
+	suite.testUpdateDefaultBlockExceptionsACLOps()
+}
+
 func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
 	suite.testUpdateIngressACLOps()
 }
@@ -1243,10 +1251,6 @@ func (suite *OvnClientTestSuite) Test_OvsClearPodBandwidth() {
 	suite.testOvsClearPodBandwidth()
 }
 
-func (suite *OvnClientTestSuite) Test_OvsCleanLostInterface() {
-	suite.testOvsCleanLostInterface()
-}
-
 func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
 	suite.testOvsCleanDuplicatePort()
 }
@@ -1261,10 +1265,6 @@ func (suite *OvnClientTestSuite) Test_GetInterfacePodNs() {
 
 func (suite *OvnClientTestSuite) Test_ConfigInterfaceMirror() {
 	suite.testConfigInterfaceMirror()
-}
-
-func (suite *OvnClientTestSuite) Test_GetResidualInternalPorts() {
-	suite.testGetResidualInternalPorts()
 }
 
 func (suite *OvnClientTestSuite) Test_ClearPortQosBinding() {
@@ -1297,7 +1297,7 @@ func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, sche
 	db := inmemory.NewDatabase(map[string]model.ClientDBModel{
 		schema.Name:       dbModel,
 		serverSchema.Name: serverDBModel,
-	})
+	}, nil)
 
 	dbMod, errs := model.NewDatabaseModel(schema, dbModel)
 	require.Empty(t, errs)
@@ -1305,7 +1305,7 @@ func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, sche
 	svrMod, errs := model.NewDatabaseModel(serverSchema, serverDBModel)
 	require.Empty(t, errs)
 
-	server, err := server.NewOvsdbServer(db, dbMod, svrMod)
+	server, err := server.NewOvsdbServer(db, nil, dbMod, svrMod)
 	require.NoError(t, err)
 
 	tmpfile := fmt.Sprintf("/tmp/ovsdb-%s.sock", name)

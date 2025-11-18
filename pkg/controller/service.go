@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"reflect"
 	"slices"
@@ -59,7 +60,22 @@ func (c *Controller) enqueueAddService(obj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	svc := obj.(*v1.Service)
+	var svc *v1.Service
+	switch t := obj.(type) {
+	case *v1.Service:
+		svc = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*v1.Service)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		svc = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
@@ -179,16 +195,16 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
-			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
-				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
-				return err
-			}
-
 			if c.config.EnableOVNLBPreferLocal {
 				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
 					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
+			}
+
+			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				return err
 			}
 		}
 	}
@@ -281,19 +297,20 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			klog.Errorf("failed to get LB %s: %v", lbName, err)
 			return err
 		}
-		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lb.Vips)
+		lbVIPs := maps.Clone(lb.Vips)
+		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lbVIPs)
 		for _, vip := range svcVips {
 			if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
 
-			if _, ok := lb.Vips[vip]; !ok {
+			if _, ok := lbVIPs[vip]; !ok {
 				klog.Infof("add vip %s to LB %s", vip, lbName)
 				needUpdateEndpointQueue = true
 			}
 		}
-		for vip := range lb.Vips {
+		for vip := range lbVIPs {
 			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
 				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
@@ -312,8 +329,9 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			klog.Errorf("failed to get LB %s: %v", oLbName, err)
 			return err
 		}
-		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, lb.Vips)
-		for vip := range oLb.Vips {
+		oLbVIPs := maps.Clone(oLb.Vips)
+		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, oLbVIPs)
+		for vip := range oLbVIPs {
 			if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
 				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
@@ -345,6 +363,21 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 
 	if needUpdateEndpointQueue {
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
+	// add the svc key which has the same vip
+	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
+	if ok {
+		allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		for _, slr := range allSlrs {
+			if slr.Spec.Vip == vip {
+				slrKey := fmt.Sprintf("%s/slr-%s", slr.Spec.Namespace, slr.Name)
+				c.addOrUpdateEndpointSliceQueue.Add(slrKey)
+			}
+		}
 	}
 
 	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
@@ -537,6 +570,10 @@ func diffSvcPorts(oldPorts, newPorts []v1.ServicePort) (toDel []v1.ServicePort) 
 }
 
 func (c *Controller) checkServiceLBIPBelongToSubnet(svc *v1.Service) error {
+	svc = svc.DeepCopy()
+	if svc.Annotations == nil {
+		svc.Annotations = map[string]string{}
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)

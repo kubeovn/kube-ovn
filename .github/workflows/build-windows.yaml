@@ -25,7 +25,7 @@ concurrency:
 env:
   GO_VERSION: ''
   # renovate: datasource=github-releases depName=gosec packageName=securego/gosec
-  GOSEC_VERSION: 2.22.7
+  GOSEC_VERSION: 2.22.10
 
 jobs:
   filter:
@@ -35,8 +35,8 @@ jobs:
       build-ovs-ovn: ${{ steps.filter.outputs.windows-ovs-ovn }}
       build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -85,14 +85,14 @@ jobs:
           git clone https://git.code.sf.net/p/pthreads4w/code pthreads4w\code
 
       - name: Check out OVS
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: openvswitch/ovs
           ref: branch-3.3
           path: ovs
 
       - name: Check out OVN
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ovn-org/ovn
           ref: branch-24.03
@@ -166,13 +166,13 @@ jobs:
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make install"
 
       - name: Upload OVS
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ovs-win64
           path: ovs\windows\ovs-windows-installer\bin\x64\Release\OpenvSwitch.msi
 
       - name: Upload OVN
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ovn-win64
           path: C:\ovn
@@ -183,8 +183,8 @@ jobs:
     runs-on: windows-2019
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -220,7 +220,7 @@ jobs:
           make build-go-windows
 
       - name: Upload Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-bin
           path: |
@@ -234,22 +234,22 @@ jobs:
       - build-kube-ovn
     runs-on: windows-2019
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download Kube-OVN binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: kube-ovn-bin
           path: dist/windows
 
       - name: Download OVS
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ovs-win64
           path: dist/windows
 
       - name: Download OVN
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ovn-win64
           path: dist/windows/ovn
@@ -270,7 +270,7 @@ jobs:
           Copy-Item kube-ovn-daemon.exe -Destination kube-ovn/bin
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kube-ovn-win64
           path: |

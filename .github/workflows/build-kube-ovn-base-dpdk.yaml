@@ -29,7 +29,7 @@ jobs:
     name: Build AMD64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: image-amd64-dpdk-${{ matrix.branch }}
           path: image-amd64-dpdk.tar
@@ -66,14 +66,14 @@ jobs:
     name: push
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
 
       - name: Download image
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: image-amd64-dpdk-${{ matrix.branch }}
 

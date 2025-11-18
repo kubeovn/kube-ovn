@@ -420,9 +420,11 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	if len(nextHops) == 1 {
 		args = " via " + nextHops[0]
 	} else {
-		for _, ip := range nextHops {
-			args += fmt.Sprintf(" nexthop via %s dev net1 weight 1", ip)
+		nexthops := make([]string, len(nextHops))
+		for i, ip := range nextHops {
+			nexthops[i] = fmt.Sprintf(" nexthop via %s dev net1 weight 1", ip)
 		}
+		args = strings.Join(nexthops, "")
 	}
 	for _, dst := range destinations {
 		cmd := fmt.Sprintf("ip route add %s%s", dst, args)
