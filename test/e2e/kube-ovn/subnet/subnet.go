@@ -319,7 +319,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		smallSubnet = subnetClient.CreateSync(smallSubnet)
 
 		ginkgo.By("Verifying available IPs is 0 after excluding the only usable IPs")
-		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs + smallSubnet.Status.V6AvailableIPs)
+		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs.Add(smallSubnet.Status.V6AvailableIPs))
 
 		// Test cases: both fixed IP and IP pool annotations
 		testCases := []struct {
