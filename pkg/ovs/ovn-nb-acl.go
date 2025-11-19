@@ -1543,7 +1543,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 }
 
 // UpdateCnpRuleACLOps return operation that creates an ingress/egress ACL
-func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0, 10)
 
 	options := func(acl *ovnnb.ACL) {
@@ -1572,13 +1572,6 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		direction = ovnnb.ACLDirectionToLport
 	} else {
 		direction = ovnnb.ACLDirectionFromLport
-	}
-
-	var tier int
-	if isBanp {
-		tier = util.BanpACLTier
-	} else {
-		tier = util.AnpACLTier
 	}
 
 	matches := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
