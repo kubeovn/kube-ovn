@@ -54,17 +54,17 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
-func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
+func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs int64) {
 	ginkgo.GinkgoHelper()
 
-	expected := kotypes.NewBigIntFromFloat(expectedUsingIPs)
-	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
+	expected := kotypes.NewBigInt(expectedUsingIPs)
+	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%d", expectedUsingIPs))
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (!subnet.Status.V4AvailableIPs.EqualInt64(0) && !subnet.Status.V4UsingIPs.Equal(expected)) ||
 			(!subnet.Status.V6AvailableIPs.EqualInt64(0) && !subnet.Status.V6UsingIPs.Equal(expected)) {
-			framework.Logf("current subnet status: v4AvailableIPs = %.0f, v4UsingIPs = %.0f, v6AvailableIPs = %.0f, v6UsingIPs = %.0f",
-				subnet.Status.V4AvailableIPs.Float64(), subnet.Status.V4UsingIPs.Float64(), subnet.Status.V6AvailableIPs.Float64(), subnet.Status.V6UsingIPs.Float64())
+			framework.Logf("current subnet status: v4AvailableIPs = %s, v4UsingIPs = %s, v6AvailableIPs = %s, v6UsingIPs = %s",
+				subnet.Status.V4AvailableIPs.String(), subnet.Status.V4UsingIPs.String(), subnet.Status.V6AvailableIPs.String(), subnet.Status.V6UsingIPs.String())
 			return false, nil
 		}
 		return true, nil

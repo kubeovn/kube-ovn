@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"net"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 // #nosec G101
@@ -212,16 +212,22 @@ func CheckProtocol(address string) string {
 	return ""
 }
 
-func AddressCount(network *net.IPNet) float64 {
+func AddressCount(network *net.IPNet) kotypes.BigInt {
 	prefixLen, bits := network.Mask.Size()
+	zeros := uint(bits - prefixLen)
+
 	// Special case handling for /31 and /32 subnets
-	switch bits - prefixLen {
+	switch zeros {
 	case 1:
-		return 2 // /31 subnet
+		return kotypes.NewBigInt(2) // /31 subnet
 	case 0:
-		return 1 // /32 subnet
+		return kotypes.NewBigInt(1) // /32 subnet
 	}
-	return math.Pow(2, float64(bits-prefixLen)) - 2
+
+	// Calculate 2^zeros - 2 using big.Int
+	count := new(big.Int).Lsh(big.NewInt(1), zeros)
+	count.Sub(count, big.NewInt(2))
+	return kotypes.BigInt{Int: *count}
 }
 
 func GenerateRandomIP(cidr string) string {
@@ -463,18 +469,18 @@ func ContainsIPs(excludeIP, ip string) bool {
 	return false
 }
 
-func CountIPNums(excludeIPs []string) float64 {
-	var count float64
+func CountIPNums(excludeIPs []string) kotypes.BigInt {
+	count := kotypes.NewBigInt(0)
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
-			var val big.Int
 			parts := strings.Split(excludeIP, "..")
 			s := IP2BigInt(parts[0])
 			e := IP2BigInt(parts[1])
-			v, _ := new(big.Float).SetInt(val.Add(val.Sub(e, s), big.NewInt(1))).Float64()
-			count += v
+			diff := new(big.Int).Sub(e, s)
+			diff.Add(diff, big.NewInt(1))
+			count = count.Add(kotypes.BigInt{Int: *diff})
 		} else {
-			count++
+			count = count.Add(kotypes.NewBigInt(1))
 		}
 	}
 	return count

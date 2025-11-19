@@ -55,11 +55,6 @@ func (b *BigInt) UnmarshalJSON(p []byte) error {
 	return nil
 }
 
-func (b BigInt) EqualFloat64(f float64) bool {
-	other := NewBigIntFromFloat(f)
-	return b.Equal(other)
-}
-
 func (b BigInt) Float64() float64 {
 	f, _ := new(big.Float).SetInt(&b.Int).Float64()
 	return f
@@ -67,10 +62,4 @@ func (b BigInt) Float64() float64 {
 
 func NewBigInt(n int64) BigInt {
 	return BigInt{*big.NewInt(n)}
-}
-
-func NewBigIntFromFloat(f float64) BigInt {
-	i := new(big.Int)
-	new(big.Float).SetFloat64(f).Int(i)
-	return BigInt{*i}
 }
