@@ -42,10 +42,18 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		return err
 	}
 
-	expectedEntries, err := util.CanonicalizeIPPoolEntries(ips)
+	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
+	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
 	if err != nil {
 		return err
 	}
+
+	// Convert to map for comparison
+	expectedMap := make(map[string]bool, len(expectedEntries))
+	for _, entry := range expectedEntries {
+		expectedMap[entry] = true
+	}
+
 	expectedName := util.IPPoolAddressSetName(ippoolName)
 
 	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
@@ -66,11 +74,11 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		}
 
 		actualEntries := util.NormalizeAddressSetEntries(strings.Join(as.Addresses, " "))
-		if len(actualEntries) != len(expectedEntries) {
+		if len(actualEntries) != len(expectedMap) {
 			return false, nil
 		}
 
-		for entry := range expectedEntries {
+		for entry := range expectedMap {
 			if !actualEntries[entry] {
 				return false, nil
 			}
