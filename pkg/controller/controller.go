@@ -286,7 +286,7 @@ type Controller struct {
 	cnpsLister     anplisterv1alpha2.ClusterNetworkPolicyLister
 	cnpsSynced     cache.InformerSynced
 	addCnpQueue    workqueue.TypedRateLimitingInterface[string]
-	updateCnpQueue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta]
+	updateCnpQueue workqueue.TypedRateLimitingInterface[*clusterNetworkPolicyChangedDelta]
 	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1alpha2.ClusterNetworkPolicy]
 	cnpKeyMutex    keymutex.KeyMutex
 
@@ -672,7 +672,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.cnpsLister = cnpInformer.Lister()
 		controller.cnpsSynced = cnpInformer.Informer().HasSynced
 		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
-		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newTypedRateLimitingQueue[*clusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
 		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
