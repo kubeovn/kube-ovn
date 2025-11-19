@@ -1,6 +1,7 @@
 package controller
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,6 +10,715 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestGetCnpPortGroupName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		cnp    *v1alpha2.ClusterNetworkPolicy
+		result string
+	}{
+		{
+			name: "basic",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+			},
+			result: "test",
+		},
+		{
+			name: "dash",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-123",
+				},
+			},
+			result: "test.123",
+		},
+		{
+			name: "starts with integer and has dash",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "123-test",
+				},
+			},
+			result: "cnp123.test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getCnpPortGroupName(tt.cnp)
+			require.Equal(t, tt.result, result)
+		})
+	}
+}
+
+func TestShouldUpdateCnpPortGroup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		oldCnp *v1alpha2.ClusterNetworkPolicy
+		newCnp *v1alpha2.ClusterNetworkPolicy
+		result bool
+	}{
+		{
+			name:   "no change",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{},
+			result: false,
+		},
+		{
+			name: "subject changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Subject: v1alpha2.ClusterNetworkPolicySubject{
+						Namespaces: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"label1": "value",
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Subject: v1alpha2.ClusterNetworkPolicySubject{
+						Namespaces: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"label1": "value",
+								"label2": "value",
+							},
+						},
+					},
+				},
+			},
+			result: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shouldUpdateCnpPortGroup(tt.oldCnp, tt.newCnp)
+			require.Equal(t, tt.result, result)
+		})
+	}
+}
+
+func TestGetCnpAddressSetsToUpdate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		oldCnp  *v1alpha2.ClusterNetworkPolicy
+		newCnp  *v1alpha2.ClusterNetworkPolicy
+		ingress bool
+		egress  bool
+	}{
+		{
+			name:    "no change",
+			oldCnp:  &v1alpha2.ClusterNetworkPolicy{},
+			newCnp:  &v1alpha2.ClusterNetworkPolicy{},
+			ingress: false,
+			egress:  false,
+		},
+		{
+			name: "changed ingress peer",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "test",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label1": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "test",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label2": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ingress: true,
+			egress:  false,
+		},
+		{
+			name: "changed ingress name",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "test",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label1": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "changed",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label2": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ingress: true,
+			egress:  false,
+		},
+		{
+			name: "changed egress peer",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label1": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label2": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ingress: false,
+			egress:  true,
+		},
+		{
+			name: "changed egress name",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label1": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "changed",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label2": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ingress: false,
+			egress:  true,
+		},
+		{
+			name: "changed ingress/egress",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "test1",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label1": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test2",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label2": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "test3",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label3": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test4",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{
+										MatchLabels: map[string]string{
+											"label4": "value",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ingress: true,
+			egress:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ingressChanged, _, egressChanged := getCnpAddressSetsToUpdate(tt.oldCnp, tt.newCnp)
+			require.Equal(t, tt.ingress, ingressChanged)
+			require.Equal(t, tt.egress, egressChanged)
+		})
+	}
+}
+
+func TestShouldRecreateCnpACLs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		oldCnp *v1alpha2.ClusterNetworkPolicy
+		newCnp *v1alpha2.ClusterNetworkPolicy
+		result bool
+	}{
+		{
+			name:   "no change",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{},
+			result: false,
+		},
+		{
+			name: "tier changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Tier: v1alpha2.BaselineTier,
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Tier: v1alpha2.AdminTier,
+				},
+			},
+			result: true,
+		},
+		{
+			name: "priority changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 1,
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 2,
+				},
+			},
+			result: true,
+		},
+		{
+			name: "logging changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.ACLActionsLogAnnotation: "true",
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.ACLActionsLogAnnotation: "false",
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "ingress count changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name:   "test1",
+							Action: "test1",
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name:   "test1",
+							Action: "test1",
+						},
+						{
+							Name:   "test2",
+							Action: "test2",
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "egress count changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name:   "test1",
+							Action: "test1",
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name:   "test1",
+							Action: "test1",
+						},
+						{
+							Name:   "test2",
+							Action: "test2",
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "ingress action changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionDeny,
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept,
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "egress action changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionDeny,
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept,
+						},
+					},
+				},
+			},
+			result: true,
+		}, {
+			name: "ingress port changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+								{
+									PortNumber: &v1alpha2.Port{
+										Protocol: "TCP",
+										Port:     1000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+								{
+									PortNumber: &v1alpha2.Port{
+										Protocol: "TCP",
+										Port:     2000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "egress port changed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+								{
+									PortNumber: &v1alpha2.Port{
+										Protocol: "TCP",
+										Port:     1000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+								{
+									PortNumber: &v1alpha2.Port{
+										Protocol: "TCP",
+										Port:     2000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "no change",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 1000,
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 1000,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shouldRecreateCnpACLs(tt.oldCnp, tt.newCnp)
+			require.Equal(t, tt.result, result)
+		})
+	}
+}
+
+func TestGetCnpPriorityMaps(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+
+	ctrl.anpPrioNameMap = map[int32]string{1001: "test1"}
+	ctrl.anpNamePrioMap = map[string]int32{"test1": 1001}
+	ctrl.bnpPrioNameMap = map[int32]string{1002: "test2"}
+	ctrl.bnpNamePrioMap = map[string]int32{"test2": 1002}
+
+	t.Run("admin tier", func(t *testing.T) {
+		p1, p2, err := ctrl.getCnpPriorityMaps(v1alpha2.AdminTier)
+		require.Equal(t, ctrl.anpPrioNameMap, p1)
+		require.Equal(t, ctrl.anpNamePrioMap, p2)
+		require.NoError(t, err)
+	})
+
+	t.Run("base tier", func(t *testing.T) {
+		p1, p2, err := ctrl.getCnpPriorityMaps(v1alpha2.BaselineTier)
+		require.Equal(t, ctrl.bnpPrioNameMap, p1)
+		require.Equal(t, ctrl.bnpNamePrioMap, p2)
+		require.NoError(t, err)
+	})
+
+	t.Run("unknown tier", func(t *testing.T) {
+		_, _, err := ctrl.getCnpPriorityMaps("unknown")
+		require.Error(t, err)
+	})
+}
+
+func TestDeleteCnpPriorityMapEntries(t *testing.T) {
+	t.Parallel()
+
+	var fakeController *fakeController
+
+	fakeController = newFakeController(t)
+	ctrl := fakeController.fakeController
+
+	ctrl.anpPrioNameMap = map[int32]string{1001: "test1"}
+	ctrl.anpNamePrioMap = map[string]int32{"test1": 1001}
+	ctrl.bnpPrioNameMap = map[int32]string{1002: "test2"}
+	ctrl.bnpNamePrioMap = map[string]int32{"test2": 1002}
+
+	cnpAdmin := &v1alpha2.ClusterNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test1"},
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.AdminTier,
+			Priority: 1001,
+		},
+	}
+
+	cnpBase := &v1alpha2.ClusterNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test2"},
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.BaselineTier,
+			Priority: 1002,
+		},
+		Status: v1alpha2.ClusterNetworkPolicyStatus{},
+	}
+
+	cnpUnknown := &v1alpha2.ClusterNetworkPolicy{
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier: "unknown",
+		},
+	}
+
+	t.Run("admin tier", func(t *testing.T) {
+		err := ctrl.deleteCnpPriorityMapEntries(cnpAdmin)
+		require.Equal(t, 0, len(ctrl.anpPrioNameMap))
+		require.Equal(t, 0, len(ctrl.anpNamePrioMap))
+		require.NoError(t, err)
+	})
+
+	t.Run("base tier", func(t *testing.T) {
+		err := ctrl.deleteCnpPriorityMapEntries(cnpBase)
+		require.Equal(t, 0, len(ctrl.bnpPrioNameMap))
+		require.Equal(t, 0, len(ctrl.bnpNamePrioMap))
+		require.NoError(t, err)
+	})
+
+	t.Run("unknown tier", func(t *testing.T) {
+		ctrl.anpPrioNameMap = map[int32]string{1001: "test1"}
+		ctrl.anpNamePrioMap = map[string]int32{"test1": 1001}
+		ctrl.bnpPrioNameMap = map[int32]string{1002: "test2"}
+		ctrl.bnpNamePrioMap = map[string]int32{"test2": 1002}
+
+		err := ctrl.deleteCnpPriorityMapEntries(cnpUnknown)
+		require.Equal(t, 1, len(ctrl.anpPrioNameMap))
+		require.Equal(t, 1, len(ctrl.anpNamePrioMap))
+		require.Equal(t, 1, len(ctrl.bnpPrioNameMap))
+		require.Equal(t, 1, len(ctrl.bnpNamePrioMap))
+		require.Error(t, err)
+	})
+}
 
 func TestValidateCnpConfig(t *testing.T) {
 	t.Parallel()
@@ -21,6 +731,16 @@ func TestValidateCnpConfig(t *testing.T) {
 	var tooBigEgressList []v1alpha2.ClusterNetworkPolicyEgressRule
 	for range util.CnpMaxRules + 1 {
 		tooBigEgressList = append(tooBigEgressList, v1alpha2.ClusterNetworkPolicyEgressRule{Name: "test"})
+	}
+
+	var tooManyDomains []v1alpha2.DomainName
+	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+		tooManyDomains = append(tooManyDomains, "kube-ovn.io")
+	}
+
+	var tooManyNetworks []v1alpha2.CIDR
+	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+		tooManyNetworks = append(tooManyNetworks, "10.0.0.0/24")
 	}
 
 	tests := []struct {
@@ -121,13 +841,140 @@ func TestValidateCnpConfig(t *testing.T) {
 			cnp: &v1alpha2.ClusterNetworkPolicy{
 				Spec: v1alpha2.ClusterNetworkPolicySpec{Priority: 1000},
 			},
-			error: false,
+			error: true,
+		},
+		{
+			name:        "domain and networks error",
+			priorityMap: map[int32]string{10: "test"},
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: tooManyDomains,
+									Networks:    tooManyNetworks,
+								},
+							},
+						},
+					},
+				},
+			},
+			error: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateCnpConfig(tt.priorityMap, tt.cnp)
+			if tt.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCheckNetworkAndDomainRules(t *testing.T) {
+	t.Parallel()
+
+	var tooManyDomains []v1alpha2.DomainName
+	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+		tooManyDomains = append(tooManyDomains, "kube-ovn.io")
+	}
+
+	var tooManyNetworks []v1alpha2.CIDR
+	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+		tooManyNetworks = append(tooManyNetworks, "10.0.0.0/24")
+	}
+
+	tests := []struct {
+		name        string
+		priorityMap map[int32]string
+		cnp         *v1alpha2.ClusterNetworkPolicy
+		error       bool
+	}{
+		{
+			name: "too many domains",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: tooManyDomains,
+								},
+							},
+						},
+					},
+				},
+			},
+			error: true,
+		},
+		{
+			name: "too many networks",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Networks: tooManyNetworks,
+								},
+							},
+						},
+					},
+				},
+			},
+			error: true,
+		},
+		{
+			name: "too many domains and networks",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: tooManyDomains,
+									Networks:    tooManyNetworks,
+								},
+							},
+						},
+					},
+				},
+			},
+			error: true,
+		},
+		{
+			name: "just enough domains and networks",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: tooManyDomains[:util.CnpMaxDomains],
+									Networks:    tooManyNetworks[:util.CnpMaxNetworks],
+								},
+							},
+						},
+					},
+				},
+			},
+			error: false,
+		},
+		{
+			name:  "no domains and networks",
+			cnp:   &v1alpha2.ClusterNetworkPolicy{},
+			error: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkNetworkAndDomainRules(tt.cnp)
 			if tt.error {
 				require.Error(t, err)
 			} else {
@@ -356,4 +1203,133 @@ func TestGetCnpACLAction(t *testing.T) {
 			require.Equal(t, tt.ret, ret)
 		})
 	}
+}
+
+func TestUpdateCnpPriorityMapEntries(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+
+	ctrl.anpPrioNameMap = map[int32]string{1001: "test1", 1002: "test2"}
+	ctrl.anpNamePrioMap = map[string]int32{"test1": 1001, "test2": 1002}
+
+	t.Run("no change", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Tier:     v1alpha2.AdminTier,
+				Priority: 1001,
+			},
+		}
+
+		err := ctrl.updateCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, "test1", ctrl.anpPrioNameMap[1001])
+		require.Equal(t, int32(1001), ctrl.anpNamePrioMap["test1"])
+	})
+
+	t.Run("priority changed within same tier", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Tier:     v1alpha2.AdminTier,
+				Priority: 1002,
+			},
+		}
+
+		err := ctrl.updateCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, "", ctrl.anpPrioNameMap[1001])
+		require.Equal(t, "test1", ctrl.anpPrioNameMap[1002])
+		require.Equal(t, int32(1002), ctrl.anpNamePrioMap["test1"])
+	})
+
+	t.Run("tier changed", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test2",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Tier:     v1alpha2.BaselineTier,
+				Priority: 1002,
+			},
+		}
+
+		err := ctrl.updateCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		// CNP gone from admin maps
+		require.Equal(t, "", ctrl.anpPrioNameMap[1002])
+		require.Equal(t, int32(0), ctrl.anpNamePrioMap[cnp.Name])
+
+		// CNP present in base maps
+		require.Equal(t, "test2", ctrl.bnpNamePrioMap[cnp.Name])
+		require.Equal(t, int32(1002), ctrl.bnpNamePrioMap["test2"])
+	})
+}
+
+func TestWipeCnpPriorityMapEntries(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+
+	ctrl.anpPrioNameMap = map[int32]string{1001: "test1", 1003: "test3"}
+	ctrl.anpNamePrioMap = map[string]int32{"test1": 1001, "test3": 1003}
+	ctrl.bnpPrioNameMap = map[int32]string{1002: "test2", 1003: "test3"}
+	ctrl.bnpNamePrioMap = map[string]int32{"test2": 1002, "test3": 1003}
+
+	t.Run("present in admin maps", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Priority: 1001,
+			},
+		}
+
+		err := ctrl.wipeCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), ctrl.anpNamePrioMap[cnp.Name])
+		require.Equal(t, "", ctrl.anpPrioNameMap[1001])
+	})
+
+	t.Run("present in base maps", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test2",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Priority: 1002,
+			},
+		}
+
+		err := ctrl.wipeCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), ctrl.bnpNamePrioMap[cnp.Name])
+		require.Equal(t, "", ctrl.bnpPrioNameMap[1002])
+	})
+
+	t.Run("present in both maps", func(t *testing.T) {
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test3",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Priority: 1003,
+			},
+		}
+
+		err := ctrl.wipeCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), ctrl.anpNamePrioMap[cnp.Name])
+		require.Equal(t, "", ctrl.anpPrioNameMap[1003])
+		require.Equal(t, int32(0), ctrl.bnpNamePrioMap[cnp.Name])
+		require.Equal(t, "", ctrl.bnpPrioNameMap[1003])
+	})
 }
