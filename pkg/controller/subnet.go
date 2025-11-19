@@ -2336,18 +2336,17 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4UsingIPs = kotypes.NewBigInt(0)
 	}
 	// Check each field individually since BigInt doesn't support array comparison
-	if !cachedBigIntFields[0].Equal(subnet.Status.V4AvailableIPs) ||
-		!cachedBigIntFields[1].Equal(subnet.Status.V4UsingIPs) ||
-		!cachedBigIntFields[2].Equal(subnet.Status.V6AvailableIPs) ||
-		!cachedBigIntFields[3].Equal(subnet.Status.V6UsingIPs) ||
-		cachedStringFields != [4]string{
+	// If status hasn't changed, no need to update
+	if cachedBigIntFields[0].Equal(subnet.Status.V4AvailableIPs) &&
+		cachedBigIntFields[1].Equal(subnet.Status.V4UsingIPs) &&
+		cachedBigIntFields[2].Equal(subnet.Status.V6AvailableIPs) &&
+		cachedBigIntFields[3].Equal(subnet.Status.V6UsingIPs) &&
+		cachedStringFields == [4]string{
 			subnet.Status.V4UsingIPRange,
 			subnet.Status.V4AvailableIPRange,
 			subnet.Status.V6UsingIPRange,
 			subnet.Status.V6AvailableIPRange,
 		} {
-		// Status has changed, need to update
-	} else {
 		return subnet, nil
 	}
 
