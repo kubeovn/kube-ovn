@@ -660,7 +660,7 @@ func TestGetCnpPriorityMaps(t *testing.T) {
 func TestDeleteCnpPriorityMapEntries(t *testing.T) {
 	t.Parallel()
 
-	var fakeController *fakeController = newFakeController(t)
+	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController
 
 	ctrl.anpPrioNameMap = map[int32]string{1001: "test1"}
@@ -737,12 +737,12 @@ func TestValidateCnpConfig(t *testing.T) {
 	}
 
 	var tooManyDomains []v1alpha2.DomainName
-	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+	for range util.CnpMaxNetworks + 1 {
 		tooManyDomains = append(tooManyDomains, "kube-ovn.io")
 	}
 
 	var tooManyNetworks []v1alpha2.CIDR
-	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+	for range util.CnpMaxNetworks + 1 {
 		tooManyNetworks = append(tooManyNetworks, "10.0.0.0/24")
 	}
 
@@ -919,12 +919,12 @@ func TestCheckNetworkAndDomainRules(t *testing.T) {
 	t.Parallel()
 
 	var tooManyDomains []v1alpha2.DomainName
-	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+	for range util.CnpMaxNetworks + 1 {
 		tooManyDomains = append(tooManyDomains, "kube-ovn.io")
 	}
 
 	var tooManyNetworks []v1alpha2.CIDR
-	for i := 0; i < util.CnpMaxNetworks+1; i++ {
+	for range util.CnpMaxNetworks + 1 {
 		tooManyNetworks = append(tooManyNetworks, "10.0.0.0/24")
 	}
 
@@ -1430,6 +1430,72 @@ func TestGetCnpACLTier(t *testing.T) {
 	}
 }
 
+func TestGetCnpDomainsNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		cnp    *v1alpha2.ClusterNetworkPolicy
+		result []string
+	}{
+		{
+			"nothing",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{},
+			},
+			[]string(nil),
+		},
+		{
+			"one domain",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: []v1alpha2.DomainName{
+										"kube-ovn.io",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			[]string{"kube-ovn.io"},
+		},
+		{
+			"two domains",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "test",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									DomainNames: []v1alpha2.DomainName{
+										"kube-ovn.io",
+										"google.com",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			[]string{"kube-ovn.io", "google.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret := getCnpDomainsNames(tt.cnp)
+			require.Equal(t, tt.result, ret)
+		})
+	}
+}
+
 func TestHasCnpDomainNames(t *testing.T) {
 	t.Parallel()
 
@@ -1491,6 +1557,65 @@ func TestHasCnpDomainNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ret := hasCnpDomainNames(tt.cnp)
+			require.Equal(t, tt.result, ret)
+		})
+	}
+}
+
+func TestGetCnpAclPriority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		cnp    *v1alpha2.ClusterNetworkPolicy
+		index  int
+		result int
+	}{
+		{
+			"min priority and first rule",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 0,
+				},
+			},
+			0,
+			30000,
+		},
+		{
+			"min priority and last rule",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: 0,
+				},
+			},
+			util.CnpMaxRules - 1,
+			29976,
+		},
+		{
+			"max priority and first rule",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: util.CnpMaxPriority,
+				},
+			},
+			0,
+			27525,
+		},
+		{
+			"max priority and last rule",
+			&v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Priority: util.CnpMaxPriority,
+				},
+			},
+			util.CnpMaxRules - 1,
+			27501,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret := getCnpAclPriority(tt.cnp, tt.index)
 			require.Equal(t, tt.result, ret)
 		})
 	}
