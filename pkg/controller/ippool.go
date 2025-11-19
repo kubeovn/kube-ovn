@@ -87,11 +87,14 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Infof("ippool %s is being deleted, skip add/update handling", ippool.Name)
 		return nil
 	}
+	ippool.Status.EnsureStandardConditions()
 	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
+		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+		}
 		return err
 	}
-	ippool.Status.EnsureStandardConditions()
 	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
 		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
@@ -173,6 +176,7 @@ func (c Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason,
 		ippool.Status.NotReady(reason, errMsg)
 		c.recorder.Eventf(ippool, corev1.EventTypeWarning, reason, errMsg)
 	} else {
+		ippool.Status.ClearError()
 		ippool.Status.Ready(reason, "")
 		c.recorder.Eventf(ippool, corev1.EventTypeNormal, reason, errMsg)
 	}
