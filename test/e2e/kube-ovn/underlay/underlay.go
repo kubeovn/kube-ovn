@@ -58,7 +58,7 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 	ginkgo.GinkgoHelper()
 
 	expected := kotypes.NewBigInt(expectedUsingIPs)
-	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%d", expectedUsingIPs))
+	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + strconv.FormatInt(expectedUsingIPs, 10))
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (!subnet.Status.V4AvailableIPs.EqualInt64(0) && !subnet.Status.V4UsingIPs.Equal(expected)) ||

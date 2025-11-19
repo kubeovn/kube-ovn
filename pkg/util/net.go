@@ -214,7 +214,7 @@ func CheckProtocol(address string) string {
 
 func AddressCount(network *net.IPNet) kotypes.BigInt {
 	prefixLen, bits := network.Mask.Size()
-	zeros := uint(bits - prefixLen)
+	zeros := uint(bits - prefixLen) // #nosec G115
 
 	// Special case handling for /31 and /32 subnets
 	switch zeros {
