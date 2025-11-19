@@ -67,6 +67,16 @@ func (c *IPPoolClient) Update(ippool *apiv1.IPPool, options metav1.UpdateOptions
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.IPPoolInterface.Update(ctx, ippool, options)
 		if err != nil {
+			// On conflict, refresh the resource and retry
+			if apierrors.IsConflict(err) {
+				latest, getErr := c.IPPoolInterface.Get(ctx, ippool.Name, metav1.GetOptions{})
+				if getErr != nil {
+					return handleWaitingAPIError(getErr, false, "get ippool %q for conflict retry", ippool.Name)
+				}
+				// Copy spec changes to the latest version
+				latest.Spec = ippool.Spec
+				ippool = latest
+			}
 			return handleWaitingAPIError(err, false, "update ippool %q", ippool.Name)
 		}
 		updatedIPPool = s
