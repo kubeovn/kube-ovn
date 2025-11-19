@@ -736,7 +736,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectTrue(len(poolIPs) >= 2, "expected at least two IPs in pool")
 		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
 		ippool.Spec.EnableAddressSet = true
-		ippool = ippoolClient.CreateSync(ippool)
+		_ = ippoolClient.CreateSync(ippool)
 
 		ginkgo.By("Verifying address set contains pool IPs")
 		framework.ExpectNoError(framework.WaitForAddressSetIPs(ippoolName, poolIPs))
