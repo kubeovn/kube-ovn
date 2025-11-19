@@ -724,7 +724,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
 		ginkgo.By("Creating ippool " + ippoolName + " with EnableAddressSet enabled")
-		poolIPs := framework.RandomIPPool(cidr, 4)
+		// Use only IPv4 or IPv6 addresses to avoid mixed IP family issue in OVN address set
+		cidrV4, cidrV6 := util.SplitStringIP(cidr)
+		var poolCIDR string
+		if cidrV4 != "" {
+			poolCIDR = cidrV4
+		} else {
+			poolCIDR = cidrV6
+		}
+		poolIPs := framework.RandomIPPool(poolCIDR, 4)
 		framework.ExpectTrue(len(poolIPs) >= 2, "expected at least two IPs in pool")
 		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
 		ippool.Spec.EnableAddressSet = true
