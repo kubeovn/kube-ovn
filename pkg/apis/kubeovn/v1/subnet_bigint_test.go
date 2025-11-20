@@ -40,12 +40,12 @@ func TestSubnetStatusBigIntJSONSerialization(t *testing.T) {
 	t.Logf("Serialized Subnet JSON (truncated): %s", jsonStr[:min(200, len(jsonStr))])
 
 	// Verify the status field contains quoted strings
-	var decoded map[string]interface{}
+	var decoded map[string]any
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal to map failed: %v", err)
 	}
 
-	status, ok := decoded["status"].(map[string]interface{})
+	status, ok := decoded["status"].(map[string]any)
 	if !ok {
 		t.Fatal("status field not found or not an object")
 	}
@@ -102,7 +102,7 @@ func TestSubnetStatusPatchJSON(t *testing.T) {
 	t.Logf("SubnetStatus JSON: %s", string(data))
 
 	// Parse as generic map to verify field types
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("Unmarshal to map failed: %v", err)
 	}

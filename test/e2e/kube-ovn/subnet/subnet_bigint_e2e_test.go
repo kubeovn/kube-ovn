@@ -66,11 +66,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err, "should marshal subnet to JSON")
 
 		// Parse as generic map to check field types
-		var subnetMap map[string]interface{}
+		var subnetMap map[string]any
 		err = json.Unmarshal(subnetJSON, &subnetMap)
 		framework.ExpectNoError(err, "should unmarshal subnet JSON to map")
 
-		statusMap, ok := subnetMap["status"].(map[string]interface{})
+		statusMap, ok := subnetMap["status"].(map[string]any)
 		framework.ExpectTrue(ok, "subnet should have status field")
 
 		// Verify BigInt fields are serialized as strings (not numbers)
@@ -120,8 +120,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Testing direct status update via K8s API client")
 		// Create a status-only patch
-		statusPatch := map[string]interface{}{
-			"status": map[string]interface{}{
+		statusPatch := map[string]any{
+			"status": map[string]any{
 				"v4usingIPs": "999",
 			},
 		}
