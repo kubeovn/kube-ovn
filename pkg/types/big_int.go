@@ -11,7 +11,7 @@ type BigInt struct {
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
-	n.FillBytes(b.Bytes())
+	n.Int.Set(&b.Int)
 }
 
 func (b BigInt) Equal(n BigInt) bool {
@@ -39,15 +39,20 @@ func (b BigInt) String() string {
 }
 
 func (b BigInt) MarshalJSON() ([]byte, error) {
-	return []byte(b.String()), nil
+	return []byte(`"` + b.String() + `"`), nil
 }
 
 func (b *BigInt) UnmarshalJSON(p []byte) error {
 	if string(p) == "null" {
 		return nil
 	}
+	// Remove quotes if present
+	s := string(p)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
 	var z big.Int
-	_, ok := z.SetString(string(p), 10)
+	_, ok := z.SetString(s, 10)
 	if !ok {
 		return fmt.Errorf("invalid big integer: %q", p)
 	}
