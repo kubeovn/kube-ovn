@@ -39,7 +39,7 @@ func (b BigInt) String() string {
 }
 
 func (b BigInt) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + b.String() + `"`), nil
+	return b.Int.MarshalJSON()
 }
 
 func (b *BigInt) UnmarshalJSON(p []byte) error {
