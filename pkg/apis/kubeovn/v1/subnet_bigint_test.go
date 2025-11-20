@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 // TestSubnetStatusBigIntJSONSerialization 验证 SubnetStatus 的 BigInt 字段正确序列化为 JSON 字符串
@@ -50,7 +51,7 @@ func TestSubnetStatusBigIntJSONSerialization(t *testing.T) {
 	}
 
 	// Check each BigInt field is a string
-	checkStringField := func(name string, expected string) {
+	checkStringField := func(name, expected string) {
 		value, ok := status[name]
 		if !ok {
 			t.Errorf("Field %s not found in status", name)
@@ -128,11 +129,4 @@ func TestSubnetStatusPatchJSON(t *testing.T) {
 			t.Errorf("Field %s = %q, want %q", fieldName, strValue, expectedValue)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

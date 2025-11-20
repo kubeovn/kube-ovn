@@ -11,7 +11,7 @@ type BigInt struct {
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
-	n.Int.Set(&b.Int)
+	n.Set(&b.Int)
 }
 
 func (b BigInt) Equal(n BigInt) bool {
