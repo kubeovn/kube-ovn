@@ -119,10 +119,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Testing direct status update via K8s API client")
-		// Get fresh copy
-		currentSubnet, err := f.KubeOVNClientSet.KubeovnV1().Subnets().Get(context.Background(), subnetName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-
 		// Create a status-only patch
 		statusPatch := map[string]interface{}{
 			"status": map[string]interface{}{
