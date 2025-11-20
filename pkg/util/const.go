@@ -170,7 +170,7 @@ const (
 
 	// ClusterNetworkPolicy
 	CnpMaxRules       = 25
-	CnpMaxPriority    = 99
+	CnpMaxPriority    = 399
 	CnpACLMaxPriority = 30000
 	CnpMaxDomains     = 25
 	CnpMaxNetworks    = 25

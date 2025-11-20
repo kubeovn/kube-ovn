@@ -143,11 +143,15 @@ func getResolvedAddressesFromDNSNameResolver(dnsNameResolver *kubeovnv1.DNSNameR
 // reconcileDNSNameResolversForANP reconciles DNSNameResolver CRs for an ANP
 // It ensures that only the desired domain names have corresponding DNSNameResolvers
 func (c *Controller) reconcileDNSNameResolversForANP(anpName string, desiredDomainNames []string) error {
-	// Get existing DNSNameResolvers for this ANP
-	labelSelector := labels.SelectorFromSet(labels.Set{adminNetworkPolicyKey: anpName})
+	return c.reconcileDNSNameResolversForNP(anpName, desiredDomainNames, adminNetworkPolicyKey)
+}
+
+func (c *Controller) reconcileDNSNameResolversForNP(npName string, desiredDomainNames []string, key string) error {
+	// Get existing DNSNameResolvers for this NP
+	labelSelector := labels.SelectorFromSet(labels.Set{key: npName})
 	existingDNSResolvers, err := c.dnsNameResolversLister.List(labelSelector)
 	if err != nil {
-		return fmt.Errorf("failed to list existing DNSNameResolvers for ANP %s: %w", anpName, err)
+		return fmt.Errorf("failed to list existing DNSNameResolvers for NP %s: %w", npName, err)
 	}
 
 	// Create sets for comparison
@@ -167,14 +171,14 @@ func (c *Controller) reconcileDNSNameResolversForANP(anpName string, desiredDoma
 
 	// Delete obsolete DNSNameResolvers
 	for _, domainName := range domainsToDelete.List() {
-		if err := c.deleteDNSNameResolver(anpName, domainName); err != nil {
+		if err := c.deleteDNSNameResolver(npName, domainName); err != nil {
 			return fmt.Errorf("failed to delete DNSNameResolver for domain %s: %w", domainName, err)
 		}
 	}
 
 	// Create new DNSNameResolvers
 	for _, domainName := range domainsToCreate.List() {
-		if err := c.createOrUpdateDNSNameResolver(anpName, domainName); err != nil {
+		if err := c.createOrUpdateDNSNameResolver(npName, domainName); err != nil {
 			return fmt.Errorf("failed to create DNSNameResolver for domain %s: %w", domainName, err)
 		}
 	}

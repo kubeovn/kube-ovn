@@ -274,6 +274,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	if c.config.EnableANP {
 		podNs, _ := c.namespacesLister.Get(p.Namespace)
 		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
+		c.updateCnpsByLabelsMatch(podNs.Labels, p.Labels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -354,6 +355,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+			c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
 		}
 
 		for _, podNet := range podNets {
@@ -361,6 +363,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			if oldAllocated != newAllocated {
 				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
 				break
 			}
 		}
