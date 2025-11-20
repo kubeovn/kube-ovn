@@ -3,6 +3,8 @@ package controller
 import (
 	"testing"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/stretchr/testify/require"
@@ -363,9 +365,9 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, ingressChanged, _, egressChanged := getCnpAddressSetsToUpdate(tt.oldCnp, tt.newCnp)
-			require.Equal(t, tt.ingress, ingressChanged)
-			require.Equal(t, tt.egress, egressChanged)
+			ingressChanged, egressChanged := getCnpAddressSetsToUpdate(tt.oldCnp, tt.newCnp)
+			require.Equal(t, tt.ingress, !isCnpRulesArrayEmpty(ingressChanged))
+			require.Equal(t, tt.egress, !isCnpRulesArrayEmpty(egressChanged))
 		})
 	}
 }
@@ -1599,7 +1601,7 @@ func TestGetCnpAclPriority(t *testing.T) {
 				},
 			},
 			0,
-			27525,
+			20025,
 		},
 		{
 			"max priority and last rule",
@@ -1609,13 +1611,98 @@ func TestGetCnpAclPriority(t *testing.T) {
 				},
 			},
 			util.CnpMaxRules - 1,
-			27501,
+			20001,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ret := getCnpAclPriority(tt.cnp, tt.index)
+			ret := getCnpACLPriority(tt.cnp, tt.index)
+			require.Equal(t, tt.result, ret)
+		})
+	}
+}
+
+func TestGetCnpAclName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cnpName   string
+		protocol  string
+		direction string
+		index     int
+		result    string
+	}{
+		{
+			name:      "ingress ipv4 10",
+			cnpName:   "test1",
+			protocol:  kubeovnv1.ProtocolIPv4,
+			direction: "ingress",
+			index:     10,
+			result:    "cnp/test1/ingress/IPv4/10",
+		},
+		{
+			name:      "egress ipv6 10",
+			cnpName:   "test1",
+			protocol:  kubeovnv1.ProtocolIPv6,
+			direction: "egress",
+			index:     10,
+			result:    "cnp/test1/egress/IPv6/10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret := getCnpACLName(tt.cnpName, tt.protocol, tt.direction, tt.index)
+			require.Equal(t, tt.result, ret)
+		})
+	}
+}
+
+func TestIsCnpRulesArrayEmpty(t *testing.T) {
+	t.Parallel()
+
+	var empty [util.CnpMaxRules]ChangedName
+	var full [util.CnpMaxRules]ChangedName
+	var partial [util.CnpMaxRules]ChangedName
+
+	for i, _ := range full {
+		full[i] = ChangedName{curRuleName: "abc"}
+	}
+
+	for i, _ := range partial {
+		if i%2 == 0 {
+			continue
+		}
+		partial[i] = ChangedName{curRuleName: "abc"}
+	}
+
+	tests := []struct {
+		name   string
+		rules  [util.CnpMaxRules]ChangedName
+		result bool
+	}{
+		{
+			name:   "empty",
+			rules:  empty,
+			result: true,
+		},
+		{
+			name:   "full",
+			rules:  full,
+			result: false,
+		},
+		{
+			name:   "partial",
+			rules:  partial,
+			result: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret := isCnpRulesArrayEmpty(tt.rules)
 			require.Equal(t, tt.result, ret)
 		})
 	}
