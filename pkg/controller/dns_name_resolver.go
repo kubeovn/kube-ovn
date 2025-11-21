@@ -82,6 +82,7 @@ func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {
 	klog.V(3).Infof("DNSNameResolver %s resolved addresses for %s: %v", key, domainName, allAddresses)
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
+	c.updateCnpQueue.Add(&ClusterNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
 	klog.V(3).Infof("Triggered ANP %s re-sync after DNSNameResolver %s update", anpName, key)
 
 	return nil
@@ -100,6 +101,7 @@ func (c *Controller) handleDeleteDNSNameResolver(dnsNameResolver *kubeovnv1.DNSN
 	klog.V(3).Infof("DNSNameResolver %s deleted for domain %s", dnsNameResolver.Name, domainName)
 
 	c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
+	c.updateCnpQueue.Add(&ClusterNetworkPolicyChangedDelta{key: anpName, field: ChangedEgressRule, DNSReconcileDone: true})
 	klog.V(3).Infof("Triggered ANP %s re-sync after DNSNameResolver %s deletion", anpName, dnsNameResolver.Name)
 
 	return nil
