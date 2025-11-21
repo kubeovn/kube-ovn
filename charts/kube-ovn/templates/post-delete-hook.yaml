@@ -103,7 +103,6 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccount: kube-ovn-post-delete-hook
       serviceAccountName: kube-ovn-post-delete-hook
       automountServiceAccountToken: true
       containers:

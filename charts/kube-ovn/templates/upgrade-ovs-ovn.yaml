@@ -136,7 +136,6 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccount: ovs-ovn-upgrade
       serviceAccountName: ovs-ovn-upgrade
       automountServiceAccountToken: true
       containers:
