@@ -419,7 +419,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
 
-	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, dnsReconcileDone=%v",
+	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
 
 	cachedAnp, err := c.anpsLister.Get(changed.key)

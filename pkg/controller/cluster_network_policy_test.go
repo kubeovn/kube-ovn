@@ -1068,7 +1068,7 @@ func TestCheckCnpPriorities(t *testing.T) {
 			name:        "cnp priority too high",
 			priorityMap: map[int32]string{10: "test"},
 			cnp: &v1alpha2.ClusterNetworkPolicy{
-				Spec: v1alpha2.ClusterNetworkPolicySpec{Priority: 100},
+				Spec: v1alpha2.ClusterNetworkPolicySpec{Priority: 400},
 			},
 			error: true,
 		},
@@ -1667,11 +1667,11 @@ func TestIsCnpRulesArrayEmpty(t *testing.T) {
 	var full [util.CnpMaxRules]ChangedName
 	var partial [util.CnpMaxRules]ChangedName
 
-	for i, _ := range full {
+	for i := range full {
 		full[i] = ChangedName{curRuleName: "abc"}
 	}
 
-	for i, _ := range partial {
+	for i := range partial {
 		if i%2 == 0 {
 			continue
 		}
@@ -1704,6 +1704,229 @@ func TestIsCnpRulesArrayEmpty(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ret := isCnpRulesArrayEmpty(tt.rules)
 			require.Equal(t, tt.result, ret)
+		})
+	}
+}
+
+func TestDoCnpLabelsMatch(t *testing.T) {
+	t.Parallel()
+
+	nsLabelMap := make(map[string]string, 1)
+	nsLabelMap["nsName"] = "test-ns"
+	nsLabels := metav1.LabelSelector{MatchLabels: nsLabelMap}
+
+	nsCmpLabelMap := make(map[string]string, 1)
+	nsCmpLabelMap["nsName"] = "test-ns-cmp"
+
+	t.Run("check namespace label match", func(t *testing.T) {
+		isMatch := isLabelsMatch(&nsLabels, nil, nsLabelMap, nil)
+		require.True(t, isMatch)
+
+		isMatch = isLabelsMatch(&nsLabels, nil, nsCmpLabelMap, nil)
+		require.False(t, isMatch)
+	})
+
+	podLabelMap := make(map[string]string, 1)
+	podLabelMap["podName"] = "test-pod"
+	podLabels := metav1.LabelSelector{MatchLabels: podLabelMap}
+
+	podCmpLabelMap := make(map[string]string, 1)
+	podCmpLabelMap["podName"] = "test-pod-cmp"
+
+	nsPod := v1alpha2.NamespacedPod{NamespaceSelector: nsLabels, PodSelector: podLabels}
+
+	t.Run("check pod label match", func(t *testing.T) {
+		isMatch := doCnpLabelsMatch(nil, &nsPod, nsLabelMap, podLabelMap)
+		require.True(t, isMatch)
+
+		isMatch = doCnpLabelsMatch(nil, &nsPod, nsCmpLabelMap, podLabelMap)
+		require.False(t, isMatch)
+
+		isMatch = doCnpLabelsMatch(nil, &nsPod, nsLabelMap, podCmpLabelMap)
+		require.False(t, isMatch)
+
+		isMatch = doCnpLabelsMatch(nil, &nsPod, nsCmpLabelMap, podCmpLabelMap)
+		require.False(t, isMatch)
+	})
+}
+
+func TestGetAffectedCnpRules(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		cnp          *v1alpha2.ClusterNetworkPolicy
+		nsLabels     map[string]string
+		podLabels    map[string]string
+		matchIngress bool
+		matchEgress  bool
+	}{
+		{
+			name: "match ns",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "ingress",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{MatchLabels: map[string]string{
+										"ns": "test",
+									}},
+								},
+							},
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "egress",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Namespaces: &metav1.LabelSelector{MatchLabels: map[string]string{
+										"ns": "test",
+									}},
+								},
+							},
+						},
+					},
+				},
+			},
+			nsLabels: map[string]string{
+				"ns": "test",
+			},
+			matchIngress: true,
+			matchEgress:  true,
+		},
+		{
+			name: "match pods",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "ingress",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Pods: &v1alpha2.NamespacedPod{
+										NamespaceSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"ns": "test",
+										}},
+										PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"pod": "test",
+										}},
+									},
+								},
+							},
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "egress",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Pods: &v1alpha2.NamespacedPod{
+										NamespaceSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"ns": "test",
+										}},
+										PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"pod": "test",
+										}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			nsLabels: map[string]string{
+				"ns": "test",
+			},
+			podLabels: map[string]string{
+				"pod": "test",
+			},
+			matchIngress: true,
+			matchEgress:  true,
+		},
+		{
+			name: "does not match pods for ingress",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "ingress",
+							From: []v1alpha2.ClusterNetworkPolicyIngressPeer{
+								{
+									Pods: &v1alpha2.NamespacedPod{
+										NamespaceSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"ns": "not-test",
+										}},
+										PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"pod": "test",
+										}},
+									},
+								},
+							},
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "egress",
+							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
+								{
+									Pods: &v1alpha2.NamespacedPod{
+										NamespaceSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"ns": "test",
+										}},
+										PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+											"pod": "test",
+										}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			nsLabels: map[string]string{
+				"ns": "test",
+			},
+			podLabels: map[string]string{
+				"pod": "test",
+			},
+			matchIngress: false,
+			matchEgress:  true,
+		},
+		{
+			name: "no match",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "ingress",
+						},
+					},
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "egress",
+						},
+					},
+				},
+			},
+			nsLabels: map[string]string{
+				"ns": "test",
+			},
+			podLabels: map[string]string{
+				"pod": "test",
+			},
+			matchIngress: false,
+			matchEgress:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ingress, egress := getAffectedCnpRules(tt.cnp, tt.nsLabels, tt.podLabels)
+			require.Equal(t, tt.matchIngress, !isCnpRulesArrayEmpty(ingress))
+			require.Equal(t, tt.matchEgress, !isCnpRulesArrayEmpty(egress))
 		})
 	}
 }
