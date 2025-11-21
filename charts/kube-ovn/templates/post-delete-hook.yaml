@@ -9,6 +9,7 @@ metadata:
     "helm.sh/hook": post-delete
     "helm.sh/hook-weight": "1"
     "helm.sh/hook-delete-policy": hook-succeeded
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -104,6 +105,7 @@ spec:
         kubernetes.io/os: "linux"
       serviceAccount: kube-ovn-post-delete-hook
       serviceAccountName: kube-ovn-post-delete-hook
+      automountServiceAccountToken: true
       containers:
         - name: remove-subnet-finalizer
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"

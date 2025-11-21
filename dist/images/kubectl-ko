@@ -562,6 +562,7 @@ spec:
         app: $CONN_CHECK_LABEL
     spec:
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       containers:
         - name: $subnetName-$CONN_CHECK_SERVER
           imagePullPolicy: IfNotPresent
