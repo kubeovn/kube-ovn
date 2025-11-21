@@ -65,7 +65,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 	if err := v.decoder.DecodeRaw(req.OldObject, &oldSubnet); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	if (o.Spec.Gateway != oldSubnet.Spec.Gateway) && (o.Status.V4UsingIPs != 0 || o.Status.V6UsingIPs != 0) {
+	if (o.Spec.Gateway != oldSubnet.Spec.Gateway) && (!o.Status.V4UsingIPs.EqualInt64(0) || !o.Status.V6UsingIPs.EqualInt64(0)) {
 		return ctrlwebhook.Denied("can't update gateway of cidr when any IPs in Using")
 	}
 
@@ -89,7 +89,7 @@ func (v *ValidatingHook) SubnetDeleteHook(_ context.Context, req admission.Reque
 	if err := v.decoder.DecodeRaw(req.OldObject, &subnet); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	if subnet.Status.V4UsingIPs != 0 || subnet.Status.V6UsingIPs != 0 {
+	if !subnet.Status.V4UsingIPs.EqualInt64(0) || !subnet.Status.V6UsingIPs.EqualInt64(0) {
 		return ctrlwebhook.Denied("can't delete subnet when any IPs in Using")
 	}
 	return ctrlwebhook.Allowed("by pass")

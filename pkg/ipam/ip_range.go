@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"net"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 // IPRange represents an IP range of [start, end]
@@ -48,9 +48,9 @@ func (r *IPRange) SetEnd(ip IP) {
 	r.end = ip
 }
 
-func (r *IPRange) Count() internal.BigInt {
+func (r *IPRange) Count() types.BigInt {
 	n := big.NewInt(0).Sub(big.NewInt(0).SetBytes([]byte(r.end)), big.NewInt(0).SetBytes([]byte(r.start)))
-	return internal.BigInt{Int: *n.Add(n, big.NewInt(1))}
+	return types.BigInt{Int: *n.Add(n, big.NewInt(1))}
 }
 
 func (r *IPRange) Random() IP {

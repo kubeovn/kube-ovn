@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 func TestNewIPRange(t *testing.T) {
@@ -65,19 +65,19 @@ func TestIPRangeCount(t *testing.T) {
 		name  string
 		start IP
 		end   IP
-		want  internal.BigInt
+		want  types.BigInt
 	}{
 		{
 			name:  "IPv4 range",
 			start: IP(net.ParseIP("192.168.1.1")),
 			end:   IP(net.ParseIP("192.168.1.10")),
-			want:  internal.BigInt{Int: *big.NewInt(10)},
+			want:  types.BigInt{Int: *big.NewInt(10)},
 		},
 		{
 			name:  "IPv6 range",
 			start: IP(net.ParseIP("2001:db8::1")),
 			end:   IP(net.ParseIP("2001:db8::10")),
-			want:  internal.BigInt{Int: *big.NewInt(16)},
+			want:  types.BigInt{Int: *big.NewInt(16)},
 		},
 	}
 

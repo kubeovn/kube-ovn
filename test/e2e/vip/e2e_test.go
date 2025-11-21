@@ -16,6 +16,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -208,13 +209,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		time.Sleep(3 * time.Second)
 		newSubnet := subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(oldSubnet.Status.V4AvailableIPs.Sub(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V4AvailableIPs))
+			framework.ExpectTrue(oldSubnet.Status.V4UsingIPs.Add(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V4UsingIPs))
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs-1, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(oldSubnet.Status.V6AvailableIPs.Sub(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V6AvailableIPs))
+			framework.ExpectTrue(oldSubnet.Status.V6UsingIPs.Add(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V6UsingIPs))
 			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
@@ -224,13 +225,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		time.Sleep(3 * time.Second)
 		newSubnet = subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs-1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(oldSubnet.Status.V4AvailableIPs.Add(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V4AvailableIPs))
+			framework.ExpectTrue(oldSubnet.Status.V4UsingIPs.Sub(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V4UsingIPs))
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs+1, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs-1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(oldSubnet.Status.V6AvailableIPs.Add(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V6AvailableIPs))
+			framework.ExpectTrue(oldSubnet.Status.V6UsingIPs.Sub(kotypes.NewBigInt(1)).Equal(newSubnet.Status.V6UsingIPs))
 			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
