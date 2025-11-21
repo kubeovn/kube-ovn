@@ -76,7 +76,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
-          - --cni-conf-dir={{ .Values.cni.configDirectory }}
+          - --cni-conf-dir=/etc/cni/net.d
           - --cni-conf-file={{ .Values.cni.localConfigFile }}
           - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
         securityContext:
