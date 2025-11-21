@@ -45,3 +45,4 @@ kind: ServiceAccount
 metadata:
   name: vpc-nat-gw
   namespace: {{ .Values.namespace }}
+automountServiceAccountToken: false

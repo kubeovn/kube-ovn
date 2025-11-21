@@ -26,6 +26,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-node-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       containers:
         - name: kube-ovn-speaker

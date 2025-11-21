@@ -21,4 +21,4 @@ spec:
           name: cyclonus
           imagePullPolicy: IfNotPresent
           image: mfenwick100/cyclonus:latest
-      serviceAccount: cyclonus
+      serviceAccountName: cyclonus
