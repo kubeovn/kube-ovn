@@ -36,7 +36,7 @@ jobs:
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         if: (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
@@ -88,7 +88,7 @@ jobs:
     name: push
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}

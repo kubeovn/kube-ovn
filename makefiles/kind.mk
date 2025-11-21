@@ -49,7 +49,7 @@ define kind_load_image
 	@if [ "x$(3)" = "x1" ]; then \
 		$(call docker_ensure_image_exists,$(2)); \
 	fi
-	if kind load docker-image --name $(1) $(2) 2>/dev/null; then \
+	@if kind load docker-image --name $(1) $(2) 2>/dev/null; then \
 		echo "Successfully loaded $(2) using docker-image method"; \
 	else \
 		echo "docker-image method failed, trying image-archive method..."; \

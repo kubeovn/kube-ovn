@@ -38,6 +38,7 @@ import (
 
 type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
+	vpcNatGwInformer  kubeovninformer.VpcNatGatewayInformer
 	subnetInformer    kubeovninformer.SubnetInformer
 	serviceInformer   coreinformers.ServiceInformer
 	namespaceInformer coreinformers.NamespaceInformer
@@ -123,9 +124,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
+		vpcNatGwInformer:  vpcNatGwInformer,
 		subnetInformer:    subnetInformer,
 		serviceInformer:   serviceInformer,
 		namespaceInformer: namespaceInformer,
@@ -155,6 +158,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		DefaultLogicalSwitch: "ovn-default",
 		NodeSwitch:           "join",
 		KubeOvnClient:        kubeovnClient,
+		KubeClient:           kubeClient,
+		PodNamespace:         "kube-system",
 		AttachNetClient:      nadClient,
 	}
 

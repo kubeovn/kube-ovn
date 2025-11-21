@@ -9,13 +9,13 @@ on:
 jobs:
   release:
     permissions:
-      contents: read # to push chart release and create a release (helm/chart-releaser-action)
+      contents: write # to push chart release and create a release (helm/chart-releaser-action)
       packages: write # to push chart to GitHub Container Registry (ghcr.io)
 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -41,7 +41,7 @@ jobs:
           for chart in charts/*/; do
             if [ -f "${chart}Chart.yaml" ]; then
               chart_name=$(basename "$chart")
-              chart_version=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}' | tr -d 'v')
+              chart_version=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
               
               echo "Packaging and pushing ${chart_name} version ${chart_version}..."
               helm package "$chart" -d /tmp/charts

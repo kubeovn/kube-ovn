@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"context"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/kubeovn/dbus/v5"
 	"github.com/kubeovn/gonetworkmanager/v3"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
@@ -29,7 +32,21 @@ type networkManagerSyncer struct {
 }
 
 func newNetworkManagerSyncer() *networkManagerSyncer {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
 	syncer := &networkManagerSyncer{}
+
+	_, err := dbus.SystemBus(dbus.WithContext(ctx))
+	if err != nil {
+		if ctx.Err() != context.DeadlineExceeded {
+			klog.Errorf("failed to connect to system bus: %v", err)
+		}
+		return syncer
+	}
+
+	// wait for the connection to be closed, so we can create NetworkManager client again
+	<-ctx.Done()
 
 	manager, err := gonetworkmanager.NewNetworkManager()
 	if err != nil {
