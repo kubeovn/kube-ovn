@@ -240,6 +240,9 @@ cni:
   # -- Location of the CNI configuration on the node.
   # @section -- CNI configuration
   configDirectory: "/etc/cni/net.d"
+  # -- Location of the CNI configuration to be mounted inside the pod.
+  # @section -- CNI configuration
+  mountConfigDirectory: "/etc/cni/net.d"
   # -- Location on the node where the agent will inject the Kube-OVN binary.
   # @section -- CNI configuration
   binaryDirectory: "/opt/cni/bin"
