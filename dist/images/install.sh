@@ -3422,6 +3422,7 @@ kind: ServiceAccount
 metadata:
   name: ovn-ovs
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -3478,6 +3479,7 @@ kind: ServiceAccount
 metadata:
   name: ovn
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -3762,6 +3764,7 @@ kind: ServiceAccount
 metadata:
   name: kube-ovn-cni
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -3916,6 +3919,7 @@ kind: ServiceAccount
 metadata:
   name: kube-ovn-app
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -4084,6 +4088,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -4248,6 +4253,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -4442,6 +4448,7 @@ spec:
       - operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       containers:
@@ -4655,6 +4662,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -4839,6 +4847,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-cni
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -5107,6 +5116,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -5330,6 +5340,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       containers:
         - name: ovn-ic-controller
@@ -5476,6 +5487,7 @@ spec:
     spec:
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       hostPID: true
       initContainers:
         - name: hostpath-init
