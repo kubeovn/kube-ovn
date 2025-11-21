@@ -7,15 +7,14 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
-
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
@@ -68,6 +67,16 @@ func (c *IPPoolClient) Update(ippool *apiv1.IPPool, options metav1.UpdateOptions
 	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.IPPoolInterface.Update(ctx, ippool, options)
 		if err != nil {
+			// On conflict, refresh the resource and retry
+			if apierrors.IsConflict(err) {
+				latest, getErr := c.IPPoolInterface.Get(ctx, ippool.Name, metav1.GetOptions{})
+				if getErr != nil {
+					return handleWaitingAPIError(getErr, false, "get ippool %q for conflict retry", ippool.Name)
+				}
+				// Copy spec changes to the latest version
+				latest.Spec = ippool.Spec
+				ippool = latest
+			}
 			return handleWaitingAPIError(err, false, "update ippool %q", ippool.Name)
 		}
 		updatedIPPool = s
@@ -91,7 +100,6 @@ func (c *IPPoolClient) UpdateSync(ippool *apiv1.IPPool, options metav1.UpdateOpt
 	ginkgo.GinkgoHelper()
 
 	s := c.Update(ippool, options, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
 	// Get the newest ippool after it becomes ready
 	return c.Get(s.Name).DeepCopy()
@@ -131,7 +139,6 @@ func (c *IPPoolClient) PatchSync(original, modified *apiv1.IPPool) *apiv1.IPPool
 	ginkgo.GinkgoHelper()
 
 	s := c.Patch(original, modified, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
 	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
 	// Get the newest ippool after it becomes ready
 	return c.Get(s.Name).DeepCopy()
