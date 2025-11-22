@@ -1784,6 +1784,43 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		network, err := c.netAttachLister.NetworkAttachmentDefinitions(attach.Namespace).Get(attach.Name)
 		if err != nil {
 			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
+			if k8serrors.IsNotFound(err) && ignoreSubnetNotExist {
+				// NAD deleted before pod, find subnet for cleanup
+				providerName := fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
+				subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+				if subnetName == "" {
+					for _, subnet := range subnets {
+						if subnet.Spec.Provider == providerName {
+							subnetName = subnet.Name
+							break
+						}
+					}
+				}
+
+				if subnetName == "" {
+					klog.Errorf("deleting pod %s/%s net-attach-def %s not found and cannot determine subnet, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name)
+					continue
+				}
+
+				subnet, err := c.subnetsLister.Get(subnetName)
+				if err != nil {
+					klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+					if k8serrors.IsNotFound(err) {
+						klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+						continue
+					}
+					return nil, err
+				}
+
+				klog.Infof("pod %s/%s net-attach-def %s not found, using subnet %s for cleanup", pod.Namespace, pod.Name, attach.Name, subnetName)
+				result = append(result, &kubeovnNet{
+					Type:         providerTypeIPAM,
+					ProviderName: providerName,
+					Subnet:       subnet,
+					IsDefault:    util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach),
+				})
+				continue
+			}
 			return nil, err
 		}
 
