@@ -11,6 +11,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var registerMetricsOnce sync.Once
@@ -110,8 +111,9 @@ func (c *Controller) exportSubnetIPAMInfo(subnet *kubeovnv1.Subnet) {
 		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, subnet.Spec.CIDRBlock, ipamSubnet.V6Free.String(), ipamSubnet.V6Reserved.String(), ipamSubnet.V6Available.String(), ipamSubnet.V6Using.String()).Set(1)
 
 	case kubeovnv1.ProtocolDual:
-		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, subnet.Spec.CIDRBlock, ipamSubnet.V4Free.String(), ipamSubnet.V4Reserved.String(), ipamSubnet.V4Available.String(), ipamSubnet.V4Using.String()).Set(1)
-		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, subnet.Spec.CIDRBlock, ipamSubnet.V6Free.String(), ipamSubnet.V6Reserved.String(), ipamSubnet.V6Available.String(), ipamSubnet.V6Using.String()).Set(1)
+		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, cidrV4, ipamSubnet.V4Free.String(), ipamSubnet.V4Reserved.String(), ipamSubnet.V4Available.String(), ipamSubnet.V4Using.String()).Set(1)
+		metricSubnetIPAMInfo.WithLabelValues(subnet.Name, cidrV6, ipamSubnet.V6Free.String(), ipamSubnet.V6Reserved.String(), ipamSubnet.V6Available.String(), ipamSubnet.V6Using.String()).Set(1)
 	}
 }
 
