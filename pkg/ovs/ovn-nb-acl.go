@@ -1580,7 +1580,7 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		setACL, err := c.newACLWithoutCheck(pgName, direction, strPriority, m, aclAction, tier, options)
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("new ingress acl for port group %s: %w", pgName, err)
+			return nil, fmt.Errorf("new acl for port group %s: %w", pgName, err)
 		}
 
 		acls = append(acls, setACL)
@@ -1707,7 +1707,7 @@ func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 			)
 			matches = append(matches, severalMatch.String())
 		default:
-			klog.Errorf("failed to check port for anp ingress rule, pg %s, as %s", pgName, asName)
+			klog.Errorf("failed to check port for cnp ingress rule, pg %s, as %s", pgName, asName)
 		}
 	}
 	return matches

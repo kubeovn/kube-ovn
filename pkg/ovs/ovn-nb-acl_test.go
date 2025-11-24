@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
+
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
@@ -2740,6 +2742,61 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 		require.NoError(t, err)
 		require.NotEmpty(t, ops)
 		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s", pgName, asName), "2000")
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string, tier int) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+		require.Equal(t, tier, row["tier"])
+	}
+
+	t.Run("ingress ACL for CNP", func(t *testing.T) {
+		pgName := "test-pg-ingress"
+		asName := "test-as-ingress"
+		protocol := "IPv4"
+		aclName := "test-acl"
+		priority := 1000
+		aclAction := ovnnb.ACLActionAllow
+		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
+		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
+		isIngress := true
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		ops, err := nbClient.UpdateCnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, 3)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+		expect(ops[0].Row, ovnnb.ACLActionAllow, ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip && ip4.src == $%s", pgName, asName), "1000", 3)
+	})
+
+	t.Run("egress ACL for CNP", func(t *testing.T) {
+		pgName := "test-pg-egress"
+		asName := "test-as-egress"
+		protocol := "IPv6"
+		aclName := "test-acl"
+		priority := 2000
+		aclAction := ovnnb.ACLActionDrop
+		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionDrop}
+		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
+		isIngress := false
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		ops, err := nbClient.UpdateCnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, 2)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+		expect(ops[0].Row, ovnnb.ACLActionDrop, ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip && ip6.dst == $%s", pgName, asName), "2000", 2)
 	})
 }
 

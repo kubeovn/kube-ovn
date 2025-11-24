@@ -35,7 +35,7 @@ func MakeAdminNetworkPolicy(name string, priority int32, namespaceSelector *meta
 	return anp
 }
 
-// MakeClusterNetworkPolicy creates a basic AdminNetworkPolicy with common defaults
+// MakeClusterNetworkPolicy creates a basic ClusterNetworkPolicy with common defaults
 func MakeClusterNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1alpha2.ClusterNetworkPolicyEgressRule, ingressRules []netpolv1alpha2.ClusterNetworkPolicyIngressRule) *netpolv1alpha2.ClusterNetworkPolicy {
 	anp := &netpolv1alpha2.ClusterNetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -121,7 +121,7 @@ func (f *Framework) AnpClient() *AnpClient {
 	}
 }
 
-// CnpClient is a struct for CLusterNetworkPolicy client.
+// CnpClient is a struct for ClusterNetworkPolicy client.
 type CnpClient struct {
 	f *Framework
 	cnpclient.ClusterNetworkPolicyInterface

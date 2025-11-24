@@ -1,4 +1,4 @@
-package anp
+package cnp
 
 import (
 	"fmt"
