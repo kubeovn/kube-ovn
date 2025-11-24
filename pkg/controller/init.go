@@ -983,6 +983,10 @@ func (c *Controller) syncFinalizers() error {
 		klog.Errorf("failed to sync ip finalizer: %v", err)
 		return err
 	}
+	if err := c.syncIPPoolFinalizer(cl); err != nil {
+		klog.Errorf("failed to sync ippool finalizer: %v", err)
+		return err
+	}
 	if err := c.syncOvnDnatFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ovn dnat finalizer: %v", err)
 		return err

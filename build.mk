@@ -10,6 +10,13 @@ else
 GO_BUILD_FLAGS = -trimpath -ldflags "-w -s $(GOLDFLAGS)"
 endif
 
+GO_MOD_VERSION := $(shell awk '/^go[[:space:]]+/ { print $$2; exit }' go.mod)
+ifeq ($(strip $(GO_MOD_VERSION)),)
+$(error failed to determine Go version from go.mod)
+endif
+GOTOOLCHAIN_VERSION := go$(GO_MOD_VERSION)
+MODERNIZE_ENV := GOTOOLCHAIN=$(GOTOOLCHAIN_VERSION)
+
 .PHONY: build-go
 build-go:
 	go mod tidy

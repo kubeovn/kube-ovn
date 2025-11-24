@@ -1225,3 +1225,166 @@ func TestAllocate(t *testing.T) {
 		require.False(t, v6RangeList.Contains(allocated))
 	})
 }
+
+func TestIPRangeListToCIDRs(t *testing.T) {
+	t.Run("Empty list", func(t *testing.T) {
+		emptyList := NewEmptyIPRangeList()
+		result, err := emptyList.ToCIDRs()
+		require.NoError(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("Single IPv4 IP", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.1")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.1/32"}, result)
+	})
+
+	t.Run("Single IPv6 IP", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("2001:db8::1")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"2001:db8::1/128"}, result)
+	})
+
+	t.Run("IPv4 CIDR", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.0/24")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.0/24"}, result)
+	})
+
+	t.Run("IPv6 CIDR", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("2001:db8::/64")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"2001:db8::/64"}, result)
+	})
+
+	t.Run("IPv4 aligned range", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.0..10.0.0.3")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.0/30"}, result)
+	})
+
+	t.Run("IPv4 unaligned range", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.1..10.0.0.5")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"10.0.0.1/32",
+			"10.0.0.2/31",
+			"10.0.0.4/31",
+		}, result)
+	})
+
+	t.Run("IPv6 range", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("2001:db8::1..2001:db8::4")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"2001:db8::1/128",
+			"2001:db8::2/127",
+			"2001:db8::4/128",
+		}, result)
+	})
+
+	t.Run("Multiple ranges merged", func(t *testing.T) {
+		// NewIPRangeListFrom merges overlapping ranges
+		rangeList, err := NewIPRangeListFrom("10.0.0.1..10.0.0.5", "10.0.0.3..10.0.0.10")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		// Should be merged into 10.0.0.1..10.0.0.10
+		// Which converts to: 10.0.0.1/32, 10.0.0.2/31, 10.0.0.4/30, 10.0.0.8/31, 10.0.0.10/32
+		require.NotEmpty(t, result)
+		require.Contains(t, result, "10.0.0.1/32")
+		require.Contains(t, result, "10.0.0.2/31")
+		require.Contains(t, result, "10.0.0.4/30")
+		require.Contains(t, result, "10.0.0.8/31")
+		require.Contains(t, result, "10.0.0.10/32")
+	})
+
+	t.Run("Multiple separate ranges", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.1..10.0.0.2", "10.0.0.5..10.0.0.6")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		// Check sorted order
+		require.True(t, result[0] <= result[len(result)-1])
+	})
+
+	t.Run("Mixed single IPs and ranges", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.1", "10.0.0.5..10.0.0.8", "10.0.0.10")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		require.Contains(t, result, "10.0.0.1/32")
+		require.Contains(t, result, "10.0.0.10/32")
+	})
+
+	t.Run("Large IPv4 range", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.0..10.0.0.255")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"10.0.0.0/24"}, result)
+	})
+
+	t.Run("Results are sorted", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("10.0.0.10", "10.0.0.1", "10.0.0.5")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"10.0.0.1/32",
+			"10.0.0.10/32",
+			"10.0.0.5/32",
+		}, result)
+	})
+}
+
+func TestIPRangeListToCIDRsEdgeCases(t *testing.T) {
+	t.Run("Maximum IPv4 address", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("255.255.255.255")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"255.255.255.255/32"}, result)
+	})
+
+	t.Run("Minimum IPv4 address", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("0.0.0.0")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"0.0.0.0/32"}, result)
+	})
+
+	t.Run("IPv6 loopback", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("::1")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"::1/128"}, result)
+	})
+
+	t.Run("IPv6 zero address", func(t *testing.T) {
+		rangeList, err := NewIPRangeListFrom("::")
+		require.NoError(t, err)
+		result, err := rangeList.ToCIDRs()
+		require.NoError(t, err)
+		require.Equal(t, []string{"::/128"}, result)
+	})
+}
