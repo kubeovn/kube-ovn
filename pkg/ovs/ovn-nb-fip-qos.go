@@ -130,7 +130,6 @@ func (c *OVNNbClient) getLogicalSwitchQos(lsName, externalPort, v4Eip, direction
 		klog.Error(err)
 		return nil, fmt.Errorf("get qos for logicalSwitch %s: %w", lsName, err)
 	}
-	// klog.Info("qos list: ", &QoSList)
 	return QoSList, nil
 }
 
@@ -140,7 +139,6 @@ func (c *OVNNbClient) listLogicalSwitchQosByFilter(lsName string, filter func(qo
 		klog.Error(err)
 		return nil, err
 	}
-	// klog.Info("listLogicalSwitchQosByFilter: ", ls.QOSRules)
 	QoSList := make([]*ovnnb.QoS, 0, len(ls.QOSRules))
 	for _, uuid := range ls.QOSRules {
 		qos, err := c.getQosByUUID(uuid)
@@ -160,8 +158,6 @@ func (c *OVNNbClient) listLogicalSwitchQosByFilter(lsName string, filter func(qo
 }
 
 func (c *OVNNbClient) getQosByUUID(uuid string) (*ovnnb.QoS, error) {
-	// ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	// defer cancel()
 	obj := &ovnnb.QoS{} // Ensure the correct model type is used
 	conditions := []model.Condition{
 		{
