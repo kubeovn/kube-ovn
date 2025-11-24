@@ -1710,7 +1710,7 @@ spec:
         name: IpName
         type: string
       - jsonPath: .spec.qosPolicy
-        name: qosPolicy
+        name: QosPolicy
         type: string
       schema:
         openAPIV3Schema:
