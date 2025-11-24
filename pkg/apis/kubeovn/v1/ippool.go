@@ -34,6 +34,8 @@ type IPPoolSpec struct {
 	Subnet     string   `json:"subnet,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
 	IPs        []string `json:"ips,omitempty"`
+	// EnableAddressSet to work with policy-based routing and ACL
+	EnableAddressSet bool `json:"enableAddressSet,omitempty"`
 }
 
 type IPPoolStatus struct {
@@ -110,7 +112,6 @@ func (s *IPPoolStatus) EnsureCondition(ctype ConditionType) {
 // EnsureStandardConditions - helper to inject standard conditions
 func (s *IPPoolStatus) EnsureStandardConditions() {
 	s.EnsureCondition(Ready)
-	s.EnsureCondition(Error)
 }
 
 // SetCondition updates or creates a new condition
@@ -136,11 +137,6 @@ func (s *IPPoolStatus) NotReady(reason, message string) {
 // SetError - shortcut to set error condition
 func (s *IPPoolStatus) SetError(reason, message string) {
 	s.SetCondition(Error, reason, message)
-}
-
-// ClearError - shortcut to set error condition
-func (s *IPPoolStatus) ClearError() {
-	s.ClearCondition(Error, "NoError", "No error seen")
 }
 
 // IsConditionTrue - if condition is true

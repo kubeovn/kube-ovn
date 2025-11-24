@@ -22,10 +22,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/onsi/ginkgo/v2"
 )
 
 // handleWaitingAPIError handles an error from an API request in the context of a Wait function.
@@ -56,7 +55,7 @@ func shouldRetry(err error) (retry bool, retryAfter time.Duration) {
 	}
 
 	// these errors indicate a transient error that should be retried.
-	if apierrors.IsTimeout(err) || apierrors.IsTooManyRequests(err) {
+	if apierrors.IsTimeout(err) || apierrors.IsTooManyRequests(err) || apierrors.IsConflict(err) {
 		return true, 0
 	}
 
