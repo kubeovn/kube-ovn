@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"math/big"
 	"net"
 	"slices"
 	"sort"
@@ -298,4 +299,109 @@ func (r *IPRangeList) String() string {
 		s = append(s, r.At(i).String())
 	}
 	return strings.Join(s, ",")
+}
+
+// ToCIDRs converts the IP range list to a sorted list of CIDR strings.
+// Each range is converted to the minimal set of CIDRs that cover it.
+// Single IPs are converted to /32 (IPv4) or /128 (IPv6) CIDRs.
+//
+// IMPORTANT: This method operates on the already-merged IP ranges in the IPRangeList.
+// If the list was created via NewIPRangeListFrom(), overlapping ranges will have been merged,
+// resulting in a more compact CIDR representation compared to util.ExpandIPPoolAddresses().
+func (r *IPRangeList) ToCIDRs() ([]string, error) {
+	if r.Len() == 0 {
+		return nil, nil
+	}
+
+	var result []string
+	for i := range r.Len() {
+		start := r.At(i).Start()
+		end := r.At(i).End()
+
+		if start.Equal(end) {
+			// Single IP: convert to /32 or /128
+			bits := 32
+			if len(start) == net.IPv6len {
+				bits = 128
+			}
+			result = append(result, fmt.Sprintf("%s/%d", start.String(), bits))
+			continue
+		}
+
+		// Range: convert to minimal CIDR set
+		startIP := net.IP(start)
+		endIP := net.IP(end)
+
+		// Inline the IPRangeToCIDRs logic to avoid circular dependency
+		length := net.IPv4len
+		totalBits := 32
+		if startIP.To4() == nil {
+			length = net.IPv6len
+			totalBits = 128
+		}
+
+		startInt := new(big.Int).SetBytes(startIP)
+		endInt := new(big.Int).SetBytes(endIP)
+		if startInt.Cmp(endInt) > 0 {
+			return nil, fmt.Errorf("range %s..%s start is greater than end", start, end)
+		}
+
+		tmp := new(big.Int)
+		for startInt.Cmp(endInt) <= 0 {
+			zeros := countTrailingZeros(startInt, totalBits)
+			// Add boundary check for safety
+			if zeros > totalBits {
+				return nil, fmt.Errorf("trailing zero count %d exceeds total bits %d", zeros, totalBits)
+			}
+
+			diff := tmp.Sub(endInt, startInt)
+			diff.Add(diff, big.NewInt(1))
+
+			var maxDiff int
+			if bits := diff.BitLen(); bits > 0 {
+				maxDiff = bits - 1
+			}
+
+			size := min(zeros, maxDiff)
+			size = min(size, totalBits)
+			if size < 0 {
+				return nil, fmt.Errorf("calculated negative prefix size %d", size)
+			}
+
+			prefix := totalBits - size
+			networkInt := new(big.Int).Set(startInt)
+			networkBytes := networkInt.Bytes()
+			if len(networkBytes) < length {
+				padded := make([]byte, length)
+				copy(padded[length-len(networkBytes):], networkBytes)
+				networkBytes = padded
+			} else if len(networkBytes) > length {
+				networkBytes = networkBytes[len(networkBytes)-length:]
+			}
+			networkIP := net.IP(networkBytes)
+			if length == net.IPv4len {
+				networkIP = networkIP.To4()
+			}
+			network := &net.IPNet{IP: networkIP, Mask: net.CIDRMask(prefix, totalBits)}
+			result = append(result, network.String())
+
+			increment := new(big.Int).Lsh(big.NewInt(1), uint(size))
+			startInt.Add(startInt, increment)
+		}
+	}
+
+	sort.Strings(result)
+	return result, nil
+}
+
+func countTrailingZeros(value *big.Int, totalBits int) int {
+	if value.Sign() == 0 {
+		return totalBits
+	}
+
+	zeros := 0
+	for zeros < totalBits && value.Bit(zeros) == 0 {
+		zeros++
+	}
+	return zeros
 }

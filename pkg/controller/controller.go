@@ -54,6 +54,7 @@ const (
 	u2oKey                        = "u2o"
 	adminNetworkPolicyKey         = "anp"
 	baselineAdminNetworkPolicyKey = "banp"
+	ippoolKey                     = "ippool"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
