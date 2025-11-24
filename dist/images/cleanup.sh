@@ -63,19 +63,6 @@ for ippool in $(kubectl get ippool -o name); do
   kubectl delete --ignore-not-found $ippool
 done
 
-set +e
-for subnet in $(kubectl get subnet -o name); do
-  kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
-  kubectl delete --ignore-not-found "$subnet"
-done
-# subnet join will recreate, so delete subnet crd right now
-kubectl delete --ignore-not-found crd subnets.kubeovn.io
-set -e
-
-for vpc in $(kubectl get vpc -o name); do
-  kubectl delete --ignore-not-found $vpc
-done
-
 for vlan in $(kubectl get vlan -o name); do
   kubectl delete --ignore-not-found $vlan
 done
@@ -121,13 +108,19 @@ kubectl delete --ignore-not-found clusterrole system:vpc-dns
 kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
+# remove finalizers
+for resource_type in subnet vpc ip; do
+  for resource in $(kubectl get "$resource_type" -o name); do
+    kubectl patch "$resource" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+  done
+done
+
 # delete CRD
 kubectl delete --ignore-not-found crd \
   security-groups.kubeovn.io \
   ippools.kubeovn.io \
   vpc-nat-gateways.kubeovn.io \
   vpc-egress-gateways.kubeovn.io \
-  vpcs.kubeovn.io \
   vlans.kubeovn.io \
   provider-networks.kubeovn.io \
   iptables-dnat-rules.kubeovn.io \
@@ -141,16 +134,10 @@ kubectl delete --ignore-not-found crd \
   ovn-snat-rules.kubeovn.io \
   ovn-fips.kubeovn.io \
   ovn-eips.kubeovn.io \
-  qos-policies.kubeovn.io
-
-# in case of ip not delete
-set +e
-for ip in $(kubectl get ip -o name); do
-  kubectl patch "$ip" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
-  kubectl delete --ignore-not-found "$ip"
-done
-kubectl delete --ignore-not-found crd ips.kubeovn.io
-set -e
+  qos-policies.kubeovn.io \
+  subnets.kubeovn.io \
+  vpcs.kubeovn.io \
+  ips.kubeovn.io
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate node --all ovn.kubernetes.io/cidr-

@@ -36,7 +36,23 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVM(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachine)).String()
+	var vm *kubevirtv1.VirtualMachine
+	switch t := obj.(type) {
+	case *kubevirtv1.VirtualMachine:
+		vm = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubevirtv1.VirtualMachine)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vm = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(vm).String()
 	klog.Infof("enqueue add VM %s", key)
 	c.deleteVMQueue.Add(key)
 }
@@ -143,13 +159,6 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
 		switch vmiMigration.Status.Phase {
-		case kubevirtv1.MigrationRunning:
-			klog.Infof("migrate start set options for lsp %s from %s to %s", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for lsp %s, %w", portName, err)
-				klog.Error(err)
-				return err
-			}
 		case kubevirtv1.MigrationSucceeded:
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {

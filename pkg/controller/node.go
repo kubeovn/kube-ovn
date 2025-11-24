@@ -71,7 +71,22 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj any) {
-	node := obj.(*v1.Node)
+	var node *v1.Node
+	switch t := obj.(type) {
+	case *v1.Node:
+		node = t
+	case cache.DeletedFinalStateUnknown:
+		n, ok := t.Obj.(*v1.Node)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		node = n
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue delete node %s", key)
 	c.deletingNodeObjMap.Store(key, node)
@@ -282,8 +297,14 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)
 
 		var newPn *kubeovnv1.ProviderNetwork
-		excluded := slices.Contains(pn.Spec.ExcludeNodes, node.Name)
-		if !excluded && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
+		excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		// Handle node annotation for exclusion (only when nodeSelector is not set)
+		if !excluded && pn.Spec.NodeSelector == nil && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
 			newPn = pn.DeepCopy()
 			newPn.Spec.ExcludeNodes = append(newPn.Spec.ExcludeNodes, node.Name)
 			excluded = true
@@ -524,7 +545,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	for _, cachedSubnet := range subnets {
-		if cachedSubnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+		if cachedSubnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			// we need to reconcile ovn route for subnets with distributed gateway mode,
 			// since the informer node cache may not be synced before the subnet reconcile triggered by node addition
 			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
@@ -683,7 +704,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 	for ; ; i++ {
 		err = f(node)
 		if err == nil {
-			return
+			return err
 		}
 		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
 		if i >= (attempts - 1) {

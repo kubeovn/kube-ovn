@@ -24,6 +24,19 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 )
 
+// ObjectMatchesLabelSelector checks if the given object matches the provided label selector.
+// It returns true if the object has labels that match the selector, otherwise false.
+// If the selector is invalid, it logs an error and returns false.
+// if the selector is nil, it returns false.
+func ObjectMatchesLabelSelector(obj metav1.Object, selector *metav1.LabelSelector) bool {
+	labelSelector, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		klog.Errorf("failed to convert label selector %v: %v", selector, err)
+		return false
+	}
+	return labelSelector.Matches(labels.Set(obj.GetLabels()))
+}
+
 func DialTCP(host string, timeout time.Duration, verbose bool) error {
 	u, err := url.Parse(host)
 	if err != nil {

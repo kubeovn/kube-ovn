@@ -8,6 +8,7 @@ ovn-ctl status_northd
 ovn-ctl status_ovnnb
 ovn-ctl status_ovnsb
 
+POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 BIND_LOCAL_ADDR=[${POD_IP:-127.0.0.1}]
 
 # For data consistency, only store leader address in endpoint
@@ -45,11 +46,11 @@ if [[ $sb_leader =~ "true" ]]
 then
    kubectl label --overwrite pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-sb-leader=true
    set +e
-   northd_svc=$(kubectl get svc -n kube-system | grep ovn-northd)
+   northd_svc=$(kubectl get svc --ignore-not-found -n "$POD_NAMESPACE" ovn-northd)
    if [ -z "$northd_svc" ]; then
     echo "ovn-northd svc not exist"
    else
-    northd_leader=$(kubectl get ep -n kube-system ovn-northd -o jsonpath={.subsets\[0\].addresses\[0\].ip})
+    northd_leader=$(kubectl get endpointslice -l kubernetes.io/service-name=ovn-northd -n "$POD_NAMESPACE" -o jsonpath='{range .items[*]}{range .endpoints[?(@.conditions.ready!=false)]}{.addresses[0]}{"\n"}{end}{end}' | head -n1)
     if [ "$northd_leader" == "" ]; then
        # no available northd leader try to release the lock
        if [[ "$ENABLE_SSL" == "false" ]]; then

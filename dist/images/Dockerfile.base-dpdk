@@ -2,7 +2,8 @@
 FROM ubuntu:24.04 AS ovs-builder
 
 ARG ARCH
-ARG DPDK_VERSION=23.11.1
+# Available DPDK versions: http://core.dpdk.org/download/
+ARG DPDK_VERSION=24.11.2
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
@@ -17,16 +18,15 @@ ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
-ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
-ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
-ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
+ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
+ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
 # The support for AVX-512 depends on your build machine's CPU. judge it support the avx512 use the command 'cat /proc/cpuinfo | grep avx512'
 RUN cd /usr/src/ && \
-    git clone -b branch-3.3 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.5 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
     git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
@@ -49,14 +49,12 @@ RUN cd /usr/src/ && \
     # increase the default probe interval for large cluster
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
-RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # change hash type from dp_hash to hash with field src_ip
-    git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
-    git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
+    git apply $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
     # fix reaching resubmit limit in underlay
-    git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
+    git apply $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch
 
@@ -109,8 +107,8 @@ FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound8 procps libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
+RUN apt update && apt upgrade -y && apt install ca-certificates python3 libunwind8 netbase \
+        ethtool iproute2 ncat libunbound8 libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack iputils-tracepath \
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
@@ -125,8 +123,7 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
-ARG ARCH
-ARG DPDK_VERSION=23.11.1
+ARG DPDK_VERSION=24.11.2
 COPY --from=ovs-builder /usr/src/dpdk-stable-${DPDK_VERSION} /usr/src/dpdk-stable-${DPDK_VERSION}
 
 RUN cd /usr/src/dpdk-stable-${DPDK_VERSION} && \

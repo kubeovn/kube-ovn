@@ -20,6 +20,7 @@ spec:
     spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: vpc-dns
+      automountServiceAccountToken: true
       tolerations:
         - key: "CriticalAddonsOnly"
           operator: "Exists"

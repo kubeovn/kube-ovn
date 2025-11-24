@@ -13,6 +13,7 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 
 	"github.com/onsi/ginkgo/v2"
@@ -58,7 +59,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ipClient = f.IPClient()
 
 		ginkgo.By("Creating vm " + vmName)
-		vm := framework.MakeVM(vmName, image, "small", true)
+		vm := framework.MakeVM(vmName, image, "small", ptr.To(v1.RunStrategyAlways))
 		_ = vmClient.CreateSync(vm)
 	})
 	ginkgo.AfterEach(func() {

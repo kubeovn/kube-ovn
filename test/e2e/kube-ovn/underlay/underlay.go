@@ -1251,6 +1251,160 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectEmpty(conflictVlanSubnet2.Status.V6AvailableIPRange)
 		}
 	})
+
+	framework.ConformanceIt("should support nodeSelector to include only specific nodes", func() {
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
+		ginkgo.By("Getting k8s nodes")
+		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(k8sNodes.Items)
+
+		// Select the first node for inclusion
+		selectedNodeName := k8sNodes.Items[0].Name
+		testLabelKey := "provider-network-test"
+		testLabelValue := "selected"
+
+		ginkgo.By("Adding test label to selected node " + selectedNodeName)
+		selectedNode := &k8sNodes.Items[0]
+		if selectedNode.Labels == nil {
+			selectedNode.Labels = make(map[string]string)
+		}
+		selectedNode.Labels[testLabelKey] = testLabelValue
+		_, err = cs.CoreV1().Nodes().Update(context.Background(), selectedNode, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Creating provider network with nodeSelector " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		pn.Spec.NodeSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				testLabelKey: testLabelValue,
+			},
+		}
+		pn = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting updated k8s nodes")
+		updatedNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+
+		var selectedUpdatedNode, nonSelectedUpdatedNode *corev1.Node
+		for i := range updatedNodes.Items {
+			if updatedNodes.Items[i].Name == selectedNodeName {
+				selectedUpdatedNode = &updatedNodes.Items[i]
+			} else {
+				nonSelectedUpdatedNode = &updatedNodes.Items[i]
+				break // Take the first non-selected node for verification
+			}
+		}
+		framework.ExpectNotNil(selectedUpdatedNode, "Selected node should be found")
+		framework.ExpectNotNil(nonSelectedUpdatedNode, "At least one non-selected node should exist")
+
+		ginkgo.By("Validating that only selected node has ready annotation")
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName), "true")
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName), linkMap[selectedNodeName].IfName)
+		framework.ExpectHaveKeyWithValue(selectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName), strconv.Itoa(linkMap[selectedNodeName].Mtu))
+
+		ginkgo.By("Validating that non-selected node does not have ready annotation")
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName))
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName))
+		framework.ExpectNotHaveKey(nonSelectedUpdatedNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName))
+
+		ginkgo.By("Validating provider network status")
+		framework.ExpectEqual(pn.Status.Ready, true, "field .status.ready should be true")
+		framework.ExpectConsistOf(pn.Status.ReadyNodes, []string{selectedNodeName})
+		framework.ExpectNotContainElement(pn.Status.ReadyNodes, nonSelectedUpdatedNode.Name)
+
+		ginkgo.By("Cleaning up test label from selected node")
+		cleanupNode, err := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		if cleanupNode.Labels != nil {
+			delete(cleanupNode.Labels, testLabelKey)
+			_, err = cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
+			framework.ExpectNoError(err)
+		}
+	})
+
+	framework.ConformanceIt("should create and delete keepSrcMac OpenFlow rules when u2oInterconnection is enabled", func() {
+		f.SkipVersionPriorTo(1, 14, "keepSrcMac OpenFlow rules were introduced in v1.14")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet
+					gatewayV4 = config.Gateway
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet
+					gatewayV6 = config.Gateway
+				}
+			}
+		}
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			underlayCidr = append(underlayCidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		ginkgo.By("Creating underlay subnet with u2oInterconnection enabled " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		subnet.Spec.U2OInterconnection = true
+		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Waiting for U2OInterconnection status to be ready")
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+
+		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		underlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)
+		underlayPod = podClient.CreateSync(underlayPod)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 2)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules exist after pod creation")
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, true)
+
+		ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
+		podClient.DeleteSync(u2oPodNameUnderlay)
+		waitSubnetStatusUpdate(subnetName, subnetClient, 1)
+
+		ginkgo.By("Verifying keepSrcMac OpenFlow rules are deleted after pod deletion")
+		// Wait a bit for the flow rules to be cleaned up
+		time.Sleep(2 * time.Second)
+		checkKeepSrcMacFlow(underlayPod, providerNetworkName, false)
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool, pnName string) {
@@ -1431,25 +1585,26 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 func checkKeepSrcMacFlow(pod *corev1.Pod, providerNetworkName string, expectRules bool) {
 	ginkgo.GinkgoHelper()
 
-	cmd := fmt.Sprintf("kubectl exec -n %s %s -- ip -o link show eth0 | awk '{print $16}'", pod.Namespace, pod.Name)
-	output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-	if err != nil {
-		framework.Logf("Error getting MAC address: %v, %s", err, string(output))
-		return
-	}
-	podMac := strings.TrimSpace(string(output))
-
 	podNodeName := pod.Spec.NodeName
-	ginkgo.By(fmt.Sprintf("Checking keepSrcMac OpenFlow rule on node %s for Pod %s with MAC %s (expect rules: %v)",
-		podNodeName, pod.Name, podMac, expectRules))
+	framework.Logf("Checking keepSrcMac OpenFlow rule on node %s for Pod %s", podNodeName, pod.Name)
+
+	podMac := pod.Annotations[util.MacAddressAnnotation]
+	if podMac == "" {
+		if !expectRules {
+			return
+		}
+	}
 
 	var ruleFound bool
 	framework.WaitUntil(1*time.Second, 5*time.Second, func(_ context.Context) (bool, error) {
 		nodeCmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep actions=mod_dl_src:%s | wc -l",
 			podNodeName, providerNetworkName, podMac)
-		output, _ := exec.Command("bash", "-c", nodeCmd).CombinedOutput()
-		outputStr := string(output)
+		output, err := exec.Command("bash", "-c", nodeCmd).CombinedOutput()
+		if err != nil {
+			return false, nil
+		}
 
+		outputStr := string(output)
 		lines := strings.Split(outputStr, "\n")
 		var countStr string
 		for i := len(lines) - 1; i >= 0; i-- {
@@ -1466,18 +1621,12 @@ func checkKeepSrcMacFlow(pod *corev1.Pod, providerNetworkName string, expectRule
 			countNum, _ = strconv.Atoi(matches[0])
 		}
 
-		framework.Logf("Raw output: '%s', extracted count: %d", outputStr, countNum)
 		ruleFound = countNum > 0
 
 		if (expectRules && ruleFound) || (!expectRules && !ruleFound) {
 			return true, nil
 		}
 
-		if expectRules {
-			framework.Logf("keepSrcMac flow rule not found but expected, retrying...")
-		} else {
-			framework.Logf("keepSrcMac flow rule found but not expected, retrying...")
-		}
 		return false, nil
 	}, "")
 

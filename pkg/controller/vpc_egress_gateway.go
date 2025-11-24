@@ -42,7 +42,23 @@ func (c *Controller) enqueueUpdateVpcEgressGateway(_, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
+	var gw *kubeovnv1.VpcEgressGateway
+	switch t := obj.(type) {
+	case *kubeovnv1.VpcEgressGateway:
+		gw = t
+	case cache.DeletedFinalStateUnknown:
+		g, ok := t.Obj.(*kubeovnv1.VpcEgressGateway)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		gw = g
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue delete vpc-egress-gateway %s", key)
 	c.delVpcEgressGatewayQueue.Add(key)
 }
@@ -291,20 +307,42 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return "", nil, nil, nil, err
 	}
 	attachmentNetworkName := fmt.Sprintf("%s/%s", nadNamespace, nadName)
+	internalCIDRv4, internalCIDRv6 := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
 
 	// collect egress policies
 	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
 	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
+	fnFilter := func(internalCIDR string, ipBlocks []string) set.Set[string] {
+		if internalCIDR == "" {
+			return nil
+		}
+
+		ret := set.New[string]()
+		for _, cidr := range ipBlocks {
+			if ok, _ := util.CIDRContainsCIDR(internalCIDR, cidr); !ok {
+				ret.Insert(cidr)
+			}
+		}
+		return ret
+	}
+
 	for _, policy := range gw.Spec.Policies {
 		ipv4, ipv6 := util.SplitIpsByProtocol(policy.IPBlocks)
+		filteredV4 := fnFilter(internalCIDRv4, ipv4)
+		filteredV6 := fnFilter(internalCIDRv6, ipv6)
 		if policy.SNAT {
-			ipv4SNATSrc.Insert(ipv4...)
-			ipv6SNATSrc.Insert(ipv6...)
+			ipv4SNATSrc = ipv4SNATSrc.Union(filteredV4)
+			ipv6SNATSrc = ipv6SNATSrc.Union(filteredV6)
 		} else {
-			ipv4ForwardSrc.Insert(ipv4...)
-			ipv6ForwardSrc.Insert(ipv6...)
+			ipv4ForwardSrc = ipv4ForwardSrc.Union(filteredV4)
+			ipv6ForwardSrc = ipv6ForwardSrc.Union(filteredV6)
 		}
 		for _, subnetName := range policy.Subnets {
+			if subnetName == internalSubnet {
+				// skip the internal subnet
+				continue
+			}
+
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
 				klog.Error(err)
@@ -328,11 +366,11 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 
 	// calculate internal route destinations and forward source CIDR blocks
-	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
-	intRouteDstIPv4.Delete("")
-	intRouteDstIPv6.Delete("")
 	ipv4ForwardSrc.Delete("")
 	ipv6ForwardSrc.Delete("")
+	ipv4SNATSrc.Delete("")
+	ipv6SNATSrc.Delete("")
+	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
 
 	// generate route annotations used to configure routes in the pod
 	routes := util.NewPodRoutes()
@@ -1025,28 +1063,13 @@ func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
 		}
 
 		for _, selector := range veg.Spec.Selectors {
-			sel := labels.Everything()
-			if selector.NamespaceSelector != nil {
-				if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
-					klog.Errorf("failed to create label selector for namespace selector %#v: %v", selector.NamespaceSelector, err)
-					utilruntime.HandleError(err)
-					continue
-				}
-			}
-			if !sel.Matches(labels.Set(ns.Labels)) {
+			if selector.NamespaceSelector != nil && !util.ObjectMatchesLabelSelector(ns, selector.NamespaceSelector) {
 				continue
 			}
-			sel = labels.Everything()
-			if selector.PodSelector != nil {
-				if sel, err = metav1.LabelSelectorAsSelector(selector.PodSelector); err != nil {
-					klog.Errorf("failed to create label selector for pod selector %#v: %v", selector.PodSelector, err)
-					utilruntime.HandleError(err)
-					continue
-				}
+			if selector.PodSelector != nil && !util.ObjectMatchesLabelSelector(pod, selector.PodSelector) {
+				continue
 			}
-			if sel.Matches(labels.Set(pod.Labels)) {
-				c.addOrUpdateVpcEgressGatewayQueue.Add(cache.MetaObjectToName(veg).String())
-			}
+			c.addOrUpdateVpcEgressGatewayQueue.Add(cache.MetaObjectToName(veg).String())
 		}
 	}
 	return nil

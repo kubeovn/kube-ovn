@@ -13,9 +13,13 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 )
 
@@ -28,12 +32,28 @@ const (
 
 var namedUUIDCounter uint32
 
+var logger logr.Logger
+
 func init() {
 	buff := make([]byte, 4)
 	if _, err := rand.Reader.Read(buff); err != nil {
 		panic(err)
 	}
 	namedUUIDCounter = binary.LittleEndian.Uint32(buff)
+
+	zc := zap.NewProductionConfig()
+	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-3))
+	zc.EncoderConfig.EncodeLevel = func(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+		if l < zapcore.InfoLevel {
+			l = zapcore.InfoLevel
+		}
+		enc.AppendString(l.String())
+	}
+	z, err := zc.Build()
+	if err != nil {
+		panic(err)
+	}
+	logger = zapr.NewLogger(z).WithName("libovsdb")
 }
 
 func NamedUUID() string {
@@ -49,7 +69,7 @@ func NewOvsDbClient(
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
 ) (client.Client, error) {
-	logger := klog.NewKlogr().WithName("libovsdb").WithValues("db", db)
+	dbLogger := logger.WithValues("db", db)
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
 	options := []client.Option{
@@ -58,9 +78,8 @@ func NewOvsDbClient(
 		// we don't time out and enter a reconnect loop. In addition it also enables
 		// inactivity check on the ovsdb connection.
 		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
-
 		client.WithLeaderOnly(true),
-		client.WithLogger(&logger),
+		client.WithLogger(&dbLogger),
 	}
 	klog.Infof("connecting to OVN %s server %s", db, addr)
 	var ssl bool

@@ -4,7 +4,7 @@ metadata:
   name: ovn-vpc-nat-config
   namespace: {{ .Values.namespace }}
 data:
-  image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.vpcRepository }}:{{ .Values.global.images.kubeovn.tag }}
+  image: {{ .Values.natGw.image.repository }}:{{ .Values.natGw.image.tag }}
   {{- with .Values.natGw.bgpSpeaker.image }}
   bgpSpeakerImage: {{ .repository }}:{{ .tag }}
   {{- end }}

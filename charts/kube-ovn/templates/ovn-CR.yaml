@@ -48,6 +48,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - dnsnameresolvers
+      - dnsnameresolvers/status
       - qos-policies
       - qos-policies/status
     verbs:
@@ -263,9 +265,14 @@ rules:
       - ""
     resources:
       - services
-      - endpoints
     verbs:
       - get
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
   - apiGroups:
       - apps
     resources:
@@ -273,7 +280,6 @@ rules:
     verbs:
       - get
       - list
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -352,12 +358,23 @@ rules:
       - "list"
       - "watch"
       - "delete"
-  - apiGroups:
-      - ""
-    resources:
-      - "secrets"
-    verbs:
-      - "get"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-reader-ovn-ipsec
+  namespace: {{ .Values.namespace }}
+rules:
+- apiGroups: 
+    - ""
+  resources: 
+    - "secrets"
+  resourceNames: 
+    - "ovn-ipsec-ca"
+  verbs: 
+    - "get"
+    - "list"
+    - "watch"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

@@ -42,6 +42,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-cni
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -115,6 +116,9 @@ spec:
           {{ .Values.networking.services.cidr.v4 }}
           {{- else if eq .Values.networking.stack "IPv6" -}}
           {{ .Values.networking.services.cidr.v6 }}
+          {{- end }}
+          {{- if (gt (int .Values.networking.pods.mtu) 0) }}
+          - --mtu={{ .Values.networking.pods.mtu  }}
           {{- end }}
           - --dpdk-tunnel-iface={{- .Values.agent.dpdkTunnelInterface }}
           - --network-type={{- .Values.networking.tunnelType }}
@@ -285,5 +289,5 @@ spec:
         {{- if .Values.features.enableOvnIpsec }}
           - name: ovs-ipsec-keys
             hostPath:
-              path: {{ .Values.ovsOvn.ovsDirectory }}
+              path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
         {{- end }}

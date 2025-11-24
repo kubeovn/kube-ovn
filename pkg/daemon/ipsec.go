@@ -1,3 +1,5 @@
+//go:build !windows
+
 package daemon
 
 import (
@@ -9,46 +11,69 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/certificates/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
-	ipsecKeyDir      = "/etc/ovs_ipsec_keys/"
-	ipsecPrivKeyPath = ipsecKeyDir + "ipsec-privkey.pem"
-	ipsecReqPath     = ipsecKeyDir + "ipsec-req.pem"
-	ipsecCACertPath  = ipsecKeyDir + "ipsec-cacert.pem"
-	ipsecCertPath    = ipsecKeyDir + "ipsec-cert.pem"
+	ipsecCADir   = "/etc/ipsec.d/cacerts"
+	ipsecKeyDir  = "/etc/ovs_ipsec_keys"
+	ipsecReqPath = ipsecKeyDir + "ipsec-req.pem"
 
-	expireTime = 365 * 24 * time.Hour
+	ipsecPrivKeyPathSpec = ipsecKeyDir + "/ipsec-privkey-%d.pem"
+	ipsecCertPathSpec    = ipsecKeyDir + "/ipsec-cert-%d.pem"
+	ipsecCACertPathSpec  = ipsecKeyDir + "/ipsec-cacert-%s.pem"
 )
 
-func getOVSSystemID() (string, error) {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "get", "Open_vSwitch", ".", "external-ids:system-id")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to get ovs system id: %v, output: %s", err, string(output))
-		return "", err
-	}
-	systemID := strings.ReplaceAll(string(output), "\"", "")
-	systemID = systemID[:len(systemID)-1]
-
-	if systemID == "" {
-		return "", errors.New("empty system-id")
-	}
-
-	return systemID, nil
+type pkiFiles struct {
+	privateKeyPath  string
+	certificatePath string
+	caCertPath      string
 }
 
-func checkCertExpired() (bool, error) {
-	certBytes, err := os.ReadFile(ipsecCertPath)
+func getOVSSystemID() (string, error) {
+	id, err := ovs.Get("Open_vSwitch", ".", "external_ids", "system-id", true)
+	if err != nil {
+		klog.Errorf("failed to get ovs system-id: %v", err)
+		return "", err
+	}
+	id = strings.Trim(id, `"`)
+	if id == "" {
+		return "", errors.New("ovs system-id is not set or is empty")
+	}
+
+	return id, nil
+}
+
+func (c *Controller) needNewCert(p *pkiFiles) (bool, error) {
+	if p.certificatePath == "" || p.privateKeyPath == "" {
+		klog.Infof("ipsec cert and key not configured")
+		return true, nil
+	}
+
+	if _, err := os.Stat(p.certificatePath); os.IsNotExist(err) {
+		klog.Infof("ipsec cert %s does not exist", p.certificatePath)
+		return true, nil
+	}
+	if _, err := os.Stat(p.privateKeyPath); os.IsNotExist(err) {
+		klog.Infof("ipsec key %s does not exist", p.privateKeyPath)
+		return true, nil
+	}
+
+	certBytes, err := os.ReadFile(p.certificatePath)
 	if err != nil {
 		return false, fmt.Errorf("failed to read certificate: %w", err)
 	}
@@ -63,43 +88,138 @@ func checkCertExpired() (bool, error) {
 		return false, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 
-	if time.Since(cert.NotBefore) > expireTime {
+	// get a new certificate if we're over half way through this certificates validity
+	now := time.Now()
+	if now.Before(cert.NotBefore) ||
+		time.Since(cert.NotBefore) > (cert.NotAfter.Sub(cert.NotBefore))/2 {
+		klog.Infof("ipsec cert near expiry")
+		return true, nil
+	}
+
+	// now check our certificate is signed by our CA
+	caCertBytes, err := os.ReadFile(p.caCertPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to read CA certificate: %w", err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCertBytes) {
+		return false, errors.New("failed to decode CA certificate PEM blocks")
+	}
+
+	chain, err := cert.Verify(
+		x509.VerifyOptions{
+			Roots:     caCertPool,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		})
+	if err != nil {
+		klog.Infof("certificate failed to validate: %v", err)
+		return true, nil
+	}
+
+	if len(chain) == 0 {
+		klog.Infof("certificate not signed by trust bundle")
 		return true, nil
 	}
 
 	return false, nil
 }
 
-func generateCSRCode() ([]byte, error) {
+func (c *Controller) untilCertRefresh(certPath string) (time.Duration, error) {
+	certBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read certificate: %w", err)
+	}
+
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		return 0, errors.New("failed to decode PEM block containing certificate")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	// get a new certificate if we're over half way through this certificates validity
+	refreshTime := cert.NotBefore.Add((cert.NotAfter.Sub(cert.NotBefore)) / 2)
+	return time.Until(refreshTime), nil
+}
+
+func (c *Controller) getCACert(key string) (string, error) {
+	ns, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		klog.Errorf("failed to split meta namespace key %s: %v", key, err)
+		return "", err
+	}
+	caSecret, err := c.caSecretLister.Secrets(ns).Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Infof("ipsec CA secret %s not found, waiting for it to be created", key)
+			return "", nil
+		}
+		klog.Errorf("failed to get secret: %v", err)
+		return "", err
+	}
+
+	ca := caSecret.Data["cacert"]
+	caCertPath := generateCACertFileName(caSecret.ResourceVersion)
+
+	if err = os.WriteFile(caCertPath, ca, 0o600); err != nil {
+		klog.Errorf("failed to write file: %v", err)
+		return "", err
+	}
+
+	if err = linkCACertToIPSecDir(ca); err != nil {
+		klog.Errorf("link cacert to ipsec dir error: %v", err)
+		return "", err
+	}
+
+	cmd := exec.Command("ipsec", "rereadcacerts")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to reload ipsec ca cert: %v, output: %s", err, output)
+		return "", err
+	}
+
+	klog.Infof("ipsec CA Cert file %s written", caCertPath)
+	return caCertPath, nil
+}
+
+func generateNewPrivateKey(path string) error {
+	cmd := exec.Command("openssl", "genrsa", "-out", path, "2048")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to generate private key: %v, output: %s", err, string(output))
+		return err
+	}
+
+	_, err = os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("privkey file %s not exist", path)
+		}
+		return err
+	}
+	return nil
+}
+
+func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 	cn, err := getOVSSystemID()
 	if err != nil {
-		klog.Errorf("failed to get ovs system id: %v", err)
+		klog.Errorf("failed to get ovs system-id: %v", err)
 		return nil, err
 	}
 
 	klog.Infof("ovs system id: %s", cn)
-	cmd := exec.Command("openssl", "genrsa", "-out", ipsecPrivKeyPath, "2048")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to generate private key: %v, output: %s", err, string(output))
-		return nil, err
-	}
 
-	_, err = os.Stat(ipsecPrivKeyPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("privkey file %s not exist", ipsecPrivKeyPath)
-		}
-		return nil, err
-	}
-
-	cmd = exec.Command("openssl", "req", "-new", "-text",
+	cmd := exec.Command("openssl", "req", "-new", "-text",
 		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
-		"-subj", "/C=CN/O=kubeovn/OU=kind/CN="+cn,
-		"-key", ipsecPrivKeyPath,
+		"-subj", "/C=CN/O=kubeovn/OU=kube-ovn/CN="+cn,
+		"-key", newPrivKeyPath,
 		"-out", ipsecReqPath) // #nosec
-	output, err = cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to generate csr: %v, output: %s", err, string(output))
 		return nil, err
@@ -114,7 +234,68 @@ func generateCSRCode() ([]byte, error) {
 	return csrBytes, nil
 }
 
-func (c *Controller) createCSR(csrBytes []byte) error {
+func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
+	namespace := os.Getenv("POD_NAMESPACE")
+	newCR := &certmanagerv1.CertificateRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ovn-ipsec-" + os.Getenv("HOSTNAME"),
+			Namespace: namespace,
+		},
+		Spec: certmanagerv1.CertificateRequestSpec{
+			Request: csrBytes,
+			IssuerRef: cmmeta.ObjectReference{
+				Name:  c.config.CertManagerIssuerName,
+				Kind:  "ClusterIssuer",
+				Group: "cert-manager.io",
+			},
+			Duration: &metav1.Duration{Duration: time.Second * time.Duration(c.config.IPSecCertDuration)},
+			Usages:   []certmanagerv1.KeyUsage{certmanagerv1.UsageIPsecTunnel},
+		},
+	}
+
+	_, err := c.config.CertManagerClient.CertmanagerV1().CertificateRequests(namespace).Create(ctx, newCR, metav1.CreateOptions{})
+	if err != nil {
+		if k8serrors.IsAlreadyExists(err) {
+			klog.Infof("CR %s already exists: %v", newCR.Name, err)
+			err := c.config.CertManagerClient.CertmanagerV1().CertificateRequests(namespace).Delete(context.Background(), newCR.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete cr: %s; %v", newCR.Name, err)
+			}
+		}
+
+		return nil, fmt.Errorf("creating certificate request; %w", err)
+	}
+
+	defer func() {
+		// clean up the request once it's no longer needed
+		err := c.config.CertManagerClient.CertmanagerV1().CertificateRequests(namespace).Delete(context.Background(), newCR.Name, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("failed to delete cr: %s; %v", newCR.Name, err)
+		}
+	}()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("failed to sign certificate request; %w", ctx.Err())
+		case <-ticker.C:
+			cr, err := c.config.CertManagerClient.CertmanagerV1().CertificateRequests(namespace).Get(ctx, newCR.Name, metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("getting certificate request; %w", err)
+			}
+
+			if len(cr.Status.Certificate) == 0 {
+				continue
+			}
+
+			return cr.Status.Certificate, nil
+		}
+	}
+}
+
+func (c *Controller) getSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	csr := &v1.CertificateSigningRequest{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "certificates.k8s.io/v1",
@@ -132,44 +313,47 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		},
 	}
 
-	if _, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Create(context.Background(), csr, metav1.CreateOptions{}); err != nil {
+	if _, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Create(ctx, csr, metav1.CreateOptions{}); err != nil {
 		if k8serrors.IsAlreadyExists(err) {
 			klog.Infof("CSR %s already exists: %v", csr.Name, err)
 		} else {
 			klog.Errorf("failed to create csr: %v", err)
-			return err
+			return nil, err
 		}
 	}
+
+	defer func() {
+		// clean up the request once it's no longer needed
+		if err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Delete(context.Background(), csr.Name, metav1.DeleteOptions{}); err != nil {
+			klog.Errorf("failed to delete csr: %v", err)
+		}
+	}()
 
 	// Wait until the certificate signing request has been signed.
-	var certificateStr string
-	counter := 0
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
-		csr, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get csr: %v", err)
-			return err
-		}
-		if len(csr.Status.Certificate) != 0 {
-			certificateStr = string(csr.Status.Certificate)
-			break
-		}
-		counter++
-		time.Sleep(time.Second)
-		if counter > 300 {
-			klog.Errorf("failed to sign certificate after %d seconds", counter)
-			return fmt.Errorf("unable to sign certificate after %d seconds", counter)
-		}
-	}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("failed to sign certificate request; %w", ctx.Err())
+		case <-ticker.C:
+			csr, err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Get(ctx, csr.Name, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get csr: %v", err)
+				return nil, err
+			}
+			if len(csr.Status.Certificate) == 0 {
+				continue
+			}
 
-	klog.V(3).Infof("ipsec get certitfcate\n%s", certificateStr)
-	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", ipsecCertPath)
-	var stdinBuf bytes.Buffer
-	if _, err := stdinBuf.WriteString(certificateStr); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to write certificate: %w", err)
+			return csr.Status.Certificate, nil
+		}
 	}
-	cmd.Stdin = &stdinBuf
+}
+
+func (c *Controller) storeCertificate(cert []byte, certPath string) error {
+	cmd := exec.Command("openssl", "x509", "-outform", "pem", "-text", "-out", certPath)
+	cmd.Stdin = bytes.NewReader(cert)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -177,81 +361,127 @@ func (c *Controller) createCSR(csrBytes []byte) error {
 		return err
 	}
 
-	klog.Infof("ipsec Cert file %s generated", ipsecCertPath)
-	secret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.Background(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get secret: %v", err)
-		return err
-	}
-
-	output = secret.Data["cacert"]
-	if err = os.WriteFile(ipsecCACertPath, output, 0o600); err != nil {
-		klog.Errorf("failed to write file: %v", err)
-		return err
-	}
-
-	klog.Infof("ipsec CA Cert file %s generated", ipsecCACertPath)
-	// the csr is no longer needed
-	if err := c.config.KubeClient.CertificatesV1().CertificateSigningRequests().Delete(context.Background(), csr.Name, metav1.DeleteOptions{}); err != nil {
-		klog.Errorf("failed to delete csr: %v", err)
-		return err
-	}
-
-	klog.Infof("node %s' ipsec init successfully", os.Getenv("HOSTNAME"))
+	klog.Infof("wrote certificate file: %s", certPath)
 	return nil
 }
 
-func configureOVSWithIPSecKeys() error {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "set", "Open_vSwitch", ".", "other_config:certificate="+ipsecCertPath, "other_config:private_key="+ipsecPrivKeyPath, "other_config:ca_cert="+ipsecCACertPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to configure OVS with IPSec keys: %q: %w", string(output), err)
+func configureOVSWithIPSecKeys(p *pkiFiles) error {
+	if err := ovs.Set("Open_vSwitch", ".",
+		fmt.Sprintf("other_config:certificate=%s", p.certificatePath),
+		fmt.Sprintf("other_config:private_key=%s", p.privateKeyPath),
+		fmt.Sprintf("other_config:ca_cert=%s", p.caCertPath),
+	); err != nil {
+		return fmt.Errorf("failed to configure OVS with IPSec keys: %w", err)
 	}
 	return nil
 }
 
-func unconfigureOVSWithIPSecKeys() error {
-	cmd := exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "certificate")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS certificate: %s: %w", string(output), err)
+func getOvsIPSecKeys() (*pkiFiles, error) {
+	certificate, err := ovs.Get("Open_vSwitch", ".", "other_config", "certificate", true)
+	if err != nil {
+		return nil, fmt.Errorf("reading OVS certificate config; %w", err)
+	}
+	privateKey, err := ovs.Get("Open_vSwitch", ".", "other_config", "private_key", true)
+	if err != nil {
+		return nil, fmt.Errorf("reading OVS private key config; %w", err)
+	}
+	caCert, err := ovs.Get("Open_vSwitch", ".", "other_config", "ca_cert", true)
+	if err != nil {
+		return nil, fmt.Errorf("reading OVS CA certificate config; %w", err)
 	}
 
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "private_key")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS private key: %s: %w", string(output), err)
-	}
+	return &pkiFiles{
+		certificatePath: strings.Trim(certificate, `"`),
+		privateKeyPath:  strings.Trim(privateKey, `"`),
+		caCertPath:      strings.Trim(caCert, `"`),
+	}, nil
+}
 
-	cmd = exec.Command("ovs-vsctl", "--retry", "-t", "60", "remove", "Open_vSwitch", ".", "other_config", "ca_cert")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to unset OVS CA certificate: %s: %w", string(output), err)
+func clearOVSIPSecConfig() error {
+	if err := ovs.Remove("Open_vSwitch", ".", "other_config", "ca_cert", "private_key", "certificate"); err != nil {
+		return fmt.Errorf("failed to remove OVS ipsec configuration: %w", err)
 	}
 	return nil
 }
 
-func linkCACertToIPSecDir() error {
-	targetPath := "/etc/ipsec.d/cacerts/ipsec-cacert.pem"
-
-	if _, err := os.Stat(targetPath); err == nil {
-		klog.Infof("Target path %s already exists, skipping link operation", targetPath)
-		return nil
-	} else if !os.IsNotExist(err) {
-		klog.Errorf("failed to check if target path exists: %v", err)
-		return err
+func linkCACertToIPSecDir(ca []byte) error {
+	// strongswan is unable to read chains or trust bundles and will only read the first certificate in the file.
+	// Split out each CA cert into it's own file in the ipsec cacerts directory.
+	if err := os.RemoveAll(ipsecCADir); err != nil {
+		return fmt.Errorf("clearing ipsec CA directory: %w", err)
 	}
 
-	cmd := exec.Command("ln", "-s", ipsecCACertPath, targetPath)
-	output, err := cmd.CombinedOutput()
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(ipsecCADir, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Split and write individual certificates
+	certificates, err := splitPEMCertificates(ca)
 	if err != nil {
-		klog.Errorf("failed to link cacert: %v, output: %s", err, string(output))
-		return err
+		return fmt.Errorf("failed to split certificates: %w", err)
 	}
 
-	klog.V(3).Infof("Successfully linked %s to %s", ipsecCACertPath, targetPath)
+	for i, cert := range certificates {
+		filename := fmt.Sprintf("ca-%03d.pem", i+1)
+		filepath := filepath.Join(ipsecCADir, filename)
+
+		if err := os.WriteFile(filepath, cert, 0o600); err != nil {
+			return fmt.Errorf("failed to write certificate %s: %w", filename, err)
+		}
+
+		klog.Infof("Wrote CA certificate %s", filename)
+	}
+
+	klog.V(3).Infof("Total certificates processed: %d", len(certificates))
 	return nil
+}
+
+func splitPEMCertificates(data []byte) ([][]byte, error) {
+	var certificates [][]byte
+	var currentCert strings.Builder
+
+	// Split by lines and process each PEM block
+	rest := data
+	for {
+		block, remaining := pem.Decode(rest)
+		if block == nil {
+			break
+		}
+
+		// Only process certificate blocks
+		if block.Type != "CERTIFICATE" {
+			rest = remaining
+			continue
+		}
+
+		// Validate that it's actually a certificate
+		_, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			klog.Errorf("Warning: Skipping invalid certificate: %v\n", err)
+			rest = remaining
+			continue
+		}
+
+		// Encode the certificate block back to PEM format
+		currentCert.Reset()
+		if err := pem.Encode(&currentCert, block); err != nil {
+			return nil, fmt.Errorf("failed to encode certificate: %w", err)
+		}
+
+		certificates = append(certificates, []byte(currentCert.String()))
+		rest = remaining
+	}
+
+	if len(certificates) == 0 {
+		return nil, errors.New("no valid certificates found in bundle")
+	}
+
+	return certificates, nil
 }
 
 func clearCACertToIPSecDir() error {
-	if err := os.Remove("/etc/ipsec.d/cacerts/ipsec-cacert.pem"); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(filepath.Join(ipsecCADir, "ipsec-cacert.pem")); err != nil && !os.IsNotExist(err) {
 		klog.Error(err)
 		return fmt.Errorf("failed to remove ipsec-cacert.pem: %w", err)
 	}
@@ -266,82 +496,136 @@ func initIPSecKeysDir() error {
 	return nil
 }
 
-func clearIPSecKeysDir() error {
-	if err := os.Remove(ipsecPrivKeyPath); err != nil && !os.IsNotExist(err) {
-		klog.Errorf("failed to remove %s: %v", ipsecPrivKeyPath, err)
+func clearIPSecKeysDir(toKeep pkiFiles) error {
+	filesToKeep := map[string]bool{
+		toKeep.caCertPath:      true,
+		toKeep.certificatePath: true,
+		toKeep.privateKeyPath:  true,
+	}
+
+	// Get all files in the directory
+	files, err := os.ReadDir(ipsecKeyDir)
+	if err != nil {
+		klog.Errorf("reading ipsec keys directory: %v\n", err)
 		return err
 	}
-	if err := os.Remove(ipsecReqPath); err != nil && !os.IsNotExist(err) {
-		klog.Errorf("failed to remove %s: %v", ipsecReqPath, err)
-		return err
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue // Skip directories
+		}
+
+		filePath := filepath.Join(ipsecKeyDir, file.Name())
+		if !filesToKeep[filePath] {
+			// Delete the file
+			if err = os.Remove(filePath); err != nil {
+				klog.Errorf("deleting %s: %v\n", filePath, err)
+			}
+		}
 	}
-	if err := os.Remove(ipsecCACertPath); err != nil && !os.IsNotExist(err) {
-		klog.Errorf("failed to remove %s: %v", ipsecCACertPath, err)
-		return err
-	}
-	if err := os.Remove(ipsecCertPath); err != nil && !os.IsNotExist(err) {
-		klog.Errorf("failed to remove %s: %v", ipsecCertPath, err)
-		return err
-	}
+
 	return nil
 }
 
-func (c *Controller) ManageIPSecKeys() error {
-	if _, err := os.Stat(ipsecCertPath); os.IsNotExist(err) {
-		if err := c.CreateIPSecKeys(); err != nil {
+func (c *Controller) SyncIPSecKeys(key string) error {
+	if !c.config.EnableOVNIPSec {
+		return nil
+	}
+
+	klog.Infof("syncing IPSec CA from secret %s", key)
+
+	if err := initIPSecKeysDir(); err != nil {
+		klog.Errorf("init ipsec keys dir: %v", err)
+		return err
+	}
+
+	pkiFiles, err := getOvsIPSecKeys()
+	if err != nil {
+		klog.Errorf("reading OVS ipsec config: %v", err)
+		return err
+	}
+
+	ca, err := c.getCACert(key)
+	if err != nil {
+		klog.Errorf("failed to get new CA cert: %v", err)
+		return err
+	}
+	if ca == "" {
+		return nil
+	}
+	pkiFiles.caCertPath = ca
+
+	needNewCert, err := c.needNewCert(pkiFiles)
+	if err != nil {
+		klog.Errorf("checking certificate valid: %v", err)
+		return err
+	}
+
+	if needNewCert {
+		now := time.Now()
+		pkiFiles.privateKeyPath = generatePrivKeyFileName(now)
+		pkiFiles.certificatePath = generateCertFileName(now)
+		if err := c.CreateIPSecKeys(pkiFiles); err != nil {
 			klog.Errorf("create ipsec keys error: %v", err)
 			return err
 		}
-	} else {
-		checkCertExpired, err := checkCertExpired()
+	}
+
+	if needNewCert {
+		err := configureOVSWithIPSecKeys(pkiFiles)
 		if err != nil {
-			klog.Errorf("failed to check ipsec cert expired: %v", err)
+			klog.Errorf("configure ovs with ipsec keys error: %v", err)
 			return err
 		}
-		if !checkCertExpired {
-			klog.V(3).Infof("ipsec cert exist and not expired, skip")
-		} else {
-			if err := c.RemoveIPSecKeys(); err != nil {
-				klog.Errorf("remove ipsec keys error: %v", err)
-			}
 
-			if err := c.CreateIPSecKeys(); err != nil {
-				klog.Errorf("create ipsec keys error: %v", err)
-				return err
-			}
+		if err := clearIPSecKeysDir(*pkiFiles); err != nil {
+			// don't return here; we've already programmed the new keys
+			klog.Errorf("cleaning old ipsec files: %v", err)
 		}
 	}
 
-	if err := c.StartIPSecService(); err != nil {
-		klog.Errorf("Start ipsec service error: %v", err)
+	untilRefresh, err := c.untilCertRefresh(pkiFiles.certificatePath)
+	if err != nil {
+		klog.Errorf("calculating cert refresh time: %v", err)
 		return err
 	}
+
+	c.ipsecQueue.AddAfter(key, untilRefresh)
 
 	return nil
 }
 
-func (c *Controller) CreateIPSecKeys() error {
-	err := initIPSecKeysDir()
+func (c *Controller) CreateIPSecKeys(p *pkiFiles) error {
+	err := generateNewPrivateKey(p.privateKeyPath)
 	if err != nil {
-		klog.Errorf("init ipsec keys dir error: %v", err)
+		klog.Errorf("generate private key error: %v", err)
 		return err
 	}
 
-	csr64, err := generateCSRCode()
+	csr64, err := generateCSRCode(p.privateKeyPath)
 	if err != nil {
 		klog.Errorf("generate csr code error: %v", err)
 		return err
 	}
 
-	err = c.createCSR(csr64)
-	if err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	var cert []byte
+	if c.config.CertManagerIPSecCert {
+		if cert, err = c.getCertManagerSignedCert(ctx, csr64); err != nil {
+			err = fmt.Errorf("create cr error: %w", err)
+			klog.Error(err)
+			return err
+		}
+	} else if cert, err = c.getSignedCert(ctx, csr64); err != nil {
 		klog.Errorf("create csr error: %v", err)
 		return err
 	}
 
-	err = configureOVSWithIPSecKeys()
-	if err != nil {
-		klog.Errorf("configure ovs with ipsec keys error: %v", err)
+	if err = c.storeCertificate(cert, p.certificatePath); err != nil {
+		err := fmt.Errorf("storing certificate; %w", err)
+		klog.Error(err)
 		return err
 	}
 
@@ -349,20 +633,18 @@ func (c *Controller) CreateIPSecKeys() error {
 }
 
 func (c *Controller) RemoveIPSecKeys() error {
-	err := clearIPSecKeysDir()
+	err := clearIPSecKeysDir(pkiFiles{})
 	if err != nil {
 		klog.Errorf("clear ipsec keys dir error: %v", err)
 		return err
 	}
 
-	err = unconfigureOVSWithIPSecKeys()
-	if err != nil {
-		klog.Errorf("unconfigure ovs with ipsec keys error: %v", err)
+	if err = clearOVSIPSecConfig(); err != nil {
+		klog.Errorf("clear OVS IPSec configuration error: %v", err)
 		return err
 	}
 
-	err = clearCACertToIPSecDir()
-	if err != nil {
+	if err = clearCACertToIPSecDir(); err != nil {
 		klog.Errorf("clear cacert to ipsec dir error: %v", err)
 		return err
 	}
@@ -370,23 +652,20 @@ func (c *Controller) RemoveIPSecKeys() error {
 	return nil
 }
 
-func (c *Controller) FlushIPxfrmRule() error {
-	output, err := exec.Command("ip", "xfrm", "policy", "flush").CombinedOutput()
-	if err != nil {
-		klog.Errorf("flush ip xfrm policy rule error: %v, output: %s", err, string(output))
+func (c *Controller) FlushIPXfrm() error {
+	if err := netlink.XfrmPolicyFlush(); err != nil {
+		klog.Errorf("failed to flush xfrm policy: %v", err)
 		return err
 	}
-
-	output, err = exec.Command("ip", "xfrm", "state", "flush").CombinedOutput()
-	if err != nil {
-		klog.Errorf("flush ip xfrm state rule error: %v, output: %s", err, string(output))
+	if err := netlink.XfrmStateFlush(netlink.XFRM_PROTO_ESP); err != nil {
+		klog.Errorf("failed to flush xfrm state: %v", err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *Controller) StopAndClearIPSecResouce() error {
+func (c *Controller) StopAndClearIPSecResource() error {
 	if err := c.StopIPSecService(); err != nil {
 		klog.Errorf("stop ipsec service error: %v", err)
 	}
@@ -395,7 +674,7 @@ func (c *Controller) StopAndClearIPSecResouce() error {
 		klog.Errorf("remove ipsec keys error: %v", err)
 	}
 
-	if err := c.FlushIPxfrmRule(); err != nil {
+	if err := c.FlushIPXfrm(); err != nil {
 		klog.Errorf("flush ip xfrm rules error: %v", err)
 	}
 
@@ -425,6 +704,7 @@ func restartService(serviceName string) error {
 	}
 
 	if !active {
+		klog.Infof("restarting service %s", serviceName)
 		cmd := exec.Command("service", serviceName, "restart")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -440,17 +720,13 @@ func restartService(serviceName string) error {
 }
 
 func (c *Controller) StartIPSecService() error {
-	// ipsec can't use the specified dir in /etc/ovs_ipsec_keys/ipsec-cacert.pem (perhap strongwan's bug), so link it to the default dir /etc/ipsec.d/cacerts/
-	err := linkCACertToIPSecDir()
-	if err != nil {
-		klog.Errorf("link cacert to ipsec dir error: %v", err)
-		return err
+	if !c.config.EnableOVNIPSec {
+		return nil
 	}
 
 	if err := restartService("openvswitch-ipsec"); err != nil {
 		return err
 	}
-
 	if err := restartService("ipsec"); err != nil {
 		return err
 	}
@@ -472,4 +748,16 @@ func (c *Controller) StopIPSecService() error {
 	}
 
 	return nil
+}
+
+func generateCACertFileName(resourceVersion string) string {
+	return fmt.Sprintf(ipsecCACertPathSpec, resourceVersion)
+}
+
+func generateCertFileName(startTime time.Time) string {
+	return fmt.Sprintf(ipsecCertPathSpec, startTime.UnixMilli())
+}
+
+func generatePrivKeyFileName(startTime time.Time) string {
+	return fmt.Sprintf(ipsecPrivKeyPathSpec, startTime.UnixMilli())
 }

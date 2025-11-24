@@ -15,6 +15,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
@@ -142,7 +143,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 			},
 		},
 	}
-	return
+	return dp
 }
 
 func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deployment) *v1.Deployment {
@@ -199,11 +200,8 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service, nad *nadv1.NetworkAttac
 }
 
 func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, error) {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genLbSvcDpName(svcName), "namespace": svcNamespace},
-	})
-
-	pods, err := c.podsLister.Pods(svcNamespace).List(sel)
+	selector := labels.Set{"app": genLbSvcDpName(svcName), "namespace": svcNamespace}.AsSelector()
+	pods, err := c.podsLister.Pods(svcNamespace).List(selector)
 	switch {
 	case err != nil:
 		klog.Error(err)

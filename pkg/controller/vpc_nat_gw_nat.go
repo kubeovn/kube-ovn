@@ -50,7 +50,23 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesFip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
+	var fip *kubeovnv1.IptablesFIPRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		fip = t
+	case cache.DeletedFinalStateUnknown:
+		f, ok := t.Obj.(*kubeovnv1.IptablesFIPRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		fip = f
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(fip).String()
 	klog.V(3).Infof("enqueue delete iptables fip %s", key)
 	c.delIptablesFipQueue.Add(key)
 }
@@ -90,7 +106,23 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
+	var dnat *kubeovnv1.IptablesDnatRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesDnatRule:
+		dnat = t
+	case cache.DeletedFinalStateUnknown:
+		d, ok := t.Obj.(*kubeovnv1.IptablesDnatRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		dnat = d
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(dnat).String()
 	klog.V(3).Infof("enqueue delete iptables dnat %s", key)
 	c.delIptablesDnatRuleQueue.Add(key)
 }
@@ -125,7 +157,23 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelIptablesSnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
+	var snat *kubeovnv1.IptablesSnatRule
+	switch t := obj.(type) {
+	case *kubeovnv1.IptablesSnatRule:
+		snat = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.IptablesSnatRule)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		snat = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(snat).String()
 	klog.V(3).Infof("enqueue delete iptables snat %s", key)
 	c.delIptablesSnatRuleQueue.Add(key)
 }
@@ -730,10 +778,11 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesFip.DeletionTimestamp.IsZero() || len(cachedIptablesFip.GetFinalizers()) != 0 {
+	if !cachedIptablesFip.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesFip, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
@@ -802,10 +851,11 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || len(cachedIptablesDnat.GetFinalizers()) != 0 {
+	if !cachedIptablesDnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesDnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
@@ -926,12 +976,12 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || len(cachedIptablesSnat.GetFinalizers()) != 0 {
+	if !cachedIptablesSnat.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedIptablesSnat, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
 	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
+	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for iptables snat '%s', %v", cachedIptablesSnat.Name, err)

@@ -90,7 +90,7 @@ func ovsDestroy(table, record string) error {
 	return err
 }
 
-func ovsSet(table, record string, values ...string) error {
+func Set(table, record string, values ...string) error {
 	args := append([]string{"set", table, record}, values...)
 	_, err := Exec(args...)
 	return err
@@ -135,13 +135,19 @@ func parseOvsFindOutput(output string) []string {
 	return ret
 }
 
+func Remove(table, record, column string, keys ...string) error {
+	args := append([]string{"remove", table, record, column}, keys...)
+	_, err := Exec(args...)
+	return err
+}
+
 func ovsClear(table, record string, columns ...string) error {
 	args := append([]string{"--if-exists", "clear", table, record}, columns...)
 	_, err := Exec(args...)
 	return err
 }
 
-func ovsGet(table, record, column, key string) (string, error) {
+func Get(table, record, column, key string, ifExists bool) (string, error) {
 	var columnVal string
 	if key == "" {
 		columnVal = column
@@ -149,6 +155,9 @@ func ovsGet(table, record, column, key string) (string, error) {
 		columnVal = column + ":" + key
 	}
 	args := []string{"get", table, record, columnVal}
+	if ifExists {
+		args = append([]string{"--if-exists"}, args...)
+	}
 	return Exec(args...)
 }
 
@@ -227,46 +236,65 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 	return nil
 }
 
-// CleanLostInterface will clean up related ovs port, interface and qos
-// When reboot node, the ovs internal interface will be deleted.
-func CleanLostInterface() {
-	// when interface error ofport will be -1
-	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1", "external_ids:pod_netns!=[]")
+func ListInterfacePodMap() (map[string]string, error) {
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids,error", "find",
+		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]")
 	if err != nil {
-		klog.Errorf("failed to list failed interface %v", err)
-		return
+		klog.Errorf("failed to list interface, %v", err)
+		return nil, err
 	}
-	if len(interfaceList) > 0 {
-		klog.Infof("error interfaces:\n %v", interfaceList)
-	}
+	lines := strings.Split(output, "\n")
+	result := make(map[string]string, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		if len(parts) != 3 {
+			continue
+		}
+		ifaceName := strings.TrimSpace(parts[0])
+		errText := strings.TrimSpace(parts[2])
+		var podNamespace, podName string
+		for externalID := range strings.FieldsSeq(parts[1]) {
+			if strings.Contains(externalID, "pod_name=") {
+				podName = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_name=")
+			}
 
-	for _, intf := range interfaceList {
-		name, errText := strings.Trim(strings.Split(intf, "\n")[0], "\""), strings.Split(intf, "\n")[1]
-		if strings.Contains(errText, "No such device") {
-			qosList, err := ovsFind("port", "qos", "name="+name)
-			if err != nil {
-				klog.Errorf("failed to find related port %v", err)
-				return
+			if strings.Contains(externalID, "pod_namespace=") {
+				podNamespace = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_namespace=")
 			}
-			klog.Infof("delete lost port %s", name)
-			output, err := Exec("--if-exists", "--with-iface", "del-port", name)
+		}
+		result[ifaceName] = fmt.Sprintf("%s/%s/%s", podNamespace, podName, errText)
+	}
+	klog.Infof("interface pod map: %v", result)
+	return result, nil
+}
+
+func CleanInterface(name string) error {
+	qosList, err := ovsFind("port", "qos", "name="+name)
+	if err != nil {
+		klog.Errorf("failed to find related port %v", err)
+		return err
+	}
+	klog.Infof("delete lost port %s", name)
+	output, err := Exec("--if-exists", "--with-iface", "del-port", name)
+	if err != nil {
+		klog.Errorf("failed to delete ovs port %v, %s", err, output)
+		return err
+	}
+	for _, qos := range qosList {
+		qos = strings.TrimSpace(qos)
+		if qos != "" && qos != "[]" {
+			klog.Infof("delete lost qos %s", qos)
+			err = ovsDestroy("qos", qos)
 			if err != nil {
-				klog.Errorf("failed to delete ovs port %v, %s", err, output)
-				return
-			}
-			for _, qos := range qosList {
-				qos = strings.TrimSpace(qos)
-				if qos != "" && qos != "[]" {
-					klog.Infof("delete lost qos %s", qos)
-					err = ovsDestroy("qos", qos)
-					if err != nil {
-						klog.Errorf("failed to delete qos %s, %v", qos, err)
-						return
-					}
-				}
+				klog.Errorf("failed to delete qos %s, %v", qos, err)
+				return err
 			}
 		}
 	}
+	return nil
 }
 
 // Find and remove any existing OVS port with this iface-id. Pods can
@@ -365,29 +393,6 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string) error {
 	return nil
 }
 
-func GetResidualInternalPorts() []string {
-	residualPorts := make([]string, 0)
-	interfaceList, err := ovsFind("interface", "name,external_ids", "type=internal")
-	if err != nil {
-		klog.Errorf("failed to list ovs internal interface %v", err)
-		return residualPorts
-	}
-
-	for _, intf := range interfaceList {
-		name := strings.Trim(strings.Split(intf, "\n")[0], "\"")
-		if !strings.Contains(name, "_c") {
-			continue
-		}
-
-		// iface-id field does not exist in external_ids for residual internal port
-		externalIDs := strings.Split(intf, "\n")[1]
-		if !strings.Contains(externalIDs, "iface-id") {
-			residualPorts = append(residualPorts, name)
-		}
-	}
-	return residualPorts
-}
-
 // remove qos related to this port.
 func ClearPortQosBinding(ifaceID string) error {
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
@@ -406,8 +411,7 @@ func ClearPortQosBinding(ifaceID string) error {
 }
 
 func ListExternalIDs(table string) (map[string]string, error) {
-	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]"}
-	output, err := Exec(args...)
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]")
 	if err != nil {
 		klog.Errorf("failed to list %s, %v", table, err)
 		return nil, err
@@ -436,8 +440,7 @@ func ListExternalIDs(table string) (map[string]string, error) {
 }
 
 func ListQosQueueIDs() (map[string]string, error) {
-	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]"}
-	output, err := Exec(args...)
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]")
 	if err != nil {
 		klog.Errorf("failed to list qos, %v", err)
 		return nil, err

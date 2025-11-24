@@ -1,0 +1,103 @@
+From 85aa6263ad5b3648eb7ceec90c812328dbb7c6c0 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:32 +0000
+Subject: [PATCH] northd: skip conntrack when access node local dns ip
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/en-global-config.c |  5 ++++
+ northd/northd.c           | 51 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 56 insertions(+)
+
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index 23d559f27d..6be1991330 100644
+--- a/northd/en-global-config.c
++++ b/northd/en-global-config.c
+@@ -649,6 +649,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "node_local_dns_ip", false)) {
++        return true;
++    }
++
+     return false;
+ }
+ 
+diff --git a/northd/northd.c b/northd/northd.c
+index 4a4d75415b..fe895ea151 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -100,6 +100,8 @@ static bool vxlan_ic_mode;
+ 
+ static bool bcast_arp_req_flood = true;
+ 
++static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
++static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
+ 
+ #define MAX_OVN_TAGS 4096
+ 
+@@ -6270,6 +6272,27 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
+                       100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;",
+                       lflow_ref);
++
++        // skip conntrack when access node local dns ip
++        char *match = NULL;
++        const char **array = sset_array(&node_local_dns_ip_v4);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
++            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++        array = sset_array(&node_local_dns_ip_v6);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
++            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
+     }
+ }
+ 
+@@ -19100,6 +19123,34 @@ ovnnb_db_run(struct northd_input *input_data,
+     bcast_arp_req_flood = smap_get_bool(input_data->nb_options,
+                                         "bcast_arp_req_flood", true);
+ 
++    sset_clear(&node_local_dns_ip_v4);
++    sset_clear(&node_local_dns_ip_v6);
++
++    const char *node_local_dns_ip = smap_get(input_data->nb_options,
++                                             "node_local_dns_ip");
++    if (node_local_dns_ip) {
++        ovs_be32 ip4;
++        struct in6_addr ip6;
++        char *cur, *next, *start;
++        next = start = xstrdup(node_local_dns_ip);
++        struct ds s = DS_EMPTY_INITIALIZER;
++        while ((cur = strsep(&next, ",")) && *cur) {
++            if (strchr(cur, ':')) {
++                if (ipv6_parse(cur, &ip6)) {
++                    ds_clear(&s);
++                    ipv6_format_addr(&ip6, &s);
++                    sset_add(&node_local_dns_ip_v6, ds_cstr_ro(&s));
++                }
++            } else if (ip_parse(cur, &ip4)) {
++                ds_clear(&s);
++                ds_put_format(&s, IP_FMT, IP_ARGS(ip4));
++                sset_add(&node_local_dns_ip_v4, ds_cstr_ro(&s));
++            }
++        }
++        ds_destroy(&s);
++        free(start);
++    }
++
+     /* deprecated, use --event instead */
+     controller_event_en = smap_get_bool(input_data->nb_options,
+                                         "controller_event", false);

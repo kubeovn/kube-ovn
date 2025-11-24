@@ -5,7 +5,7 @@ import (
 
 	netv1 "k8s.io/api/networking/v1"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
@@ -24,6 +24,7 @@ type NBGlobal interface {
 	SetLsCtSkipDstLportIPs(enabled bool) error
 	SetOVNIPSec(enabled bool) error
 	SetNodeLocalDNSIP(nodeLocalDNSIP string) error
+	SetSkipConntrackCidrs(skipConntrackCidrs string) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
 }
 
@@ -104,6 +105,7 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
 	EnablePortLayer2forward(lspName string) error
 	DeleteLogicalSwitchPort(lspName string) error
+	DeleteLogicalSwitchPortByUUID(lsName, lspUUID string) error
 	DeleteLogicalSwitchPorts(externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) error
 	ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error)
 	ListNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error)
@@ -157,8 +159,10 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool) ([]ovsdb.Operation, error)
+	UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error)
+	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error
 	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
 	CreateSgDenyAllACL(sgName string) error

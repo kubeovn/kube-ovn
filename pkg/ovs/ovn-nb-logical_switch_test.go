@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 
 	"github.com/stretchr/testify/require"
@@ -511,7 +511,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("should return err when logical switch does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := nbClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", uuid.NewString(), ovsdb.MutateOperationInsert)
+		_, err := nbClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", string(uuid.NewUUID()), ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical switch")
 	})
 

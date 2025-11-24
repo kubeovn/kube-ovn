@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -29,6 +31,7 @@ const (
 	EnvSSL               = "ENABLE_SSL"
 	EnvPodName           = "POD_NAME"
 	EnvPodNameSpace      = "POD_NAMESPACE"
+	OvnNorthdServiceName = "ovn-northd"
 	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
 	DefaultProbeInterval = 5
 	OvnNorthdPort        = "6643"
@@ -36,6 +39,8 @@ const (
 )
 
 var failCount int
+
+var labelSelector = labels.Set{discoveryv1.LabelServiceName: OvnNorthdServiceName}.AsSelector().String()
 
 // Configuration is the controller conf
 type Configuration struct {
@@ -274,25 +279,27 @@ func checkNorthdEpAvailable(ip string) bool {
 	return true
 }
 
-func checkNorthdEpAlive(cfg *Configuration, namespace, epName string) bool {
-	eps, err := cfg.KubeClient.CoreV1().Endpoints(namespace).Get(context.Background(), epName, metav1.GetOptions{})
+func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
+	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		klog.Errorf("get ep %v namespace %v error %v", epName, namespace, err)
+		klog.Errorf("failed to list endpoint slices for service %s/%s: %v", namespace, service, err)
 		return false
 	}
 
-	if len(eps.Subsets) == 0 {
-		klog.V(5).Infof("epName %v has no address assigned", epName)
-		return false
+	for _, eps := range epsList.Items {
+		for _, ep := range eps.Endpoints {
+			if (ep.Conditions.Ready != nil && !*ep.Conditions.Ready) || len(ep.Addresses) == 0 {
+				continue
+			}
+
+			// Found an address, check its availability. We only need one.
+			klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", ep.Addresses[0], eps.Namespace, eps.Name, service)
+			return checkNorthdEpAvailable(ep.Addresses[0])
+		}
 	}
 
-	if len(eps.Subsets[0].Addresses) == 0 {
-		klog.V(5).Infof("epName %v has no address assigned", epName)
-		return false
-	}
-	klog.V(5).Infof("epName %v address assigned %+v", epName, eps.Subsets[0].Addresses[0].IP)
-
-	return checkNorthdEpAvailable(eps.Subsets[0].Addresses[0].IP)
+	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s", namespace, service)
+	return false
 }
 
 func compactOvnDatabase(db string) {

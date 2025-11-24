@@ -51,7 +51,7 @@ func (suite *OvnClientTestSuite) testOvsSet() {
 	t := suite.T()
 	t.Parallel()
 
-	err := ovsSet("port", "port-name", "qos=qos-uuid")
+	err := Set("port", "port-name", "qos=qos-uuid")
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
 }
@@ -86,6 +86,15 @@ br-businessnet
 	require.Len(t, ret, 2)
 }
 
+func (suite *OvnClientTestSuite) testOvsRemove() {
+	t := suite.T()
+	t.Parallel()
+
+	err := Remove("port", "port-name", "qos", "qos-uuid")
+	// ovs-vsctl cmd is not available in the test environment
+	require.Error(t, err)
+}
+
 func (suite *OvnClientTestSuite) testOvsClear() {
 	t := suite.T()
 	t.Parallel()
@@ -99,11 +108,15 @@ func (suite *OvnClientTestSuite) testOvsGet() {
 	t := suite.T()
 	t.Parallel()
 
-	ret, err := ovsGet("port", "port-name", "qos", "qos-uuid")
+	ret, err := Get("port", "port-name", "qos", "qos-uuid", false)
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
 	require.Empty(t, ret)
-	ret, err = ovsGet("port", "port-name", "qos", "")
+	ret, err = Get("port", "port-name", "qos", "", false)
+	// ovs-vsctl cmd is not available in the test environment
+	require.Error(t, err)
+	require.Empty(t, ret)
+	ret, err = Get("port", "port-name", "qos", "qos-uuid", true)
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
 	require.Empty(t, ret)
@@ -163,13 +176,6 @@ func (suite *OvnClientTestSuite) testOvsClearPodBandwidth() {
 	require.Error(t, err)
 }
 
-func (suite *OvnClientTestSuite) testOvsCleanLostInterface() {
-	t := suite.T()
-	t.Parallel()
-
-	CleanLostInterface()
-}
-
 func (suite *OvnClientTestSuite) testOvsCleanDuplicatePort() {
 	t := suite.T()
 	t.Parallel()
@@ -208,15 +214,6 @@ func (suite *OvnClientTestSuite) testConfigInterfaceMirror() {
 	err = ConfigInterfaceMirror(false, "close", "iface-id")
 	// ovs-vsctl cmd is not available in the test environment
 	require.Error(t, err)
-}
-
-func (suite *OvnClientTestSuite) testGetResidualInternalPorts() {
-	t := suite.T()
-	t.Parallel()
-
-	ret := GetResidualInternalPorts()
-	// ovs-vsctl cmd is not available in the test environment
-	require.Empty(t, ret)
 }
 
 func (suite *OvnClientTestSuite) testClearPortQosBinding() {

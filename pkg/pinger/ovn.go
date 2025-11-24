@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 )
 
 // Chassis represents a row in the Chassis table.
@@ -49,7 +49,9 @@ func checkOvnController(config *Configuration, setMetrics bool) error {
 	output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_controller").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovn_controller status failed %v, %q", err, output)
-		SetOvnControllerDownMetrics(config.NodeName)
+		if setMetrics {
+			SetOvnControllerDownMetrics(config.NodeName)
+		}
 		return err
 	}
 	klog.Infof("ovn_controller is up")
@@ -66,33 +68,32 @@ func checkPortBindings(config *Configuration, setMetrics bool) error {
 		klog.Error(err)
 		return err
 	}
+	klog.Infof("ports in ovs: %v", strings.Join(ovsBindings.SortedList(), ", "))
 
 	sbBindings, err := checkSBBindings(config)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	klog.Infof("port in sb is %v", sbBindings)
-	misMatch := []string{}
-	for _, port := range ovsBindings {
-		if !slices.Contains(sbBindings, port) {
-			misMatch = append(misMatch, port)
+	klog.Infof("ports in sb: %v", strings.Join(sbBindings.SortedList(), ", "))
+
+	if misMatch := ovsBindings.Difference(sbBindings); misMatch.Len() > 0 {
+		err = fmt.Errorf("%d ports not exist in ovn-sb-bindings: %s", misMatch.Len(), strings.Join(misMatch.SortedList(), ", "))
+		klog.Error(err)
+		if setMetrics {
+			inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(misMatch.Len()))
 		}
-	}
-	if len(misMatch) > 0 {
-		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
-		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
-		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
+		return err
 	}
 
-	klog.Infof("ovs and ovn-sb binding check passed")
+	klog.Info("ovs and ovn-sb port binding check passed")
 	if setMetrics {
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}
 	return nil
 }
 
-func checkOvsBindings() ([]string, error) {
+func checkOvsBindings() (set.Set[string], error) {
 	output, err := exec.Command(
 		"ovs-vsctl",
 		"--no-heading",
@@ -107,12 +108,15 @@ func checkOvsBindings() ([]string, error) {
 		klog.Errorf("failed to get ovs interface %v", err)
 		return nil, err
 	}
-	result := make([]string, 0, len(strings.Split(string(output), "\n")))
+	result := set.New[string]()
 	for line := range strings.SplitSeq(string(output), "\n") {
-		for id := range strings.SplitSeq(line, " ") {
-			if strings.Contains(id, "iface-id") {
-				result = append(result, strings.TrimPrefix(id, "iface-id="))
-				break
+		// In dual-stack clusters, the output may look like:
+		// "iface-id=kube-ovn-pinger-ljqss.kube-system ip=10.180.160.6,2341::10:180:160:6 ... vendor=kube-ovn"
+		// so we need to trim the quotes and split by space.
+		for id := range strings.FieldsSeq(strings.Trim(line, `"`)) {
+			if after, found := strings.CutPrefix(id, "iface-id="); found {
+				result.Insert(strings.TrimSpace(after))
+				continue
 			}
 		}
 	}
@@ -158,7 +162,7 @@ func getChassis(hostname string) (string, error) {
 	return responses[0].Rows[0].UUID[1], nil
 }
 
-func getLogicalPort(chassis string) ([]string, error) {
+func getLogicalPort(chassis string) (set.Set[string], error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
@@ -191,14 +195,14 @@ func getLogicalPort(chassis string) ([]string, error) {
 		return nil, fmt.Errorf("no logical port found for chassis %q", chassis)
 	}
 
-	var ports []string
+	ports := set.New[string]()
 	for _, row := range responses[0].Rows {
-		ports = append(ports, row.LogicalPort)
+		ports.Insert(row.LogicalPort)
 	}
 	return ports, nil
 }
 
-func checkSBBindings(config *Configuration) ([]string, error) {
+func checkSBBindings(config *Configuration) (set.Set[string], error) {
 	chassis, err := getChassis(config.NodeName)
 	if err != nil {
 		return nil, err

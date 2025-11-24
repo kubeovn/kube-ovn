@@ -61,13 +61,25 @@ func NewFilteredOvnSnatRuleInformer(client versioned.Interface, resyncPeriod tim
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().OvnSnatRules().List(context.TODO(), options)
+				return client.KubeovnV1().OvnSnatRules().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().OvnSnatRules().Watch(context.TODO(), options)
+				return client.KubeovnV1().OvnSnatRules().Watch(context.Background(), options)
+			},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().OvnSnatRules().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.KubeovnV1().OvnSnatRules().Watch(ctx, options)
 			},
 		},
 		&apiskubeovnv1.OvnSnatRule{},

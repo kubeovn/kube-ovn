@@ -35,7 +35,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 
 	for _, ifName := range interfaceList {
 		// ingress_policing_rate is in Kbps
-		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*8/10))
+		err := Set("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*8/10))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -57,7 +57,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 			}
 		} else {
 			if qosUID, ok := qosIfaceUIDMap[iface]; ok {
-				qosType, err := ovsGet("qos", qosUID, "type", "")
+				qosType, err := Get("qos", qosUID, "type", "", false)
 				if err != nil {
 					klog.Error(err)
 					return err
@@ -65,7 +65,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 				if qosType != util.HtbQos {
 					continue
 				}
-				queueID, err := ovsGet("qos", qosUID, "queues", "0")
+				queueID, err := Get("qos", qosUID, "queues", "0", false)
 				if err != nil {
 					klog.Error(err)
 					return err
@@ -152,7 +152,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, q
 	}
 
 	if queueUID, ok := queueIfaceUIDMap[iface]; ok {
-		if err := ovsSet("queue", queueUID, queueCommandValues...); err != nil {
+		if err := Set("queue", queueUID, queueCommandValues...); err != nil {
 			klog.Error(err)
 			return "", err
 		}
@@ -188,14 +188,14 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 			klog.Error(err)
 			return err
 		}
-		err = ovsSet("port", ifName, "qos="+qos)
+		err = Set("port", ifName, "qos="+qos)
 		if err != nil {
 			klog.Error(err)
 			return err
 		}
 		qosIfaceUIDMap[iface] = qos
 	} else {
-		qosType, err := ovsGet("qos", qosUID, "type", "")
+		qosType, err := Get("qos", qosUID, "type", "", false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -206,7 +206,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 		}
 
 		if qosType == util.HtbQos {
-			queueID, err := ovsGet("qos", qosUID, "queues", "0")
+			queueID, err := Get("qos", qosUID, "queues", "0", false)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -216,7 +216,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 			}
 		}
 
-		if err := ovsSet("qos", qosUID, qosCommandValues...); err != nil {
+		if err := Set("qos", qosUID, qosCommandValues...); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -272,13 +272,13 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 					return err
 				}
 
-				if err = ovsSet("port", ifName, "qos="+qos); err != nil {
+				if err = Set("port", ifName, "qos="+qos); err != nil {
 					klog.Error(err)
 					return err
 				}
 			} else {
 				for _, qos := range qosList {
-					qosType, err := ovsGet("qos", qos, "type", "")
+					qosType, err := Get("qos", qos, "type", "", false)
 					if err != nil {
 						klog.Error(err)
 						return err
@@ -315,7 +315,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 						return err
 					}
 
-					if err = ovsSet("port", ifName, "qos="+qos); err != nil {
+					if err = Set("port", ifName, "qos="+qos); err != nil {
 						klog.Errorf("failed to set netem qos to port: %v", err)
 						return err
 					}
@@ -336,7 +336,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 func getNetemQosConfig(qosID string) (string, string, string, string, error) {
 	var latency, loss, limit, jitter string
 
-	config, err := ovsGet("qos", qosID, "other_config", "")
+	config, err := Get("qos", qosID, "other_config", "", false)
 	if err != nil {
 		klog.Errorf("failed to get other_config for qos %s: %v", qosID, err)
 		return latency, loss, limit, jitter, err
@@ -363,7 +363,7 @@ func getNetemQosConfig(qosID string) (string, string, string, string, error) {
 }
 
 func deleteNetemQosByID(qosID, iface, podName, podNamespace string) error {
-	qosType, _ := ovsGet("qos", qosID, "type", "")
+	qosType, _ := Get("qos", qosID, "type", "", false)
 	if qosType != util.NetemQos {
 		return nil
 	}
@@ -397,7 +397,7 @@ func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMa
 		return nil
 	}
 
-	config, err := ovsGet("queue", queueUID, "other_config", "")
+	config, err := Get("queue", queueUID, "other_config", "", false)
 	if err != nil {
 		klog.Errorf("failed to get other_config for queueID %s: %v", queueUID, err)
 		return err

@@ -1,6 +1,6 @@
 package framework
 
 const (
-	PauseImage   = "kubeovn/pause:3.9"
-	AgnhostImage = "kubeovn/agnhost:2.47"
+	PauseImage   = "ghcr.io/kubeovn/pause:3.9"
+	AgnhostImage = "ghcr.io/kubeovn/agnhost:2.47"
 )

@@ -2,6 +2,18 @@
 
 Currently supported version: 1.9
 
+## Installing the Chart
+
+### From OCI Registry
+
+The Helm chart is available from GitHub Container Registry:
+
+```bash
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn --version v1.15.0
+```
+
+### From Source
+
 Installation :
 
 ```bash

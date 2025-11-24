@@ -11,6 +11,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -21,6 +22,8 @@ import (
 var (
 	exGwEnabled = "unknown"
 	lastExGwCM  map[string]string
+
+	externalGatewayNodeSelector = labels.Set{util.ExGatewayLabel: "true"}.AsSelector()
 )
 
 func (c *Controller) resyncExternalGateway() {
@@ -90,8 +93,7 @@ func (c *Controller) resyncExternalGateway() {
 }
 
 func (c *Controller) removeExternalGateway() error {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	nodes, err := c.nodesLister.List(sel)
+	nodes, err := c.nodesLister.List(externalGatewayNodeSelector)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return err
@@ -127,9 +129,10 @@ func (c *Controller) removeExternalGateway() error {
 		// provider network, underlay vlan control the external gateway switch
 		klog.Infof("should keep provider network underlay vlan external gateway switch %s", c.config.ExternalGatewaySwitch)
 		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
-		klog.Infof("delete logical router port %s", lrpName)
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(lrpName); err != nil {
-			klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
+		lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, c.config.ClusterRouter)
+		klog.Infof("delete logical patch port lsp %s lrp %s", lspName, lrpName)
+		if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+			klog.Errorf("failed to remove logical patch port %s/%s, %v", lspName, lrpName, err)
 			return err
 		}
 	}
@@ -220,8 +223,7 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 
 func (c *Controller) getGatewayChassis(config map[string]string) ([]string, error) {
 	chassises := []string{}
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ExGatewayLabel: "true"}})
-	nodes, err := c.nodesLister.List(sel)
+	nodes, err := c.nodesLister.List(externalGatewayNodeSelector)
 	if err != nil {
 		klog.Errorf("failed to list external gw nodes, %v", err)
 		return nil, err

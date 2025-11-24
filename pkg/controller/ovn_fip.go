@@ -59,7 +59,23 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDelOvnFip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
+	var fip *kubeovnv1.OvnFip
+	switch t := obj.(type) {
+	case *kubeovnv1.OvnFip:
+		fip = t
+	case cache.DeletedFinalStateUnknown:
+		f, ok := t.Obj.(*kubeovnv1.OvnFip)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		fip = f
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(fip).String()
 	klog.Infof("enqueue del ovn fip %s", key)
 	c.delOvnFipQueue.Add(key)
 }

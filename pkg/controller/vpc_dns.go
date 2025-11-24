@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"reflect"
 	"strconv"
@@ -70,7 +69,23 @@ func (c *Controller) enqueueUpdateVpcDNS(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteVPCDNS(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcDns)).String()
+	var dns *kubeovnv1.VpcDns
+	switch t := obj.(type) {
+	case *kubeovnv1.VpcDns:
+		dns = t
+	case cache.DeletedFinalStateUnknown:
+		d, ok := t.Obj.(*kubeovnv1.VpcDns)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		dns = d
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(dns).String()
 	klog.V(3).Infof("enqueue delete vpc-dns %s", key)
 	c.delVpcDNSQueue.Add(key)
 }
@@ -205,7 +220,7 @@ func (c *Controller) createOrUpdateVpcDNSDep(vpcDNS *kubeovnv1.VpcDns) error {
 		deploy = nil
 	}
 
-	newDp, err := c.genVpcDNSDeployment(vpcDNS, deploy)
+	newDp, err := c.genVpcDNSDeployment(vpcDNS)
 	if err != nil {
 		klog.Errorf("failed to generate vpc-dns deployment, %v", err)
 		return err
@@ -272,7 +287,7 @@ func (c *Controller) createOrUpdateVpcDNSSlr(vpcDNS *kubeovnv1.VpcDns) error {
 	return nil
 }
 
-func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1.Deployment) (*v1.Deployment, error) {
+func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns) (*v1.Deployment, error) {
 	tmp := template.New("coredns")
 	tmp, err := tmp.Parse(corednsTemplateContent)
 	if err != nil {
@@ -302,10 +317,6 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns, oldDeploy *v1
 	}
 
 	dep.Spec.Template.Annotations = make(map[string]string)
-
-	if oldDeploy != nil && len(oldDeploy.Annotations) != 0 {
-		dep.Spec.Template.Annotations = maps.Clone(oldDeploy.Annotations)
-	}
 
 	dep.Labels = map[string]string{
 		util.VpcDNSNameLabel: "true",
@@ -402,6 +413,9 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 			if err != nil {
 				klog.Errorf("failed to marshal routes %+v: %v", routes, err)
 			} else {
+				if dp.Spec.Template.Annotations == nil {
+					dp.Spec.Template.Annotations = map[string]string{}
+				}
 				dp.Spec.Template.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, nadProvider)] = string(buf)
 			}
 			break
@@ -410,8 +424,7 @@ func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 }
 
 func (c *Controller) checkOvnNad() error {
-	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(corev1.NamespaceDefault).
-		Get(context.Background(), nadName, metav1.GetOptions{})
+	_, err := c.netAttachLister.NetworkAttachmentDefinitions(corev1.NamespaceDefault).Get(nadName)
 	if err != nil {
 		klog.Error(err)
 		return err

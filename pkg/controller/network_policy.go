@@ -26,6 +26,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	NetworkPolicyEnforcementStandard = "standard"
+	NetworkPolicyEnforcementLax      = "lax"
+)
+
 func (c *Controller) enqueueAddNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
@@ -33,7 +38,23 @@ func (c *Controller) enqueueAddNp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteNp(obj any) {
-	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	var np *netv1.NetworkPolicy
+	switch t := obj.(type) {
+	case *netv1.NetworkPolicy:
+		np = t
+	case cache.DeletedFinalStateUnknown:
+		n, ok := t.Obj.(*netv1.NetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		np = n
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
 	c.deleteNpQueue.Add(key)
 }
@@ -156,7 +177,26 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
+	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if hasIngressRule(np) {
+		if protocolSet.Size() > 0 {
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
+			if err != nil {
+				klog.Errorf("failed to set default ingress block acl: %v", err)
+				return fmt.Errorf("failed to set default ingress block acl: %w", err)
+			}
+			ingressACLOps = append(ingressACLOps, blockACLOps...)
+
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionToLport)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				ingressACLOps = append(ingressACLOps, defaultBlockExceptions...)
+			}
+		}
+
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -198,7 +238,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(key, pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -220,7 +260,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(key, pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -286,6 +326,24 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasEgressRule(np) {
+		if protocolSet.Size() > 0 {
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
+			if err != nil {
+				klog.Errorf("failed to set default egress block acl: %v", err)
+				return fmt.Errorf("failed to set default egress block acl: %w", err)
+			}
+			egressACLOps = append(egressACLOps, blockACLOps...)
+
+			if enforcementLax {
+				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
+				if err != nil {
+					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
+					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
+				}
+				egressACLOps = append(egressACLOps, defaultBlockExceptions...)
+			}
+		}
+
 		for _, protocol := range protocolSet.List() {
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -327,7 +385,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(key, pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -349,7 +407,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(key, pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -409,10 +467,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	for _, subnet := range subnets {
-		if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
-			klog.Errorf("create gateway acl: %v", err)
-			return err
+	if !enforcementLax {
+		for _, subnet := range subnets {
+			if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
+				klog.Errorf("create gateway acl: %v", err)
+				return err
+			}
 		}
 	}
 	return nil
@@ -603,11 +663,7 @@ func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]s
 	matchSvcs := []string{}
 	// find svc ip by pod's info
 	for _, svc := range svcs {
-		isMatch, err := isSvcMatchPod(svc, pod)
-		if err != nil {
-			return nil, err
-		}
-		if isMatch {
+		if isSvcMatchPod(svc, pod) {
 			clusterIPs := util.ServiceClusterIPs(*svc)
 			protocolClusterIPs := getProtocolSvcIP(clusterIPs, protocol)
 			if len(protocolClusterIPs) != 0 {
@@ -628,19 +684,8 @@ func getProtocolSvcIP(clusterIPs []string, protocol string) []string {
 	return protocolClusterIPs
 }
 
-func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) (bool, error) {
-	ss := metav1.SetAsLabelSelector(svc.Spec.Selector)
-	sel, err := metav1.LabelSelectorAsSelector(ss)
-	if err != nil {
-		return false, fmt.Errorf("error fetch label selector, %w", err)
-	}
-	if pod.Labels == nil {
-		return false, nil
-	}
-	if sel.Matches(labels.Set(pod.Labels)) {
-		return true, nil
-	}
-	return false, nil
+func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) bool {
+	return labels.Set(svc.Spec.Selector).AsSelector().Matches(labels.Set(pod.Labels))
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
@@ -660,7 +705,7 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 
 	match := []string{}
 	for _, np := range nps {
-		if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {
+		if isPodMatchNetworkPolicy(pod, podNs, np, np.Namespace) {
 			match = append(match, cache.MetaObjectToName(np).String())
 		}
 	}
@@ -688,7 +733,7 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 			if match.Has(key) {
 				continue
 			}
-			if isPodMatchNetworkPolicy(pod, *ns, np, np.Namespace) {
+			if isPodMatchNetworkPolicy(pod, ns, np, np.Namespace) {
 				match.Insert(key)
 				klog.V(3).Infof("svc %s/%s match np %s", svc.Namespace, svc.Name, key)
 			}
@@ -697,11 +742,8 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 	return match.UnsortedList(), nil
 }
 
-func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
+func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
 	sel, _ := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
-	if pod.Labels == nil {
-		pod.Labels = map[string]string{}
-	}
 	if podNs.Name == policyNs && sel.Matches(labels.Set(pod.Labels)) {
 		return true
 	}
@@ -722,7 +764,7 @@ func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs corev1.Namespace, policy *ne
 	return false
 }
 
-func isPodMatchPolicyPeer(pod *corev1.Pod, podNs corev1.Namespace, policyPeer netv1.NetworkPolicyPeer, policyNs string) bool {
+func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer netv1.NetworkPolicyPeer, policyNs string) bool {
 	if policyPeer.IPBlock != nil {
 		return false
 	}
@@ -730,25 +772,11 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs corev1.Namespace, policyPeer ne
 		if policyNs != podNs.Name {
 			return false
 		}
-	} else {
-		nsSel, _ := metav1.LabelSelectorAsSelector(policyPeer.NamespaceSelector)
-		if podNs.Labels == nil {
-			podNs.Labels = map[string]string{}
-		}
-		if !nsSel.Matches(labels.Set(podNs.Labels)) {
-			return false
-		}
+	} else if !util.ObjectMatchesLabelSelector(podNs, policyPeer.NamespaceSelector) {
+		return false
 	}
 
-	if policyPeer.PodSelector == nil {
-		return true
-	}
-
-	sel, _ := metav1.LabelSelectorAsSelector(policyPeer.PodSelector)
-	if pod.Labels == nil {
-		pod.Labels = map[string]string{}
-	}
-	return sel.Matches(labels.Set(pod.Labels))
+	return policyPeer.PodSelector == nil || util.ObjectMatchesLabelSelector(pod, policyPeer.PodSelector)
 }
 
 func (c *Controller) namespaceMatchNetworkPolicies(ns *corev1.Namespace) []string {
@@ -791,4 +819,14 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		}
 	}
 	return false
+}
+
+func (c *Controller) isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) bool {
+	// User provided a custom enforcement through annotations
+	if value, ok := policy.Annotations[util.NetworkPolicyEnforcementAnnotation]; ok {
+		return value == NetworkPolicyEnforcementLax
+	}
+
+	// Fallback to the configuration of the controller
+	return c.config.NetworkPolicyEnforcement == NetworkPolicyEnforcementLax
 }

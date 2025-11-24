@@ -26,6 +26,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-cni
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -272,5 +273,5 @@ spec:
         {{- if .Values.func.ENABLE_OVN_IPSEC }}
         - name: ovs-ipsec-keys
           hostPath:
-            path: {{ .Values.OPENVSWITCH_DIR }}
+            path: {{ .Values.OVN_IPSEC_KEY_DIR }}
         {{- end }}

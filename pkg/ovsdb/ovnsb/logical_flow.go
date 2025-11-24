@@ -9,7 +9,7 @@ type (
 	LogicalFlowPipeline = string
 )
 
-var (
+const (
 	LogicalFlowPipelineIngress LogicalFlowPipeline = "ingress"
 	LogicalFlowPipelineEgress  LogicalFlowPipeline = "egress"
 )
@@ -20,11 +20,12 @@ type LogicalFlow struct {
 	Actions         string              `ovsdb:"actions"`
 	ControllerMeter *string             `ovsdb:"controller_meter"`
 	ExternalIDs     map[string]string   `ovsdb:"external_ids"`
+	FlowDesc        *string             `ovsdb:"flow_desc"`
 	LogicalDatapath *string             `ovsdb:"logical_datapath"`
 	LogicalDpGroup  *string             `ovsdb:"logical_dp_group"`
 	Match           string              `ovsdb:"match"`
-	Pipeline        LogicalFlowPipeline `ovsdb:"pipeline"`
-	Priority        int                 `ovsdb:"priority"`
-	TableID         int                 `ovsdb:"table_id"`
+	Pipeline        LogicalFlowPipeline `ovsdb:"pipeline" validate:"oneof='ingress' 'egress'"`
+	Priority        int                 `ovsdb:"priority" validate:"min=0,max=65535"`
+	TableID         int                 `ovsdb:"table_id" validate:"min=0,max=32"`
 	Tags            map[string]string   `ovsdb:"tags"`
 }

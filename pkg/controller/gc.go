@@ -9,7 +9,7 @@ import (
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -106,9 +106,8 @@ func (c *Controller) gcVpcNatGateway() error {
 		gwStsNames = append(gwStsNames, util.GenNatGwName(gw.Name))
 	}
 
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
 	stss, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
-		LabelSelector: sel.String(),
+		LabelSelector: labels.Set{util.VpcNatGatewayLabel: "true"}.AsSelector().String(),
 	})
 	if err != nil {
 		klog.Errorf("failed to list vpc nat gateway statefulset, %v", err)
@@ -317,6 +316,58 @@ func (c *Controller) gcVip() error {
 	return nil
 }
 
+func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
+	// Check if Subnet exists
+	if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
+		return false, nil
+	}
+
+	// Check if Node exists
+	if ip.Spec.Namespace == "" && ip.Spec.NodeName == ip.Spec.PodName {
+		_, err := c.nodesLister.Get(ip.Spec.NodeName)
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	}
+
+	// Check if VM exists
+	if ip.Spec.PodType == util.VM {
+		_, err := c.config.KubevirtClient.VirtualMachine(ip.Spec.Namespace).Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	}
+
+	// Check if StatefulSet exists
+	if ip.Spec.PodType == util.StatefulSet {
+		// Extract StatefulSet name from pod name by removing the last part after '-'
+		// e.g., "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1-0" -> "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1"
+		stsName := ip.Spec.PodName
+		if lastDash := strings.LastIndex(stsName, "-"); lastDash != -1 {
+			stsName = stsName[:lastDash]
+		}
+
+		_, err := c.config.KubeClient.AppsV1().StatefulSets(ip.Spec.Namespace).Get(context.Background(), stsName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	}
+
+	// Check if Normal Pod exists
+	if ip.Spec.PodType == "" {
+		_, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	}
+
+	return true, nil
+}
+
 func (c *Controller) gcIP() error {
 	klog.Infof("start to gc ips")
 	ips, err := c.ipsLister.List(labels.Everything())
@@ -325,8 +376,13 @@ func (c *Controller) gcIP() error {
 		return err
 	}
 	for _, ip := range ips {
-		if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
-			klog.Infof("subnet %s already not exist, gc ip %s", ip.Spec.Subnet, ip.Name)
+		exist, err := c.checkIPOwnerExists(ip)
+		if err != nil {
+			klog.Errorf("failed to check ip owner exists, %v", err)
+			continue
+		}
+		if !exist {
+			klog.Infof("gc ip %s", ip.Name)
 			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ip.Name, metav1.DeleteOptions{}); err != nil {
 				klog.Errorf("failed to gc ip %s, %v", ip.Name, err)
 			}
@@ -433,8 +489,8 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 
-		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+		klog.Infof("gc logical switch port %s with uuid %s", lsp.Name, lsp.UUID)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPortByUUID(lsp.ExternalIDs[ovs.LogicalSwitchKey], lsp.UUID); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}
@@ -1022,15 +1078,18 @@ func (c *Controller) getVMLsps() []string {
 				vmLsps = append(vmLsps, vmLsp)
 			}
 
-			attachNets, err := nadutils.ParseNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot], vm.Namespace)
-			if err != nil {
-				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
-				continue
-			}
-			for _, multiNet := range attachNets {
-				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
-				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
-				vmLsps = append(vmLsps, vmLsp)
+			nadAnnotation := vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot]
+			if nadAnnotation != "" {
+				attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vm.Namespace)
+				if err != nil {
+					klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
+					continue
+				}
+				for _, multiNet := range attachNets {
+					provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
+					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
+					vmLsps = append(vmLsps, vmLsp)
+				}
 			}
 
 			for _, network := range vm.Spec.Template.Spec.Networks {
@@ -1102,10 +1161,9 @@ func (c *Controller) gcVPCDNS() error {
 		return err
 	}
 
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDNSNameLabel: "true"}})
-
+	labelSelector := labels.Set{util.VpcDNSNameLabel: "true"}.AsSelector()
 	deps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
-		LabelSelector: sel.String(),
+		LabelSelector: labelSelector.String(),
 	})
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns deployment, %s", err)
@@ -1131,7 +1189,7 @@ func (c *Controller) gcVPCDNS() error {
 		}
 	}
 
-	slrs, err := c.switchLBRuleLister.List(sel)
+	slrs, err := c.switchLBRuleLister.List(labelSelector)
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns SwitchLBRules, %s", err)
 		return err

@@ -1,0 +1,118 @@
+From a297b840c2c9f118c7ce6133077087b5999f12dd Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:33 +0000
+Subject: [PATCH] direct output to lsp for dnat packets in logical switch
+ ingress pipelines
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/en-global-config.c |  5 ++++
+ northd/northd.c           | 58 ++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 62 insertions(+), 1 deletion(-)
+
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index 6503239ed6..26d89b6676 100644
+--- a/northd/en-global-config.c
++++ b/northd/en-global-config.c
+@@ -659,6 +659,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "ls_dnat_mod_dl_dst", false)) {
++        return true;
++    }
++
+     return false;
+ }
+ 
+diff --git a/northd/northd.c b/northd/northd.c
+index 4a7fdf80b9..10f74f99b8 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -105,6 +105,8 @@ static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6
+ 
+ static bool ls_ct_skip_dst_lport_ips = false;
+ 
++static bool ls_dnat_mod_dl_dst = false;
++
+ #define MAX_OVN_TAGS 4096
+ 
+ 
+@@ -8365,7 +8367,58 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+ }
+ 
+ static void
+-build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
++
++build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
++                                    struct lflow_table *lflows,
++                                    const struct hmap *lr_ports,
++                                    struct ds *actions,
++                                    struct ds *match)
++{
++    if (!ls_dnat_mod_dl_dst) {
++        return;
++    }
++    if (!op->nbsp || !op->od || !op->od->nbs || op->od->n_router_ports) {
++        return;
++    }
++    if (!strcmp(op->nbsp->type, "virtual") ||
++        !strcmp(op->nbsp->type, "localport")) {
++        return;
++    }
++    if (lsp_is_external(op->nbsp) || lsp_is_router(op->nbsp) || op->has_unknown) {
++        return;
++    }
++
++    if (op->n_lsp_addrs != 1 || !strlen(op->lsp_addrs[0].ea_s) ||
++        (!op->lsp_addrs[0].n_ipv4_addrs && !op->lsp_addrs[0].n_ipv6_addrs)) {
++        return;
++    }
++
++    ds_clear(actions);
++    ds_put_format(actions, "eth.dst = %s; outport = \"%s\"; output;",
++                  op->lsp_addrs[0].ea_s, op->key);
++
++    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv4_addrs; i++) {
++        ds_clear(match);
++        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip4.dst == %s",
++                      op->lsp_addrs[0].ipv4_addrs[i].addr_s);
++        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                                ds_cstr(match), ds_cstr(actions),
++                                &op->nbsp->header_, op->lflow_ref);
++    }
++
++    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv6_addrs; i++) {
++        ds_clear(match);
++        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip6.dst == %s",
++                        op->lsp_addrs[0].ipv6_addrs[i].addr_s);
++        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                                ds_cstr(match), ds_cstr(actions),
++                                &op->nbsp->header_, op->lflow_ref);
++    }
++}
++
++static void
++build_stateful(struct ovn_datapath *od,
++               struct lflow_table *lflows,
+                struct lflow_ref *lflow_ref)
+ {
+     struct ds actions = DS_EMPTY_INITIALIZER;
+@@ -17783,6 +17836,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+     build_lswitch_arp_nd_responder_skip_local(op, lflows, match);
+     build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
+                                              meter_groups, actions, match);
++    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
+     build_lswitch_arp_nd_forward_for_unknown_ips(op, lflows, actions, match);
+     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
+     build_lswitch_external_port(op, lflows);
+@@ -19271,6 +19325,8 @@ ovnnb_db_run(struct northd_input *input_data,
+     ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
+                                              "ls_ct_skip_dst_lport_ips",
+                                              false);
++    ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
++                                       "ls_dnat_mod_dl_dst", false);
+ 
+     build_datapaths(ovnsb_txn,
+                     input_data->nbrec_logical_switch_table,

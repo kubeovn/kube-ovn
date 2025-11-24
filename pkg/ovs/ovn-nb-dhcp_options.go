@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -107,7 +107,7 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
 		klog.Error(err)
-		return
+		return uuid, err
 	}
 
 	/* update */
@@ -146,7 +146,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
 		klog.Error(err)
-		return
+		return uuid, err
 	}
 
 	/* update */
@@ -224,7 +224,7 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 		protocol = ""
 	}
 	externalIDs := map[string]string{
-		logicalSwitchKey: lsName,
+		LogicalSwitchKey: lsName,
 		"protocol":       protocol, // list all protocol dhcp options when protocol is ""
 	}
 
@@ -254,7 +254,7 @@ func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound boo
 	}
 
 	dhcpOptList, err := c.ListDHCPOptions(true, map[string]string{
-		logicalSwitchKey: lsName,
+		LogicalSwitchKey: lsName,
 		"protocol":       protocol,
 	})
 	if err != nil {
@@ -307,7 +307,7 @@ func newDHCPOptions(lsName, cidr, options string) (*ovnnb.DHCPOptions, error) {
 	return &ovnnb.DHCPOptions{
 		Cidr: cidr,
 		ExternalIDs: map[string]string{
-			logicalSwitchKey: lsName,
+			LogicalSwitchKey: lsName,
 			"protocol":       protocol,
 			"vendor":         util.CniTypeName,
 		},

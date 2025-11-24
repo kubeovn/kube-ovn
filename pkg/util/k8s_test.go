@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
@@ -24,6 +24,74 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
+
+func TestObjectMatchesLabelSelector(t *testing.T) {
+	tests := []struct {
+		name     string
+		object   metav1.Object
+		selector *metav1.LabelSelector
+		expected bool
+	}{
+		{
+			name: "Match Labels",
+			object: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "nginx"},
+				},
+			},
+			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
+			expected: true,
+		},
+		{
+			name: "No Match Labels",
+			object: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "apache"},
+				},
+			},
+			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
+			expected: false,
+		},
+		{
+			name: "Invalid Selector",
+			object: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "nginx"},
+				},
+			},
+			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx,"}),
+			expected: false,
+		},
+		{
+			name: "Nil Selector",
+			object: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "nginx"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "No Labels",
+			object: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{},
+				},
+			},
+			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ObjectMatchesLabelSelector(tt.object, tt.selector)
+			if result != tt.expected {
+				t.Errorf("ObjectMatchesLabelSelector(%q, %v) = %v, want %v", tt.selector, tt.object, result, tt.expected)
+			}
+		})
+	}
+}
 
 func TestDialTCP(t *testing.T) {
 	tests := []struct {
@@ -390,7 +458,7 @@ func TestSetOwnerReference(t *testing.T) {
 			owner: &kubeovnv1.VpcEgressGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
-					UID:  types.UID(uuid.New().String()),
+					UID:  uuid.NewUUID(),
 				},
 			},
 			object: &v1.Pod{},
@@ -400,7 +468,7 @@ func TestSetOwnerReference(t *testing.T) {
 			owner: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
-					UID:  types.UID(uuid.New().String()),
+					UID:  uuid.NewUUID(),
 				},
 			},
 			object:  &v1.Pod{},

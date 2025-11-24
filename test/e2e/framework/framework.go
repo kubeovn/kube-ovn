@@ -9,12 +9,15 @@ import (
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
+	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
+	anpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -56,6 +59,9 @@ type Framework struct {
 	KubeVirtClientSet kubecli.KubevirtClient
 	MetallbClientSet  *MetallbClientSet
 	AttachNetClient   nad.Interface
+	ExtClientSet      *extClientSet.Clientset
+	AnpClientSet      anpclient.Interface
+	KubeOVNVersion    *versionutil.Version
 	// master/release-1.10/...
 	ClusterVersion string
 	// 999.999 for master
@@ -66,6 +72,22 @@ type Framework struct {
 	// overlay/underlay/underlay-hairpin
 	ClusterNetworkMode string
 	KubeOVNImage       string
+}
+
+func (f *Framework) parseEnv() {
+	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
+	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
+
+	envBranch := os.Getenv("E2E_BRANCH")
+	if !strings.HasPrefix(envBranch, "release-") {
+		f.KubeOVNVersion = versionutil.MustParseMajorMinor("999.999")
+	} else {
+		var err error
+		if f.KubeOVNVersion, err = versionutil.ParseMajorMinor(strings.TrimPrefix(envBranch, "release-")); err != nil {
+			defer ginkgo.GinkgoRecover()
+			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version %q", envBranch))
+		}
+	}
 }
 
 func dumpEvents(ctx context.Context, f *framework.Framework, namespace string) {
@@ -88,19 +110,7 @@ func NewDefaultFramework(baseName string) *Framework {
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.DumpAllNamespaceInfo = dumpEvents
-	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
-	f.ClusterVersion = os.Getenv("E2E_BRANCH")
-	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-
-	if strings.HasPrefix(f.ClusterVersion, "release-") {
-		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		if err != nil || n != 2 {
-			defer ginkgo.GinkgoRecover()
-			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
-		}
-	} else {
-		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
-	}
+	f.parseEnv()
 
 	ginkgo.BeforeEach(f.BeforeEach)
 
@@ -141,19 +151,7 @@ func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 	f.NamespacePodSecurityWarnLevel = admissionapi.LevelPrivileged
 	f.DumpAllNamespaceInfo = dumpEvents
-	f.ClusterIPFamily = os.Getenv("E2E_IP_FAMILY")
-	f.ClusterVersion = os.Getenv("E2E_BRANCH")
-	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
-
-	if strings.HasPrefix(f.ClusterVersion, "release-") {
-		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
-		if err != nil || n != 2 {
-			defer ginkgo.GinkgoRecover()
-			ginkgo.Fail(fmt.Sprintf("Failed to parse Kube-OVN version string %q", f.ClusterVersion))
-		}
-	} else {
-		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
-	}
+	f.parseEnv()
 
 	return f
 }
@@ -213,6 +211,17 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 	}
 
+	if f.ExtClientSet == nil {
+		ginkgo.By("Creating a Kubernetes client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.ExtClientSet, err = extClientSet.NewForConfig(config)
+		ExpectNoError(err)
+	}
+
 	if f.AttachNetClient == nil {
 		ginkgo.By("Creating a network attachment definition client")
 		config, err := framework.LoadConfig()
@@ -235,6 +244,17 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 	}
 
+	if f.AnpClientSet == nil {
+		ginkgo.By("Creating an AdminNetworkPolicy client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.AnpClientSet, err = anpclient.NewForConfig(config)
+		ExpectNoError(err)
+	}
+
 	if f.KubeOVNImage == "" && f.ClientSet != nil {
 		framework.Logf("Getting Kube-OVN image")
 		f.KubeOVNImage = GetKubeOvnImage(f.ClientSet)
@@ -245,7 +265,7 @@ func (f *Framework) BeforeEach() {
 }
 
 func (f *Framework) VersionPriorTo(major, minor uint) bool {
-	return f.ClusterVersionMajor < major || (f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor)
+	return f.KubeOVNVersion.LessThan(versionutil.MustParseMajorMinor(fmt.Sprintf("%d.%d", major, minor)))
 }
 
 func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {

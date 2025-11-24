@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +39,22 @@ func (c *Controller) enqueueAddSubnet(obj any) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	subnet := obj.(*kubeovnv1.Subnet)
+	var subnet *kubeovnv1.Subnet
+	switch t := obj.(type) {
+	case *kubeovnv1.Subnet:
+		subnet = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.Subnet)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		subnet = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
 	c.deleteSubnetQueue.Add(subnet)
 }
@@ -79,14 +94,11 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 
 	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
 		((oldSubnet.Spec.Vpc != "" || newSubnet.Spec.Vpc != c.config.ClusterRouter) && (oldSubnet.Spec.Vpc != c.config.ClusterRouter || newSubnet.Spec.Vpc != "")) {
-		if newSubnet.Annotations == nil {
-			newSubnet.Annotations = make(map[string]string)
-		}
-
+		// recode last vpc name for subnet
 		if oldSubnet.Spec.Vpc == "" {
-			newSubnet.Annotations[util.VpcLastName] = c.config.ClusterRouter
+			c.subnetLastVpcNameMap.Store(newSubnet.Name, c.config.ClusterRouter)
 		} else {
-			newSubnet.Annotations[util.VpcLastName] = oldSubnet.Spec.Vpc
+			c.subnetLastVpcNameMap.Store(newSubnet.Name, oldSubnet.Spec.Vpc)
 		}
 
 		c.updateVpcStatusQueue.Add(oldSubnet.Spec.Vpc)
@@ -486,9 +498,9 @@ func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.V
 			klog.Errorf("failed to list vpc, %v", err)
 			return vpc, err
 		}
+		lastVpcName, _ := c.subnetLastVpcNameMap.Load(subnet.Name)
 		for _, vpc := range vpcs {
-			if (subnet.Annotations[util.VpcLastName] == "" && subnet.Spec.Vpc != vpc.Name ||
-				subnet.Annotations[util.VpcLastName] != "" && subnet.Annotations[util.VpcLastName] != vpc.Name) &&
+			if (lastVpcName == "" && subnet.Spec.Vpc != vpc.Name || lastVpcName != "" && lastVpcName != vpc.Name) &&
 				!vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
 				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
 				klog.Error(err)
@@ -737,6 +749,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, gatewayMAC, needRouter, randomAllocateGW); err != nil {
 		klog.Errorf("create logical switch %s: %v", subnet.Name, err)
 		return err
+	}
+
+	// Record the gateway MAC in ipam if router port exists
+	if needRouter {
+		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
+		if lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
+			if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+			}
+		} else {
+			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		}
 	}
 
 	if isMcastQuerierChanged {
@@ -1021,6 +1045,9 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	}
+
+	// clean up subnet last vpc name cached
+	c.subnetLastVpcNameMap.Delete(subnet.Name)
 
 	return nil
 }

@@ -20,6 +20,7 @@ Kube-OVN, a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/), integ
 - **Vlan/Underlay Support**: In addition to overlay network, Kube-OVN also supports underlay and vlan mode network for better performance and direct connectivity with physical network.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
 - **Seamless VM LiveMigration**: Live migrate KubeVirt vm without network interruption.
+- **Non-Primary CNI Mode**: Kube-OVN can work as a secondary CNI alongside other primary CNIs (Cilium, Calico, etc.), providing additional network interfaces and advanced networking features via Network Attachment Definitions (NADs).
 - **Multi-Cluster Network**: Connect different Kubernetes/Openstack clusters into one L3 network.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshoot complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
@@ -44,14 +45,14 @@ Kube-OVN is easy to install, please refer to the [Installation Guide](https://ku
 
 ## Documents
 
-- [Overview](https://kubeovn.github.io/docs/en/)
-- [Getting Start](https://kubeovn.github.io/docs/en/start/prepare/)
+- [CNI Selection Recommendations](https://kubeovn.github.io/docs/stable/en/#cni-selection-recommendations)
+- [Getting Start](https://kubeovn.github.io/docs/stable/en/start/prepare/)
 - [KubeVirt Usage](https://kubeovn.github.io/docs/stable/en/kubevirt/static-ip/)
 - [VPC Network](https://kubeovn.github.io/docs/stable/en/vpc/vpc/)
-- [User Guide](https://kubeovn.github.io/docs/en/guide/setup-options/)
-- [Operations](https://kubeovn.github.io/docs/en/ops/kubectl-ko/)
-- [Advanced Usage](https://kubeovn.github.io/docs/en/advance/multi-nic/)
-- [Reference](https://kubeovn.github.io/docs/en/reference/architecture/)
+- [User Guide](https://kubeovn.github.io/docs/stable/en/guide/setup-options/)
+- [Operations](https://kubeovn.github.io/docs/stable/en/ops/kubectl-ko/)
+- [Advanced Usage](https://kubeovn.github.io/docs/stable/en/advance/multi-nic/)
+- [Reference](https://kubeovn.github.io/docs/stable/en/reference/architecture/)
 
 ## Contribution
 
@@ -66,3 +67,7 @@ The Kube-OVN community is waiting for your participation!
 
 - 🔗 Follow us on [Linkedin](https://www.linkedin.com/company/kube-ovn/)
 - 💬 Chat with us on [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
+
+## Adopters
+
+A list of adopters and use cases can be found in [USERS.md](USERS.md)

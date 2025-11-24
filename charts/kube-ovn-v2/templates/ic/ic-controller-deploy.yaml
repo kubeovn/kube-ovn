@@ -40,6 +40,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -109,7 +110,7 @@ spec:
               name: kube-ovn-log
       nodeSelector:
         kubernetes.io/os: "linux"
-        kube-ovn/role: "master"
+        {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
       volumes:
         - name: host-run-ovn
           hostPath:
