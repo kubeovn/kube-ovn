@@ -650,6 +650,15 @@ false
 			<td>Location of the CNI configuration inside the agent's pod.</td>
 		</tr>
 		<tr>
+			<td>cni.mountConfigDirectory</td>
+			<td>string</td>
+			<td><pre lang="json">
+"/etc/cni/net.d"
+</pre>
+</td>
+			<td>Location of the CNI configuration to be mounted inside the pod.</td>
+		</tr>
+		<tr>
 			<td>cni.mountToolingDirectory</td>
 			<td>bool</td>
 			<td><pre lang="json">
