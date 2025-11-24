@@ -98,6 +98,7 @@ e2e-build:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/connectivity
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/metallb
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/cnp-domain
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -280,6 +281,10 @@ kube-ovn-ipsec-cert-mgr-e2e:
 kube-ovn-anp-e2e:
 	KUBECONFIG=$(KUBECONFIG) ./test/anp/conformance.sh
 
+.PHONY: kube-ovn-cnp-e2e
+kube-ovn-cnp-e2e:
+	KUBECONFIG=$(KUBECONFIG) ./test/cnp/conformance.sh
+
 .PHONY: kube-ovn-anp-domain-e2e
 kube-ovn-anp-domain-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
@@ -288,6 +293,15 @@ kube-ovn-anp-domain-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/anp-domain/anp-domain.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-cnp-domain-e2e
+kube-ovn-cnp-domain-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/cnp-domain
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
+		--focus=CNI:Kube-OVN ./test/e2e/cnp-domain/cnp-domain.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-connectivity-e2e
 kube-ovn-connectivity-e2e:

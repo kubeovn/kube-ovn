@@ -3,6 +3,7 @@ package anp
 import (
 	"fmt"
 	"os"
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	"testing"
 	"time"
 
@@ -12,21 +13,20 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	netpolv1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	"sigs.k8s.io/network-policy-api/conformance/tests"
 	netpolv1config "sigs.k8s.io/network-policy-api/conformance/utils/config"
 	"sigs.k8s.io/network-policy-api/conformance/utils/suite"
 )
 
 const (
-	NetworkPolicyANPAPIRepoURL = "https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/v0.1.5"
-	anpReportFileName          = "anp-test-report.yaml"
+	NetworkPolicyCNPAPIRepoURL = "https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main"
+	cnpReportFileName          = "cnp-test-report.yaml"
 )
 
-var baseAnpManifests = fmt.Sprintf("%s/conformance/base/manifests.yaml", NetworkPolicyANPAPIRepoURL)
+var baseCnpManifests = fmt.Sprintf("%s/conformance/base/manifests.yaml", NetworkPolicyCNPAPIRepoURL)
 
-func TestAdminNetworkPolicyConformance(t *testing.T) {
-	t.Log("Configuring environment for adminnetworkpolicies conformance tests")
+func TestClusterNetworkPolicyConformance(t *testing.T) {
+	t.Log("Configuring environment for clusternetworkpolicies conformance tests")
 	cfg, err := config.GetConfig()
 	if err != nil {
 		t.Fatalf("Error loading Kubernetes config: %v", err)
@@ -43,15 +43,14 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error when creating Kubernetes ClientSet: %v", err)
 	}
-	err = netpolv1alpha1.AddToScheme(client.Scheme())
+	err = netpolv1alpha2.AddToScheme(client.Scheme())
 	if err != nil {
 		t.Fatalf("Error initializing API scheme: %v", err)
 	}
 
 	t.Log("Starting the admin network policy conformance test suite")
 	profiles := sets.Set[suite.ConformanceProfileName]{}
-	profiles.Insert(suite.ConformanceProfileName(suite.SupportAdminNetworkPolicy))
-	profiles.Insert(suite.ConformanceProfileName(suite.SupportBaselineAdminNetworkPolicy))
+	profiles.Insert(suite.CNPConformanceProfileName)
 	cSuite, err := suite.NewConformanceProfileTestSuite(
 		suite.ConformanceProfileOptions{
 			Options: suite.Options{
@@ -61,7 +60,7 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 				Debug:                true,
 				CleanupBaseResources: true,
 				SupportedFeatures:    suite.StandardFeatures,
-				BaseManifests:        baseAnpManifests,
+				BaseManifests:        baseCnpManifests,
 				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
 			},
 			ConformanceProfiles: profiles,
@@ -82,7 +81,7 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error marshalling conformance profile report: %v", err)
 	}
-	err = os.WriteFile("../../"+anpReportFileName, rawReport, 0o600)
+	err = os.WriteFile("../../"+cnpReportFileName, rawReport, 0o600)
 	if err != nil {
 		t.Fatalf("error writing conformance profile report: %v", err)
 	}

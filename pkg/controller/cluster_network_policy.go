@@ -113,7 +113,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
-				klog.Errorf("failed to add v4 ingress acls for anp %s: %v", key, err)
+				klog.Errorf("failed to add v4 ingress acls for cnp %s: %v", key, err)
 				return err
 			}
 			ingressACLOps = append(ingressACLOps, ops...)
@@ -123,7 +123,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
-				klog.Errorf("failed to add v6 ingress acls for anp %s: %v", cnp.Name, err)
+				klog.Errorf("failed to add v6 ingress acls for cnp %s: %v", cnp.Name, err)
 				return err
 			}
 			ingressACLOps = append(ingressACLOps, ops...)
@@ -131,7 +131,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	}
 
 	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
-		return fmt.Errorf("failed to add ingress acls for anp %s: %w", cnp.Name, err)
+		return fmt.Errorf("failed to add ingress acls for cnp %s: %w", cnp.Name, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
 		return fmt.Errorf("failed to delete unused ingress address set for cnp %s: %w", cnp.Name, err)
@@ -174,7 +174,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		// Domain names may not be resolved initially but will be updated later
 		if as4len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, 0)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for cnp %s: %v", key, err)
 				return err
@@ -184,7 +184,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as6len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, 0)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for cnp %s: %v", key, err)
 				return err
@@ -205,10 +205,10 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) error {
 	// Only handle updates that do not affect ACLs.
-	c.anpKeyMutex.LockKey(changed.key)
-	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
+	c.cnpKeyMutex.LockKey(changed.key)
+	defer func() { _ = c.cnpKeyMutex.UnlockKey(changed.key) }()
 
-	klog.Infof("handleUpdateAnp: processing CNP %s, field=%s, DNSReconcileDone=%v",
+	klog.Infof("handleUpdateCnp: processing CNP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
 
 	cachedCnp, err := c.cnpsLister.Get(changed.key)
@@ -275,7 +275,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 
 			if needAddrSetUpdate {
 				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1alpha2.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
-					klog.Errorf("failed to set egress address-set for anp rule %s/%s, %v", cnpName, rule.Name, err)
+					klog.Errorf("failed to set egress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
 				}
 
@@ -511,21 +511,21 @@ func (c *Controller) updateCnpsByLabelsMatch(nsLabels, podLabels map[string]stri
 
 		// Pod/namespace that has been updated is the subject of a CNP, update that CNP
 		if doCnpLabelsMatch(cnp.Spec.Subject.Namespaces, cnp.Spec.Subject.Pods, nsLabels, podLabels) {
-			klog.Infof("cnp %s, labels matched for anp's subject, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
+			klog.Infof("cnp %s, labels matched for cnp's subject, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
 			changed.field = ChangedSubject
 			c.updateCnpQueue.Add(changed)
 		}
 
 		ingressRuleNames, egressRuleNames := getAffectedCnpRules(cnp, nsLabels, podLabels)
 		if !isCnpRulesArrayEmpty(ingressRuleNames) {
-			klog.Infof("cnp %s, labels matched for anp's ingress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
+			klog.Infof("cnp %s, labels matched for cnp's ingress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
 			changed.ruleNames = ingressRuleNames
 			changed.field = ChangedIngressRule
 			c.updateCnpQueue.Add(changed)
 		}
 
 		if !isCnpRulesArrayEmpty(egressRuleNames) {
-			klog.Infof("cnp %s, labels matched for anp's egress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
+			klog.Infof("cnp %s, labels matched for cnp's egress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
 			changed.ruleNames = egressRuleNames
 			changed.field = ChangedEgressRule
 			c.updateCnpQueue.Add(changed)
@@ -869,7 +869,7 @@ func isCnpRulesArrayEmpty(rules [util.CnpMaxRules]ChangedName) bool {
 // getCnpPortGroupName returns the normalized name for the port group of a ClusterNetworkPolicy
 func getCnpPortGroupName(cnp *v1alpha2.ClusterNetworkPolicy) string {
 	// OVN port groups do not support name with '-', so we replace '-' by '.'
-	// This may cause conflict if two CNP with name test-anp and test.anp
+	// This may cause conflict if two CNP with name test-cnp and test.cnp
 	// Maybe using hash is a better solution, but we do not want to lose the readability for now
 	return strings.ReplaceAll(getCnpName(cnp.Name), "-", ".")
 }
