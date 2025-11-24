@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	"testing"
 	"time"
+
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -49,12 +50,12 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 
 		if cnpName != "" {
 			ginkgo.By("Deleting ClusterNetworkPolicy " + cnpName)
-			cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
+			_ = cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
 		}
 
 		if cnpName2 != "" {
 			ginkgo.By("Deleting second ClusterNetworkPolicy " + cnpName2)
-			cnpClient.Delete(context.TODO(), cnpName2, metav1.DeleteOptions{})
+			_ = cnpClient.Delete(context.TODO(), cnpName2, metav1.DeleteOptions{})
 		}
 
 		if podName != "" {
@@ -160,7 +161,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying CNP (should be blocked)")
 
 		ginkgo.By("Deleting ClusterNetworkPolicy " + cnpName)
-		cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
+		_ = cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
 
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting CNP (should succeed again)")
 	})
@@ -232,13 +233,13 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying both CNPs (should be allowed)")
 
 		ginkgo.By("Deleting first ClusterNetworkPolicy " + cnpName)
-		cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
+		_ = cnpClient.Delete(context.TODO(), cnpName, metav1.DeleteOptions{})
 
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting first CNP (should be allowed)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after deleting first CNP (should still be allowed)")
 
 		ginkgo.By("Deleting second ClusterNetworkPolicy " + cnpName2)
-		cnpClient.Delete(context.TODO(), cnpName2, metav1.DeleteOptions{})
+		_ = cnpClient.Delete(context.TODO(), cnpName2, metav1.DeleteOptions{})
 
 		testNetworkConnectivity("https://www.baidu.com", true, "Testing connectivity to baidu.com after deleting both CNPs (should succeed)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after deleting both CNPs (should succeed)")

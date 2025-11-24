@@ -3,8 +3,9 @@ package framework
 import (
 	"context"
 	"fmt"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	"time"
+
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
