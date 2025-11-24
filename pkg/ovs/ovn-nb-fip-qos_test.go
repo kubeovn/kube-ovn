@@ -16,12 +16,10 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	nbClient := suite.ovnNBClient
 	vpcName := "test_vpc"
 	externalSubnet := "test_external_subnet"
-	// subnetName := "test_subnet"
 	v4Eip := "192.168.100.10"
 	klog.SetOutput(io.Discard)
 
 	t.Run("create logical router", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.CreateLogicalRouter(vpcName)
 		require.NoError(t, err)
 		lr, err := nbClient.GetLogicalRouter(vpcName, false)
@@ -30,7 +28,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run(" create logical switch", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.CreateGatewayLogicalSwitch(externalSubnet, vpcName, "ovn", "192.168.100.0/24", "", 10)
 		require.NoError(t, err)
 		_, err = nbClient.GetLogicalSwitch(externalSubnet, false)
@@ -38,7 +35,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("create Qos rule for egress", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.AddQos(vpcName, externalSubnet, v4Eip, 1000, 1000, "to-lport")
 		require.NoError(t, err)
 
@@ -49,7 +45,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("create Qos rule for ingress ", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.AddQos(vpcName, externalSubnet, v4Eip, 1000, 1000, "from-lport")
 		require.NoError(t, err)
 
@@ -87,7 +82,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("delete Qos rule for egress", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.DeleteQos(vpcName, externalSubnet, v4Eip, "to-lport")
 		require.NoError(t, err)
 		qosRules, err := nbClient.GetQos(vpcName, externalSubnet, v4Eip, "to-lport")
@@ -96,7 +90,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("delete Qos rule for ingress", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.DeleteQos(vpcName, externalSubnet, v4Eip, "from-lport")
 		require.NoError(t, err)
 		qosRules, err := nbClient.GetQos(vpcName, externalSubnet, v4Eip, "from-lport")
@@ -105,7 +98,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("delete logical router", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.DeleteLogicalRouter(vpcName)
 		require.NoError(t, err)
 		lr, err := nbClient.GetLogicalRouter(vpcName, false)
@@ -114,7 +106,6 @@ func (suite *OvnClientTestSuite) testFipQos() {
 	})
 
 	t.Run("delete logical switch", func(t *testing.T) {
-		// t.Parallel()
 		err := nbClient.DeleteLogicalSwitch(externalSubnet)
 		require.NoError(t, err)
 		ls, err := nbClient.GetLogicalSwitch(externalSubnet, false)

@@ -86,13 +86,13 @@ func (c *OVNNbClient) UpdateQos(vpcName, externalSubnetName, v4Eip string, burst
 	routerCrPort := fmt.Sprintf("cr-%s-%s", vpcName, externalSubnetName)
 	err := c.deleteLsQosIfExists(externalSubnetName, externalPort, v4Eip, direction, routerCrPort)
 	if err != nil {
-		klog.Error("delete qos rule faild: ", err)
+		klog.Error("delete qos rule failed: ", err)
 		return err
 	}
 
 	err = c.AddQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction)
 	if err != nil {
-		klog.Error("update qos: add qos rule faild: ", err)
+		klog.Error("update qos: add qos rule failed: ", err)
 		return err
 	}
 	return nil
@@ -130,7 +130,6 @@ func (c *OVNNbClient) getLogicalSwitchQos(lsName, externalPort, v4Eip, direction
 		klog.Error(err)
 		return nil, fmt.Errorf("get qos for logicalSwitch %s: %w", lsName, err)
 	}
-	// klog.Info("qos list: ", &QoSList)
 	return QoSList, nil
 }
 
@@ -140,7 +139,6 @@ func (c *OVNNbClient) listLogicalSwitchQosByFilter(lsName string, filter func(qo
 		klog.Error(err)
 		return nil, err
 	}
-	// klog.Info("listLogicalSwitchQosByFilter: ", ls.QOSRules)
 	QoSList := make([]*ovnnb.QoS, 0, len(ls.QOSRules))
 	for _, uuid := range ls.QOSRules {
 		qos, err := c.getQosByUUID(uuid)
@@ -160,8 +158,6 @@ func (c *OVNNbClient) listLogicalSwitchQosByFilter(lsName string, filter func(qo
 }
 
 func (c *OVNNbClient) getQosByUUID(uuid string) (*ovnnb.QoS, error) {
-	// ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	// defer cancel()
 	obj := &ovnnb.QoS{} // Ensure the correct model type is used
 	conditions := []model.Condition{
 		{
@@ -249,7 +245,7 @@ func (c *OVNNbClient) QoSOp(lsName string, qosUUIDs []string, op ovsdb.Mutator) 
 	return c.LogicalSwitchQosOp(lsName, mutation)
 }
 
-// LogicalRouterOp create operations about logical router
+// LogicalSwitchQosOp create operations about switch qos
 func (c *OVNNbClient) LogicalSwitchQosOp(lsName string, mutationsFunc ...func(ls *ovnnb.LogicalSwitch) *model.Mutation) ([]ovsdb.Operation, error) {
 	ls, err := c.GetLogicalSwitch(lsName, false)
 	if err != nil {

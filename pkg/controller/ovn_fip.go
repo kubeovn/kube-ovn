@@ -249,8 +249,8 @@ func (c *Controller) handleAddOvnFip(key string) error {
 			cachedQosPolicy, err := c.qosPoliciesLister.Get(qosPolicy)
 			if err != nil {
 				klog.Errorf("failed to get qos policy %s, %v", qosPolicy, err)
-				_ = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, "", false)
-				return err
+				err1 = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, "", false)
+				return err1
 			}
 			klog.Infof("found qos policy %v", cachedQosPolicy)
 			for _, rule := range cachedQosPolicy.Spec.BandwidthLimitRules {
@@ -375,7 +375,17 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	v4IP = cachedFip.Spec.V4Ip
 	v6IP = cachedFip.Spec.V6Ip
 	ipName = cachedFip.Spec.IPName
+
+	// to datermine if need update qos, ensure qosPolicy is valid
 	qosPolicy = cachedFip.Spec.QoSPolicy
+	if qosPolicy != "" {
+		cachedQosPolicy, err := c.qosPoliciesLister.Get(qosPolicy)
+		if err != nil {
+			klog.Errorf("failed to get qos policy %s, %v", qosPolicy, err)
+			return err
+		}
+	}
+
 	if ipName != "" {
 		if cachedFip.Spec.IPType == util.Vip {
 			internalVip, err := c.virtualIpsLister.Get(ipName)
@@ -420,7 +430,6 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		if v4Eip != "" {
 			if cachedFip.Spec.QoSPolicy == "" {
 				// delete qos rule
-
 				if err = c.OVNNbClient.DeleteQos(vpcName, externalSubnetName, v4Eip, "from-lport"); err != nil {
 					klog.Errorf("failed to delete qos rule for fip %s, %v", key, err)
 					return err
@@ -430,34 +439,29 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 					return err
 				}
 				klog.Infof("deleted qos policy for fip %s", cachedFip.Name)
-			}
-			// cachedQosPolicy := &kubeovnv1.QoSPolicy{}
-
-			cachedQosPolicy, err := c.qosPoliciesLister.Get(qosPolicy)
-			if err != nil {
-				klog.Errorf("failed to get qos policy %s, %v", qosPolicy, err)
-				_ = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, "", false)
-				return err
-			}
-			// klog.Infof("found qos policy %v", cachedQosPolicy)
-			for _, rule := range cachedQosPolicy.Spec.BandwidthLimitRules {
-				burstMax, rateMax, direction, err := c.getQosRule(rule)
-				if err != nil {
-					klog.Errorf("failed to get qos rule %v, %v", rule, err)
-					return err
-				}
-				if rateMax > 0 {
-					if err = c.OVNNbClient.UpdateQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction); err != nil {
-						klog.Errorf("failed to create qos rule, %v", err)
-						_ = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, qosPolicy, false)
+			} else {
+				for _, rule := range cachedQosPolicy.Spec.BandwidthLimitRules {
+					burstMax, rateMax, direction, err := c.getQosRule(rule)
+					if err != nil {
+						klog.Errorf("failed to get qos rule %v, %v", rule, err)
 						return err
+					}
+					if rateMax > 0 {
+						if err = c.OVNNbClient.UpdateQos(vpcName, externalSubnetName, v4Eip, burstMax, rateMax, direction); err != nil {
+							klog.Errorf("failed to create qos rule, %v", err)
+							return err
+						}
 					}
 				}
 			}
 		}
 	}
 
-	_ = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, qosPolicy, true)
+	err := c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, qosPolicy, true)
+	if err != nil {
+		klog.Errorf("failed to patch status for fip %s, %v", key, err)
+		return err
+	}
 
 	if vpcName != cachedFip.Status.Vpc {
 		err := fmt.Errorf("not support change vpc for ovn fip %s", cachedEip.Name)
@@ -534,23 +538,13 @@ func (c *Controller) handleDelOvnFip(key string) error {
 
 	if cachedFip.Spec.QoSPolicy != "" {
 		if v4Eip != "" {
-			// cachedQosPolicy := &kubeovnv1.QoSPolicy{}
-			cachedQosPolicy, err := c.qosPoliciesLister.Get(qosPolicy)
-			if err != nil {
-				klog.Errorf("failed to get qos policy %v, %v", qosPolicy, err)
+			if err = c.OVNNbClient.DeleteQos(vpcName, externalSubnetName, v4Eip, "from-lport"); err != nil {
+				klog.Errorf("failed to delete qos rule for fip %s, %v", cachedFip.Name, err)
 				return err
 			}
-			klog.Infof("found qos policy %v", cachedQosPolicy)
-			for _, rule := range cachedQosPolicy.Spec.BandwidthLimitRules {
-				_, _, direction, err := c.getQosRule(rule)
-				if err != nil {
-					klog.Errorf("failed to get qos rule %v, %v", rule, err)
-					return err
-				}
-				if err = c.OVNNbClient.DeleteQos(vpcName, externalSubnetName, v4Eip, direction); err != nil {
-					klog.Errorf("failed to create qos rule, %v", err)
-					return err
-				}
+			if err = c.OVNNbClient.DeleteQos(vpcName, externalSubnetName, v4Eip, "to-lport"); err != nil {
+				klog.Errorf("failed to delete qos rule for fip %s, %v", cachedFip.Name, err)
+				return err
 			}
 		}
 	}
@@ -655,7 +649,7 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP, qosPolicy str
 		changed = true
 	}
 
-	if qosPolicy != "" && fip.Status.QoSPolicy != qosPolicy {
+	if fip.Status.QoSPolicy != qosPolicy {
 		fip.Status.QoSPolicy = qosPolicy
 		changed = true
 	}
