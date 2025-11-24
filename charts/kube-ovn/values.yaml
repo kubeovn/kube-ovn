@@ -115,6 +115,7 @@ debug:
 cni_conf:
   CNI_CONFIG_PRIORITY: "01"
   CNI_CONF_DIR: "/etc/cni/net.d"
+  MOUNT_CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
   CNI_CONF_FILE: "/kube-ovn/01-kube-ovn.conflist"
   LOCAL_BIN_DIR: "/usr/local/bin"
