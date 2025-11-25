@@ -723,6 +723,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
 		ginkgo.By("Creating ippool " + ippoolName + " with EnableAddressSet enabled")
 		// Use only IPv4 or IPv6 addresses to avoid mixed IP family issue in OVN address set
 		cidrV4, cidrV6 := util.SplitStringIP(cidr)
