@@ -264,10 +264,12 @@ func (f *Framework) BeforeEach() {
 	framework.TestContext.Host = ""
 }
 
+// VersionPriorTo returns true if the Kube-OVN version is prior to the specified version.
 func (f *Framework) VersionPriorTo(major, minor uint) bool {
 	return f.KubeOVNVersion.LessThan(versionutil.MustParseMajorMinor(fmt.Sprintf("%d.%d", major, minor)))
 }
 
+// SkipVersionPriorTo skips the test if the Kube-OVN version is prior to the specified version.
 func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 	ginkgo.GinkgoHelper()
 
