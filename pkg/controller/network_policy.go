@@ -451,7 +451,7 @@ func (c *Controller) handleDeleteNp(key string) error {
 		npName = "np" + name
 	}
 
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
+	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", namespace, npName), "-", ".")
 	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
 	}
