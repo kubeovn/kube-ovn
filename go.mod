@@ -320,6 +320,7 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.2
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.2
 	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20250902065734-b1fa2304d8ab
+	k8s.io/externaljwt => github.com/kubernetes/externaljwt v0.34.2
 )
 
 tool go.uber.org/mock/mockgen
