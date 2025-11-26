@@ -19,6 +19,8 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/utils/set"
 
+	"github.com/onsi/ginkgo/v2"
+
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -39,14 +41,36 @@ var (
 	ovnnbAddr     string
 )
 
+func validateModelStructure(model model.Model, tableName string, expectedFields map[string]reflect.Type) {
+	ginkgo.GinkgoHelper()
+
+	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Ptr, "model for table %s is not a pointer type", ovnnb.AddressSetTable)
+	ExpectEqual(reflect.TypeOf(model).Elem().Kind(), reflect.Struct, "model for table %s is not a struct type", ovnnb.AddressSetTable)
+
+	for name, typ := range expectedFields {
+		field, ok := reflect.TypeOf(model).Elem().FieldByName(name)
+		ExpectTrue(ok, `unexpected model structure for tabel %s: missing %q field of type string`, ovnnb.AddressSetTable, name)
+		ExpectEqual(field.Type, typ, `unexpected model structure for tabel %s: field %q wants type %s but got %s`, ovnnb.AddressSetTable, name, typ, field.Type)
+	}
+}
+
 // WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
 // to contain exactly the provided entries (order independent).
 func WaitForAddressSetIPs(ippoolName string, ips []string) error {
+	ginkgo.GinkgoHelper()
+
 	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
+
+	model := models[ovnnb.AddressSetTable]
+	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
+		"Name":        reflect.TypeOf(""),
+		"Addresses":   reflect.SliceOf(reflect.TypeOf("")),
+		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
+	})
 
 	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
 	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
@@ -61,7 +85,6 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 		defer cancel()
 
-		model := models[ovnnb.AddressSetTable]
 		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
 		if err := client.List(ctx, result); err != nil {
 			return false, err
@@ -102,11 +125,20 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 
 // WaitForAddressSetDeletion waits until OVN deletes the address set for the given IPPool.
 func WaitForAddressSetDeletion(ippoolName string) error {
+	ginkgo.GinkgoHelper()
+
 	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
+
+	model := models[ovnnb.AddressSetTable]
+	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
+		"Name":        reflect.TypeOf(""),
+		"Addresses":   reflect.SliceOf(reflect.TypeOf("")),
+		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
+	})
 
 	Logf("Waiting for address set of IPPool %s to be deleted", ippoolName)
 
@@ -114,7 +146,6 @@ func WaitForAddressSetDeletion(ippoolName string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 		defer cancel()
 
-		model := models[ovnnb.AddressSetTable]
 		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
 		if err := client.List(ctx, result); err != nil {
 			return false, err

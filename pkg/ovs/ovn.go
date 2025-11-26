@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -92,8 +93,7 @@ func NewDynamicOvnNbClient(
 ) (*OVNNbClient, map[string]model.Model, error) {
 	dbModel, err := model.NewClientDBModel("OVN_Northbound", nil)
 	if err != nil {
-		klog.Error(err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create client db model: %w", err)
 	}
 
 	nbClient, err := ovsclient.NewOvsDbClient(
