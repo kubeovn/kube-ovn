@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package util
 
@@ -160,10 +159,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	var readErr error
 	var wg sync.WaitGroup
 	ch := make(chan net.HardwareAddr, 1)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for !time.Now().After(deadline) {
 			if readErr = client.SetReadDeadline(deadline); readErr != nil {
 				klog.Error(readErr)
@@ -201,7 +197,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 				return
 			}
 		}
-	}()
+	})
 
 	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	for i := range probeNum {

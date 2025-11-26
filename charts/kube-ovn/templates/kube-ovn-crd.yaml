@@ -257,8 +257,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -349,8 +350,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -437,8 +439,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -503,6 +506,8 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                noDefaultEIP:
+                  type: boolean
                 bgpSpeaker:
                   type: object
                   properties:
@@ -527,6 +532,16 @@ spec:
                     extraArgs:
                       type: array
                       items:
+                        type: string
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                        format: cidr
+                      nextHopIP:
                         type: string
                 tolerations:
                   type: array
@@ -593,8 +608,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -685,8 +701,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -773,8 +790,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -891,7 +909,8 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
+                  minimum: 0
+                  maximum: 10
                 labelSelector:
                   type: string
                 conditions:
@@ -907,7 +926,6 @@ spec:
                         maxLength: 32768
                         type: string
                       observedGeneration:
-                        format: int64
                         minimum: 0
                         type: integer
                       reason:
@@ -988,7 +1006,6 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
@@ -1036,16 +1053,19 @@ spec:
                       default: false
                     minRX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     minTX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     multiplier:
                       type: integer
-                      format: int32
                       default: 3
+                      minimum: 1
+                      maximum: 3600000
                 selectors:
                   type: array
                   items:
@@ -2308,6 +2328,9 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
+      - name: Namespace
+        type: string
+        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
@@ -2332,8 +2355,6 @@ spec:
               properties:
                 type:
                   type: string
-                ready:
-                  type: boolean
                 v4ip:
                   type: string
                 v6ip:
@@ -2708,6 +2729,9 @@ spec:
       - name: Subnet
         type: string
         jsonPath: .spec.subnet
+      - name: enableAddressSet
+        type: boolean
+        jsonPath: .spec.enableAddressSet
       - name: IPs
         type: string
         jsonPath: .spec.ips
@@ -2752,6 +2776,10 @@ spec:
                       - format: cidr
                       - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.\.(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
                       - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))\.\.((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                enableAddressSet:
+                  type: boolean
+                  default: false
+                  description: EnableAddressSet to work with policy-based routing and ACL
               required:
                 - subnet
                 - ips
@@ -2906,6 +2934,31 @@ spec:
                           type: string
                 exchangeLinkName:
                   type: boolean
+                nodeSelector:
+                  properties:
+                    matchExpressions:
+                      items:
+                        properties:
+                          key:
+                            type: string
+                            x-kubernetes-patch-strategy: merge
+                            x-kubernetes-patch-merge-key: key
+                          operator:
+                            type: string
+                          values:
+                            items:
+                              type: string
+                            type: array
+                        required:
+                          - key
+                          - operator
+                        type: object
+                      type: array
+                    matchLabels:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  type: object
                 excludeNodes:
                   type: array
                   items:

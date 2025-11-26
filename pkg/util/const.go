@@ -25,6 +25,7 @@ const (
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
 	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayAnnotationTemplate         = "%s.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
@@ -33,6 +34,7 @@ const (
 	VpcDnatMd5Annotation                    = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation                    = "ovn.kubernetes.io/vpc_snat_md5"
 	VpcCIDRsAnnotation                      = "ovn.kubernetes.io/vpc_cidrs"
+	VpcCIDRsAnnotationTemplate              = "%s.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation                         = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel                        = "ovn.kubernetes.io/vpc_external"
 	VpcEipAnnotation                        = "ovn.kubernetes.io/vpc_eip"
@@ -98,20 +100,22 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
-	VpcNameLabel               = "ovn.kubernetes.io/vpc"
-	SubnetNameLabel            = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel             = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
-	NodeExtGwLabel             = "ovn.kubernetes.io/node-ext-gw"
-	VpcNatGatewayLabel         = "ovn.kubernetes.io/vpc-nat-gw"
-	IPReservedLabel            = "ovn.kubernetes.io/ip_reserved"
-	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
-	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
-	VpcDNSNameLabel            = "ovn.kubernetes.io/vpc-dns"
-	QoSLabel                   = "ovn.kubernetes.io/qos"
-	NodeNameLabel              = "ovn.kubernetes.io/node-name"
-	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
-	ACLActionsLogAnnotation    = "ovn.kubernetes.io/log_acl_actions"
+	VpcNameLabel                       = "ovn.kubernetes.io/vpc"
+	SubnetNameLabel                    = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel                     = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
+	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
+	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
+	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
+	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
+	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
+	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
+	QoSLabel                           = "ovn.kubernetes.io/qos"
+	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
+	KubeVirtVMNameLabel                = "vm.kubevirt.io/name"
+	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
+	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
+	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
 
 	VpcEgressGatewayLabel           = "ovn.kubernetes.io/vpc-egress-gateway"
 	BgpEdgeRouterLabel              = "ovn.kubernetes.io/bgp-edge-router"
@@ -123,6 +127,7 @@ const (
 	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
 
 	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
+	ServiceHealthCheck                    = "ovn.kubernetes.io/service_health_check"
 
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
@@ -228,10 +233,9 @@ const (
 	NodeLocalDNSPolicyPriority       = 30100
 	SubnetRouterPolicyPriority       = 31000
 
-	OffloadType  = "offload-port"
-	InternalType = "internal-port"
-	DpdkType     = "dpdk-port"
-	VethType     = "veth-pair"
+	OffloadType = "offload-port"
+	DpdkType    = "dpdk-port"
+	VethType    = "veth-pair"
 
 	HostnameEnv    = "KUBE_NODE_NAME"
 	GatewayNameEnv = "GATEWAY_NAME"

@@ -23,9 +23,24 @@ func (c *Controller) enqueueAddBanp(obj any) {
 }
 
 func (c *Controller) enqueueDeleteBanp(obj any) {
-	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
-	klog.V(3).Infof("enqueue delete banp %s", cache.MetaObjectToName(banp).String())
-	c.deleteBanpQueue.Add(banp)
+	var bnp *v1alpha1.BaselineAdminNetworkPolicy
+	switch t := obj.(type) {
+	case *v1alpha1.BaselineAdminNetworkPolicy:
+		bnp = t
+	case cache.DeletedFinalStateUnknown:
+		b, ok := t.Obj.(*v1alpha1.BaselineAdminNetworkPolicy)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		bnp = b
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	klog.V(3).Infof("enqueue delete bnp %s", cache.MetaObjectToName(bnp).String())
+	c.deleteBanpQueue.Add(bnp)
 }
 
 func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
@@ -244,7 +259,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		var v4Addrs, v4Addr, v6Addrs, v6Addr []string
 		// This field must be defined and contain at least one item.
 		for _, anprpeer := range banpr.To {
-			if v4Addr, v6Addr, err = c.fetchEgressSelectedAddresses(&anprpeer); err != nil {
+			if v4Addr, v6Addr, err = c.fetchBaselineEgressSelectedAddresses(&anprpeer); err != nil {
 				klog.Errorf("failed to fetch admin network policy selected addresses, %v", err)
 				return err
 			}
@@ -399,7 +414,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 		for index, rule := range desiredBanp.Spec.Egress {
 			// Make sure the rule is changed and go on update
 			if rule.Name == changed.ruleNames[index].curRuleName {
-				if err := c.setAddrSetForAnpRule(banpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, true); err != nil {
+				if err := c.setAddrSetForBaselineAnpRule(banpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, true); err != nil {
 					klog.Errorf("failed to set egress address-set for banp rule %s/%s, %v", banpName, rule.Name, err)
 					return err
 				}

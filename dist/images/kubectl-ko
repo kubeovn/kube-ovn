@@ -562,6 +562,7 @@ spec:
         app: $CONN_CHECK_LABEL
     spec:
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       containers:
         - name: $subnetName-$CONN_CHECK_SERVER
           imagePullPolicy: IfNotPresent
@@ -657,7 +658,7 @@ diagnose(){
   kubectl get crd iptables-fip-rules.kubeovn.io
   kubectl get crd iptables-snat-rules.kubeovn.io
   kubectl get crd iptables-dnat-rules.kubeovn.io
-  
+
   set +eu
   if ! kubectl get svc kube-dns -n kube-system ; then
      echo "Warning: kube-dns doesn't exist, maybe there is coredns service."
@@ -669,7 +670,7 @@ diagnose(){
       type="$1"
   fi
   set -eu
-  
+
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn
   kubectl get clusterrole system:ovn
@@ -1102,63 +1103,114 @@ log_linux(){
   component_param=$1
   sub_component_param=$2
   echo "Collecting $component_param $sub_component_param files"
-  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
     mkdir -p ./kubectl-ko-log/$nodeName/$component_param
-    if [[ "$sub_component_param" == "dmesg" ]]; then
-      kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "iptables-legacy" ]]; then
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "******************legacy filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "****************** legacy nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "******************legacy filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "****************** legacy nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "iptables-nft" ]]; then
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "*********************nft filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "********************* nft nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "*********************nft filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "********************* nft nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-    elif [[ "$sub_component_param" == "route" ]]; then
-      kubectl exec $pod -n kube-system -- ip route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "link" ]]; then
-      kubectl exec $pod -n kube-system -- ip -d link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "neigh" ]]; then
-      kubectl exec $pod -n kube-system -- ip n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      kubectl exec $pod -n kube-system -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "memory" ]]; then
-      kubectl exec $pod -n kube-system -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "top" ]]; then
-      kubectl exec $pod -n kube-system -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "sysctl" ]]; then
-      kubectl exec $pod -n kube-system -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "netstat" ]]; then
-      kubectl exec $pod -n kube-system -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "addr" ]]; then
-      kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "ipset" ]]; then
-      kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    elif [[ "$sub_component_param" == "tcp" ]]; then
-      kubectl exec $pod -n kube-system -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-    fi
+    case $sub_component_param in
+      dmesg)
+        kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      iptables-legacy)
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** legacy filter v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** legacy nat v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** legacy filter v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** legacy nat v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      iptables-nft)
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** nft filter v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** nft nat v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** nft filter v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** nft nat v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      route)
+        kubectl exec $pod -n kube-system -- ip -4 route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      link)
+        kubectl exec $pod -n kube-system -- ip -d -s link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      neigh)
+        kubectl exec $pod -n kube-system -- ip -4 n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n kube-system -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      xfrm)
+        echo "****************** policy ******************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- ip xfrm policy >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** state ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- ip xfrm state >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      memory)
+        kubectl exec $pod -n kube-system -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      top)
+        kubectl exec $pod -n kube-system -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      sysctl)
+        kubectl exec $pod -n kube-system -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      netstat)
+        kubectl exec $pod -n kube-system -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      addr)
+        kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      ipset)
+        kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      tcp)
+        kubectl exec $pod -n kube-system -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+      ipsec)
+        echo "****************** config ******************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- cat /etc/ipsec.conf >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** ca certs ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- ipsec listcacerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** certs ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- ipsec listcerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        echo "****************** status ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+        kubectl exec $pod -n kube-system -- ipsec statusall >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        ;;
+    esac
   done
 }
 
-
 log(){
   component="$1"
-  components=("kube-ovn" "ovs" "ovn" "linux" "all")
-  linux_sub_components=("dmesg" "iptables-legacy" "iptables-nft" "route" "link" "neigh" "memory" "top" "sysctl" "netstat" "addr" "ipset" "tcp")
+  components=(
+    kube-ovn
+    ovs
+    ovn
+    linux
+    all
+  )
+  linux_sub_components=(
+    dmesg
+    iptables-legacy
+    iptables-nft
+    route
+    link
+    neigh
+    memory
+    top
+    sysctl
+    netstat
+    addr
+    ipset
+    tcp
+    ipsec
+    xfrm
+  )
 
   if [[ ! " ${components[@]} " =~ " $component " ]]; then
       echo "invalid component $component"
@@ -1594,7 +1646,7 @@ case $subcommand in
   icsbctl)
     getOVNICSBPod
     kubectl exec "$OVN_IC_SB_POD" -n $KUBE_OVN_NS -- ovn-ic-sbctl "$@"
-    ;; 
+    ;;
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
     ;;

@@ -159,7 +159,7 @@ func lspAddress(addresses []ovsdb.OvnLogicalSwitchPortAddress) (mac, ip string) 
 		ips = append(ips, address.String())
 	}
 	ip = strings.Join(ips, " ")
-	return
+	return mac, ip
 }
 
 func (e *Exporter) setLogicalSwitchPortInfoMetric() {
@@ -323,7 +323,7 @@ func getDBStatus(dbName string) (bool, error) {
 	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("get ovn-northbound status failed, err %v", err)
+		klog.Errorf("get %s status failed, err %v", dbName, err)
 		return false, err
 	}
 	lines := strings.SplitSeq(string(output), "\n")

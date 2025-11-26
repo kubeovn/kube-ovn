@@ -234,6 +234,15 @@ func removeOvnMapping(name, key string) error {
 }
 
 func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
+	// check if nic exists before configuring external bridge
+	nicExists, err := linkExists(nic)
+	if err != nil {
+		return fmt.Errorf("failed to check if nic %s exists: %w", nic, err)
+	}
+	if !nicExists {
+		return fmt.Errorf("nic %s does not exist", nic)
+	}
+
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %w", err)

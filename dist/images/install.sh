@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REGISTRY="docker.io/kubeovn"
+VERSION="v1.15.0"
+
+DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
@@ -13,10 +17,11 @@ VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
+NP_ENFORCEMENT=${NP_ENFORCEMENT:-standard}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
-ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
+ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
@@ -25,6 +30,8 @@ ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
 ENABLE_METRICS=${ENABLE_METRICS:-true}
 # comma-separated string of nodelocal DNS ip addresses
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
+# comma-separated list of destination IP CIDRs that should skip conntrack processing
+SKIP_CONNTRACK_DST_CIDRS=${SKIP_CONNTRACK_DST_CIDRS:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
@@ -45,6 +52,7 @@ CERT_MANAGER_IPSEC_CERT=${CERT_MANAGER_IPSEC_CERT:-false}
 IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
+ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
@@ -69,9 +77,7 @@ LOG_DIR=${LOG_DIR:-/var/log}
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
-REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
-VERSION="v1.15.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -101,8 +107,8 @@ fi
 EXCLUDE_IPS=""                                    # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/control-plane"     # The node label to deploy OVN DB
 DEPRECATED_LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB in earlier versions
-NETWORK_TYPE="geneve"                             # geneve or vlan
-TUNNEL_TYPE="geneve"                              # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
+NETWORK_TYPE="geneve"                             # vlan or (geneve, vxlan or stt)
+TUNNEL_TYPE="geneve"                              # (geneve, vxlan or stt). ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
 POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
@@ -214,7 +220,7 @@ if [[ $ENABLE_SSL = "true" ]];then
       exit 1
     fi
     kubectl create secret generic -n kube-system kube-ovn-tls --from-file=cacert=cacert.pem --from-file=cert=ovn-cert.pem --from-file=key=ovn-privkey.pem
-    rm -rf cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
+    rm -rf cakey.pem cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
   fi
   echo "-------------------------------"
   echo ""
@@ -501,8 +507,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -593,8 +600,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -681,8 +689,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -747,6 +756,8 @@ spec:
                     type: string
                 qosPolicy:
                   type: string
+                noDefaultEIP:
+                  type: boolean
                 bgpSpeaker:
                   type: object
                   properties:
@@ -771,6 +782,16 @@ spec:
                     extraArgs:
                       type: array
                       items:
+                        type: string
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                        format: cidr
+                      nextHopIP:
                         type: string
                 tolerations:
                   type: array
@@ -837,8 +858,9 @@ spec:
                                     type: array
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - preference
                               - weight
@@ -929,8 +951,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -1017,8 +1040,9 @@ spec:
                                   - topologyKey
                                 type: object
                               weight:
-                                format: int32
                                 type: integer
+                                minimum: 1
+                                maximum: 100
                             required:
                               - podAffinityTerm
                               - weight
@@ -1135,7 +1159,8 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
+                  minimum: 0
+                  maximum: 10
                 labelSelector:
                   type: string
                 conditions:
@@ -1151,7 +1176,6 @@ spec:
                         maxLength: 32768
                         type: string
                       observedGeneration:
-                        format: int64
                         minimum: 0
                         type: integer
                       reason:
@@ -1232,7 +1256,6 @@ spec:
               properties:
                 replicas:
                   type: integer
-                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
@@ -1280,16 +1303,19 @@ spec:
                       default: false
                     minRX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     minTX:
                       type: integer
-                      format: int32
                       default: 1000
+                      minimum: 1
+                      maximum: 3600000
                     multiplier:
                       type: integer
-                      format: int32
                       default: 3
+                      minimum: 1
+                      maximum: 3600000
                 selectors:
                   type: array
                   items:
@@ -2505,6 +2531,9 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
+      - name: Namespace
+        type: string
+        jsonPath: .spec.namespace
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
@@ -2903,6 +2932,9 @@ spec:
       - name: Subnet
         type: string
         jsonPath: .spec.subnet
+      - name: enableAddressSet
+        type: boolean
+        jsonPath: .spec.enableAddressSet
       - name: IPs
         type: string
         jsonPath: .spec.ips
@@ -2947,6 +2979,10 @@ spec:
                       - format: cidr
                       - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.\.(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
                       - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))\.\.((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                enableAddressSet:
+                  type: boolean
+                  default: false
+                  description: EnableAddressSet to work with policy-based routing and ACL
               required:
                 - subnet
                 - ips
@@ -3101,6 +3137,31 @@ spec:
                           type: string
                 exchangeLinkName:
                   type: boolean
+                nodeSelector:
+                  properties:
+                    matchExpressions:
+                      items:
+                        properties:
+                          key:
+                            type: string
+                            x-kubernetes-patch-strategy: merge
+                            x-kubernetes-patch-merge-key: key
+                          operator:
+                            type: string
+                          values:
+                            items:
+                              type: string
+                            type: array
+                        required:
+                          - key
+                          - operator
+                        type: object
+                      type: array
+                    matchLabels:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  type: object
                 excludeNodes:
                   type: array
                   items:
@@ -4059,6 +4120,7 @@ kind: ServiceAccount
 metadata:
   name: ovn-ovs
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -4078,9 +4140,14 @@ rules:
       - ""
     resources:
       - services
-      - endpoints
     verbs:
       - get
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
   - apiGroups:
       - apps
     resources:
@@ -4110,6 +4177,7 @@ kind: ServiceAccount
 metadata:
   name: ovn
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -4160,6 +4228,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - dnsnameresolvers
+      - dnsnameresolvers/status
       - qos-policies
       - qos-policies/status
       - bgp-edge-routers
@@ -4398,6 +4468,7 @@ kind: ServiceAccount
 metadata:
   name: kube-ovn-cni
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -4483,21 +4554,21 @@ metadata:
   name: secret-reader-ovn-ipsec
   namespace: kube-system
 rules:
-- apiGroups: 
+- apiGroups:
     - ""
-  resources: 
+  resources:
     - "secrets"
   resourceNames:
     - "ovn-ipsec-ca"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "watch"
-- apiGroups: 
+- apiGroups:
     - "cert-manager.io"
-  resources: 
+  resources:
     - "certificaterequests"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "create"
@@ -4552,6 +4623,7 @@ kind: ServiceAccount
 metadata:
   name: kube-ovn-app
   namespace: kube-system
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -4720,6 +4792,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -4884,6 +4957,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -5078,6 +5152,7 @@ spec:
       - operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       containers:
@@ -5291,6 +5366,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -5332,6 +5408,7 @@ spec:
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP
+          - --np-enforcement=$NP_ENFORCEMENT
           - --enable-eip-snat=$ENABLE_EIP_SNAT
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false
@@ -5344,10 +5421,12 @@ spec:
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
+          - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
+          - --enable-dns-name-resolver=$ENABLE_DNS_NAME_RESOLVER
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
@@ -5472,6 +5551,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-cni
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -5701,155 +5781,6 @@ spec:
             path: /usr/local/bin
 
 ---
-kind: DaemonSet
-apiVersion: apps/v1
-metadata:
-  name: kube-ovn-pinger
-  namespace: kube-system
-  annotations:
-    kubernetes.io/description: |
-      This daemon set launches the pinger daemon.
-spec:
-  selector:
-    matchLabels:
-      app: kube-ovn-pinger
-  updateStrategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        app: kube-ovn-pinger
-        component: network
-        type: infra
-    spec:
-      priorityClassName: system-node-critical
-      serviceAccountName: kube-ovn-app
-      hostPID: true
-      initContainers:
-        - name: hostpath-init
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          command:
-            - sh
-            - -c
-            - "chown -R nobody: /var/log/kube-ovn"
-          securityContext:
-            allowPrivilegeEscalation: true
-            capabilities:
-              drop:
-                - ALL
-            privileged: true
-            runAsUser: 0
-          volumeMounts:
-            - name: kube-ovn-log
-              mountPath: /var/log/kube-ovn
-      containers:
-        - name: pinger
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          command:
-          - /kube-ovn/kube-ovn-pinger
-          args:
-          - --external-address=$PINGER_EXTERNAL_ADDRESS
-          - --external-dns=$PINGER_EXTERNAL_DOMAIN
-          - --logtostderr=false
-          - --alsologtostderr=true
-          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
-          - --log_file_max_size=200
-          - --enable-metrics=$ENABLE_METRICS
-          imagePullPolicy: $IMAGE_PULL_POLICY
-          securityContext:
-            runAsUser: ${RUN_AS_USER}
-            privileged: false
-            capabilities:
-              add:
-                - NET_BIND_SERVICE
-                - NET_RAW
-          env:
-            - name: ENABLE_SSL
-              value: "$ENABLE_SSL"
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
-            - mountPath: /var/run/ovn
-              name: host-run-ovn
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
-              readOnly: true
-            - mountPath: /var/log/ovn
-              name: host-log-ovn
-              readOnly: true
-            - mountPath: /var/log/kube-ovn
-              name: kube-ovn-log
-            - mountPath: /etc/localtime
-              name: localtime
-              readOnly: true
-            - mountPath: /var/run/tls
-              name: kube-ovn-tls
-          resources:
-            requests:
-              cpu: 100m
-              memory: 100Mi
-            limits:
-              cpu: 200m
-              memory: 400Mi
-          livenessProbe:
-            httpGet:
-              path: /metrics
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /metrics
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-      nodeSelector:
-        kubernetes.io/os: "linux"
-      volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
-        - name: host-run-ovn
-          hostPath:
-            path: /run/ovn
-        - name: host-config-openvswitch
-          hostPath:
-            path: /etc/origin/openvswitch
-        - name: host-log-ovs
-          hostPath:
-            path: $LOG_DIR/openvswitch
-        - name: kube-ovn-log
-          hostPath:
-            path: $LOG_DIR/kube-ovn
-        - name: host-log-ovn
-          hostPath:
-            path: $LOG_DIR/ovn
-        - name: localtime
-          hostPath:
-            path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
----
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -5889,6 +5820,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       hostNetwork: true
       initContainers:
         - name: hostpath-init
@@ -6036,21 +5968,6 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: kube-ovn-pinger
-  namespace: kube-system
-  labels:
-    app: kube-ovn-pinger
-spec:
-  ${SVC_YAML_IPFAMILYPOLICY}
-  selector:
-    app: kube-ovn-pinger
-  ports:
-    - port: 8080
-      name: metrics
----
-kind: Service
-apiVersion: v1
-metadata:
   name: kube-ovn-controller
   namespace: kube-system
   labels:
@@ -6127,6 +6044,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      automountServiceAccountToken: true
       hostNetwork: true
       containers:
         - name: ovn-ic-controller
@@ -6200,12 +6118,26 @@ fi
 echo "-------------------------------"
 echo ""
 
-echo "[Step 4/6] Delete pod that not in host network mode"
-for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
-  for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-    kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
+echo "Check to delete multus pods to reload CNI config"
+nad_count=$(
+  kubectl get network-attachment-definitions.k8s.cni.cncf.io -A --no-headers 2>/dev/null \
+    | wc -l || true
+)
+nad_count=${nad_count:-0}
+if [[ "$nad_count" -gt 0 ]]; then
+  echo "Detected $nad_count NetworkAttachmentDefinition(s), restarting Multus pods..."
+  kubectl delete pod -n kube-system -l app=multus || true
+  kubectl wait --for=condition=Ready pod -n kube-system -l app=multus --timeout=60s
+fi
+
+if [ "$DEL_NON_HOST_NET_POD" = "true" ]; then
+  echo "[Step 4/6] Delete pod that not in host network mode"
+  for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
+    for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
+      kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
+    done
   done
-done
+fi
 
 kubectl rollout status deployment/coredns -n kube-system --timeout 300s
 while true; do
@@ -6216,6 +6148,178 @@ while true; do
   echo "Waiting for ${pods[@]} to be deleted..."
   sleep 1
 done
+
+echo "Install Kube-ovn-pinger"
+cat <<EOF > kube-ovn-pinger.yaml
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  labels:
+    app: kube-ovn-pinger
+spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
+  selector:
+    app: kube-ovn-pinger
+  ports:
+    - port: 8080
+      name: metrics
+
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the pinger daemon.
+spec:
+  selector:
+    matchLabels:
+      app: kube-ovn-pinger
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-pinger
+        component: network
+        type: infra
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
+      hostPID: true
+      initContainers:
+        - name: hostpath-init
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: pinger
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          command:
+          - /kube-ovn/kube-ovn-pinger
+          args:
+          - --external-address=$PINGER_EXTERNAL_ADDRESS
+          - --external-dns=$PINGER_EXTERNAL_DOMAIN
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=200
+          - --enable-metrics=$ENABLE_METRICS
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          securityContext:
+            runAsUser: ${RUN_AS_USER}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+              readOnly: true
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+              readOnly: true
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-log-ovs
+          hostPath:
+            path: $LOG_DIR/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: $LOG_DIR/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: $LOG_DIR/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+EOF
+
+kubectl apply -f kube-ovn-pinger.yaml
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
 sleep 1
 kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --timeout 120s

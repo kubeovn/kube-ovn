@@ -41,7 +41,23 @@ func (c *Controller) enqueueUpdateSg(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSg(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.SecurityGroup)).String()
+	var sg *kubeovnv1.SecurityGroup
+	switch t := obj.(type) {
+	case *kubeovnv1.SecurityGroup:
+		sg = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*kubeovnv1.SecurityGroup)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		sg = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(sg).String()
 	klog.V(3).Infof("enqueue delete securityGroup %s", key)
 	c.delSgQueue.Add(key)
 }
@@ -353,6 +369,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Warningf("no security group %s", key)
+			// The security group is gone, trigger an update of the deny-all security group
+			// to re-evaluate which ports should be included.
+			c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 			return nil
 		}
 		klog.Errorf("failed to get security group %s: %v", key, err)

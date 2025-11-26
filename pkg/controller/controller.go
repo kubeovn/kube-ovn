@@ -56,6 +56,7 @@ const (
 	u2oKey                        = "u2o"
 	adminNetworkPolicyKey         = "anp"
 	baselineAdminNetworkPolicyKey = "banp"
+	ippoolKey                     = "ippool"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -85,6 +86,7 @@ type Controller struct {
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
 	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
+	vpcLastPoliciesMap   *xsync.Map[string, string]
 	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
 	updateVpcStatusQueue workqueue.TypedRateLimitingInterface[string]
 	vpcKeyMutex          keymutex.KeyMutex
@@ -100,6 +102,7 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
+	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -141,6 +144,7 @@ type Controller struct {
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
+	subnetLastVpcNameMap    *xsync.Map[string, string]
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
@@ -285,6 +289,11 @@ type Controller struct {
 	deleteAnpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.AdminNetworkPolicy]
 	anpKeyMutex    keymutex.KeyMutex
 
+	dnsNameResolversLister          kubeovnlister.DNSNameResolverLister
+	dnsNameResolversSynced          cache.InformerSynced
+	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
+	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
+
 	banpsLister     anplister.BaselineAdminNetworkPolicyLister
 	banpsSynced     cache.InformerSynced
 	addBanpQueue    workqueue.TypedRateLimitingInterface[string]
@@ -417,6 +426,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
+	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
@@ -431,22 +441,23 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
 		addOrUpdateVpcQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateVpc", nil),
+		vpcLastPoliciesMap:   xsync.NewMap[string, string](),
 		delVpcQueue:          newTypedRateLimitingQueue[*kubeovnv1.Vpc]("DeleteVpc", nil),
 		updateVpcStatusQueue: newTypedRateLimitingQueue[string]("UpdateVpcStatus", nil),
 		vpcKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
-		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
-		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,
-		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
-		initVpcNatGatewayQueue:        newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
-		delVpcNatGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
-		updateVpcEipQueue:             newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
-		updateVpcFloatingIPQueue:      newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
-		updateVpcDnatQueue:            newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
-		updateVpcSnatQueue:            newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
-		updateVpcSubnetQueue:          newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
-		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
-
+		vpcNatGatewayLister:              vpcNatGatewayInformer.Lister(),
+		vpcNatGatewaySynced:              vpcNatGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcNatGatewayQueue:    newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
+		initVpcNatGatewayQueue:           newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
+		delVpcNatGatewayQueue:            newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
+		updateVpcEipQueue:                newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
+		updateVpcFloatingIPQueue:         newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
+		updateVpcDnatQueue:               newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
+		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
+		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
+		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -476,6 +487,7 @@ func Run(ctx context.Context, config *Configuration) {
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
+		subnetLastVpcNameMap:    xsync.NewMap[string, string](),
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
@@ -708,6 +720,13 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
+	if config.EnableDNSNameResolver {
+		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
+		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
+		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
+		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
+	}
+
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
@@ -740,6 +759,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableANP {
 		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
+	}
+	if controller.config.EnableDNSNameResolver {
+		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
@@ -1016,6 +1038,16 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpNamePrioMap = make(map[string]int32, 100)
 	}
 
+	if config.EnableDNSNameResolver {
+		if _, err = dnsNameResolverInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddDNSNameResolver,
+			UpdateFunc: controller.enqueueUpdateDNSNameResolver,
+			DeleteFunc: controller.enqueueDeleteDNSNameResolver,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add dns name resolver event handler")
+		}
+	}
+
 	if config.EnableOVNIPSec {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
@@ -1050,6 +1082,10 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.OVNNbClient.SetNodeLocalDNSIP(strings.Join(c.config.NodeLocalDNSIPs, ",")); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
+	}
+
+	if err := c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs); err != nil {
+		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
 	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
@@ -1267,6 +1303,11 @@ func (c *Controller) shutdown() {
 		c.addBanpQueue.ShutDown()
 		c.updateBanpQueue.ShutDown()
 		c.deleteBanpQueue.ShutDown()
+	}
+
+	if c.config.EnableDNSNameResolver {
+		c.addOrUpdateDNSNameResolverQueue.ShutDown()
+		c.deleteDNSNameResolverQueue.ShutDown()
 	}
 
 	c.addOrUpdateSgQueue.ShutDown()
@@ -1493,6 +1534,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
+	}
+
+	if c.config.EnableDNSNameResolver {
+		go wait.Until(runWorker("add or update dns name resolver", c.addOrUpdateDNSNameResolverQueue, c.handleAddOrUpdateDNSNameResolver), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete dns name resolver", c.deleteDNSNameResolverQueue, c.handleDeleteDNSNameResolver), time.Second, ctx.Done())
 	}
 
 	if c.config.EnableLiveMigrationOptimize {

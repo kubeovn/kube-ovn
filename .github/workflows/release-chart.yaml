@@ -10,11 +10,12 @@ jobs:
   release:
     permissions:
       contents: write # to push chart release and create a release (helm/chart-releaser-action)
+      packages: write # to push chart to GitHub Container Registry (ghcr.io)
 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -30,3 +31,25 @@ jobs:
           packages_with_index: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push charts to OCI registry
+        run: |
+          for chart in charts/*/; do
+            if [ -f "${chart}Chart.yaml" ]; then
+              chart_name=$(basename "$chart")
+              chart_version=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
+              
+              echo "Packaging and pushing ${chart_name} version ${chart_version}..."
+              helm package "$chart" -d /tmp/charts
+              helm push "/tmp/charts/${chart_name}-${chart_version}.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+            fi
+          done
+
+      - name: Logout from GitHub Container Registry
+        if: always()
+        run: |
+          helm registry logout ghcr.io

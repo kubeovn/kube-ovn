@@ -28,6 +28,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
       hostPID: true
       initContainers:
         - name: hostpath-init

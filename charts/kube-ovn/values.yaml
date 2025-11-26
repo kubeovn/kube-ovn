@@ -8,10 +8,11 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      vpcRepository: vpc-nat-gateway
       tag: v1.15.0
-      support_arm: true
-      thirdparty: true
+    natgateway:
+      repository: vpc-nat-gateway
+      # Falls back to the same tag as kubeovn if empty
+      tag: ""
 
 image:
   pullPolicy: IfNotPresent
@@ -46,6 +47,8 @@ networking:
   ENABLE_METRICS: true
   # comma-separated string of nodelocal DNS ip addresses
   NODE_LOCAL_DNS_IP: ""
+  # comma-separated list of destination IP CIDRs that should skip conntrack processing
+  SKIP_CONNTRACK_DST_CIDRS: ""
   PROBE_INTERVAL: 180000
   OVN_NORTHD_PROBE_INTERVAL: 5000
   OVN_LEADER_PROBE_INTERVAL: 5
@@ -57,7 +60,8 @@ networking:
 func:
   ENABLE_LB: true
   ENABLE_NP: true
-  ENABLE_EXTERNAL_VPC: true
+  NP_ENFORCEMENT: standard
+  ENABLE_EXTERNAL_VPC: false
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
   ENABLE_KEEP_VM_IP: true
@@ -73,6 +77,7 @@ func:
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false
+  ENABLE_DNS_NAME_RESOLVER: false
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
@@ -115,10 +120,12 @@ debug:
 cni_conf:
   CNI_CONFIG_PRIORITY: "01"
   CNI_CONF_DIR: "/etc/cni/net.d"
+  MOUNT_CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
   CNI_CONF_FILE: "/kube-ovn/01-kube-ovn.conflist"
   LOCAL_BIN_DIR: "/usr/local/bin"
   MOUNT_LOCAL_BIN_DIR: false
+  NON_PRIMARY_CNI: false
 
 kubelet_conf:
   KUBELET_DIR: "/var/lib/kubelet"
@@ -127,6 +134,7 @@ log_conf:
   LOG_DIR: "/var/log"
 
 OPENVSWITCH_DIR: "/etc/origin/openvswitch"
+OVN_IPSEC_KEY_DIR: "/etc/origin/ovs_ipsec_keys"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
 

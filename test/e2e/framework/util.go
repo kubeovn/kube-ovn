@@ -299,6 +299,10 @@ func randomPool(cidr string, count int) []string {
 	return s.UnsortedList()
 }
 
+// RandomIPPool generates random IP addresses from the given CIDR.
+// WARNING: If cidr contains both IPv4 and IPv6 (dual-stack), this function
+// will return a mix of both IP families. For use cases requiring single IP family
+// (e.g., OVN address sets), split the CIDR first using util.SplitStringIP().
 func RandomIPPool(cidr string, count int) []string {
 	ginkgo.GinkgoHelper()
 

@@ -1,11 +1,14 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -13,6 +16,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -54,7 +58,7 @@ type Controller struct {
 	podsLister     listerv1.PodLister
 	podsSynced     cache.InformerSynced
 	updatePodQueue workqueue.TypedRateLimitingInterface[string]
-	deletePodQueue workqueue.TypedRateLimitingInterface[string]
+	deletePodQueue workqueue.TypedRateLimitingInterface[*podEvent]
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -125,7 +129,7 @@ func NewController(config *Configuration,
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
 		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
-		deletePodQueue: newTypedRateLimitingQueue[string]("DeletePod", nil),
+		deletePodQueue: newTypedRateLimitingQueue[*podEvent]("DeletePod", nil),
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -136,7 +140,7 @@ func NewController(config *Configuration,
 
 		caSecretLister: caSecretInformer.Lister(),
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
-		ipsecQueue:     newTypedRateLimitingQueue[string]("CA", nil),
+		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
@@ -197,9 +201,8 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 	if _, err = caSecretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddCA,
-		UpdateFunc: controller.enqueueUpdateCA,
-		DeleteFunc: controller.enqueueDeleteCA,
+		AddFunc:    controller.enqueueAddIPSecCA,
+		UpdateFunc: controller.enqueueUpdateIPSecCA,
 	}); err != nil {
 		return nil, err
 	}
@@ -207,22 +210,22 @@ func NewController(config *Configuration,
 	return controller, nil
 }
 
-func (c *Controller) enqueueAddCA(obj any) {
+func (c *Controller) enqueueAddIPSecCA(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1.Secret)).String()
 	klog.V(3).Infof("enqueue add CA %s", key)
 	c.ipsecQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateCA(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*v1.Secret)).String()
-	klog.V(3).Infof("enqueue update CA %s", key)
-	c.ipsecQueue.Add(key)
-}
+func (c *Controller) enqueueUpdateIPSecCA(oldObj, newObj any) {
+	oldSecret := oldObj.(*v1.Secret)
+	newSecret := newObj.(*v1.Secret)
+	if maps.EqualFunc(oldSecret.Data, newSecret.Data, bytes.Equal) {
+		// No changes in CA data, no need to enqueue
+		return
+	}
 
-func (c *Controller) enqueueDeleteCA(obj any) {
-	pn := obj.(*v1.Secret)
-	key := cache.MetaObjectToName(pn).String()
-	klog.V(3).Infof("enqueue delete CA %s", key)
+	key := cache.MetaObjectToName(newSecret).String()
+	klog.V(3).Infof("enqueue update CA %s", key)
 	c.ipsecQueue.Add(key)
 }
 
@@ -239,7 +242,22 @@ func (c *Controller) enqueueUpdateProviderNetwork(_, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteProviderNetwork(obj any) {
-	pn := obj.(*kubeovnv1.ProviderNetwork)
+	var pn *kubeovnv1.ProviderNetwork
+	switch t := obj.(type) {
+	case *kubeovnv1.ProviderNetwork:
+		pn = t
+	case cache.DeletedFinalStateUnknown:
+		p, ok := t.Obj.(*kubeovnv1.ProviderNetwork)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		pn = p
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
 	key := cache.MetaObjectToName(pn).String()
 	klog.V(3).Infof("enqueue delete provider network %s", key)
 	c.deleteProviderNetworkQueue.Add(pn)
@@ -315,7 +333,13 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
-	if slices.Contains(pn.Spec.ExcludeNodes, node.Name) {
+	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if excluded {
 		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}
@@ -483,6 +507,10 @@ type serviceEvent struct {
 	oldObj, newObj any
 }
 
+type podEvent struct {
+	oldObj any
+}
+
 func (c *Controller) enqueueAddSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
@@ -599,9 +627,24 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
-	pod := obj.(*v1.Pod)
-	key := cache.MetaObjectToName(pod).String()
-	c.deletePodQueue.Add(key)
+	var pod *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		pod = t
+	case cache.DeletedFinalStateUnknown:
+		p, ok := t.Obj.(*v1.Pod)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		pod = p
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	klog.V(3).Infof("enqueue delete pod %s", pod.Name)
+	c.deletePodQueue.Add(&podEvent{oldObj: pod})
 }
 
 func (c *Controller) runUpdatePodWorker() {
@@ -637,20 +680,20 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 }
 
 func (c *Controller) processNextDeletePodWorkItem() bool {
-	key, shutdown := c.deletePodQueue.Get()
+	event, shutdown := c.deletePodQueue.Get()
 	if shutdown {
 		return false
 	}
 
-	err := func(key string) error {
-		defer c.deletePodQueue.Done(key)
-		if err := c.handleDeletePod(key); err != nil {
-			c.deletePodQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
+	err := func(event *podEvent) error {
+		defer c.deletePodQueue.Done(event)
+		if err := c.handleDeletePod(event); err != nil {
+			c.deletePodQueue.AddRateLimited(event)
+			return fmt.Errorf("error syncing pod event: %w, requeuing", err)
 		}
-		c.deletePodQueue.Forget(key)
+		c.deletePodQueue.Forget(event)
 		return nil
-	}(key)
+	}(event)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -658,40 +701,60 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 	return true
 }
 
-var lastNoPodOvsPort map[string]bool
-
-func (c *Controller) markAndCleanInternalPort() error {
-	klog.V(4).Infof("start to gc ovs internal ports")
-	residualPorts := ovs.GetResidualInternalPorts()
-	if len(residualPorts) == 0 {
-		return nil
+func (c *Controller) gcInterfaces() {
+	interfacePodMap, err := ovs.ListInterfacePodMap()
+	if err != nil {
+		klog.Errorf("failed to list interface pod map: %v", err)
+		return
 	}
+	for iface, pod := range interfacePodMap {
+		parts := strings.Split(pod, "/")
+		if len(parts) < 3 {
+			klog.Errorf("malformed pod string %q for interface %s, expected format 'namespace/name/errText'", pod, iface)
+			continue
+		}
 
-	noPodOvsPort := map[string]bool{}
-	for _, portName := range residualPorts {
-		if !lastNoPodOvsPort[portName] {
-			noPodOvsPort[portName] = true
-		} else {
-			klog.Infof("gc ovs internal port %s", portName)
-			// Remove ovs port
-			output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", portName)
-			if err != nil {
-				return fmt.Errorf("failed to delete ovs port %w, %q", err, output)
+		podNamespace, podName, errText := parts[0], parts[1], parts[2]
+		if strings.Contains(errText, "No such device") {
+			klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
+			if err := ovs.CleanInterface(iface); err != nil {
+				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
+			}
+			continue
+		}
+
+		if _, err := c.podsLister.Pods(podNamespace).Get(podName); err != nil && k8serrors.IsNotFound(err) {
+			// Pod not found by name. Check if this might be a KubeVirt VM.
+			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VM name (not the launcher pod name).
+			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
+			// Try to find launcher pods by this label.
+			selector := labels.SelectorFromSet(map[string]string{util.KubeVirtVMNameLabel: podName})
+			launcherPods, listErr := c.podsLister.Pods(podNamespace).List(selector)
+			if listErr != nil {
+				klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, listErr)
+				continue
+			}
+
+			// If we found launcher pod(s) for this VM, keep the interface
+			if len(launcherPods) > 0 {
+				klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
+					len(launcherPods), podNamespace, podName, iface)
+				continue
+			}
+
+			// No pod and no launcher pod found - safe to delete
+			klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
+			if err := ovs.CleanInterface(iface); err != nil {
+				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
 			}
 		}
 	}
-	lastNoPodOvsPort = noPodOvsPort
-
-	return nil
 }
 
 func (c *Controller) runIPSecWorker() {
 	if err := c.StartIPSecService(); err != nil {
 		klog.Errorf("starting ipsec service: %v", err)
-		return
 	}
-
-	c.ipsecQueue.AddRateLimited("")
 
 	for c.processNextIPSecWorkItem() {
 	}
@@ -705,7 +768,7 @@ func (c *Controller) processNextIPSecWorkItem() bool {
 	defer c.ipsecQueue.Done(key)
 
 	err := func(key string) error {
-		if err := c.SyncIPSecKeys(); err != nil {
+		if err := c.SyncIPSecKeys(key); err != nil {
 			c.ipsecQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
 		}
@@ -729,7 +792,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
-	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
+	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
@@ -747,6 +810,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
@@ -755,11 +819,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("failed to reconcile ovn0 routes: %v", err)
 		}
 	}, 3*time.Second, stopCh)
-	go wait.Until(func() {
-		if err := c.markAndCleanInternalPort(); err != nil {
-			klog.Errorf("gc ovs port error: %v", err)
-		}
-	}, 5*time.Minute, stopCh)
 
 	if c.config.EnableTProxy {
 		go c.StartTProxyForwarding()
@@ -772,10 +831,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.cleanTProxyConfig()
 	}
 
-	if c.config.EnableOVNIPSec {
-		go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
-	} else {
-		if err := c.StopAndClearIPSecResouce(); err != nil {
+	if !c.config.EnableOVNIPSec {
+		if err := c.StopAndClearIPSecResource(); err != nil {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
 	}

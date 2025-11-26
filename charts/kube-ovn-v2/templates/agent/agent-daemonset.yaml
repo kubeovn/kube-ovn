@@ -42,6 +42,7 @@ spec:
           operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-cni
+      automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
       initContainers:
@@ -76,7 +77,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
-          - --cni-conf-dir={{ .Values.cni.configDirectory }}
+          - --cni-conf-dir={{ .Values.cni.mountConfigDirectory }}
           - --cni-conf-file={{ .Values.cni.localConfigFile }}
           - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
         securityContext:
@@ -85,7 +86,7 @@ spec:
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
-          - mountPath: /etc/cni/net.d
+          - mountPath: {{ .Values.cni.mountConfigDirectory }}
             name: cni-conf
           {{- if .Values.cni.mountToolingDirectory }}
           - mountPath: /usr/local/bin
@@ -115,6 +116,9 @@ spec:
           {{ .Values.networking.services.cidr.v4 }}
           {{- else if eq .Values.networking.stack "IPv6" -}}
           {{ .Values.networking.services.cidr.v6 }}
+          {{- end }}
+          {{- if (gt (int .Values.networking.pods.mtu) 0) }}
+          - --mtu={{ .Values.networking.pods.mtu  }}
           {{- end }}
           - --dpdk-tunnel-iface={{- .Values.agent.dpdkTunnelInterface }}
           - --network-type={{- .Values.networking.tunnelType }}
@@ -285,5 +289,5 @@ spec:
         {{- if .Values.features.enableOvnIpsec }}
           - name: ovs-ipsec-keys
             hostPath:
-              path: {{ .Values.ovsOvn.ovsDirectory }}
+              path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
         {{- end }}

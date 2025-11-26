@@ -29,7 +29,23 @@ func (c *Controller) enqueueUpdateVlan(_, newObj any) {
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
+	var vlan *kubeovnv1.Vlan
+	switch t := obj.(type) {
+	case *kubeovnv1.Vlan:
+		vlan = t
+	case cache.DeletedFinalStateUnknown:
+		v, ok := t.Obj.(*kubeovnv1.Vlan)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		vlan = v
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := cache.MetaObjectToName(vlan).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
 	c.delVlanQueue.Add(key)
 }
@@ -118,8 +134,9 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	var conflict bool
 	var conflictErr error
 	for _, v := range vlans {
-		if vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
-			conflictErr = fmt.Errorf("new vlan %s conflict with old vlan %s", vlan.Name, v.Name)
+		// different provider allow to have same vlan
+		if vlan.Spec.Provider == v.Spec.Provider && vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
+			conflictErr = fmt.Errorf("provider %s new vlan %s conflict with old vlan %s", vlan.Spec.Provider, vlan.Name, v.Name)
 			klog.Error(conflictErr)
 			conflict = true
 		}

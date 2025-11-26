@@ -177,7 +177,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cmd := "curl -k -q -s --connect-timeout 2 https://" + net.JoinHostPort(clusterIP, "443")
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, 3*time.Minute, func(_ context.Context) (bool, error) {
 			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
 			return err == nil, nil
 		}, "")

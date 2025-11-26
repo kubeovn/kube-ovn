@@ -100,7 +100,7 @@ func (c *Controller) initRuntime() error {
 	c.ipsets = make(map[string]*ipsets.IPSets)
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
-	c.k8sipsets = k8sipset.New(c.k8sExec)
+	c.k8sipsets = k8sipset.New()
 	c.ovsClient = ovsutil.New()
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
@@ -124,7 +124,7 @@ func (c *Controller) initRuntime() error {
 			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
-		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
+		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
@@ -147,7 +147,7 @@ func (c *Controller) initRuntime() error {
 			}
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
-		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
+		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
 	c.nmSyncer = newNetworkManagerSyncer()
@@ -626,7 +626,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 	if len(toAdd) > 0 {
 		klog.Infof("routes to add: %v", toAdd)
 	}
-	return
+	return toAdd, toDel
 }
 
 func getRulesToAdd(oldRules, newRules []netlink.Rule) []netlink.Rule {
@@ -671,12 +671,12 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 	oldRules, oldRoutes, err := c.getPolicyRouting(oldSubnet)
 	if err != nil {
 		klog.Error(err)
-		return
+		return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 	}
 	newRules, newRoutes, err := c.getPolicyRouting(newSubnet)
 	if err != nil {
 		klog.Error(err)
-		return
+		return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 	}
 
 	rulesToAdd = getRulesToAdd(oldRules, newRules)
@@ -684,7 +684,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 	routesToAdd = getRoutesToAdd(oldRoutes, newRoutes)
 	routesToDel = getRoutesToAdd(newRoutes, oldRoutes)
 
-	return
+	return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {
@@ -852,7 +852,7 @@ func (c *Controller) HandleU2OForSubnet(subnet *kubeovnv1.Subnet, isAdd bool) er
 
 func (c *Controller) CheckSubnetU2OChangeAction(oldSubnet, newSubnet *kubeovnv1.Subnet) (bool, bool) {
 	if newSubnet == nil ||
-		(oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.U2OInterconnection == newSubnet.Spec.U2OInterconnection) {
+		(oldSubnet != nil && oldSubnet.Spec.U2OInterconnection == newSubnet.Spec.U2OInterconnection) {
 		return false, false
 	}
 
@@ -971,27 +971,20 @@ func (c *Controller) handleUpdatePod(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDeletePod(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+func (c *Controller) handleDeletePod(event *podEvent) error {
+	var pod *v1.Pod
+	if event.oldObj != nil {
+		pod = event.oldObj.(*v1.Pod)
+	} else {
 		return nil
 	}
 
-	pod, err := c.podsLister.Pods(namespace).Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-
-	if _, ok := pod.Annotations[util.LogicalSwitchAnnotation]; !ok {
+	logicalSwitch, ok := pod.Annotations[util.LogicalSwitchAnnotation]
+	if !ok {
 		return nil
 	}
 
-	subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
+	subnet, err := c.subnetsLister.Get(logicalSwitch)
 	if err != nil {
 		klog.Error(err)
 		return err

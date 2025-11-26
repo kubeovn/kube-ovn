@@ -46,14 +46,14 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 			err = os.MkdirAll(newSharedDir, 0o777) // #nosec G301
 			if err != nil {
 				klog.Error(err)
-				return fmt.Errorf("createSharedDir: Failed to create dir (%s): %w", newSharedDir, err)
+				return fmt.Errorf("createShortSharedDir: Failed to create dir (%s): %w", newSharedDir, err)
 			}
 
 			if strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir) {
-				klog.Infof("createSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
+				klog.Infof("createShortSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
 				err = unix.Mount(originSharedDir, newSharedDir, "", unix.MS_BIND, "")
 				if err != nil {
-					return fmt.Errorf("createSharedDir: Failed to bind mount: %w", err)
+					return fmt.Errorf("createShortSharedDir: Failed to bind mount: %w", err)
 				}
 			}
 			return nil
@@ -63,7 +63,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 	}
 
 	if socketConsumption != util.ConsumptionKubevirt {
-		return fmt.Errorf("createSharedDir: voume name %s is exists", volumeName)
+		return fmt.Errorf("createShortSharedDir: volume name %s is exists", volumeName)
 	}
 
 	return nil

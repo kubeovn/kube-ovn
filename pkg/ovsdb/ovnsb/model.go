@@ -6,14 +6,16 @@ package ovnsb
 import (
 	"encoding/json"
 
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 // FullDatabaseModel returns the DatabaseModel object to be used in libovsdb
 func FullDatabaseModel() (model.ClientDBModel, error) {
 	return model.NewClientDBModel("OVN_Southbound", map[string]model.Model{
+		"ACL_ID":               &ACLID{},
 		"Address_Set":          &AddressSet{},
+		"Advertised_Route":     &AdvertisedRoute{},
 		"BFD":                  &BFD{},
 		"Chassis":              &Chassis{},
 		"Chassis_Private":      &ChassisPrivate{},
@@ -24,6 +26,7 @@ func FullDatabaseModel() (model.ClientDBModel, error) {
 		"DHCPv6_Options":       &DHCPv6Options{},
 		"DNS":                  &DNS{},
 		"Datapath_Binding":     &DatapathBinding{},
+		"ECMP_Nexthop":         &ECMPNexthop{},
 		"Encap":                &Encap{},
 		"FDB":                  &FDB{},
 		"Gateway_Chassis":      &GatewayChassis{},
@@ -31,6 +34,7 @@ func FullDatabaseModel() (model.ClientDBModel, error) {
 		"HA_Chassis_Group":     &HAChassisGroup{},
 		"IGMP_Group":           &IGMPGroup{},
 		"IP_Multicast":         &IPMulticast{},
+		"Learned_Route":        &LearnedRoute{},
 		"Load_Balancer":        &LoadBalancer{},
 		"Logical_DP_Group":     &LogicalDPGroup{},
 		"Logical_Flow":         &LogicalFlow{},
@@ -52,8 +56,22 @@ func FullDatabaseModel() (model.ClientDBModel, error) {
 
 var schema = `{
   "name": "OVN_Southbound",
-  "version": "20.33.0",
+  "version": "20.41.0",
   "tables": {
+    "ACL_ID": {
+      "columns": {
+        "id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 32767
+            }
+          }
+        }
+      },
+      "isRoot": true
+    },
     "Address_Set": {
       "columns": {
         "addresses": {
@@ -72,6 +90,63 @@ var schema = `{
       "indexes": [
         [
           "name"
+        ]
+      ],
+      "isRoot": true
+    },
+    "Advertised_Route": {
+      "columns": {
+        "datapath": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Datapath_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "external_ids": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "ip_prefix": {
+          "type": "string"
+        },
+        "logical_port": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Port_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "tracked_port": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Port_Binding",
+              "refType": "strong"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "indexes": [
+        [
+          "datapath",
+          "logical_port",
+          "ip_prefix",
+          "tracked_port"
         ]
       ],
       "isRoot": true
@@ -576,6 +651,57 @@ var schema = `{
       ],
       "isRoot": true
     },
+    "ECMP_Nexthop": {
+      "columns": {
+        "datapath": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Datapath_Binding",
+              "refType": "strong"
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "external_ids": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "mac": {
+          "type": "string"
+        },
+        "nexthop": {
+          "type": "string"
+        },
+        "port": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Port_Binding",
+              "refType": "strong"
+            },
+            "min": 1,
+            "max": 1
+          }
+        }
+      },
+      "indexes": [
+        [
+          "nexthop",
+          "port"
+        ]
+      ],
+      "isRoot": true
+    },
     "Encap": {
       "columns": {
         "chassis_name": {
@@ -833,6 +959,9 @@ var schema = `{
             "min": 0,
             "max": "unlimited"
           }
+        },
+        "protocol": {
+          "type": "string"
         }
       },
       "indexes": [
@@ -925,6 +1054,55 @@ var schema = `{
       "indexes": [
         [
           "datapath"
+        ]
+      ],
+      "isRoot": true
+    },
+    "Learned_Route": {
+      "columns": {
+        "datapath": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Datapath_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "external_ids": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "ip_prefix": {
+          "type": "string"
+        },
+        "logical_port": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Port_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "nexthop": {
+          "type": "string"
+        }
+      },
+      "indexes": [
+        [
+          "datapath",
+          "logical_port",
+          "ip_prefix",
+          "nexthop"
         ]
       ],
       "isRoot": true
@@ -1069,6 +1247,15 @@ var schema = `{
             },
             "min": 0,
             "max": "unlimited"
+          }
+        },
+        "flow_desc": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "logical_datapath": {
@@ -1727,6 +1914,9 @@ var schema = `{
           "type": "string"
         },
         "ssl_ciphers": {
+          "type": "string"
+        },
+        "ssl_ciphersuites": {
           "type": "string"
         },
         "ssl_protocols": {

@@ -117,7 +117,16 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if v.allowLiveMigration(o.GetAnnotations()) {
 		return ctrlwebhook.Allowed("by pass")
 	}
-	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+	name := o.GetName()
+	// If the pod is created by a VM, we need to get the VM name from owner references
+	for _, owner := range o.GetOwnerReferences() {
+		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+			name = owner.Name
+			klog.V(3).Infof("pod %s is created by vm %s", o.GetName(), name)
+			break
+		}
+	}
+	return v.validateIP(ctx, o.GetAnnotations(), o.Kind, name, o.GetNamespace())
 }
 
 func (v *ValidatingHook) allowLiveMigration(annotations map[string]string) bool {
@@ -197,7 +206,7 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipL
 			if ipAddr.String() == v4IP || ipAddr.String() == v6IP {
 				// The IP's spec podName does not equal the Pod name in the request;
 				// The two names have a containment relationship.
-				if name == ipCR.Spec.PodName || ipCR.Spec.PodType == util.VM && strings.Contains(ipCR.Spec.PodName, name) {
+				if name == ipCR.Spec.PodName {
 					klog.Infof("get same ip crd for %s", name)
 				} else {
 					err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCR.Name, ipCR.Spec.IPAddress)

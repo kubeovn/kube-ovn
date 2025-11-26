@@ -5,6 +5,22 @@
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
 
+## Installing the Chart
+
+### From OCI Registry
+
+The Helm chart is available from GitHub Container Registry:
+
+```bash
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version {{ template "chart.version" . }}
+```
+
+### From Source
+
+```bash
+helm install kube-ovn ./charts/kube-ovn-v2
+```
+
 ## How to install Kube-OVN on Talos Linux
 
 To install Kube-OVN on Talos Linux, declare the **OpenvSwitch** module in the `machine` config of your Talos install:

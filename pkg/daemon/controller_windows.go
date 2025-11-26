@@ -141,7 +141,7 @@ func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toD
 	return
 }
 
-func (c *Controller) handleDeletePod(key string) error {
+func (c *Controller) handleDeletePod(event *podEvent) error {
 	return nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -65,6 +65,136 @@ func newACL(parentName, direction, priority, match, action string, tier int, opt
 	return acl
 }
 
+func (suite *OvnClientTestSuite) testUpdateDefaultBlockExceptionsACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
+
+	t.Run("ingress exceptions", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "ingress exceptions"
+		pgName := "test_ingress_exceptions"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionToLport)
+		require.NoError(t, err)
+		require.Len(t, ops, 3)
+
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 547 && udp.dst == 546 && ip6", pgName), util.IngressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && udp.src == 67 && udp.dst == 68 && ip4", pgName), util.IngressAllowPriority)
+	})
+
+	t.Run("egress exceptions", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "egress exceptions"
+		pgName := "test_egress_exceptions"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockExceptionsACLOps(netpol, pgName, "default", ovnnb.ACLDirectionFromLport)
+		require.NoError(t, err)
+		require.Len(t, ops, 3)
+
+		expect(ops[0].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 546 && udp.dst == 547 && ip6", pgName), util.EgressAllowPriority)
+		expect(ops[1].Row, "allow-related", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && udp.src == 68 && udp.dst == 67 && ip4", pgName), util.EgressAllowPriority)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
+
+	t.Run("default block ingress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "default block ingress"
+		pgName := "test_create_block_ingress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, false)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip", pgName), util.IngressDefaultDrop)
+	})
+
+	t.Run("default block egress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "default block egress"
+		pgName := "test_create_block_egress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, false)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip", pgName), util.EgressDefaultDrop)
+	})
+
+	t.Run("lax default block ingress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block ingress"
+		pgName := "test_create_lax_block_ingress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && (tcp || udp || sctp)", pgName), util.IngressDefaultDrop)
+	})
+
+	t.Run("lax default block egress", func(t *testing.T) {
+		t.Parallel()
+
+		netpol := "lax default block egress"
+		pgName := "test_create_lax_block_egress_acl_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, true)
+		require.NoError(t, err)
+		require.Len(t, ops, 2)
+
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && (tcp || udp || sctp)", pgName), util.EgressDefaultDrop)
+	})
+}
+
 func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t := suite.T()
 	t.Parallel()
@@ -83,7 +213,6 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ipv4 ingress"
 		pgName := "test_create_v4_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
@@ -95,14 +224,12 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 4)
-
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip", pgName), util.IngressDefaultDrop)
+		require.Len(t, ops, 3)
 
 		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, nil)
-		i := 1
+		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionToLport, m, util.IngressAllowPriority)
@@ -113,7 +240,6 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ipv6 ingress"
 		pgName := "test_create_v6_ingress_acl_pg"
 		asIngressName := "test.default.ingress.allow.ipv6.all"
 		asExceptName := "test.default.ingress.except.ipv6.all"
@@ -123,14 +249,12 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 3)
-
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip", pgName), util.IngressDefaultDrop)
+		require.Len(t, ops, 2)
 
 		matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
-		i := 1
+		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionToLport, m, util.IngressAllowPriority)
@@ -141,28 +265,26 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ingress with empty pg name"
 		pgName := ""
 		asIngressName := "test.default.ingress.allow.ipv4.all"
 		asExceptName := "test.default.ingress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ingress with empty pg name and no suffix"
 		pgName := ""
 		asIngressName := "test.default.ingress.allow.ipv4"
 		asExceptName := "test.default.ingress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(netpol, pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -185,7 +307,6 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ipv4 egress"
 		pgName := "test_create_v4_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
@@ -197,14 +318,12 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 4)
-
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip", pgName), util.EgressDefaultDrop)
+		require.Len(t, ops, 3)
 
 		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, nil)
-		i := 1
+		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
@@ -215,7 +334,6 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("ipv6 acl", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "ipv6 egress"
 		pgName := "test_create_v6_egress_acl_pg"
 		asEgressName := "test.default.egress.allow.ipv6.all"
 		asExceptName := "test.default.egress.except.ipv6.all"
@@ -225,14 +343,12 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.NoError(t, err)
-		require.Len(t, ops, 3)
-
-		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip", pgName), util.EgressDefaultDrop)
+		require.Len(t, ops, 2)
 
 		matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, nil, nil)
-		i := 1
+		i := 0
 		for _, m := range matches {
 			require.Equal(t, m, ops[i].Row["match"])
 			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
@@ -243,28 +359,26 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "egress with empty pg name"
 		pgName := ""
 		asEgressName := "test.default.egress.allow.ipv4.all"
 		asExceptName := "test.default.egress.except.ipv4.all"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
 	t.Run("test empty pgName without suffix", func(t *testing.T) {
 		t.Parallel()
 
-		netpol := "egress with empty pg name and no suffix"
 		pgName := ""
 		asEgressName := "test.default.egress.allow.ipv4"
 		asExceptName := "test.default.egress.except.ipv4"
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(netpol, pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -1360,7 +1474,7 @@ func (suite *OvnClientTestSuite) testCreateAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, append(acls, nil)...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, append(acls, nil)...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1503,14 +1617,14 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 5)
 
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, "", nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, "", nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1539,7 +1653,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 			acls = append(acls, acl)
 		}
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1547,7 +1661,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1555,7 +1669,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport, nil)
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionFromLport, nil)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1580,7 +1694,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		acls = append(acls, acl)
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
@@ -1592,7 +1706,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 
 		/* delete to-lport direction acl */
-		err = nbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
+		err = nbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1601,7 +1715,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 	})
 
 	t.Run("should no err when acls does not exist", func(t *testing.T) {
-		err = nbClient.DeleteAcls("test-nonexist-ls", logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"})
+		err = nbClient.DeleteAcls("test-nonexist-ls", LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": "test-nonexist-ls"})
 		require.NoError(t, err)
 	})
 
@@ -1620,10 +1734,10 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		acls = append(acls, acl)
 
-		err = failedNbClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		err = failedNbClient.CreateAcls(lsName, LogicalSwitchKey, acls...)
 		require.Error(t, err)
 		// TODO:// should err but not for now
-		err = failedNbClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
+		err = failedNbClient.DeleteAcls(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
 		require.NoError(t, err)
 	})
 }
@@ -1674,14 +1788,14 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		acl, err := nbClient.newACL(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		require.NoError(t, err)
 
-		err = nbClient.CreateAcls(lsName, logicalSwitchKey, acl)
+		err = nbClient.CreateAcls(lsName, LogicalSwitchKey, acl)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 1)
 
-		err = nbClient.DeleteACL(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match)
+		err = nbClient.DeleteACL(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)

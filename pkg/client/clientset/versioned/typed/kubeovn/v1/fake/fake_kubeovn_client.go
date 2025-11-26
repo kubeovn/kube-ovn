@@ -28,6 +28,10 @@ type FakeKubeovnV1 struct {
 	*testing.Fake
 }
 
+func (c *FakeKubeovnV1) DNSNameResolvers() v1.DNSNameResolverInterface {
+	return newFakeDNSNameResolvers(c)
+}
+
 func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return newFakeIPs(c)
 }

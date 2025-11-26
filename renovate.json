@@ -6,12 +6,22 @@
     "customManagers:githubActionsVersions",
     "customManagers:makefileVersions"
   ],
-  "baseBranches": ["master", "release-1.13", "release-1.14"],
-  "postUpdateOptions": ["gomodTidy"],
-  "labels": ["dependencies"],
+  "baseBranchPatterns": [
+    "master",
+    "release-1.13",
+    "release-1.14"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "packageRules": [
     {
-      "matchBaseBranches": ["master"],
+      "matchBaseBranches": [
+        "master"
+      ],
       "matchPackageNames": [
         "*"
       ],
@@ -37,18 +47,27 @@
       "groupName": "golang"
     },
     {
-      "matchBaseBranches": ["release-*"],
-      "extends":["security:only-security-updates"],
+      "matchBaseBranches": [
+        "release-*"
+      ],
+      "extends": [
+        "security:only-security-updates"
+      ],
       "automerge": true
     },
     {
-      "matchBaseBranches": ["release-*"],
       "matchPackageNames": [
         "golang.org/x/**",
         "go"
       ],
       "enabled": true,
       "automerge": true
+    },
+    {
+      "matchDatasources": ["golang-version"],
+      "rangeStrategy": "bump",
+      "automerge": true,
+      "enabled": true
     },
     {
       "matchUpdateTypes": [

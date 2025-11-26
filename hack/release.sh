@@ -66,11 +66,16 @@ if [ "$current_branch" != "master" ]; then
   sed -i 's/tag:\ .*/tag:\ '"${VERSION}"'/' charts/kube-ovn/values.yaml
   sed -i 's/version:\ .*/version:\ '"${VERSION}"'/' charts/kube-ovn/Chart.yaml
   sed -i 's/appVersion:\ .*/appVersion:\ "'"${VERSION#v}"'"/' charts/kube-ovn/Chart.yaml
+  sed -i 's/tag:\ .*/tag:\ '"${VERSION}"'/' charts/kube-ovn-v2/values.yaml
+  sed -i 's/version:\ .*/version:\ '"${VERSION}"'/' charts/kube-ovn-v2/Chart.yaml
+  sed -i 's/appVersion:\ .*/appVersion:\ "'"${VERSION#v}"'"/' charts/kube-ovn-v2/Chart.yaml
 
   echo "commit, tag and push"
   git add dist/images/install.sh
   git add charts/kube-ovn/values.yaml
   git add charts/kube-ovn/Chart.yaml
+  git add charts/kube-ovn-v2/values.yaml
+  git add charts/kube-ovn-v2/Chart.yaml
   git commit -m "release ${VERSION}"
   git tag ${VERSION}
   git push
@@ -85,7 +90,7 @@ if [ "$current_branch" != "master" ]; then
 
   echo "Modify the doc version number"
   cd ${DOCS_DIR}
-  git checkout $(cat VERSION | awk -F '.' '{print $1"."$2}')
+  git checkout $(echo $VERSION | awk -F '.' '{print $1"."$2}')
   git pull
   sed -i "s/version: .*/version: ${VERSION}/" mkdocs.yml
   git add mkdocs.yml
@@ -93,7 +98,18 @@ if [ "$current_branch" != "master" ]; then
   git push
 
   echo "clean up images"
-  docker rmi kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
+  docker rmi kubeovn/kube-ovn:${VERSION}-x86 \
+    kubeovn/kube-ovn:${VERSION}-arm \
+    kubeovn/vpc-nat-gateway:${VERSION}-x86 \
+    kubeovn/vpc-nat-gateway:${VERSION}-arm \
+    kubeovn/kube-ovn:${VERSION}-debug-x86 \
+    kubeovn/kube-ovn:${VERSION}-debug-arm \
+    kubeovn/kube-ovn-base:${VERSION}-amd64 \
+    kubeovn/kube-ovn-base:${VERSION}-arm64 \
+    kubeovn/kube-ovn-base:${VERSION}-amd64-legacy \
+    kubeovn/kube-ovn-base:${VERSION}-dpdk \
+    kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
+    kubeovn/kube-ovn-base:${VERSION}-debug-arm64
 
   echo "Manually update the release note with the new changelog"
 else
@@ -128,6 +144,9 @@ else
   sed -i 's/tag:\ .*/tag:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/values.yaml
   sed -i 's/version:\ .*/version:\ '"${NEXT_VERSION}"'/' charts/kube-ovn/Chart.yaml
   sed -i 's/appVersion:\ .*/appVersion:\ "'"${NEXT_VERSION#v}"'"/' charts/kube-ovn/Chart.yaml
+  sed -i 's/tag:\ .*/tag:\ '"${NEXT_VERSION}"'/' charts/kube-ovn-v2/values.yaml
+  sed -i 's/version:\ .*/version:\ '"${NEXT_VERSION}"'/' charts/kube-ovn-v2/Chart.yaml
+  sed -i 's/appVersion:\ .*/appVersion:\ "'"${NEXT_VERSION#v}"'"/' charts/kube-ovn-v2/Chart.yaml
   sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base.yaml
   sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/build-kube-ovn-base-dpdk.yaml
   sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/scheduled-e2e.yaml
@@ -135,6 +154,8 @@ else
   git add dist/images/install.sh
   git add charts/kube-ovn/values.yaml
   git add charts/kube-ovn/Chart.yaml
+  git add charts/kube-ovn-v2/values.yaml
+  git add charts/kube-ovn-v2/Chart.yaml
   git add VERSION
   git add .github/workflows/build-kube-ovn-base.yaml
   git add .github/workflows/build-kube-ovn-base-dpdk.yaml

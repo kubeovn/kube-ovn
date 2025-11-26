@@ -28,7 +28,7 @@ func getOfportByPeer(peer string) (int, error) {
 	}
 	ifaceName := ifaceNames[0]
 
-	ofportStr, err := ovsGet("Interface", ifaceName, "ofport", "")
+	ofportStr, err := Get("Interface", ifaceName, "ofport", "", false)
 	if err != nil {
 		return -1, fmt.Errorf("failed to get ofport for interface %s: %w", ifaceName, err)
 	}
@@ -214,11 +214,18 @@ func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, cha
 		return err
 	}
 
-	for _, existingFlow := range flows {
-		if existingFlow.Priority == util.U2OKeepSrcMacPriority && existingFlow.InPort == localnetPatchPortID {
-			klog.V(3).Infof("flow already exists in bridge %s for in_port=%d, ip_src=%s, dl_src=%s",
-				bridgeName, localnetPatchPortID, podIP, chassisMac)
-			return nil
+	expectedAction := fmt.Sprintf("mod_dl_src:%s", podMac)
+	for _, flow := range flows {
+		if flow.Priority != util.U2OKeepSrcMacPriority || flow.InPort != localnetPatchPortID {
+			continue
+		}
+
+		for _, action := range flow.Actions {
+			if actionText, _ := action.MarshalText(); string(actionText) == expectedAction {
+				klog.V(3).Infof("flow already exists in bridge %s for in_port=%d, ip_src=%s, dl_src=%s, actions=mod_dl_src:%s",
+					bridgeName, localnetPatchPortID, podIP, chassisMac, podMac)
+				return nil
+			}
 		}
 	}
 

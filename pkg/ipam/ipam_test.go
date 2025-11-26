@@ -780,6 +780,99 @@ func TestIPAMAddOrUpdateIPPool(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestIPAMAddOrUpdateSubnetWithIPPools(t *testing.T) {
+	podName := "pod1.default"
+	nicName := "pod1.default"
+
+	// test v4 subnet
+	ipam := NewIPAM()
+	v4ExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+	}
+	v4SubnetName := "v4Subnet"
+	ipv4CIDR := "10.0.0.0/24"
+	v4Gw := "10.0.0.1"
+	err := ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	// allocate random ip from subnet
+	ipv4, _, _, err := ipam.GetRandomAddress(podName, nicName, nil, v4SubnetName, "", nil, true)
+	require.NoError(t, err)
+	// create v4 pool with the allocated ip
+	v4PoolName := "v4Pool"
+	v4PoolIPs := []string{ipv4}
+	err = ipam.AddOrUpdateIPPool(v4SubnetName, v4PoolName, v4PoolIPs)
+	require.NoError(t, err)
+	require.Equal(t, ipv4, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Using.String())
+	require.Equal(t, 0, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Free.Len())
+	// update subnet
+	v4ExcludeIps = append(v4ExcludeIps, "10.0.0.250")
+	err = ipam.AddOrUpdateSubnet(v4SubnetName, ipv4CIDR, v4Gw, v4ExcludeIps)
+	require.NoError(t, err)
+	require.Equal(t, ipv4, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Using.String())
+	require.Equal(t, 0, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Free.Len())
+
+	// test v6 subnet
+	v6ExcludeIps := []string{
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	v6SubnetName := "v6Subnet"
+	ipv6CIDR := "2001:db8::/64"
+	v6Gw := "2001:db8::1"
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.NoError(t, err)
+	// allocate random ip from subnet
+	_, ipv6, _, err := ipam.GetRandomAddress(podName, nicName, nil, v6SubnetName, "", nil, true)
+	require.NoError(t, err)
+	// create v6 pool with the allocated ip
+	v6PoolName := "v6Pool"
+	v6PoolIPs := []string{ipv6}
+	err = ipam.AddOrUpdateIPPool(v6SubnetName, v6PoolName, v6PoolIPs)
+	require.NoError(t, err)
+	require.Equal(t, ipv6, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Using.String())
+	require.Equal(t, 0, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Free.Len())
+	// update subnet
+	v6ExcludeIps = append(v6ExcludeIps, "2001:db8::250")
+	err = ipam.AddOrUpdateSubnet(v6SubnetName, ipv6CIDR, v6Gw, v6ExcludeIps)
+	require.NoError(t, err)
+	require.Equal(t, ipv6, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Using.String())
+	require.Equal(t, 0, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Free.Len())
+
+	// test dual stack subnet
+	dualSubnetName := "dualSubnet"
+	dualExcludeIps := []string{
+		"10.0.0.2", "10.0.0.4", "10.0.0.100",
+		"10.0.0.252", "10.0.0.253", "10.0.0.254",
+		"2001:db8::2", "2001:db8::4", "2001:db8::100",
+		"2001:db8::252", "2001:db8::253", "2001:db8::254",
+	}
+	cidr := "10.0.0.0/24,2001:db8::/64"
+	gw := "10.0.0.1,2001:db8::1"
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.NoError(t, err)
+	// allocate random ip from subnet
+	ipv4, ipv6, _, err = ipam.GetRandomAddress(podName, nicName, nil, dualSubnetName, "", nil, true)
+	require.NoError(t, err)
+	// create dual-stack pool with the allocated ip
+	dualPoolName := "dualPool"
+	dualPoolIPs := []string{ipv4, ipv6}
+	err = ipam.AddOrUpdateIPPool(dualSubnetName, dualPoolName, dualPoolIPs)
+	require.NoError(t, err)
+	require.Equal(t, ipv4, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Using.String())
+	require.Equal(t, ipv6, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Using.String())
+	require.Equal(t, 0, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Free.Len())
+	require.Equal(t, 0, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Free.Len())
+	// update subnet
+	dualExcludeIps = append(dualExcludeIps, "10.0.0.250", "2001:db8::250")
+	err = ipam.AddOrUpdateSubnet(dualSubnetName, cidr, gw, dualExcludeIps)
+	require.NoError(t, err)
+	require.Equal(t, ipv4, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Using.String())
+	require.Equal(t, ipv6, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Using.String())
+	require.Equal(t, 0, ipam.Subnets[v4SubnetName].IPPools[v4PoolName].V4Free.Len())
+	require.Equal(t, 0, ipam.Subnets[v6SubnetName].IPPools[v6PoolName].V6Free.Len())
+}
+
 func TestIPAMRemoveIPPool(t *testing.T) {
 	// test dual stack subnet
 	ipam := NewIPAM()

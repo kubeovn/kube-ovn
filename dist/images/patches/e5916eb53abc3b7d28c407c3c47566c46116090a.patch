@@ -1,0 +1,38 @@
+From e5916eb53abc3b7d28c407c3c47566c46116090a Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:33 +0000
+Subject: [PATCH] fix lr-lb dnat with multiple distributed gateway ports
+
+Signed-off-by: zcq98 <zhaocongqi_yewu@cmss.chinamobile.com>
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index c75f2e51de..fb073cdcd2 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -12361,8 +12361,20 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
+     }
+ 
+     if (ctx->lb_vip->n_backends || !ctx->lb_vip->empty_backend_rej) {
+-        ds_put_format(ctx->new_match, " && is_chassis_resident(%s)",
+-                      dgp->cr_port->json_key);
++        if (od->n_l3dgw_ports > 1) {
++            for (size_t i = 0; i < od->n_l3dgw_ports; i++) {
++                const char *vip = ctx->lb_vip->vip_str;
++                if (lrp_find_member_ip(od->l3dgw_ports[i], vip)) {
++                    ds_put_format(ctx->new_match,
++                                  " && is_chassis_resident(%s)",
++                                  od->l3dgw_ports[i]->cr_port->json_key);
++                    break;
++                }
++            }
++        } else {
++            ds_put_format(ctx->new_match, " && is_chassis_resident(%s)",
++                          od->l3dgw_ports[0]->cr_port->json_key);
++        }
+     }
+ 
+     ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
