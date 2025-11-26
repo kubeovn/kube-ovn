@@ -35,10 +35,8 @@ const (
 )
 
 var (
-	ovnClientOnce sync.Once
-	ovnNbClient   *ovs.OVNNbClient
-	ovnNbModels   map[string]model.Model
-	ovnClientErr  error
+	ovnnbAddrOnce sync.Once
+	ovnnbAddr     string
 )
 
 // WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
@@ -48,6 +46,7 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
 	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
@@ -107,6 +106,7 @@ func WaitForAddressSetDeletion(ippoolName string) error {
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	Logf("Waiting for address set of IPPool %s to be deleted", ippoolName)
 
@@ -142,21 +142,21 @@ func WaitForAddressSetDeletion(ippoolName string) error {
 }
 
 func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model, error) {
-	ovnClientOnce.Do(func() {
-		conn, err := resolveOVNNbConnection()
-		if err != nil {
-			ovnClientErr = err
-			return
-		}
-		ovnNbClient, ovnNbModels, ovnClientErr = ovs.NewDynamicOvnNbClient(
-			conn,
-			ovnNbTimeoutSeconds,
-			ovsdbConnTimeout,
-			ovsdbInactivityTimeout,
-			tables...,
-		)
+	var err error
+	ovnnbAddrOnce.Do(func() {
+		ovnnbAddr, err = resolveOVNNbConnection()
 	})
-	return ovnNbClient, ovnNbModels, ovnClientErr
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ovs.NewDynamicOvnNbClient(
+		ovnnbAddr,
+		ovnNbTimeoutSeconds,
+		ovsdbConnTimeout,
+		ovsdbInactivityTimeout,
+		tables...,
+	)
 }
 
 func resolveOVNNbConnection() (string, error) {
