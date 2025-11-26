@@ -3,6 +3,8 @@ package controller
 import (
 	"testing"
 
+	"k8s.io/utils/set"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -211,15 +213,12 @@ func TestCanonicalizeIPPoolEntries(t *testing.T) {
 func TestNormalizeAddressSetEntries(t *testing.T) {
 	t.Run("Standard OVN format", func(t *testing.T) {
 		result := util.NormalizeAddressSetEntries(`"10.0.0.1/32" "10.0.0.2/32"`)
-		require.Len(t, result, 2)
-		require.True(t, result["10.0.0.1/32"])
-		require.True(t, result["10.0.0.2/32"])
+		require.Equal(t, set.New("10.0.0.1/32", "10.0.0.2/32"), result)
 	})
 
 	t.Run("Extra whitespace", func(t *testing.T) {
 		result := util.NormalizeAddressSetEntries(`  "10.0.0.1/32"   "10.0.0.2/32"  `)
-		require.Len(t, result, 2)
-		require.True(t, result["10.0.0.1/32"])
+		require.Equal(t, set.New("10.0.0.1/32", "10.0.0.2/32"), result)
 	})
 
 	t.Run("Empty input", func(t *testing.T) {
@@ -229,16 +228,12 @@ func TestNormalizeAddressSetEntries(t *testing.T) {
 
 	t.Run("No quotes", func(t *testing.T) {
 		result := util.NormalizeAddressSetEntries("10.0.0.1/32 10.0.0.2/32")
-		require.Len(t, result, 2)
-		require.True(t, result["10.0.0.1/32"])
-		require.True(t, result["10.0.0.2/32"])
+		require.Equal(t, set.New("10.0.0.1/32", "10.0.0.2/32"), result)
 	})
 
 	t.Run("Mixed formats", func(t *testing.T) {
 		result := util.NormalizeAddressSetEntries(`"192.168.1.0/24" "2001:db8::1/128"`)
-		require.Len(t, result, 2)
-		require.True(t, result["192.168.1.0/24"])
-		require.True(t, result["2001:db8::1/128"])
+		require.Equal(t, set.New("192.168.1.0/24", "2001:db8::1/128"), result)
 	})
 }
 

@@ -4,17 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -31,13 +37,14 @@ const (
 var (
 	ovnClientOnce sync.Once
 	ovnNbClient   *ovs.OVNNbClient
+	ovnNbModels   map[string]model.Model
 	ovnClientErr  error
 )
 
 // WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
 // to contain exactly the provided entries (order independent).
 func WaitForAddressSetIPs(ippoolName string, ips []string) error {
-	client, err := getOVNNbClient()
+	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
 	if err != nil {
 		return err
 	}
@@ -48,75 +55,108 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		return err
 	}
 
-	// Convert to map for comparison
-	expectedMap := make(map[string]bool, len(expectedEntries))
-	for _, entry := range expectedEntries {
-		expectedMap[entry] = true
-	}
-
-	expectedName := util.IPPoolAddressSetName(ippoolName)
+	asName := util.IPPoolAddressSetName(ippoolName)
+	Logf("Waiting for address set %s of IPPool %s to have entries: %v", asName, ippoolName, expectedEntries)
 
 	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
-		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
-		if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
+		defer cancel()
+
+		model := models[ovnnb.AddressSetTable]
+		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
+		if err := client.List(ctx, result); err != nil {
 			return false, err
 		}
-		if len(sets) == 0 {
-			return false, nil
-		}
-		if len(sets) > 1 {
-			return false, fmt.Errorf("multiple address sets found for ippool %s", ippoolName)
-		}
 
-		as := sets[0]
-		if as.Name != expectedName {
-			return false, fmt.Errorf("unexpected address set name %q for ippool %s, want %q", as.Name, ippoolName, expectedName)
-		}
-
-		actualEntries := util.NormalizeAddressSetEntries(strings.Join(as.Addresses, " "))
-		if len(actualEntries) != len(expectedMap) {
-			return false, nil
-		}
-
-		for entry := range expectedMap {
-			if !actualEntries[entry] {
-				return false, nil
+		sets := make(map[string][]string, 1)
+		for i := 0; i < reflect.ValueOf(result).Elem().Len(); i++ {
+			externalIDs := reflect.ValueOf(result).Elem().Index(i).FieldByName("ExternalIDs")
+			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
+				continue
 			}
+			name := reflect.ValueOf(result).Elem().Index(i).FieldByName("Name").String()
+			addrField := reflect.ValueOf(result).Elem().Index(i).FieldByName("Addresses")
+			addresses := make([]string, 0, addrField.Len())
+			for j := 0; j < addrField.Len(); j++ {
+				addresses = append(addresses, addrField.Index(j).String())
+			}
+			sets[name] = addresses
 		}
 
-		return true, nil
+		setNames := slices.Collect(maps.Keys(sets))
+		switch len(sets) {
+		case 0:
+			return false, nil
+		case 1:
+			if setNames[0] != asName {
+				return false, fmt.Errorf("unexpected address set name %q for ippool %s, want %q", setNames[0], ippoolName, asName)
+			}
+		default:
+			return false, fmt.Errorf("multiple address sets found for ippool %s: %s", ippoolName, strings.Join(setNames, ","))
+		}
+
+		addresses := sets[setNames[0]]
+		actualEntries := util.NormalizeAddressSetEntries(strings.Join(addresses, " "))
+		return actualEntries.Equal(set.New(expectedEntries...)), nil
 	})
 }
 
 // WaitForAddressSetDeletion waits until OVN deletes the address set for the given IPPool.
 func WaitForAddressSetDeletion(ippoolName string) error {
-	client, err := getOVNNbClient()
+	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
 	if err != nil {
 		return err
 	}
 
+	Logf("Waiting for address set of IPPool %s to be deleted", ippoolName)
+
 	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
-		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
-		if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
+		defer cancel()
+
+		model := models[ovnnb.AddressSetTable]
+		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
+		if err := client.List(ctx, result); err != nil {
 			return false, err
 		}
+
+		var sets []string
+		for i := 0; i < reflect.ValueOf(result).Elem().Len(); i++ {
+			externalIDs := reflect.ValueOf(result).Elem().Index(i).FieldByName("ExternalIDs")
+			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
+				continue
+			}
+			name := reflect.ValueOf(result).Elem().Index(i).FieldByName("Name").String()
+			sets = append(sets, name)
+		}
+
 		if len(sets) > 1 {
-			return false, fmt.Errorf("multiple address sets found for ippool %s", ippoolName)
+			return false, fmt.Errorf("multiple address sets found for ippool %s: %s", ippoolName, strings.Join(sets, ","))
+		}
+
+		if len(sets) != 0 {
+			Logf("Found address sets for IPPool %s: %s", ippoolName, strings.Join(sets, ","))
 		}
 		return len(sets) == 0, nil
 	})
 }
 
-func getOVNNbClient() (*ovs.OVNNbClient, error) {
+func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model, error) {
 	ovnClientOnce.Do(func() {
 		conn, err := resolveOVNNbConnection()
 		if err != nil {
 			ovnClientErr = err
 			return
 		}
-		ovnNbClient, ovnClientErr = ovs.NewOvnNbClient(conn, ovnNbTimeoutSeconds, ovsdbConnTimeout, ovsdbInactivityTimeout, ovnClientMaxRetry)
+		ovnNbClient, ovnNbModels, ovnClientErr = ovs.NewDynamicOvnNbClient(
+			conn,
+			ovnNbTimeoutSeconds,
+			ovsdbConnTimeout,
+			ovsdbInactivityTimeout,
+			tables...,
+		)
 	})
-	return ovnNbClient, ovnClientErr
+	return ovnNbClient, ovnNbModels, ovnClientErr
 }
 
 func resolveOVNNbConnection() (string, error) {

@@ -122,11 +122,14 @@ func NewOvsDbClient(
 		return nil, err
 	}
 
-	monitor := c.NewMonitor(monitors...)
-	monitor.Method = ovsdb.ConditionalMonitorRPC
-	if _, err = c.Monitor(context.TODO(), monitor); err != nil {
-		klog.Errorf("failed to monitor database on OVN %s server %s: %v", db, addr, err)
-		return nil, err
+	if len(monitors) != 0 {
+		monitor := c.NewMonitor(monitors...)
+		monitor.Method = ovsdb.ConditionalMonitorRPC
+		if _, err = c.Monitor(context.TODO(), monitor); err != nil {
+			klog.Errorf("failed to monitor database on OVN %s server %s: %v", db, addr, err)
+			return nil, err
+		}
 	}
+
 	return c, nil
 }

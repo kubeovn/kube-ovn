@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/utils/set"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -312,10 +314,7 @@ func TestCanonicalizeIPPoolEntries(t *testing.T) {
 func TestNormalizeAddressSetEntries(t *testing.T) {
 	t.Run("Normal case", func(t *testing.T) {
 		result := NormalizeAddressSetEntries(`"10.0.0.1/32" "10.0.0.2/32" "192.168.1.0/24"`)
-		require.Len(t, result, 3)
-		require.True(t, result["10.0.0.1/32"])
-		require.True(t, result["10.0.0.2/32"])
-		require.True(t, result["192.168.1.0/24"])
+		require.Equal(t, set.New("10.0.0.1/32", "10.0.0.2/32", "192.168.1.0/24"), result)
 	})
 
 	t.Run("Empty string", func(t *testing.T) {
@@ -330,9 +329,7 @@ func TestNormalizeAddressSetEntries(t *testing.T) {
 
 	t.Run("Mixed whitespace", func(t *testing.T) {
 		result := NormalizeAddressSetEntries(`  "10.0.0.1/32"   "10.0.0.2/32"  `)
-		require.Len(t, result, 2)
-		require.True(t, result["10.0.0.1/32"])
-		require.True(t, result["10.0.0.2/32"])
+		require.Equal(t, set.New("10.0.0.1/32", "10.0.0.2/32"), result)
 	})
 }
 

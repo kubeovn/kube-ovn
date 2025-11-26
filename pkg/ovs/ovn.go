@@ -3,11 +3,17 @@ package ovs
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/modelgen"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
@@ -25,7 +31,6 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
-	ClusterRouter string
 }
 
 type OVNSbClient struct {
@@ -55,6 +60,129 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	return &LegacyClient{
 		OvnTimeout: timeout,
 	}
+}
+
+func astFieldType(field ast.Expr) reflect.Type {
+	switch ft := field.(type) {
+	case *ast.Ident:
+		switch ft.Name {
+		case "string":
+			return reflect.TypeOf("")
+		case "int":
+			return reflect.TypeOf(0)
+		case "bool":
+			return reflect.TypeOf(true)
+		}
+	case *ast.StarExpr:
+		return reflect.PointerTo(astFieldType(ft.X))
+	case *ast.ArrayType:
+		return reflect.SliceOf(astFieldType(ft.Elt))
+	case *ast.MapType:
+		return reflect.MapOf(astFieldType(ft.Key), astFieldType(ft.Value))
+	case *ast.StructType:
+		// TODO: Nested struct
+	}
+	return nil
+}
+
+func NewDynamicOvnNbClient(
+	ovnNbAddr string,
+	ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int,
+	tables ...string,
+) (*OVNNbClient, map[string]model.Model, error) {
+	dbModel, err := model.NewClientDBModel("OVN_Northbound", nil)
+	if err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+
+	nbClient, err := ovsclient.NewOvsDbClient(
+		ovsclient.NBDB,
+		ovnNbAddr,
+		dbModel,
+		nil,
+		ovsDbConTimeout,
+		ovsDbInactivityTimeout,
+	)
+	if err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+
+	schemaTables := nbClient.Schema().Tables
+	nbClient.Close()
+
+	generator, err := modelgen.NewGenerator()
+	if err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+
+	models := make(map[string]model.Model, len(tables))
+	monitors := make([]client.MonitorOption, 0, len(tables))
+	for name, table := range schemaTables {
+		if !slices.Contains(tables, name) {
+			continue
+		}
+
+		tmpl := modelgen.NewTableTemplate()
+		args := modelgen.GetTableTemplateData(ovsclient.NBDB, name, &table)
+		args.WithExtendedGen(false)
+		src, err := generator.Format(tmpl, args)
+		if err != nil {
+			klog.Error(err)
+			return nil, nil, err
+		}
+
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "", src, 0)
+		if err != nil {
+			klog.Error(err)
+			return nil, nil, err
+		}
+
+		ast.Inspect(f, func(n ast.Node) bool {
+			if st, ok := n.(*ast.StructType); ok {
+				fields := make([]reflect.StructField, 0, st.Fields.NumFields())
+				for _, field := range st.Fields.List {
+					fields = append(fields, reflect.StructField{
+						Name: field.Names[0].Name,
+						Type: astFieldType(field.Type),
+						Tag:  reflect.StructTag(strings.Trim(field.Tag.Value, "`")),
+					})
+				}
+				model := reflect.New(reflect.StructOf(fields)).Interface().(model.Model)
+				models[name] = model
+				monitors = append(monitors, client.WithTable(model))
+			}
+			return true
+		})
+	}
+
+	if dbModel, err = model.NewClientDBModel("OVN_Northbound", models); err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+
+	if nbClient, err = ovsclient.NewOvsDbClient(
+		ovsclient.NBDB,
+		ovnNbAddr,
+		dbModel,
+		monitors,
+		ovsDbConTimeout,
+		ovsDbInactivityTimeout,
+	); err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+
+	c := &OVNNbClient{
+		ovsDbClient: ovsDbClient{
+			Client:  nbClient,
+			Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		},
+	}
+	return c, models, nil
 }
 
 func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNNbClient, error) {
