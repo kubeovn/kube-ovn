@@ -89,6 +89,7 @@ const (
 	ProviderNetworkExcludeTemplate    = "%s.provider-network.kubernetes.io/exclude"
 	ProviderNetworkInterfaceTemplate  = "%s.provider-network.kubernetes.io/interface"
 	ProviderNetworkMtuTemplate        = "%s.provider-network.kubernetes.io/mtu"
+	ProviderNetworkVlanIntTemplate    = "%s.provider-network.kubernetes.io/vlan_interfaces"
 	MirrorControlAnnotationTemplate   = "%s.kubernetes.io/mirror"
 	PodNicAnnotationTemplate          = "%s.kubernetes.io/pod_nic_type"
 	VMAnnotationTemplate              = "%s.kubernetes.io/virtualmachine"

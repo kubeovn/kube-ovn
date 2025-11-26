@@ -379,6 +379,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 
 	vlans := strset.NewWithSize(len(pn.Status.Vlans) + 1)
@@ -397,6 +398,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	// always add trunk 0 so that the ovs bridge can communicate with the external network
 	vlans.Add("0")
 
+	// Auto-create VLAN subinterface if enabled and nic contains VLAN ID
 	if pn.Spec.AutoCreateVlanSubinterfaces && strings.Contains(nic, ".") {
 		parts := strings.SplitN(nic, ".", 2)
 		parentIf := parts[0]
@@ -411,10 +413,50 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		}
 	}
 
+	// VLAN sub-interface handling - use map for efficiency
+	vlanInterfaceMap := make(map[string]int) // interfaceName -> vlanID
+
+	// Process explicitly specified VLAN interfaces
+	if len(pn.Spec.VlanInterfaces) > 0 {
+		klog.Infof("Processing %d explicitly specified VLAN interfaces", len(pn.Spec.VlanInterfaces))
+		for _, vlanIfName := range pn.Spec.VlanInterfaces {
+			if util.CheckInterfaceExists(vlanIfName) {
+				vlanID, err := util.ExtractVlanIDFromInterface(vlanIfName)
+				if err != nil {
+					klog.Warningf("Failed to extract VLAN ID from interface %s: %v", vlanIfName, err)
+					continue
+				}
+				vlanInterfaceMap[vlanIfName] = vlanID
+				vlans.Add(strconv.Itoa(vlanID))
+				klog.V(3).Infof("Added explicit VLAN interface %s (VLAN ID %d)", vlanIfName, vlanID)
+			} else {
+				klog.Warningf("Explicitly specified VLAN interface %s does not exist, skipping", vlanIfName)
+			}
+		}
+	}
+
+	// Auto-detection of additional VLAN interfaces (if enabled)
+	if pn.Spec.PreserveVlanInterfaces {
+		klog.Infof("Auto-detecting VLAN interfaces on %s", nic)
+		vlanIDs := util.DetectVlanInterfaces(nic)
+		for _, vlanID := range vlanIDs {
+			vlanIfName := fmt.Sprintf("%s.%d", nic, vlanID)
+			if _, exists := vlanInterfaceMap[vlanIfName]; !exists {
+				vlanInterfaceMap[vlanIfName] = vlanID
+				vlans.Add(strconv.Itoa(vlanID))
+				klog.V(3).Infof("Auto-detected VLAN interface %s (VLAN ID %d)", vlanIfName, vlanID)
+			} else {
+				klog.V(3).Infof("VLAN interface %s already explicitly specified, skipping auto-detection", vlanIfName)
+			}
+		}
+		klog.Infof("Auto-detected %d additional VLAN interfaces for %s", len(vlanIDs), nic)
+	}
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
-	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
+	// Configure main interface with ALL VLANs (including detected ones) in trunk
+	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
 		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
 		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
 			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
@@ -426,6 +468,9 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
 	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
 	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if len(vlanInterfaceMap) > 0 {
+		patch[fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name)] = "true"
+	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
@@ -519,6 +564,7 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)

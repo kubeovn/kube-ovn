@@ -38,6 +38,8 @@ type ProviderNetworkSpec struct {
 	ExcludeNodes                []string              `json:"excludeNodes,omitempty"`
 	ExchangeLinkName            bool                  `json:"exchangeLinkName,omitempty"`
 	AutoCreateVlanSubinterfaces bool                  `json:"autoCreateVlanSubinterfaces,omitempty"`
+	PreserveVlanInterfaces      bool                  `json:"preserveVlanInterfaces,omitempty"`
+	VlanInterfaces              []string              `json:"vlanInterfaces,omitempty"`
 }
 
 type ProviderNetworkCondition struct {

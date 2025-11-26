@@ -3025,6 +3025,13 @@ spec:
                     type: string
                 autoCreateVlanSubinterfaces:
                   type: boolean
+                preserveVlanInterfaces:
+                  type: boolean
+                vlanInterfaces:
+                  type: array
+                  items:
+                    type: string
+                    pattern: '^[a-zA-Z0-9_-]+\.[0-9]{1,4}$'
               required:
                 - defaultInterface
             status:
