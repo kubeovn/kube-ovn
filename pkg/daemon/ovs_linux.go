@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -103,28 +103,40 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if yusur.IsYusurSmartNic(deviceID) {
 		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
 		// Add yusur ovs port
-		output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+		args := []string{
+			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
 			"set", "interface", hostNicName, "type=dpdk",
 			fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", pfPci, vfID),
 			fmt.Sprintf("mtu_request=%d", mtu),
-			"external_ids:iface-id="+ifaceID,
-			"external_ids:vendor="+util.CniTypeName,
-			"external_ids:pod_name="+podName,
-			"external_ids:pod_namespace="+podNamespace,
-			"external_ids:ip="+ipStr,
-			"external_ids:pod_netns="+netns)
+			"external_ids:iface-id=" + ifaceID,
+			"external_ids:vendor=" + util.CniTypeName,
+			"external_ids:pod_name=" + podName,
+			"external_ids:pod_namespace=" + podNamespace,
+			"external_ids:ip=" + ipStr,
+			"external_ids:pod_netns=" + netns,
+		}
+		if encapIP != "" {
+			args = append(args, "external_ids:encap-ip="+encapIP)
+		}
+		output, err := ovs.Exec(args...)
 		if err != nil {
 			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		}
 	} else {
 		// Add veth pair host end to ovs port
-		output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, "external_ids:iface-id="+ifaceID,
-			"external_ids:vendor="+util.CniTypeName,
-			"external_ids:pod_name="+podName,
-			"external_ids:pod_namespace="+podNamespace,
-			"external_ids:ip="+ipStr,
-			"external_ids:pod_netns="+netns)
+		args := []string{
+			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+			"set", "interface", hostNicName, "external_ids:iface-id=" + ifaceID,
+			"external_ids:vendor=" + util.CniTypeName,
+			"external_ids:pod_name=" + podName,
+			"external_ids:pod_namespace=" + podNamespace,
+			"external_ids:ip=" + ipStr,
+			"external_ids:pod_netns=" + netns,
+		}
+		if encapIP != "" {
+			args = append(args, "external_ids:encap-ip="+encapIP)
+		}
+		output, err := ovs.Exec(args...)
 		if err != nil {
 			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 		}

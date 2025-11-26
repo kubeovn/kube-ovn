@@ -1,0 +1,166 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  labels:
+    app: kube-ovn-pinger
+spec:
+  
+  selector:
+    app: kube-ovn-pinger
+  ports:
+    - port: 8080
+      name: metrics
+
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-pinger
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the pinger daemon.
+spec:
+  selector:
+    matchLabels:
+      app: kube-ovn-pinger
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-pinger
+        component: network
+        type: infra
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: kube-ovn-app
+      automountServiceAccountToken: true
+      hostPID: true
+      initContainers:
+        - name: hostpath-init
+          image: "docker.io/kubeovn/kube-ovn:v1.15.0"
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: pinger
+          image: "docker.io/kubeovn/kube-ovn:v1.15.0"
+          command:
+          - /kube-ovn/kube-ovn-pinger
+          args:
+          - --external-address=1.1.1.1
+          - --external-dns=kube-ovn.io.
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=200
+          - --enable-metrics=true
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 65534
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
+          env:
+            - name: ENABLE_SSL
+              value: "false"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+              readOnly: true
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+              readOnly: true
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls

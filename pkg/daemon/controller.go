@@ -60,8 +60,9 @@ type Controller struct {
 	updatePodQueue workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue workqueue.TypedRateLimitingInterface[*podEvent]
 
-	nodesLister listerv1.NodeLister
-	nodesSynced cache.InformerSynced
+	nodesLister     listerv1.NodeLister
+	nodesSynced     cache.InformerSynced
+	updateNodeQueue workqueue.TypedRateLimitingInterface[string]
 
 	servicesLister listerv1.ServiceLister
 	servicesSynced cache.InformerSynced
@@ -131,8 +132,9 @@ func NewController(config *Configuration,
 		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
 		deletePodQueue: newTypedRateLimitingQueue[*podEvent]("DeletePod", nil),
 
-		nodesLister: nodeInformer.Lister(),
-		nodesSynced: nodeInformer.Informer().HasSynced,
+		nodesLister:     nodeInformer.Lister(),
+		nodesSynced:     nodeInformer.Informer().HasSynced,
+		updateNodeQueue: newTypedRateLimitingQueue[string]("UpdateNode", nil),
 
 		servicesLister: servicesInformer.Lister(),
 		servicesSynced: servicesInformer.Informer().HasSynced,
@@ -206,6 +208,11 @@ func NewController(config *Configuration,
 	}); err != nil {
 		return nil, err
 	}
+	if _, err = nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueueUpdateNode,
+	}); err != nil {
+		return nil, err
+	}
 
 	return controller, nil
 }
@@ -227,6 +234,18 @@ func (c *Controller) enqueueUpdateIPSecCA(oldObj, newObj any) {
 	key := cache.MetaObjectToName(newSecret).String()
 	klog.V(3).Infof("enqueue update CA %s", key)
 	c.ipsecQueue.Add(key)
+}
+
+func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
+	oldNode := oldObj.(*v1.Node)
+	newNode := newObj.(*v1.Node)
+	if newNode.Name != c.config.NodeName {
+		return
+	}
+	if oldNode.Annotations[util.NodeNetworksAnnotation] != newNode.Annotations[util.NodeNetworksAnnotation] {
+		klog.V(3).Infof("enqueue update node %s for node networks change", newNode.Name)
+		c.updateNodeQueue.Add(newNode.Name)
+	}
 }
 
 func (c *Controller) enqueueAddProviderNetwork(obj any) {
@@ -782,6 +801,47 @@ func (c *Controller) processNextIPSecWorkItem() bool {
 	return true
 }
 
+func (c *Controller) runUpdateNodeWorker() {
+	for c.processNextUpdateNodeWorkItem() {
+	}
+}
+
+func (c *Controller) processNextUpdateNodeWorkItem() bool {
+	key, shutdown := c.updateNodeQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(key string) error {
+		defer c.updateNodeQueue.Done(key)
+		if err := c.handleUpdateNode(key); err != nil {
+			c.updateNodeQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing node %q: %w, requeuing", key, err)
+		}
+		c.updateNodeQueue.Forget(key)
+		return nil
+	}(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) handleUpdateNode(key string) error {
+	node, err := c.nodesLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error(err)
+		return err
+	}
+
+	klog.Infof("updating node networks for node %s", key)
+	return c.config.UpdateNodeNetworks(node)
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -792,6 +852,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
+	defer c.updateNodeQueue.ShutDown()
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -810,6 +871,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
