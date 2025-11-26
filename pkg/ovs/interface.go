@@ -159,10 +159,10 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool) ([]ovsdb.Operation, error)
+	UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool, logRate int) ([]ovsdb.Operation, error)
 	UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error)
-	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
-	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error
 	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
 	CreateSgDenyAllACL(sgName string) error
@@ -235,11 +235,19 @@ type DHCPOptions interface {
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }
 
+type Meter interface {
+	GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, error)
+	MeterExists(name string) (bool, error)
+	CreateOrUpdateMeter(name string, unit ovnnb.MeterUnit, rate, burst int) error
+	DeleteMeter(name string) error
+}
+
 type NbClient interface {
 	ACL
 	AddressSet
 	BFD
 	DHCPOptions
+	Meter
 	GatewayChassis
 	HAChassisGroup
 	LoadBalancer

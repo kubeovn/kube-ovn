@@ -1407,6 +1407,8 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.NAT{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.Meter{}),
+		client.WithTable(&ovnnb.MeterBand{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Error(err)
