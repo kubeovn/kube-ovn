@@ -37,6 +37,10 @@ type ProviderNetworkSpec struct {
 	NodeSelector     *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 	ExcludeNodes     []string              `json:"excludeNodes,omitempty"`
 	ExchangeLinkName bool                  `json:"exchangeLinkName,omitempty"`
+	// Enable automatic detection and preservation of existing VLAN interfaces on the default interface
+	PreserveVlanInterfaces bool `json:"preserveVlanInterfaces,omitempty"`
+	// Explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
+	VlanInterfaces   []string          `json:"vlanInterfaces,omitempty"`
 }
 
 type ProviderNetworkCondition struct {
