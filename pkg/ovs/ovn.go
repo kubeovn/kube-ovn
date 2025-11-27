@@ -79,8 +79,7 @@ func NewDynamicOvnNbClient(
 		ovsDbInactivityTimeout,
 	)
 	if err != nil {
-		klog.Error(err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create initial ovsdb client to fetch schema: %w", err)
 	}
 
 	schemaTables := nbClient.Schema().Tables
@@ -109,8 +108,7 @@ func NewDynamicOvnNbClient(
 	}
 
 	if dbModel, err = model.NewClientDBModel("OVN_Northbound", models); err != nil {
-		klog.Error(err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create dynamic client db model: %w", err)
 	}
 
 	if nbClient, err = ovsclient.NewOvsDbClient(
@@ -121,8 +119,7 @@ func NewDynamicOvnNbClient(
 		ovsDbConTimeout,
 		ovsDbInactivityTimeout,
 	); err != nil {
-		klog.Error(err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create dynamic ovsdb client: %w", err)
 	}
 
 	c := &OVNNbClient{

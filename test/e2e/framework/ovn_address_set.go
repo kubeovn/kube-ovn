@@ -49,8 +49,8 @@ func validateModelStructure(model model.Model, table string, expectedFields map[
 
 	for name, typ := range expectedFields {
 		field, ok := reflect.TypeOf(model).Elem().FieldByName(name)
-		ExpectTrue(ok, `unexpected model structure for tabel %s: missing %q field of type string`, table, name)
-		ExpectEqual(field.Type, typ, `unexpected model structure for tabel %s: field %q wants type %s but got %s`, table, name, typ, field.Type)
+		ExpectTrue(ok, `unexpected model structure for table %s: missing %q field of type string`, table, name)
+		ExpectEqual(field.Type, typ, `unexpected model structure for table %s: field %q wants type %s but got %s`, table, name, typ, field.Type)
 	}
 }
 
