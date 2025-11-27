@@ -41,16 +41,16 @@ var (
 	ovnnbAddr     string
 )
 
-func validateModelStructure(model model.Model, tableName string, expectedFields map[string]reflect.Type) {
+func validateModelStructure(model model.Model, table string, expectedFields map[string]reflect.Type) {
 	ginkgo.GinkgoHelper()
 
-	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Ptr, "model for table %s is not a pointer type", ovnnb.AddressSetTable)
-	ExpectEqual(reflect.TypeOf(model).Elem().Kind(), reflect.Struct, "model for table %s is not a struct type", ovnnb.AddressSetTable)
+	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Ptr, "model for table %s is not a pointer type", table)
+	ExpectEqual(reflect.TypeOf(model).Elem().Kind(), reflect.Struct, "model for table %s is not a struct type", table)
 
 	for name, typ := range expectedFields {
 		field, ok := reflect.TypeOf(model).Elem().FieldByName(name)
-		ExpectTrue(ok, `unexpected model structure for tabel %s: missing %q field of type string`, ovnnb.AddressSetTable, name)
-		ExpectEqual(field.Type, typ, `unexpected model structure for tabel %s: field %q wants type %s but got %s`, ovnnb.AddressSetTable, name, typ, field.Type)
+		ExpectTrue(ok, `unexpected model structure for tabel %s: missing %q field of type string`, table, name)
+		ExpectEqual(field.Type, typ, `unexpected model structure for tabel %s: field %q wants type %s but got %s`, table, name, typ, field.Type)
 	}
 }
 
