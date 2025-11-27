@@ -99,8 +99,13 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) {
 	WaitForAddressSetCondition(func(rows any) (bool, error) {
 		sets := make(map[string][]string, 1)
 		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
-			externalIDs := reflect.ValueOf(rows).Elem().Index(i).FieldByName("ExternalIDs")
-			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
+			row := reflect.ValueOf(rows).Elem().Index(i)
+			externalIDs := row.FieldByName("ExternalIDs")
+			if externalIDs.IsNil() {
+				continue
+			}
+			value := externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey))
+			if !value.IsValid() || value.String() != ippoolName {
 				continue
 			}
 			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()
@@ -139,8 +144,13 @@ func WaitForAddressSetDeletion(ippoolName string) {
 	WaitForAddressSetCondition(func(rows any) (bool, error) {
 		var sets []string
 		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
-			externalIDs := reflect.ValueOf(rows).Elem().Index(i).FieldByName("ExternalIDs")
-			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
+			row := reflect.ValueOf(rows).Elem().Index(i)
+			externalIDs := row.FieldByName("ExternalIDs")
+			if externalIDs.IsNil() {
+				continue
+			}
+			value := externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey))
+			if !value.IsValid() || value.String() != ippoolName {
 				continue
 			}
 			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()

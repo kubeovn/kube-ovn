@@ -89,17 +89,21 @@ func NewDynamicOvnNbClient(
 	models := make(map[string]model.Model, len(tables))
 	monitors := make([]client.MonitorOption, 0, len(tables))
 	for name, table := range schemaTables {
-		if !slices.Contains(tables, name) {
+		if len(tables) != 0 && !slices.Contains(tables, name) {
 			continue
 		}
 
 		columns := maps.Clone(table.Columns)
+		keys := slices.Collect(maps.Keys(columns))
+		slices.Sort(keys)
+		sortedColumes := slices.Insert(keys, 0, "_uuid")
 		columns["_uuid"] = &ovsdb.UUIDColumn
+
 		fields := make([]reflect.StructField, 0, len(columns))
-		for column, schema := range columns {
+		for column := range slices.Values(sortedColumes) {
 			fields = append(fields, reflect.StructField{
 				Name: modelgen.FieldName(column),
-				Type: ovsdb.NativeType(schema),
+				Type: ovsdb.NativeType(columns[column]),
 				Tag:  reflect.StructTag(strings.Trim(modelgen.Tag(column), "`")),
 			})
 		}
