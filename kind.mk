@@ -270,8 +270,6 @@ kind-install-ovn-ic-ipv4:
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
-		-e 's/10.96.0/10.98.0/g' \
-		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | ENABLE_IC=true bash
 	kubectl describe no
@@ -301,8 +299,6 @@ kind-install-ovn-ic-ipv6:
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/fd00:10:16:/fd00:10:18:/g' \
-		-e 's/fd00:10:96:/fd00:10:98:/g' \
-		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_IC=true bash
@@ -320,11 +316,7 @@ kind-install-ovn-ic-dual:
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
-		-e 's/10.96.0/10.98.0/g' \
-		-e 's/100.64.0/100.68.0/g' \
 		-e 's/fd00:10:16:/fd00:10:18:/g' \
-		-e 's/fd00:10:96:/fd00:10:98:/g' \
-		-e 's/fd00:100:64:/fd00:100:68:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_IC=true bash
