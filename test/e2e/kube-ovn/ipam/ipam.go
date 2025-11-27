@@ -741,7 +741,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		_ = ippoolClient.CreateSync(ippool)
 
 		ginkgo.By("Verifying address set contains pool IPs")
-		framework.ExpectNoError(framework.WaitForAddressSetIPs(ippoolName, poolIPs))
+		framework.WaitForAddressSetIPs(ippoolName, poolIPs)
 
 		ginkgo.By("Updating ippool to remove one IP entry")
 		// Get the latest version to avoid resourceVersion conflict
@@ -750,13 +750,13 @@ var _ = framework.Describe("[group:ipam]", func() {
 		updated = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
 
 		ginkgo.By("Checking address set reflects IP removal")
-		framework.ExpectNoError(framework.WaitForAddressSetIPs(ippoolName, updated.Spec.IPs))
+		framework.WaitForAddressSetIPs(ippoolName, updated.Spec.IPs)
 
 		ginkgo.By("Disabling EnableAddressSet to trigger address set deletion")
 		// Get the latest version to avoid resourceVersion conflict
 		updated = ippoolClient.Get(ippoolName)
 		updated.Spec.EnableAddressSet = false
 		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
-		framework.ExpectNoError(framework.WaitForAddressSetDeletion(ippoolName))
+		framework.WaitForAddressSetDeletion(ippoolName)
 	})
 })

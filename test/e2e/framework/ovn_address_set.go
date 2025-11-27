@@ -54,15 +54,13 @@ func validateModelStructure(model model.Model, table string, expectedFields map[
 	}
 }
 
-// WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
-// to contain exactly the provided entries (order independent).
-func WaitForAddressSetIPs(ippoolName string, ips []string) error {
+// WaitForAddressSetCondition waits for the OVN address set backing the given IPPool
+// to satisfy the provided condition.
+func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 	ginkgo.GinkgoHelper()
 
 	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
-	if err != nil {
-		return err
-	}
+	ExpectNoError(err)
 	defer client.Close()
 
 	model := models[ovnnb.AddressSetTable]
@@ -72,16 +70,7 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
 	})
 
-	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
-	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
-	if err != nil {
-		return err
-	}
-
-	asName := util.IPPoolAddressSetName(ippoolName)
-	Logf("Waiting for address set %s of IPPool %s to have entries: %v", asName, ippoolName, expectedEntries)
-
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 		defer cancel()
 
@@ -90,14 +79,32 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 			return false, err
 		}
 
+		return condition(result)
+	})
+	ExpectNoError(err)
+}
+
+// WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
+// to contain exactly the provided entries (order independent).
+func WaitForAddressSetIPs(ippoolName string, ips []string) {
+	ginkgo.GinkgoHelper()
+
+	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
+	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
+	ExpectNoError(err)
+
+	asName := util.IPPoolAddressSetName(ippoolName)
+	Logf("Waiting for address set %s of IPPool %s to have entries: %v", asName, ippoolName, expectedEntries)
+
+	WaitForAddressSetCondition(func(rows any) (bool, error) {
 		sets := make(map[string][]string, 1)
-		for i := 0; i < reflect.ValueOf(result).Elem().Len(); i++ {
-			externalIDs := reflect.ValueOf(result).Elem().Index(i).FieldByName("ExternalIDs")
+		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
+			externalIDs := reflect.ValueOf(rows).Elem().Index(i).FieldByName("ExternalIDs")
 			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
 				continue
 			}
-			name := reflect.ValueOf(result).Elem().Index(i).FieldByName("Name").String()
-			addrField := reflect.ValueOf(result).Elem().Index(i).FieldByName("Addresses")
+			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()
+			addrField := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Addresses")
 			addresses := make([]string, 0, addrField.Len())
 			for j := 0; j < addrField.Len(); j++ {
 				addresses = append(addresses, addrField.Index(j).String())
@@ -108,6 +115,7 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 		setNames := slices.Collect(maps.Keys(sets))
 		switch len(sets) {
 		case 0:
+			Logf("Address set %s not found yet for IPPool %s", asName, ippoolName)
 			return false, nil
 		case 1:
 			if setNames[0] != asName {
@@ -124,40 +132,18 @@ func WaitForAddressSetIPs(ippoolName string, ips []string) error {
 }
 
 // WaitForAddressSetDeletion waits until OVN deletes the address set for the given IPPool.
-func WaitForAddressSetDeletion(ippoolName string) error {
+func WaitForAddressSetDeletion(ippoolName string) {
 	ginkgo.GinkgoHelper()
 
-	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	model := models[ovnnb.AddressSetTable]
-	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
-		"Name":        reflect.TypeOf(""),
-		"Addresses":   reflect.SliceOf(reflect.TypeOf("")),
-		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
-	})
-
 	Logf("Waiting for address set of IPPool %s to be deleted", ippoolName)
-
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
-		defer cancel()
-
-		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
-		if err := client.List(ctx, result); err != nil {
-			return false, err
-		}
-
+	WaitForAddressSetCondition(func(rows any) (bool, error) {
 		var sets []string
-		for i := 0; i < reflect.ValueOf(result).Elem().Len(); i++ {
-			externalIDs := reflect.ValueOf(result).Elem().Index(i).FieldByName("ExternalIDs")
+		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
+			externalIDs := reflect.ValueOf(rows).Elem().Index(i).FieldByName("ExternalIDs")
 			if !externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey)).Equal(reflect.ValueOf(ippoolName)) {
 				continue
 			}
-			name := reflect.ValueOf(result).Elem().Index(i).FieldByName("Name").String()
+			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()
 			sets = append(sets, name)
 		}
 

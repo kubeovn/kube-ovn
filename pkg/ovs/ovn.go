@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,9 +93,10 @@ func NewDynamicOvnNbClient(
 			continue
 		}
 
-		table.Columns["_uuid"] = &ovsdb.UUIDColumn
-		fields := make([]reflect.StructField, 0, len(table.Columns))
-		for column, schema := range table.Columns {
+		columns := maps.Clone(table.Columns)
+		columns["_uuid"] = &ovsdb.UUIDColumn
+		fields := make([]reflect.StructField, 0, len(columns))
+		for column, schema := range columns {
 			fields = append(fields, reflect.StructField{
 				Name: modelgen.FieldName(column),
 				Type: ovsdb.NativeType(schema),
@@ -209,7 +211,6 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 
 	monitors := []client.MonitorOption{
 		client.WithTable(&ovnsb.Chassis{}),
-		// TODO:// monitor other necessary tables in ovsdb/ovnsb/model.go
 	}
 	try := 0
 	var sbClient client.Client
