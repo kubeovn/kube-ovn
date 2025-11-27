@@ -4792,6 +4792,11 @@ spec:
         command:
           - /kube-ovn/install-cni.sh
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
+        env:
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
         securityContext:
           runAsUser: 0
           privileged: true

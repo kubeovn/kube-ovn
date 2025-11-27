@@ -6,17 +6,16 @@ mkdir -p /usr/local/bin
 cp -f /kube-ovn/kubectl-ko /usr/local/bin/
 chmod +x /usr/local/bin/kubectl-ko
 
-if [[ -f "/proc/sys/net/ipv4/ip_forward" ]];
-    then echo 1 > /proc/sys/net/ipv4/ip_forward;
-fi
-
-if [[ -f "/proc/sys/net/ipv6/conf/all/forwarding" ]];
-    then echo 1 > /proc/sys/net/ipv6/conf/all/forwarding;
-fi
-
-if [[ -f "/proc/sys/net/ipv4/conf/all/rp_filter" ]];
-    then echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter;
-fi
+for ip in $(echo "${POD_IPS}" | tr ',' ' '); do
+  if [[ $ip == *:* ]]; then
+    echo "IPv6 node IP $ip detected, enable IPv6 forwarding"
+    echo 1 > /proc/sys/net/ipv6/conf/all/forwarding;
+  else
+    echo "IPv4 node IP $ip detected, enable IPv4 forwarding and disable ipv4 rp_filter"
+    echo 1 > /proc/sys/net/ipv4/ip_forward;
+    echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter;
+  fi
+done
 
 exit_with_error(){
   echo "$1"
