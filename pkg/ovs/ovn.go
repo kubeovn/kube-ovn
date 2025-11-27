@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"reflect"
 	"slices"
 	"strings"
@@ -63,29 +60,6 @@ func NewLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func astFieldType(field ast.Expr) reflect.Type {
-	switch ft := field.(type) {
-	case *ast.Ident:
-		switch ft.Name {
-		case "string":
-			return reflect.TypeOf("")
-		case "int":
-			return reflect.TypeOf(0)
-		case "bool":
-			return reflect.TypeOf(true)
-		}
-	case *ast.StarExpr:
-		return reflect.PointerTo(astFieldType(ft.X))
-	case *ast.ArrayType:
-		return reflect.SliceOf(astFieldType(ft.Elt))
-	case *ast.MapType:
-		return reflect.MapOf(astFieldType(ft.Key), astFieldType(ft.Value))
-	case *ast.StructType:
-		// TODO: Nested struct
-	}
-	return nil
-}
-
 func NewDynamicOvnNbClient(
 	ovnNbAddr string,
 	ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int,
@@ -112,12 +86,6 @@ func NewDynamicOvnNbClient(
 	schemaTables := nbClient.Schema().Tables
 	nbClient.Close()
 
-	generator, err := modelgen.NewGenerator()
-	if err != nil {
-		klog.Error(err)
-		return nil, nil, err
-	}
-
 	models := make(map[string]model.Model, len(tables))
 	monitors := make([]client.MonitorOption, 0, len(tables))
 	for name, table := range schemaTables {
@@ -125,38 +93,19 @@ func NewDynamicOvnNbClient(
 			continue
 		}
 
-		tmpl := modelgen.NewTableTemplate()
-		args := modelgen.GetTableTemplateData(ovsclient.NBDB, name, &table)
-		args.WithExtendedGen(false)
-		src, err := generator.Format(tmpl, args)
-		if err != nil {
-			klog.Error(err)
-			return nil, nil, err
+		table.Columns["_uuid"] = &ovsdb.UUIDColumn
+		fields := make([]reflect.StructField, 0, len(table.Columns))
+		for column, schema := range table.Columns {
+			fields = append(fields, reflect.StructField{
+				Name: modelgen.FieldName(column),
+				Type: ovsdb.NativeType(schema),
+				Tag:  reflect.StructTag(strings.Trim(modelgen.Tag(column), "`")),
+			})
 		}
 
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, "", src, 0)
-		if err != nil {
-			klog.Error(err)
-			return nil, nil, err
-		}
-
-		ast.Inspect(f, func(n ast.Node) bool {
-			if st, ok := n.(*ast.StructType); ok {
-				fields := make([]reflect.StructField, 0, st.Fields.NumFields())
-				for _, field := range st.Fields.List {
-					fields = append(fields, reflect.StructField{
-						Name: field.Names[0].Name,
-						Type: astFieldType(field.Type),
-						Tag:  reflect.StructTag(strings.Trim(field.Tag.Value, "`")),
-					})
-				}
-				model := reflect.New(reflect.StructOf(fields)).Interface().(model.Model)
-				models[name] = model
-				monitors = append(monitors, client.WithTable(model))
-			}
-			return true
-		})
+		model := reflect.New(reflect.StructOf(fields)).Interface().(model.Model)
+		monitors = append(monitors, client.WithTable(model))
+		models[name] = model
 	}
 
 	if dbModel, err = model.NewClientDBModel("OVN_Northbound", models); err != nil {
