@@ -17,7 +17,6 @@ func (suite *OvnClientTestSuite) testMeterLifecycle() {
 	nbClient := suite.ovnNBClient
 	name := "test-meter-pktps"
 
-	// ignoreNotFound=true should return nil when meter不存在
 	meter, err := nbClient.GetMeter(name, true)
 	require.NoError(t, err)
 	require.Nil(t, meter)
