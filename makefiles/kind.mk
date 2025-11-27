@@ -302,8 +302,6 @@ kind-install-ovn-ic-ipv4:
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
-		-e 's/10.96.0/10.98.0/g' \
-		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | ENABLE_IC=true bash
 	kubectl describe no
