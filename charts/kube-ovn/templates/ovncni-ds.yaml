@@ -64,6 +64,11 @@ spec:
           - --cni-conf-dir={{ .Values.cni_conf.MOUNT_CNI_CONF_DIR }}
           - --cni-conf-file={{ .Values.cni_conf.CNI_CONF_FILE }}
           - --cni-conf-name={{- .Values.cni_conf.CNI_CONFIG_PRIORITY -}}-kube-ovn.conflist
+        env:
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
         securityContext:
           runAsUser: 0
           privileged: true
