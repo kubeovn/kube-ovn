@@ -38,6 +38,7 @@ const (
 
 var (
 	ovnnbAddrOnce sync.Once
+	ovnnbAddrErr  error
 	ovnnbAddr     string
 )
 
@@ -49,8 +50,8 @@ func validateModelStructure(model model.Model, table string, expectedFields map[
 
 	for name, typ := range expectedFields {
 		field, ok := reflect.TypeOf(model).Elem().FieldByName(name)
-		ExpectTrue(ok, `unexpected model structure for table %s: missing %q field of type string`, table, name)
-		ExpectEqual(field.Type, typ, `unexpected model structure for table %s: field %q wants type %s but got %s`, table, name, typ, field.Type)
+		ExpectTrue(ok, "unexpected model structure for table %s: missing field %q", table, name)
+		ExpectEqual(field.Type, typ, "unexpected model structure for table %s: field %q wants type %s but got %s", table, name, typ, field.Type)
 	}
 }
 
@@ -59,8 +60,7 @@ func validateModelStructure(model model.Model, table string, expectedFields map[
 func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 	ginkgo.GinkgoHelper()
 
-	client, models, err := getOVNNbClient(ovnnb.AddressSetTable)
-	ExpectNoError(err)
+	client, models := getOVNNbClient(ovnnb.AddressSetTable)
 	defer client.Close()
 
 	model := models[ovnnb.AddressSetTable]
@@ -70,7 +70,7 @@ func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
 	})
 
-	err = wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 		defer cancel()
 
@@ -168,22 +168,24 @@ func WaitForAddressSetDeletion(ippoolName string) {
 	})
 }
 
-func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model, error) {
-	var err error
-	ovnnbAddrOnce.Do(func() {
-		ovnnbAddr, err = resolveOVNNbConnection()
-	})
-	if err != nil {
-		return nil, nil, err
-	}
+func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model) {
+	ginkgo.GinkgoHelper()
 
-	return ovs.NewDynamicOvnNbClient(
+	ovnnbAddrOnce.Do(func() {
+		ovnnbAddr, ovnnbAddrErr = resolveOVNNbConnection()
+	})
+	ExpectNoError(ovnnbAddrErr)
+
+	client, models, err := ovs.NewDynamicOvnNbClient(
 		ovnnbAddr,
 		ovnNbTimeoutSeconds,
 		ovsdbConnTimeout,
 		ovsdbInactivityTimeout,
 		tables...,
 	)
+	ExpectNoError(err)
+
+	return client, models
 }
 
 func resolveOVNNbConnection() (string, error) {

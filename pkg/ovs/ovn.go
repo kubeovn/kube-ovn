@@ -96,11 +96,11 @@ func NewDynamicOvnNbClient(
 		columns := maps.Clone(table.Columns)
 		keys := slices.Collect(maps.Keys(columns))
 		slices.Sort(keys)
-		sortedColumes := slices.Insert(keys, 0, "_uuid")
+		sortedColumns := slices.Insert(keys, 0, "_uuid")
 		columns["_uuid"] = &ovsdb.UUIDColumn
 
 		fields := make([]reflect.StructField, 0, len(columns))
-		for column := range slices.Values(sortedColumes) {
+		for column := range slices.Values(sortedColumns) {
 			fields = append(fields, reflect.StructField{
 				Name: modelgen.FieldName(column),
 				Type: ovsdb.NativeType(columns[column]),
