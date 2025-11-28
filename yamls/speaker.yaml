@@ -65,3 +65,4 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
+            type: DirectoryOrCreate
