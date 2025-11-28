@@ -1059,7 +1059,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodToDel(c, pod, stsName, util.StatefulSet)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, stsName, util.StatefulSet)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -1093,7 +1093,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, vmName, util.VMInstance)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -2217,7 +2217,7 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 	return v4IP, v6IP, macStr, nil
 }
 
-func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
+func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
 	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
