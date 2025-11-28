@@ -55,6 +55,13 @@ spec:
             requests:
               cpu: 500m
               memory: 300Mi
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/bgp: "true"
+      volumes:
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
