@@ -133,7 +133,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
 	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
-	// TODO: Identify how endpoints are constructed, by default, endpoints has IP address of eth0 inteface
+	// TODO: Identify how endpoints are constructed, by default, endpoints has IP address of eth0 interface
 	if c.config.EnableNonPrimaryCNI && serviceHasSelector(svc) {
 		var pods []*v1.Pod
 		if pods, err = c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector()); err != nil {
@@ -747,7 +747,7 @@ func (c *Controller) getIPPortMappingWithTargets(endpointSlices []*discoveryv1.E
 	return mapping
 }
 
-// getIPPortMappingWithTargets returns the IPPortMapping for endpoints with no targets
+// getIPPortMappingWithNoTargets returns the IPPortMapping for endpoints with no targets
 func (c *Controller) getIPPortMappingWithNoTargets(endpointSlices []*discoveryv1.EndpointSlice, pods []*v1.Pod, checkVip string) IPPortMapping {
 	mapping := make(IPPortMapping)
 
