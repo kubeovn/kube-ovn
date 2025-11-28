@@ -38,6 +38,12 @@ import (
 	"kubevirt.io/client-go/log"
 )
 
+const (
+	ByVMINameIndex      = "byVMIName"
+	ByMigrationUIDIndex = "byMigrationUID"
+	UnfinishedIndex     = "unfinished"
+)
+
 var errUnexpectedObject = errors.New("unexpected object")
 
 type newSharedInformer func() cache.SharedIndexInformer
@@ -76,7 +82,7 @@ func NewKubeVirtInformerFactory(restClient *rest.RESTClient, clientSet kubecli.K
 		clientSet:        clientSet,
 		aggregatorClient: aggregatorClient,
 		// Resulting resync period will be between 12 and 24 hours, like the default for k8s
-		defaultResync:     resyncPeriod(12 * time.Hour),
+		defaultResync:     ResyncPeriod(12 * time.Hour),
 		informers:         make(map[string]cache.SharedIndexInformer),
 		startedInformers:  make(map[string]bool),
 		kubevirtNamespace: kubevirtNamespace,
@@ -150,10 +156,40 @@ func (f *kubeInformerFactory) Namespace() cache.SharedIndexInformer {
 	})
 }
 
+func GetVirtualMachineInstanceMigrationInformerIndexers() cache.Indexers {
+	return cache.Indexers{
+		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+		ByVMINameIndex: func(obj interface{}) ([]string, error) {
+			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
+			if !ok {
+				return nil, nil
+			}
+			return []string{fmt.Sprintf("%s/%s", migration.Namespace, migration.Spec.VMIName)}, nil
+		},
+		ByMigrationUIDIndex: func(obj interface{}) ([]string, error) {
+			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
+			if !ok {
+				return nil, nil
+			}
+			return []string{string(migration.UID)}, nil
+		},
+		UnfinishedIndex: func(obj interface{}) ([]string, error) {
+			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
+			if !ok {
+				return nil, nil
+			}
+			if !migration.IsFinal() {
+				return []string{UnfinishedIndex}, nil
+			}
+			return nil, nil
+		},
+	}
+}
+
 func (f *kubeInformerFactory) VirtualMachineInstanceMigration() cache.SharedIndexInformer {
 	return f.getInformer("vmimInformer", func() cache.SharedIndexInformer {
 		lw := cache.NewListWatchFromClient(f.restClient, "virtualmachineinstancemigrations", k8sv1.NamespaceAll, fields.Everything())
-		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachineInstanceMigration{}, f.defaultResync, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+		return cache.NewSharedIndexInformer(lw, &kubev1.VirtualMachineInstanceMigration{}, f.defaultResync, GetVirtualMachineInstanceMigrationInformerIndexers())
 	})
 }
 
@@ -196,8 +232,8 @@ func (f *kubeInformerFactory) VirtualMachine() cache.SharedIndexInformer {
 	})
 }
 
-// resyncPeriod computes the time interval a shared informer waits before resyncing with the api server
-func resyncPeriod(minResyncPeriod time.Duration) time.Duration {
+// ResyncPeriod computes the time interval a shared informer waits before resyncing with the api server
+func ResyncPeriod(minResyncPeriod time.Duration) time.Duration {
 	// #nosec no need for better randomness
 	factor := rand.Float64() + 1
 	return time.Duration(float64(minResyncPeriod.Nanoseconds()) * factor)
