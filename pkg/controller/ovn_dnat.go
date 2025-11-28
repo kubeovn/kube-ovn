@@ -508,7 +508,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip
 		changed = true
 	}
 	if v6Eip != "" && dnat.Status.V6Eip != v6Eip {
-		dnat.Status.V4Eip = v6Eip
+		dnat.Status.V6Eip = v6Eip
 		changed = true
 	}
 	if internalV4Ip != "" && dnat.Status.V4Ip != internalV4Ip {
