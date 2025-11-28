@@ -4,17 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/set"
+
+	"github.com/onsi/ginkgo/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -29,94 +37,155 @@ const (
 )
 
 var (
-	ovnClientOnce sync.Once
-	ovnNbClient   *ovs.OVNNbClient
-	ovnClientErr  error
+	ovnnbAddrOnce sync.Once
+	ovnnbAddrErr  error
+	ovnnbAddr     string
 )
+
+func validateModelStructure(model model.Model, table string, expectedFields map[string]reflect.Type) {
+	ginkgo.GinkgoHelper()
+
+	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Ptr, "model for table %s is not a pointer type", table)
+	ExpectEqual(reflect.TypeOf(model).Elem().Kind(), reflect.Struct, "model for table %s is not a struct type", table)
+
+	for name, typ := range expectedFields {
+		field, ok := reflect.TypeOf(model).Elem().FieldByName(name)
+		ExpectTrue(ok, "unexpected model structure for table %s: missing field %q", table, name)
+		ExpectEqual(field.Type, typ, "unexpected model structure for table %s: field %q wants type %s but got %s", table, name, typ, field.Type)
+	}
+}
+
+// WaitForAddressSetCondition waits for the OVN address set backing the given IPPool
+// to satisfy the provided condition.
+func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
+	ginkgo.GinkgoHelper()
+
+	client, models := getOVNNbClient(ovnnb.AddressSetTable)
+	defer client.Close()
+
+	model := models[ovnnb.AddressSetTable]
+	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
+		"Name":        reflect.TypeOf(""),
+		"Addresses":   reflect.SliceOf(reflect.TypeOf("")),
+		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
+	})
+
+	err := wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
+		defer cancel()
+
+		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
+		if err := client.List(ctx, result); err != nil {
+			return false, err
+		}
+
+		return condition(result)
+	})
+	ExpectNoError(err)
+}
 
 // WaitForAddressSetIPs waits for the OVN address set backing the given IPPool
 // to contain exactly the provided entries (order independent).
-func WaitForAddressSetIPs(ippoolName string, ips []string) error {
-	client, err := getOVNNbClient()
-	if err != nil {
-		return err
-	}
+func WaitForAddressSetIPs(ippoolName string, ips []string) {
+	ginkgo.GinkgoHelper()
 
 	// Use ExpandIPPoolAddressesForOVN to get the expected format (with simplified IPs)
 	expectedEntries, err := util.ExpandIPPoolAddressesForOVN(ips)
-	if err != nil {
-		return err
-	}
+	ExpectNoError(err)
 
-	// Convert to map for comparison
-	expectedMap := make(map[string]bool, len(expectedEntries))
-	for _, entry := range expectedEntries {
-		expectedMap[entry] = true
-	}
+	asName := util.IPPoolAddressSetName(ippoolName)
+	Logf("Waiting for address set %s of IPPool %s to have entries: %v", asName, ippoolName, expectedEntries)
 
-	expectedName := util.IPPoolAddressSetName(ippoolName)
-
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
-		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
-		if err != nil {
-			return false, err
-		}
-		if len(sets) == 0 {
-			return false, nil
-		}
-		if len(sets) > 1 {
-			return false, fmt.Errorf("multiple address sets found for ippool %s", ippoolName)
-		}
-
-		as := sets[0]
-		if as.Name != expectedName {
-			return false, fmt.Errorf("unexpected address set name %q for ippool %s, want %q", as.Name, ippoolName, expectedName)
-		}
-
-		actualEntries := util.NormalizeAddressSetEntries(strings.Join(as.Addresses, " "))
-		if len(actualEntries) != len(expectedMap) {
-			return false, nil
-		}
-
-		for entry := range expectedMap {
-			if !actualEntries[entry] {
-				return false, nil
+	WaitForAddressSetCondition(func(rows any) (bool, error) {
+		sets := make(map[string][]string, 1)
+		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
+			row := reflect.ValueOf(rows).Elem().Index(i)
+			externalIDs := row.FieldByName("ExternalIDs")
+			if externalIDs.IsNil() {
+				continue
 			}
+			value := externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey))
+			if !value.IsValid() || value.String() != ippoolName {
+				continue
+			}
+			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()
+			addrField := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Addresses")
+			addresses := make([]string, 0, addrField.Len())
+			for j := 0; j < addrField.Len(); j++ {
+				addresses = append(addresses, addrField.Index(j).String())
+			}
+			sets[name] = addresses
 		}
 
-		return true, nil
+		setNames := slices.Collect(maps.Keys(sets))
+		switch len(sets) {
+		case 0:
+			Logf("Address set %s not found yet for IPPool %s", asName, ippoolName)
+			return false, nil
+		case 1:
+			if setNames[0] != asName {
+				return false, fmt.Errorf("unexpected address set name %q for ippool %s, want %q", setNames[0], ippoolName, asName)
+			}
+		default:
+			return false, fmt.Errorf("multiple address sets found for ippool %s: %s", ippoolName, strings.Join(setNames, ","))
+		}
+
+		addresses := sets[setNames[0]]
+		actualEntries := util.NormalizeAddressSetEntries(strings.Join(addresses, " "))
+		return actualEntries.Equal(set.New(expectedEntries...)), nil
 	})
 }
 
 // WaitForAddressSetDeletion waits until OVN deletes the address set for the given IPPool.
-func WaitForAddressSetDeletion(ippoolName string) error {
-	client, err := getOVNNbClient()
-	if err != nil {
-		return err
-	}
+func WaitForAddressSetDeletion(ippoolName string) {
+	ginkgo.GinkgoHelper()
 
-	return wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
-		sets, err := client.ListAddressSets(map[string]string{ippoolExternalIDKey: ippoolName})
-		if err != nil {
-			return false, err
+	Logf("Waiting for address set of IPPool %s to be deleted", ippoolName)
+	WaitForAddressSetCondition(func(rows any) (bool, error) {
+		var sets []string
+		for i := 0; i < reflect.ValueOf(rows).Elem().Len(); i++ {
+			row := reflect.ValueOf(rows).Elem().Index(i)
+			externalIDs := row.FieldByName("ExternalIDs")
+			if externalIDs.IsNil() {
+				continue
+			}
+			value := externalIDs.MapIndex(reflect.ValueOf(ippoolExternalIDKey))
+			if !value.IsValid() || value.String() != ippoolName {
+				continue
+			}
+			name := reflect.ValueOf(rows).Elem().Index(i).FieldByName("Name").String()
+			sets = append(sets, name)
 		}
+
 		if len(sets) > 1 {
-			return false, fmt.Errorf("multiple address sets found for ippool %s", ippoolName)
+			return false, fmt.Errorf("multiple address sets found for ippool %s: %s", ippoolName, strings.Join(sets, ","))
+		}
+
+		if len(sets) != 0 {
+			Logf("Found address sets for IPPool %s: %s", ippoolName, strings.Join(sets, ","))
 		}
 		return len(sets) == 0, nil
 	})
 }
 
-func getOVNNbClient() (*ovs.OVNNbClient, error) {
-	ovnClientOnce.Do(func() {
-		conn, err := resolveOVNNbConnection()
-		if err != nil {
-			ovnClientErr = err
-			return
-		}
-		ovnNbClient, ovnClientErr = ovs.NewOvnNbClient(conn, ovnNbTimeoutSeconds, ovsdbConnTimeout, ovsdbInactivityTimeout, ovnClientMaxRetry)
+func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model) {
+	ginkgo.GinkgoHelper()
+
+	ovnnbAddrOnce.Do(func() {
+		ovnnbAddr, ovnnbAddrErr = resolveOVNNbConnection()
 	})
-	return ovnNbClient, ovnClientErr
+	ExpectNoError(ovnnbAddrErr)
+
+	client, models, err := ovs.NewDynamicOvnNbClient(
+		ovnnbAddr,
+		ovnNbTimeoutSeconds,
+		ovsdbConnTimeout,
+		ovsdbInactivityTimeout,
+		tables...,
+	)
+	ExpectNoError(err)
+
+	return client, models
 }
 
 func resolveOVNNbConnection() (string, error) {

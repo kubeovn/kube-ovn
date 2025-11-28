@@ -8,6 +8,8 @@ import (
 	"net"
 	"sort"
 	"strings"
+
+	"k8s.io/utils/set"
 )
 
 // ExpandIPPoolAddresses expands a list of pool entries (IPs, ranges, CIDRs) into canonical CIDR strings without duplicates.
@@ -185,14 +187,10 @@ func CanonicalizeIPPoolEntries(entries []string) (map[string]bool, error) {
 }
 
 // NormalizeAddressSetEntries normalizes an OVN address set string list into a lookup map.
-func NormalizeAddressSetEntries(raw string) map[string]bool {
+func NormalizeAddressSetEntries(raw string) set.Set[string] {
 	clean := strings.ReplaceAll(raw, "\"", "")
 	tokens := strings.Fields(strings.TrimSpace(clean))
-	set := make(map[string]bool, len(tokens))
-	for _, token := range tokens {
-		set[token] = true
-	}
-	return set
+	return set.New(tokens...)
 }
 
 // IPPoolAddressSetName converts an IPPool name into the OVN address set name.
