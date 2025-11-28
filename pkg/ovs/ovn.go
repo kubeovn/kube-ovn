@@ -172,6 +172,8 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 		client.WithTable(&ovnnb.NAT{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.Meter{}),
+		client.WithTable(&ovnnb.MeterBand{}),
 	}
 
 	try := 0

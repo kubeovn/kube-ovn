@@ -43,6 +43,20 @@ func mockNetworkPolicyPort() []netv1.NetworkPolicyPort {
 	}
 }
 
+func requireOptionalString(t *testing.T, value any, expected string) {
+	t.Helper()
+
+	switch v := value.(type) {
+	case string:
+		require.Equal(t, expected, v)
+	case ovsdb.OvsSet:
+		require.Len(t, v.GoSet, 1)
+		require.Equal(t, expected, v.GoSet[0])
+	default:
+		require.Failf(t, "unexpected optional string type", "value: %#v, type: %T", value, value)
+	}
+}
+
 func newACL(parentName, direction, priority, match, action string, tier int, options ...func(acl *ovnnb.ACL)) *ovnnb.ACL {
 	intPriority, _ := strconv.Atoi(priority)
 
@@ -139,7 +153,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, false)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, false, 0)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -155,7 +169,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, false)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, false, 0)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -171,7 +185,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionToLport, true, true, 0)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -187,7 +201,7 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, true)
+		ops, err := nbClient.UpdateDefaultBlockACLOps(netpol, pgName, ovnnb.ACLDirectionFromLport, true, true, 0)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -224,7 +238,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, true, nil, 0, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -249,7 +263,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -262,6 +276,36 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		}
 	})
 
+	t.Run("ingress acl with log meter", func(t *testing.T) {
+		t.Parallel()
+
+		pgName := "test_create_ingress_acl_with_meter_pg"
+		asIngressName := "test.default.ingress.allow.ipv4.all"
+		asExceptName := "test.default.ingress.except.ipv4.all"
+		protocol := kubeovnv1.ProtocolIPv4
+		aclName := "test_create_v4_ingress_acl_pg_with_meter"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		logActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
+		logRate := 99
+
+		ops, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, logActions, logRate, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+
+		expectedMeter := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionToLport)
+		for _, op := range ops {
+			if meter, ok := op.Row["meter"]; ok {
+				requireOptionalString(t, meter, expectedMeter)
+			}
+			if logValue, ok := op.Row["log"]; ok {
+				require.Equal(t, true, logValue)
+			}
+		}
+	})
+
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
@@ -271,7 +315,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
@@ -284,7 +328,7 @@ func (suite *OvnClientTestSuite) testUpdateIngressACLOps() {
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_ingress_acl_pg"
 
-		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -318,7 +362,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 
 		npp := mockNetworkPolicyPort()
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, npp, true, nil, 0, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 3)
 
@@ -343,7 +387,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.NoError(t, err)
 		require.Len(t, ops, 2)
 
@@ -356,6 +400,36 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		}
 	})
 
+	t.Run("egress acl with log meter", func(t *testing.T) {
+		t.Parallel()
+
+		pgName := "test_create_egress_acl_with_meter_pg"
+		asEgressName := "test.default.egress.allow.ipv4.all"
+		asExceptName := "test.default.egress.except.ipv4.all"
+		protocol := kubeovnv1.ProtocolIPv4
+		aclName := "test_create_v4_egress_acl_pg_with_meter"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		logActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
+		logRate := 88
+
+		ops, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, logActions, logRate, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+
+		expectedMeter := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionFromLport)
+		for _, op := range ops {
+			if meter, ok := op.Row["meter"]; ok {
+				requireOptionalString(t, meter, expectedMeter)
+			}
+			if logValue, ok := op.Row["log"]; ok {
+				require.Equal(t, true, logValue)
+			}
+		}
+	})
+
 	t.Run("test empty pgName", func(t *testing.T) {
 		t.Parallel()
 
@@ -365,7 +439,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 
@@ -378,7 +452,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 		protocol := kubeovnv1.ProtocolIPv4
 		aclName := "test_create_v4_egress_acl_pg"
 
-		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, nil)
+		_, err := nbClient.UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName, nil, true, nil, 0, nil)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }

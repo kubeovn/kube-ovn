@@ -120,6 +120,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	} else {
 		logActions = []string{ovnnb.ACLActionDrop}
 	}
+	logRate := parseACLLogRate(np.Annotations)
 
 	npName := np.Name
 	nameArray := []rune(np.Name)
@@ -180,7 +181,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if hasIngressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax)
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax, logRate)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
 				return fmt.Errorf("failed to set default ingress block acl: %w", err)
@@ -238,7 +239,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -260,7 +261,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -327,7 +328,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax)
+			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
 				return fmt.Errorf("failed to set default egress block acl: %w", err)
@@ -385,7 +386,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -407,7 +408,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, namedPortMap)
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -496,6 +497,17 @@ func (c *Controller) handleDeleteNp(key string) error {
 	}
 
 	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
+	ingressMeterName := fmt.Sprintf("%s_to-lport_meter", pgName)
+	egressMeterName := fmt.Sprintf("%s_from-lport_meter", pgName)
+
+	if err := c.OVNNbClient.DeleteMeter(ingressMeterName); err != nil {
+		klog.Errorf("delete ingress meter %s for np %s: %v", ingressMeterName, key, err)
+	}
+
+	if err := c.OVNNbClient.DeleteMeter(egressMeterName); err != nil {
+		klog.Errorf("delete egress meter %s for np %s: %v", egressMeterName, key, err)
+	}
+
 	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
 	}
@@ -829,4 +841,19 @@ func (c *Controller) isNetworkPolicyEnforcementLax(policy *netv1.NetworkPolicy) 
 
 	// Fallback to the configuration of the controller
 	return c.config.NetworkPolicyEnforcement == NetworkPolicyEnforcementLax
+}
+
+func parseACLLogRate(annotations map[string]string) int {
+	val := strings.TrimSpace(annotations[util.ACLLogMeterAnnotation])
+	if val == "" {
+		return 0
+	}
+	rate, err := strconv.Atoi(val)
+	if err != nil || rate <= 0 {
+		if val != "" {
+			klog.Warningf("invalid acl_log_meter value %q, should be positive integer", val)
+		}
+		return 0
+	}
+	return rate
 }

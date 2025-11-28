@@ -54,9 +54,10 @@ func setACLName(acl *ovnnb.ACL, name string) {
 }
 
 // UpdateDefaultBlockACLOps returns operations to update/create the default block ACL
-func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool, logRate int) ([]ovsdb.Operation, error) {
 	portDirection := "outport"
 	priority := util.IngressDefaultDrop
+	meterName := fmt.Sprintf("%s_%s_meter", pgName, direction)
 
 	if direction == ovnnb.ACLDirectionFromLport {
 		portDirection = "inport"
@@ -84,6 +85,9 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 		if loggingEnabled {
 			acl.Log = true
 			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+			if loggingEnabled && logRate > 0 {
+				acl.Meter = ptr.To(meterName)
+			}
 		}
 
 		if direction == ovnnb.ACLDirectionFromLport {
@@ -91,6 +95,17 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 				acl.Options = make(map[string]string)
 			}
 			acl.Options["apply-after-lb"] = "true"
+		}
+	}
+
+	if loggingEnabled && logRate > 0 {
+		if err := c.CreateOrUpdateMeter(meterName, ovnnb.MeterUnitPktps, logRate, 1); err != nil {
+			klog.Errorf("failed to create meter %s: %v", meterName, err)
+			return nil, fmt.Errorf("create meter %s: %w", meterName, err)
+		}
+	} else {
+		if err := c.DeleteMeter(meterName); err != nil {
+			klog.Errorf("failed to delete meter %s: %v", meterName, err)
 		}
 	}
 
@@ -172,8 +187,18 @@ func (c *OVNNbClient) UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNames
 }
 
 // UpdateIngressACLOps return operation that creates an ingress ACL
-func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
+	meterName := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionToLport)
+	if logEnable && logRate > 0 {
+		if err := c.CreateOrUpdateMeter(meterName, ovnnb.MeterUnitPktps, logRate, 1); err != nil {
+			return nil, fmt.Errorf("create ingress meter %s: %w", meterName, err)
+		}
+	} else {
+		if err := c.DeleteMeter(meterName); err != nil {
+			klog.Errorf("failed to delete ingress meter %s: %v", meterName, err)
+		}
+	}
 
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
@@ -182,6 +207,9 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 			setACLName(acl, aclName)
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
+				if logEnable && logRate > 0 {
+					acl.Meter = ptr.To(meterName)
+				}
 			}
 		}
 
@@ -204,8 +232,18 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 }
 
 // UpdateEgressACLOps return operation that creates an egress ACL
-func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0)
+	meterName := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionFromLport)
+	if logEnable && logRate > 0 {
+		if err := c.CreateOrUpdateMeter(meterName, ovnnb.MeterUnitPktps, logRate, 1); err != nil {
+			return nil, fmt.Errorf("create egress meter %s: %w", meterName, err)
+		}
+	} else {
+		if err := c.DeleteMeter(meterName); err != nil {
+			klog.Errorf("failed to delete egress meter %s: %v", meterName, err)
+		}
+	}
 
 	/* allow acl */
 	matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
@@ -218,6 +256,9 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 			acl.Options["apply-after-lb"] = "true"
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
+				if logEnable && logRate > 0 {
+					acl.Meter = ptr.To(meterName)
+				}
 			}
 		})
 		if err != nil {

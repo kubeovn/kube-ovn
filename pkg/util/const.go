@@ -117,6 +117,7 @@ const (
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
+	ACLLogMeterAnnotation              = "ovn.kubernetes.io/acl_log_meter_rate"
 
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
