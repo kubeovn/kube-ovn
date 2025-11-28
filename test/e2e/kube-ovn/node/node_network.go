@@ -32,6 +32,8 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 	var originalAnnotation string
 
 	ginkgo.BeforeEach(func() {
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
+
 		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
