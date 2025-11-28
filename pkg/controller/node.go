@@ -58,7 +58,8 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	newNode := newObj.(*v1.Node)
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
-		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) {
+		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) ||
+		!reflect.DeepEqual(oldNode.Labels, newNode.Labels) {
 		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.V(3).Infof("enqueue add node %s", key)
@@ -268,7 +269,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node.Name, ipStr); err != nil {
+	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node, ipStr); err != nil {
 		klog.Errorf("failed to add policy route for node %s, %v", key, err)
 		return err
 	}
@@ -552,6 +553,15 @@ func (c *Controller) handleUpdateNode(key string) error {
 			continue
 		}
 		subnet := cachedSubnet.DeepCopy()
+
+		// For subnets using GatewayNodeSelectors, always trigger reconciliation
+		// when node labels change, since the node might have been added or removed
+		// from the gateway list
+		if subnet.Spec.GatewayNode == "" && len(subnet.Spec.GatewayNodeSelectors) > 0 {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			continue
+		}
+
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
 				klog.Error(err)
@@ -1005,7 +1015,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 	return nil
 }
 
-func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP string) error {
+func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(node *v1.Node, nodeIP string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to get subnets %v", err)
@@ -1016,9 +1026,10 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
-
+		nodeName := node.Name
 		if subnet.Spec.EnableEcmp {
-			if !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
+			if !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) &&
+				(subnet.Spec.GatewayNode != "" || !util.MatchLabelSelectors(subnet.Spec.GatewayNodeSelectors, node.Labels)) {
 				continue
 			}
 
