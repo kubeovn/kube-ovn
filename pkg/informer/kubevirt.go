@@ -159,21 +159,21 @@ func (f *kubeInformerFactory) Namespace() cache.SharedIndexInformer {
 func GetVirtualMachineInstanceMigrationInformerIndexers() cache.Indexers {
 	return cache.Indexers{
 		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
-		ByVMINameIndex: func(obj interface{}) ([]string, error) {
+		ByVMINameIndex: func(obj any) ([]string, error) {
 			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
 			if !ok {
 				return nil, nil
 			}
 			return []string{fmt.Sprintf("%s/%s", migration.Namespace, migration.Spec.VMIName)}, nil
 		},
-		ByMigrationUIDIndex: func(obj interface{}) ([]string, error) {
+		ByMigrationUIDIndex: func(obj any) ([]string, error) {
 			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
 			if !ok {
 				return nil, nil
 			}
 			return []string{string(migration.UID)}, nil
 		},
-		UnfinishedIndex: func(obj interface{}) ([]string, error) {
+		UnfinishedIndex: func(obj any) ([]string, error) {
 			migration, ok := obj.(*kubev1.VirtualMachineInstanceMigration)
 			if !ok {
 				return nil, nil
