@@ -2248,7 +2248,7 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 	podSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
 	if podSwitch == "" {
 		// pod has no default ovn logical switch annotation, only use multus specs, nothing to clean
-		klog.Infof("pod %s/%s has no no default ovn logical switch annotation, not auto clean ip", pod.Namespace, pod.Name)
+		klog.Infof("pod %s/%s has no  default ovn logical switch annotation, not auto clean ip", pod.Namespace, pod.Name)
 		return false, nil
 	}
 	if !ownerRefSubnetExist {
