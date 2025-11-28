@@ -89,6 +89,7 @@ type SubnetSpec struct {
 
 	RouteTable         string                 `json:"routeTable,omitempty"`
 	NamespaceSelectors []metav1.LabelSelector `json:"namespaceSelectors,omitempty"`
+	NodeNetwork        string                 `json:"nodeNetwork,omitempty"`
 }
 
 type ACL struct {

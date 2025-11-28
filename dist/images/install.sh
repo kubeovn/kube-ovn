@@ -2908,6 +2908,8 @@ spec:
                               type: array
                               items:
                                 type: string
+                nodeNetwork:
+                  type: string
   scope: Cluster
   names:
     plural: subnets

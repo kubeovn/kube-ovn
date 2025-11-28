@@ -1047,9 +1047,9 @@ func (c *Controller) loopEncapIPCheck() {
 		c.config.Iface = nodeTunnelName
 		klog.Infof("Update node tunnel interface %v", nodeTunnelName)
 
-		encapIP := strings.Split(addrs[0].String(), "/")[0]
-		if err = setEncapIP(encapIP); err != nil {
-			klog.Errorf("failed to set encap ip %s for iface %s", encapIP, c.config.Iface)
+		c.config.DefaultEncapIP = strings.Split(addrs[0].String(), "/")[0]
+		if err = c.config.setEncapIPs(); err != nil {
+			klog.Errorf("failed to set encap ip %s for iface %s", c.config.DefaultEncapIP, c.config.Iface)
 			return
 		}
 	}

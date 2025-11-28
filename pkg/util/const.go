@@ -97,6 +97,7 @@ const (
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
+	NodeNetworksAnnotation    = "ovn.kubernetes.io/node_networks"
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 

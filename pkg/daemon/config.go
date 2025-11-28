@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
@@ -86,6 +88,11 @@ type Configuration struct {
 	TLSMinVersion   string
 	TLSMaxVersion   string
 	TLSCipherSuites []string
+
+	// NodeNetworks stores the mapping of network name to encap IP from node annotation
+	NodeNetworks      map[string]string
+	nodeNetworksMutex sync.RWMutex
+	DefaultEncapIP    string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -354,7 +361,13 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		return err
 	}
 
-	return setEncapIP(encapIP)
+	config.DefaultEncapIP = encapIP
+	networks, err := parseNodeNetworks(node)
+	if err != nil {
+		klog.Errorf("failed to parse node networks, using empty networks: %v", err)
+	}
+	config.NodeNetworks = networks
+	return config.setEncapIPs()
 }
 
 func (config *Configuration) getEncapIP(node *corev1.Node) string {
@@ -450,14 +463,88 @@ func (config *Configuration) initKubeClient() error {
 	return nil
 }
 
-func setEncapIP(ip string) error {
+func parseNodeNetworks(node *corev1.Node) (map[string]string, error) {
+	networks := make(map[string]string)
+	if node == nil || node.Annotations == nil {
+		return networks, nil
+	}
+
+	annotation := node.Annotations[util.NodeNetworksAnnotation]
+	if annotation == "" {
+		return networks, nil
+	}
+
+	if err := json.Unmarshal([]byte(annotation), &networks); err != nil {
+		return nil, fmt.Errorf("failed to parse node networks annotation %q: %w", annotation, err)
+	}
+
+	for networkName, ip := range networks {
+		if net.ParseIP(ip) == nil {
+			return nil, fmt.Errorf("invalid encap IP %q for network %q", ip, networkName)
+		}
+	}
+
+	return networks, nil
+}
+
+func (config *Configuration) setEncapIPs() error {
+	config.nodeNetworksMutex.RLock()
+	networks := config.NodeNetworks
+	defaultIP := config.DefaultEncapIP
+	config.nodeNetworksMutex.RUnlock()
+
+	ips := []string{defaultIP}
+	for _, ip := range networks {
+		if ip != defaultIP && !slices.Contains(ips, ip) {
+			ips = append(ips, ip)
+		}
+	}
+
+	encapIPStr := strings.Join(ips, ",")
 	// #nosec G204
 	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+ip).CombinedOutput()
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+encapIPStr).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
 	}
+
+	// #nosec G204
+	raw, err = exec.Command(
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip-default="+defaultIP).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to set ovn-encap-ip-default, %s", string(raw))
+	}
+
+	klog.Infof("set ovn-encap-ip=%s, ovn-encap-ip-default=%s", encapIPStr, defaultIP)
 	return nil
+}
+
+func (config *Configuration) UpdateNodeNetworks(node *corev1.Node) error {
+	newNetworks, err := parseNodeNetworks(node)
+	if err != nil {
+		return err
+	}
+
+	config.nodeNetworksMutex.Lock()
+	config.NodeNetworks = newNetworks
+	config.nodeNetworksMutex.Unlock()
+
+	return config.setEncapIPs()
+}
+
+func (config *Configuration) GetEncapIPByNetwork(networkName string) (string, error) {
+	if networkName == "" {
+		return config.DefaultEncapIP, nil
+	}
+
+	config.nodeNetworksMutex.RLock()
+	defer config.nodeNetworksMutex.RUnlock()
+
+	if ip, ok := config.NodeNetworks[networkName]; ok {
+		return ip, nil
+	}
+
+	return "", fmt.Errorf("network %s not found in node networks", networkName)
 }
 
 func setChecksum(encapChecksum bool) error {
