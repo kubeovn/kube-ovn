@@ -30,7 +30,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-speaker
-          image: "docker.io/kubeovn/kube-ovn:v1.14.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.15.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-speaker
@@ -55,6 +55,14 @@ spec:
             requests:
               cpu: 500m
               memory: 300Mi
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/bgp: "true"
+      volumes:
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+            type: DirectoryOrCreate

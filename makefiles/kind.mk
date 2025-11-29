@@ -3,7 +3,7 @@
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 # Cilium configuration variables (fallback if not defined in main Makefile)
-CILIUM_VERSION ?= v1.18.1
+CILIUM_VERSION ?= v1.18.4
 CILIUM_IMAGE_REPO ?= quay.io/cilium
 
 OS_LINUX = 0
@@ -210,6 +210,7 @@ kind-init-bgp: kind-clean-bgp kind-init
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -223,6 +224,7 @@ kind-init-bgp-ha: kind-clean-bgp kind-init
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -790,6 +792,7 @@ kind-clean-bgp: kind-clean-bgp-ha
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -804,6 +807,7 @@ kind-clean-bgp-ha:
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
