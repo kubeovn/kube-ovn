@@ -178,6 +178,7 @@ kind-init-bgp: kind-clean-bgp kind-init
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -191,6 +192,7 @@ kind-init-bgp-ha: kind-clean-bgp kind-init
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -683,6 +685,7 @@ kind-clean-bgp: kind-clean-bgp-ha
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \
@@ -697,6 +700,7 @@ kind-clean-bgp-ha:
 		--name kube-ovn-bgp \
 		--network host \
 		--pid host \
+		-v /lib/modules:/lib/modules:ro \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v /var/run/netns:/var/run/netns \
 		-v /var/lib/docker/containers:/var/lib/docker/containers \

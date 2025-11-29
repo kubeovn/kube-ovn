@@ -19,7 +19,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 FRR_VERSION = 9.1.3
 FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
-CLAB_IMAGE = ghcr.io/srl-labs/clab:0.68.0
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.71.1
 
 # renovate: datasource=github-releases depName=multus packageName=k8snetworkplumbingwg/multus-cni
 MULTUS_VERSION = v4.2.1
