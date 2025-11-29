@@ -72,7 +72,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to keep pod ips after vm pod is deleted", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
@@ -112,7 +112,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
@@ -170,7 +170,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
@@ -220,7 +220,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to handle vm restart when subnet changes after the vm is stopped", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
@@ -275,7 +276,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		// create new subnet in the namespace.
 		// make sure ip changed after vm started
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineNameLabel, vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
 		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: labelSelector,
 		})
