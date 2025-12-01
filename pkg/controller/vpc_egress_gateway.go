@@ -463,8 +463,12 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						Name:            "init",
 						Image:           image,
 						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command:         []string{"bash", "/kube-ovn/init-vpc-egress-gateway.sh"},
-						Env:             initEnv,
+						Command: []string{
+							"bash",
+							"-exc",
+							"chmod -t /usr/local/sbin && bash /kube-ovn/init-vpc-egress-gateway.sh",
+						},
+						Env: initEnv,
 						SecurityContext: &corev1.SecurityContext{
 							Privileged: ptr.To(true),
 						},
