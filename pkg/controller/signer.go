@@ -68,7 +68,7 @@ func (c *Controller) validateCsrName(name string) error {
 		if k8serrors.IsNotFound(err) {
 			return fmt.Errorf("node %s not found for CSR %s", after, name)
 		}
-		return fmt.Errorf("failed to get node %s for CSR %s: %v", after, name, err)
+		return fmt.Errorf("failed to get node %s for CSR %s: %w", after, name, err)
 	}
 	if node.Status.NodeInfo.OperatingSystem != "linux" {
 		return fmt.Errorf("node %s is not linux, CSR %s is invalid", after, name)
