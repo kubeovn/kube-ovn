@@ -169,9 +169,9 @@ func detectKindBridgeNetwork() (*KindBridgeNetwork, error) {
 	}
 
 	for _, config := range network.IPAM.Config {
-		if config.Subnet != "" && util.CheckProtocol(config.Subnet) == kubeovnv1.ProtocolIPv4 {
+		if config.Subnet.IsValid() && util.CheckProtocol(config.Subnet.String()) == kubeovnv1.ProtocolIPv4 {
 			ginkgo.By(fmt.Sprintf("Detected KIND bridge network: CIDR=%s, Gateway=%s", config.Subnet, config.Gateway))
-			return &KindBridgeNetwork{CIDR: config.Subnet, Gateway: config.Gateway}, nil
+			return &KindBridgeNetwork{CIDR: config.Subnet.String(), Gateway: config.Gateway.String()}, nil
 		}
 	}
 	return nil, errors.New("no IPv4 subnet found in KIND network")

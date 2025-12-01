@@ -627,16 +627,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Determine external egress gateway addresses")
 		var gatewayV4, gatewayV6 string
 		for _, config := range network.IPAM.Config {
-			if config.Subnet != "" {
-				switch util.CheckProtocol(config.Subnet) {
+			if config.Subnet.IsValid() {
+				switch util.CheckProtocol(config.Subnet.String()) {
 				case apiv1.ProtocolIPv4:
 					if cidrV4 != "" {
-						gatewayV4, err = util.LastIP(config.Subnet)
+						gatewayV4, err = util.LastIP(config.Subnet.String())
 						framework.ExpectNoError(err)
 					}
 				case apiv1.ProtocolIPv6:
 					if cidrV6 != "" {
-						gatewayV6, err = util.LastIP(config.Subnet)
+						gatewayV6, err = util.LastIP(config.Subnet.String())
 						framework.ExpectNoError(err)
 					}
 				}
@@ -722,16 +722,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Determine external egress gateway addresses")
 		var gatewayV4, gatewayV6 string
 		for _, config := range network.IPAM.Config {
-			if config.Subnet != "" {
-				switch util.CheckProtocol(config.Subnet) {
+			if config.Subnet.IsValid() {
+				switch util.CheckProtocol(config.Subnet.String()) {
 				case apiv1.ProtocolIPv4:
 					if cidrV4 != "" {
-						gatewayV4, err = util.LastIP(config.Subnet)
+						gatewayV4, err = util.LastIP(config.Subnet.String())
 						framework.ExpectNoError(err)
 					}
 				case apiv1.ProtocolIPv6:
 					if cidrV6 != "" {
-						gatewayV6, err = util.LastIP(config.Subnet)
+						gatewayV6, err = util.LastIP(config.Subnet.String())
 						framework.ExpectNoError(err)
 					}
 				}

@@ -7,9 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -24,26 +23,26 @@ func (e ErrNonZeroExitCode) Error() string {
 }
 
 func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer cli.Close()
 
 	framework.Logf("Executing command %q in container %s", strings.Join(cmd, " "), id)
-	config := container.ExecOptions{
+	config := client.ExecCreateOptions{
 		Privileged:   true,
 		AttachStderr: true,
 		AttachStdout: true,
 		Env:          env,
 		Cmd:          cmd,
 	}
-	createResp, err := cli.ContainerExecCreate(context.Background(), id, config)
+	createResult, err := cli.ExecCreate(context.Background(), id, config)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	attachResp, err := cli.ContainerExecAttach(context.Background(), createResp.ID, container.ExecStartOptions{})
+	attachResp, err := cli.ExecAttach(context.Background(), createResult.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -54,7 +53,7 @@ func Exec(id string, env []string, cmd ...string) (stdout, stderr []byte, err er
 		return nil, nil, err
 	}
 
-	inspectResp, err := cli.ContainerExecInspect(context.Background(), createResp.ID)
+	inspectResp, err := cli.ExecInspect(context.Background(), createResult.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

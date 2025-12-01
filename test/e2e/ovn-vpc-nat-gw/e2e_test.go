@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -239,13 +239,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
+				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress.String() {
 					linkMap[node.ID] = &link
 					break
 				}
 			}
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerExtraNetworkName].MacAddress {
+				if link.Address == node.NetworkSettings.Networks[dockerExtraNetworkName].MacAddress.String() {
 					extraLinkMap[node.ID] = &link
 					break
 				}
@@ -477,16 +477,16 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating underlay subnet " + underlaySubnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case kubeovnv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case kubeovnv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -502,11 +502,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 		vlanSubnetCidr := strings.Join(cidr, ",")
@@ -701,16 +701,16 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating extra underlay subnet " + underlayExtraSubnetName)
 		cidrV4, cidrV6, gatewayV4, gatewayV6 = "", "", "", ""
 		for _, config := range dockerExtraNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case kubeovnv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case kubeovnv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -727,11 +727,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		extraExcludeIPs := make([]string, 0, len(extraNetwork.Containers)*2)
 		for _, container := range extraNetwork.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				extraExcludeIPs = append(extraExcludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				extraExcludeIPs = append(extraExcludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				extraExcludeIPs = append(extraExcludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				extraExcludeIPs = append(extraExcludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 		extraVlanSubnetCidr := strings.Join(cidr, ",")

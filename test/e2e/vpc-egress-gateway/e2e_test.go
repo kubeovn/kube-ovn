@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -165,7 +165,7 @@ var _ = framework.Describe("[group:veg]", func() {
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
+				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress.String() {
 					linkMap[node.Name()] = &link
 					break
 				}
@@ -315,16 +315,16 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 	ginkgo.By("Generating subnet configuration from docker network " + network.Name)
 	var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 	for _, config := range network.IPAM.Config {
-		switch util.CheckProtocol(config.Subnet) {
+		switch util.CheckProtocol(config.Subnet.String()) {
 		case apiv1.ProtocolIPv4:
 			if ipv4 {
-				cidrV4 = config.Subnet
-				gatewayV4 = config.Gateway
+				cidrV4 = config.Subnet.String()
+				gatewayV4 = config.Gateway.String()
 			}
 		case apiv1.ProtocolIPv6:
 			if ipv6 {
-				cidrV6 = config.Subnet
-				if gatewayV6 = config.Gateway; gatewayV6 == "" {
+				cidrV6 = config.Subnet.String()
+				if !config.Gateway.IsValid() {
 					var err error
 					gatewayV6, err = util.FirstIP(cidrV6)
 					framework.ExpectNoError(err)
@@ -346,11 +346,11 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 
 	excludeIPs := make([]string, 0, len(network.Containers)*2)
 	for _, container := range network.Containers {
-		if container.IPv4Address != "" && ipv4 {
-			excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+		if container.IPv4Address.IsValid() && ipv4 {
+			excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 		}
-		if container.IPv6Address != "" && ipv6 {
-			excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+		if container.IPv6Address.IsValid() && ipv6 {
+			excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 		}
 	}
 

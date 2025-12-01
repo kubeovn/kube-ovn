@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -40,31 +40,31 @@ func generateULASubnetFromName(name string, attempt int32) string {
 }
 
 func getNetwork(name string, ignoreNotFound bool) (*network.Inspect, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	f := filters.NewArgs()
+	f := make(client.Filters, 1)
 	f.Add("name", name)
-	networks, err := cli.NetworkList(context.Background(), network.ListOptions{Filters: f})
+	result, err := cli.NetworkList(context.Background(), client.NetworkListOptions{Filters: f})
 	if err != nil {
 		return nil, err
 	}
 
-	if len(networks) == 0 {
+	if len(result.Items) == 0 {
 		if !ignoreNotFound {
 			return nil, fmt.Errorf("network %s does not exist", name)
 		}
 		return nil, nil
 	}
 
-	info, err := cli.NetworkInspect(context.Background(), networks[0].ID, network.InspectOptions{})
+	info, err := cli.NetworkInspect(context.Background(), result.Items[0].ID, client.NetworkInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
-	return &info, nil
+	return &info.Network, nil
 }
 
 func NetworkInspect(name string) (*network.Inspect, error) {
@@ -82,7 +82,7 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 		}
 	}
 
-	options := network.CreateOptions{
+	options := client.NetworkCreateOptions{
 		Driver:     "bridge",
 		Attachable: true,
 		IPAM: &network.IPAM{
@@ -101,13 +101,13 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 			return nil, err
 		}
 		config := network.IPAMConfig{
-			Subnet:  subnet,
-			Gateway: gateway,
+			Subnet:  netip.MustParsePrefix(subnet),
+			Gateway: netip.MustParseAddr(gateway),
 		}
 		options.IPAM.Config = append(options.IPAM.Config, config)
 	}
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -121,30 +121,34 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 }
 
 func NetworkConnect(networkID, containerID string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.NetworkConnect(context.Background(), networkID, containerID, nil)
+	_, err = cli.NetworkConnect(context.Background(), networkID, client.NetworkConnectOptions{Container: containerID})
+	return err
 }
 
 func NetworkDisconnect(networkID, containerID string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.NetworkDisconnect(context.Background(), networkID, containerID, false)
+	_, err = cli.NetworkDisconnect(context.Background(), networkID, client.NetworkDisconnectOptions{Container: containerID})
+	return err
 }
 
 func NetworkRemove(networkID string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
-	return cli.NetworkRemove(context.Background(), networkID)
+
+	_, err = cli.NetworkRemove(context.Background(), networkID, client.NetworkRemoveOptions{})
+	return err
 }

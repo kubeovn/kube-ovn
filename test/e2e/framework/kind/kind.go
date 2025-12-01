@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
