@@ -105,6 +105,9 @@ spec:
         kubernetes.io/os: "linux"
       serviceAccountName: kube-ovn-post-delete-hook
       automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: remove-subnet-finalizer
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
