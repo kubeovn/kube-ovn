@@ -4300,6 +4300,7 @@ spec:
             - sh
             - -xec
             - |
+              chmod +t /usr/local/sbin
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
               iptables -V
               /usr/share/openvswitch/scripts/ovs-ctl load-kmod
@@ -4902,7 +4903,9 @@ spec:
         command:
           - sh
           - -xec
-          - iptables -V
+          - |
+            chmod +t /usr/local/sbin
+            iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:

@@ -39,7 +39,9 @@ spec:
         command:
           - sh
           - -xec
-          - iptables -V
+          - |
+            chmod +t /usr/local/sbin
+            iptables -V
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
