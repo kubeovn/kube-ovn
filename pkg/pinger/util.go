@@ -2,10 +2,6 @@ package pinger
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -13,49 +9,9 @@ import (
 	"github.com/kubeovn/ovsdb"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
-
-const (
-	ovsRunDir = "/var/run/openvswitch"
-	ovnRunDir = "/var/run/ovn"
-
-	cmdOvsAppctl = "ovs-appctl"
-
-	ovsdbServer   = "ovsdb-server"
-	ovsVswitchd   = "ovs-vswitchd"
-	ovnController = "ovn-controller"
-)
-
-func ovsAppctlByTarget(target string, args ...string) (string, error) {
-	args = slices.Insert(args, 0, "-t", target)
-	cmd := exec.Command(cmdOvsAppctl, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		cmd := strings.Join(slices.Insert(args, 0, cmdOvsAppctl), " ")
-		return "", fmt.Errorf("failed to run command %q: %w", cmd, err)
-	}
-	return string(output), nil
-}
-
-func ovsAppctl(component string, args ...string) (string, error) {
-	var runDir string
-	if strings.HasPrefix(component, "ovs") {
-		runDir = ovsRunDir
-	} else if strings.HasPrefix(component, "ovn") {
-		runDir = ovnRunDir
-	} else {
-		return "", fmt.Errorf("unknown component %q", component)
-	}
-
-	pidFile := filepath.Join(runDir, component+".pid")
-	pid, err := os.ReadFile(pidFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to read pid file %q: %w", pidFile, err)
-	}
-
-	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, strings.TrimSpace(string(pid))))
-	return ovsAppctlByTarget(target, args...)
-}
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
 func (e *Exporter) IncrementErrorCounter() {
@@ -65,10 +21,10 @@ func (e *Exporter) IncrementErrorCounter() {
 }
 
 func getOvsStatus(e *Exporter) map[string]error {
-	components := [...]string{ovsdbServer, ovsVswitchd}
+	components := [...]string{ovs.OvsdbServer, ovs.OvsVswitchd}
 	result := make(map[string]error, len(components))
 	for _, component := range components {
-		_, err := ovsAppctl(component, "-T", "1", "version")
+		_, err := ovs.Appctl(component, "-T", "1", "version")
 		if err != nil {
 			klog.Errorf("failed to get %s status: %v", component, err)
 			if e != nil {
@@ -83,7 +39,7 @@ func getOvsStatus(e *Exporter) map[string]error {
 }
 
 func (e *Exporter) getOvsDatapath() ([]string, error) {
-	output, err := ovsAppctl(ovsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/dump-dps")
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/dump-dps")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %w", err)
 	}
@@ -108,7 +64,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 }
 
 func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
-	output, err := ovsAppctl(ovsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/show", datapathName)
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/show", datapathName)
 	if err != nil {
 		return fmt.Errorf("failed to get output of dpctl/show %s: %w", datapathName, err)
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -904,8 +903,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func recompute() {
-	output, err := exec.Command("ovn-appctl", "-t", "ovn-controller", "inc-engine/recompute").CombinedOutput()
+	output, err := ovs.Appctl(ovs.OvnController, "inc-engine/recompute")
 	if err != nil {
-		klog.Errorf("failed to recompute ovn-controller %q", output)
+		klog.Errorf("failed to trigger force recompute for %s: %q", ovs.OvnController, output)
 	}
 }

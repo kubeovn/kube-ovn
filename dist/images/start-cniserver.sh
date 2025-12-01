@@ -19,10 +19,20 @@ fi
 
 while true; do
   if [[ -e "$OVS_SOCK" ]]; then
-    /usr/share/openvswitch/scripts/ovs-ctl status && break
+    for component in ovsdb-server ovs-vswitchd; do
+      echo "checking ${component} status"
+      pid=$(cat /run/openvswitch/${component}.pid) && ovs-appctl -T 1 -t /run/openvswitch/${component}.${pid}.ctl version
+      if [[ $? -ne 0 ]]; then
+        echo "${component} is not ready"
+        sleep 1
+        continue 2
+      fi
+    done
+  else
+   echo "waiting for ovs ready"
+    sleep 1
   fi
-  echo "waiting for ovs ready"
-  sleep 1
+  break
 done
 
 # update links to point to the iptables binaries

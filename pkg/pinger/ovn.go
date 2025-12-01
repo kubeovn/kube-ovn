@@ -9,6 +9,8 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 // Chassis represents a row in the Chassis table.
@@ -41,7 +43,7 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 			}
 		}
 	}
-	klog.Infof("%s and %s are up", ovsdbServer, ovsVswitchd)
+	klog.Infof("%s and %s are up", ovs.OvsdbServer, ovs.OvsVswitchd)
 	if setMetrics {
 		SetOvsUpMetrics(config.NodeName)
 	}
@@ -49,15 +51,15 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 }
 
 func checkOvnController(config *Configuration, setMetrics bool) error {
-	_, err := ovsAppctl(ovnController, "-T", "1", "version")
+	_, err := ovs.Appctl(ovs.OvnController, "-T", "1", "version")
 	if err != nil {
-		klog.Errorf("failed to get status of %s: %v", ovnController, err)
+		klog.Errorf("failed to get status of %s: %v", ovs.OvnController, err)
 		if setMetrics {
 			SetOvnControllerDownMetrics(config.NodeName)
 		}
 		return err
 	}
-	klog.Infof("%s is up", ovnController)
+	klog.Infof("%s is up", ovs.OvnController)
 	if setMetrics {
 		SetOvnControllerUpMetrics(config.NodeName)
 	}
