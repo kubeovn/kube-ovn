@@ -495,6 +495,11 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 							MountPath: "/usr/local/sbin",
 						}},
 					}},
+					SecurityContext: &corev1.PodSecurityContext{
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
 					Volumes: []corev1.Volume{{
 						Name: "usr-local-sbin",
 						VolumeSource: corev1.VolumeSource{
