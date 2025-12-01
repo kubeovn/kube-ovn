@@ -11,6 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"slices"
+	"strings"
 	"time"
 
 	csrv1 "k8s.io/api/certificates/v1"
@@ -22,7 +25,18 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
+	return csr.Spec.SignerName == util.SignerName &&
+		strings.HasPrefix(csr.Name, "ovn-ipsec-") &&
+		slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel})
+}
+
 func (c *Controller) enqueueAddCsr(obj any) {
+	req := obj.(*csrv1.CertificateSigningRequest)
+	if !isOVNIPSecCSR(req) {
+		return
+	}
+
 	key := cache.MetaObjectToName(obj.(*csrv1.CertificateSigningRequest)).String()
 	klog.V(3).Infof("enqueue add csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
@@ -34,10 +48,33 @@ func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
 	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
 		return
 	}
+	if !isOVNIPSecCSR(newCsr) {
+		return
+	}
 
 	key := cache.MetaObjectToName(newCsr).String()
 	klog.V(3).Infof("enqueue update csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
+}
+
+func (c *Controller) validateCsrName(name string) error {
+	after, found := strings.CutPrefix(name, "ovn-ipsec-")
+	if !found || len(after) == 0 {
+		return fmt.Errorf("CSR name %s is invalid, must be in format ovn-ipsec-<node-name>", name)
+	}
+
+	node, err := c.nodesLister.Get(after)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("node %s not found for CSR %s", after, name)
+		}
+		return fmt.Errorf("failed to get node %s for CSR %s: %v", after, name, err)
+	}
+	if node.Status.NodeInfo.OperatingSystem != "linux" {
+		return fmt.Errorf("node %s is not linux, CSR %s is invalid", after, name)
+	}
+
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
@@ -50,8 +87,9 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		return err
 	}
 
-	if csr.Spec.SignerName != util.SignerName {
-		return nil
+	if err = c.validateCsrName(csr.Name); err != nil {
+		klog.Errorf("CSR %s validation failed: %v", csr.Name, err)
+		return err
 	}
 
 	if len(csr.Status.Certificate) != 0 {
@@ -83,7 +121,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	}
 	// From this, point we are dealing with an approved CSR
 	// Get CA in from ovn-ipsec-ca
-	caSecret, err := c.config.KubeClient.CoreV1().Secrets("kube-system").Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
+	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
 		c.signerFailure(csr, "CAFailure",
 			fmt.Sprintf("Could not get CA certificate and key: %v", err))
