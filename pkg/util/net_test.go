@@ -450,7 +450,7 @@ func TestAddressCount(t *testing.T) {
 	tests := []struct {
 		name    string
 		network *net.IPNet
-		want    float64
+		want    int64
 	}{
 		{
 			name: "base",
@@ -471,7 +471,7 @@ func TestAddressCount(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := AddressCount(c.network); ans != c.want {
+			if ans := AddressCount(c.network); !ans.EqualInt64(c.want) {
 				t.Errorf("%v expected %v, but %v got",
 					c.network, c.want, ans)
 			}
@@ -1104,7 +1104,7 @@ func TestCountIpNums(t *testing.T) {
 	tests := []struct {
 		name string
 		excl []string
-		want float64
+		want int64
 	}{
 		{
 			name: "base",
@@ -1120,7 +1120,7 @@ func TestCountIpNums(t *testing.T) {
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
 			ans := CountIPNums(c.excl)
-			if ans != c.want {
+			if !ans.EqualInt64(c.want) {
 				t.Errorf("%v expected %v but %v got",
 					c.excl, c.want, ans)
 			}

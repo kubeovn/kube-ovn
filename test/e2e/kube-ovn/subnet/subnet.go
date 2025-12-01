@@ -23,6 +23,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -176,13 +177,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 
 		// TODO: check routes on ovn0
@@ -234,13 +235,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 
 		// TODO: check routes on ovn0
@@ -279,14 +280,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv4) - 1
+			expected := util.AddressCount(ipnet).Sub(util.CountIPNums(excludeIPv4)).Sub(kotypes.NewBigInt(1))
 			framework.ExpectEqual(subnet.Status.V4AvailableIPs, expected)
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
+			expected := util.AddressCount(ipnet).Sub(util.CountIPNums(excludeIPv6)).Sub(kotypes.NewBigInt(1))
 			framework.ExpectEqual(subnet.Status.V6AvailableIPs, expected)
 		}
 	})
@@ -318,7 +319,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		smallSubnet = subnetClient.CreateSync(smallSubnet)
 
 		ginkgo.By("Verifying available IPs is 0 after excluding the only usable IPs")
-		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs + smallSubnet.Status.V6AvailableIPs)
+		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs.Add(smallSubnet.Status.V6AvailableIPs))
 
 		// Test cases: both fixed IP and IP pool annotations
 		testCases := []struct {
@@ -403,13 +404,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 
 		ginkgo.By("Creating pod " + podName)
@@ -454,13 +455,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 
 		ginkgo.By("Converting gateway mode to centralized")
@@ -510,13 +511,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 			framework.ExpectZero(subnet.Status.V4AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 		if cidrV6 == "" {
 			framework.ExpectZero(subnet.Status.V6AvailableIPs)
 		} else {
 			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
+			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet).Sub(kotypes.NewBigInt(1)))
 		}
 
 		ginkgo.By("Creating pod " + podName)

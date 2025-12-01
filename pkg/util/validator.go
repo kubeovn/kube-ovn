@@ -359,7 +359,7 @@ func ValidateNetworkBroadcast(cidr, ip string) error {
 				continue
 			}
 			_, network, _ := net.ParseCIDR(cidrBlock)
-			if AddressCount(network) == 1 {
+			if AddressCount(network).EqualInt64(1) {
 				return fmt.Errorf("subnet %s is configured with /32 or /128 netmask", cidrBlock)
 			}
 

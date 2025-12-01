@@ -7,6 +7,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 )
 
 const (
@@ -112,7 +114,8 @@ type NatOutGoingPolicyMatch struct {
 
 type NatOutgoingPolicyRuleStatus struct {
 	RuleID string `json:"ruleID"`
-	NatOutgoingPolicyRule
+
+	NatOutgoingPolicyRule `json:"natOutgoingPolicyRule"`
 }
 type SubnetStatus struct {
 	// Conditions represents the latest state of the object
@@ -121,13 +124,17 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	V4AvailableIPs         float64                       `json:"v4availableIPs"`
-	V4AvailableIPRange     string                        `json:"v4availableIPrange"`
-	V4UsingIPs             float64                       `json:"v4usingIPs"`
-	V4UsingIPRange         string                        `json:"v4usingIPrange"`
-	V6AvailableIPs         float64                       `json:"v6availableIPs"`
-	V6AvailableIPRange     string                        `json:"v6availableIPrange"`
-	V6UsingIPs             float64                       `json:"v6usingIPs"`
+	// +kubebuilder:validation:Type=string
+	V4AvailableIPs     kotypes.BigInt `json:"v4availableIPs"`
+	V4AvailableIPRange string         `json:"v4availableIPrange"`
+	// +kubebuilder:validation:Type=string
+	V4UsingIPs     kotypes.BigInt `json:"v4usingIPs"`
+	V4UsingIPRange string         `json:"v4usingIPrange"`
+	// +kubebuilder:validation:Type=string
+	V6AvailableIPs     kotypes.BigInt `json:"v6availableIPs"`
+	V6AvailableIPRange string         `json:"v6availableIPrange"`
+	// +kubebuilder:validation:Type=string
+	V6UsingIPs             kotypes.BigInt                `json:"v6usingIPs"`
 	V6UsingIPRange         string                        `json:"v6usingIPrange"`
 	ActivateGateway        string                        `json:"activateGateway"`
 	DHCPv4OptionsUUID      string                        `json:"dhcpV4OptionsUUID"`

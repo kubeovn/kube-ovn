@@ -29,6 +29,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -60,7 +61,7 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
-	var usingIPs float64
+	var usingIPs kotypes.BigInt
 	var u2oInterconnIP string
 	oldSubnet := oldObj.(*kubeovnv1.Subnet)
 	newSubnet := newObj.(*kubeovnv1.Subnet)
@@ -87,7 +88,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	}
 
 	u2oInterconnIP = newSubnet.Status.U2OInterconnectionIP
-	if !newSubnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
+	if !newSubnet.DeletionTimestamp.IsZero() && (usingIPs.EqualInt64(0) || (usingIPs.EqualInt64(1) && u2oInterconnIP != "")) {
 		c.addOrUpdateSubnetQueue.Add(key)
 		return
 	}
@@ -420,7 +421,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	}
 
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
-	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
+	if !subnet.DeletionTimestamp.IsZero() && (usingIPs.EqualInt64(0) || (usingIPs.EqualInt64(1) && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
 		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
@@ -2148,10 +2149,10 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs)
-	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs)
+	v4availableIPs := util.AddressCount(v4CIDR).Sub(util.CountIPNums(v4toSubIPs))
+	v6availableIPs := util.AddressCount(v6CIDR).Sub(util.CountIPNums(v6toSubIPs))
 
-	usingIPs := float64(usingIPNums)
+	usingIPs := kotypes.NewBigInt(int64(usingIPNums))
 
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
@@ -2162,7 +2163,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		return nil, err
 	}
 	lenVip = len(vips)
-	usingIPs += float64(lenVip)
+	usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenVip)))
 
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
@@ -2172,7 +2173,7 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 			return nil, err
 		}
 		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
+		usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenIptablesEip)))
 	}
 	if subnet.Spec.Vlan != "" {
 		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
@@ -2183,24 +2184,24 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 			return nil, err
 		}
 		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
+		usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenOvnEip)))
 	}
 
-	v4availableIPs -= usingIPs
-	if v4availableIPs < 0 {
-		v4availableIPs = 0
+	v4availableIPs = v4availableIPs.Sub(usingIPs)
+	if v4availableIPs.Cmp(kotypes.NewBigInt(0)) < 0 {
+		v4availableIPs = kotypes.NewBigInt(0)
 	}
-	v6availableIPs -= usingIPs
-	if v6availableIPs < 0 {
-		v6availableIPs = 0
+	v6availableIPs = v6availableIPs.Sub(usingIPs)
+	if v6availableIPs.Cmp(kotypes.NewBigInt(0)) < 0 {
+		v6availableIPs = kotypes.NewBigInt(0)
 	}
 
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
 
-	if subnet.Status.V4AvailableIPs == v4availableIPs &&
-		subnet.Status.V6AvailableIPs == v6availableIPs &&
-		subnet.Status.V4UsingIPs == usingIPs &&
-		subnet.Status.V6UsingIPs == usingIPs &&
+	if subnet.Status.V4AvailableIPs.Equal(v4availableIPs) &&
+		subnet.Status.V6AvailableIPs.Equal(v6availableIPs) &&
+		subnet.Status.V4UsingIPs.Equal(usingIPs) &&
+		subnet.Status.V6UsingIPs.Equal(usingIPs) &&
 		subnet.Status.V4UsingIPRange == v4UsingIPStr &&
 		subnet.Status.V6UsingIPRange == v6UsingIPStr &&
 		subnet.Status.V4AvailableIPRange == v4AvailableIPStr &&
@@ -2264,8 +2265,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs)
-	usingIPs := float64(usingIPNums)
+	availableIPs := util.AddressCount(cidr).Sub(util.CountIPNums(toSubIPs))
+	usingIPs := kotypes.NewBigInt(int64(usingIPNums))
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
 		util.IPReservedLabel: "",
@@ -2275,7 +2276,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		return nil, err
 	}
 	lenVip = len(vips)
-	usingIPs += float64(lenVip)
+	usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenVip)))
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
@@ -2284,7 +2285,7 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 			return nil, err
 		}
 		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
+		usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenIptablesEip)))
 	}
 	if subnet.Spec.Vlan != "" {
 		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
@@ -2295,16 +2296,16 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 			return nil, err
 		}
 		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
+		usingIPs = usingIPs.Add(kotypes.NewBigInt(int64(lenOvnEip)))
 	}
 
-	availableIPs -= usingIPs
-	if availableIPs < 0 {
-		availableIPs = 0
+	availableIPs = availableIPs.Sub(usingIPs)
+	if availableIPs.Cmp(kotypes.NewBigInt(0)) < 0 {
+		availableIPs = kotypes.NewBigInt(0)
 	}
 
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
-	cachedFloatFields := [4]float64{
+	cachedBigIntFields := [4]kotypes.BigInt{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
 		subnet.Status.V6AvailableIPs,
@@ -2322,27 +2323,28 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V4UsingIPs = usingIPs
 		subnet.Status.V4UsingIPRange = v4UsingIPStr
 		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
-		subnet.Status.V6AvailableIPs = 0
-		subnet.Status.V6UsingIPs = 0
+		subnet.Status.V6AvailableIPs = kotypes.NewBigInt(0)
+		subnet.Status.V6UsingIPs = kotypes.NewBigInt(0)
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
 		subnet.Status.V6UsingIPRange = v6UsingIPStr
 		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
-		subnet.Status.V4AvailableIPs = 0
-		subnet.Status.V4UsingIPs = 0
+		subnet.Status.V4AvailableIPs = kotypes.NewBigInt(0)
+		subnet.Status.V4UsingIPs = kotypes.NewBigInt(0)
 	}
-	if cachedFloatFields == [4]float64{
-		subnet.Status.V4AvailableIPs,
-		subnet.Status.V4UsingIPs,
-		subnet.Status.V6AvailableIPs,
-		subnet.Status.V6UsingIPs,
-	} && cachedStringFields == [4]string{
-		subnet.Status.V4UsingIPRange,
-		subnet.Status.V4AvailableIPRange,
-		subnet.Status.V6UsingIPRange,
-		subnet.Status.V6AvailableIPRange,
-	} {
+	// Check each field individually since BigInt doesn't support array comparison
+	// If status hasn't changed, no need to update
+	if cachedBigIntFields[0].Equal(subnet.Status.V4AvailableIPs) &&
+		cachedBigIntFields[1].Equal(subnet.Status.V4UsingIPs) &&
+		cachedBigIntFields[2].Equal(subnet.Status.V6AvailableIPs) &&
+		cachedBigIntFields[3].Equal(subnet.Status.V6UsingIPs) &&
+		cachedStringFields == [4]string{
+			subnet.Status.V4UsingIPRange,
+			subnet.Status.V4AvailableIPRange,
+			subnet.Status.V6UsingIPRange,
+			subnet.Status.V6AvailableIPRange,
+		} {
 		return subnet, nil
 	}
 
@@ -2356,13 +2358,13 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 }
 
 func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
-	if subnet.Status.V4UsingIPs != 0 && subnet.Status.V4UsingIPRange == "" {
-		err := fmt.Errorf("subnet %s has %.0f v4 ip in use, while the v4 using ip range is empty", subnet.Name, subnet.Status.V4UsingIPs)
+	if !subnet.Status.V4UsingIPs.EqualInt64(0) && subnet.Status.V4UsingIPRange == "" {
+		err := fmt.Errorf("subnet %s has %s v4 ip in use, while the v4 using ip range is empty", subnet.Name, subnet.Status.V4UsingIPs.String())
 		klog.Error(err)
 		return err
 	}
-	if subnet.Status.V6UsingIPs != 0 && subnet.Status.V6UsingIPRange == "" {
-		err := fmt.Errorf("subnet %s has %.0f v6 ip in use, while the v6 using ip range is empty", subnet.Name, subnet.Status.V6UsingIPs)
+	if !subnet.Status.V6UsingIPs.EqualInt64(0) && subnet.Status.V6UsingIPRange == "" {
+		err := fmt.Errorf("subnet %s has %s v6 ip in use, while the v6 using ip range is empty", subnet.Name, subnet.Status.V6UsingIPs.String())
 		klog.Error(err)
 		return err
 	}

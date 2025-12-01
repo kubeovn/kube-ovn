@@ -23,6 +23,7 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	kotypes "github.com/kubeovn/kube-ovn/pkg/types"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -53,16 +54,17 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
-func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs float64) {
+func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs int64) {
 	ginkgo.GinkgoHelper()
 
-	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
+	expected := kotypes.NewBigInt(expectedUsingIPs)
+	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + strconv.FormatInt(expectedUsingIPs, 10))
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
-		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
-			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
-			framework.Logf("current subnet status: v4AvailableIPs = %.0f, v4UsingIPs = %.0f, v6AvailableIPs = %.0f, v6UsingIPs = %.0f",
-				subnet.Status.V4AvailableIPs, subnet.Status.V4UsingIPs, subnet.Status.V6AvailableIPs, subnet.Status.V6UsingIPs)
+		if (!subnet.Status.V4AvailableIPs.EqualInt64(0) && !subnet.Status.V4UsingIPs.Equal(expected)) ||
+			(!subnet.Status.V6AvailableIPs.EqualInt64(0) && !subnet.Status.V6UsingIPs.Equal(expected)) {
+			framework.Logf("current subnet status: v4AvailableIPs = %s, v4UsingIPs = %s, v6AvailableIPs = %s, v6UsingIPs = %s",
+				subnet.Status.V4AvailableIPs.String(), subnet.Status.V4UsingIPs.String(), subnet.Status.V6AvailableIPs.String(), subnet.Status.V6UsingIPs.String())
 			return false, nil
 		}
 		return true, nil
@@ -1453,18 +1455,18 @@ func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, ov
 			gw = v4gw
 			ginkgo.By("checking subnet's using ips of underlay subnet " + subnet.Name + " " + protocolStr)
 			if subnet.Spec.U2OInterconnection {
-				framework.ExpectEqual(int(subnet.Status.V4UsingIPs), 2)
+				framework.ExpectTrue(subnet.Status.V4UsingIPs.EqualInt64(2))
 			} else {
-				framework.ExpectEqual(int(subnet.Status.V4UsingIPs), 1)
+				framework.ExpectTrue(subnet.Status.V4UsingIPs.EqualInt64(1))
 			}
 		} else {
 			protocolStr = "ip6"
 			gw = v6gw
 			ginkgo.By("checking subnet's using ips of underlay subnet " + subnet.Name + " " + protocolStr)
 			if subnet.Spec.U2OInterconnection {
-				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 2)
+				framework.ExpectTrue(subnet.Status.V6UsingIPs.EqualInt64(2))
 			} else {
-				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 1)
+				framework.ExpectTrue(subnet.Status.V6UsingIPs.EqualInt64(1))
 			}
 		}
 

@@ -1681,18 +1681,18 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 
 		switch subnet.Spec.Protocol {
 		case kubeovnv1.ProtocolDual:
-			if subnet.Status.V6AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
+			if subnet.Status.V6AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 			fallthrough
 		case kubeovnv1.ProtocolIPv4:
-			if subnet.Status.V4AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
+			if subnet.Status.V4AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv4 address in subnet %s, try next one", subnet.Name)
 				continue
 			}
 		case kubeovnv1.ProtocolIPv6:
-			if subnet.Status.V6AvailableIPs == 0 && !c.podCanUseExcludeIPs(pod, subnet) {
+			if subnet.Status.V6AvailableIPs.EqualInt64(0) && !c.podCanUseExcludeIPs(pod, subnet) {
 				klog.Infof("there's no available ipv6 address in subnet %s, try next one", subnet.Name)
 				continue
 			}

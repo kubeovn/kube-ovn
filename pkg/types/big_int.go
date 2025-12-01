@@ -1,4 +1,4 @@
-package internal
+package types
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ type BigInt struct {
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
-	n.FillBytes(b.Bytes())
+	n.Set(&b.Int)
 }
 
 func (b BigInt) Equal(n BigInt) bool {
@@ -39,18 +39,32 @@ func (b BigInt) String() string {
 }
 
 func (b BigInt) MarshalJSON() ([]byte, error) {
-	return []byte(b.String()), nil
+	return b.Int.MarshalJSON()
 }
 
 func (b *BigInt) UnmarshalJSON(p []byte) error {
 	if string(p) == "null" {
 		return nil
 	}
+	// Remove quotes if present
+	s := string(p)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
 	var z big.Int
-	_, ok := z.SetString(string(p), 10)
+	_, ok := z.SetString(s, 10)
 	if !ok {
 		return fmt.Errorf("invalid big integer: %q", p)
 	}
 	b.Int = z
 	return nil
+}
+
+func (b BigInt) Float64() float64 {
+	f, _ := new(big.Float).SetInt(&b.Int).Float64()
+	return f
+}
+
+func NewBigInt(n int64) BigInt {
+	return BigInt{*big.NewInt(n)}
 }

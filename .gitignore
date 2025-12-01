@@ -20,6 +20,7 @@ kube-ovn.yaml
 !/charts/kube-ovn-v2/crds/kube-ovn-crd.yaml
 !/charts/kube-ovn/templates/kube-ovn-crd.yaml
 kube-ovn-crd.yaml
+yamls/crds
 ovn.yaml
 ovn-ic-controller.yaml
 ovn-ic-server.yaml
@@ -54,6 +55,7 @@ kube-ovn-sa.yaml
 kube-ovn-pinger.yaml
 ovn-ovs-sa.yaml
 ovs-ovn-ds.yaml
+kube-ovn-pinger.yaml
 cakey.pem
 cacert.pem
 ovn-req.pem
