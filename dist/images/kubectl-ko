@@ -563,6 +563,9 @@ spec:
     spec:
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: $subnetName-$CONN_CHECK_SERVER
           imagePullPolicy: IfNotPresent
@@ -1254,6 +1257,9 @@ metadata:
     app: $PERF_LABEL
     env: server
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: $podName
       image: $imageID
@@ -1282,6 +1288,9 @@ metadata:
     app: $PERF_LABEL
 spec:
   hostNetwork: true
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: $podName
       image: $imageID
@@ -1309,6 +1318,9 @@ metadata:
   labels:
     app: $PERF_LABEL
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: $podName
       image: $imageID
@@ -1333,6 +1345,9 @@ metadata:
     app: $PERF_LABEL
 spec:
   hostNetwork: true
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: $podName
       image: $imageID

@@ -54,6 +54,9 @@ spec:
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"

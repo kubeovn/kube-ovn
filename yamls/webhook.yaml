@@ -32,6 +32,9 @@ spec:
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: kube-ovn-webhook
           image: "docker.io/kubeovn/kube-ovn:v1.14.0"

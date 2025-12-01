@@ -46,6 +46,9 @@ spec:
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}

@@ -37,6 +37,9 @@ spec:
                     operator: In
                     values: ["{{ .DeployName }}"]
                  topologyKey: kubernetes.io/hostname
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: coredns
         image: {{ .CorednsImage }}

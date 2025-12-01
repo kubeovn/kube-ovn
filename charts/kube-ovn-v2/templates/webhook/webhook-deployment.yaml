@@ -44,6 +44,9 @@ spec:
               topologyKey: kubernetes.io/hostname
       serviceAccountName: ovn
       automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: kube-ovn-webhook
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}

@@ -28,6 +28,9 @@ spec:
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: kube-ovn-speaker
           image: "docker.io/kubeovn/kube-ovn:v1.15.0"

@@ -15,7 +15,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovnOvs-dpdk
+      app.kubernetes.io/name: kube-ovn-ovs-dpdk
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: RollingUpdate
@@ -29,7 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-ovs
+        app.kubernetes.io/name: kube-ovn-ovs-dpdk
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.ovsOvn.podLabels }}
         {{- toYaml . | nindent 8 }}
