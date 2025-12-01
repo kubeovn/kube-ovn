@@ -114,9 +114,9 @@ func (e *Exporter) ovsMetricsUpdate() {
 
 func (e *Exporter) exportOvsStatusGauge() {
 	metricOvsHealthyStatus.Reset()
-	result := e.getOvsStatus()
+	result := getOvsStatus(e)
 	for k, v := range result {
-		if v {
+		if v == nil {
 			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(1)
 		} else {
 			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(0)
