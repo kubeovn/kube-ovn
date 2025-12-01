@@ -33,11 +33,12 @@ func appctlByTarget(target string, args ...string) (string, error) {
 
 func Appctl(component string, args ...string) (string, error) {
 	var runDir string
-	if strings.HasPrefix(component, "ovs") {
+	switch {
+	case strings.HasPrefix(component, "ovs"):
 		runDir = ovsRunDir
-	} else if strings.HasPrefix(component, "ovn") {
+	case strings.HasPrefix(component, "ovn"):
 		runDir = ovnRunDir
-	} else {
+	default:
 		return "", fmt.Errorf("unknown component %q", component)
 	}
 

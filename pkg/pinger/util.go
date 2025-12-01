@@ -45,7 +45,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 	}
 
 	var datapathsList []string
-	for kvPair := range strings.SplitSeq(string(output), "\n") {
+	for kvPair := range strings.SplitSeq(output, "\n") {
 		var datapathType, datapathName string
 		line := strings.TrimSpace(strings.TrimSuffix(kvPair, "\n"))
 		if strings.Contains(line, "@") {
@@ -70,7 +70,7 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 	}
 
 	var datapathPortCount float64
-	for kvPair := range strings.SplitSeq(string(output), "\n") {
+	for kvPair := range strings.SplitSeq(output, "\n") {
 		line := strings.TrimSpace(kvPair)
 		switch {
 		case strings.HasPrefix(line, "lookups:"):
