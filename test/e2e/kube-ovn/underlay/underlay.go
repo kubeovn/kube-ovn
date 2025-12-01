@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -199,7 +199,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectNoError(err, "failed to list routes on node %s: %v", node.Name(), err)
 
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
+				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress.String() {
 					linkMap[node.ID] = &link
 					break
 				}
@@ -413,16 +413,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -438,11 +438,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
@@ -478,16 +478,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -503,11 +503,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
@@ -553,12 +553,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				if container.Name != node.Name() {
 					continue
 				}
-				if container.IPv4Address != "" && f.HasIPv4() {
-					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv4Address, node.Exec)
+				if container.IPv4Address.IsValid() && f.HasIPv4() {
+					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv4Address.String(), node.Exec)
 					framework.ExpectNoError(err)
 				}
-				if container.IPv6Address != "" && f.HasIPv6() {
-					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv6Address, node.Exec)
+				if container.IPv6Address.IsValid() && f.HasIPv6() {
+					err := iproute.AddressDelCheckExist("br-"+providerNetworkName, container.IPv6Address.String(), node.Exec)
 					framework.ExpectNoError(err)
 				}
 			}
@@ -634,16 +634,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -659,11 +659,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if f.HasIPv4() && container.IPv4Address != "" {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if f.HasIPv4() && container.IPv4Address.IsValid() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if f.HasIPv6() && container.IPv6Address != "" {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if f.HasIPv6() && container.IPv6Address.IsValid() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
@@ -672,10 +672,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		networkInfo := containerInfo.NetworkSettings.Networks[dockerNetworkName]
 		ips := make([]string, 0, 2)
 		if f.HasIPv4() {
-			ips = append(ips, networkInfo.IPAddress)
+			ips = append(ips, networkInfo.IPAddress.String())
 		}
 		if f.HasIPv6() {
-			ips = append(ips, networkInfo.GlobalIPv6Address)
+			ips = append(ips, networkInfo.GlobalIPv6Address.String())
 		}
 		ip := strings.Join(ips, ",")
 		mac := networkInfo.MacAddress
@@ -687,9 +687,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Waiting for pod events")
 		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
-		ip = networkInfo.IPAddress
+		ip = networkInfo.IPAddress.String()
 		if f.IsIPv6() {
-			ip = networkInfo.GlobalIPv6Address
+			ip = networkInfo.GlobalIPv6Address.String()
 		}
 		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
 		var found bool
@@ -721,16 +721,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -747,11 +747,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 
@@ -1038,16 +1038,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -1064,11 +1064,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 
@@ -1129,15 +1129,15 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
-				cidrV6 = config.Subnet
-				gatewayV6 = config.Gateway
+				cidrV6 = config.Subnet.String()
+				gatewayV6 = config.Gateway.String()
 			}
 		}
 
@@ -1152,11 +1152,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 
@@ -1342,16 +1342,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Creating underlay subnet " + subnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			switch util.CheckProtocol(config.Subnet) {
+			switch util.CheckProtocol(config.Subnet.String()) {
 			case apiv1.ProtocolIPv4:
 				if f.HasIPv4() {
-					cidrV4 = config.Subnet
-					gatewayV4 = config.Gateway
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
-					cidrV6 = config.Subnet
-					gatewayV6 = config.Gateway
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
 				}
 			}
 		}
@@ -1368,11 +1368,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" && f.HasIPv4() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
-			if container.IPv6Address != "" && f.HasIPv6() {
-				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 			}
 		}
 

@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
-	"net"
 	"strconv"
 	"testing"
 	"time"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -114,17 +113,16 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		ginkgo.By("Creating subnet " + subnetName)
 		for _, config := range dockerNetwork.IPAM.Config {
-			if util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
-				cidr = config.Subnet
-				gateway = config.Gateway
+			if util.CheckProtocol(config.Subnet.String()) == apiv1.ProtocolIPv4 {
+				cidr = config.Subnet.String()
+				gateway = config.Gateway.String()
 				break
 			}
 		}
 		excludeIPs := make([]string, 0, len(dockerNetwork.Containers))
 		for _, container := range dockerNetwork.Containers {
-			if container.IPv4Address != "" {
-				ip, _, _ := net.ParseCIDR(container.IPv4Address)
-				excludeIPs = append(excludeIPs, ip.String())
+			if container.IPv4Address.IsValid() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, "", "", excludeIPs, nil, []string{namespaceName})

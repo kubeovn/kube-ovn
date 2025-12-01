@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -105,16 +105,16 @@ func setupNetworkAttachmentDefinition(
 	ginkgo.By("Creating underlay macvlan subnet " + externalNetworkName)
 	var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 	for _, config := range dockerExtNetNetwork.IPAM.Config {
-		switch util.CheckProtocol(config.Subnet) {
+		switch util.CheckProtocol(config.Subnet.Addr().String()) {
 		case apiv1.ProtocolIPv4:
 			if f.HasIPv4() {
-				cidrV4 = config.Subnet
-				gatewayV4 = config.Gateway
+				cidrV4 = config.Subnet.String()
+				gatewayV4 = config.Gateway.String()
 			}
 		case apiv1.ProtocolIPv6:
 			if f.HasIPv6() {
-				cidrV6 = config.Subnet
-				gatewayV6 = config.Gateway
+				cidrV6 = config.Subnet.String()
+				gatewayV6 = config.Gateway.String()
 			}
 		}
 	}
@@ -130,11 +130,11 @@ func setupNetworkAttachmentDefinition(
 	}
 	excludeIPs := make([]string, 0, len(network.Containers)*2)
 	for _, container := range network.Containers {
-		if container.IPv4Address != "" && f.HasIPv4() {
-			excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+		if container.IPv4Address.IsValid() && f.HasIPv4() {
+			excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 		}
-		if container.IPv6Address != "" && f.HasIPv6() {
-			excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+		if container.IPv6Address.IsValid() && f.HasIPv6() {
+			excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
 		}
 	}
 	macvlanSubnet := framework.MakeSubnet(externalNetworkName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", provider, excludeIPs, nil, nil)
@@ -348,11 +348,11 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 				if link.IfName == "eth0" {
 					eth0Exist = true
 				}
-				if link.Address == net1Mac {
+				if link.Address == net1Mac.String() {
 					net1NicName = link.IfName
 					net1Exist = true
 				}
-				if link.Address == net2Mac {
+				if link.Address == net2Mac.String() {
 					net2NicName = link.IfName
 					net2Exist = true
 				}
@@ -1208,7 +1208,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 				if link.IfName == "eth0" {
 					eth0Exist = true
 				}
-				if link.Address == net1Mac {
+				if link.Address == net1Mac.String() {
 					net1NicName = link.IfName
 					net1Exist = true
 				}
