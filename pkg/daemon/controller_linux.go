@@ -691,8 +691,17 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil, nil, nil
 	}
-	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) {
-		return nil, nil, nil
+	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
+		node, err := c.nodesLister.Get(c.config.NodeName)
+		if err != nil {
+			klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+			return nil, nil, err
+		}
+		isGatewayNode := util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) ||
+			(subnet.Spec.GatewayNode == "" && util.MatchLabelSelectors(subnet.Spec.GatewayNodeSelectors, node.Labels))
+		if !isGatewayNode {
+			return nil, nil, nil
+		}
 	}
 
 	protocols := make([]string, 1, 2)

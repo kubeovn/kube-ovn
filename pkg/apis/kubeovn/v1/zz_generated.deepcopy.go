@@ -1887,6 +1887,13 @@ func (in *SubnetSpec) DeepCopyInto(out *SubnetSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.GatewayNodeSelectors != nil {
+		in, out := &in.GatewayNodeSelectors, &out.GatewayNodeSelectors
+		*out = make([]metav1.LabelSelector, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.AllowSubnets != nil {
 		in, out := &in.AllowSubnets, &out.AllowSubnets
 		*out = make([]string, len(*in))

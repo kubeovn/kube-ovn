@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -489,6 +491,20 @@ func GatewayContains(gatewayNodeStr, gateway string) bool {
 			gw = strings.TrimSpace(gw)
 		}
 		if gw == strings.TrimSpace(gateway) {
+			return true
+		}
+	}
+	return false
+}
+
+func MatchLabelSelectors(selectors []metav1.LabelSelector, nodeLabels map[string]string) bool {
+	for _, selector := range selectors {
+		labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
+		if err != nil {
+			klog.Errorf("failed to convert label selector: %v", err)
+			continue
+		}
+		if labelSelector.Matches(labels.Set(nodeLabels)) {
 			return true
 		}
 	}

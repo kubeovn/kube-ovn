@@ -1643,33 +1643,46 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 		return nil, err
 	}
 
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+		return nil, err
+	}
+
 	for _, subnet := range subnets {
-		if subnet.DeletionTimestamp.IsZero() &&
-			subnet.Spec.ExternalEgressGateway != "" &&
-			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
-			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
-			subnet.Spec.Vpc == c.config.ClusterRouter &&
-			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
-			meta := policyRouteMeta{
-				priority: subnet.Spec.PolicyRoutingPriority,
-				tableID:  subnet.Spec.PolicyRoutingTableID,
-			}
-			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
-			if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
-				if len(egw) == 2 {
-					meta.gateway = egw[1]
-				} else if util.CheckProtocol(egw[0]) == protocol {
-					meta.gateway = egw[0]
-				}
-			} else {
+		if !subnet.DeletionTimestamp.IsZero() ||
+			subnet.Spec.ExternalEgressGateway == "" ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
+			(subnet.Spec.Protocol != kubeovnv1.ProtocolDual && subnet.Spec.Protocol != protocol) {
+			continue
+		}
+
+		isGatewayNode := util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) ||
+			(subnet.Spec.GatewayNode == "" && util.MatchLabelSelectors(subnet.Spec.GatewayNodeSelectors, node.Labels))
+		if !isGatewayNode {
+			continue
+		}
+
+		meta := policyRouteMeta{
+			priority: subnet.Spec.PolicyRoutingPriority,
+			tableID:  subnet.Spec.PolicyRoutingTableID,
+		}
+		egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
+			if len(egw) == 2 {
+				meta.gateway = egw[1]
+			} else if util.CheckProtocol(egw[0]) == protocol {
 				meta.gateway = egw[0]
 			}
-			if meta.gateway != "" {
-				cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-				if err == nil && cidrBlock != "" {
-					subnetsNeedPR[meta] = cidrBlock
-				}
+		} else {
+			meta.gateway = egw[0]
+		}
+		if meta.gateway != "" {
+			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			if err == nil && cidrBlock != "" {
+				subnetsNeedPR[meta] = cidrBlock
 			}
 		}
 	}

@@ -234,8 +234,8 @@ func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, e
 			continue
 		}
 
-		// only check format like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3'
 		for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+			// check format like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3'
 			for gw := range strings.SplitSeq(subnet.Spec.GatewayNode, ",") {
 				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
 					if subnet.Spec.EnableEcmp {
