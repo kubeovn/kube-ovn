@@ -466,7 +466,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						Command: []string{
 							"bash",
 							"-exc",
-							"chmod -t /usr/local/sbin && bash /kube-ovn/init-vpc-egress-gateway.sh",
+							"chmod +t /usr/local/sbin && bash /kube-ovn/init-vpc-egress-gateway.sh",
 						},
 						Env: initEnv,
 						SecurityContext: &corev1.SecurityContext{

@@ -56,7 +56,7 @@ spec:
           - sh
           - -xec
           - |
-            chmod -t /usr/local/sbin
+            chmod +t /usr/local/sbin
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
