@@ -4005,6 +4005,9 @@ spec:
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4171,6 +4174,9 @@ spec:
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4366,6 +4372,9 @@ spec:
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:${DPDK_TAG}"
@@ -4579,6 +4588,9 @@ spec:
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -4761,6 +4773,9 @@ spec:
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: hostpath-init
         image: "$REGISTRY/kube-ovn:$VERSION"
@@ -5031,6 +5046,9 @@ spec:
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -5255,6 +5273,9 @@ spec:
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: ovn-ic-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -5401,6 +5422,9 @@ spec:
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: hostpath-init
           image: "$REGISTRY/kube-ovn:$VERSION"
