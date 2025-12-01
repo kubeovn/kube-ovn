@@ -324,7 +324,9 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 		case apiv1.ProtocolIPv6:
 			if ipv6 {
 				cidrV6 = config.Subnet.String()
-				if !config.Gateway.IsValid() {
+				if config.Gateway.IsValid() {
+					gatewayV6 = config.Gateway.String()
+				} else {
 					var err error
 					gatewayV6, err = util.FirstIP(cidrV6)
 					framework.ExpectNoError(err)
