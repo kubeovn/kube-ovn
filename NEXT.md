@@ -4,12 +4,15 @@ This document lists the features merged into the master branch for the next mino
 
 ## Post-v1.14.0
 
+- Subnet with centralized gateway now supports nodeSelectors. [#5956](https://github.com/kubeovn/kube-ovn/pull/5956)
+- Overlay encapsulation NIC selection. [#5946](https://github.com/kubeovn/kube-ovn/pull/5946)
 - Performace: skip conntrack for specific dst CIDRs. [#5821](https://github.com/kubeovn/kube-ovn/pull/5821)
 - NetworkPolicy supports `lax` mode which only deny traffic type of TCP, UDP and SCTP. That means ARP, ICMP and DHCP traffic are alaways allowed. [#5745](https://github.com/kubeovn/kube-ovn/pull/5745)
 - Remove internal-port type interface code. [#5794](https://github.com/kubeovn/kube-ovn/pull/5794)
 - IPPool
   - Multiple IPPools now can bind to the same Namespace. [#5731](https://github.com/kubeovn/kube-ovn/pull/5731)
   - Pods in a bound namespace will only get IPs from the bound pool(s), not other ranges in the subnet. [#5731](https://github.com/kubeovn/kube-ovn/pull/5731)
+  - IPPool will create an AddressSet that can be work with VPC Policy Route and ACL. [#5920](https://github.com/kubeovn/kube-ovn/pull/5920)
 - `AdminNetworkPolicy` now supports specify egress peers using FQDNs. [#5703](https://github.com/kubeovn/kube-ovn/pull/5703)
 - Using ARP for IPv4 network ready check: now you don't need ACL allow rules for gateway to make Pod running. [#5716](https://github.com/kubeovn/kube-ovn/pull/5716)
 - Non-primary CNI mode: you can run Kube-OVN as the secondary only network, without annoying unused annotations and logical switch port allocations. [#5618](https://github.com/kubeovn/kube-ovn/pull/5618)
