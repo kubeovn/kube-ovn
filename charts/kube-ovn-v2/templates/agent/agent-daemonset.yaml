@@ -44,7 +44,7 @@ spec:
       serviceAccountName: kube-ovn-cni
       automountServiceAccountToken: true
       hostNetwork: true
-      hostPID: true
+      hostPID: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault

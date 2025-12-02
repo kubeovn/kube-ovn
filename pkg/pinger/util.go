@@ -2,7 +2,6 @@ package pinger
 
 import (
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -10,6 +9,8 @@ import (
 	"github.com/kubeovn/ovsdb"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
@@ -19,36 +20,28 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func (e *Exporter) getOvsStatus() map[string]bool {
-	components := []string{
-		"ovsdb-server",
-		"ovs-vswitchd",
-	}
-	result := make(map[string]bool)
+func getOvsStatus() map[string]error {
+	components := [...]string{ovs.OvsdbServer, ovs.OvsVswitchd}
+	result := make(map[string]error, len(components))
 	for _, component := range components {
-		_, err := e.Client.GetProcessInfo(component)
+		_, err := ovs.Appctl(component, "-T", "1", "version")
 		if err != nil {
-			klog.Errorf("%s: pid-%v", component, err)
-			e.IncrementErrorCounter()
-			result[component] = false
-			continue
+			klog.Errorf("failed to get %s status: %v", component, err)
 		}
-		result[component] = true
+		result[component] = err
 	}
 
 	return result
 }
 
 func (e *Exporter) getOvsDatapath() ([]string, error) {
-	var datapathsList []string
-	cmdstr := fmt.Sprintf("ovs-appctl -T %v dpctl/dump-dps", e.Client.Timeout)
-	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
-	output, err := cmd.CombinedOutput()
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/dump-dps")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %w", err)
 	}
 
-	for kvPair := range strings.SplitSeq(string(output), "\n") {
+	var datapathsList []string
+	for kvPair := range strings.SplitSeq(output, "\n") {
 		var datapathType, datapathName string
 		line := strings.TrimSpace(strings.TrimSuffix(kvPair, "\n"))
 		if strings.Contains(line, "@") {
@@ -67,15 +60,13 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 }
 
 func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
-	cmdstr := fmt.Sprintf("ovs-appctl -T %v dpctl/show %s", e.Client.Timeout, datapathName)
-	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
-	output, err := cmd.CombinedOutput()
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/show", datapathName)
 	if err != nil {
 		return fmt.Errorf("failed to get output of dpctl/show %s: %w", datapathName, err)
 	}
 
 	var datapathPortCount float64
-	for kvPair := range strings.SplitSeq(string(output), "\n") {
+	for kvPair := range strings.SplitSeq(output, "\n") {
 		line := strings.TrimSpace(kvPair)
 		switch {
 		case strings.HasPrefix(line, "lookups:"):
