@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 # renovate: datasource=golang-version depName=go
-ARG GO_VERSION=1.25.4
+ARG GO_VERSION=1.25.5
 
 FROM ubuntu:24.04 AS openssl-builder
 
