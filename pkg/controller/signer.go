@@ -37,7 +37,7 @@ func (c *Controller) enqueueAddCsr(obj any) {
 		return
 	}
 
-	key := cache.MetaObjectToName(obj.(*csrv1.CertificateSigningRequest)).String()
+	key := cache.MetaObjectToName(req).String()
 	klog.V(3).Infof("enqueue add csr %s", key)
 	c.addOrUpdateCsrQueue.Add(key)
 }
