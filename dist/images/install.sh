@@ -4773,7 +4773,7 @@ spec:
       serviceAccountName: kube-ovn-cni
       automountServiceAccountToken: true
       hostNetwork: true
-      hostPID: true
+      hostPID: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -5424,7 +5424,7 @@ spec:
       priorityClassName: system-node-critical
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
-      hostPID: true
+      hostPID: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault

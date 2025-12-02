@@ -9,6 +9,8 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 // Chassis represents a row in the Chassis table.
@@ -32,13 +34,16 @@ type ChassisResponse struct {
 }
 
 func checkOvs(config *Configuration, setMetrics bool) error {
-	output, err := exec.Command("/usr/share/openvswitch/scripts/ovs-ctl", "status").CombinedOutput()
-	if err != nil {
-		klog.Errorf("check ovs status failed %v, %s", err, string(output))
-		SetOvsDownMetrics(config.NodeName)
-		return err
+	for component, err := range getOvsStatus() {
+		if err != nil {
+			klog.Errorf("%s is down", component)
+			if setMetrics {
+				SetOvsDownMetrics(config.NodeName)
+			}
+			return err
+		}
 	}
-	klog.Infof("ovs-vswitchd and ovsdb are up")
+	klog.Infof("%s and %s are up", ovs.OvsdbServer, ovs.OvsVswitchd)
 	if setMetrics {
 		SetOvsUpMetrics(config.NodeName)
 	}
@@ -46,15 +51,15 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 }
 
 func checkOvnController(config *Configuration, setMetrics bool) error {
-	output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_controller").CombinedOutput()
+	_, err := ovs.Appctl(ovs.OvnController, "-T", "1", "version")
 	if err != nil {
-		klog.Errorf("check ovn_controller status failed %v, %q", err, output)
+		klog.Errorf("failed to get status of %s: %v", ovs.OvnController, err)
 		if setMetrics {
 			SetOvnControllerDownMetrics(config.NodeName)
 		}
 		return err
 	}
-	klog.Infof("ovn_controller is up")
+	klog.Infof("%s is up", ovs.OvnController)
 	if setMetrics {
 		SetOvnControllerUpMetrics(config.NodeName)
 	}
