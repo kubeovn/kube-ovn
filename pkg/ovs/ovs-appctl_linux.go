@@ -42,11 +42,11 @@ func Appctl(component string, args ...string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to read pid file %q: %w", pidFile, err)
 	}
-	pid := strings.TrimSpace(string(pidBytes))
-	if pid == "" {
-		return "", fmt.Errorf("pid file %q is empty", pidFile)
+	pidFields := strings.Fields(string(pidBytes))
+	if len(pidFields) == 0 {
+		return "", fmt.Errorf("pid file %q is empty or contains only whitespace", pidFile)
 	}
-	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, pid))
+	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, pidFields[0]))
 
 	return appctlByTarget(target, args...)
 }
