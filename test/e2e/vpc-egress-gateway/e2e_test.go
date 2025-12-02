@@ -88,7 +88,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	clusterName = string(data)
 })
 
-var _ = framework.Describe("[group:veg]", func() {
+var _ = framework.SerialDescribe("[group:veg]", func() {
 	f := framework.NewDefaultFramework("veg")
 
 	var vpcClient *framework.VpcClient
