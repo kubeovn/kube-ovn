@@ -500,6 +500,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
 					},
+					Tolerations: slices.Clone(gw.Spec.Tolerations),
 					Volumes: []corev1.Volume{{
 						Name: "usr-local-sbin",
 						VolumeSource: corev1.VolumeSource{
