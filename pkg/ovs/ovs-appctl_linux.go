@@ -38,11 +38,15 @@ func Appctl(component string, args ...string) (string, error) {
 	}
 
 	pidFile := filepath.Join(runDir, component+".pid")
-	pid, err := os.ReadFile(pidFile)
+	pidBytes, err := os.ReadFile(pidFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to read pid file %q: %w", pidFile, err)
 	}
+	pid := strings.TrimSpace(string(pidBytes))
+	if pid == "" {
+		return "", fmt.Errorf("pid file %q is empty", pidFile)
+	}
+	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, pid))
 
-	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, strings.TrimSpace(string(pid))))
 	return appctlByTarget(target, args...)
 }
