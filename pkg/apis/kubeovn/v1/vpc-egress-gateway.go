@@ -95,6 +95,8 @@ type VpcEgressGatewaySpec struct {
 	Policies []VpcEgressGatewayPolicy `json:"policies,omitempty"`
 	// optional node selector used to select the nodes where the workload will be running
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
+	// optional tolerations applied to the workload pods
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 type VpcEgressGatewaySelector struct {

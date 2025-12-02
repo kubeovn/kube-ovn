@@ -2600,10 +2600,12 @@ jobs:
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
+        env:
+          UNTAINT_CONTROL_PLANE: "false"
         run: make kind-install-debug-valgrind-${{ matrix.ip-family }}
 
       - name: Install Multus
