@@ -258,9 +258,8 @@ func (c *Controller) handleAddNode(key string) error {
 			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
 			return err
 		}
-		// policy route for overlay distributed subnet should be reconciled when node ip changed
-		c.addOrUpdateSubnetQueue.Add(subnet.Name)
 	}
+	c.distributedSubnetNeedSync.Store(true)
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.ReplaceAll(portName, "-", ".")
@@ -545,25 +544,23 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
+	c.distributedSubnetNeedSync.Store(true)
+
 	for _, cachedSubnet := range subnets {
-		if cachedSubnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-			// we need to reconcile ovn route for subnets with distributed gateway mode,
-			// since the informer node cache may not be synced before the subnet reconcile triggered by node addition
-			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
+		if cachedSubnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
-		subnet := cachedSubnet.DeepCopy()
 
 		// For subnets using GatewayNodeSelectors, always trigger reconciliation
 		// when node labels change, since the node might have been added or removed
 		// from the gateway list
-		if subnet.Spec.GatewayNode == "" && len(subnet.Spec.GatewayNodeSelectors) > 0 {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		if cachedSubnet.Spec.GatewayNode == "" && len(cachedSubnet.Spec.GatewayNodeSelectors) > 0 {
+			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
 			continue
 		}
 
-		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
+		if util.GatewayContains(cachedSubnet.Spec.GatewayNode, node.Name) {
+			if err := c.reconcileOvnDefaultVpcRoute(cachedSubnet); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -571,6 +568,33 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) syncDistributedSubnetRoutes() {
+	if !c.distributedSubnetNeedSync.Swap(false) {
+		return
+	}
+
+	klog.V(3).Infoln("start to sync distributed subnet routes")
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		c.distributedSubnetNeedSync.Store(true)
+		return
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc != c.config.ClusterRouter ||
+			subnet.Name == c.config.NodeSwitch ||
+			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) {
+			continue
+		}
+		if err := c.reconcileDistributedSubnetRouteInDefaultVpc(subnet); err != nil {
+			klog.Errorf("failed to reconcile distributed subnet %s route: %v", subnet.Name, err)
+			c.distributedSubnetNeedSync.Store(true)
+		}
+	}
 }
 
 func (c *Controller) checkSubnetGateway() {

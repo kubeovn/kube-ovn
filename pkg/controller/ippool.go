@@ -170,7 +170,7 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 	return c.patchIPPoolStatus(ippool)
 }
 
-func (c Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason, errMsg string) error {
+func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason, errMsg string) error {
 	if errMsg != "" {
 		ippool.Status.SetError(reason, errMsg)
 		ippool.Status.NotReady(reason, errMsg)
@@ -182,7 +182,7 @@ func (c Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason,
 	return c.patchIPPoolStatus(ippool)
 }
 
-func (c Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
+func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
 	bytes, err := ippool.Status.Bytes()
 	if err != nil {
 		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)

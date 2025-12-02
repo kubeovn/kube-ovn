@@ -438,7 +438,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	return subnet, false, nil
 }
 
-func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
+func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		if reason == "ValidateLogicalSwitchFailed" {
