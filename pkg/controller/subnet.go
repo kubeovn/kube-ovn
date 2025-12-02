@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
@@ -409,8 +408,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
 			return patchSubnet, false, err
 		}
-		// wait local cache ready
-		time.Sleep(1 * time.Second)
+
 		return patchSubnet, false, nil
 	}
 
