@@ -21,8 +21,18 @@ while true; do
   if [[ -e "$OVS_SOCK" ]]; then
     for component in ovsdb-server ovs-vswitchd; do
       echo "checking ${component} status"
-      if ! { pid=$(awk '{print $1}' "/run/openvswitch/${component}.pid" 2>/dev/null) && [[ -n "$pid" ]] && ovs-appctl -T 1 -t "/run/openvswitch/${component}.${pid}.ctl" version >/dev/null 2>&1; }; then
-        echo "${component} is not ready"
+      if ! pid=$(awk '{print $1}' "/run/openvswitch/${component}.pid" 2>/dev/null); then
+        echo "${component} is not ready (failed to read pid file)"
+        sleep 1
+        continue 2
+      fi
+      if [[ -z "$pid" ]]; then
+        echo "${component} is not ready (pid not found)"
+        sleep 1
+        continue 2
+      fi
+      if ! ovs-appctl -T 1 -t "/run/openvswitch/${component}.${pid}.ctl" version >/dev/null 2>&1; then
+        echo "${component} is not ready (ovs-appctl failed)"
         sleep 1
         continue 2
       fi
