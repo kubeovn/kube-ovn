@@ -1,5 +1,7 @@
 # Makefile for managing kind environments
 
+UNTAINT_CONTROL_PLANE ?= true
+
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 # Cilium configuration variables (fallback if not defined in main Makefile)
@@ -254,7 +256,9 @@ kind-upgrade-chart-v2: kind-load-image upgrade-chart-v2
 .PHONY: kind-install
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
-	@$(MAKE) untaint-control-plane
+	@if [ "$(UNTAINT_CONTROL_PLANE)" = "true" ]; then \
+		$(MAKE) untaint-control-plane; \
+	fi
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 

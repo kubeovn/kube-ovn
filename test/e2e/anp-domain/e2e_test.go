@@ -118,7 +118,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		f.SkipVersionPriorTo(1, 15, "AdminNetworkPolicy domainName support was introduced in v1.15")
 		ginkgo.By("Creating test namespace " + namespaceName)
 		labels := map[string]string{
-			"kubernetes.io/metadata.name": namespaceName,
+			corev1.LabelMetadataName: namespaceName,
 		}
 		ns := framework.MakeNamespace(namespaceName, labels, nil)
 		_ = nsClient.Create(ns)
@@ -133,7 +133,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating AdminNetworkPolicy with domainName to deny baidu.com")
 		namespaceSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubernetes.io/metadata.name": namespaceName,
+				corev1.LabelMetadataName: namespaceName,
 			},
 		}
 		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
@@ -156,7 +156,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		framework.ExpectEqual(string(peer.DomainNames[0]), "*.baidu.com.")
 
 		framework.ExpectEqual(anp.Spec.Priority, int32(55))
-		framework.ExpectEqual(anp.Spec.Subject.Namespaces.MatchLabels["kubernetes.io/metadata.name"], namespaceName)
+		framework.ExpectEqual(anp.Spec.Subject.Namespaces.MatchLabels[corev1.LabelMetadataName], namespaceName)
 
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying ANP (should be blocked)")
 
@@ -173,7 +173,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Creating test namespace " + namespaceName)
 		labels := map[string]string{
-			"kubernetes.io/metadata.name": namespaceName,
+			corev1.LabelMetadataName: namespaceName,
 		}
 		ns := framework.MakeNamespace(namespaceName, labels, nil)
 		_ = nsClient.Create(ns)
@@ -189,7 +189,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating first AdminNetworkPolicy with domainName to deny baidu.com")
 		namespaceSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubernetes.io/metadata.name": namespaceName,
+				corev1.LabelMetadataName: namespaceName,
 			},
 		}
 		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
@@ -250,7 +250,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Creating test namespace " + namespaceName)
 		labels := map[string]string{
-			"kubernetes.io/metadata.name": namespaceName,
+			corev1.LabelMetadataName: namespaceName,
 		}
 		ns := framework.MakeNamespace(namespaceName, labels, nil)
 		_ = nsClient.Create(ns)
@@ -266,7 +266,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating AdminNetworkPolicy without any domainName rules initially")
 		namespaceSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubernetes.io/metadata.name": namespaceName,
+				corev1.LabelMetadataName: namespaceName,
 			},
 		}
 		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
@@ -324,7 +324,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Creating test namespace " + namespaceName)
 		labels := map[string]string{
-			"kubernetes.io/metadata.name": namespaceName,
+			corev1.LabelMetadataName: namespaceName,
 		}
 		ns := framework.MakeNamespace(namespaceName, labels, nil)
 		_ = nsClient.Create(ns)
@@ -341,7 +341,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating AdminNetworkPolicy with both domainName and CIDR rules")
 		namespaceSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubernetes.io/metadata.name": namespaceName,
+				corev1.LabelMetadataName: namespaceName,
 			},
 		}
 		ports := []netpolv1alpha1.AdminNetworkPolicyPort{
@@ -383,7 +383,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 
 		ginkgo.By("Creating test namespace " + namespaceName)
 		labels := map[string]string{
-			"kubernetes.io/metadata.name": namespaceName,
+			corev1.LabelMetadataName: namespaceName,
 		}
 		ns := framework.MakeNamespace(namespaceName, labels, nil)
 		_ = nsClient.Create(ns)
@@ -400,7 +400,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating AdminNetworkPolicy with wildcard domainName rules")
 		namespaceSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubernetes.io/metadata.name": namespaceName,
+				corev1.LabelMetadataName: namespaceName,
 			},
 		}
 		ports := []netpolv1alpha1.AdminNetworkPolicyPort{

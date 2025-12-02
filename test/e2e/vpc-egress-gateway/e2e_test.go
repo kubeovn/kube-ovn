@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	commontest "k8s.io/kubernetes/test/e2e/common"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -62,11 +64,7 @@ func TestE2E(t *testing.T) {
 	ginkgo.RunSpecs(t, "Kube-OVN e2e suite", suiteConfig, reporterConfig)
 }
 
-const (
-	kindNetwork = "kind"
-
-	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
-)
+const kindNetwork = "kind"
 
 var clusterName string
 
@@ -91,7 +89,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	clusterName = string(data)
 })
 
-var _ = framework.Describe("[group:veg]", func() {
+var _ = framework.SerialDescribe("[group:veg]", func() {
 	f := framework.NewDefaultFramework("veg")
 
 	var vpcClient *framework.VpcClient
@@ -99,6 +97,7 @@ var _ = framework.Describe("[group:veg]", func() {
 	var nadClient *framework.NetworkAttachmentDefinitionClient
 	var nadName, externalSubnetName, namespaceName string
 	var nodes, schedulableNodes []corev1.Node
+	var controlPlaneNodeNames []string
 	var replicas int32
 	ginkgo.BeforeEach(func() {
 		namespaceName = f.Namespace.Name
@@ -113,12 +112,64 @@ var _ = framework.Describe("[group:veg]", func() {
 		framework.ExpectNotEmpty(nodeList.Items)
 		nodes = nodeList.Items
 
+		if len(controlPlaneNodeNames) == 0 {
+			for _, node := range nodes {
+				if _, ok := node.Labels[constants.LabelNodeRoleControlPlane]; !ok {
+					continue
+				}
+				if len(node.Spec.Taints) != 0 && node.Spec.Taints[0] == constants.ControlPlaneTaint {
+					controlPlaneNodeNames = append(controlPlaneNodeNames, node.Name)
+				}
+			}
+			framework.ExpectNotEmpty(controlPlaneNodeNames, "no control plane nodes found")
+		}
+		framework.Logf("control plane nodes with NoSchedule taint: %v", controlPlaneNodeNames)
+
 		nodeList, err = e2enode.GetReadySchedulableNodes(context.Background(), f.ClientSet)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodeList.Items)
 		schedulableNodes = nodeList.Items
 
 		replicas = min(int32(len(schedulableNodes)), 3)
+	})
+
+	framework.ConformanceIt("should be able to specify tolerations", func() {
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		internalSubnetName := "int-" + framework.RandomSuffix()
+		ginkgo.By("Creating internal subnet " + internalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting internal subnet " + internalSubnetName)
+			subnetClient.DeleteSync(internalSubnetName)
+		})
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", "", "", nil, nil, nil)
+		_ = subnetClient.CreateSync(internalSubnet)
+
+		ginkgo.By("Getting docker network " + kindNetwork)
+		network, err := docker.NetworkInspect(kindNetwork)
+		framework.ExpectNoError(err, "getting docker network "+kindNetwork)
+
+		externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, f.HasIPv4(), f.HasIPv6())
+		externalSubnet.Spec.Provider = provider
+
+		ginkgo.By("Creating macvlan subnet " + externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting external subnet " + externalSubnetName)
+			subnetClient.DeleteSync(externalSubnetName)
+		})
+		_ = subnetClient.CreateSync(externalSubnet)
+
+		vegTest(f, false, provider, nadName, "", internalSubnetName, externalSubnetName, int32(len(controlPlaneNodeNames)), controlPlaneNodeNames)
 	})
 
 	framework.ConformanceIt("should be able to create vpc-egress-gateway with underlay subnet", func() {
@@ -228,7 +279,7 @@ var _ = framework.Describe("[group:veg]", func() {
 			IP:      bfdIP,
 			NodeSelector: &metav1.LabelSelector{
 				MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key:      controlPlaneLabel,
+					Key:      constants.LabelNodeRoleControlPlane,
 					Operator: metav1.LabelSelectorOpExists,
 				}},
 			},
@@ -246,15 +297,15 @@ var _ = framework.Describe("[group:veg]", func() {
 		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Name)
 		for _, node := range nodes {
 			if slices.Contains(updatedVpc.Status.BFDPort.Nodes, node.Name) {
-				framework.ExpectHaveKey(node.Labels, controlPlaneLabel)
+				framework.ExpectHaveKey(node.Labels, constants.LabelNodeRoleControlPlane)
 			} else {
-				framework.ExpectNotHaveKey(node.Labels, controlPlaneLabel)
+				framework.ExpectNotHaveKey(node.Labels, constants.LabelNodeRoleControlPlane)
 			}
 		}
 
 		// TODO: check ovn LRP
 
-		vegTest(f, true, provider, nadName, vpcName, vpc.Status.DefaultLogicalSwitch, externalSubnetName, replicas)
+		vegTest(f, true, provider, nadName, vpcName, vpc.Status.DefaultLogicalSwitch, externalSubnetName, replicas, nil)
 	})
 
 	framework.ConformanceIt("should be able to create vpc-egress-gateway with macvlan", func() {
@@ -305,7 +356,7 @@ var _ = framework.Describe("[group:veg]", func() {
 		})
 		_ = subnetClient.CreateSync(externalSubnet)
 
-		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas)
+		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas, nil)
 	})
 })
 
@@ -435,7 +486,7 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	}
 }
 
-func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32) {
+func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32, expectedNodes []string) {
 	ginkgo.GinkgoHelper()
 
 	namespaceName := f.Namespace.Name
@@ -462,7 +513,6 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 
 	vegName := "veg-" + framework.RandomSuffix()
-	ginkgo.By("Creating vpc egress gateway " + vegName)
 	veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, replicas, internalSubnetName, externalSubnetName)
 	if rand.Int32N(2) == 0 {
 		veg.Spec.Prefix = fmt.Sprintf("e2e-%s-", framework.RandomSuffix())
@@ -472,6 +522,15 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		SNAT:     false,
 		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
 	}}
+	if len(expectedNodes) != 0 {
+		// test vpc egress gateway with node selector and tolerations
+		veg.Spec.NodeSelector = []apiv1.VpcEgressGatewayNodeSelector{{
+			MatchLabels: map[string]string{
+				constants.LabelNodeRoleControlPlane: "",
+			},
+		}}
+		veg.Spec.Tolerations = []corev1.Toleration{constants.ControlPlaneToleration}
+	}
 	if vpcName == util.DefaultVpc {
 		veg.Spec.VPC = "" // test whether the veg works without specifying VPC
 		veg.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
@@ -500,6 +559,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		ginkgo.By("Deleting vpc egress gateway " + vegName)
 		vegClient.DeleteSync(vegName)
 	})
+	ginkgo.By(fmt.Sprintf("Creating vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
 	veg = vegClient.CreateSync(veg)
 
 	ginkgo.By("Validating vpc egress gateway status")
@@ -522,12 +582,26 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectHaveLen(workloadPods.Items, int(replicas))
 	podNodes := make([]string, 0, len(workloadPods.Items))
 	intIPs := make(map[string][]string, len(workloadPods.Items))
+	podAntiAffinity := []corev1.PodAffinityTerm{{
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: maps.Clone(deploy.Spec.Selector.MatchLabels),
+		},
+		TopologyKey: corev1.LabelHostname,
+	}}
 	for _, pod := range workloadPods.Items {
+		framework.ExpectEmpty(pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+		framework.ExpectNil(pod.Spec.Affinity.PodAffinity)
+		framework.ExpectNotNil(pod.Spec.Affinity.PodAntiAffinity)
+		framework.ExpectNil(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+		framework.ExpectEqual(pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, podAntiAffinity)
 		framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		podNodes = append(podNodes, pod.Spec.NodeName)
 		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
 	}
 	framework.ExpectConsistOf(veg.Status.Workload.Nodes, podNodes)
+	if len(expectedNodes) != 0 {
+		framework.ExpectConsistOf(podNodes, expectedNodes)
+	}
 
 	svrPodName := "svr-" + framework.RandomSuffix()
 	ginkgo.By("Creating netexec server pod " + svrPodName)
