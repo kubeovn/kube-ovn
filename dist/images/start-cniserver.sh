@@ -21,7 +21,7 @@ while true; do
   if [[ -e "$OVS_SOCK" ]]; then
     for component in ovsdb-server ovs-vswitchd; do
       echo "checking ${component} status"
-      pid=$(xargs < /run/openvswitch/${component}.pid) && ovs-appctl -T 1 -t /run/openvswitch/${component}.${pid}.ctl version
+      pid=$(awk '{print $1}' "/run/openvswitch/${component}.pid") && ovs-appctl -T 1 -t "/run/openvswitch/${component}.${pid}.ctl" version
       if [[ $? -ne 0 ]]; then
         echo "${component} is not ready"
         sleep 1
