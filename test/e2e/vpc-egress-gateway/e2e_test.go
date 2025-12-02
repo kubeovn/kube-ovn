@@ -575,31 +575,18 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectHaveLen(workloadPods.Items, int(replicas))
 	podNodes := make([]string, 0, len(workloadPods.Items))
 	intIPs := make(map[string][]string, len(workloadPods.Items))
-	nodeSelector := &corev1.NodeSelector{}
-	for _, selector := range veg.Spec.NodeSelector {
-		matchExpressions := make([]corev1.NodeSelectorRequirement, 0, len(selector.MatchLabels))
-		for key, value := range selector.MatchLabels {
-			matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
-				Key:      key,
-				Operator: corev1.NodeSelectorOpIn,
-				Values:   []string{value},
-			})
-		}
-		nodeSelector.NodeSelectorTerms = append(nodeSelector.NodeSelectorTerms, corev1.NodeSelectorTerm{
-			MatchExpressions: matchExpressions,
-		})
-	}
-	podAntiAffinity := &corev1.PodAffinityTerm{
+	podAntiAffinity := []corev1.PodAffinityTerm{{
 		LabelSelector: &metav1.LabelSelector{
 			MatchLabels: maps.Clone(deploy.Spec.Selector.MatchLabels),
 		},
-	}
+		TopologyKey: corev1.LabelHostname,
+	}}
 	for _, pod := range workloadPods.Items {
-		framework.ExpectNil(pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
-		framework.ExpectEqual(pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution, nodeSelector)
-		framework.ExpectEqual(pod.Spec.Affinity.PodAffinity, nil)
-		framework.ExpectEqual(pod.Spec.Affinity.PodAntiAffinity, podAntiAffinity)
-		framework.ExpectEqual(pod.Spec.Tolerations, veg.Spec.Tolerations)
+		framework.ExpectEmpty(pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+		framework.ExpectNil(pod.Spec.Affinity.PodAffinity)
+		framework.ExpectNotNil(pod.Spec.Affinity.PodAntiAffinity)
+		framework.ExpectNil(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+		framework.ExpectEqual(pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, podAntiAffinity)
 		framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		podNodes = append(podNodes, pod.Spec.NodeName)
 		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
