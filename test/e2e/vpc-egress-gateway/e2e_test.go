@@ -89,7 +89,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	clusterName = string(data)
 })
 
-var _ = framework.Describe("[group:veg]", func() {
+var _ = framework.SerialDescribe("[group:veg]", func() {
 	f := framework.NewDefaultFramework("veg")
 
 	var vpcClient *framework.VpcClient
@@ -122,8 +122,8 @@ var _ = framework.Describe("[group:veg]", func() {
 				}
 			}
 			framework.ExpectNotEmpty(controlPlaneNodeNames, "no control plane nodes found")
-			framework.Logf("control plane nodes with NoSchedule taint: %v", controlPlaneNodeNames)
 		}
+		framework.Logf("control plane nodes with NoSchedule taint: %v", controlPlaneNodeNames)
 
 		nodeList, err = e2enode.GetReadySchedulableNodes(context.Background(), f.ClientSet)
 		framework.ExpectNoError(err)
