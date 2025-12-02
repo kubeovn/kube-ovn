@@ -297,10 +297,6 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 
 func (c *Controller) getSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	csr := &v1.CertificateSigningRequest{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certificates.k8s.io/v1",
-			Kind:       "CertificateSigningRequest",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "ovn-ipsec-" + os.Getenv("HOSTNAME"),
 		},
