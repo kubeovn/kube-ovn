@@ -116,10 +116,6 @@ func generateCSRCode() ([]byte, error) {
 
 func (c *Controller) createCSR(csrBytes []byte) error {
 	csr := &v1.CertificateSigningRequest{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certificates.k8s.io/v1",
-			Kind:       "CertificateSigningRequest",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "ovn-ipsec-" + os.Getenv("HOSTNAME"),
 		},
