@@ -138,6 +138,18 @@ var _ = framework.Describe("[group:veg]", func() {
 		nad = nadClient.Create(nad)
 		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
 
+		vpcName := "vpc-" + framework.RandomSuffix()
+		ginkgo.By("Creating vpc " + vpcName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc " + vpcName)
+			vpcClient.DeleteSync(vpcName)
+		})
+		vpc := &apiv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: vpcName}}
+		vpc = vpcClient.CreateSync(vpc)
+		framework.ExpectEmpty(vpc.Status.BFDPort.Name)
+		framework.ExpectEmpty(vpc.Status.BFDPort.IP)
+		framework.ExpectEmpty(vpc.Status.BFDPort.Nodes)
+
 		internalSubnetName := "int-" + framework.RandomSuffix()
 		ginkgo.By("Creating internal subnet " + internalSubnetName)
 		ginkgo.DeferCleanup(func() {
@@ -145,7 +157,7 @@ var _ = framework.Describe("[group:veg]", func() {
 			subnetClient.DeleteSync(internalSubnetName)
 		})
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
-		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", "", "", nil, nil, nil)
+		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(internalSubnet)
 
 		ginkgo.By("Getting docker network " + kindNetwork)
@@ -162,7 +174,7 @@ var _ = framework.Describe("[group:veg]", func() {
 		})
 		_ = subnetClient.CreateSync(externalSubnet)
 
-		vegTest(f, false, provider, nadName, "", internalSubnetName, externalSubnetName, int32(len(controlPlaneNodeNames)), controlPlaneNodeNames)
+		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, int32(len(controlPlaneNodeNames)), controlPlaneNodeNames)
 	})
 
 	framework.ConformanceIt("should be able to create vpc-egress-gateway with underlay subnet", func() {
