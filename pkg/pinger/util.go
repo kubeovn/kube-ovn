@@ -30,10 +30,8 @@ func getOvsStatus(e *Exporter) map[string]error {
 			if e != nil {
 				e.IncrementErrorCounter()
 			}
-			result[component] = err
-			continue
 		}
-		result[component] = nil
+		result[component] = err
 	}
 
 	return result

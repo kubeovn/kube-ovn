@@ -21,8 +21,7 @@ func appctlByTarget(target string, args ...string) (string, error) {
 	cmd := exec.Command(cmdOvsAppctl, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		cmd := strings.Join(slices.Insert(args, 0, cmdOvsAppctl), " ")
-		return "", fmt.Errorf("failed to run command %q: %w", cmd, err)
+		return "", fmt.Errorf("failed to run command %q: %w", cmd.String(), err)
 	}
 	return string(output), nil
 }
