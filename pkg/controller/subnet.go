@@ -721,10 +721,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
 		return err
 	}
-	if err := c.checkSubnetConflict(subnet); err != nil {
-		klog.Errorf("failed to check subnet %s, %v", subnet.Name, err)
-		return err
-	}
 
 	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway ||
 		(subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection)
@@ -745,11 +741,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	// Lock VPC to prevent CIDR conflict between concurrent subnet creations in the same VPC
+	c.vpcKeyMutex.LockKey(subnet.Spec.Vpc)
+	if err := c.checkSubnetConflict(subnet); err != nil {
+		_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
+		klog.Errorf("failed to check subnet %s, %v", subnet.Name, err)
+		return err
+	}
 	// create or update logical switch
 	if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, gatewayMAC, needRouter, randomAllocateGW); err != nil {
+		_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
 		klog.Errorf("create logical switch %s: %v", subnet.Name, err)
 		return err
 	}
+	_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
 
 	// Record the gateway MAC in ipam if router port exists
 	if needRouter {
