@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	netAttach "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/informers/externalversions"
@@ -299,6 +300,8 @@ type Controller struct {
 
 	// Database health check
 	dbFailureCount int
+
+	distributedSubnetNeedSync atomic.Bool
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -1359,6 +1362,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
+	go wait.Until(c.syncDistributedSubnetRoutes, 5*time.Second, ctx.Done())
 
 	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ovn eip", c.updateOvnEipQueue, c.handleUpdateOvnEip), time.Second, ctx.Done())
