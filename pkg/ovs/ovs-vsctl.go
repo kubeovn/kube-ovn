@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -227,6 +228,8 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 	return nil
 }
 
+var lastInterfacePodMap map[string]string
+
 func ListInterfacePodMap() (map[string]string, error) {
 	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids,error", "find",
 		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]")
@@ -258,7 +261,10 @@ func ListInterfacePodMap() (map[string]string, error) {
 		}
 		result[ifaceName] = fmt.Sprintf("%s/%s/%s", podNamespace, podName, errText)
 	}
-	klog.Infof("interface pod map: %v", result)
+	if !maps.Equal(result, lastInterfacePodMap) {
+		klog.Infof("interface pod map: %v", result)
+		lastInterfacePodMap = maps.Clone(result)
+	}
 	return result, nil
 }
 
