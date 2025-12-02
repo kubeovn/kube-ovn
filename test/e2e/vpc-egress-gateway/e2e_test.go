@@ -30,6 +30,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -112,11 +113,15 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		nodes = nodeList.Items
 
 		for _, node := range nodes {
-			if _, ok := node.Labels[constants.LabelNodeRoleControlPlane]; ok {
+			if _, ok := node.Labels[constants.LabelNodeRoleControlPlane]; !ok {
+				continue
+			}
+			if len(node.Spec.Taints) != 0 && node.Spec.Taints[0] == constants.ControlPlaneTaint {
 				controlPlaneNodeNames = append(controlPlaneNodeNames, node.Name)
 			}
 		}
 		framework.ExpectNotEmpty(controlPlaneNodeNames, "no control plane nodes found")
+		framework.Logf("control plane nodes with NoSchedule taint: %v", controlPlaneNodeNames)
 
 		nodeList, err = e2enode.GetReadySchedulableNodes(context.Background(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -518,7 +523,6 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 
 	vegName := "veg-" + framework.RandomSuffix()
-	ginkgo.By("Creating vpc egress gateway " + vegName)
 	veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, replicas, internalSubnetName, externalSubnetName)
 	if rand.Int32N(2) == 0 {
 		veg.Spec.Prefix = fmt.Sprintf("e2e-%s-", framework.RandomSuffix())
@@ -565,6 +569,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		ginkgo.By("Deleting vpc egress gateway " + vegName)
 		vegClient.DeleteSync(vegName)
 	})
+	ginkgo.By(fmt.Sprintf("Creating vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
 	veg = vegClient.CreateSync(veg)
 
 	ginkgo.By("Validating vpc egress gateway status")
