@@ -47,16 +47,14 @@ func (c *Controller) validateCsrName(name string) error {
 
 func (c *Controller) isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
 	if csr.Spec.SignerName != util.SignerName ||
-		strings.HasPrefix(csr.Name, "ovn-ipsec-") ||
+		!strings.HasPrefix(csr.Name, "ovn-ipsec-") ||
 		!slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel}) {
 		return false
 	}
-
 	if err := c.validateCsrName(csr.Name); err != nil {
 		klog.Warningf("CSR %s validation failed: %v", csr.Name, err)
 		return false
 	}
-
 	return true
 }
 
