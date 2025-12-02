@@ -114,11 +114,12 @@ func (e *Exporter) ovsMetricsUpdate() {
 
 func (e *Exporter) exportOvsStatusGauge() {
 	metricOvsHealthyStatus.Reset()
-	result := getOvsStatus(e)
+	result := getOvsStatus()
 	for k, v := range result {
 		if v == nil {
 			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(1)
 		} else {
+			e.IncrementErrorCounter()
 			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(0)
 		}
 	}

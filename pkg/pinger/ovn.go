@@ -34,7 +34,7 @@ type ChassisResponse struct {
 }
 
 func checkOvs(config *Configuration, setMetrics bool) error {
-	for component, err := range getOvsStatus(nil) {
+	for component, err := range getOvsStatus() {
 		if err != nil {
 			klog.Errorf("%s is down", component)
 			if setMetrics {

@@ -20,16 +20,13 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func getOvsStatus(e *Exporter) map[string]error {
+func getOvsStatus() map[string]error {
 	components := [...]string{ovs.OvsdbServer, ovs.OvsVswitchd}
 	result := make(map[string]error, len(components))
 	for _, component := range components {
 		_, err := ovs.Appctl(component, "-T", "1", "version")
 		if err != nil {
 			klog.Errorf("failed to get %s status: %v", component, err)
-			if e != nil {
-				e.IncrementErrorCounter()
-			}
 		}
 		result[component] = err
 	}
