@@ -110,6 +110,26 @@ type Controller struct {
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
 
+	bgpEdgeRouterLister           kubeovnlister.BgpEdgeRouterLister
+	bgpEdgeRouterSynced           cache.InformerSynced
+	addOrUpdateBgpEdgeRouterQueue workqueue.TypedRateLimitingInterface[string]
+	delBgpEdgeRouterQueue         workqueue.TypedRateLimitingInterface[string]
+	bgpEdgeRouterKeyMutex         keymutex.KeyMutex
+
+	bgpEdgeRouterAdvertisementLister      kubeovnlister.BgpEdgeRouterAdvertisementLister
+	bgpEdgeRouterAdvertisementSynced      cache.InformerSynced
+	addBgpEdgeRouterAdvertisementQueue    workqueue.TypedRateLimitingInterface[string]
+	updateBgpEdgeRouterAdvertisementQueue workqueue.TypedRateLimitingInterface[*updateVerObject]
+	deleteBgpEdgeRouterAdvertisementQueue workqueue.TypedRateLimitingInterface[string]
+	bgpEdgeRouterAdvertisementKeyMutex    keymutex.KeyMutex
+
+	gobgpConfigLister      kubeovnlister.GobgpConfigLister
+	gobgpConfigSynced      cache.InformerSynced
+	addGobgpConfigQueue    workqueue.TypedRateLimitingInterface[string]
+	updateGobgpConfigQueue workqueue.TypedRateLimitingInterface[*updateVerGobgpConfigObject]
+	deleteGobgpConfigQueue workqueue.TypedRateLimitingInterface[string]
+	gobgpConfigKeyMutex    keymutex.KeyMutex
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
@@ -237,6 +257,9 @@ type Controller struct {
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
 
+	berDeploymentsLister appsv1.DeploymentLister
+	berDeploymentsSynced cache.InformerSynced
+
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.TypedRateLimitingInterface[string]
@@ -290,12 +313,13 @@ type Controller struct {
 	netAttachSynced          cache.InformerSynced
 	netAttachInformerFactory netAttach.SharedInformerFactory
 
-	recorder               record.EventRecorder
-	informerFactory        kubeinformers.SharedInformerFactory
-	cmInformerFactory      kubeinformers.SharedInformerFactory
-	deployInformerFactory  kubeinformers.SharedInformerFactory
-	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
-	anpInformerFactory     anpinformer.SharedInformerFactory
+	recorder                 record.EventRecorder
+	informerFactory          kubeinformers.SharedInformerFactory
+	cmInformerFactory        kubeinformers.SharedInformerFactory
+	deployInformerFactory    kubeinformers.SharedInformerFactory
+	berDeployInformerFactory kubeinformers.SharedInformerFactory
+	kubeovnInformerFactory   kubeovninformer.SharedInformerFactory
+	anpInformerFactory       anpinformer.SharedInformerFactory
 
 	// Database health check
 	dbFailureCount int
@@ -325,6 +349,11 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to create label selector for vpc egress gateway workload")
 	}
 
+	berSelector, berErr := labels.Parse(util.BgpEdgeRouterLabel)
+	if berErr != nil {
+		util.LogFatalAndExit(berErr, "failed to create label selector for bgp edge router workload")
+	}
+
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
@@ -338,6 +367,12 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 			listOption.LabelSelector = selector.String()
+		}))
+	// deployment informer used to list/watch bgp edge router workloads
+	berDeployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+			listOption.LabelSelector = berSelector.String()
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -359,6 +394,9 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
+	bgpEdgeRouterInformer := kubeovnInformerFactory.Kubeovn().V1().BgpEdgeRouters()
+	bgpEdgeRouterAdvertisementInformer := kubeovnInformerFactory.Kubeovn().V1().BgpEdgeRouterAdvertisements()
+	gobgpConfigInformer := kubeovnInformerFactory.Kubeovn().V1().GobgpConfigs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -376,6 +414,7 @@ func Run(ctx context.Context, config *Configuration) {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointSliceInformer := informerFactory.Discovery().V1().EndpointSlices()
 	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
+	berDeploymentInformer := berDeployInformerFactory.Apps().V1().Deployments()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -424,6 +463,26 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
 		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
 		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
+		bgpEdgeRouterLister:           bgpEdgeRouterInformer.Lister(),
+		bgpEdgeRouterSynced:           bgpEdgeRouterInformer.Informer().HasSynced,
+		addOrUpdateBgpEdgeRouterQueue: newTypedRateLimitingQueue("AddOrUpdateBgpEdgeRouter", custCrdRateLimiter),
+		delBgpEdgeRouterQueue:         newTypedRateLimitingQueue("DeleteBgpEdgeRouter", custCrdRateLimiter),
+		bgpEdgeRouterKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
+		bgpEdgeRouterAdvertisementLister:      bgpEdgeRouterAdvertisementInformer.Lister(),
+		bgpEdgeRouterAdvertisementSynced:      bgpEdgeRouterAdvertisementInformer.Informer().HasSynced,
+		addBgpEdgeRouterAdvertisementQueue:    newTypedRateLimitingQueue("AddBgpEdgeRouterAdvertisement", custCrdRateLimiter),
+		updateBgpEdgeRouterAdvertisementQueue: newTypedRateLimitingQueue[*updateVerObject]("UpdateBgpEdgeRouterAdvertisement", nil),
+		deleteBgpEdgeRouterAdvertisementQueue: newTypedRateLimitingQueue("DeleteBgpEdgeRouterAdvertisement", custCrdRateLimiter),
+		bgpEdgeRouterAdvertisementKeyMutex:    keymutex.NewHashed(numKeyLocks),
+
+		gobgpConfigLister:      gobgpConfigInformer.Lister(),
+		gobgpConfigSynced:      gobgpConfigInformer.Informer().HasSynced,
+		addGobgpConfigQueue:    newTypedRateLimitingQueue("AddGobgpConfig", custCrdRateLimiter),
+		updateGobgpConfigQueue: newTypedRateLimitingQueue[*updateVerGobgpConfigObject]("UpdateGobgpConfig", nil),
+		deleteGobgpConfigQueue: newTypedRateLimitingQueue("DeleteGobgpConfig", custCrdRateLimiter),
+		gobgpConfigKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -529,6 +588,9 @@ func Run(ctx context.Context, config *Configuration) {
 		deploymentsLister: deploymentInformer.Lister(),
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 
+		berDeploymentsLister: berDeploymentInformer.Lister(),
+		berDeploymentsSynced: berDeploymentInformer.Informer().HasSynced,
+
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
 		addQoSPolicyQueue:    newTypedRateLimitingQueue("AddQoSPolicy", custCrdRateLimiter),
@@ -582,12 +644,13 @@ func Run(ctx context.Context, config *Configuration) {
 		netAttachSynced:          netAttachInformer.Informer().HasSynced,
 		netAttachInformerFactory: attachNetInformerFactory,
 
-		recorder:               recorder,
-		informerFactory:        informerFactory,
-		cmInformerFactory:      cmInformerFactory,
-		deployInformerFactory:  deployInformerFactory,
-		kubeovnInformerFactory: kubeovnInformerFactory,
-		anpInformerFactory:     anpInformerFactory,
+		recorder:                 recorder,
+		informerFactory:          informerFactory,
+		cmInformerFactory:        cmInformerFactory,
+		deployInformerFactory:    deployInformerFactory,
+		berDeployInformerFactory: berDeployInformerFactory,
+		kubeovnInformerFactory:   kubeovnInformerFactory,
+		anpInformerFactory:       anpInformerFactory,
 	}
 
 	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
@@ -671,6 +734,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.deployInformerFactory.Start(ctx.Done())
+	controller.berDeployInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
@@ -683,9 +747,9 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.berDeploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
-		controller.ovnDnatRuleSynced,
+		controller.ovnDnatRuleSynced, controller.bgpEdgeRouterSynced,
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
@@ -750,6 +814,13 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}
 
+	if _, err = berDeploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddDeployment,
+		UpdateFunc: controller.enqueueUpdateDeployment,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add deployment event handler")
+	}
+
 	if _, err = vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpc,
 		UpdateFunc: controller.enqueueUpdateVpc,
@@ -764,6 +835,30 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = bgpEdgeRouterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddBgpEdgeRouter,
+		UpdateFunc: controller.enqueueUpdateBgpEdgeRouter,
+		DeleteFunc: controller.enqueueDeleteBgpEdgeRouter,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add bgp edge router event handler")
+	}
+
+	if _, err = bgpEdgeRouterAdvertisementInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddBgpEdgeRouterAdvertisement,
+		UpdateFunc: controller.enqueueUpdateBgpEdgeRouterAdvertisement,
+		DeleteFunc: controller.enqueueDeleteBgpEdgeRouterAdvertisement,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add bgp edge router advertisement event handler")
+	}
+
+	if _, err = gobgpConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddGobgpConfig,
+		UpdateFunc: controller.enqueueUpdateGobgpConfig,
+		DeleteFunc: controller.enqueueDeleteGobgpConfig,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add gobgp config event handler")
 	}
 
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1129,6 +1224,17 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
+	c.addOrUpdateBgpEdgeRouterQueue.ShutDown()
+	c.delBgpEdgeRouterQueue.ShutDown()
+
+	c.addBgpEdgeRouterAdvertisementQueue.ShutDown()
+	c.updateBgpEdgeRouterAdvertisementQueue.ShutDown()
+	c.deleteBgpEdgeRouterAdvertisementQueue.ShutDown()
+
+	c.addGobgpConfigQueue.ShutDown()
+	c.updateGobgpConfigQueue.ShutDown()
+	c.deleteGobgpConfigQueue.ShutDown()
+
 	if c.config.EnableLb {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
@@ -1227,6 +1333,17 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update bgp edge router", c.addOrUpdateBgpEdgeRouterQueue, c.handleAddOrUpdateBgpEdgeRouter), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete bgp edge router", c.delBgpEdgeRouterQueue, c.handleDelBgpEdgeRouter), time.Second, ctx.Done())
+	go wait.Until(runWorker("add bgp edge router advertisement", c.addBgpEdgeRouterAdvertisementQueue, c.handleAddBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
+	go wait.Until(runWorker("update bgp edge router advertisement", c.updateBgpEdgeRouterAdvertisementQueue, c.handleUpdateBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteBgpEdgeRouterAdvertisementQueue, c.handleDelBgpEdgeRouterAdvertisement), time.Second, ctx.Done())
+	go wait.Until(c.resyncBgpRules, 60*time.Second, ctx.Done())
+	go wait.Until(c.resyncBgpPolicyRules, 60*time.Second, ctx.Done())
+	go wait.Until(runWorker("add bgp edge router advertisement", c.addGobgpConfigQueue, c.handleAddGobgpConfig), time.Second, ctx.Done())
+	go wait.Until(runWorker("update bgp edge router advertisement", c.updateGobgpConfigQueue, c.handleUpdateGobgpConfig), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete bgp edge router advertisement", c.deleteGobgpConfigQueue, c.handleDelGobgpConfig), time.Second, ctx.Done())
+
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())

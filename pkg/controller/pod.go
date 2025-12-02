@@ -238,6 +238,10 @@ func (c *Controller) enqueueAddPod(obj any) {
 	if err = c.handlePodEventForVpcEgressGateway(p); err != nil {
 		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
 	}
+
+	if err = c.handlePodEventForBgpEdgeRouter(p); err != nil {
+		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
+	}
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
@@ -400,6 +404,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
 	}
 
+	if err = c.handlePodEventForBgpEdgeRouter(newPod); err != nil {
+		klog.Errorf("failed to handle pod event for bgp edge router: %v", err)
+	}
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID) {
 		go func() {

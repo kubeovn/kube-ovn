@@ -513,7 +513,7 @@ spec:
                   properties:
                     enabled:
                       type: boolean
-                    asn:
+                    localAsn:
                       type: integer
                     remoteAsn:
                       type: integer

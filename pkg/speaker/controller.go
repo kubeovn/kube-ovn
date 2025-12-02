@@ -44,6 +44,8 @@ type Controller struct {
 	informerFactory        kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
+
+	routerSyncer *RouteSyncer
 }
 
 func NewController(config *Configuration) *Controller {
@@ -69,6 +71,8 @@ func NewController(config *Configuration) *Controller {
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	natgatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 
+	routerSyncer := NewRouteSyncer(time.Second*60, config)
+
 	controller := &Controller{
 		config: config,
 
@@ -86,6 +90,8 @@ func NewController(config *Configuration) *Controller {
 		informerFactory:        informerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 		recorder:               recorder,
+
+		routerSyncer: routerSyncer,
 	}
 
 	return controller
@@ -102,7 +108,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	klog.Info("Started workers")
-	go wait.Until(c.Reconcile, 5*time.Second, stopCh)
+	if c.config.EdgeRouterMode {
+		// Start route syncer work
+		// run every c.routerSyncer.injectedRoutesSyncPeriod
+		c.routerSyncer.Run(stopCh)
+	} else {
+		go wait.Until(c.Reconcile, 5*time.Second, stopCh)
+	}
 
 	<-stopCh
 	klog.Info("Shutting down workers")

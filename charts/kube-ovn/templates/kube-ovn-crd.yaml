@@ -1212,6 +1212,53 @@ spec:
                           required:
                             - key
                             - operator
+                bgp:
+                  type: object
+                  properties:
+                    edgeRouterMode:
+                      type: boolean
+                      default: false
+                    enabled:
+                      type: boolean
+                      default: false
+                    image:
+                      type: string
+                    asn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    remoteAsn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                        anyOf:
+                          - format: ipv4
+                          - format: ipv6
+                    holdTime:
+                      type: string
+                      pattern: ^[0-9]+[smhd]$
+                    routerId:
+                      type: string
+                      # The routerId can be an IPv4 or IPv6 address, but we are not enforcing it here
+                      # routerId could be nullable, so that we can use environment value to set it
+                      # refer pkg/speaker/config.go#L186
+                      anyOf:
+                        - format: ipv4
+                        - format: ipv6
+                        - pattern: '^$'
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                      default: false
+                    extraArgs:
+                      type: array
+                      items:
+                        type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -3194,3 +3241,627 @@ spec:
                   x-kubernetes-list-map-keys:
                     - name
                   x-kubernetes-list-type: map
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bgp-edge-routers.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: bgp-edge-routers
+    singular: bgp-edge-router
+    shortNames:
+      - bgp-er
+      - ber
+    kind: BgpEdgeRouter
+    listKind: BgpEdgeRouterList
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vpc
+          name: VPC
+          type: string
+        - jsonPath: .spec.replicas
+          name: REPLICAS
+          type: integer
+        - jsonPath: .spec.bfd.enabled
+          name: BFD ENABLED
+          type: boolean
+        - jsonPath: .spec.externalSubnet
+          name: EXTERNAL SUBNET
+          type: string
+        - jsonPath: .status.phase
+          name: PHASE
+          type: string
+        - jsonPath: .status.ready
+          name: READY
+          type: boolean
+        - jsonPath: .status.internalIPs
+          name: INTERNAL IPS
+          priority: 1
+          type: string
+        - jsonPath: .status.externalIPs
+          name: EXTERNAL IPS
+          priority: 1
+          type: string
+        - jsonPath: .status.workload.nodes
+          name: WORKING NODES
+          priority: 1
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+        scale:
+          # specReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Spec.Replicas.
+          specReplicasPath: .spec.replicas
+          # statusReplicasPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Replicas.
+          statusReplicasPath: .status.replicas
+          # labelSelectorPath defines the JSONPath inside of a custom resource that corresponds to Scale.Status.Selector.
+          labelSelectorPath: .status.labelSelector
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              properties:
+                replicas:
+                  type: integer
+                  format: int32
+                labelSelector:
+                  type: string
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      lastUpdateTime:
+                        format: date-time
+                        type: string
+                      message:
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                internalIPs:
+                  items:
+                    type: string
+                  type: array
+                externalIPs:
+                  items:
+                    type: string
+                  type: array
+                phase:
+                  type: string
+                  default: Pending
+                  enum:
+                    - Pending
+                    - Processing
+                    - Completed
+                ready:
+                  type: boolean
+                  default: false
+                workload:
+                  type: object
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    nodes:
+                      type: array
+                      items:
+                        type: string
+              required:
+                - conditions
+                - phase
+              type: object
+            spec:
+              type: object
+              required:
+                - externalSubnet
+              x-kubernetes-validations:
+                - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
+                  message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".internalIPs"
+                - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
+                  message: 'Size of External IPs MUST be equal to or greater than Replicas'
+                  fieldPath: ".externalIPs"
+                - rule: "size(self.policies) != 0"
+                  message: 'Each BGP Edge Router MUST have at least one policy'
+              properties:
+                replicas:
+                  type: integer
+                  format: int32
+                  default: 1
+                  minimum: 0
+                  maximum: 10
+                prefix:
+                  type: string
+                  anyOf:
+                    - pattern: ^$
+                    - pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*[-\.]?$
+                  x-kubernetes-validations:
+                    - rule: "self == oldSelf"
+                      message: "This field is immutable."
+                vpc:
+                  type: string
+                internalSubnet:
+                  type: string
+                externalSubnet:
+                  type: string
+                internalIPs:
+                  items:
+                    type: string
+                    oneOf:
+                      - format: ipv4
+                      - format: ipv6
+                      - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5]),((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                      - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:))),(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                  type: array
+                  x-kubernetes-list-type: set
+                externalIPs:
+                  items:
+                    type: string
+                    oneOf:
+                      - format: ipv4
+                      - format: ipv6
+                      - pattern: ^(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5]),((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:)))$
+                      - pattern: ^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|:))),(?:(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])\.){3}(?:[01]?\d{1,2}|2[0-4]\d|25[0-5])$
+                  type: array
+                  x-kubernetes-list-type: set
+                image:
+                  type: string
+                bfd:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    minRX:
+                      type: integer
+                      format: int32
+                      default: 1000
+                    minTX:
+                      type: integer
+                      format: int32
+                      default: 1000
+                    multiplier:
+                      type: integer
+                      format: int32
+                      default: 3
+                policies:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      snat:
+                        type: boolean
+                        default: false
+                      ipBlocks:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          anyOf:
+                            - format: ipv4
+                            - format: ipv6
+                            - format: cidr
+                      subnets:
+                        type: array
+                        x-kubernetes-list-type: set
+                        items:
+                          type: string
+                          minLength: 1
+                    x-kubernetes-validations:
+                      - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
+                        message: 'Each policy MUST have at least one ipBlock or subnet'
+                trafficPolicy:
+                  type: string
+                  enum:
+                    - Local
+                    - Cluster
+                  default: Cluster
+                nodeSelector:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      matchExpressions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator
+                      matchFields:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            operator:
+                              type: string
+                              enum:
+                                - In
+                                - NotIn
+                                - Exists
+                                - DoesNotExist
+                                - Gt
+                                - Lt
+                            values:
+                              type: array
+                              x-kubernetes-list-type: set
+                              items:
+                                type: string
+                          required:
+                            - key
+                            - operator
+                bgp:
+                  type: object
+                  properties:
+                    edgeRouterMode:
+                      type: boolean
+                      default: false
+                    routeServerClient:
+                      type: boolean
+                      default: false
+                    enabled:
+                      type: boolean
+                      default: false
+                    image:
+                      type: string
+                    localAsn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    remoteAsn:
+                      type: integer
+                      format: int32
+                      minimum: 0
+                    neighbors:
+                      type: array
+                      items:
+                        type: string
+                        anyOf:
+                          - format: ipv4
+                          - format: ipv6
+                    holdTime:
+                      type: string
+                      pattern: ^[0-9]+[smhd]$
+                    routerId:
+                      type: string
+                      # The routerId can be an IPv4 or IPv6 address, but we are not enforcing it here
+                      # routerId could be nullable, so that we can use environment value to set it
+                      # refer pkg/speaker/config.go#L186
+                      anyOf:
+                        - format: ipv4
+                        - format: ipv6
+                        - pattern: '^$'
+                    password:
+                      type: string
+                    enableGracefulRestart:
+                      type: boolean
+                      default: false
+                    extraArgs:
+                      type: array
+                      items:
+                        type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bgp-edge-router-advertisements.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: bgp-edge-router-advertisements
+    singular: bgp-edge-router-advertisement
+    shortNames:
+      - ber-ad
+    kind: BgpEdgeRouterAdvertisement
+    listKind: BgpEdgeRouterAdvertisementList
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.subnet
+          name: SUBNET
+          type: string
+        - jsonPath: .spec.bgpEdgeRouter
+          name: BGP-EDGE-ROUTER
+          type: string
+        - jsonPath: .status.ready
+          name: READY
+          type: boolean
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                subnet:
+                  type: array
+                  minItems: 1
+                  x-kubernetes-list-type: set
+                  items:
+                    type: string
+                bgpEdgeRouter:
+                  type: string
+              required:
+                - subnet
+                - bgpEdgeRouter
+            status:
+              properties:
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      lastUpdateTime:
+                        format: date-time
+                        type: string
+                      message:
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                ready:
+                  type: boolean
+                  default: false
+              required:
+                - conditions
+              type: object
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gobgp-configs.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: gobgp-configs
+    singular: gobgp-config
+    shortNames:
+      - bgp-config
+    kind: GobgpConfig
+    listKind: GobgpConfigList
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: bgp-edge-router
+          type: string
+          jsonPath: .spec.bgpEdgeRouter
+        - name: neighbor-address
+          type: string
+          jsonPath: .spec.neighbors[*].address
+        - name: READY
+          type: boolean
+          jsonPath: .status.ready
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - bgpEdgeRouter
+                - neighbors
+              properties:
+                bgpEdgeRouter:
+                  type: string
+                neighbors:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - address
+                  items:
+                    type: object
+                    required:
+                      - address
+                      - toAdvertise
+                      - toReceive
+                    properties:
+                      address:
+                        type: string
+                        pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-fA-F:]+)$'
+                      toAdvertise:
+                        type: object
+                        required:
+                          - allowed
+                        properties:
+                          allowed:
+                            type: object
+                            required:
+                              - mode
+                            properties:
+                              mode:
+                                type: string
+                              prefixes:
+                                type: array
+                                x-kubernetes-list-type: set
+                                items:
+                                  type: string
+                                  pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}(\/\d{1,2})?|([0-9a-fA-F:]+(\/\d{1,3})?))$'
+                            x-kubernetes-validations:
+                              - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
+                                message: "prefixes must be set and non-empty when mode is 'filtered'"
+                              - rule: "self.mode != 'all' || !has(self.prefixes) || size(self.prefixes) == 0"
+                                message: "If mode is 'all', cannot set prefixes"
+                      toReceive:
+                        type: object
+                        required:
+                          - allowed
+                        properties:
+                          allowed:
+                            type: object
+                            required:
+                              - mode
+                            properties:
+                              mode:
+                                type: string
+                              prefixes:
+                                type: array
+                                x-kubernetes-list-type: set
+                                items:
+                                  type: string
+                                  pattern: '^(([0-9]{1,3}\.){3}[0-9]{1,3}(\/\d{1,2})?|([0-9a-fA-F:]+(\/\d{1,3})?))$'
+                            x-kubernetes-validations:
+                              - rule: "self.mode != 'filtered' || (has(self.prefixes) && size(self.prefixes) > 0)"
+                                message: "prefixes must be set and non-empty when mode is 'filtered'"
+                              - rule: "self.mode != 'all' || !has(self.prefixes) || size(self.prefixes) == 0"
+                                message: "If mode is 'all', cannot set prefixes"
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                  default: false
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - lastUpdateTime
+                      - observedGeneration
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: '^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$'
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: '^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$'
+                      message:
+                        type: string
+                        maxLength: 32768
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      lastUpdateTime:
+                        type: string
+                        format: date-time
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0

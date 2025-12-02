@@ -116,8 +116,20 @@ func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
 	return newFakeVpcNatGateways(c)
 }
 
+func (c *FakeKubeovnV1) BgpEdgeRouters(namespace string) v1.BgpEdgeRouterInterface {
+	return newFakeBgpEdgeRouters(c, namespace)
+}
+
+func (c *FakeKubeovnV1) BgpEdgeRouterAdvertisements(namespace string) v1.BgpEdgeRouterAdvertisementInterface {
+	return newFakeBgpEdgeRouterAdvertisements(c, namespace)
+}
+
+func (c *FakeKubeovnV1) GobgpConfigs(namespace string) v1.GobgpConfigInterface {
+	return newFakeGobgpConfigs(c, namespace)
+}
+
 // RESTClient returns a RESTClient that is used to communicate
-// with API server by this client implementation.
+// with API server by this client implementation.p
 func (c *FakeKubeovnV1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret

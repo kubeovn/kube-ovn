@@ -109,3 +109,27 @@ type VpcEgressGatewayNamespaceListerExpansion interface{}
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}
+
+// BgpEdgeRouterListerExpansion allows custom methods to be added to
+// BgpEdgeRouterLister.
+type BgpEdgeRouterListerExpansion interface{}
+
+// BgpEdgeRouterNamespaceListerExpansion allows custom methods to be added to
+// BgpEdgeRouterNamespaceLister.
+type BgpEdgeRouterNamespaceListerExpansion interface{}
+
+// BgpEdgeRouterListerExpansion allows custom methods to be added to
+// BgpEdgeRouterLister.
+type BgpEdgeRouterAdvertisementListerExpansion interface{}
+
+// BgpEdgeRouterNamespaceListerExpansion allows custom methods to be added to
+// BgpEdgeRouterNamespaceLister.
+type BgpEdgeRouterAdvertisementNamespaceListerExpansion interface{}
+
+// BgpEdgeRouterListerExpansion allows custom methods to be added to
+// BgpEdgeRouterLister.
+type GobgpConfigListerExpansion interface{}
+
+// BgpEdgeRouterNamespaceListerExpansion allows custom methods to be added to
+// BgpEdgeRouterNamespaceLister.
+type GobgpConfigNamespaceListerExpansion interface{}

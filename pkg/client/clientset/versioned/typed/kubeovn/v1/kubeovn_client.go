@@ -50,6 +50,9 @@ type KubeovnV1Interface interface {
 	VpcDnsesGetter
 	VpcEgressGatewaysGetter
 	VpcNatGatewaysGetter
+	BgpEdgeRoutersGetter
+	BgpEdgeRouterAdvertisementsGetter
+	GobgpConfigsGetter
 }
 
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
@@ -143,6 +146,18 @@ func (c *KubeovnV1Client) VpcEgressGateways(namespace string) VpcEgressGatewayIn
 
 func (c *KubeovnV1Client) VpcNatGateways() VpcNatGatewayInterface {
 	return newVpcNatGateways(c)
+}
+
+func (c *KubeovnV1Client) BgpEdgeRouters(namespace string) BgpEdgeRouterInterface {
+	return newBgpEdgeRouters(c, namespace)
+}
+
+func (c *KubeovnV1Client) BgpEdgeRouterAdvertisements(namespace string) BgpEdgeRouterAdvertisementInterface {
+	return newBgpEdgeRouterAdvertisements(c, namespace)
+}
+
+func (c *KubeovnV1Client) GobgpConfigs(namespace string) GobgpConfigInterface {
+	return newGobgpConfigs(c, namespace)
 }
 
 // NewForConfig creates a new KubeovnV1Client for the given config.

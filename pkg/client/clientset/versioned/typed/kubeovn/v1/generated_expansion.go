@@ -61,3 +61,9 @@ type VpcDnsExpansion interface{}
 type VpcEgressGatewayExpansion interface{}
 
 type VpcNatGatewayExpansion interface{}
+
+type BgpEdgeRouterExpansion interface{}
+
+type BgpEdgeRouterAdvertisementExpansion interface{}
+
+type GobgpConfigExpansion interface{}

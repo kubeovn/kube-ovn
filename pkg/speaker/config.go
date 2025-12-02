@@ -2,6 +2,7 @@ package speaker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -65,8 +66,10 @@ type Configuration struct {
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
 
-	PprofPort int32
-	LogPerm   string
+	PprofPort         int32
+	LogPerm           string
+	EdgeRouterMode    bool
+	RouteServerClient bool
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -94,6 +97,8 @@ func ParseFlags() (*Configuration, error) {
 		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
 		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
 		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
+		argEdgeRouterMode              = pflag.BoolP("edge-router-mode", "", false, "Make the BGP speaker announce inside subnet and get routes from the outside, work as edge router")
+		argRouteServerClient           = pflag.BoolP("route-server-client", "", false, "Make the BGP speaker policy route, work as route server client")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -161,6 +166,8 @@ func ParseFlags() (*Configuration, error) {
 		NatGwMode:                   *argNatGwMode,
 		EnableMetrics:               *argEnableMetrics,
 		LogPerm:                     *argLogPerm,
+		EdgeRouterMode:              *argEdgeRouterMode,
+		RouteServerClient:           *argRouteServerClient,
 	}
 
 	if *argNeighborAddress != "" {
@@ -181,11 +188,19 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.RouterID == "" {
-		if podIPv4 != "" {
-			config.RouterID = podIPv4
-		} else {
-			config.RouterID = podIPv6
+		externalIP, err := GetExternalIP()
+		if err != nil || externalIP == "" {
+			klog.Warningf("failed to get external IP: %v", err)
+			return nil, err
 		}
+		config.RouterID = externalIP
+		klog.Infof("using external IP %s as router ID", config.RouterID)
+
+		// if podIPv4 != "" {
+		// 	config.RouterID = podIPv4
+		// } else {
+		// 	config.RouterID = podIPv6
+		// }
 		if config.RouterID == "" {
 			return nil, errors.New("no router id or POD_IPS")
 		}
@@ -364,4 +379,33 @@ func (config *Configuration) initBgpServer() error {
 
 	config.BgpServer = s
 	return nil
+}
+
+func GetExternalIP() (string, error) {
+	raw := os.Getenv("MULTI_NET_STATUS")
+	if raw == "" {
+		return "", errors.New("MULTI_NET_STATUS annotation is empty")
+	}
+
+	type networkStatusEntry struct {
+		Name      string   `json:"name"`
+		Interface string   `json:"interface"`
+		IPs       []string `json:"ips"`
+		Default   bool     `json:"default"`
+		DNS       struct{} `json:"dns"`
+	}
+
+	var entries []networkStatusEntry
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+		return "", err
+	}
+
+	for _, e := range entries {
+		// search for CNI network name is not "kube-ovn"
+		if e.Name != "kube-ovn" && len(e.IPs) > 0 {
+			return e.IPs[0], nil
+		}
+	}
+
+	return "", errors.New("non–kube-ovn interface not found")
 }

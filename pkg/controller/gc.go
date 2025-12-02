@@ -50,6 +50,7 @@ func (c *Controller) gc() error {
 		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
+		c.gcEdgeRouter,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -57,6 +58,54 @@ func (c *Controller) gc() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Controller) gcEdgeRouter() error {
+	klog.Infof("start to gc edge router")
+
+	edgeRouterAdvertisement, errAdv := c.bgpEdgeRouterAdvertisementLister.List(labels.Everything())
+	if errAdv != nil {
+		klog.Errorf("failed to list edge router advertisements, %v", errAdv)
+		return errAdv
+	}
+	for _, advertisement := range edgeRouterAdvertisement {
+		if err := c.config.KubeOvnClient.KubeovnV1().BgpEdgeRouterAdvertisements(advertisement.Namespace).Delete(context.Background(), advertisement.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete edge router advertisement %s, %v", advertisement.Name, err)
+				return err
+			}
+		}
+	}
+
+	bgpConfigs, errConf := c.gobgpConfigLister.List(labels.Everything())
+	if errConf != nil {
+		klog.Errorf("failed to list gobgp configs, %v", errConf)
+		return errConf
+	}
+	for _, config := range bgpConfigs {
+		if err := c.config.KubeOvnClient.KubeovnV1().GobgpConfigs(config.Namespace).Delete(context.Background(), config.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete gobgp config %s, %v", config.Name, err)
+				return err
+			}
+		}
+	}
+
+	edgeRouters, errER := c.bgpEdgeRouterLister.List(labels.Everything())
+	if errER != nil {
+		klog.Errorf("failed to list edge routers, %v", errER)
+		return errER
+	}
+	for _, edgeRouter := range edgeRouters {
+		if err := c.config.KubeOvnClient.KubeovnV1().BgpEdgeRouters(edgeRouter.Namespace).Delete(context.Background(), edgeRouter.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete edge router %s, %v", edgeRouter.Name, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
