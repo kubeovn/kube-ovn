@@ -28,11 +28,11 @@ while true; do
         continue 2
       fi
     done
+    break
   else
-   echo "waiting for ovs ready"
+    echo "waiting for ovs ready"
     sleep 1
   fi
-  break
 done
 
 # update links to point to the iptables binaries

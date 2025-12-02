@@ -14,10 +14,6 @@ const (
 	ovnRunDir = "/var/run/ovn"
 
 	cmdOvsAppctl = "ovs-appctl"
-
-	OvsdbServer   = "ovsdb-server"
-	OvsVswitchd   = "ovs-vswitchd"
-	OvnController = "ovn-controller"
 )
 
 func appctlByTarget(target string, args ...string) (string, error) {
