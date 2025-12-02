@@ -25,38 +25,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
-	return csr.Spec.SignerName == util.SignerName &&
-		strings.HasPrefix(csr.Name, "ovn-ipsec-") &&
-		slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel})
-}
-
-func (c *Controller) enqueueAddCsr(obj any) {
-	req := obj.(*csrv1.CertificateSigningRequest)
-	if !isOVNIPSecCSR(req) {
-		return
-	}
-
-	key := cache.MetaObjectToName(req).String()
-	klog.V(3).Infof("enqueue add csr %s", key)
-	c.addOrUpdateCsrQueue.Add(key)
-}
-
-func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
-	oldCsr := oldObj.(*csrv1.CertificateSigningRequest)
-	newCsr := newObj.(*csrv1.CertificateSigningRequest)
-	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
-		return
-	}
-	if !isOVNIPSecCSR(newCsr) {
-		return
-	}
-
-	key := cache.MetaObjectToName(newCsr).String()
-	klog.V(3).Infof("enqueue update csr %s", key)
-	c.addOrUpdateCsrQueue.Add(key)
-}
-
 func (c *Controller) validateCsrName(name string) error {
 	after, found := strings.CutPrefix(name, "ovn-ipsec-")
 	if !found || len(after) == 0 {
@@ -77,6 +45,47 @@ func (c *Controller) validateCsrName(name string) error {
 	return nil
 }
 
+func (c *Controller) isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
+	if csr.Spec.SignerName != util.SignerName ||
+		strings.HasPrefix(csr.Name, "ovn-ipsec-") ||
+		!slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel}) {
+		return false
+	}
+
+	if err := c.validateCsrName(csr.Name); err != nil {
+		klog.Warningf("CSR %s validation failed: %v", csr.Name, err)
+		return false
+	}
+
+	return true
+}
+
+func (c *Controller) enqueueAddCsr(obj any) {
+	req := obj.(*csrv1.CertificateSigningRequest)
+	if !c.isOVNIPSecCSR(req) {
+		return
+	}
+
+	key := cache.MetaObjectToName(req).String()
+	klog.V(3).Infof("enqueue add csr %s", key)
+	c.addOrUpdateCsrQueue.Add(key)
+}
+
+func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
+	oldCsr := oldObj.(*csrv1.CertificateSigningRequest)
+	newCsr := newObj.(*csrv1.CertificateSigningRequest)
+	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
+		return
+	}
+	if !c.isOVNIPSecCSR(newCsr) {
+		return
+	}
+
+	key := cache.MetaObjectToName(newCsr).String()
+	klog.V(3).Infof("enqueue update csr %s", key)
+	c.addOrUpdateCsrQueue.Add(key)
+}
+
 func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	csr, err := c.csrLister.Get(key)
 	if err != nil {
@@ -84,11 +93,6 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 			return nil
 		}
 		klog.Error(err)
-		return err
-	}
-
-	if err = c.validateCsrName(csr.Name); err != nil {
-		klog.Errorf("CSR %s validation failed: %v", csr.Name, err)
 		return err
 	}
 
