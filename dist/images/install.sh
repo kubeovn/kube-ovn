@@ -1474,6 +1474,10 @@ spec:
                           Effect indicates the taint effect to match. Empty means match all taint effects.
                           When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
                         type: string
+                        enum:
+                          - NoSchedule
+                          - PreferNoSchedule
+                          - NoExecute
                       key:
                         description: |-
                           Key is the taint key that the toleration applies to. Empty means match all taint keys.
@@ -1486,6 +1490,9 @@ spec:
                           Exists is equivalent to wildcard for value, so that a pod can
                           tolerate all taints of a particular category.
                         type: string
+                        enum:
+                          - Exists
+                          - Equal
                       tolerationSeconds:
                         description: |-
                           TolerationSeconds represents the period of time the toleration (which must be
