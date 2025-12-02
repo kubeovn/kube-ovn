@@ -39,8 +39,8 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 			klog.Errorf("%s is down", component)
 			if setMetrics {
 				SetOvsDownMetrics(config.NodeName)
-				return err
 			}
+			return err
 		}
 	}
 	klog.Infof("%s and %s are up", ovs.OvsdbServer, ovs.OvsVswitchd)

@@ -33,6 +33,7 @@ func getOvsStatus(e *Exporter) map[string]error {
 			result[component] = err
 			continue
 		}
+		result[component] = nil
 	}
 
 	return result
