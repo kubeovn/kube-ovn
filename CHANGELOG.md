@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.14.16 (2025-12-02)
+
+ * [58ae02b81](https://github.com/kubeovn/kube-ovn/commit/58ae02b81e3cc1d00318282acc5a2861e53b1e05) release v1.14.16
+ * [8ee4c16b1](https://github.com/kubeovn/kube-ovn/commit/8ee4c16b142ab5d9fd3a54f415e6d7948a66f4c6) security: only approve validated CSR (#5972)
+ * [afea2bcd9](https://github.com/kubeovn/kube-ovn/commit/afea2bcd9a99660107472a119801539b5dae0bbe) security: disable hostPID for pinger and cni-server (#5973)
+ * [f17902641](https://github.com/kubeovn/kube-ovn/commit/f17902641c4f605a13859d974aef98d804e27870) cni-server: reduce redundant logging (#5975)
+ * [8886b913b](https://github.com/kubeovn/kube-ovn/commit/8886b913bca1cd8efb693909ce7e6ebbe0e6666f) gc interface if it's not exist in podLister (#5789)
+ * [82e188fbf](https://github.com/kubeovn/kube-ovn/commit/82e188fbf81595ccce7898c7ea212cf7785096b3) security: set sticky bits on world-writable directories (#5971)
+ * [0c27dbf45](https://github.com/kubeovn/kube-ovn/commit/0c27dbf455f52ad645ad5642da17429840f2eb1b) security: use security context to enable the docker/default seccomp profile in pod definitions (#5970)
+ * [e6d1cf482](https://github.com/kubeovn/kube-ovn/commit/e6d1cf4822cc92746184e3a9e129e4ff3bd749c0) speaker: fix missing log directory (#5959)
+ * [04c9a1d9e](https://github.com/kubeovn/kube-ovn/commit/04c9a1d9ef42192ab8c13deeef06fc4e0838df30) fix: correct V6Eip field assignment in OvnDnatRule status (#5957)
+ * [5185e2363](https://github.com/kubeovn/kube-ovn/commit/5185e2363a42aafdc07ee4bbfb04e702b098bb1f) e2e: do not change join cidr and service cidr for ovn-ic tests (#5951)
+ * [6bb183a55](https://github.com/kubeovn/kube-ovn/commit/6bb183a555128bec214075419619ded8ec9a9d66) cni-server: configure sysctl parameters on demand (#5950)
+ * [98a66562f](https://github.com/kubeovn/kube-ovn/commit/98a66562f9abeee62bca593ab7bfba9d994a13c6) feat(install): split kube-ovn-pinger, keep version in the head, reload multus,  enable control not del existing pod (#5909)
+ * [226794b68](https://github.com/kubeovn/kube-ovn/commit/226794b68f5d74efe5a54f7e5c534280c97be0b7) fix: handle missing NAD during pod deletion (#5929)
+ * [d5b0c5e82](https://github.com/kubeovn/kube-ovn/commit/d5b0c5e82143b51f3986dfb73e88d9b7f7b6412c) fix: use the same cni dir as the mount (#5928)
+ * [bcd6c9cbf](https://github.com/kubeovn/kube-ovn/commit/bcd6c9cbf871726278a7be3122f68b0556e25fda) fix: correct error log message in getDBStatus function (#5934)
+ * [b7c5d198d](https://github.com/kubeovn/kube-ovn/commit/b7c5d198d963471d9409faa4aa0b12ccb86091d6) metrics: split subnet CIDR block for dual-stack subnets (#5931)
+ * [ee172480c](https://github.com/kubeovn/kube-ovn/commit/ee172480c6c340cc57908c72480d1c39182761d2) security: fix C-0190 (#5927)
+ * [a90889056](https://github.com/kubeovn/kube-ovn/commit/a90889056000f43f46cd010ef4972443be613e45) get pods just before using and add some log (#5922)
+ * [48b78ff84](https://github.com/kubeovn/kube-ovn/commit/48b78ff84cc9d1aad4da3d764f22546ef4cf98c3) optimize log output (#5916)
+ * [f0f2d8a84](https://github.com/kubeovn/kube-ovn/commit/f0f2d8a849f6203947eb63db91fc198a70e33e41) prepare for next release
+
+### Contributors
+
+ * Bryan Lee
+ * Congqi Zhao
+ * DiMalovanyy
+ * Hargrove Wang
+ * Mengxin Liu
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.14.15 (2025-11-17)
 
  * [b31418851](https://github.com/kubeovn/kube-ovn/commit/b31418851ec95e89d1e39f2b37c960ec23be75aa) release v1.14.15
