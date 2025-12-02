@@ -29,7 +29,6 @@ spec:
           operator: Exists
       serviceAccountName: kube-ovn-app
       automountServiceAccountToken: true
-      hostPID: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
