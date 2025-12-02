@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	commontest "k8s.io/kubernetes/test/e2e/common"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -62,11 +63,7 @@ func TestE2E(t *testing.T) {
 	ginkgo.RunSpecs(t, "Kube-OVN e2e suite", suiteConfig, reporterConfig)
 }
 
-const (
-	kindNetwork = "kind"
-
-	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
-)
+const kindNetwork = "kind"
 
 var clusterName string
 
@@ -228,7 +225,7 @@ var _ = framework.Describe("[group:veg]", func() {
 			IP:      bfdIP,
 			NodeSelector: &metav1.LabelSelector{
 				MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key:      controlPlaneLabel,
+					Key:      constants.LabelNodeRoleControlPlane,
 					Operator: metav1.LabelSelectorOpExists,
 				}},
 			},
@@ -246,9 +243,9 @@ var _ = framework.Describe("[group:veg]", func() {
 		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Name)
 		for _, node := range nodes {
 			if slices.Contains(updatedVpc.Status.BFDPort.Nodes, node.Name) {
-				framework.ExpectHaveKey(node.Labels, controlPlaneLabel)
+				framework.ExpectHaveKey(node.Labels, constants.LabelNodeRoleControlPlane)
 			} else {
-				framework.ExpectNotHaveKey(node.Labels, controlPlaneLabel)
+				framework.ExpectNotHaveKey(node.Labels, constants.LabelNodeRoleControlPlane)
 			}
 		}
 
@@ -472,6 +469,16 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 		SNAT:     false,
 		IPBlocks: strings.Split(forwardSubnet.Spec.CIDRBlock, ","),
 	}}
+	veg.Spec.NodeSelector = []apiv1.VpcEgressGatewayNodeSelector{{
+		MatchLabels: map[string]string{
+			corev1.LabelOSStable: "linux",
+		},
+	}}
+	veg.Spec.Tolerations = []corev1.Toleration{{
+		Key:      corev1.TaintNodeUnschedulable,
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	}}
 	if vpcName == util.DefaultVpc {
 		veg.Spec.VPC = "" // test whether the veg works without specifying VPC
 		veg.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
@@ -522,7 +529,31 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectHaveLen(workloadPods.Items, int(replicas))
 	podNodes := make([]string, 0, len(workloadPods.Items))
 	intIPs := make(map[string][]string, len(workloadPods.Items))
+	nodeSelector := &corev1.NodeSelector{}
+	for _, selector := range veg.Spec.NodeSelector {
+		matchExpressions := make([]corev1.NodeSelectorRequirement, 0, len(selector.MatchLabels))
+		for key, value := range selector.MatchLabels {
+			matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
+				Key:      key,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{value},
+			})
+		}
+		nodeSelector.NodeSelectorTerms = append(nodeSelector.NodeSelectorTerms, corev1.NodeSelectorTerm{
+			MatchExpressions: matchExpressions,
+		})
+	}
+	podAntiAffinity := &corev1.PodAffinityTerm{
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: maps.Clone(deploy.Spec.Selector.MatchLabels),
+		},
+	}
 	for _, pod := range workloadPods.Items {
+		framework.ExpectNil(pod.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+		framework.ExpectEqual(pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution, nodeSelector)
+		framework.ExpectEqual(pod.Spec.Affinity.PodAffinity, nil)
+		framework.ExpectEqual(pod.Spec.Affinity.PodAntiAffinity, podAntiAffinity)
+		framework.ExpectEqual(pod.Spec.Tolerations, veg.Spec.Tolerations)
 		framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		podNodes = append(podNodes, pod.Spec.NodeName)
 		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
