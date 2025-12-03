@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.14.17 (2025-12-03)
+
+ * [6fc038614](https://github.com/kubeovn/kube-ovn/commit/6fc0386147972d167a191b115d3ed38530031162) release v1.14.17
+ * [b051d3d49](https://github.com/kubeovn/kube-ovn/commit/b051d3d499ab727ea602265c9762e4e475e57618) chore(deps): update dependency go to v1.25.5 (#5982)
+ * [98ce1f01e](https://github.com/kubeovn/kube-ovn/commit/98ce1f01ebc019b18c62283ac4c985ebe4f389f4) vpc egress gateway: add support for specifying tolerations (#5978)
+ * [a74387c64](https://github.com/kubeovn/kube-ovn/commit/a74387c6450844ca48d5be08a9ca57a1bab7f191) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.16 (2025-12-02)
 
  * [58ae02b81](https://github.com/kubeovn/kube-ovn/commit/58ae02b81e3cc1d00318282acc5a2861e53b1e05) release v1.14.16
