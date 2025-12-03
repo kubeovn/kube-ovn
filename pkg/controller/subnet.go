@@ -65,20 +65,6 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	newSubnet := newObj.(*kubeovnv1.Subnet)
 	key := cache.MetaObjectToName(newSubnet).String()
 
-	// Trigger network policy refresh only if they are enabled, otherwise the lister will be nil
-	if c.npsLister != nil {
-		if newSubnet.Spec.Gateway != oldSubnet.Spec.Gateway || newSubnet.Status.U2OInterconnectionIP != oldSubnet.Status.U2OInterconnectionIP {
-			policies, err := c.npsLister.List(labels.Everything())
-			if err != nil {
-				klog.Errorf("failed to list network policies: %v", err)
-			} else {
-				for _, np := range policies {
-					c.enqueueAddNp(np)
-				}
-			}
-		}
-	}
-
 	if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
 		usingIPs = newSubnet.Status.V6UsingIPs
 	} else {

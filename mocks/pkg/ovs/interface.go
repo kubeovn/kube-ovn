@@ -1921,17 +1921,17 @@ func (mr *MockACLMockRecorder) CleanNoParentKeyAcls() *gomock.Call {
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockACL) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
+func (m *MockACL) CreateGatewayACL(lsName, pgName string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
+func (mr *MockACLMockRecorder) CreateGatewayACL(lsName, pgName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockACL)(nil).CreateGatewayACL), lsName, pgName)
 }
 
 // CreateNodeACL mocks base method.
@@ -2909,6 +2909,88 @@ func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptions(subnet, mtu any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockDHCPOptions)(nil).UpdateDHCPOptions), subnet, mtu)
 }
 
+// MockMeter is a mock of Meter interface.
+type MockMeter struct {
+	ctrl     *gomock.Controller
+	recorder *MockMeterMockRecorder
+	isgomock struct{}
+}
+
+// MockMeterMockRecorder is the mock recorder for MockMeter.
+type MockMeterMockRecorder struct {
+	mock *MockMeter
+}
+
+// NewMockMeter creates a new mock instance.
+func NewMockMeter(ctrl *gomock.Controller) *MockMeter {
+	mock := &MockMeter{ctrl: ctrl}
+	mock.recorder = &MockMeterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMeter) EXPECT() *MockMeterMockRecorder {
+	return m.recorder
+}
+
+// CreateOrUpdateMeter mocks base method.
+func (m *MockMeter) CreateOrUpdateMeter(name string, unit ovnnb.MeterUnit, rate, burst int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateOrUpdateMeter", name, unit, rate, burst)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateOrUpdateMeter indicates an expected call of CreateOrUpdateMeter.
+func (mr *MockMeterMockRecorder) CreateOrUpdateMeter(name, unit, rate, burst any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdateMeter", reflect.TypeOf((*MockMeter)(nil).CreateOrUpdateMeter), name, unit, rate, burst)
+}
+
+// DeleteMeter mocks base method.
+func (m *MockMeter) DeleteMeter(name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMeter", name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMeter indicates an expected call of DeleteMeter.
+func (mr *MockMeterMockRecorder) DeleteMeter(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMeter", reflect.TypeOf((*MockMeter)(nil).DeleteMeter), name)
+}
+
+// GetMeter mocks base method.
+func (m *MockMeter) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMeter", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.Meter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMeter indicates an expected call of GetMeter.
+func (mr *MockMeterMockRecorder) GetMeter(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMeter", reflect.TypeOf((*MockMeter)(nil).GetMeter), name, ignoreNotFound)
+}
+
+// MeterExists mocks base method.
+func (m *MockMeter) MeterExists(name string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MeterExists", name)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MeterExists indicates an expected call of MeterExists.
+func (mr *MockMeterMockRecorder) MeterExists(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MeterExists", reflect.TypeOf((*MockMeter)(nil).MeterExists), name)
+}
+
 // MockNbClient is a mock of NbClient interface.
 type MockNbClient struct {
 	ctrl     *gomock.Controller
@@ -3207,17 +3289,17 @@ func (mr *MockNbClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName,
 }
 
 // CreateGatewayACL mocks base method.
-func (m *MockNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP string) error {
+func (m *MockNbClient) CreateGatewayACL(lsName, pgName string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName, gateway, u2oInterconnectionIP)
+	ret := m.ctrl.Call(m, "CreateGatewayACL", lsName, pgName)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateGatewayACL indicates an expected call of CreateGatewayACL.
-func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnectionIP any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName, gateway, u2oInterconnectionIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName)
 }
 
 // CreateGatewayLogicalSwitch mocks base method.
@@ -3382,6 +3464,20 @@ func (m *MockNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error 
 func (mr *MockNbClientMockRecorder) CreateNodeACL(pgName, nodeIPStr, joinIPStr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNodeACL", reflect.TypeOf((*MockNbClient)(nil).CreateNodeACL), pgName, nodeIPStr, joinIPStr)
+}
+
+// CreateOrUpdateMeter mocks base method.
+func (m *MockNbClient) CreateOrUpdateMeter(name string, unit ovnnb.MeterUnit, rate, burst int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateOrUpdateMeter", name, unit, rate, burst)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateOrUpdateMeter indicates an expected call of CreateOrUpdateMeter.
+func (mr *MockNbClientMockRecorder) CreateOrUpdateMeter(name, unit, rate, burst any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdateMeter", reflect.TypeOf((*MockNbClient)(nil).CreateOrUpdateMeter), name, unit, rate, burst)
 }
 
 // CreatePeerRouterPort mocks base method.
@@ -3860,6 +3956,20 @@ func (mr *MockNbClientMockRecorder) DeleteLogicalSwitchPorts(externalIDs, filter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPorts", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalSwitchPorts), externalIDs, filter)
 }
 
+// DeleteMeter mocks base method.
+func (m *MockNbClient) DeleteMeter(name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMeter", name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMeter indicates an expected call of DeleteMeter.
+func (mr *MockNbClientMockRecorder) DeleteMeter(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMeter", reflect.TypeOf((*MockNbClient)(nil).DeleteMeter), name)
+}
+
 // DeleteNat mocks base method.
 func (m *MockNbClient) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
@@ -4111,6 +4221,21 @@ func (m *MockNbClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool)
 func (mr *MockNbClientMockRecorder) GetLogicalSwitchPort(lspName, ignoreNotFound any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).GetLogicalSwitchPort), lspName, ignoreNotFound)
+}
+
+// GetMeter mocks base method.
+func (m *MockNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMeter", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.Meter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMeter indicates an expected call of GetMeter.
+func (mr *MockNbClientMockRecorder) GetMeter(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMeter", reflect.TypeOf((*MockNbClient)(nil).GetMeter), name, ignoreNotFound)
 }
 
 // GetNATByUUID mocks base method.
@@ -4733,6 +4858,21 @@ func (mr *MockNbClientMockRecorder) LogicalSwitchUpdateOtherConfig(lsName, op, o
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchUpdateOtherConfig", reflect.TypeOf((*MockNbClient)(nil).LogicalSwitchUpdateOtherConfig), lsName, op, otherConfig)
 }
 
+// MeterExists mocks base method.
+func (m *MockNbClient) MeterExists(name string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MeterExists", name)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MeterExists indicates an expected call of MeterExists.
+func (mr *MockNbClientMockRecorder) MeterExists(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MeterExists", reflect.TypeOf((*MockNbClient)(nil).MeterExists), name)
+}
+
 // MigrateACLTier mocks base method.
 func (m *MockNbClient) MigrateACLTier() error {
 	m.ctrl.T.Helper()
@@ -4915,64 +5055,6 @@ func (m *MockNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error
 func (mr *MockNbClientMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockNbClient)(nil).SetACLLog), pgName, logEnable, isIngress)
-}
-
-// CreateOrUpdateMeter mocks base method.
-func (m *MockNbClient) CreateOrUpdateMeter(name string, unit ovnnb.MeterUnit, rate, burst int) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateOrUpdateMeter", name, unit, rate, burst)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateOrUpdateMeter indicates an expected call of CreateOrUpdateMeter.
-func (mr *MockNbClientMockRecorder) CreateOrUpdateMeter(name, unit, rate, burst any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdateMeter", reflect.TypeOf((*MockNbClient)(nil).CreateOrUpdateMeter), name, unit, rate, burst)
-}
-
-// DeleteMeter mocks base method.
-func (m *MockNbClient) DeleteMeter(name string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteMeter", name)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteMeter indicates an expected call of DeleteMeter.
-func (mr *MockNbClientMockRecorder) DeleteMeter(name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMeter", reflect.TypeOf((*MockNbClient)(nil).DeleteMeter), name)
-}
-
-// MeterExists mocks base method.
-func (m *MockNbClient) MeterExists(name string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MeterExists", name)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MeterExists indicates an expected call of MeterExists.
-func (mr *MockNbClientMockRecorder) MeterExists(name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MeterExists", reflect.TypeOf((*MockNbClient)(nil).MeterExists), name)
-}
-
-// GetMeter mocks base method.
-func (m *MockNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMeter", name, ignoreNotFound)
-	ret0, _ := ret[0].(*ovnnb.Meter)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetMeter indicates an expected call of GetMeter.
-func (mr *MockNbClientMockRecorder) GetMeter(name, ignoreNotFound any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMeter", reflect.TypeOf((*MockNbClient)(nil).GetMeter), name, ignoreNotFound)
 }
 
 // SetAzName mocks base method.

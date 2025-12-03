@@ -616,7 +616,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, verbose bool, maxRetry int, d
 				return err
 			}
 			if verbose {
-				klog.Infof("MAC addresses of gateway %s is %s", gw, mac.String())
+				klog.Infof("MAC address of gateway %s is %s", gw, mac.String())
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {

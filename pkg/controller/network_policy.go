@@ -149,7 +149,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	var subnets []*kubeovnv1.Subnet
 	protocolSet := strset.NewWithSize(2)
 	for _, subnetName := range subnetNames {
 		subnet, err := c.subnetsLister.Get(subnetName)
@@ -157,7 +156,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 			klog.Errorf("failed to get pod's subnet %s, %v", subnetName, err)
 			return err
 		}
-		subnets = append(subnets, subnet)
 
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			protocolSet.Add(kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
@@ -468,12 +466,10 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	if !enforcementLax {
-		for _, subnet := range subnets {
-			if err = c.OVNNbClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Status.U2OInterconnectionIP); err != nil {
-				klog.Errorf("create gateway acl: %v", err)
-				return err
-			}
+	if !enforcementLax && protocolSet.Has(kubeovnv1.ProtocolIPv6) {
+		if err = c.OVNNbClient.CreateGatewayACL("", pgName); err != nil {
+			klog.Errorf("create gateway acl: %v", err)
+			return err
 		}
 	}
 	return nil
