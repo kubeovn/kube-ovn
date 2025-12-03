@@ -328,19 +328,13 @@ func (c *OVNNbClient) CreateGatewayACL(lsName, pgName, gateway, u2oInterconnecti
 	}
 
 	if v6Exists {
-		icmpv6EgressACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "icmp6", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
+		ndACL, err := c.newACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "nd || nd_ra || nd_rs", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, options)
 		if err != nil {
 			klog.Error(err)
-			return fmt.Errorf("new icmpv6 egress acl for %s: %w", parentName, err)
+			return fmt.Errorf("new nd acl for %s: %w", parentName, err)
 		}
 
-		icmpv6IngressACL, err := c.newACL(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, "icmp6", ovnnb.ACLActionAllowStateless, util.NetpolACLTier)
-		if err != nil {
-			klog.Error(err)
-			return fmt.Errorf("new icmpv6 ingress acl for %s: %w", parentName, err)
-		}
-
-		acls = append(acls, icmpv6EgressACL, icmpv6IngressACL)
+		acls = append(acls, ndACL)
 	}
 
 	if err := c.CreateAcls(parentName, parentType, acls...); err != nil {
