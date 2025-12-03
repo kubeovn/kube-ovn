@@ -488,181 +488,61 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 		require.Contains(t, acls, acl.UUID)
 	}
 
-	expect := func(parent any, gateway string) {
-		for gw := range strings.SplitSeq(gateway, ",") {
-			protocol := util.CheckProtocol(gw)
-			ipSuffix := "ip4"
-			if protocol == kubeovnv1.ProtocolIPv6 {
-				ipSuffix = "ip6"
-			}
-
-			match := fmt.Sprintf("%s.src == %s", ipSuffix, gw)
-			checkACL(parent, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, match, nil)
-
-			match = fmt.Sprintf("%s.dst == %s", ipSuffix, gw)
-			checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
-				"apply-after-lb": "true",
-			})
-
-			if ipSuffix == "ip6" {
-				match = "nd || nd_ra || nd_rs"
-				checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
-					"apply-after-lb": "true",
-				})
-			}
-		}
+	expectICMPv6 := func(parent any) {
+		match := "icmp6"
+		checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
+			"apply-after-lb": "true",
+		})
+		checkACL(parent, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, match, nil)
 	}
 
 	t.Run("add acl to pg", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("gateway's protocol is dual", func(t *testing.T) {
+		t.Run("create ipv6 icmpv6 acl", func(t *testing.T) {
 			t.Parallel()
 
-			pgName := "test_create_gw_acl_pg_dual"
-			gateway := "10.244.0.1,fc00::0af4:01"
+			pgName := "test_create_gw_acl_pg_ipv6"
 
 			err := nbClient.CreatePortGroup(pgName, nil)
 			require.NoError(t, err)
 
-			err = nbClient.CreateGatewayACL("", pgName, gateway, "")
-			require.NoError(t, err)
-
-			pg, err := nbClient.GetPortGroup(pgName, false)
-			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 5)
-
-			expect(pg, gateway)
-		})
-
-		t.Run("gateway's protocol is dual with u2oInterconnectionIP", func(t *testing.T) {
-			t.Parallel()
-
-			pgName := "test_create_gw_acl_pg_dual_u2oInterconnectionIP"
-			gateway := "10.244.0.1,fc00::0af4:01"
-			u2oInterconnectionIP := "10.244.0.2,fc00::0af4:02"
-
-			err := nbClient.CreatePortGroup(pgName, nil)
-			require.NoError(t, err)
-
-			err = nbClient.CreateGatewayACL("", pgName, gateway, u2oInterconnectionIP)
-			require.NoError(t, err)
-
-			pg, err := nbClient.GetPortGroup(pgName, false)
-			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 9)
-
-			expect(pg, gateway)
-			expect(pg, u2oInterconnectionIP)
-		})
-
-		t.Run("gateway's protocol is ipv4", func(t *testing.T) {
-			t.Parallel()
-
-			pgName := "test_create_gw_acl_pg_v4"
-			gateway := "10.244.0.1"
-
-			err := nbClient.CreatePortGroup(pgName, nil)
-			require.NoError(t, err)
-
-			err = nbClient.CreateGatewayACL("", pgName, gateway, "")
+			err = nbClient.CreateGatewayACL("", pgName)
 			require.NoError(t, err)
 
 			pg, err := nbClient.GetPortGroup(pgName, false)
 			require.NoError(t, err)
 			require.Len(t, pg.ACLs, 2)
 
-			expect(pg, gateway)
-		})
-
-		t.Run("gateway's protocol is ipv4 with u2oInterconnectionIP", func(t *testing.T) {
-			t.Parallel()
-
-			pgName := "test_create_gw_acl_pg_v4_u2oInterconnectionIP"
-			gateway := "10.244.0.1"
-			u2oInterconnectionIP := "10.244.0.2"
-
-			err := nbClient.CreatePortGroup(pgName, nil)
-			require.NoError(t, err)
-
-			err = nbClient.CreateGatewayACL("", pgName, gateway, u2oInterconnectionIP)
-			require.NoError(t, err)
-
-			pg, err := nbClient.GetPortGroup(pgName, false)
-			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 4)
-
-			expect(pg, gateway)
-			expect(pg, u2oInterconnectionIP)
-		})
-
-		t.Run("gateway's protocol is ipv6", func(t *testing.T) {
-			t.Parallel()
-
-			pgName := "test_create_gw_acl_pg_v6"
-			gateway := "fc00::0af4:01"
-
-			err := nbClient.CreatePortGroup(pgName, nil)
-			require.NoError(t, err)
-
-			err = nbClient.CreateGatewayACL("", pgName, gateway, "")
-			require.NoError(t, err)
-
-			pg, err := nbClient.GetPortGroup(pgName, false)
-			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 3)
-
-			expect(pg, gateway)
-		})
-
-		t.Run("gateway's protocol is ipv6", func(t *testing.T) {
-			t.Parallel()
-
-			pgName := "test_create_gw_acl_pg_v6_u2oInterconnectionIP"
-			gateway := "fc00::0af4:01"
-			u2oInterconnectionIP := "fc00::0af4:02"
-
-			err := nbClient.CreatePortGroup(pgName, nil)
-			require.NoError(t, err)
-
-			err = nbClient.CreateGatewayACL("", pgName, gateway, u2oInterconnectionIP)
-			require.NoError(t, err)
-
-			pg, err := nbClient.GetPortGroup(pgName, false)
-			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 5)
-
-			expect(pg, gateway)
-			expect(pg, u2oInterconnectionIP)
+			expectICMPv6(pg)
 		})
 	})
 
 	t.Run("add acl to ls", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("gateway's protocol is dual", func(t *testing.T) {
+		t.Run("create ipv6 icmpv6 acl", func(t *testing.T) {
 			t.Parallel()
 
-			lsName := "test_create_gw_acl_ls_dual"
-			gateway := "10.244.0.1,fc00::0af4:01"
+			lsName := "test_create_gw_acl_ls_ipv6"
 
 			err := nbClient.CreateBareLogicalSwitch(lsName)
 			require.NoError(t, err)
 
-			err = nbClient.CreateGatewayACL(lsName, "", gateway, "")
+			err = nbClient.CreateGatewayACL(lsName, "")
 			require.NoError(t, err)
 
 			ls, err := nbClient.GetLogicalSwitch(lsName, false)
 			require.NoError(t, err)
-			require.Len(t, ls.ACLs, 5)
+			require.Len(t, ls.ACLs, 2)
 
-			expect(ls, gateway)
+			expectICMPv6(ls)
 		})
 	})
 
 	t.Run("has no pg name and ls name", func(t *testing.T) {
 		t.Parallel()
-		err := nbClient.CreateGatewayACL("", "", "", "")
+		err := nbClient.CreateGatewayACL("", "")
 		require.EqualError(t, err, "one of port group name and logical switch name must be specified")
 	})
 }

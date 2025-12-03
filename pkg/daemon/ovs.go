@@ -21,7 +21,6 @@ func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{})
 		return 0, fmt.Errorf("failed to init pinger: %w", err)
 	}
 	pinger.SetPrivileged(true)
-	// CNITimeoutSec = 220, cannot exceed
 	pinger.Count = maxRetry
 	pinger.Timeout = time.Duration(maxRetry) * time.Second
 	pinger.Interval = time.Second
@@ -49,12 +48,10 @@ func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{})
 			finish <- struct{}{}
 		}
 		go func() {
-			// stop pinger when cancel signal received
 			select {
 			case <-done:
 				pinger.Stop()
 			case <-finish:
-				// do nothing here
 			}
 		}()
 	}
@@ -76,7 +73,6 @@ func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{})
 	if verbose {
 		klog.Infof("%s network ready after %d ping to gateway %s", src, pinger.PacketsSent, gw)
 	}
-
 	return pinger.PacketsSent, nil
 }
 
