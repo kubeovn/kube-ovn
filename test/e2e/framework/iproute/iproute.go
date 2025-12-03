@@ -224,3 +224,11 @@ func RuleShow(device string, execFunc ExecFunc) ([]Rule, error) {
 	}
 	return append(rules, rules6...), nil
 }
+
+func LinkShowRaw(device string, execFunc ExecFunc) (string, error) {
+	stdout, _, err := execFunc("ip", "link", "show", device)
+	if err != nil {
+		return "", err
+	}
+	return string(stdout), nil
+}

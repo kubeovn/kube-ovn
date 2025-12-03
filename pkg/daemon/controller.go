@@ -396,6 +396,20 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	// always add trunk 0 so that the ovs bridge can communicate with the external network
 	vlans.Add("0")
 
+	if pn.Spec.AutoCreateVlanSubinterfaces && strings.Contains(nic, ".") {
+		parts := strings.SplitN(nic, ".", 2)
+		parentIf := parts[0]
+		if !util.CheckInterfaceExists(nic) {
+			klog.Infof("Auto-create enabled: creating default VLAN subinterface %s on %s", nic, parentIf)
+			if err := c.createVlanSubinterfaces([]string{nic}, parentIf, pn.Name); err != nil {
+				klog.Errorf("Failed to create default VLAN subinterface %s: %v", nic, err)
+				return err
+			}
+		} else {
+			klog.V(3).Infof("Default VLAN subinterface %s already exists, skipping creation", nic)
+		}
+	}
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
@@ -482,6 +496,11 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
 	if err := c.ovsCleanProviderNetwork(pn.Name); err != nil {
 		klog.Error(err)
+		return err
+	}
+
+	if err := c.cleanupAutoCreatedVlanInterfaces(pn.Name); err != nil {
+		klog.Errorf("Failed to cleanup auto-created VLAN interfaces for provider %s: %v", pn.Name, err)
 		return err
 	}
 
