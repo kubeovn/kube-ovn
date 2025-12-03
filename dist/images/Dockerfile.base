@@ -192,7 +192,7 @@ RUN sh -x /download-go-deps.sh
 
 FROM golang:$GO_VERSION-alpine AS go-deps
 
-RUN apk --no-cache add bash curl jq
+RUN apk --no-cache add bash curl jq git
 ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
     bash -x /rebuild-go-deps.sh
