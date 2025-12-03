@@ -11,9 +11,10 @@
 - `make lint` – run `golangci-lint` plus Go “modernize”; auto-fixes when not in CI.  
 - `make ut` – run unit tests: Ginkgo suites in `test/unittest` and `go test` with coverage for `pkg`.  
 
-## Coding Style & Naming Conventions
+## General Coding Style
+- Every time after editing code. MUST run `make lint` to detect and fix potential lint issues.
+- When modifying code, try to clean up any related code logic that is no longer needed.
 - Follow `CODE_STYLE.md`: camelCase identifiers, keep functions short (~100 lines), return/log errors instead of discarding, and prefer `if err := ...; err != nil` patterns.  
-- Run `make lint` to detect and fix potential lint issues.
 
 ## Adding a New Feature
 - Plan first: clarify any uncertainties and confirm the approach before making changes.

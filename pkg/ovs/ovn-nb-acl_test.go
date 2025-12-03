@@ -503,14 +503,15 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
 				"apply-after-lb": "true",
 			})
-
-			if ipSuffix == "ip6" {
-				match = "nd || nd_ra || nd_rs"
-				checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
-					"apply-after-lb": "true",
-				})
-			}
 		}
+	}
+
+	expectICMPv6 := func(parent any) {
+		match := "icmp6"
+		checkACL(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
+			"apply-after-lb": "true",
+		})
+		checkACL(parent, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, match, nil)
 	}
 
 	t.Run("add acl to pg", func(t *testing.T) {
@@ -530,9 +531,10 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 			pg, err := nbClient.GetPortGroup(pgName, false)
 			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 5)
+			require.Len(t, pg.ACLs, 6)
 
 			expect(pg, gateway)
+			expectICMPv6(pg)
 		})
 
 		t.Run("gateway's protocol is dual with u2oInterconnectionIP", func(t *testing.T) {
@@ -550,7 +552,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 			pg, err := nbClient.GetPortGroup(pgName, false)
 			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 9)
+			require.Len(t, pg.ACLs, 10)
 
 			expect(pg, gateway)
 			expect(pg, u2oInterconnectionIP)
@@ -610,12 +612,12 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 			pg, err := nbClient.GetPortGroup(pgName, false)
 			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 3)
+			require.Len(t, pg.ACLs, 4)
 
 			expect(pg, gateway)
 		})
 
-		t.Run("gateway's protocol is ipv6", func(t *testing.T) {
+		t.Run("gateway's protocol is ipv6 with u2oInterconnectionIP", func(t *testing.T) {
 			t.Parallel()
 
 			pgName := "test_create_gw_acl_pg_v6_u2oInterconnectionIP"
@@ -630,10 +632,11 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 			pg, err := nbClient.GetPortGroup(pgName, false)
 			require.NoError(t, err)
-			require.Len(t, pg.ACLs, 5)
+			require.Len(t, pg.ACLs, 6)
 
 			expect(pg, gateway)
 			expect(pg, u2oInterconnectionIP)
+			expectICMPv6(pg)
 		})
 	})
 
@@ -654,9 +657,10 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 
 			ls, err := nbClient.GetLogicalSwitch(lsName, false)
 			require.NoError(t, err)
-			require.Len(t, ls.ACLs, 5)
+			require.Len(t, ls.ACLs, 6)
 
 			expect(ls, gateway)
+			expectICMPv6(ls)
 		})
 	})
 
