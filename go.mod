@@ -6,7 +6,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/Microsoft/hcsshim v0.14.0-rc.1
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
-	github.com/brianvoe/gofakeit/v7 v7.12.0
+	github.com/brianvoe/gofakeit/v7 v7.12.1
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cert-manager/cert-manager v1.19.1
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
