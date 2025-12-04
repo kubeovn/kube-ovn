@@ -63,19 +63,18 @@ func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
 		return false
 	}
 
-	if subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs == 0 {
+	if subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs == 0 {
 		return true
 	}
-	
+
 	if subnet.Status.U2OInterconnectionIP != "" {
-		return int(subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
+		return int(subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
 	}
 
 	return false
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
-
 	oldSubnet := oldObj.(*kubeovnv1.Subnet)
 	newSubnet := newObj.(*kubeovnv1.Subnet)
 	key := cache.MetaObjectToName(newSubnet).String()
@@ -109,68 +108,57 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 }
 
 func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
-	var (
-		changed bool
-		err     error
-	)
-
-	if changed, err = checkSubnetChanged(subnet); err != nil {
+	newSubnet := subnet.DeepCopy()
+	if err := formatAddress(newSubnet); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	if subnet.Spec.Provider == "" {
-		subnet.Spec.Provider = util.OvnProvider
-		changed = true
+	if newSubnet.Spec.Provider == "" {
+		newSubnet.Spec.Provider = util.OvnProvider
 	}
 
-	if subnet.Spec.Vpc == "" {
-		if isOvnSubnet(subnet) {
-			subnet.Spec.Vpc = c.config.ClusterRouter
-			changed = true
+	if newSubnet.Spec.Vpc == "" {
+		if isOvnSubnet(newSubnet) {
+			newSubnet.Spec.Vpc = c.config.ClusterRouter
 		}
 	}
 
-	if subnet.Spec.Vpc == c.config.ClusterRouter && subnet.Name != c.config.NodeSwitch {
+	if newSubnet.Spec.Vpc == c.config.ClusterRouter && newSubnet.Name != c.config.NodeSwitch {
 		// Some format only needed in the default VPC
-		if subnet.Spec.GatewayType == "" {
-			subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
-			changed = true
+		if newSubnet.Spec.GatewayType == "" {
+			newSubnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		}
-		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
-			subnet.Spec.Default = false
-			changed = true
+		if newSubnet.Spec.Default && newSubnet.Name != c.config.DefaultLogicalSwitch {
+			newSubnet.Spec.Default = false
 		}
 	}
 
-	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = &c.config.EnableLb
+	if newSubnet.Spec.EnableLb == nil && newSubnet.Name != c.config.NodeSwitch {
+		newSubnet.Spec.EnableLb = &c.config.EnableLb
 	}
 	// set join subnet Spec.EnableLb to nil
-	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = nil
+	if newSubnet.Spec.EnableLb != nil && newSubnet.Name == c.config.NodeSwitch {
+		newSubnet.Spec.EnableLb = nil
 	}
 
-	if subnet.Spec.U2OInterconnectionIP != "" && !subnet.Spec.U2OInterconnection {
-		subnet.Spec.U2OInterconnectionIP = ""
-		changed = true
+	if newSubnet.Spec.U2OInterconnectionIP != "" && !newSubnet.Spec.U2OInterconnection {
+		newSubnet.Spec.U2OInterconnectionIP = ""
 	}
 
-	if subnet.Spec.Vlan == "" && subnet.Spec.U2OInterconnection {
-		subnet.Spec.U2OInterconnection = false
-		changed = true
+	if newSubnet.Spec.Vlan == "" && newSubnet.Spec.U2OInterconnection {
+		newSubnet.Spec.U2OInterconnection = false
 	}
 
+	changed := !reflect.DeepEqual(subnet, newSubnet)
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
-		newSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
+		ret, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), newSubnet, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
 			return nil, err
 		}
-		return newSubnet, nil
+		return ret, nil
 	}
 	return subnet, nil
 }
@@ -223,67 +211,43 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 	return nil
 }
 
-func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
-	var (
-		changed, ret bool
-		err          error
-	)
-
-	// changed value may be overlapped, so use ret to record value
-	if changed, err = checkAndUpdateCIDR(subnet); err != nil {
+func formatAddress(subnet *kubeovnv1.Subnet) error {
+	if err := formatCIDR(subnet); err != nil {
 		klog.Error(err)
-		return changed, err
-	}
-	if changed {
-		ret = true
+		return err
 	}
 
-	if changed, err = checkAndUpdateGateway(subnet); err != nil {
+	if err := formatGateway(subnet); err != nil {
 		klog.Error(err)
-		return changed, err
-	}
-	if changed {
-		ret = true
+		return err
 	}
 
-	if changed = checkAndUpdateExcludeIPs(subnet); changed {
-		ret = true
-	}
+	formatExcludeIPs(subnet)
 
-	if subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
-		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
-		ret = true
-	}
+	subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 
-	return ret, nil
+	return nil
 }
 
-func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
-	var (
-		changed    bool
-		cidrBlocks []string
-	)
+func formatCIDR(subnet *kubeovnv1.Subnet) error {
+	var cidrBlocks []string
 
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
 			klog.Error(err)
-			return false, fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
-		}
-		if ipNet.String() != cidr {
-			changed = true
+			return fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
 		}
 		cidrBlocks = append(cidrBlocks, ipNet.String())
 	}
 	subnet.Spec.CIDRBlock = strings.Join(cidrBlocks, ",")
-	return changed, nil
+	return nil
 }
 
-func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
+func formatGateway(subnet *kubeovnv1.Subnet) error {
 	var (
-		changed bool
-		gw      string
-		err     error
+		gw  string
+		err error
 	)
 
 	switch {
@@ -296,29 +260,21 @@ func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	}
 	if err != nil {
 		klog.Error(err)
-		return false, err
+		return err
 	}
-	if subnet.Spec.Gateway != gw {
-		subnet.Spec.Gateway = gw
-		changed = true
-	}
+	subnet.Spec.Gateway = gw
 
-	return changed, nil
+	return nil
 }
 
-// this func must be called after subnet.Spec.Gateway is valued
-func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
-	var (
-		changed    bool
-		excludeIPs []string
-	)
+func formatExcludeIPs(subnet *kubeovnv1.Subnet) {
+	var excludeIPs []string
 	excludeIPs = append(excludeIPs, strings.Split(subnet.Spec.Gateway, ",")...)
 	sort.Strings(excludeIPs)
 	if len(subnet.Spec.ExcludeIps) == 0 {
 		subnet.Spec.ExcludeIps = excludeIPs
-		changed = true
 	} else {
-		changed = checkAndFormatsExcludeIPs(subnet)
+		formatExcludeIPRanges(subnet)
 		for _, gw := range excludeIPs {
 			gwExists := false
 			for _, excludeIP := range subnet.Spec.ExcludeIps {
@@ -330,11 +286,9 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 			if !gwExists {
 				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, gw)
 				sort.Strings(subnet.Spec.ExcludeIps)
-				changed = true
 			}
 		}
 	}
-	return changed
 }
 
 func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
@@ -593,8 +547,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
-	subnet := cachedSubnet.DeepCopy()
-	subnet, err = c.formatSubnet(subnet)
+	subnet, err := c.formatSubnet(cachedSubnet)
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
 		klog.Error(err)
@@ -2327,7 +2280,7 @@ func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
 	return util.IsOvnProvider(subnet.Spec.Provider)
 }
 
-func checkAndFormatsExcludeIPs(subnet *kubeovnv1.Subnet) bool {
+func formatExcludeIPRanges(subnet *kubeovnv1.Subnet) {
 	var excludeIPs []string
 	mapIPs := make(map[string]*ipam.IPRange, len(subnet.Spec.ExcludeIps))
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
@@ -2353,9 +2306,7 @@ func checkAndFormatsExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 	if !slices.Equal(subnet.Spec.ExcludeIps, excludeIPs) {
 		klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIPs)
 		subnet.Spec.ExcludeIps = excludeIPs
-		return true
 	}
-	return false
 }
 
 func filterRepeatIPRange(mapIPs map[string]*ipam.IPRange) map[string]*ipam.IPRange {
