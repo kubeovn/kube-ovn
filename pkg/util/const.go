@@ -122,9 +122,6 @@ const (
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
 
-	VpcLastName     = "ovn.kubernetes.io/last_vpc_name"
-	VpcLastPolicies = "ovn.kubernetes.io/last_policies"
-
 	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
 	ServiceHealthCheck                    = "ovn.kubernetes.io/service_health_check"
 

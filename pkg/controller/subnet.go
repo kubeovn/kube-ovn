@@ -77,18 +77,6 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 		return
 	}
 
-	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc &&
-		((oldSubnet.Spec.Vpc != "" || newSubnet.Spec.Vpc != c.config.ClusterRouter) && (oldSubnet.Spec.Vpc != c.config.ClusterRouter || newSubnet.Spec.Vpc != "")) {
-		// recode last vpc name for subnet
-		if oldSubnet.Spec.Vpc == "" {
-			c.subnetLastVpcNameMap.Store(newSubnet.Name, c.config.ClusterRouter)
-		} else {
-			c.subnetLastVpcNameMap.Store(newSubnet.Name, oldSubnet.Spec.Vpc)
-		}
-
-		c.updateVpcStatusQueue.Add(oldSubnet.Spec.Vpc)
-	}
-
 	if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.Infof("enqueue update vpc %s triggered by u2o interconnection change of subnet %s", newSubnet.Spec.Vpc, key)
 		c.addOrUpdateVpcQueue.Add(newSubnet.Spec.Vpc)
@@ -482,9 +470,9 @@ func (c *Controller) validateVpcBySubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.V
 			klog.Errorf("failed to list vpc, %v", err)
 			return vpc, err
 		}
-		lastVpcName, _ := c.subnetLastVpcNameMap.Load(subnet.Name)
+
 		for _, vpc := range vpcs {
-			if (lastVpcName == "" && subnet.Spec.Vpc != vpc.Name || lastVpcName != "" && lastVpcName != vpc.Name) &&
+			if subnet.Spec.Vpc != vpc.Name &&
 				!vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
 				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
 				klog.Error(err)
@@ -1034,9 +1022,6 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	}
-
-	// clean up subnet last vpc name cached
-	c.subnetLastVpcNameMap.Delete(subnet.Name)
 
 	return nil
 }

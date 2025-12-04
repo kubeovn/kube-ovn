@@ -52,7 +52,6 @@ const (
 	portGroupKey                  = "pg"
 	networkPolicyKey              = "np"
 	sgKey                         = "sg"
-	associatedSgKeyPrefix         = "associated_sg_"
 	sgsKey                        = "security_groups"
 	u2oKey                        = "u2o"
 	adminNetworkPolicyKey         = "anp"
@@ -125,7 +124,6 @@ type Controller struct {
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
-	subnetLastVpcNameMap    *xsync.Map[string, string]
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
@@ -431,7 +429,6 @@ func Run(ctx context.Context, config *Configuration) {
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
-		subnetLastVpcNameMap:    xsync.NewMap[string, string](),
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
