@@ -32,11 +32,12 @@ type CustomInterface struct {
 	Nodes     []string `json:"nodes"`
 }
 type ProviderNetworkSpec struct {
-	DefaultInterface string                `json:"defaultInterface,omitempty"`
-	CustomInterfaces []CustomInterface     `json:"customInterfaces,omitempty"`
-	NodeSelector     *metav1.LabelSelector `json:"nodeSelector,omitempty"`
-	ExcludeNodes     []string              `json:"excludeNodes,omitempty"`
-	ExchangeLinkName bool                  `json:"exchangeLinkName,omitempty"`
+	DefaultInterface            string                `json:"defaultInterface,omitempty"`
+	CustomInterfaces            []CustomInterface     `json:"customInterfaces,omitempty"`
+	NodeSelector                *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+	ExcludeNodes                []string              `json:"excludeNodes,omitempty"`
+	ExchangeLinkName            bool                  `json:"exchangeLinkName,omitempty"`
+	AutoCreateVlanSubinterfaces bool                  `json:"autoCreateVlanSubinterfaces,omitempty"`
 }
 
 type ProviderNetworkCondition struct {
