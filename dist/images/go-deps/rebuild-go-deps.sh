@@ -54,7 +54,7 @@ for t in $(cat "$TRIVY_DIR/trivy-targets.txt"); do
             cd -
             ;;
         gobgp)
-            $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$name@$version
+            $GO_INSTALL github.com/osrg/gobgp/v4/cmd/$name@$version
             ;;
         *)
             echo "Unknown go binary: $f"
