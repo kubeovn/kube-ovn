@@ -290,9 +290,9 @@ jobs:
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               gobgp)
-                version=`go list -m -f '{{.Version}}' github.com/osrg/gobgp/v3`
+                version=`go list -m -f '{{.Version}}' github.com/osrg/gobgp/v4`
                 echo "Building $bin@$version from source..."
-                $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$bin
+                $GO_INSTALL github.com/osrg/gobgp/v4/cmd/$bin
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               *)

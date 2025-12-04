@@ -5,15 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
 	"time"
 
-	api "github.com/osrg/gobgp/v3/api"
-	bgplog "github.com/osrg/gobgp/v3/pkg/log"
-	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
-	gobgp "github.com/osrg/gobgp/v3/pkg/server"
+	"github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
+	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
@@ -38,14 +38,14 @@ const (
 )
 
 type Configuration struct {
-	GrpcHost                    string
+	GrpcHost                    net.IP
 	GrpcPort                    int32
 	ClusterAs                   uint32
-	RouterID                    string
+	RouterID                    net.IP
 	PodIPs                      map[string]net.IP
 	NodeIPs                     map[string]net.IP
-	NeighborAddresses           []string
-	NeighborIPv6Addresses       []string
+	NeighborAddresses           []net.IP
+	NeighborIPv6Addresses       []net.IP
 	NeighborAs                  uint32
 	AuthPassword                string
 	HoldTime                    float64
@@ -75,13 +75,13 @@ func ParseFlags() (*Configuration, error) {
 		argGracefulRestartDeferralTime = pflag.Duration("graceful-restart-deferral-time", DefaultGracefulRestartDeferralTime, "BGP Graceful restart deferral time according to RFC4724 4.1, maximum 18h.")
 		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart so that routes are preserved on unexpected restarts")
 		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to announce to the BGP peers.")
-		argGrpcHost                    = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
+		argGrpcHost                    = pflag.IP("grpc-host", net.IP{127, 0, 0, 1}, "The host address for grpc to listen, default: 127.0.0.1")
 		argGrpcPort                    = pflag.Int32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
 		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The AS number of container network, default 65000")
-		argRouterID                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
-		argNodeIPs                     = pflag.String("node-ips", "", "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
-		argNeighborAddress             = pflag.String("neighbor-address", "", "Comma separated IPv4 router addresses the speaker connects to.")
-		argNeighborIPv6Address         = pflag.String("neighbor-ipv6-address", "", "Comma separated IPv6 router addresses the speaker connects to.")
+		argRouterID                    = pflag.IP("router-id", nil, "The address for the speaker to use as router id, default the node ip")
+		argNodeIPs                     = pflag.IPSlice("node-ips", nil, "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
+		argNeighborAddress             = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
+		argNeighborIPv6Address         = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
 		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
@@ -117,9 +117,6 @@ func ParseFlags() (*Configuration, error) {
 	if ht > 65536 || ht < 3 {
 		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
 	}
-	if *argRouterID != "" && net.ParseIP(*argRouterID) == nil {
-		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterID)
-	}
 	if *argEbgpMultihopTTL == 0 {
 		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
 	}
@@ -130,17 +127,26 @@ func ParseFlags() (*Configuration, error) {
 	}
 	podIPv4, podIPv6 := util.SplitStringIP(podIpsEnv)
 
-	nodeIPv4, nodeIPv6 := util.SplitStringIP(*argNodeIPs)
+	var nodeIPv4, nodeIPv6 net.IP
+	for _, ip := range *argNodeIPs {
+		if ip.To4() != nil {
+			nodeIPv4 = ip
+		} else if ip.To16() != nil {
+			nodeIPv6 = ip
+		}
+	}
 
 	config := &Configuration{
-		AnnounceClusterIP: *argAnnounceClusterIP,
-		GrpcHost:          *argGrpcHost,
-		GrpcPort:          *argGrpcPort,
-		ClusterAs:         *argClusterAs,
-		RouterID:          *argRouterID,
+		AnnounceClusterIP:     *argAnnounceClusterIP,
+		GrpcHost:              *argGrpcHost,
+		GrpcPort:              *argGrpcPort,
+		ClusterAs:             *argClusterAs,
+		RouterID:              *argRouterID,
+		NeighborAddresses:     *argNeighborAddress,
+		NeighborIPv6Addresses: *argNeighborIPv6Address,
 		NodeIPs: map[string]net.IP{
-			kubeovnv1.ProtocolIPv4: net.ParseIP(nodeIPv4),
-			kubeovnv1.ProtocolIPv6: net.ParseIP(nodeIPv6),
+			kubeovnv1.ProtocolIPv4: nodeIPv4,
+			kubeovnv1.ProtocolIPv6: nodeIPv6,
 		},
 		PodIPs: map[string]net.IP{
 			kubeovnv1.ProtocolIPv4: net.ParseIP(podIPv4),
@@ -163,30 +169,24 @@ func ParseFlags() (*Configuration, error) {
 		LogPerm:                     *argLogPerm,
 	}
 
-	if *argNeighborAddress != "" {
-		config.NeighborAddresses = strings.Split(*argNeighborAddress, ",")
-		for _, addr := range config.NeighborAddresses {
-			if ip := net.ParseIP(addr); ip == nil || ip.To4() == nil {
-				return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
-			}
+	for _, addr := range config.NeighborAddresses {
+		if addr.To4() == nil {
+			return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
 		}
 	}
-	if *argNeighborIPv6Address != "" {
-		config.NeighborIPv6Addresses = strings.Split(*argNeighborIPv6Address, ",")
-		for _, addr := range config.NeighborIPv6Addresses {
-			if ip := net.ParseIP(addr); ip == nil || ip.To16() == nil {
-				return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
-			}
+	for _, addr := range config.NeighborIPv6Addresses {
+		if addr.To4() != nil {
+			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s is not an IPv6 address", addr)
 		}
 	}
 
-	if config.RouterID == "" {
+	if config.RouterID == nil {
 		if podIPv4 != "" {
-			config.RouterID = podIPv4
+			config.RouterID = net.ParseIP(podIPv4)
 		} else {
-			config.RouterID = podIPv6
+			config.RouterID = net.ParseIP(podIPv6)
 		}
-		if config.RouterID == "" {
+		if config.RouterID == nil {
 			return nil, errors.New("no router id or POD_IPS")
 		}
 	}
@@ -256,22 +256,22 @@ func (config *Configuration) initBgpServer() error {
 	var listenPort int32 = -1
 
 	// Set logger options for GoBGP based on klog's verbosity
-	var logger bgpLogger
+	var logLevel slog.LevelVar
 	if klog.V(3).Enabled() {
-		logger.SetLevel(bgplog.TraceLevel)
+		logLevel.Set(slog.LevelDebug)
 	} else {
-		logger.SetLevel(bgplog.InfoLevel)
+		logLevel.Set(slog.LevelInfo)
 	}
 
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
-		gobgp.GrpcListenAddress(util.JoinHostPort(config.GrpcHost, config.GrpcPort)),
+		gobgp.GrpcListenAddress(util.JoinHostPort(config.GrpcHost.String(), config.GrpcPort)),
 		gobgp.GrpcOption(grpcOpts),
-		gobgp.LoggerOption(logger),
+		gobgp.LoggerOption(slog.Default(), &logLevel),
 	)
 	go s.Serve()
 
-	peersMap := map[api.Family_Afi][]string{
+	peersMap := map[api.Family_Afi][]net.IP{
 		api.Family_AFI_IP:  config.NeighborAddresses,
 		api.Family_AFI_IP6: config.NeighborIPv6Addresses,
 	}
@@ -288,7 +288,7 @@ func (config *Configuration) initBgpServer() error {
 	if err := s.StartBgp(context.Background(), &api.StartBgpRequest{
 		Global: &api.Global{
 			Asn:              config.ClusterAs,
-			RouterId:         config.RouterID,
+			RouterId:         config.RouterID.String(),
 			ListenPort:       listenPort,
 			UseMultiplePaths: true,
 		},
@@ -300,7 +300,7 @@ func (config *Configuration) initBgpServer() error {
 			peer := &api.Peer{
 				Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
 				Conf: &api.PeerConf{
-					NeighborAddress: addr,
+					NeighborAddress: addr.String(),
 					PeerAsn:         config.NeighborAs,
 				},
 				Transport: &api.Transport{
