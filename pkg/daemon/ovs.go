@@ -229,7 +229,7 @@ func removeOvnMapping(name, key string) error {
 	return setOvnMappings(name, mappings)
 }
 
-func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
+func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) error {
 	// check if nic exists before configuring external bridge
 	nicExists, err := linkExists(nic)
 	if err != nil {
@@ -238,6 +238,8 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	if !nicExists {
 		return fmt.Errorf("nic %s does not exist", nic)
 	}
+
+	klog.Infof("Configuring external bridge %s for provider %s, nic %s, and vlan interfaces %v", bridge, provider, nic, vlanInterfaceMap)
 
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
@@ -262,16 +264,37 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	}
 	if output != "" {
 		for port := range strings.SplitSeq(output, "\n") {
-			if port != nic {
-				ok, err := ovs.ValidatePortVendor(port)
-				if err != nil {
-					return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+			// Skip the main NIC or VLAN subinterfaces belonging to it
+			if port == nic {
+				klog.Infof("Skipping main NIC port %s on bridge %s", port, bridge)
+				continue
+			}
+			// Check if this port is a VLAN internal port we created (e.g., br-eth0-vlan10)
+			isVlanInternalPort := false
+			for vlanIf, vlanID := range vlanInterfaceMap {
+				expectedInternalPort := fmt.Sprintf("%s-vlan%d", bridge, vlanID)
+				if port == expectedInternalPort {
+					klog.Infof("Preserving VLAN internal port %s for VLAN interface %s on bridge %s", port, vlanIf, bridge)
+					isVlanInternalPort = true
+					break
 				}
-				if ok {
-					if err = c.removeProviderNic(port, bridge); err != nil {
-						return fmt.Errorf("failed to remove port %s from OVS bridge %s: %w", port, bridge, err)
-					}
+			}
+			if isVlanInternalPort {
+				continue
+			}
+
+			ok, err := ovs.ValidatePortVendor(port)
+			if err != nil {
+				return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+			}
+
+			if ok {
+				klog.Infof("Removing unmanaged port %s from bridge %s", port, bridge)
+				if err = c.removeProviderNic(port, bridge); err != nil {
+					return fmt.Errorf("failed to remove port %s from OVS bridge %s: %w", port, bridge, err)
 				}
+			} else {
+				klog.Infof("Port %s on bridge %s has different vendor, skipping removal", port, bridge)
 			}
 		}
 	}
