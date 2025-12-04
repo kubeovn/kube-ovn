@@ -1877,7 +1877,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 		}
 	}
 
-	// caculate subnet status
+	// calculate subnet status
 	if isU2OIPChanged || isMcastQuerierIPChanged {
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			if _, err := c.calcDualSubnetStatusIP(subnet); err != nil {
@@ -2011,52 +2011,31 @@ func (c *Controller) releaseMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 	return isMcastQuerierChanged, nil
 }
 
-func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
-	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
-		return nil, err
-	}
-	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
-	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
-	lenIP = len(podUsedIPs)
-	usingIPNums := lenIP
-
-	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
+func filterNonGatewayExcludeIPs(subnet *kubeovnv1.Subnet) []string {
 	noGWExcludeIPs := []string{}
 	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
 	for _, excludeIP := range subnet.Spec.ExcludeIps {
 		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compare gateway ip with pod ip
 			continue
 		}
 		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
 	}
-	if noGWExcludeIPs != nil {
+	return noGWExcludeIPs
+}
+
+func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*kubeovnv1.IP, noGWExcludeIPs []string) (float64, error) {
+	usingIPNums := len(podUsedIPs)
+
+	if len(noGWExcludeIPs) > 0 {
 		for _, podUsedIP := range podUsedIPs {
 			for _, excludeIP := range noGWExcludeIPs {
 				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
 					usingIPNums--
 					break
 				}
 			}
 		}
 	}
-
-	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
-	v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
-	// gateway always in excludeIPs
-	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
-	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
-	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
-	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs)
-	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs)
 
 	usingIPs := float64(usingIPNums)
 
@@ -2065,39 +2044,58 @@ func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv
 		util.IPReservedLabel: "",
 	}))
 	if err != nil {
+		return 0, err
+	}
+	usingIPs += float64(len(vips))
+
+	eips, err := c.iptablesEipsLister.List(
+		labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
+	if err != nil {
+		return 0, err
+	}
+	usingIPs += float64(len(eips))
+
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+	}))
+	if err != nil {
+		return 0, err
+	}
+	usingIPs += float64(len(ovnEips))
+
+	return usingIPs, nil
+}
+
+func (c *Controller) calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
+		return nil, err
+	}
+
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
+	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	lenVip = len(vips)
-	usingIPs += float64(lenVip)
 
-	if !isOvnSubnet(subnet) {
-		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
-	}
-	if subnet.Spec.Vlan != "" {
-		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: subnet.Name,
-		}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
+	noGWExcludeIPs := filterNonGatewayExcludeIPs(subnet)
+	usingIPs, err := c.calculateUsingIPs(subnet, podUsedIPs, noGWExcludeIPs)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 
-	v4availableIPs -= usingIPs
+	v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
+	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
+	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
+	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
+	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
+	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIPNums(v4toSubIPs) - usingIPs
+	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIPNums(v6toSubIPs) - usingIPs
+
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs -= usingIPs
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
@@ -2138,74 +2136,22 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	var lenIP, lenVip, lenIptablesEip, lenOvnEip int
+
 	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	lenIP = len(podUsedIPs)
-	usingIPNums := lenIP
 
-	// TODO:// replace ExcludeIps with ip pool and gw to avoid later loop
-	noGWExcludeIPs := []string{}
-	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
-	for _, excludeIP := range subnet.Spec.ExcludeIps {
-		if v4gw == excludeIP || v6gw == excludeIP {
-			// no need to compare gateway ip with pod ip
-			continue
-		}
-		noGWExcludeIPs = append(noGWExcludeIPs, excludeIP)
-	}
-	if noGWExcludeIPs != nil {
-		for _, podUsedIP := range podUsedIPs {
-			for _, excludeIP := range noGWExcludeIPs {
-				if util.ContainsIPs(excludeIP, podUsedIP.Spec.V4IPAddress) || util.ContainsIPs(excludeIP, podUsedIP.Spec.V6IPAddress) {
-					// This ip cr is allocated from subnet.spec.excludeIPs, do not count it as usingIPNums
-					usingIPNums--
-					break
-				}
-			}
-		}
-	}
-
-	// gateway always in excludeIPs
-	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs)
-	usingIPs := float64(usingIPNums)
-	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
-		util.SubnetNameLabel: subnet.Name,
-		util.IPReservedLabel: "",
-	}))
+	noGWExcludeIPs := filterNonGatewayExcludeIPs(subnet)
+	usingIPs, err := c.calculateUsingIPs(subnet, podUsedIPs, noGWExcludeIPs)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
-	lenVip = len(vips)
-	usingIPs += float64(lenVip)
-	if !isOvnSubnet(subnet) {
-		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-		lenIptablesEip = len(eips)
-		usingIPs += float64(lenIptablesEip)
-	}
-	if subnet.Spec.Vlan != "" {
-		ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{
-			util.SubnetNameLabel: subnet.Name,
-		}))
-		if err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-		lenOvnEip = len(ovnEips)
-		usingIPs += float64(lenOvnEip)
-	}
 
-	availableIPs -= usingIPs
+	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	availableIPs := util.AddressCount(cidr) - util.CountIPNums(toSubIPs) - usingIPs
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
