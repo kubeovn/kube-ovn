@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	api "github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/api"
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
