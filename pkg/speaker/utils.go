@@ -3,12 +3,12 @@ package speaker
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
-	"strconv"
 	"strings"
 
-	bgpapi "github.com/osrg/gobgp/v3/api"
-	v1 "k8s.io/api/core/v1"
+	"github.com/osrg/gobgp/v4/api"
+	corev1 "k8s.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -25,25 +25,25 @@ func addExpectedPrefix(ip string, expectedPrefixes prefixMap) {
 }
 
 // isPodAlive returns whether a Pod is alive or not
-func isPodAlive(p *v1.Pod) bool {
-	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
+func isPodAlive(p *corev1.Pod) bool {
+	if p.Status.Phase == corev1.PodSucceeded && p.Spec.RestartPolicy != corev1.RestartPolicyAlways {
 		return false
 	}
 
-	if p.Status.Phase == v1.PodFailed && p.Spec.RestartPolicy == v1.RestartPolicyNever {
+	if p.Status.Phase == corev1.PodFailed && p.Spec.RestartPolicy == corev1.RestartPolicyNever {
 		return false
 	}
 
-	if p.Status.Phase == v1.PodFailed && p.Status.Reason == "Evicted" {
+	if p.Status.Phase == corev1.PodFailed && p.Status.Reason == "Evicted" {
 		return false
 	}
 	return true
 }
 
 // isClusterIPService returns whether a Service is of type ClusterIP or not
-func isClusterIPService(svc *v1.Service) bool {
-	return svc.Spec.Type == v1.ServiceTypeClusterIP &&
-		svc.Spec.ClusterIP != v1.ClusterIPNone &&
+func isClusterIPService(svc *corev1.Service) bool {
+	return svc.Spec.Type == corev1.ServiceTypeClusterIP &&
+		svc.Spec.ClusterIP != corev1.ClusterIPNone &&
 		len(svc.Spec.ClusterIP) != 0
 }
 
@@ -76,19 +76,15 @@ func routeDiff(expected, exists []string) (toAdd, toDel []string) {
 // parseRoute returns the prefix and length of the prefix (in bits) by parsing the received route
 // If no prefix is mentioned in the route (e.g 1.1.1.1 instead of 1.1.1.1/32), the prefix length
 // is assumed to be 32 bits
-func parseRoute(route string) (string, uint32, error) {
-	var prefixLen uint32 = 32
-	prefix := route
+func parseRoute(route string) (netip.Prefix, error) {
 	if strings.Contains(route, "/") {
-		prefix = strings.Split(route, "/")[0]
-		strLen := strings.Split(route, "/")[1]
-		intLen, err := strconv.ParseUint(strLen, 10, 32)
-		if err != nil {
-			return "", 0, err
-		}
-		prefixLen = uint32(intLen) // #nosec G115
+		return netip.ParsePrefix(route)
 	}
-	return prefix, prefixLen, nil
+	addr, err := netip.ParseAddr(route)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
 }
 
 // getGatewayName returns the name of the NAT GW hosting this speaker
@@ -97,15 +93,15 @@ func getGatewayName() string {
 }
 
 // kubeOvnFamilyToAFI converts an IP family to its associated AFI
-func kubeOvnFamilyToAFI(ipFamily string) (bgpapi.Family_Afi, error) {
-	var family bgpapi.Family_Afi
+func kubeOvnFamilyToAFI(ipFamily string) (api.Family_Afi, error) {
+	var family api.Family_Afi
 	switch ipFamily {
 	case kubeovnv1.ProtocolIPv4:
-		family = bgpapi.Family_AFI_IP
+		family = api.Family_AFI_IP
 	case kubeovnv1.ProtocolIPv6:
-		family = bgpapi.Family_AFI_IP6
+		family = api.Family_AFI_IP6
 	default:
-		return bgpapi.Family_AFI_UNKNOWN, errors.New("ip family is invalid")
+		return api.Family_AFI_UNSPECIFIED, errors.New("ip family is invalid")
 	}
 
 	return family, nil
