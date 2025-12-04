@@ -90,4 +90,42 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		_, err = subnetClient.SubnetInterface.Create(context.TODO(), subnet, metav1.CreateOptions{})
 		framework.ExpectError(err, "subnet %s cidr %s is invalid", subnet.Name, subnet.Spec.CIDRBlock)
 	})
+
+	framework.ConformanceIt("check subnet vpc update validation", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating vpc can be changed from empty to ovn-cluster")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = util.DefaultVpc
+		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to another value")
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = "test-vpc"
+		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
+
+		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to empty")
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = ""
+		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
+	})
+
+	framework.ConformanceIt("check subnet vpc cannot be set to non-ovn-cluster on update", func() {
+		ginkgo.By("Creating subnet " + subnetName + " with empty vpc")
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating vpc cannot be changed from empty to non-ovn-cluster value")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = "test-vpc"
+		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
+	})
 })

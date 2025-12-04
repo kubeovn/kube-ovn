@@ -69,6 +69,12 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Denied("can't update gateway of cidr when any IPs in Using")
 	}
 
+	if o.Spec.Vpc != oldSubnet.Spec.Vpc {
+		if oldSubnet.Spec.Vpc != "" || o.Spec.Vpc != util.DefaultVpc {
+			return ctrlwebhook.Denied("vpc can only be changed from empty to ovn-cluster")
+		}
+	}
+
 	if err := util.ValidateSubnet(o); err != nil {
 		return ctrlwebhook.Denied(err.Error())
 	}
