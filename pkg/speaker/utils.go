@@ -1,7 +1,6 @@
 package speaker
 
 import (
-	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -15,23 +14,21 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP
-type prefixMap map[int]set.Set[string]
+// prefixMap is a map associating an BGP address family (IPv4 or IPv6) and an IP set
+type prefixMap map[api.Family_Afi]set.Set[string]
 
 // addExpectedPrefix adds a new prefix to the list of expected prefixes we should be announcing
 func addExpectedPrefix(ip string, expectedPrefixes prefixMap) {
-	addr, err := netip.ParseAddr(ip)
+	prefix, err := parsePrefix(ip)
 	if err != nil {
-		klog.Errorf("failed to parse IP address %q: %v", ip, err)
+		klog.Errorf("failed to parse prefix of address %q: %v", ip, err)
 		return
 	}
 
-	bitLen := addr.BitLen()
-	prefix := netip.PrefixFrom(addr, bitLen).String()
-	if expectedPrefixes[bitLen] == nil {
-		expectedPrefixes[bitLen] = set.New(prefix)
+	if afi := prefixToAFI(prefix); expectedPrefixes[afi] == nil {
+		expectedPrefixes[afi] = set.New(prefix.String())
 	} else {
-		expectedPrefixes[bitLen].Insert(prefix)
+		expectedPrefixes[afi].Insert(prefix.String())
 	}
 }
 
@@ -58,14 +55,13 @@ func isClusterIPService(svc *corev1.Service) bool {
 		len(svc.Spec.ClusterIP) != 0
 }
 
-// parseRoute returns the prefix and length of the prefix (in bits) by parsing the received route
-// If no prefix is mentioned in the route (e.g 1.1.1.1 instead of 1.1.1.1/32), the prefix length
-// is assumed to be 32 bits
-func parseRoute(route string) (netip.Prefix, error) {
-	if strings.Contains(route, "/") {
-		return netip.ParsePrefix(route)
+// parsePrefix returns the prefix by parsing the received ip address or network string
+// If the input is an IP address, it converts it to a /32 or /128 prefix
+func parsePrefix(s string) (netip.Prefix, error) {
+	if strings.Contains(s, "/") {
+		return netip.ParsePrefix(s)
 	}
-	addr, err := netip.ParseAddr(route)
+	addr, err := netip.ParseAddr(s)
 	if err != nil {
 		return netip.Prefix{}, err
 	}
@@ -77,14 +73,14 @@ func getGatewayName() string {
 	return os.Getenv(util.GatewayNameEnv)
 }
 
-// bitLenToAFI converts bit length to BGP AFI
-func bitLenToAFI(bitLen int) (api.Family_Afi, error) {
-	switch bitLen {
+// prefixToAFI converts a network prefix to BGP AFI by checking its bit length
+func prefixToAFI(prefix netip.Prefix) api.Family_Afi {
+	switch prefix.Addr().BitLen() {
 	case net.IPv4len * 8:
-		return api.Family_AFI_IP, nil
+		return api.Family_AFI_IP
 	case net.IPv6len * 8:
-		return api.Family_AFI_IP6, nil
+		return api.Family_AFI_IP6
 	default:
-		return api.Family_AFI_UNSPECIFIED, fmt.Errorf("invalid bit length %d", bitLen)
+		return api.Family_AFI_UNSPECIFIED
 	}
 }

@@ -73,10 +73,10 @@ func (c *Controller) syncSubnetRoutes() {
 					continue
 				}
 
-				if bitLen := prefix.Addr().BitLen(); bgpExpected[bitLen] == nil {
-					bgpExpected[bitLen] = set.New(prefix.String())
+				if afi := prefixToAFI(prefix); bgpExpected[afi] == nil {
+					bgpExpected[afi] = set.New(prefix.String())
 				} else {
-					bgpExpected[bitLen].Insert(prefix.String())
+					bgpExpected[afi].Insert(prefix.String())
 				}
 			}
 		case announcePolicyLocal:

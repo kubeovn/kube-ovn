@@ -20,14 +20,14 @@ import (
 // and to withdraw the ones that should not be announced anymore
 func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
 	if c.config.ExtendedNexthop || len(c.config.NeighborAddresses) != 0 {
-		err := c.reconcileIPFamily(net.IPv4len*8, expectedPrefixes)
+		err := c.reconcileIPFamily(api.Family_AFI_IP, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv4 routes: %w", err)
 		}
 	}
 
 	if c.config.ExtendedNexthop || len(c.config.NeighborIPv6Addresses) != 0 {
-		err := c.reconcileIPFamily(net.IPv6len*8, expectedPrefixes)
+		err := c.reconcileIPFamily(api.Family_AFI_IP6, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv6 routes: %w", err)
 		}
@@ -38,13 +38,7 @@ func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
 
 // reconcileIPFamily announces prefixes we are not currently announcing and withdraws prefixes we should
 // not be announcing for a given IP family (IPv4/IPv6)
-func (c *Controller) reconcileIPFamily(bitLen int, expectedPrefixes prefixMap) error {
-	// Get the address family associated with the Kube-OVN family
-	afi, err := bitLenToAFI(bitLen)
-	if err != nil {
-		return fmt.Errorf("couldn't convert family to afi: %w", err)
-	}
-
+func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes prefixMap) error {
 	// Craft a BGP path listing request for this AFI
 	listPathRequest := apiutil.ListPathRequest{
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
@@ -74,7 +68,7 @@ func (c *Controller) reconcileIPFamily(bitLen int, expectedPrefixes prefixMap) e
 	klog.V(5).Infof("currently announcing %s routes: %v", afi, existingPrefixes.SortedList())
 
 	// Announce routes we should be announcing and withdraw the ones that are no longer valid
-	c.announceAndWithdraw(expectedPrefixes[bitLen], existingPrefixes)
+	c.announceAndWithdraw(expectedPrefixes[afi], existingPrefixes)
 	return nil
 }
 
@@ -151,33 +145,25 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 	}
 
 	// Get the route we're about to advertise and transform it to an NLRI
-	prefix, err := parseRoute(route)
+	prefix, err := parsePrefix(route)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse route: %w", err)
 	}
 
-	// Determine the Address Family Indicator (IPv6/IPv4)
-	routeAfi := api.Family_AFI_IP
-	if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
-		routeAfi = api.Family_AFI_IP6
-	}
-
-	nlri := &api.NLRI{
-		Nlri: &api.NLRI_Prefix{
-			Prefix: &api.IPAddressPrefix{
-				Prefix:    prefix.Addr().String(),
-				PrefixLen: uint32(prefix.Bits()), // #nosec G115
-			},
-		},
-	}
-
 	// Create paths to be used in add/delete path request
 	paths := make([][]*apiutil.Path, 0, len(neighborAddresses))
-	family := &api.Family{Afi: routeAfi, Safi: api.Family_SAFI_UNICAST}
+	family := &api.Family{Afi: prefixToAFI(prefix), Safi: api.Family_SAFI_UNICAST}
 	for _, addr := range neighborAddresses {
 		path := &api.Path{
 			Family: family,
-			Nlri:   nlri,
+			Nlri: &api.NLRI{
+				Nlri: &api.NLRI_Prefix{
+					Prefix: &api.IPAddressPrefix{
+						Prefix:    prefix.Addr().String(),
+						PrefixLen: uint32(prefix.Bits()), // #nosec G115
+					},
+				},
+			},
 			Pattrs: []*api.Attribute{{
 				Attr: &api.Attribute_Origin{
 					Origin: &api.OriginAttribute{
