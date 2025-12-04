@@ -1,27 +1,38 @@
 package speaker
 
 import (
-	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"strings"
 
 	"github.com/osrg/gobgp/v4/api"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // prefixMap is a map associating an IP family (IPv4 or IPv6) and an IP
-type prefixMap map[string][]string
+type prefixMap map[int]set.Set[string]
 
 // addExpectedPrefix adds a new prefix to the list of expected prefixes we should be announcing
 func addExpectedPrefix(ip string, expectedPrefixes prefixMap) {
-	ipFamily := util.CheckProtocol(ip)
-	prefix := fmt.Sprintf("%s/%d", ip, maskMap[ipFamily])
-	expectedPrefixes[ipFamily] = append(expectedPrefixes[ipFamily], prefix)
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		klog.Errorf("failed to parse IP address %q: %v", ip, err)
+		return
+	}
+
+	bitLen := addr.BitLen()
+	prefix := netip.PrefixFrom(addr, bitLen).String()
+	if expectedPrefixes[bitLen] == nil {
+		expectedPrefixes[bitLen] = set.New(prefix)
+	} else {
+		expectedPrefixes[bitLen].Insert(prefix)
+	}
 }
 
 // isPodAlive returns whether a Pod is alive or not
@@ -47,32 +58,6 @@ func isClusterIPService(svc *corev1.Service) bool {
 		len(svc.Spec.ClusterIP) != 0
 }
 
-// routeDiff returns the routes that should be added and the routes that should be deleted
-// after receiving the routes we except to advertise versus the route we are advertising
-func routeDiff(expected, exists []string) (toAdd, toDel []string) {
-	expectedMap, existsMap := map[string]bool{}, map[string]bool{}
-	for _, e := range expected {
-		expectedMap[e] = true
-	}
-	for _, e := range exists {
-		existsMap[e] = true
-	}
-
-	for e := range expectedMap {
-		if !existsMap[e] {
-			toAdd = append(toAdd, e)
-		}
-	}
-
-	for e := range existsMap {
-		if !expectedMap[e] {
-			toDel = append(toDel, e)
-		}
-	}
-
-	return toAdd, toDel
-}
-
 // parseRoute returns the prefix and length of the prefix (in bits) by parsing the received route
 // If no prefix is mentioned in the route (e.g 1.1.1.1 instead of 1.1.1.1/32), the prefix length
 // is assumed to be 32 bits
@@ -92,17 +77,14 @@ func getGatewayName() string {
 	return os.Getenv(util.GatewayNameEnv)
 }
 
-// kubeOvnFamilyToAFI converts an IP family to its associated AFI
-func kubeOvnFamilyToAFI(ipFamily string) (api.Family_Afi, error) {
-	var family api.Family_Afi
-	switch ipFamily {
-	case kubeovnv1.ProtocolIPv4:
-		family = api.Family_AFI_IP
-	case kubeovnv1.ProtocolIPv6:
-		family = api.Family_AFI_IP6
+// bitLenToAFI converts bit length to BGP AFI
+func bitLenToAFI(bitLen int) (api.Family_Afi, error) {
+	switch bitLen {
+	case net.IPv4len * 8:
+		return api.Family_AFI_IP, nil
+	case net.IPv6len * 8:
+		return api.Family_AFI_IP6, nil
 	default:
-		return api.Family_AFI_UNSPECIFIED, errors.New("ip family is invalid")
+		return api.Family_AFI_UNSPECIFIED, fmt.Errorf("invalid bit length %d", bitLen)
 	}
-
-	return family, nil
 }

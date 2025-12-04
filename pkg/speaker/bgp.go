@@ -10,25 +10,24 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var maskMap = map[string]int{kubeovnv1.ProtocolIPv4: 32, kubeovnv1.ProtocolIPv6: 128}
-
 // reconcileRoutes configures the BGP speaker to announce only the routes we are expected to announce
 // and to withdraw the ones that should not be announced anymore
 func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
 	if c.config.ExtendedNexthop || len(c.config.NeighborAddresses) != 0 {
-		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv4, expectedPrefixes)
+		err := c.reconcileIPFamily(net.IPv4len*8, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv4 routes: %w", err)
 		}
 	}
 
 	if c.config.ExtendedNexthop || len(c.config.NeighborIPv6Addresses) != 0 {
-		err := c.reconcileIPFamily(kubeovnv1.ProtocolIPv6, expectedPrefixes)
+		err := c.reconcileIPFamily(net.IPv6len*8, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv6 routes: %w", err)
 		}
@@ -39,9 +38,9 @@ func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
 
 // reconcileIPFamily announces prefixes we are not currently announcing and withdraws prefixes we should
 // not be announcing for a given IP family (IPv4/IPv6)
-func (c *Controller) reconcileIPFamily(ipFamily string, expectedPrefixes prefixMap) error {
+func (c *Controller) reconcileIPFamily(bitLen int, expectedPrefixes prefixMap) error {
 	// Get the address family associated with the Kube-OVN family
-	afi, err := kubeOvnFamilyToAFI(ipFamily)
+	afi, err := bitLenToAFI(bitLen)
 	if err != nil {
 		return fmt.Errorf("couldn't convert family to afi: %w", err)
 	}
@@ -53,7 +52,7 @@ func (c *Controller) reconcileIPFamily(ipFamily string, expectedPrefixes prefixM
 	}
 
 	// Anonymous function that stores the prefixes we are announcing for this AFI
-	var existingPrefixes []string
+	existingPrefixes := set.New[string]()
 	fn := func(prefix bgp.NLRI, paths []*apiutil.Path) {
 		for _, path := range paths {
 			nextHop := getNextHopFromPathAttributes(path.Attrs)
@@ -61,7 +60,7 @@ func (c *Controller) reconcileIPFamily(ipFamily string, expectedPrefixes prefixM
 
 			route, _ := netlink.RouteGet(nextHop)
 			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID) {
-				existingPrefixes = append(existingPrefixes, prefix.String())
+				existingPrefixes.Insert(prefix.String())
 				return
 			}
 		}
@@ -69,29 +68,31 @@ func (c *Controller) reconcileIPFamily(ipFamily string, expectedPrefixes prefixM
 
 	// Ask the BGP speaker what route we're announcing for the IP family selected
 	if err := c.config.BgpServer.ListPath(listPathRequest, fn); err != nil {
-		return fmt.Errorf("failed to list existing %s routes: %w", ipFamily, err)
+		return fmt.Errorf("failed to list existing %s routes: %w", afi, err)
 	}
 
-	klog.V(5).Infof("currently announcing %s routes: %v", ipFamily, existingPrefixes)
+	klog.V(5).Infof("currently announcing %s routes: %v", afi, existingPrefixes.SortedList())
 
 	// Announce routes we should be announcing and withdraw the ones that are no longer valid
-	c.announceAndWithdraw(routeDiff(expectedPrefixes[ipFamily], existingPrefixes))
+	c.announceAndWithdraw(expectedPrefixes[bitLen], existingPrefixes)
 	return nil
 }
 
 // announceAndWithdraw commands the BGP speaker to start announcing new routes and to withdraw others
-func (c *Controller) announceAndWithdraw(toAdd, toDel []string) {
+func (c *Controller) announceAndWithdraw(expected, existing set.Set[string]) {
 	// Announce routes that need to be added
-	klog.V(5).Infof("new routes we will announce: %v", toAdd)
-	for _, route := range toAdd {
+	toAdd := expected.Difference(existing)
+	klog.V(5).Infof("new routes we will announce: %v", toAdd.SortedList())
+	for route := range toAdd {
 		if err := c.addRoute(route); err != nil {
 			klog.Error(err)
 		}
 	}
 
 	// Withdraw routes that should be deleted
-	klog.V(5).Infof("announced routes we will withdraw: %v", toDel)
-	for _, route := range toDel {
+	toDel := existing.Difference(expected)
+	klog.V(5).Infof("announced routes we will withdraw: %v", toDel.SortedList())
+	for route := range toDel {
 		if err := c.delRoute(route); err != nil {
 			klog.Error(err)
 		}
@@ -222,10 +223,9 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 	}
 
 	proto := util.CheckProtocol(nextHop.String()) // Is next hop IPv4 or IPv6
-	// nextHopIP := net.ParseIP(nextHop)             // Convert next hop to an IP
 
 	// This takes care of a special case where the speaker might not be running in host mode
-	// If this happens, the nextHopIP will be the IP of a Pod (probably unreachable for the neighbours)
+	// If this happens, the nextHopIP will be the IP of a Pod (probably unreachable for the neighbors)
 	// For this case, the configuration allows for manually specifying the IPs to use as next hop (per protocol)
 	nodeIP := c.config.NodeIPs[proto]
 	if nodeIP != nil && nextHop.Equal(c.config.PodIPs[proto]) {

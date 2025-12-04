@@ -175,8 +175,8 @@ func ParseFlags() (*Configuration, error) {
 		}
 	}
 	for _, addr := range config.NeighborIPv6Addresses {
-		if addr.To16() == nil {
-			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
+		if addr.To4() != nil {
+			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s is not an IPv6 address", addr)
 		}
 	}
 
