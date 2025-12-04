@@ -3,7 +3,6 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"maps"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -228,70 +227,45 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 	return nil
 }
 
-var lastInterfacePodMap map[string]string
-
-func ListInterfacePodMap() (map[string]string, error) {
-	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids,error", "find",
-		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]")
+// CleanLostInterface will clean up related ovs port, interface and qos
+// When reboot node, the ovs internal interface will be deleted.
+func CleanLostInterface() {
+	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1", "external_ids:pod_netns!=[]")
 	if err != nil {
-		klog.Errorf("failed to list interface, %v", err)
-		return nil, err
+		klog.Errorf("failed to list failed interface %v", err)
+		return
 	}
-	lines := strings.Split(output, "\n")
-	result := make(map[string]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 3 {
-			continue
-		}
-		ifaceName := strings.TrimSpace(parts[0])
-		errText := strings.TrimSpace(parts[2])
-		var podNamespace, podName string
-		for externalID := range strings.FieldsSeq(parts[1]) {
-			if strings.Contains(externalID, "pod_name=") {
-				podName = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_name=")
-			}
+	if len(interfaceList) > 0 {
+		klog.Infof("error interfaces:\n %v", interfaceList)
+	}
 
-			if strings.Contains(externalID, "pod_namespace=") {
-				podNamespace = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_namespace=")
-			}
-		}
-		result[ifaceName] = fmt.Sprintf("%s/%s/%s", podNamespace, podName, errText)
-	}
-	if !maps.Equal(result, lastInterfacePodMap) {
-		klog.Infof("interface pod map: %v", result)
-		lastInterfacePodMap = maps.Clone(result)
-	}
-	return result, nil
-}
-
-func CleanInterface(name string) error {
-	qosList, err := ovsFind("port", "qos", "name="+name)
-	if err != nil {
-		klog.Errorf("failed to find related port %v", err)
-		return err
-	}
-	klog.Infof("delete lost port %s", name)
-	output, err := Exec("--if-exists", "--with-iface", "del-port", name)
-	if err != nil {
-		klog.Errorf("failed to delete ovs port %v, %s", err, output)
-		return err
-	}
-	for _, qos := range qosList {
-		qos = strings.TrimSpace(qos)
-		if qos != "" && qos != "[]" {
-			klog.Infof("delete lost qos %s", qos)
-			err = ovsDestroy("qos", qos)
+	for _, intf := range interfaceList {
+		name, errText := strings.Trim(strings.Split(intf, "\n")[0], "\""), strings.Split(intf, "\n")[1]
+		if strings.Contains(errText, "No such device") {
+			qosList, err := ovsFind("port", "qos", "name="+name)
 			if err != nil {
-				klog.Errorf("failed to delete qos %s, %v", qos, err)
-				return err
+				klog.Errorf("failed to find related port %v", err)
+				return
+			}
+			klog.Infof("delete lost port %s", name)
+			output, err := Exec("--if-exists", "--with-iface", "del-port", name)
+			if err != nil {
+				klog.Errorf("failed to delete ovs port %v, %s", err, output)
+				return
+			}
+			for _, qos := range qosList {
+				qos = strings.TrimSpace(qos)
+				if qos != "" && qos != "[]" {
+					klog.Infof("delete lost qos %s", qos)
+					err = ovsDestroy("qos", qos)
+					if err != nil {
+						klog.Errorf("failed to delete qos %s, %v", qos, err)
+						return
+					}
+				}
 			}
 		}
 	}
-	return nil
 }
 
 // Find and remove any existing OVS port with this iface-id. Pods can

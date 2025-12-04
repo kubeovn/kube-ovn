@@ -1239,6 +1239,10 @@ func (suite *OvnClientTestSuite) Test_OvsClearPodBandwidth() {
 	suite.testOvsClearPodBandwidth()
 }
 
+func (suite *OvnClientTestSuite) Test_OvsCleanLostInterface() {
+	suite.testOvsCleanLostInterface()
+}
+
 func (suite *OvnClientTestSuite) Test_OvsCleanDuplicatePort() {
 	suite.testOvsCleanDuplicatePort()
 }
