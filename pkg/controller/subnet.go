@@ -2383,6 +2383,29 @@ func (c *Controller) checkSubnetGwNodesExist(subnet *kubeovnv1.Subnet) bool {
 	return false
 }
 
+func getIPSuffix(protocol string) string {
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		return "ip6"
+	}
+	return "ip4"
+}
+
+func getIPAddressFamily(protocol string) int {
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		return 6
+	}
+	return 4
+}
+
+func buildPolicyRouteExternalIDs(subnetName string, extraIDs map[string]string) map[string]string {
+	externalIDs := map[string]string{
+		"vendor": util.CniTypeName,
+		"subnet": subnetName,
+	}
+	maps.Copy(externalIDs, extraIDs)
+	return externalIDs
+}
+
 func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 		if cidr == "" {
@@ -2401,17 +2424,11 @@ func (c *Controller) addCommonRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
 			return fmt.Errorf("failed to get gateway of CIDR %s", cidr)
 		}
 
-		// policy route
-		af := 4
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			af = 6
-		}
+		af := getIPAddressFamily(protocol)
+		match := fmt.Sprintf("ip%d.dst == %s", af, cidr)
+		action := kubeovnv1.PolicyRouteActionAllow
+		externalIDs := buildPolicyRouteExternalIDs(subnet.Name, nil)
 
-		var (
-			match       = fmt.Sprintf("ip%d.dst == %s", af, cidr)
-			action      = kubeovnv1.PolicyRouteActionAllow
-			externalIDs = map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name}
-		)
 		klog.Infof("add common policy route for router: %s, match %s, action %s, externalID %v", subnet.Spec.Vpc, match, action, externalIDs)
 		if err := c.addPolicyRouteToVpc(
 			subnet.Spec.Vpc,
@@ -2457,24 +2474,11 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 }
 
 func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr string, nextHops []string, nameIPMap map[string]string) error {
-	ipSuffix := "ip4"
-	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
-		ipSuffix = "ip6"
-	}
+	ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
+	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
+	action := kubeovnv1.PolicyRouteActionReroute
+	externalIDs := buildPolicyRouteExternalIDs(subnetName, nameIPMap)
 
-	var (
-		match  = fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-		action = kubeovnv1.PolicyRouteActionReroute
-		// there's no way to update policy route when gatewayNode changed for subnet, so delete and readd policy route
-		// The delete operation is processed in AddPolicyRoute if the policy route is inconsistent, so no need delete here
-		externalIDs = map[string]string{
-			"vendor": util.CniTypeName,
-			"subnet": subnetName,
-		}
-	)
-	// It's difficult to delete policy route when delete node,
-	// add map nodeName:nodeIP to external_ids to help process when delete node
-	maps.Copy(externalIDs, nameIPMap)
 	klog.Infof("add policy route for router: %s, match %s, action %s, nexthops %v, externalID %s", c.config.ClusterRouter, match, action, nextHops, externalIDs)
 	if err := c.addPolicyRouteToVpc(
 		c.config.ClusterRouter,
@@ -2520,10 +2524,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 
 func (c *Controller) deletePolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet) error {
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		ipSuffix := "ip4"
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
-		}
+		ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 		match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match)
 		if err := c.deletePolicyRouteFromVpc(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match); err != nil {
@@ -2544,24 +2545,19 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		ipSuffix, nodeIP := "ip4", nodeIPv4
-		if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-			ipSuffix, nodeIP = "ip6", nodeIPv6
+		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
+		nodeIP := nodeIPv4
+		if ipSuffix == "ip6" {
+			nodeIP = nodeIPv6
 		}
 		if nodeIP == "" {
 			continue
 		}
 
-		var (
-			pgAs        = fmt.Sprintf("%s_%s", pgName, ipSuffix)
-			match       = fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
-			action      = kubeovnv1.PolicyRouteActionReroute
-			externalIDs = map[string]string{
-				"vendor": util.CniTypeName,
-				"subnet": subnet.Name,
-				"node":   nodeName,
-			}
-		)
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
+		action := kubeovnv1.PolicyRouteActionReroute
+		externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"node": nodeName})
 
 		klog.Infof("add policy route for router: %s, match %s, action %s, externalID %v", c.config.ClusterRouter, match, action, externalIDs)
 		if err := c.addPolicyRouteToVpc(
@@ -2584,10 +2580,7 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet, nodeName string) error {
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		ipSuffix := "ip4"
-		if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
-		}
+		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 		match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
 		klog.Infof("delete policy route for router: %s, priority: %d, match: %q", c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match)
@@ -2609,10 +2602,7 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 			continue
 		}
 
-		af := 4
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
-			af = 6
-		}
+		af := getIPAddressFamily(util.CheckProtocol(cidr))
 		match := fmt.Sprintf("ip%d.dst == %s", af, cidr)
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.SubnetRouterPolicyPriority, match)
 		if err := c.deletePolicyRouteFromVpc(c.config.ClusterRouter, util.SubnetRouterPolicyPriority, match); err != nil {
@@ -2666,11 +2656,7 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
-	externalIDs := map[string]string{
-		"vendor":           util.CniTypeName,
-		"subnet":           subnet.Name,
-		"isU2ORoutePolicy": "true",
-	}
+	externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ORoutePolicy": "true"})
 
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
@@ -2718,11 +2704,10 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 	}
 
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		ipSuffix := "ip4"
+		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
 		nextHop := v4Gw
 		U2OexcludeIPAs := u2oExcludeIP4Ag
-		if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
+		if ipSuffix == "ip6" {
 			nextHop = v6Gw
 			U2OexcludeIPAs = u2oExcludeIP6Ag
 		}
@@ -3072,10 +3057,7 @@ func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.
 				continue
 			}
 
-			af := 4
-			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
-				af = 6
-			}
+			af := getIPAddressFamily(util.CheckProtocol(cidr))
 
 			if isCommonRoute {
 				match = fmt.Sprintf("ip%d.dst == %s", af, cidr)
@@ -3083,7 +3065,6 @@ func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.
 				if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 					match = fmt.Sprintf("ip%d.src == %s", af, cidr)
 				} else {
-					// distributed subnet does not need process gateway route policy
 					continue
 				}
 			}
@@ -3123,26 +3104,25 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		}
 		v4Svc, v6Svc := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-			ipSuffix, nodeIP, svcCIDR := "ip4", ip.Spec.V4IPAddress, v4Svc
-			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
-				ipSuffix, nodeIP, svcCIDR = "ip6", ip.Spec.V6IPAddress, v6Svc
+			ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
+			nodeIP := ip.Spec.V4IPAddress
+			svcCIDR := v4Svc
+			if ipSuffix == "ip6" {
+				nodeIP = ip.Spec.V6IPAddress
+				svcCIDR = v6Svc
 			}
 			if nodeIP == "" || svcCIDR == "" {
 				continue
 			}
 
-			var (
-				pgAs        = fmt.Sprintf("%s_%s", pgName, ipSuffix)
-				match       = fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcCIDR)
-				action      = kubeovnv1.PolicyRouteActionReroute
-				externalIDs = map[string]string{
-					"vendor":               util.CniTypeName,
-					"subnet":               subnet.Name,
-					"isU2ORoutePolicy":     "true",
-					"isU2ONoLBRoutePolicy": "true",
-					"node":                 node.Name,
-				}
-			)
+			pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcCIDR)
+			action := kubeovnv1.PolicyRouteActionReroute
+			externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+				"isU2ORoutePolicy":     "true",
+				"isU2ONoLBRoutePolicy": "true",
+				"node":                 node.Name,
+			})
 
 			klog.Infof("add u2o interconnection policy without enabling loadbalancer for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match, action, nodeIP)
 			if err := c.addPolicyRouteToVpc(
