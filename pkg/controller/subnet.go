@@ -58,61 +58,41 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 	c.deleteSubnetQueue.Add(subnet)
 }
 
+func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
+	if subnet.DeletionTimestamp.IsZero() {
+		return false
+	}
+
+	if subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs == 0 {
+		return true
+	}
+	
+	if subnet.Status.U2OInterconnectionIP != "" {
+		return int(subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
+	}
+
+	return false
+}
+
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
-	var usingIPs float64
-	var u2oInterconnIP string
+
 	oldSubnet := oldObj.(*kubeovnv1.Subnet)
 	newSubnet := newObj.(*kubeovnv1.Subnet)
 	key := cache.MetaObjectToName(newSubnet).String()
 
-	if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
-		usingIPs = newSubnet.Status.V6UsingIPs
-	} else {
-		usingIPs = newSubnet.Status.V4UsingIPs
-	}
-
-	u2oInterconnIP = newSubnet.Status.U2OInterconnectionIP
-	if !newSubnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
+	if readyToRemoveFinalizer(newSubnet) {
+		klog.Infof("enqueue update subnet %s triggered by ready to remove finalizer", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 		return
 	}
 
-	if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
-		klog.Infof("enqueue update vpc %s triggered by u2o interconnection change of subnet %s", newSubnet.Spec.Vpc, key)
-		c.addOrUpdateVpcQueue.Add(newSubnet.Spec.Vpc)
-	}
-
-	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
-		oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock ||
-		!slices.Equal(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
-		!slices.Equal(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
-		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
-		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
-		oldSubnet.Spec.LogicalGateway != newSubnet.Spec.LogicalGateway ||
-		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
-		!slices.Equal(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
-		!slices.Equal(oldSubnet.Spec.Vips, newSubnet.Spec.Vips) ||
-		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan ||
-		oldSubnet.Spec.EnableDHCP != newSubnet.Spec.EnableDHCP ||
-		oldSubnet.Spec.DHCPv4Options != newSubnet.Spec.DHCPv4Options ||
-		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
-		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
-		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
-		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
-		(oldSubnet.Spec.EnableLb == nil && newSubnet.Spec.EnableLb != nil) ||
-		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
-		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
-		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
-		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
-		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
-		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
-		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc ||
-		oldSubnet.Spec.NatOutgoing != newSubnet.Spec.NatOutgoing ||
-		oldSubnet.Spec.EnableMulticastSnoop != newSubnet.Spec.EnableMulticastSnoop ||
-		!reflect.DeepEqual(oldSubnet.Spec.NatOutgoingPolicyRules, newSubnet.Spec.NatOutgoingPolicyRules) ||
-		!reflect.DeepEqual(oldSubnet.Spec.NamespaceSelectors, newSubnet.Spec.NamespaceSelectors) ||
-		(newSubnet.Spec.U2OInterconnection && newSubnet.Spec.U2OInterconnectionIP != "" && oldSubnet.Spec.U2OInterconnectionIP != newSubnet.Spec.U2OInterconnectionIP) {
+	if !reflect.DeepEqual(oldSubnet, newSubnet) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
+
+		if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
+			klog.Infof("enqueue update vpc %s to update always-lear-from-arp option triggered by u2o interconnection change of subnet %s", newSubnet.Spec.Vpc, key)
+			c.addOrUpdateVpcQueue.Add(newSubnet.Spec.Vpc)
+		}
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
 			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
