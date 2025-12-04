@@ -166,7 +166,7 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 		Nlri: &api.NLRI_Prefix{
 			Prefix: &api.IPAddressPrefix{
 				Prefix:    prefix.Addr().String(),
-				PrefixLen: uint32(prefix.Bits()),
+				PrefixLen: uint32(prefix.Bits()), // #nosec G115
 			},
 		},
 	}
@@ -203,7 +203,7 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 		}
 
 		paths = append(paths, []*apiutil.Path{{
-			Family: bgp.NewFamily(uint16(path.Family.Afi), uint8(path.Family.Safi)),
+			Family: bgp.NewFamily(uint16(path.Family.Afi), uint8(path.Family.Safi)), // #nosec G115
 			Nlri:   nativeNlri,
 			Attrs:  nativeAttrs,
 		}})
