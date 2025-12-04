@@ -3158,6 +3158,8 @@ spec:
                   type: array
                   items:
                     type: string
+                autoCreateVlanSubinterfaces:
+                  type: boolean
               required:
                 - defaultInterface
             status:

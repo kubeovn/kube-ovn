@@ -418,3 +418,11 @@ func linkExists(name string) (bool, error) {
 	}
 	return true, nil
 }
+
+func (c *Controller) createVlanSubinterfaces(_ []string, _, _ string) error {
+	return errors.New("auto-create VLAN subinterfaces is only supported on Linux")
+}
+
+func (c *Controller) cleanupAutoCreatedVlanInterfaces(_ string) error {
+	return nil
+}
