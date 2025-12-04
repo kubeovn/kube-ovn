@@ -36,8 +36,8 @@ github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e h1:KCjb01YiNo
 github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e/go.mod h1:f7vw6ObmmNcyFQLhZX9eUGBJGpnwTJFDvVjqZxIxHWY=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
-github.com/brianvoe/gofakeit/v7 v7.12.0 h1:5gHj4XiZUOBF5dIzFxz5mqlaUjahYk09RtT+51iQkuA=
-github.com/brianvoe/gofakeit/v7 v7.12.0/go.mod h1:OllskdkFOHg1ECRPXRV7OKSLcabgRY0YuzstuBoEFFk=
+github.com/brianvoe/gofakeit/v7 v7.12.1 h1:df1tiI4SL1dR5Ix4D/r6a3a+nXBJ/OBGU5jEKRBmmqg=
+github.com/brianvoe/gofakeit/v7 v7.12.1/go.mod h1:QXuPeBw164PJCzCUZVmgpgHJ3Llj49jSLVkKPMtxtxA=
 github.com/buger/jsonparser v1.1.1 h1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=
 github.com/buger/jsonparser v1.1.1/go.mod h1:6RYKKt7H4d4+iWqouImQ9R2FZql3VbhNgx27UK13J/0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
