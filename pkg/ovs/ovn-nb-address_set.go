@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateAddressSet create address set with external ids
@@ -21,6 +23,11 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 	if matched := matchAddressSetName(asName); !matched {
 		return fmt.Errorf("address set %s must match `[a-zA-Z_.][a-zA-Z_.0-9]*`", asName)
 	}
+
+	// Create new map with vendor tag to avoid modifying caller's map
+	finalExternalIDs := make(map[string]string, len(externalIDs)+1)
+	maps.Copy(finalExternalIDs, externalIDs)
+	finalExternalIDs["vendor"] = util.CniTypeName
 
 	exists, err := c.AddressSetExists(asName)
 	if err != nil {
@@ -35,7 +42,7 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 
 	as := &ovnnb.AddressSet{
 		Name:        asName,
-		ExternalIDs: externalIDs,
+		ExternalIDs: finalExternalIDs,
 	}
 
 	ops, err := c.Create(as)

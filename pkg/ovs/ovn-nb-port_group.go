@@ -14,6 +14,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]string) error {
@@ -23,9 +24,14 @@ func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]stri
 		return err
 	}
 
+	// Create new map with vendor tag to avoid modifying caller's map
+	finalExternalIDs := make(map[string]string, len(externalIDs)+1)
+	maps.Copy(finalExternalIDs, externalIDs)
+	finalExternalIDs["vendor"] = util.CniTypeName
+
 	if pg != nil {
-		if !maps.Equal(pg.ExternalIDs, externalIDs) {
-			pg.ExternalIDs = maps.Clone(externalIDs)
+		if !maps.Equal(pg.ExternalIDs, finalExternalIDs) {
+			pg.ExternalIDs = maps.Clone(finalExternalIDs)
 			if err = c.UpdatePortGroup(pg, &pg.ExternalIDs); err != nil {
 				err = fmt.Errorf("failed to update port group %s external IDs: %w", pgName, err)
 				klog.Error(err)
@@ -37,7 +43,7 @@ func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]stri
 
 	pg = &ovnnb.PortGroup{
 		Name:        pgName,
-		ExternalIDs: externalIDs,
+		ExternalIDs: finalExternalIDs,
 	}
 
 	ops, err := c.Create(pg)
