@@ -60,7 +60,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
-		!maps.Equal(oldVpc.Annotations, newVpc.Annotations) ||
+		kubeOvnAnnotationsChanged(oldVpc.Annotations, newVpc.Annotations) ||
 		!slices.Equal(oldVpc.Spec.ExtraExternalSubnets, newVpc.Spec.ExtraExternalSubnets) ||
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -53,12 +54,26 @@ func nodeReady(node *v1.Node) bool {
 	return ready && !networkUnavailable
 }
 
+func kubeOvnAnnotationsChanged(oldAnnotations, newAnnotations map[string]string) bool {
+	filterKubeOvnAnnotations := func(annotations map[string]string) map[string]string {
+		filtered := make(map[string]string)
+		for key, value := range annotations {
+			if strings.Contains(key, ".kubernetes.io/") {
+				filtered[key] = value
+			}
+		}
+		return filtered
+	}
+
+	return !maps.Equal(filterKubeOvnAnnotations(oldAnnotations), filterKubeOvnAnnotations(newAnnotations))
+}
+
 func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
-		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) ||
+		kubeOvnAnnotationsChanged(oldNode.Annotations, newNode.Annotations) ||
 		!reflect.DeepEqual(oldNode.Labels, newNode.Labels) {
 		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
