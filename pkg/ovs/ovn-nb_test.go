@@ -349,3 +349,101 @@ func (suite *OvnClientTestSuite) testGetEntityInfo() {
 		require.ErrorContains(t, err, "entity must be pointer")
 	})
 }
+
+func TestIsKnownParentKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		externalIDs        map[string]string
+		externalParentKeys []string
+		expected           bool
+	}{
+		{
+			name:        "nil external IDs",
+			externalIDs: nil,
+			expected:    false,
+		},
+		{
+			name:        "empty external IDs",
+			externalIDs: map[string]string{},
+			expected:    false,
+		},
+		{
+			name:        "has default parent key",
+			externalIDs: map[string]string{"parent": "some-value"},
+			expected:    true,
+		},
+		{
+			name:        "has default parent key with other keys",
+			externalIDs: map[string]string{"parent": "some-value", "other": "key"},
+			expected:    true,
+		},
+		{
+			name:               "no parent key, no external patterns configured",
+			externalIDs:        map[string]string{"neutron:security_group_id": "abc123"},
+			externalParentKeys: []string{},
+			expected:           false,
+		},
+		{
+			name:               "matches exact external pattern",
+			externalIDs:        map[string]string{"neutron:security_group_id": "abc123"},
+			externalParentKeys: []string{"neutron:security_group_id"},
+			expected:           true,
+		},
+		{
+			name:               "matches glob pattern with asterisk",
+			externalIDs:        map[string]string{"neutron:security_group_id": "abc123"},
+			externalParentKeys: []string{"neutron:*"},
+			expected:           true,
+		},
+		{
+			name:               "matches glob pattern - second pattern",
+			externalIDs:        map[string]string{"openstack:port_id": "port-123"},
+			externalParentKeys: []string{"neutron:*", "openstack:*"},
+			expected:           true,
+		},
+		{
+			name:               "no match with glob pattern",
+			externalIDs:        map[string]string{"other:key": "value"},
+			externalParentKeys: []string{"neutron:*"},
+			expected:           false,
+		},
+		{
+			name:               "matches glob pattern with question mark",
+			externalIDs:        map[string]string{"sg_a": "value"},
+			externalParentKeys: []string{"sg_?"},
+			expected:           true,
+		},
+		{
+			name:               "multiple external IDs, one matches",
+			externalIDs:        map[string]string{"foo": "bar", "neutron:sg": "abc"},
+			externalParentKeys: []string{"neutron:*"},
+			expected:           true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &OVNNbClient{ExternalParentKeys: tc.externalParentKeys}
+			result := client.IsKnownParentKey(tc.externalIDs)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestSetExternalParentKeys(t *testing.T) {
+	t.Parallel()
+
+	client := &OVNNbClient{}
+
+	// Test setting empty keys
+	client.SetExternalParentKeys([]string{})
+	require.Empty(t, client.ExternalParentKeys)
+
+	// Test setting keys
+	keys := []string{"neutron:*", "openstack:*"}
+	client.SetExternalParentKeys(keys)
+	require.Equal(t, keys, client.ExternalParentKeys)
+}

@@ -266,6 +266,8 @@ type NbClient interface {
 	RemoveLogicalPatchPort(lspName, lrpName string) error
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
+	SetExternalParentKeys(keys []string)
+	IsKnownParentKey(externalIDs map[string]string) bool
 	Common
 }
 
