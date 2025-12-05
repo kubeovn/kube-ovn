@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -134,6 +135,9 @@ type Configuration struct {
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
+
+	// External ACL parent keys to preserve during GC (for mixed environments like OpenStack)
+	ExternalACLParentKeys []string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -228,6 +232,8 @@ func ParseFlags() (*Configuration, error) {
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
+
+		argExternalACLParentKeys = pflag.StringSlice("external-acl-parent-keys", []string{}, "Comma-separated list of external_ids key patterns to preserve during GC. Supports glob patterns (e.g., 'neutron:*'). Use this in mixed environments like OpenStack Neutron to prevent Kube-OVN from garbage collecting resources managed by external systems.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -323,6 +329,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:       *argNPEnforcement,
 		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
+		ExternalACLParentKeys:          *argExternalACLParentKeys,
 	}
 	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
@@ -375,6 +382,13 @@ func ParseFlags() (*Configuration, error) {
 			return nil, err
 		}
 		config.NodeLocalDNSIPs = append(config.NodeLocalDNSIPs, ip)
+	}
+
+	// Validate external ACL parent key patterns (glob patterns)
+	for _, pattern := range config.ExternalACLParentKeys {
+		if _, err := filepath.Match(pattern, ""); err != nil {
+			return nil, fmt.Errorf("invalid glob pattern in external-acl-parent-keys: %q: %w", pattern, err)
+		}
 	}
 
 	klog.Infof("config is %+v", config)

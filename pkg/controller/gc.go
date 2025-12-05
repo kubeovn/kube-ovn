@@ -795,6 +795,13 @@ func (c *Controller) gcSecurityGroup() error {
 		if pg.Name == denyAllPg || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
 			continue
 		}
+
+		// Skip port groups that have external parent keys (managed by external systems like OpenStack Neutron)
+		if c.OVNNbClient.IsKnownParentKey(pg.ExternalIDs) && pg.ExternalIDs["sg"] == "" {
+			klog.V(5).Infof("skipping gc for port group %s with external parent key", pg.Name)
+			continue
+		}
+
 		// if port group not exist in security group, delete it
 		if !sgSet.Has(pg.ExternalIDs["sg"]) {
 			klog.Infof("ready to gc port group %s", pg.Name)
