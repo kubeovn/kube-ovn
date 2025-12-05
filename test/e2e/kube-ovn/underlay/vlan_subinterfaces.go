@@ -21,7 +21,6 @@ import (
 
 var _ = framework.SerialDescribe("[group:underlay]", func() {
 	f := framework.NewDefaultFramework("underlay")
-
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var providerNetworkNames []string
 	var allocProviderNetworkName func() string
@@ -110,6 +109,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should create vlan subinterface when autoCreateVlanSubinterfaces is true`, func() {
+		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
 		providerNetworkName := allocProviderNetworkName()
 		interfaceName := baseInterface + ".100"
 
@@ -128,6 +128,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should isolate subinterfaces across multiple provider networks`, func() {
+		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
 		pn1Name := allocProviderNetworkName()
 		pn1Interface := baseInterface + ".100"
 		pn1 := createVlanSubinterfaceTestProviderNetwork(pn1Name, pn1Interface, true, customInterfaces)
@@ -171,6 +172,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should cleanup auto-created subinterfaces when provider network is deleted`, func() {
+		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
 		providerNetworkName := allocProviderNetworkName()
 		interfaceName := baseInterface + ".100"
 
@@ -193,6 +195,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should not cleanup existing subinterfaces when autoCreateVlanSubinterfaces set to false`, func() {
+		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
 		providerNetworkName := allocProviderNetworkName()
 		interfaceName := baseInterface + ".100"
 
@@ -221,6 +224,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should handle edge cases properly`, func() {
+		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
 		ginkgo.By("should not create subinterface for non-VLAN interface name")
 		{
 			providerNetworkName := allocProviderNetworkName()

@@ -92,6 +92,7 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 	})
 
 	framework.ConformanceIt("check subnet vpc update validation", func() {
+		f.SkipVersionPriorTo(1, 15, "vpc cannot be set to non-ovn-cluster on update is not supported before 1.15.0")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
@@ -118,6 +119,7 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 	})
 
 	framework.ConformanceIt("check subnet vpc cannot be set to non-ovn-cluster on update", func() {
+		f.SkipVersionPriorTo(1, 15, "vpc cannot be set to non-ovn-cluster on update is not supported before 1.15.0")
 		ginkgo.By("Creating subnet " + subnetName + " with empty vpc")
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
