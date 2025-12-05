@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -63,7 +62,7 @@ func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 	oldNp := oldObj.(*netv1.NetworkPolicy)
 	newNp := newObj.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
-		!maps.Equal(oldNp.Annotations, newNp.Annotations) {
+		kubeOvnAnnotationsChanged(oldNp.Annotations, newNp.Annotations) {
 		key := cache.MetaObjectToName(newNp).String()
 		klog.V(3).Infof("enqueue update np %s", key)
 		c.updateNpQueue.Add(key)
