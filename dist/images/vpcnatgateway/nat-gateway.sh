@@ -87,11 +87,11 @@ function init() {
             >&2 echo "Error: Expected two interfaces separated by a comma (e.g., net1,net2)"
             exit 1
         fi
-        
+
         # Trim any remaining leading and trailing whitespace
         VPC_INTERFACE=$(echo "${interface_array[0]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         EXTERNAL_INTERFACE=$(echo "${interface_array[1]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        
+
         # Validate interface names are not empty after trimming
         if [ -z "$VPC_INTERFACE" ] || [ -z "$EXTERNAL_INTERFACE" ]; then
             >&2 echo "Error: Interface names cannot be empty"
@@ -136,7 +136,7 @@ function init() {
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
 
     # Send gratuitous ARP for all the IPs on the external network interface at initialization
-    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker 
+    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker
     ip -4 addr show dev $EXTERNAL_INTERFACE | awk '/inet /{print $2}' | cut -d/ -f1 | xargs -n1 arping -I $EXTERNAL_INTERFACE -c 3 -U
 }
 
@@ -189,9 +189,8 @@ function add_eip() {
     # make sure inited
    check_inited
     # If EIP subnet differs from net1's default subnet, the gateway must be specified
-    # when adding EIP, otherwise EIP will lack default route and cannot access the internet
-    local external_gw_v4=""
-    local external_gw_v6=""
+    # otherwise EIP will lack default route and cannot access the internet
+    local external_gateway=""
 
     for rule in $@
     do
@@ -199,35 +198,37 @@ function add_eip() {
         # Example: 10.34.251.100/24,10.34.251.254 or 10.34.251.100/24
         arr=(${rule//,/ })
         eip=${arr[0]}
-        external_gateway=${arr[1]:-}  # External gateway from controller (optional)
+        gateway=${arr[1]:-}  # External gateway from controller (optional)
 
         eip_without_prefix=(${eip//\// })
         exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
 
-        # Collect external gateway if provided
-        if [ -n "$external_gateway" ]; then
-            # Determine if it's IPv4 or IPv6
-            if [[ $external_gateway =~ : ]]; then
-                external_gw_v6="$external_gateway"
-            else
-                external_gw_v4="$external_gateway"
-            fi
+        # Save gateway if provided (controller already matched IP version)
+        if [ -n "$gateway" ]; then
+            external_gateway="$gateway"
         fi
     done
 
-    # Use environment variable first (backward compatible), fallback to parameter
-    # Environment variable GATEWAY_V4/V6 takes priority for existing deployments
-    if [ -n "$GATEWAY_V4" ]; then
-        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
-    elif [ -n "$external_gw_v4" ]; then
-        exec_cmd "ip route replace default via $external_gw_v4 dev $EXTERNAL_INTERFACE"
-    fi
+    # Determine IP version and use appropriate route command and fallback
+    # Controller passes gateway matching EIP IP version (IPv4 or IPv6)
+    if [ -n "$external_gateway" ]; then
+        if [[ $external_gateway =~ : ]]; then
+            # IPv6 gateway
+            exec_cmd "ip -6 route replace default via $external_gateway dev $EXTERNAL_INTERFACE"
+        else
+            # IPv4 gateway
+            exec_cmd "ip route replace default via $external_gateway dev $EXTERNAL_INTERFACE"
+        fi
+    else
+        # Fallback to environment variables for backward compatibility
+        if [ -n "$GATEWAY_V4" ]; then
+            exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
+        fi
 
-    if [ -n "$GATEWAY_V6" ]; then
-        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
-    elif [ -n "$external_gw_v6" ]; then
-        exec_cmd "ip -6 route replace default via $external_gw_v6 dev $EXTERNAL_INTERFACE"
+        if [ -n "$GATEWAY_V6" ]; then
+            exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
+        fi
     fi
 }
 

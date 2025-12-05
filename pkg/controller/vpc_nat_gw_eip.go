@@ -142,9 +142,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
-	// Get the external subnet gateway to pass to nat-gateway.sh
-	externalGateway := subnet.Spec.Gateway
-	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4, externalGateway); err != nil {
+	// Get the external subnet gateway matching the EIP IP version
+	// For IPv4 EIP, use IPv4 gateway; for IPv6 EIP, use IPv6 gateway
+	gwV4, _ := util.SplitStringIP(subnet.Spec.Gateway)
+	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4, gwV4); err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
 	}
