@@ -374,6 +374,51 @@ func Test_checkAndUpdateExcludeIPs(t *testing.T) {
 			expectedChange: true,
 			expectedIPs:    []string{},
 		},
+		{
+			name: "cleanup gateway outside CIDR from existing excludeIPs",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-7",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.253.251.0/24",
+					Gateway:    "10.34.251.254",
+					ExcludeIps: []string{"10.253.251.254", "10.34.251.254"},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{"10.253.251.254"},
+		},
+		{
+			name: "cleanup only gateway IPs outside CIDR, keep other excludeIPs",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-8",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.253.251.0/24",
+					Gateway:    "10.34.251.254",
+					ExcludeIps: []string{"10.253.251.100", "10.34.251.254", "10.253.251.200"},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{"10.253.251.100", "10.253.251.200"},
+		},
+		{
+			name: "cleanup multiple gateway IPs outside CIDR",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-9",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.16.0.0/16,fd00::/64",
+					Gateway:    "10.16.0.1,192.168.1.1,fd00::1,192.168.1.2",
+					ExcludeIps: []string{"10.16.0.1", "192.168.1.1", "fd00::1", "192.168.1.2", "10.16.0.100"},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{"10.16.0.1", "fd00::1", "10.16.0.100"},
+		},
 	}
 
 	for _, tt := range tests {
