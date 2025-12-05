@@ -22,12 +22,19 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			klog.Error(err)
 			return err
 		}
-		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
-			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
-		}
-		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("validate gateway %s for cidr %s failed: %w", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
+
+		// For non-ovn subnets with DisableGatewayCheck enabled, allow arbitrary gateway
+		isOvnSubnet := IsOvnProvider(subnet.Spec.Provider)
+		allowArbitraryGateway := !isOvnSubnet && subnet.Spec.DisableGatewayCheck
+
+		if !allowArbitraryGateway {
+			if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
+				return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+			}
+			if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
+				klog.Error(err)
+				return fmt.Errorf("validate gateway %s for cidr %s failed: %w", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
+			}
 		}
 	}
 

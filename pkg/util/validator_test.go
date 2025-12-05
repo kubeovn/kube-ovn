@@ -887,6 +887,98 @@ func TestValidateSubnet(t *testing.T) {
 			},
 			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 or /128 netmask",
 		},
+		{
+			name: "NonOvnSubnetArbitraryGatewayWithDisableGatewayCheck",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-nonovn-arbitrary-gw",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:             false,
+					Vpc:                 "ovn-cluster",
+					Protocol:            kubeovnv1.ProtocolIPv4,
+					Namespaces:          nil,
+					CIDRBlock:           "10.16.0.0/16",
+					Gateway:             "192.168.1.1",
+					ExcludeIps:          []string{"10.16.0.1"},
+					Provider:            "custom-provider",
+					GatewayType:         kubeovnv1.GWDistributedType,
+					DisableGatewayCheck: true,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "",
+		},
+		{
+			name: "NonOvnSubnetArbitraryGatewayWithoutDisableGatewayCheckShouldFail",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-nonovn-arbitrary-gw-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:             false,
+					Vpc:                 "ovn-cluster",
+					Protocol:            kubeovnv1.ProtocolIPv4,
+					Namespaces:          nil,
+					CIDRBlock:           "10.16.0.0/16",
+					Gateway:             "192.168.1.1",
+					ExcludeIps:          []string{"10.16.0.1"},
+					Provider:            "custom-provider",
+					GatewayType:         kubeovnv1.GWDistributedType,
+					DisableGatewayCheck: false,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "gateway 192.168.1.1 is not in cidr 10.16.0.0/16",
+		},
+		{
+			name: "OvnSubnetArbitraryGatewayShouldFailEvenWithDisableGatewayCheck",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-ovn-arbitrary-gw-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:             false,
+					Vpc:                 "ovn-cluster",
+					Protocol:            kubeovnv1.ProtocolIPv4,
+					Namespaces:          nil,
+					CIDRBlock:           "10.16.0.0/16",
+					Gateway:             "192.168.1.1",
+					ExcludeIps:          []string{"10.16.0.1"},
+					Provider:            OvnProvider,
+					GatewayType:         kubeovnv1.GWDistributedType,
+					DisableGatewayCheck: true,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "gateway 192.168.1.1 is not in cidr 10.16.0.0/16",
+		},
+		{
+			name: "NonOvnSubnetArbitraryGatewayIPv6WithDisableGatewayCheck",
+			asubnet: kubeovnv1.Subnet{
+				TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-nonovn-arbitrary-gw-ipv6",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:             false,
+					Vpc:                 "ovn-cluster",
+					Protocol:            kubeovnv1.ProtocolIPv6,
+					Namespaces:          nil,
+					CIDRBlock:           "2001:db8::/32",
+					Gateway:             "2001:db9::1",
+					ExcludeIps:          []string{"2001:db8::a"},
+					Provider:            "custom-provider",
+					GatewayType:         kubeovnv1.GWDistributedType,
+					DisableGatewayCheck: true,
+				},
+				Status: kubeovnv1.SubnetStatus{},
+			},
+			err: "",
+		},
 	}
 
 	for _, tt := range tests {
