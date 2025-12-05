@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newAddressSet(name string, externalIDs map[string]string) *ovnnb.AddressSet {
@@ -33,8 +34,10 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 		require.NoError(t, err)
 		require.NotEmpty(t, as.UUID)
 		require.Equal(t, asName, as.Name)
+		// vendor is automatically added by CreateAddressSet
 		require.Equal(t, map[string]string{
-			sgKey: "test-sg",
+			sgKey:    "test-sg",
+			"vendor": util.CniTypeName,
 		}, as.ExternalIDs)
 	})
 

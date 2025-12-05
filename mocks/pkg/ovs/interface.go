@@ -64,6 +64,20 @@ func (mr *MockNBGlobalMockRecorder) GetNbGlobal() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNbGlobal", reflect.TypeOf((*MockNBGlobal)(nil).GetNbGlobal))
 }
 
+// MigrateVendorExternalIDs mocks base method.
+func (m *MockNBGlobal) MigrateVendorExternalIDs() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MigrateVendorExternalIDs")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MigrateVendorExternalIDs indicates an expected call of MigrateVendorExternalIDs.
+func (mr *MockNBGlobalMockRecorder) MigrateVendorExternalIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateVendorExternalIDs", reflect.TypeOf((*MockNBGlobal)(nil).MigrateVendorExternalIDs))
+}
+
 // SetAzName mocks base method.
 func (m *MockNBGlobal) SetAzName(azName string) error {
 	m.ctrl.T.Helper()
@@ -4901,6 +4915,20 @@ func (m *MockNbClient) MigrateACLTier() error {
 func (mr *MockNbClientMockRecorder) MigrateACLTier() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockNbClient)(nil).MigrateACLTier))
+}
+
+// MigrateVendorExternalIDs mocks base method.
+func (m *MockNbClient) MigrateVendorExternalIDs() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MigrateVendorExternalIDs")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MigrateVendorExternalIDs indicates an expected call of MigrateVendorExternalIDs.
+func (mr *MockNbClientMockRecorder) MigrateVendorExternalIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateVendorExternalIDs", reflect.TypeOf((*MockNbClient)(nil).MigrateVendorExternalIDs))
 }
 
 // MonitorBFD mocks base method.
