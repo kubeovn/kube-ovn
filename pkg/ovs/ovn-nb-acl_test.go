@@ -68,6 +68,7 @@ func newACL(parentName, direction, priority, match, action string, tier int, opt
 		Priority:  intPriority,
 		ExternalIDs: map[string]string{
 			aclParentKey: parentName,
+			"vendor":     util.CniTypeName,
 		},
 		Tier: tier,
 	}
@@ -1908,6 +1909,7 @@ func (suite *OvnClientTestSuite) testNewACL() {
 		Priority:  1000,
 		ExternalIDs: map[string]string{
 			aclParentKey: pgName,
+			"vendor":     util.CniTypeName,
 		},
 		Log:      true,
 		Severity: ptr.To(ovnnb.ACLSeverityWarning),
