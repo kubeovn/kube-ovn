@@ -274,3 +274,113 @@ func Test_formatSubnet(t *testing.T) {
 		})
 	}
 }
+
+func Test_checkAndUpdateExcludeIPs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		subnet         *kubeovnv1.Subnet
+		expectedChange bool
+		expectedIPs    []string
+	}{
+		{
+			name: "gateway within CIDR should be added to excludeIPs",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-1",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.16.0.0/16",
+					Gateway:    "10.16.0.1",
+					ExcludeIps: []string{},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{"10.16.0.1"},
+		},
+		{
+			name: "gateway outside CIDR should not be added to excludeIPs",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-2",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.253.251.0/24",
+					Gateway:    "10.34.251.254",
+					ExcludeIps: []string{},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{},
+		},
+		{
+			name: "multiple gateways with mixed inside and outside CIDR",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-3",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.16.0.0/16,fd00::/64",
+					Gateway:    "10.16.0.1,192.168.1.1,fd00::1",
+					ExcludeIps: []string{},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{"10.16.0.1", "fd00::1"},
+		},
+		{
+			name: "gateway already in excludeIPs should not change",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-4",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.16.0.0/16",
+					Gateway:    "10.16.0.1",
+					ExcludeIps: []string{"10.16.0.1"},
+				},
+			},
+			expectedChange: false,
+			expectedIPs:    []string{"10.16.0.1"},
+		},
+		{
+			name: "gateway outside CIDR with existing excludeIPs should not add gateway",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-5",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "10.253.251.0/24",
+					Gateway:    "10.34.251.254",
+					ExcludeIps: []string{"10.253.251.100"},
+				},
+			},
+			expectedChange: false,
+			expectedIPs:    []string{"10.253.251.100"},
+		},
+		{
+			name: "IPv6 gateway outside CIDR should not be added",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-subnet-6",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock:  "2001:db8::/32",
+					Gateway:    "2001:db9::1",
+					ExcludeIps: []string{},
+				},
+			},
+			expectedChange: true,
+			expectedIPs:    []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			changed := checkAndUpdateExcludeIPs(tt.subnet)
+			require.Equal(t, tt.expectedChange, changed, "expected change status mismatch")
+			require.ElementsMatch(t, tt.expectedIPs, tt.subnet.Spec.ExcludeIps, "excludeIPs mismatch")
+		})
+	}
+}

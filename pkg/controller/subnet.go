@@ -332,7 +332,13 @@ func checkAndUpdateExcludeIPs(subnet *kubeovnv1.Subnet) bool {
 		changed    bool
 		excludeIPs []string
 	)
-	excludeIPs = append(excludeIPs, strings.Split(subnet.Spec.Gateway, ",")...)
+	// Only add gateway to excludeIPs if it's within the CIDR range
+	// For non-ovn subnets with arbitrary gateway, the gateway may be outside the CIDR
+	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
+		if util.CIDRContainIP(subnet.Spec.CIDRBlock, gw) {
+			excludeIPs = append(excludeIPs, gw)
+		}
+	}
 	sort.Strings(excludeIPs)
 	if len(subnet.Spec.ExcludeIps) == 0 {
 		subnet.Spec.ExcludeIps = excludeIPs
