@@ -30,6 +30,11 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
+	// ExternalParentKeys holds user-configured external_ids key patterns that should be
+	// preserved during garbage collection. This allows Kube-OVN to coexist with other
+	// systems (like OpenStack Neutron) that manage OVN resources with their own external_ids.
+	// Patterns support glob matching (e.g., "neutron:*" matches "neutron:security_group_id").
+	ExternalParentKeys []string
 }
 
 type OVNSbClient struct {

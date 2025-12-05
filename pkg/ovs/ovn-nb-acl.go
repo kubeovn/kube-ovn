@@ -1613,8 +1613,8 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 
 	var aclList []ovnnb.ACL
 	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
-		_, ok := acl.ExternalIDs[aclParentKey]
-		return !ok
+		// Skip ACLs that have a known parent key (either Kube-OVN's "parent" or external system keys)
+		return !c.IsKnownParentKey(acl.ExternalIDs)
 	}).List(ctx, &aclList); err != nil {
 		err = fmt.Errorf("failed to list acls without parent: %w", err)
 		klog.Error(err)

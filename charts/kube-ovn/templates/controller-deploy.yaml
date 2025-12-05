@@ -133,6 +133,7 @@ spec:
           - --alsologtostderr=true
           - --gc-interval={{- .Values.performance.GC_INTERVAL }}
           - --inspect-interval={{- .Values.performance.INSPECT_INTERVAL }}
+          - --external-acl-parent-keys={{- .Values.performance.EXTERNAL_ACL_PARENT_KEYS }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
