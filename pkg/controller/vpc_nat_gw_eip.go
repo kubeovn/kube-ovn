@@ -142,7 +142,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
-	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4); err != nil {
+	// Get the external subnet gateway to pass to nat-gateway.sh
+	externalGateway := subnet.Spec.Gateway
+	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4, externalGateway); err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
 	}
@@ -352,13 +354,16 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 	return eip, nil
 }
 
-func (c *Controller) createEipInPod(dp, addrV4 string) error {
+func (c *Controller) createEipInPod(dp, addrV4, gateway string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	return c.execNatGwRules(gwPod, natGwEipAdd, []string{addrV4})
+	// Pass both EIP address and gateway to nat-gateway.sh
+	// Format: eip-add <eip_cidr>,<gateway>
+	rule := fmt.Sprintf("%s,%s", addrV4, gateway)
+	return c.execNatGwRules(gwPod, natGwEipAdd, []string{rule})
 }
 
 func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {

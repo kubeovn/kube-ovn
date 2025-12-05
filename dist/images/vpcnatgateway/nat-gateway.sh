@@ -188,21 +188,47 @@ function del_vpc_external_route() {
 function add_eip() {
     # make sure inited
    check_inited
+    # If EIP subnet differs from net1's default subnet, the gateway must be specified
+    # when adding EIP, otherwise EIP will lack default route and cannot access the internet
+    local external_gw_v4=""
+    local external_gw_v6=""
+
     for rule in $@
     do
-        eip=${rule}
+        # Parse rule format: eip_cidr,external_gateway or just eip_cidr (backward compatible)
+        # Example: 10.34.251.100/24,10.34.251.254 or 10.34.251.100/24
+        arr=(${rule//,/ })
+        eip=${arr[0]}
+        external_gateway=${arr[1]:-}  # External gateway from controller (optional)
+
         eip_without_prefix=(${eip//\// })
         exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
+
+        # Collect external gateway if provided
+        if [ -n "$external_gateway" ]; then
+            # Determine if it's IPv4 or IPv6
+            if [[ $external_gateway =~ : ]]; then
+                external_gw_v6="$external_gateway"
+            else
+                external_gw_v4="$external_gateway"
+            fi
+        fi
     done
-    
+
+    # Use environment variable first (backward compatible), fallback to parameter
+    # Environment variable GATEWAY_V4/V6 takes priority for existing deployments
     if [ -n "$GATEWAY_V4" ]; then
         exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
+    elif [ -n "$external_gw_v4" ]; then
+        exec_cmd "ip route replace default via $external_gw_v4 dev $EXTERNAL_INTERFACE"
     fi
-    
+
     if [ -n "$GATEWAY_V6" ]; then
         exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
-    fi 
+    elif [ -n "$external_gw_v6" ]; then
+        exec_cmd "ip -6 route replace default via $external_gw_v6 dev $EXTERNAL_INTERFACE"
+    fi
 }
 
 function del_eip() {
