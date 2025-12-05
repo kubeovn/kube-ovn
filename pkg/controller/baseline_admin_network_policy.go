@@ -152,7 +152,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 	// ovn portGroup/addressSet doesn't support name with '-', so we replace '-' by '.'.
 	pgName := strings.ReplaceAll(banpName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{baselineAdminNetworkPolicyKey: banpName}); err != nil {
+	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{baselineAdminNetworkPolicyKey: banpName, "vendor": util.CniTypeName}); err != nil {
 		klog.Errorf("failed to create port group for banp %s: %v", key, err)
 		return err
 	}

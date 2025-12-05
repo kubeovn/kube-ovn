@@ -72,6 +72,7 @@ func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addresses []string) error {
 	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", ns, name, direction),
+		"vendor":         util.CniTypeName,
 	}); err != nil {
 		klog.Errorf("failed to create ovn address set %s for np %s/%s: %v", asName, ns, name, err)
 		return err
@@ -136,7 +137,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".")
 	egressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", ".")
 
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + npName}); err != nil {
+	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + npName, "vendor": util.CniTypeName}); err != nil {
 		klog.Errorf("create port group for np %s: %v", key, err)
 		return err
 	}

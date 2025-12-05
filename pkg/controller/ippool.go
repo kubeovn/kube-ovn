@@ -287,7 +287,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{ippoolKey: ippool.Name}); err != nil {
+	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{ippoolKey: ippool.Name, "vendor": util.CniTypeName}); err != nil {
 		err = fmt.Errorf("failed to create address set for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)
 		return err

@@ -184,7 +184,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	// This may cause conflict if two anp with name test-anp and test.anp, maybe hash is a better solution, but we do not want to lost the readability now.
 	// Make sure all create operations are reentrant.
 	pgName := strings.ReplaceAll(anpName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName}); err != nil {
+	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName, "vendor": util.CniTypeName}); err != nil {
 		klog.Errorf("failed to create port group for anp %s: %v", key, err)
 		return err
 	}
@@ -789,10 +789,12 @@ func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName str
 	if isBanp {
 		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
+			"vendor":                      util.CniTypeName,
 		})
 	} else {
 		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
+			"vendor":              util.CniTypeName,
 		})
 	}
 	if err != nil {
