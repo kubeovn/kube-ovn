@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.14.18 (2025-12-05)
+
+ * [56c22a057](https://github.com/kubeovn/kube-ovn/commit/56c22a057bb2faada066f26b3a22f0188849957a) release v1.14.18
+ * [1a5ea437b](https://github.com/kubeovn/kube-ovn/commit/1a5ea437b2175aa0506bbd538d8b7bb42ef49628) Revert "gc interface if it's not exist in podLister (#5789)"
+ * [9d5233980](https://github.com/kubeovn/kube-ovn/commit/9d5233980f60efefecf8cd4dcd869730bfcfc6f0) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+
 ## v1.14.17 (2025-12-03)
 
  * [6fc038614](https://github.com/kubeovn/kube-ovn/commit/6fc0386147972d167a191b115d3ed38530031162) release v1.14.17
