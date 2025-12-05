@@ -31,8 +31,10 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+	anplisterv1alpha2 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
 
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 
@@ -57,6 +59,7 @@ const (
 	adminNetworkPolicyKey         = "anp"
 	baselineAdminNetworkPolicyKey = "banp"
 	ippoolKey                     = "ippool"
+	clusterNetworkPolicyKey       = "cnp"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -67,6 +70,8 @@ type Controller struct {
 	namedPort      *NamedPort
 	anpPrioNameMap map[int32]string
 	anpNamePrioMap map[string]int32
+	bnpPrioNameMap map[int32]string
+	bnpNamePrioMap map[string]int32
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
@@ -277,6 +282,13 @@ type Controller struct {
 	deleteBanpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.BaselineAdminNetworkPolicy]
 	banpKeyMutex    keymutex.KeyMutex
 
+	cnpsLister     anplisterv1alpha2.ClusterNetworkPolicyLister
+	cnpsSynced     cache.InformerSynced
+	addCnpQueue    workqueue.TypedRateLimitingInterface[string]
+	updateCnpQueue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta]
+	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1alpha2.ClusterNetworkPolicy]
+	cnpKeyMutex    keymutex.KeyMutex
+
 	csrLister           certListerv1.CertificateSigningRequestLister
 	csrSynced           cache.InformerSynced
 	addOrUpdateCsrQueue workqueue.TypedRateLimitingInterface[string]
@@ -388,6 +400,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
+	cnpInformer := anpInformerFactory.Policy().V1alpha2().ClusterNetworkPolicies()
 	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
@@ -655,6 +668,13 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.updateBanpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateBaseAdminNetworkPolicy", nil)
 		controller.deleteBanpQueue = newTypedRateLimitingQueue[*v1alpha1.BaselineAdminNetworkPolicy]("DeleteBaseAdminNetworkPolicy", nil)
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
+
+		controller.cnpsLister = cnpInformer.Lister()
+		controller.cnpsSynced = cnpInformer.Informer().HasSynced
+		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
+		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
 	if config.EnableDNSNameResolver {
@@ -694,7 +714,7 @@ func Run(ctx context.Context, config *Configuration) {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
 	}
 	if controller.config.EnableANP {
-		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced)
+		cacheSyncs = append(cacheSyncs, controller.anpsSynced, controller.banpsSynced, controller.cnpsSynced)
 	}
 	if controller.config.EnableDNSNameResolver {
 		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
@@ -939,8 +959,19 @@ func Run(ctx context.Context, config *Configuration) {
 			util.LogFatalAndExit(err, "failed to add baseline admin network policy event handler")
 		}
 
-		controller.anpPrioNameMap = make(map[int32]string, 100)
-		controller.anpNamePrioMap = make(map[string]int32, 100)
+		if _, err = cnpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddCnp,
+			UpdateFunc: controller.enqueueUpdateCnp,
+			DeleteFunc: controller.enqueueDeleteCnp,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add cluster network policy event handler")
+		}
+
+		maxPriorityPerMap := util.CnpMaxPriority + 1
+		controller.anpPrioNameMap = make(map[int32]string, maxPriorityPerMap)
+		controller.anpNamePrioMap = make(map[string]int32, maxPriorityPerMap)
+		controller.bnpPrioNameMap = make(map[int32]string, maxPriorityPerMap)
+		controller.bnpNamePrioMap = make(map[string]int32, maxPriorityPerMap)
 	}
 
 	if config.EnableDNSNameResolver {
@@ -1197,6 +1228,10 @@ func (c *Controller) shutdown() {
 		c.addBanpQueue.ShutDown()
 		c.updateBanpQueue.ShutDown()
 		c.deleteBanpQueue.ShutDown()
+
+		c.addCnpQueue.ShutDown()
+		c.updateCnpQueue.ShutDown()
+		c.deleteCnpQueue.ShutDown()
 	}
 
 	if c.config.EnableDNSNameResolver {
@@ -1420,6 +1455,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add base admin network policy", c.addBanpQueue, c.handleAddBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("update base admin network policy", c.updateBanpQueue, c.handleUpdateBanp), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete base admin network policy", c.deleteBanpQueue, c.handleDeleteBanp), time.Second, ctx.Done())
+
+		go wait.Until(runWorker("add cluster network policy", c.addCnpQueue, c.handleAddCnp), time.Second, ctx.Done())
+		go wait.Until(runWorker("update cluster network policy", c.updateCnpQueue, c.handleUpdateCnp), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete cluster network policy", c.deleteCnpQueue, c.handleDeleteCnp), time.Second, ctx.Done())
 	}
 
 	if c.config.EnableDNSNameResolver {

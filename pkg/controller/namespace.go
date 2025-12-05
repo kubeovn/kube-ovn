@@ -51,6 +51,7 @@ func (c *Controller) enqueueDeleteNamespace(obj any) {
 	}
 	if c.config.EnableANP {
 		c.updateAnpsByLabelsMatch(ns.Labels, nil)
+		c.updateCnpsByLabelsMatch(ns.Labels, nil)
 	}
 }
 
@@ -72,6 +73,7 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 
 		if c.config.EnableANP {
 			c.updateAnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
+			c.updateCnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
 		}
 
 		expectSubnets, err := c.getNsExpectSubnets(newNs)

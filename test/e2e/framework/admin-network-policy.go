@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -12,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	netpolv1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/typed/apis/v1alpha1"
+	cnpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/typed/apis/v1alpha2"
 )
 
 // MakeAdminNetworkPolicy creates a basic AdminNetworkPolicy with common defaults
@@ -23,6 +26,25 @@ func MakeAdminNetworkPolicy(name string, priority int32, namespaceSelector *meta
 		Spec: netpolv1alpha1.AdminNetworkPolicySpec{
 			Priority: priority,
 			Subject: netpolv1alpha1.AdminNetworkPolicySubject{
+				Namespaces: namespaceSelector,
+			},
+			Egress:  egressRules,
+			Ingress: ingressRules,
+		},
+	}
+	return anp
+}
+
+// MakeClusterNetworkPolicy creates a basic ClusterNetworkPolicy with common defaults
+func MakeClusterNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1alpha2.ClusterNetworkPolicyEgressRule, ingressRules []netpolv1alpha2.ClusterNetworkPolicyIngressRule) *netpolv1alpha2.ClusterNetworkPolicy {
+	anp := &netpolv1alpha2.ClusterNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: netpolv1alpha2.ClusterNetworkPolicySpec{
+			Tier:     netpolv1alpha2.AdminTier,
+			Priority: priority,
+			Subject: netpolv1alpha2.ClusterNetworkPolicySubject{
 				Namespaces: namespaceSelector,
 			},
 			Egress:  egressRules,
@@ -49,10 +71,37 @@ func MakeAdminNetworkPolicyEgressRule(name string, action netpolv1alpha1.AdminNe
 	return rule
 }
 
+// MakeClusterNetworkPolicyEgressRule creates an egress rule with domain names
+func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1alpha2.ClusterNetworkPolicyRuleAction, ports []netpolv1alpha2.ClusterNetworkPolicyPort, domainNames []netpolv1alpha2.DomainName) netpolv1alpha2.ClusterNetworkPolicyEgressRule {
+	rule := netpolv1alpha2.ClusterNetworkPolicyEgressRule{
+		Name:   name,
+		Action: action,
+		To: []netpolv1alpha2.ClusterNetworkPolicyEgressPeer{
+			{
+				DomainNames: domainNames,
+			},
+		},
+	}
+	if len(ports) > 0 {
+		rule.Ports = &ports
+	}
+	return rule
+}
+
 // MakeAdminNetworkPolicyPort creates a port specification
 func MakeAdminNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1alpha1.AdminNetworkPolicyPort {
 	return netpolv1alpha1.AdminNetworkPolicyPort{
 		PortNumber: &netpolv1alpha1.Port{
+			Port:     port,
+			Protocol: protocol,
+		},
+	}
+}
+
+// MakeClusterNetworkPolicyPort creates a port specification
+func MakeClusterNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1alpha2.ClusterNetworkPolicyPort {
+	return netpolv1alpha2.ClusterNetworkPolicyPort{
+		PortNumber: &netpolv1alpha2.Port{
 			Port:     port,
 			Protocol: protocol,
 		},
@@ -69,6 +118,19 @@ func (f *Framework) AnpClient() *AnpClient {
 	return &AnpClient{
 		f:                           f,
 		AdminNetworkPolicyInterface: f.AnpClientSet.PolicyV1alpha1().AdminNetworkPolicies(),
+	}
+}
+
+// CnpClient is a struct for ClusterNetworkPolicy client.
+type CnpClient struct {
+	f *Framework
+	cnpclient.ClusterNetworkPolicyInterface
+}
+
+func (f *Framework) CnpClient() *CnpClient {
+	return &CnpClient{
+		f:                             f,
+		ClusterNetworkPolicyInterface: f.AnpClientSet.PolicyV1alpha2().ClusterNetworkPolicies(),
 	}
 }
 

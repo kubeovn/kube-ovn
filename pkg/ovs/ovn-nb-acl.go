@@ -16,6 +16,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -1515,6 +1516,59 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 	return ops, nil
 }
 
+// UpdateCnpRuleACLOps return operation that creates an ingress/egress ACL
+func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+	acls := make([]*ovnnb.ACL, 0, 10)
+
+	options := func(acl *ovnnb.ACL) {
+		setACLName(acl, aclName)
+
+		if acl.ExternalIDs == nil {
+			acl.ExternalIDs = make(map[string]string)
+		}
+		acl.ExternalIDs[aclParentKey] = pgName
+
+		if acl.Options == nil {
+			acl.Options = make(map[string]string)
+		}
+		acl.Options["apply-after-lb"] = "true"
+
+		if slices.Contains(logACLActions, aclAction) {
+			acl.Log = true
+			if aclAction == ovnnb.ACLActionDrop {
+				acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+			}
+		}
+	}
+
+	var direction ovnnb.ACLDirection
+	if isIngress {
+		direction = ovnnb.ACLDirectionToLport
+	} else {
+		direction = ovnnb.ACLDirectionFromLport
+	}
+
+	matches := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	for _, m := range matches {
+		strPriority := strconv.Itoa(priority)
+		setACL, err := c.newACLWithoutCheck(pgName, direction, strPriority, m, aclAction, tier, options)
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("new acl for port group %s: %w", pgName, err)
+		}
+
+		acls = append(acls, setACL)
+	}
+
+	ops, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	return ops, nil
+}
+
 func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha1.AdminNetworkPolicyPort) []string {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
@@ -1569,6 +1623,65 @@ func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 			matches = append(matches, severalMatch.String())
 		default:
 			klog.Errorf("failed to check port for anp ingress rule, pg %s, as %s", pgName, asName)
+		}
+	}
+	return matches
+}
+
+func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyPort) []string {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+
+	// ingress rule
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
+
+	ipKey := ipSuffix + "." + srcOrDst
+
+	// match all traffic to or from pgName
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
+
+	selectIPMatch := NewAndACLMatch(
+		allIPMatch,
+		NewACLMatch(ipKey, "==", "$"+asName, ""),
+	)
+	if len(rulePorts) == 0 {
+		return []string{selectIPMatch.String()}
+	}
+
+	matches := make([]string, 0, 10)
+	for _, port := range rulePorts {
+		// Exactly one field must be set.
+		// Do not support NamedPort now
+		switch {
+		case port.PortNumber != nil:
+			protocol := strings.ToLower(string(port.PortNumber.Protocol))
+			protocolKey := protocol + ".dst"
+
+			oneMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "==", strconv.Itoa(int(port.PortNumber.Port)), ""),
+			)
+			matches = append(matches, oneMatch.String())
+		case port.PortRange != nil:
+			protocol := strings.ToLower(string(port.PortRange.Protocol))
+			protocolKey := protocol + ".dst"
+
+			severalMatch := NewAndACLMatch(
+				selectIPMatch,
+				NewACLMatch(protocolKey, "<=", strconv.Itoa(int(port.PortRange.Start)), strconv.Itoa(int(port.PortRange.End))),
+			)
+			matches = append(matches, severalMatch.String())
+		default:
+			klog.Errorf("failed to check port for cnp ingress rule, pg %s, as %s", pgName, asName)
 		}
 	}
 	return matches

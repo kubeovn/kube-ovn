@@ -7,7 +7,7 @@ require (
 	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.34.2
 	sigs.k8s.io/controller-runtime v0.22.4
-	sigs.k8s.io/network-policy-api v0.1.5
+	sigs.k8s.io/network-policy-api v0.1.7
 )
 
 require (
