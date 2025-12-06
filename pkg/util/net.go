@@ -332,6 +332,20 @@ func GetStringIP(v4IP, v6IP string) string {
 	return strings.Join(ipList, ",")
 }
 
+// GetIPAddrWithMaskForCNI returns IP address with mask for CNI plugin.
+// When ip is empty, it indicates no-IPAM mode (e.g., NAT gateway macvlan without default EIP).
+// Returns (ipAddr, noIPAM, error) where noIPAM is true when IP allocation is skipped.
+func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
+	if ip == "" {
+		// Network attachment definition using no-IPAM plugin (e.g., NAT gateway net1 macvlan with no default EIP)
+		// IP is not allocated by Kube-OVN, but cidr still comes from subnet configuration
+		klog.V(3).Infof("skipping IP allocation: ip is empty for cidr %s (no-IPAM mode)", cidr)
+		return "", true, nil
+	}
+	ipAddr, err := GetIPAddrWithMask(ip, cidr)
+	return ipAddr, false, err
+}
+
 func GetIPAddrWithMask(ip, cidr string) (string, error) {
 	var ipAddr string
 	ips := strings.Split(ip, ",")

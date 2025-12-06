@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+EXTERNAL_INTERFACE=${EXTERNAL_INTERFACE:-"net1"}
 iptables_cmd=$(which iptables)
 iptables_save_cmd=$(which iptables-save)
 if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then
@@ -49,8 +50,16 @@ function init() {
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
 
     # Send gratuitous ARP for all the IPs on the external network interface at initialization
-    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker 
-    ip -4 addr show dev $EXTERNAL_INTERFACE | awk '/inet /{print $2}' | cut -d/ -f1 | xargs -n1 arping -I $EXTERNAL_INTERFACE -c 3 -U
+    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker
+    # Only send ARP if there are IP addresses on the external interface (skip in no-IPAM mode)
+    external_ips=$(ip -4 addr show dev $EXTERNAL_INTERFACE | awk '/inet /{print $2}' | cut -d/ -f1)
+    if [ -n "$external_ips" ]; then
+        echo "Sending gratuitous ARP for external IPs on $EXTERNAL_INTERFACE"
+        echo "$external_ips" | xargs -n1 arping -I $EXTERNAL_INTERFACE -c 3 -U
+        echo "Gratuitous ARP completed"
+    else
+        echo "INFO: No IP addresses on $EXTERNAL_INTERFACE, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
+    fi
 }
 
 
@@ -108,14 +117,14 @@ function add_eip() {
         exec_cmd "ip addr replace $eip dev net1"
         exec_cmd "arping -I net1 -c 3 -U $eip_without_prefix"
     done
-    
+
     if [ -n "$GATEWAY_V4" ]; then
         exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
     fi
-    
+
     if [ -n "$GATEWAY_V6" ]; then
         exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
-    fi 
+    fi
 }
 
 function del_eip() {

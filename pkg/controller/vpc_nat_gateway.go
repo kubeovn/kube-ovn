@@ -319,6 +319,9 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
 	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
+		// Check if this is a transient initialization error (e.g., first attempt before iptables chains are created)
+		// The init script may fail on first run but succeed on retry after chains are established
+		klog.Warningf("vpc nat gateway %s init attempt failed (will retry): %v", key, err)
 		err = fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		klog.Error(err)
 		return err
@@ -644,21 +647,21 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
-	klog.V(3).Info(cmd)
+	klog.V(3).Infof("executing NAT gateway command: %s", cmd)
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
-			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+			klog.Errorf("NAT gateway command failed - stderr: %v", errOutput)
 		}
 		if len(stdOutput) > 0 {
-			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+			klog.Infof("NAT gateway command failed - stdout: %v", stdOutput)
 		}
-		klog.Error(err)
+		klog.Errorf("NAT gateway command execution error: %v", err)
 		return err
 	}
 
 	if len(stdOutput) > 0 {
-		klog.V(3).Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+		klog.V(3).Infof("NAT gateway command succeeded - stdout: %v", stdOutput)
 	}
 
 	if len(errOutput) > 0 {
@@ -833,12 +836,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if v6Gateway != "" {
 		routes = append(routes, request.Route{Destination: "::/0", Gateway: v6Gateway})
 	}
+	// TODO:// check NAD if has ipam to disable ipam
 	if !gw.Spec.NoDefaultEIP {
 		if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
 	} else {
+		// NAT gateway uses no-IPAM mode in network attachment definition when NoDefaultEIP is enabled
+		// This allows macvlan/other CNI plugins to work without IP allocation from Kube-OVN
+		klog.Infof("skipping IP allocation for NAT gateway %s (NoDefaultEIP enabled)", gw.Name)
 		annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 	}
 
