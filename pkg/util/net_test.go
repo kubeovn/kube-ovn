@@ -896,6 +896,24 @@ func TestGetIPAddrWithMask(t *testing.T) {
 		want string
 	}{
 		{
+			name: "Empty ip and cidr",
+			ip:   "",
+			cidr: "",
+			want: "",
+		},
+		{
+			name: "Empty ip",
+			ip:   "",
+			cidr: "192.168.1.0/24",
+			want: "",
+		},
+		{
+			name: "Empty cidr",
+			ip:   "192.168.1.1",
+			cidr: "",
+			want: "",
+		},
+		{
 			name: "Single IPv4 address",
 			ip:   "192.168.1.1",
 			cidr: "192.168.1.0/24",

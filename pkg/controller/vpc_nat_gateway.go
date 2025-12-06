@@ -984,6 +984,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			return nil, err
 		}
 	} else {
+		klog.Infof("no default eip nat gw %s just use allocated to skip ip allocation", gw.Name)
 		annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 	}
 
