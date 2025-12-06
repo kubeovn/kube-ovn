@@ -335,6 +335,10 @@ func GetStringIP(v4IP, v6IP string) string {
 }
 
 func GetIPAddrWithMask(ip, cidr string) (string, error) {
+	if ip == "" || cidr == "" {
+		return "", nil
+	}
+
 	var ipAddr string
 	ips := strings.Split(ip, ",")
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
