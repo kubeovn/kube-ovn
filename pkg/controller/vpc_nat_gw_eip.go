@@ -38,8 +38,6 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
-	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -62,8 +60,6 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(key)
-	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {
@@ -156,6 +152,12 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
+
+	// Trigger subnet status update after successful EIP allocation
+	// This ensures v4UsingIPRange is updated with the allocated IP
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	c.updateSubnetStatusQueue.Add(externalNetwork)
+
 	return nil
 }
 
@@ -238,6 +240,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
+
+		// Trigger subnet status update after successful EIP deletion
+		// This ensures v4UsingIPRange is updated after IP is released
+		externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+		c.updateSubnetStatusQueue.Add(externalNetwork)
+
 		return nil
 	}
 	klog.Infof("handle update eip %s", key)
