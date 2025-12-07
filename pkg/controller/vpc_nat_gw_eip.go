@@ -38,8 +38,13 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
-	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
+
+	// Trigger subnet status update when EIP CR is updated
+	// This ensures both CR labels and IPAM state are synced before status calculation
+	if oldEip.Status.IP != newEip.Status.IP || oldEip.Status.Ready != newEip.Status.Ready {
+		externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
+		c.updateSubnetStatusQueue.Add(externalNetwork)
+	}
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -62,6 +67,9 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(key)
+
+	// Trigger subnet status update when EIP is deleted
+	// This ensures subnet status reflects the IP release
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
@@ -156,6 +164,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -238,6 +247,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
+
 		return nil
 	}
 	klog.Infof("handle update eip %s", key)
