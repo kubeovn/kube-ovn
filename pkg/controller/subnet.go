@@ -2646,15 +2646,7 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 }
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
-	var v4Gw, v6Gw string
-	for gw := range strings.SplitSeq(subnet.Spec.Gateway, ",") {
-		switch util.CheckProtocol(gw) {
-		case kubeovnv1.ProtocolIPv4:
-			v4Gw = gw
-		case kubeovnv1.ProtocolIPv6:
-			v6Gw = gw
-		}
-	}
+	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
 
 	externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ORoutePolicy": "true"})
 
@@ -2836,23 +2828,8 @@ func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) 
 		return nil
 	}
 
-	var v4Gw, v6Gw, v4Cidr, v6Cidr string
-	for gw := range strings.SplitSeq(subnet.Spec.Gateway, ",") {
-		switch util.CheckProtocol(gw) {
-		case kubeovnv1.ProtocolIPv4:
-			v4Gw = gw
-		case kubeovnv1.ProtocolIPv6:
-			v6Gw = gw
-		}
-	}
-
-	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
-			v4Cidr = cidr
-		} else {
-			v6Cidr = cidr
-		}
-	}
+	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+	v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
 
 	if v4Gw != "" && v4Cidr != "" {
 		if err := c.addStaticRouteToVpc(
@@ -2889,24 +2866,8 @@ func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 		return nil
 	}
 
-	var v4Gw, v6Gw, v4Cidr, v6Cidr string
-	for gw := range strings.SplitSeq(subnet.Spec.Gateway, ",") {
-		switch util.CheckProtocol(gw) {
-		case kubeovnv1.ProtocolIPv4:
-			v4Gw = gw
-		case kubeovnv1.ProtocolIPv6:
-			v6Gw = gw
-		}
-	}
-
-	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
-			v4Cidr = cidr
-		} else {
-			v6Cidr = cidr
-		}
-	}
-
+	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+	v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	if v4Gw != "" && v4Cidr != "" {
 		if err := c.deleteStaticRouteFromVpc(
 			subnet.Spec.Vpc,
