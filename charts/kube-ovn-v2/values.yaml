@@ -574,6 +574,12 @@ monitor:
       cpu: "200m"
       memory: "200Mi"
 
+  # -- Node affinity configuration for kube-ovn-monitor.
+  # @section -- OVN monitoring daemon configuration
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    requiredDuringSchedulingIgnoredDuringExecution: []
+
   # -- kube-ovn-monitor metrics configuration.
   # @section -- OVN monitoring daemon configuration
   # @default -- "{}"
@@ -609,6 +615,12 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+
+  # -- Node affinity configuration for kube-ovn-controller.
+  # @section -- Kube-OVN controller configuration
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    requiredDuringSchedulingIgnoredDuringExecution: []
 
   # -- Controller metrics configuration.
   # @section -- Kube-OVN controller configuration
@@ -646,6 +658,12 @@ central:
       cpu: "3"
       memory: "4Gi"
 
+  # -- Node affinity configuration for ovn-central.
+  # @section -- OVN-central daemon configuration
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    requiredDuringSchedulingIgnoredDuringExecution: []
+
   # -- ""
   # @section -- OVN-central daemon configuration.
   ovnNorthdProbeInterval: 5000
@@ -655,6 +673,17 @@ central:
   # -- ""
   # @section -- OVN-central daemon configuration.
   ovnLeaderProbeInterval: 5
+
+
+# -- Configuration for the OVN interconnection (IC) controller.
+# @section -- OVN IC controller configuration
+# @default -- "{}"
+ic:
+  # -- Node affinity configuration for the OVN IC controller.
+  # @section -- OVN IC controller configuration
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    requiredDuringSchedulingIgnoredDuringExecution: []
 
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
 # @section -- CNI agent configuration

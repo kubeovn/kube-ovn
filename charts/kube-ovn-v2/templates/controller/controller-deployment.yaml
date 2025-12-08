@@ -45,15 +45,11 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - preference:
-                matchExpressions:
-                  - key: "ovn.kubernetes.io/ic-gw"
-                    operator: NotIn
-                    values:
-                      - "true"
-              weight: 100
+        {{- $hardcodedPreferred := list (dict "matchExpressions" (list (dict "key" "ovn.kubernetes.io/ic-gw" "operator" "NotIn" "values" (list "true"))) "weight" 100) -}}
+        {{- $affinity := include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedPreferred "userPreferred" .Values.controller.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.controller.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        {{- if $affinity }}
+        {{ $affinity -}}
+        {{- end }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
