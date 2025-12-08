@@ -159,7 +159,7 @@ type Controller struct {
 	addIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
 	updateIptablesEipQueue workqueue.TypedRateLimitingInterface[string]
 	resetIptablesEipQueue  workqueue.TypedRateLimitingInterface[string]
-	delIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
+	delIptablesEipQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IptablesEIP]
 
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
@@ -184,7 +184,7 @@ type Controller struct {
 	addOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
 	updateOvnEipQueue workqueue.TypedRateLimitingInterface[string]
 	resetOvnEipQueue  workqueue.TypedRateLimitingInterface[string]
-	delOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
+	delOvnEipQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.OvnEip]
 
 	ovnFipsLister     kubeovnlister.OvnFipLister
 	ovnFipSynced      cache.InformerSynced
@@ -472,7 +472,7 @@ func Run(ctx context.Context, config *Configuration) {
 		addIptablesEipQueue:    newTypedRateLimitingQueue("AddIptablesEip", custCrdRateLimiter),
 		updateIptablesEipQueue: newTypedRateLimitingQueue("UpdateIptablesEip", custCrdRateLimiter),
 		resetIptablesEipQueue:  newTypedRateLimitingQueue("ResetIptablesEip", custCrdRateLimiter),
-		delIptablesEipQueue:    newTypedRateLimitingQueue("DeleteIptablesEip", custCrdRateLimiter),
+		delIptablesEipQueue:    newTypedRateLimitingQueue[*kubeovnv1.IptablesEIP]("DeleteIptablesEip", nil),
 
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
@@ -563,7 +563,7 @@ func Run(ctx context.Context, config *Configuration) {
 		addOvnEipQueue:    newTypedRateLimitingQueue("AddOvnEip", custCrdRateLimiter),
 		updateOvnEipQueue: newTypedRateLimitingQueue("UpdateOvnEip", custCrdRateLimiter),
 		resetOvnEipQueue:  newTypedRateLimitingQueue("ResetOvnEip", custCrdRateLimiter),
-		delOvnEipQueue:    newTypedRateLimitingQueue("DeleteOvnEip", custCrdRateLimiter),
+		delOvnEipQueue:    newTypedRateLimitingQueue[*kubeovnv1.OvnEip]("DeleteOvnEip", nil),
 
 		ovnFipsLister:     ovnFipInformer.Lister(),
 		ovnFipSynced:      ovnFipInformer.Informer().HasSynced,

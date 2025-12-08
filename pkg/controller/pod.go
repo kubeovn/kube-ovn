@@ -1204,6 +1204,9 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 				// release ipam address after delete ip CR
 				c.ipam.ReleaseAddressByNic(podKey, portName, podNet.Subnet.Name)
+				// Trigger subnet status update after IPAM release
+				// This is needed when IP CR is deleted without finalizer (race condition)
+				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
 			}
 		}
 		if pod.Annotations[util.VipAnnotation] != "" {
