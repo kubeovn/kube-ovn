@@ -51,6 +51,12 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 		klog.Infof("enqueue update ovn eip %s", key)
 		c.updateOvnEipQueue.Add(key)
 	}
+
+	// Trigger subnet status update when EIP status is updated
+	// This ensures both CR and IPAM state are synced before status calculation
+	if oldEip.Status.V4Ip != newEip.Status.V4Ip || oldEip.Status.V6Ip != newEip.Status.V6Ip || oldEip.Status.Ready != newEip.Status.Ready {
+		c.updateSubnetStatusQueue.Add(newEip.Spec.ExternalSubnet)
+	}
 }
 
 func (c *Controller) enqueueDelOvnEip(obj any) {

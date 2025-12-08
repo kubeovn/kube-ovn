@@ -42,6 +42,12 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}
+
+	// Trigger subnet status update when VIP status is updated
+	// This ensures both CR and IPAM state are synced before status calculation
+	if oldVip.Status.V4ip != newVip.Status.V4ip || oldVip.Status.V6ip != newVip.Status.V6ip || oldVip.Status.Mac != newVip.Status.Mac {
+		c.updateSubnetStatusQueue.Add(newVip.Spec.Subnet)
+	}
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj any) {
@@ -346,6 +352,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 
 func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string) error {
 	vipCR, err := c.virtualIpsLister.Get(key)
+	needUpdateSubnetStatus := false
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
@@ -369,6 +376,8 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 				klog.Error(err)
 				return err
 			}
+			// New VIP created, trigger subnet status update
+			needUpdateSubnetStatus = true
 		} else {
 			err := fmt.Errorf("failed to get crd vip '%s', %w", key, err)
 			klog.Error(err)
@@ -396,6 +405,8 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 				klog.Error(err)
 				return err
 			}
+			// VIP status updated with IP allocation, trigger subnet status update
+			needUpdateSubnetStatus = true
 		}
 		var needUpdateLabel bool
 		var op string
@@ -424,7 +435,10 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			}
 		}
 	}
-	c.updateSubnetStatusQueue.Add(subnet)
+	// Only trigger subnet status update when VIP is actually created or status is updated
+	if needUpdateSubnetStatus {
+		c.updateSubnetStatusQueue.Add(subnet)
+	}
 	return nil
 }
 
