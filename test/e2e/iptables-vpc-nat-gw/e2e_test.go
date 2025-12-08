@@ -12,6 +12,7 @@ import (
 
 	dockernetwork "github.com/moby/moby/api/types/network"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -615,6 +616,382 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Deleting custom vpc " + net2VpcName)
 		vpcClient.DeleteSync(net2VpcName)
+	})
+
+	// Helper function to wait for EIP to be ready
+	_ = func(eipClient *framework.IptablesEIPClient, eipName string, timeout time.Duration) *apiv1.IptablesEIP {
+		ginkgo.GinkgoHelper()
+		var eip *apiv1.IptablesEIP
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			eip = eipClient.Get(eipName)
+			if eip != nil && eip.Status.IP != "" && eip.Status.Ready {
+				framework.Logf("IptablesEIP %s is ready with IP: %s", eipName, eip.Status.IP)
+				return eip
+			}
+			time.Sleep(2 * time.Second)
+		}
+		framework.Failf("Timeout waiting for IptablesEIP %s to be ready", eipName)
+		return nil
+	}
+
+	// Helper function to verify subnet status after EIP operation
+	_ = func(subnetClient *framework.SubnetClient, subnetName string,
+		protocol string, expectedAvailableDelta, expectedUsingDelta float64,
+		operation string, shouldContainIP string) {
+		ginkgo.GinkgoHelper()
+
+		subnet := subnetClient.Get(subnetName)
+		framework.Logf("Verifying subnet %s status after %s: Protocol=%s", subnetName, operation, protocol)
+
+		switch protocol {
+		case apiv1.ProtocolIPv4:
+			framework.Logf("V4 Status: Available=%.0f, Using=%.0f",
+				subnet.Status.V4AvailableIPs, subnet.Status.V4UsingIPs)
+			if shouldContainIP != "" {
+				framework.ExpectTrue(strings.Contains(subnet.Status.V4UsingIPRange, shouldContainIP),
+					"IP %s should be in V4UsingIPRange after %s", shouldContainIP, operation)
+			}
+		case apiv1.ProtocolIPv6:
+			framework.Logf("V6 Status: Available=%.0f, Using=%.0f",
+				subnet.Status.V6AvailableIPs, subnet.Status.V6UsingIPs)
+			if shouldContainIP != "" {
+				framework.ExpectTrue(strings.Contains(subnet.Status.V6UsingIPRange, shouldContainIP),
+					"IP %s should be in V6UsingIPRange after %s", shouldContainIP, operation)
+			}
+		case apiv1.ProtocolDual:
+			framework.Logf("Dual Stack Status: V4Available=%.0f, V4Using=%.0f, V6Available=%.0f, V6Using=%.0f",
+				subnet.Status.V4AvailableIPs, subnet.Status.V4UsingIPs,
+				subnet.Status.V6AvailableIPs, subnet.Status.V6UsingIPs)
+		}
+	}
+
+	framework.ConformanceIt("should properly manage IptablesEIP lifecycle with finalizer and update subnet status", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
+		overlaySubnetV4Cidr := "10.0.3.0/24"
+		overlaySubnetV4Gw := "10.0.3.1"
+		lanIP := "10.0.3.254"
+		natgwQoS := ""
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			false,
+		)
+
+		ginkgo.By("1. Get initial external subnet status")
+		externalSubnetName := util.GetExternalNetwork(networkAttachDefName)
+		initialSubnet := subnetClient.Get(externalSubnetName)
+		initialV4AvailableIPs := initialSubnet.Status.V4AvailableIPs
+		initialV4UsingIPs := initialSubnet.Status.V4UsingIPs
+		initialV6AvailableIPs := initialSubnet.Status.V6AvailableIPs
+		initialV6UsingIPs := initialSubnet.Status.V6UsingIPs
+		initialV4AvailableIPRange := initialSubnet.Status.V4AvailableIPRange
+		initialV4UsingIPRange := initialSubnet.Status.V4UsingIPRange
+		initialV6AvailableIPRange := initialSubnet.Status.V6AvailableIPRange
+		initialV6UsingIPRange := initialSubnet.Status.V6UsingIPRange
+
+		ginkgo.By("2. Create IptablesEIP to trigger IP allocation")
+		eipName := "test-eip-finalizer-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip)
+
+		ginkgo.By("3. Wait for IptablesEIP CR to be created and get IP")
+		var eipCR *apiv1.IptablesEIP
+		for i := 0; i < 60; i++ {
+			eipCR = iptablesEIPClient.Get(eipName)
+			if eipCR != nil && eipCR.Status.IP != "" && eipCR.Status.Ready {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectNotNil(eipCR, "IptablesEIP CR should be created")
+		framework.ExpectNotEmpty(eipCR.Status.IP, "IptablesEIP should have IP assigned")
+		framework.ExpectTrue(eipCR.Status.Ready, "IptablesEIP should be ready")
+
+		ginkgo.By("4. Wait for IptablesEIP CR finalizer to be added")
+		for i := 0; i < 60; i++ {
+			eipCR = iptablesEIPClient.Get(eipName)
+			if eipCR != nil && len(eipCR.Finalizers) > 0 {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectNotNil(eipCR, "IptablesEIP CR should exist")
+		framework.ExpectContainElement(eipCR.Finalizers, util.KubeOVNControllerFinalizer,
+			"IptablesEIP CR should have finalizer after creation")
+
+		ginkgo.By("5. Wait for external subnet status to be updated after IptablesEIP creation")
+		time.Sleep(5 * time.Second)
+
+		ginkgo.By("6. Verify external subnet status after IptablesEIP CR creation")
+		afterCreateSubnet := subnetClient.Get(externalSubnetName)
+		if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+			// Verify IP count changed
+			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
+			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should increase by 1 after IptablesEIP creation")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after IptablesEIP creation")
+			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after IptablesEIP creation")
+
+			// Verify the EIP's address is in the using range
+			eipIP := eipCR.Status.IP
+			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V4UsingIPRange, eipIP),
+				"EIP IP %s should be in V4UsingIPRange %s", eipIP, afterCreateSubnet.Status.V4UsingIPRange)
+		} else if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+			// Verify IP count changed
+			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
+			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should increase by 1 after IptablesEIP creation")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after IptablesEIP creation")
+			framework.ExpectNotEqual(initialV6UsingIPRange, afterCreateSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after IptablesEIP creation")
+
+			// Verify the EIP's address is in the using range
+			eipIP := eipCR.Status.IP
+			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V6UsingIPRange, eipIP),
+				"EIP IP %s should be in V6UsingIPRange %s", eipIP, afterCreateSubnet.Status.V6UsingIPRange)
+		} else {
+			// Dual stack
+			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
+			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should increase by 1 after IptablesEIP creation")
+			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
+			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should increase by 1 after IptablesEIP creation")
+
+			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after IptablesEIP creation")
+			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after IptablesEIP creation")
+			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after IptablesEIP creation")
+			framework.ExpectNotEqual(initialV6UsingIPRange, afterCreateSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after IptablesEIP creation")
+		}
+
+		// Store the status after creation for later comparison
+		afterCreateV4AvailableIPs := afterCreateSubnet.Status.V4AvailableIPs
+		afterCreateV4UsingIPs := afterCreateSubnet.Status.V4UsingIPs
+		afterCreateV6AvailableIPs := afterCreateSubnet.Status.V6AvailableIPs
+		afterCreateV6UsingIPs := afterCreateSubnet.Status.V6UsingIPs
+		afterCreateV4AvailableIPRange := afterCreateSubnet.Status.V4AvailableIPRange
+		afterCreateV4UsingIPRange := afterCreateSubnet.Status.V4UsingIPRange
+		afterCreateV6AvailableIPRange := afterCreateSubnet.Status.V6AvailableIPRange
+		afterCreateV6UsingIPRange := afterCreateSubnet.Status.V6UsingIPRange
+
+		ginkgo.By("7. Delete the IptablesEIP to trigger IP release")
+		iptablesEIPClient.DeleteSync(eipName)
+
+		ginkgo.By("8. Wait for IptablesEIP CR to be deleted")
+		deleted := false
+		for i := 0; i < 30; i++ {
+			_, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Get(context.Background(), eipName, metav1.GetOptions{})
+			if err != nil && k8serrors.IsNotFound(err) {
+				deleted = true
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectTrue(deleted, "IptablesEIP CR should be deleted")
+
+		ginkgo.By("9. Wait for external subnet status to be updated after IptablesEIP deletion")
+		time.Sleep(5 * time.Second)
+
+		ginkgo.By("10. Verify external subnet status after IptablesEIP CR deletion")
+		afterDeleteSubnet := subnetClient.Get(externalSubnetName)
+		if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+			// Verify IP count is restored
+			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
+			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after IptablesEIP deletion")
+			framework.ExpectNotEqual(afterCreateV4UsingIPRange, afterDeleteSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after IptablesEIP deletion")
+
+			// Verify counts match initial state
+			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should return to initial value after IptablesEIP deletion")
+			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should return to initial value after IptablesEIP deletion")
+		} else if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+			// Verify IP count is restored
+			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
+			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(afterCreateV6AvailableIPRange, afterDeleteSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after IptablesEIP deletion")
+			framework.ExpectNotEqual(afterCreateV6UsingIPRange, afterDeleteSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after IptablesEIP deletion")
+
+			// Verify counts match initial state
+			framework.ExpectEqual(initialV6AvailableIPs, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should return to initial value after IptablesEIP deletion")
+			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should return to initial value after IptablesEIP deletion")
+		} else {
+			// Dual stack
+			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
+			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
+			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
+			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
+
+			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after IptablesEIP deletion")
+			framework.ExpectNotEqual(afterCreateV4UsingIPRange, afterDeleteSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after IptablesEIP deletion")
+			framework.ExpectNotEqual(afterCreateV6AvailableIPRange, afterDeleteSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after IptablesEIP deletion")
+			framework.ExpectNotEqual(afterCreateV6UsingIPRange, afterDeleteSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after IptablesEIP deletion")
+
+			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should return to initial value after IptablesEIP deletion")
+			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should return to initial value after IptablesEIP deletion")
+			framework.ExpectEqual(initialV6AvailableIPs, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should return to initial value after IptablesEIP deletion")
+			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should return to initial value after IptablesEIP deletion")
+		}
+
+		ginkgo.By("11. Test completed: IptablesEIP CR creation and deletion properly updates external subnet status via finalizer handlers")
+	})
+
+	framework.ConformanceIt("Test IptablesEIP finalizer cannot be removed when used by NAT rules", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
+		overlaySubnetV4Cidr := "10.0.4.0/24"
+		overlaySubnetV4Gw := "10.0.4.1"
+		lanIP := "10.0.4.254"
+		natgwQoS := ""
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			false,
+		)
+
+		ginkgo.By("1. Create a VIP for FIP")
+		vipName := "test-vip-" + framework.RandomSuffix()
+		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(vip)
+		vip = vipClient.Get(vipName)
+
+		ginkgo.By("2. Create IptablesEIP")
+		eipName := "test-eip-with-fip-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip)
+
+		ginkgo.By("3. Wait for IptablesEIP to be ready")
+		var eipCR *apiv1.IptablesEIP
+		for i := 0; i < 60; i++ {
+			eipCR = iptablesEIPClient.Get(eipName)
+			if eipCR != nil && eipCR.Status.IP != "" && eipCR.Status.Ready {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectNotNil(eipCR, "IptablesEIP CR should be created")
+		framework.ExpectTrue(eipCR.Status.Ready, "IptablesEIP should be ready")
+
+		ginkgo.By("4. Create IptablesFIP using the EIP")
+		fipName := "test-fip-" + framework.RandomSuffix()
+		fip := framework.MakeIptablesFIPRule(fipName, eipName, vip.Status.V4ip)
+		_ = iptablesFIPClient.CreateSync(fip)
+
+		ginkgo.By("5. Wait for EIP status to show it's being used by FIP")
+		for i := 0; i < 60; i++ {
+			eipCR = iptablesEIPClient.Get(eipName)
+			if eipCR != nil && strings.Contains(eipCR.Status.Nat, util.FipUsingEip) {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectTrue(strings.Contains(eipCR.Status.Nat, util.FipUsingEip),
+			"EIP status.Nat should contain 'fip' when used by FIP rule")
+
+		ginkgo.By("6. Delete the IptablesEIP (should not remove finalizer while FIP exists)")
+		err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), eipName, metav1.DeleteOptions{})
+		framework.ExpectNoError(err, "Deleting IptablesEIP should succeed")
+
+		ginkgo.By("7. Wait and verify EIP still exists with finalizer (blocked by FIP)")
+		time.Sleep(5 * time.Second)
+		eipCR = iptablesEIPClient.Get(eipName)
+		framework.ExpectNotNil(eipCR, "IptablesEIP should still exist")
+		framework.ExpectNotNil(eipCR.DeletionTimestamp, "IptablesEIP should have DeletionTimestamp")
+		framework.ExpectContainElement(eipCR.Finalizers, util.KubeOVNControllerFinalizer,
+			"IptablesEIP should still have finalizer because it's being used by FIP")
+
+		ginkgo.By("8. Delete the FIP to unblock EIP deletion")
+		iptablesFIPClient.DeleteSync(fipName)
+
+		ginkgo.By("9. Wait for FIP to be deleted")
+		fipDeleted := false
+		for i := 0; i < 30; i++ {
+			_, err := f.KubeOVNClientSet.KubeovnV1().IptablesFIPRules().Get(context.Background(), fipName, metav1.GetOptions{})
+			if err != nil && k8serrors.IsNotFound(err) {
+				fipDeleted = true
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectTrue(fipDeleted, "FIP should be deleted")
+
+		ginkgo.By("10. Wait for EIP status.Nat to be cleared")
+		for i := 0; i < 30; i++ {
+			eipCR = iptablesEIPClient.Get(eipName)
+			if eipCR == nil || eipCR.Status.Nat == "" {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+		ginkgo.By("11. Verify EIP is now deleted after FIP is removed")
+		eipDeleted := false
+		for i := 0; i < 30; i++ {
+			_, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Get(context.Background(), eipName, metav1.GetOptions{})
+			if err != nil && k8serrors.IsNotFound(err) {
+				eipDeleted = true
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectTrue(eipDeleted, "IptablesEIP should be deleted after FIP is removed")
+
+		ginkgo.By("12. Clean up VIP")
+		vipClient.DeleteSync(vipName)
+
+		ginkgo.By("13. Test completed: IptablesEIP finalizer correctly blocks deletion when used by NAT rules")
 	})
 })
 
