@@ -1191,6 +1191,11 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		}
 	}
 	for _, podNet := range podNets {
+		// Skip non-OVN subnets for security group synchronization
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
+
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 		securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		if securityGroupAnnotation != "" {
@@ -1242,6 +1247,11 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 
 	// associated with security group
 	for _, podNet := range podNets {
+		// Skip non-OVN subnets (e.g., macvlan) that don't create OVN logical switch ports
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
+
 		portSecurity := false
 		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
 			portSecurity = true
