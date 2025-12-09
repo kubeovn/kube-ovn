@@ -155,6 +155,11 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	}
 
 	for _, podNet := range podNets {
+		// Skip non-OVN subnets that don't create OVN logical switch ports
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
+
 		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, podNet.ProviderName)
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
