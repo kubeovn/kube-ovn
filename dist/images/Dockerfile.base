@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-ARG GO_VERSION=1.23.11
+ARG GO_VERSION=1.25.5
 
 FROM ubuntu:24.04 AS ovs-builder
 
