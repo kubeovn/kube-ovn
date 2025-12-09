@@ -13,7 +13,7 @@ require (
 	github.com/containerd/containerd/v2 v2.2.0
 	github.com/containerd/nerdctl/v2 v2.2.0
 	github.com/containernetworking/cni v1.3.0
-	github.com/containernetworking/plugins v1.8.0
+	github.com/containernetworking/plugins v1.9.0
 	github.com/digitalocean/go-openvswitch v0.0.0-20250625173537-a00eb8d2cfce
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/evanphx/json-patch/v5 v5.9.11
