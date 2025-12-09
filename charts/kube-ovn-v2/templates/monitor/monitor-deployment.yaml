@@ -45,10 +45,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- $affinity := include "kube-ovn.affinities.nodeAffinity" (dict "userPreferred" .Values.monitor.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.monitor.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) -}}
-        {{- if $affinity }}
-        {{- $affinity | nindent 8 }}
-        {{- end }}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "userPreferred" .Values.monitor.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.monitor.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) -}}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
