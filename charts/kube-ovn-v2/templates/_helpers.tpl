@@ -154,7 +154,7 @@ Get IPs of master nodes from values
 
 {{/*
 Merge hardcoded node affinity expressions with user-provided values.
-Usage: include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedList "hardcodedRequired" $hardcodedList "userPreferred" .Values.component.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.component.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution)
+Usage: include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedPreferred "hardcodedRequired" $hardcodedRequired "userPreferred" .Values.component.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.component.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution)
 */}}
 {{- define "kube-ovn.affinities.nodeAffinity" -}}
 {{- $hardcodedPreferred := .hardcodedPreferred | default list -}}
