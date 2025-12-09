@@ -11,7 +11,7 @@ require (
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
 	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containernetworking/cni v1.3.0
-	github.com/containernetworking/plugins v1.8.0
+	github.com/containernetworking/plugins v1.9.0
 	github.com/digitalocean/go-openvswitch v0.0.0-20250625173537-a00eb8d2cfce
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/emicklei/go-restful/v3 v3.13.0
@@ -192,7 +192,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
+	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
