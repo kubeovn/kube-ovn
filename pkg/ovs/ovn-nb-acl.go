@@ -641,7 +641,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 				),
 			)
 
-			acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+			acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetCrossAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 			if err != nil {
 				klog.Error(err)
 				return fmt.Errorf("new allow subnet ingress acl for logical switch %s: %w", lsName, err)
