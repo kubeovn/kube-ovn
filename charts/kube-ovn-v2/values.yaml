@@ -577,7 +577,9 @@ monitor:
   # -- Node affinity configuration for kube-ovn-monitor.
   # @section -- OVN monitoring daemon configuration
   nodeAffinity:
+    # -- User-preferred node affinity matchExpressions
     preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions
     requiredDuringSchedulingIgnoredDuringExecution: []
 
   # -- kube-ovn-monitor metrics configuration.
@@ -619,7 +621,9 @@ controller:
   # -- Node affinity configuration for kube-ovn-controller.
   # @section -- Kube-OVN controller configuration
   nodeAffinity:
+    # -- User-preferred node affinity matchExpressions
     preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions
     requiredDuringSchedulingIgnoredDuringExecution: []
 
   # -- Controller metrics configuration.
@@ -661,7 +665,9 @@ central:
   # -- Node affinity configuration for ovn-central.
   # @section -- OVN-central daemon configuration
   nodeAffinity:
+    # -- User-preferred node affinity matchExpressions
     preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions
     requiredDuringSchedulingIgnoredDuringExecution: []
 
   # -- ""
@@ -682,7 +688,9 @@ ic:
   # -- Node affinity configuration for the OVN IC controller.
   # @section -- OVN IC controller configuration
   nodeAffinity:
+    # -- User-preferred node affinity matchExpressions
     preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions
     requiredDuringSchedulingIgnoredDuringExecution: []
 
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
