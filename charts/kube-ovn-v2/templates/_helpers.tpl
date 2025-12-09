@@ -163,7 +163,7 @@ Usage: include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $ha
 {{- $userRequired := .userRequired | default list -}}
 {{- $mergedPreferred := concat $hardcodedPreferred $userPreferred -}}
 {{- $mergedRequired := concat $hardcodedRequired $userRequired -}}
-{{- if or $mergedPreferred $mergedRequired }}
+{{- if or $mergedPreferred $mergedRequired -}}
 nodeAffinity:
   {{- if $mergedPreferred }}
   preferredDuringSchedulingIgnoredDuringExecution:
@@ -179,7 +179,7 @@ nodeAffinity:
     nodeSelectorTerms:
       {{- range $mergedRequired }}
       - matchExpressions:
-          {{- toYaml .matchExpressions | nindent 12 }}
+          {{- toYaml .matchExpressions | nindent 8 }}
       {{- end }}
   {{- end }}
 {{- end -}}
