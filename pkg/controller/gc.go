@@ -75,7 +75,9 @@ func (c *Controller) gcLogicalRouterPort() error {
 		}
 	}
 
-	if err = c.OVNNbClient.DeleteLogicalRouterPorts(nil, logicalRouterPortFilter(exceptPeerPorts)); err != nil {
+	if err = c.OVNNbClient.DeleteLogicalRouterPorts(
+		map[string]string{"vendor": util.CniTypeName},
+		logicalRouterPortFilter(exceptPeerPorts)); err != nil {
 		klog.Errorf("delete non-existent peer logical router port: %v", err)
 		return err
 	}
