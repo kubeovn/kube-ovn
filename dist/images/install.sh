@@ -572,8 +572,6 @@ spec:
                                           properties:
                                             key:
                                               type: string
-                                              x-kubernetes-patch-strategy: merge
-                                              x-kubernetes-patch-merge-key: key
                                             operator:
                                               type: string
                                             values:
@@ -585,6 +583,9 @@ spec:
                                             - operator
                                           type: object
                                         type: array
+                                        x-kubernetes-list-type: map
+                                        x-kubernetes-list-map-keys:
+                                          - key
                                       matchLabels:
                                         additionalProperties:
                                           type: string
@@ -618,8 +619,6 @@ spec:
                                       properties:
                                         key:
                                           type: string
-                                          x-kubernetes-patch-strategy: merge
-                                          x-kubernetes-patch-merge-key: key
                                         operator:
                                           type: string
                                         values:
@@ -631,6 +630,9 @@ spec:
                                         - operator
                                       type: object
                                     type: array
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys:
+                                      - key
                                   matchLabels:
                                     additionalProperties:
                                       type: string
@@ -661,8 +663,6 @@ spec:
                                           properties:
                                             key:
                                               type: string
-                                              x-kubernetes-patch-strategy: merge
-                                              x-kubernetes-patch-merge-key: key
                                             operator:
                                               type: string
                                             values:
@@ -674,6 +674,9 @@ spec:
                                             - operator
                                           type: object
                                         type: array
+                                        x-kubernetes-list-type: map
+                                        x-kubernetes-list-map-keys:
+                                          - key
                                       matchLabels:
                                         additionalProperties:
                                           type: string
@@ -707,8 +710,6 @@ spec:
                                       properties:
                                         key:
                                           type: string
-                                          x-kubernetes-patch-strategy: merge
-                                          x-kubernetes-patch-merge-key: key
                                         operator:
                                           type: string
                                         values:
@@ -720,6 +721,9 @@ spec:
                                         - operator
                                       type: object
                                     type: array
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys:
+                                      - key
                                   matchLabels:
                                     additionalProperties:
                                       type: string
@@ -923,8 +927,6 @@ spec:
                                           properties:
                                             key:
                                               type: string
-                                              x-kubernetes-patch-strategy: merge
-                                              x-kubernetes-patch-merge-key: key
                                             operator:
                                               type: string
                                             values:
@@ -936,6 +938,9 @@ spec:
                                             - operator
                                           type: object
                                         type: array
+                                        x-kubernetes-list-type: map
+                                        x-kubernetes-list-map-keys:
+                                          - key
                                       matchLabels:
                                         additionalProperties:
                                           type: string
@@ -969,8 +974,6 @@ spec:
                                       properties:
                                         key:
                                           type: string
-                                          x-kubernetes-patch-strategy: merge
-                                          x-kubernetes-patch-merge-key: key
                                         operator:
                                           type: string
                                         values:
@@ -982,6 +985,9 @@ spec:
                                         - operator
                                       type: object
                                     type: array
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys:
+                                      - key
                                   matchLabels:
                                     additionalProperties:
                                       type: string
@@ -1012,8 +1018,6 @@ spec:
                                           properties:
                                             key:
                                               type: string
-                                              x-kubernetes-patch-strategy: merge
-                                              x-kubernetes-patch-merge-key: key
                                             operator:
                                               type: string
                                             values:
@@ -1025,6 +1029,9 @@ spec:
                                             - operator
                                           type: object
                                         type: array
+                                        x-kubernetes-list-type: map
+                                        x-kubernetes-list-map-keys:
+                                          - key
                                       matchLabels:
                                         additionalProperties:
                                           type: string
@@ -1058,8 +1065,6 @@ spec:
                                       properties:
                                         key:
                                           type: string
-                                          x-kubernetes-patch-strategy: merge
-                                          x-kubernetes-patch-merge-key: key
                                         operator:
                                           type: string
                                         values:
@@ -1071,6 +1076,9 @@ spec:
                                         - operator
                                       type: object
                                     type: array
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys:
+                                      - key
                                   matchLabels:
                                     additionalProperties:
                                       type: string
@@ -3214,8 +3222,6 @@ spec:
                         properties:
                           key:
                             type: string
-                            x-kubernetes-patch-strategy: merge
-                            x-kubernetes-patch-merge-key: key
                           operator:
                             type: string
                           values:
@@ -3227,6 +3233,9 @@ spec:
                           - operator
                         type: object
                       type: array
+                      x-kubernetes-list-type: map
+                      x-kubernetes-list-map-keys:
+                        - key
                     matchLabels:
                       additionalProperties:
                         type: string
