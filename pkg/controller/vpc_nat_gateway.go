@@ -1016,9 +1016,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []corev1.Container{
 						{
-							Name:            "vpc-nat-gw",
-							Image:           vpcNatImage,
-							Command:         []string{"sleep", "infinity"},
+							Name:    "vpc-nat-gw",
+							Image:   vpcNatImage,
+							Command: []string{"sleep", "infinity"},
+							Lifecycle: &corev1.Lifecycle{
+								PostStart: &corev1.LifecycleHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
+									},
+								},
+							},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Env: []corev1.EnvVar{
 								{
