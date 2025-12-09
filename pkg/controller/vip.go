@@ -319,6 +319,11 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 			klog.Errorf("failed to get pod nets %v", err)
 		}
 		for _, podNet := range podNets {
+			// Skip non-OVN subnets that don't create OVN logical switch ports
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
 			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
