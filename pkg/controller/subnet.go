@@ -144,8 +144,9 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 		changed = true
 	}
 
-	if subnet.Spec.Vpc == "" {
-		if isOvnSubnet(subnet) {
+	if subnet.Spec.Vpc == "" && isOvnSubnet(subnet) {
+		// for better security, if not set, vlan subnet vpc should be empty
+		if subnet.Spec.Vlan == "" {
 			subnet.Spec.Vpc = c.config.ClusterRouter
 			changed = true
 		}
