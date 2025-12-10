@@ -98,6 +98,18 @@ image-kube-ovn-dpdk: build-go
 image-vpc-nat-gateway:
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
+.PHONY: image-vpc-nat-gateway-cn
+image-vpc-nat-gateway-cn:
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) --build-arg CN=true -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-vpc-nat-gateway-arm64
+image-vpc-nat-gateway-arm64:
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-vpc-nat-gateway-cn-arm64
+image-vpc-nat-gateway-cn-arm64:
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) --build-arg CN=true -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
 .PHOONY: image-test
 image-test: build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
