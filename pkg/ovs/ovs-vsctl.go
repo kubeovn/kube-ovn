@@ -240,8 +240,8 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
 var lastInterfacePodMap map[string]string
 
 func ListInterfacePodMap() (map[string]string, error) {
-	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids,error", "find",
-		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]")
+	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,error,external_ids", "find",
+		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]", "link_state!=up")
 	if err != nil {
 		klog.Errorf("failed to list interface, %v", err)
 		return nil, err
@@ -252,14 +252,14 @@ func ListInterfacePodMap() (map[string]string, error) {
 		if len(strings.TrimSpace(l)) == 0 {
 			continue
 		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
+		parts := strings.SplitN(strings.TrimSpace(l), ",",3)
 		if len(parts) != 3 {
 			continue
 		}
 		ifaceName := strings.TrimSpace(parts[0])
-		errText := strings.TrimSpace(parts[2])
+		errText := strings.TrimSpace(parts[1])
 		var podNamespace, podName string
-		for externalID := range strings.FieldsSeq(parts[1]) {
+		for externalID := range strings.FieldsSeq(parts[2]) {
 			if strings.Contains(externalID, "pod_name=") {
 				podName = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_name=")
 			}
