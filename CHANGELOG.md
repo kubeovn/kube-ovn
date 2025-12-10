@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.14.19 (2025-12-10)
+
+ * [06e6fe026](https://github.com/kubeovn/kube-ovn/commit/06e6fe02647617ca4fa38e12153a8adada497f13) release v1.14.19
+ * [f2aba5935](https://github.com/kubeovn/kube-ovn/commit/f2aba59356c08814250c2461533dd5bdc42284d0) Fix empty subnet and err try (#5963)
+ * [db005248f](https://github.com/kubeovn/kube-ovn/commit/db005248f5b2990db01cb622996dd77c39fb7598) remove no need code
+ * [145f1a5bf](https://github.com/kubeovn/kube-ovn/commit/145f1a5bf963339d5e5082fe56bb7b98bb3b036f) add auto create vlan sub interface (#5966)
+ * [96dae3766](https://github.com/kubeovn/kube-ovn/commit/96dae37661002d5856c5ca085432c333e6df19be) fix(deps): update module github.com/containernetworking/plugins to v1.9.0 [security] (#6027)
+ * [d1dd363c6](https://github.com/kubeovn/kube-ovn/commit/d1dd363c6be03700e51a004a1b706b40910bce24) chore(deps): update dependency cni-plugin to v1.9.0 (#6024)
+ * [6d4bb4948](https://github.com/kubeovn/kube-ovn/commit/6d4bb4948c56f7be2ba4684f9bdbd2a916618ce5) enable_ipforward for vpc_nat_gateway
+ * [320001864](https://github.com/kubeovn/kube-ovn/commit/320001864b7695b4dac61573353485a3a2a76afd) ovn process skip non-ovn subnet (#6018)
+ * [0c9931de9](https://github.com/kubeovn/kube-ovn/commit/0c9931de9f23e0140cc6f2b6d169d543999756e3) fix(deps): update module golang.org/x/tools to v0.40.0 (#6016)
+ * [36373b54b](https://github.com/kubeovn/kube-ovn/commit/36373b54b8f312dc82d3b9d48ca3b9e488be8700) fix(deps): update golang (#6015)
+ * [69d6aeda2](https://github.com/kubeovn/kube-ovn/commit/69d6aeda2f20052855e11b78aa21d2661529a411) make sure ip in subnet using range (#6005)
+ * [de5b4bac2](https://github.com/kubeovn/kube-ovn/commit/de5b4bac2ded286865330ae1486c0072dcd91d1a) 修复vip无法正常固定ip (#5865)
+ * [446acc67d](https://github.com/kubeovn/kube-ovn/commit/446acc67d6d9472ff2b1bbeb1520e75db280b34a) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * clyi
+ * lfpython
+ * renovate[bot]
+ * zbb88888
+
 ## v1.14.18 (2025-12-05)
 
  * [56c22a057](https://github.com/kubeovn/kube-ovn/commit/56c22a057bb2faada066f26b3a22f0188849957a) release v1.14.18
