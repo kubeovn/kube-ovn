@@ -757,6 +757,7 @@ kind-install-anp: kind-load-image
 	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
 	kubectl apply -f "$(ANP_CR_YAML)"
 	kubectl apply -f "$(BANP_CR_YAML)"
+	kubectl apply -f "$(CNP_CR_YAML)"
 	@$(MAKE) ENABLE_ANP=true kind-install
 
 .PHONY: kind-install-anp-dns-resolver
@@ -764,6 +765,7 @@ kind-install-anp-dns-resolver: kind-load-image
 	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
 	kubectl apply -f "$(ANP_CR_YAML)"
 	kubectl apply -f "$(BANP_CR_YAML)"
+	kubectl apply -f "$(CNP_CR_YAML)"
 	@$(MAKE) ENABLE_ANP=true ENABLE_DNS_NAME_RESOLVER=true kind-install
 
 .PHONY: kind-reload

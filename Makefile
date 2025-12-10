@@ -81,6 +81,8 @@ ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
 NETWORK_POLICY_API_VERSION = v0.1.7
 ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/tags/$(NETWORK_POLICY_API_VERSION)/config/crd/experimental/policy.networking.k8s.io_adminnetworkpolicies.yaml
 BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/tags/$(NETWORK_POLICY_API_VERSION)/config/crd/experimental/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
+CNP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/heads/main/config/crd/experimental/policy.networking.k8s.io_clusternetworkpolicies.yaml
+
 define docker_ensure_image_exists
 	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
 		docker pull "$(1)"; \

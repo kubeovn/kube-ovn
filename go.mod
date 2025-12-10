@@ -76,7 +76,7 @@ require (
 	kubevirt.io/api v1.7.0
 	kubevirt.io/client-go v1.7.0
 	sigs.k8s.io/controller-runtime v0.22.4
-	sigs.k8s.io/network-policy-api v0.1.7
+	sigs.k8s.io/network-policy-api v0.1.8-0.20251003212904-40eeb18096dd
 )
 
 require (

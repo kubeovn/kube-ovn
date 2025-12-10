@@ -811,6 +811,10 @@ func (suite *OvnClientTestSuite) Test_UpdateAnpRuleACLOps() {
 	suite.testUpdateAnpRuleACLOps()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateCnpRuleACLOps() {
+	suite.testUpdateCnpRuleACLOps()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateACL() {
 	suite.testUpdateACL()
 }

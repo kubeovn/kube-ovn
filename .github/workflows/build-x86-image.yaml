@@ -2332,6 +2332,144 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts || make check-kube-ovn-pod-restarts
 
+  kube-ovn-cnp-domain-e2e:
+    name: Kube-OVN CNP Domain E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+        mode:
+          - overlay
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v5
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v6
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.13.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v6
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Set environment variables
+        run: |
+          if [ $(($RANDOM%2)) -ne 0 ]; then
+            # run as root and use valgrind to debug memory leak
+            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
+            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+
+      - name: Clone DNSNameResolver repository
+        run: |
+          git clone https://github.com/kubeovn/dnsnameresolver.git
+          cd dnsnameresolver
+          make build
+          docker save kubeovn/dnsnameresolver:dev -o dnsnameresolver.tar
+          docker load --input dnsnameresolver.tar
+          make install
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-anp-dns-resolver
+
+      - name: Run CNP Domain E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
+        run: make kube-ovn-cnp-domain-e2e
+
+      - name: Collect k8s events
+        if: failure() && steps.e2e.conclusion == 'failure'
+        run: |
+          kubectl get events -A -o yaml > kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          tar zcf kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v5
+        if: failure() && steps.e2e.conclusion == 'failure'
+        with:
+          name: kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
+          path: kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
     needs:

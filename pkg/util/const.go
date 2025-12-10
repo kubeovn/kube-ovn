@@ -164,13 +164,21 @@ const (
 	DefaultDropPriority = "1000"
 
 	GwChassisMaxPriority = 100
-	AnpMaxRules          = 100
-	AnpMaxPriority       = 99
-	AnpACLMaxPriority    = 30000
-	BanpACLMaxPriority   = 1800
-	AnpACLTier           = 1
-	NetpolACLTier        = 2
-	BanpACLTier          = 3
+
+	// ClusterNetworkPolicy
+	CnpMaxRules       = 25
+	CnpMaxPriority    = 399
+	CnpACLMaxPriority = 30000
+	CnpMaxDomains     = 25
+	CnpMaxNetworks    = 25
+
+	AnpMaxRules        = 100
+	AnpMaxPriority     = 99
+	AnpACLMaxPriority  = 30000
+	BanpACLMaxPriority = 1800
+	AnpACLTier         = 1
+	NetpolACLTier      = 2
+	BanpACLTier        = 3
 
 	DefaultMTU         = 1500
 	GeneveHeaderLength = 100
