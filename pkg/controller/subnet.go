@@ -83,7 +83,7 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 		return
 	}
 
-	if !reflect.DeepEqual(oldSubnet, newSubnet) {
+	if !reflect.DeepEqual(oldSubnet.Spec, newSubnet.Spec) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
 		if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
