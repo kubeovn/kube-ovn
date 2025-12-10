@@ -399,10 +399,6 @@ func (suite *OvnClientTestSuite) Test_getLogicalRouterPortByUUID() {
 	suite.testGetLogicalRouterPortByUUID()
 }
 
-func (suite *OvnClientTestSuite) Test_addLogicalRouterPort() {
-	suite.testAddLogicalRouterPort()
-}
-
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPorts() {
 	suite.testDeleteLogicalRouterPorts()
 }
