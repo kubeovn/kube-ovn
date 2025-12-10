@@ -1059,7 +1059,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodToDel(c, pod, stsName, util.StatefulSet)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, stsName, util.StatefulSet)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -1093,7 +1093,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodToDel(c, pod, vmName, util.VMInstance)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, vmName, util.VMInstance)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -2217,7 +2217,7 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 	return v4IP, v6IP, macStr, nil
 }
 
-func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
+func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
 	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
@@ -2261,10 +2261,15 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		}
 	}
 	podSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
+	if podSwitch == "" {
+		// pod has no default ovn logical switch annotation, only use multus specs, nothing to clean
+		klog.Infof("pod %s/%s has no  default ovn logical switch annotation, not auto clean ip", pod.Namespace, pod.Name)
+		return false, nil
+	}
 	if !ownerRefSubnetExist {
 		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
 		// check if pod use the subnet of its ns
-		if nsSubnetNames != "" && podSwitch != "" && !slices.Contains(strings.Split(nsSubnetNames, ","), podSwitch) {
+		if nsSubnetNames != "" && !slices.Contains(strings.Split(nsSubnetNames, ","), podSwitch) {
 			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
 			return true, nil
 		}
@@ -2273,6 +2278,10 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Infof("subnet %s not found for pod %s/%s, not auto clean ip", podSwitch, pod.Namespace, pod.Name)
+			return false, nil
+		}
 		klog.Errorf("failed to get subnet %s, %v, not auto clean ip", podSwitch, err)
 		return false, err
 	}
