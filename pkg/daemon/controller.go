@@ -789,8 +789,8 @@ func (c *Controller) gcInterfaces() {
 			}
 		}else{
 			// If the pod is found, compare the pod's node with the current cni node. If they differ, delete the interface.
-			if podEntity.Spec.NodeName != os.Getenv("KUBE_NODE_NAME") {
-				klog.Infof("pod %s/%s is on node %s, delete ovs interface %s on node %s ", podNamespace, podName, podEntity.Spec.NodeName, iface, os.Getenv("KUBE_NODE_NAME"))
+			if podEntity.Spec.NodeName != c.config.NodeName {
+				klog.Infof("pod %s/%s is on node %s, delete ovs interface %s on node %s ", podNamespace, podName, podEntity.Spec.NodeName, iface, c.config.NodeName)
 				if err := ovs.CleanInterface(iface); err != nil {
 					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
 				}
