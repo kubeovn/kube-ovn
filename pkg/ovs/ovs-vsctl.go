@@ -252,7 +252,7 @@ func ListInterfacePodMap() (map[string]string, error) {
 		if len(strings.TrimSpace(l)) == 0 {
 			continue
 		}
-		parts := strings.SplitN(strings.TrimSpace(l), ",",3)
+		parts := strings.SplitN(strings.TrimSpace(l), ",", 3)
 		if len(parts) != 3 {
 			continue
 		}

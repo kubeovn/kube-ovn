@@ -765,7 +765,7 @@ func (c *Controller) gcInterfaces() {
 			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VM name (not the launcher pod name).
 			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
 			// Try to find launcher pods by this label.
-			if k8serrors.IsNotFound(err){
+			if k8serrors.IsNotFound(err) {
 				selector := labels.SelectorFromSet(map[string]string{util.KubeVirtVMNameLabel: podName})
 				launcherPods, listErr := c.podsLister.Pods(podNamespace).List(selector)
 				if listErr != nil {
