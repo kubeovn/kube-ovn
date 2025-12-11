@@ -3,6 +3,7 @@ package underlay
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -120,8 +121,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should exist on node %s", interfaceName, nodeName))
-			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", interfaceName, nodeName))
+			expectedIf := getExpectedInterfaceForNode(nodeName, interfaceName, customInterfaces)
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should exist on node %s", expectedIf, nodeName))
+			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", expectedIf, nodeName))
 		}
 
 		providerNetworkClient.DeleteSync(providerNetworkName)
@@ -150,21 +152,27 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, pn1Interface), fmt.Sprintf("VLAN subinterface %s should exist on node %s", pn1Interface, nodeName))
-			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, pn1Interface), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", pn1Interface, nodeName))
+			expectedPn1If := getExpectedInterfaceForNode(nodeName, pn1Interface, customInterfaces)
+			expectedPn2If := getExpectedInterfaceForNode(nodeName, pn2Interface, customInterfaces)
+			expectedPn3If := getExpectedInterfaceForNode(nodeName, pn3Interface, customInterfaces)
 
-			framework.ExpectFalse(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, pn2Interface), fmt.Sprintf("Base interface %s on node %s should not be modified by Kube-OVN when autoCreateVlanSubinterfaces is false", pn2Interface, nodeName))
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedPn1If), fmt.Sprintf("VLAN subinterface %s should exist on node %s", expectedPn1If, nodeName))
+			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedPn1If), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", expectedPn1If, nodeName))
 
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, pn3Interface), fmt.Sprintf("VLAN subinterface %s should exist on node %s", pn3Interface, nodeName))
-			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, pn3Interface), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", pn3Interface, nodeName))
+			framework.ExpectFalse(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedPn2If), fmt.Sprintf("Base interface %s on node %s should not be modified by Kube-OVN when autoCreateVlanSubinterfaces is false", expectedPn2If, nodeName))
+
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedPn3If), fmt.Sprintf("VLAN subinterface %s should exist on node %s", expectedPn3If, nodeName))
+			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedPn3If), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", expectedPn3If, nodeName))
 		}
 
 		providerNetworkClient.DeleteSync(pn1Name)
 
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
-			waitForInterfaceState(kindNodeMap, nodeName, pn1Interface, false, 2*time.Minute)
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, pn3Interface), fmt.Sprintf("VLAN subinterface %s should still exist on node %s", pn3Interface, nodeName))
+			expectedPn1If := getExpectedInterfaceForNode(nodeName, pn1Interface, customInterfaces)
+			expectedPn3If := getExpectedInterfaceForNode(nodeName, pn3Interface, customInterfaces)
+			waitForInterfaceState(kindNodeMap, nodeName, expectedPn1If, false, 2*time.Minute)
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedPn3If), fmt.Sprintf("VLAN subinterface %s should still exist on node %s", expectedPn3If, nodeName))
 		}
 
 		providerNetworkClient.DeleteSync(pn2Name)
@@ -183,14 +191,16 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should exist on node %s", interfaceName, nodeName))
-			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", interfaceName, nodeName))
+			expectedIf := getExpectedInterfaceForNode(nodeName, interfaceName, customInterfaces)
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should exist on node %s", expectedIf, nodeName))
+			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", expectedIf, nodeName))
 		}
 
 		providerNetworkClient.DeleteSync(providerNetworkName)
 
 		for _, node := range readyKindNodes {
-			waitForInterfaceState(kindNodeMap, node.Name(), interfaceName, false, 2*time.Minute)
+			expectedIf := getExpectedInterfaceForNode(node.Name(), interfaceName, customInterfaces)
+			waitForInterfaceState(kindNodeMap, node.Name(), expectedIf, false, 2*time.Minute)
 		}
 	})
 
@@ -206,8 +216,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should exist on node %s", interfaceName, nodeName))
-			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", interfaceName, nodeName))
+			expectedIf := getExpectedInterfaceForNode(nodeName, interfaceName, customInterfaces)
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should exist on node %s", expectedIf, nodeName))
+			framework.ExpectTrue(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("VLAN subinterface %s should be created by Kube-OVN on node %s", expectedIf, nodeName))
 		}
 
 		original := pn.DeepCopy()
@@ -217,7 +228,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		for _, node := range readyKindNodes {
 			time.Sleep(5 * time.Second)
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, node.Name(), interfaceName), fmt.Sprintf("VLAN subinterface %s should still exist on node %s when autoCreateVlanSubinterfaces is false", interfaceName, node.Name()))
+			expectedIf := getExpectedInterfaceForNode(node.Name(), interfaceName, customInterfaces)
+			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, node.Name(), expectedIf), fmt.Sprintf("VLAN subinterface %s should still exist on node %s when autoCreateVlanSubinterfaces is false", expectedIf, node.Name()))
 		}
 
 		providerNetworkClient.DeleteSync(providerNetworkName)
@@ -237,9 +249,10 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 			for _, node := range readyKindNodes {
 				nodeName := node.Name()
-				exists := vlanSubinterfaceExists(kindNodeMap, nodeName, interfaceName)
+				expectedIf := getExpectedInterfaceForNode(nodeName, interfaceName, customInterfaces)
+				exists := vlanSubinterfaceExists(kindNodeMap, nodeName, expectedIf)
 				if exists {
-					framework.ExpectFalse(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, interfaceName), fmt.Sprintf("Interface %s on node %s should not be a Kube-OVN created subinterface", interfaceName, nodeName))
+					framework.ExpectFalse(isKubeOVNAutoCreatedInterface(kindNodeMap, nodeName, expectedIf), fmt.Sprintf("Interface %s on node %s should not be a Kube-OVN created subinterface", expectedIf, nodeName))
 				}
 			}
 
@@ -249,10 +262,18 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 })
 
 func createVlanSubinterfaceTestProviderNetwork(name, interfaceName string, autoCreate bool, customInterfaces map[string][]string) *v1.ProviderNetwork {
+	// Extract VLAN suffix from interfaceName (e.g., ".100" from "eth2.100")
+	vlanSuffix := ""
+	if idx := strings.Index(interfaceName, "."); idx != -1 {
+		vlanSuffix = interfaceName[idx:]
+	}
+
 	customIfs := make([]v1.CustomInterface, 0, len(customInterfaces))
 	for ifName, nodes := range customInterfaces {
+		// Append the same VLAN suffix to custom interfaces so all nodes get the same VLAN ID
+		customIfName := ifName + vlanSuffix
 		customIfs = append(customIfs, v1.CustomInterface{
-			Interface: ifName,
+			Interface: customIfName,
 			Nodes:     nodes,
 		})
 	}
@@ -300,4 +321,25 @@ func interfaceOutput(nodeExecMap map[string]kind.Node, nodeName, interfaceName s
 	}
 
 	return string(stdout), true
+}
+
+// getExpectedInterfaceForNode returns the expected interface name for a given node.
+// If the node has a custom interface configured, it returns baseInterface+vlanSuffix where
+// baseInterface is the node's custom interface. Otherwise, it returns the default interface name.
+func getExpectedInterfaceForNode(nodeName, defaultInterface string, customInterfaces map[string][]string) string {
+	// Extract VLAN suffix from default interface (e.g., ".100" from "eth2.100")
+	vlanSuffix := ""
+	if idx := strings.Index(defaultInterface, "."); idx != -1 {
+		vlanSuffix = defaultInterface[idx:]
+	}
+
+	// Check if this node has a custom interface
+	for ifName, nodes := range customInterfaces {
+		if slices.Contains(nodes, nodeName) {
+			return ifName + vlanSuffix
+		}
+	}
+
+	// Use default interface
+	return defaultInterface
 }

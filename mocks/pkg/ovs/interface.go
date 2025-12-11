@@ -4299,6 +4299,20 @@ func (mr *MockNbClientMockRecorder) GetPortGroup(pgName, ignoreNotFound any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortGroup", reflect.TypeOf((*MockNbClient)(nil).GetPortGroup), pgName, ignoreNotFound)
 }
 
+// IsKnownParentKey mocks base method.
+func (m *MockNbClient) IsKnownParentKey(externalIDs map[string]string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsKnownParentKey", externalIDs)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsKnownParentKey indicates an expected call of IsKnownParentKey.
+func (mr *MockNbClientMockRecorder) IsKnownParentKey(externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsKnownParentKey", reflect.TypeOf((*MockNbClient)(nil).IsKnownParentKey), externalIDs)
+}
+
 // ListAddressSets mocks base method.
 func (m *MockNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
 	m.ctrl.T.Helper()
@@ -5085,6 +5099,18 @@ func (m *MockNbClient) SetAzName(azName string) error {
 func (mr *MockNbClientMockRecorder) SetAzName(azName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAzName", reflect.TypeOf((*MockNbClient)(nil).SetAzName), azName)
+}
+
+// SetExternalParentKeys mocks base method.
+func (m *MockNbClient) SetExternalParentKeys(keys []string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetExternalParentKeys", keys)
+}
+
+// SetExternalParentKeys indicates an expected call of SetExternalParentKeys.
+func (mr *MockNbClientMockRecorder) SetExternalParentKeys(keys any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExternalParentKeys", reflect.TypeOf((*MockNbClient)(nil).SetExternalParentKeys), keys)
 }
 
 // SetICAutoRoute mocks base method.

@@ -167,7 +167,12 @@ func main() {
 			listenAddr := util.JoinHostPort(addr, config.PprofPort)
 			go func() {
 				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
-					util.LogFatalAndExit(err, "failed to run metrics server")
+					// In underlay mode with provider networks, the node IP may be moved from
+					// the original NIC to the OVS bridge, which can cause bind failures during
+					// startup. Log a warning instead of exiting fatally to allow the daemon to
+					// continue if at least one metrics server starts successfully (e.g., in
+					// dual-stack mode where one address family may succeed).
+					klog.Errorf("failed to run metrics server on %s: %v", listenAddr, err)
 				}
 			}()
 		}

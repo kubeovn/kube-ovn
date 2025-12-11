@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -21,6 +22,44 @@ const (
 	sgsKey                = "security_groups"
 	sgKey                 = "sg"
 )
+
+// SetExternalParentKeys sets the external parent key patterns for GC exclusion.
+// This should be called during controller initialization.
+func (c *OVNNbClient) SetExternalParentKeys(keys []string) {
+	c.ExternalParentKeys = keys
+	if len(keys) > 0 {
+		klog.Infof("configured external ACL parent keys for GC exclusion: %v", keys)
+	}
+}
+
+// IsKnownParentKey checks if the given externalIDs map contains a recognized parent key.
+// It returns true if:
+// - The map contains the default Kube-OVN parent key ("parent"), OR
+// - Any key in the map matches one of the configured ExternalParentKeys patterns
+//
+// This function is used during garbage collection to preserve resources that belong
+// to either Kube-OVN or external systems like OpenStack Neutron.
+func (c *OVNNbClient) IsKnownParentKey(externalIDs map[string]string) bool {
+	if len(externalIDs) == 0 {
+		return false
+	}
+
+	// Check for default Kube-OVN parent key
+	if _, ok := externalIDs[aclParentKey]; ok {
+		return true
+	}
+
+	// Check for configured external parent keys using glob pattern matching
+	for key := range externalIDs {
+		for _, pattern := range c.ExternalParentKeys {
+			if matched, err := filepath.Match(pattern, key); err == nil && matched {
+				return true
+			}
+		}
+	}
+
+	return false
+}
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks
 func (c *OVNNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {

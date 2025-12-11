@@ -112,6 +112,11 @@ performance:
   GC_INTERVAL: 360
   INSPECT_INTERVAL: 20
   OVS_VSCTL_CONCURRENCY: 100
+  # Comma-separated list of external_ids key patterns to preserve during GC.
+  # Use this in mixed environments (e.g., OpenStack Neutron) to prevent Kube-OVN
+  # from garbage collecting resources managed by external systems.
+  # Supports glob patterns (e.g., "neutron:*" matches "neutron:security_group_id").
+  EXTERNAL_ACL_PARENT_KEYS: ""
 
 debug:
   ENABLE_MIRROR: false

@@ -612,6 +612,9 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
+
+	// Set external ACL parent keys for GC exclusion (for mixed environments like OpenStack Neutron)
+	controller.OVNNbClient.SetExternalParentKeys(config.ExternalACLParentKeys)
 	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
 		config.OvnTimeout,
