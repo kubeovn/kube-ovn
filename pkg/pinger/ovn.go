@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -14,26 +15,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
-
-// Chassis represents a row in the Chassis table.
-type PortBinging struct {
-	LogicalPort string `json:"logical_port"`
-}
-
-// PortBindingResponse represents the structure of the OVSDB query response.
-type PortBindingResponse struct {
-	Rows []PortBinging `json:"rows"`
-}
-
-// Chassis represents a row in the Chassis table.
-type Chassis struct {
-	UUID [2]string `json:"_uuid"`
-}
-
-// ChassisResponse represents the structure of the OVSDB query response.
-type ChassisResponse struct {
-	Rows []Chassis `json:"rows"`
-}
 
 func checkOvs(config *Configuration, setMetrics bool) error {
 	for component, err := range getOvsStatus() {
@@ -130,24 +111,16 @@ func checkOvsBindings() (set.Set[string], error) {
 	return result, nil
 }
 
-func getChassis(hostname string) (string, error) {
+func ovnSBQuery(database string, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	transArgs := ovsdb.NewTransactArgs(database, operations...)
+	query, err := json.Marshal(transArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transArgs, err)
+	}
+
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	transaction := ovsdb.NewTransactArgs(ovnsb.DatabaseName, ovsdb.Operation{
-		Op:    ovsdb.OperationSelect,
-		Table: ovnsb.ChassisTable,
-		Where: []ovsdb.Condition{{
-			Column:   "hostname",
-			Function: ovsdb.ConditionEqual,
-			Value:    hostname,
-		}},
-		Columns: []string{"_uuid"},
-	})
-	query, err := json.Marshal(transaction)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transaction, err)
-	}
 	args := []string{
 		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
 	}
@@ -160,31 +133,53 @@ func getChassis(hostname string) (string, error) {
 		}
 	}
 
-	// Execute the ovsdb-client command and get the JSON output.
 	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
 	if err != nil {
-		klog.Errorf("failed to find chassis %v", err)
-		return "", err
+		return nil, fmt.Errorf("failed to execute ovsdb-client with args %v: %w\noutput: %s", args, err, string(output))
 	}
 
-	// Parse the JSON output.
-	var responses []ChassisResponse
-	err = json.Unmarshal(output, &responses)
+	var result []ovsdb.OperationResult
+	if err = json.Unmarshal(output, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ovsdb-client output %q: %w", string(output), err)
+	}
+
+	return result, nil
+}
+
+func getChassis(hostname string) (string, error) {
+	result, err := ovnSBQuery(ovnsb.DatabaseName, ovsdb.Operation{
+		Op:    ovsdb.OperationSelect,
+		Table: ovnsb.ChassisTable,
+		Where: []ovsdb.Condition{{
+			Column:   "hostname",
+			Function: ovsdb.ConditionEqual,
+			Value:    hostname,
+		}},
+		Columns: []string{"_uuid"},
+	})
 	if err != nil {
+		klog.Errorf("failed to get chassis UUID by hostname %q: %v", hostname, err)
 		return "", err
 	}
-
-	if len(responses) == 0 || len(responses[0].Rows) == 0 || len(responses[0].Rows[0].UUID) < 2 {
+	if len(result) != 1 {
+		return "", fmt.Errorf("unexpected number of results when getting chassis UUID for hostname %q: %d", hostname, len(result))
+	}
+	if len(result[0].Rows) == 0 {
 		return "", fmt.Errorf("no chassis found for hostname %q", hostname)
 	}
-	return responses[0].Rows[0].UUID[1], nil
+	if len(result[0].Rows) != 1 {
+		return "", fmt.Errorf("unexpected number of rows when getting chassis UUID for hostname %q: %d", hostname, len(result[0].Rows))
+	}
+
+	if uuid, ok := result[0].Rows[0]["_uuid"].(ovsdb.UUID); ok {
+		return uuid.GoUUID, nil
+	}
+
+	return "", fmt.Errorf("unexpected data format for chassis UUID for hostname %q: %v", hostname, result[0].Rows[0]["_uuid"])
 }
 
 func getLogicalPort(chassisUUID string) (set.Set[string], error) {
-	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
-	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
-
-	transaction := ovsdb.NewTransactArgs(ovnsb.DatabaseName, ovsdb.Operation{
+	result, err := ovnSBQuery(ovnsb.DatabaseName, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: ovnsb.PortBindingTable,
 		Where: []ovsdb.Condition{{
@@ -194,40 +189,21 @@ func getLogicalPort(chassisUUID string) (set.Set[string], error) {
 		}},
 		Columns: []string{"logical_port"},
 	})
-	query, err := json.Marshal(transaction)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transaction, err)
-	}
-	command := []string{
-		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
-	}
-	if os.Getenv("ENABLE_SSL") == "true" {
-		command = []string{
-			"-p", "/var/run/tls/key",
-			"-c", "/var/run/tls/cert",
-			"-C", "/var/run/tls/cacert",
-			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), string(query),
-		}
-	}
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
-	if err != nil {
-		return nil, fmt.Errorf("failed to query ovn sb Port_Binding: %w, %s", err, output)
-	}
-
-	// Parse the JSON output.
-	var responses []PortBindingResponse
-	err = json.Unmarshal(output, &responses)
-	if err != nil {
+		klog.Errorf("failed to get logical ports by chassis UUID %q: %v", chassisUUID, err)
 		return nil, err
 	}
-
-	if len(responses) == 0 || len(responses[0].Rows) == 0 {
-		return nil, fmt.Errorf("no logical port found for chassis with uuid %q", chassisUUID)
+	if len(result) != 1 {
+		return nil, fmt.Errorf("unexpected number of results when getting logical ports for chassis UUID %q: %d", chassisUUID, len(result))
 	}
 
 	ports := set.New[string]()
-	for _, row := range responses[0].Rows {
-		ports.Insert(row.LogicalPort)
+	for row := range slices.Values(result[0].Rows) {
+		if lp, ok := row["logical_port"].(string); ok {
+			ports.Insert(lp)
+		} else {
+			klog.Errorf("unexpected data format for logical_port in row %v", row)
+		}
 	}
 	return ports, nil
 }
