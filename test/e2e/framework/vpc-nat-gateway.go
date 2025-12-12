@@ -222,3 +222,9 @@ func MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName s
 	vpcNatGw.Spec.QoSPolicy = qosPolicyName
 	return vpcNatGw
 }
+
+func MakeVpcNatGatewayWithNoDefaultEIP(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName string, noDefaultEIP bool) *apiv1.VpcNatGateway {
+	vpcNatGw := MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName)
+	vpcNatGw.Spec.NoDefaultEIP = noDefaultEIP
+	return vpcNatGw
+}
