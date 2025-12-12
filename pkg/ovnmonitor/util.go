@@ -26,7 +26,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName)
+	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
@@ -35,7 +35,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
 
 	// get ovn-southbound status
-	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName)
+	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName) // #nosec G204
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
@@ -49,6 +49,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 		klog.Errorf("read ovn-northd pid failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else {
+		// #nosec G204
 		cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.Trim(string(pid), "\n")), "status")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -75,7 +76,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName)
+	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
@@ -86,7 +87,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	}
 
 	// get ovn-southbound status
-	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName)
+	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName) // #nosec G204
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
