@@ -130,11 +130,13 @@ func setupNetworkAttachmentDefinition(
 	}
 
 	// Check if subnet already exists
-	existingSubnet := subnetClient.Get(externalNetworkName)
-	if existingSubnet == nil {
+	_, err = subnetClient.SubnetInterface.Get(context.TODO(), externalNetworkName, metav1.GetOptions{})
+	if err != nil && k8serrors.IsNotFound(err) {
 		// Subnet doesn't exist, create it
 		macvlanSubnet := framework.MakeSubnet(externalNetworkName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", provider, excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(macvlanSubnet)
+	} else {
+		framework.ExpectNoError(err, "getting subnet "+externalNetworkName)
 	}
 }
 
