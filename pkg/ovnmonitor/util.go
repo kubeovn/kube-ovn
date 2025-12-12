@@ -8,8 +8,11 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/ovsdb"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
@@ -23,7 +26,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status " + ovnnb.DatabaseName
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -33,7 +36,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
 
 	// get ovn-southbound status
-	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status " + ovnsb.DatabaseName
 	cmd = exec.Command("sh", "-c", cmdstr)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
@@ -76,7 +79,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status " + ovnnb.DatabaseName
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -88,7 +91,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	}
 
 	// get ovn-southbound status
-	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status " + ovnsb.DatabaseName
 	cmd = exec.Command("sh", "-c", cmdstr)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
@@ -314,9 +317,9 @@ func getDBStatus(dbName string) (bool, error) {
 	var cmdstr string
 	var result bool
 	switch dbName {
-	case "OVN_Northbound":
+	case ovnnb.DatabaseName:
 		cmdstr = "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status " + dbName
-	case "OVN_Southbound":
+	case ovnsb.DatabaseName:
 		cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status " + dbName
 	}
 

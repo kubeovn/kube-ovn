@@ -11,6 +11,7 @@ import (
 	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 // Chassis represents a row in the Chassis table.
@@ -133,7 +134,7 @@ func getChassis(hostname string) (string, error) {
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
 	// Create the OVSDB query with the hostname filter
-	query := fmt.Sprintf(`["OVN_Southbound",{"op":"select","table":"Chassis","where":[["hostname","==","%s"]],"columns":["_uuid"]}]`, hostname)
+	query := fmt.Sprintf(`["%s",{"op":"select","table":"Chassis","where":[["hostname","==","%s"]],"columns":["_uuid"]}]`, ovnsb.DatabaseName, hostname)
 
 	command := []string{
 		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,
@@ -171,7 +172,7 @@ func getLogicalPort(chassis string) (set.Set[string], error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	query := fmt.Sprintf(`["OVN_Southbound",{"op":"select","table":"Port_Binding","where":[["chassis","==",["uuid","%s"]]],"columns":["logical_port"]}]`, chassis)
+	query := fmt.Sprintf(`["%s",{"op":"select","table":"Port_Binding","where":[["chassis","==",["uuid","%s"]]],"columns":["logical_port"]}]`, ovnsb.DatabaseName, chassis)
 
 	command := []string{
 		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,

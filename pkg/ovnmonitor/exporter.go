@@ -9,6 +9,8 @@ import (
 	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -205,8 +207,8 @@ func (e *Exporter) exportOvnDBFileSizeGauge() {
 	nbPath := e.Client.Database.Northbound.File.Data.Path
 	sbPath := e.Client.Database.Southbound.File.Data.Path
 	dirDbMap := map[string]string{
-		nbPath: "OVN_Northbound",
-		sbPath: "OVN_Southbound",
+		nbPath: ovnnb.DatabaseName,
+		sbPath: ovnsb.DatabaseName,
 	}
 	for dbFile, database := range dirDbMap {
 		fileInfo, err := os.Stat(dbFile)
@@ -260,8 +262,8 @@ func (e *Exporter) exportOvnClusterEnableGauge() {
 func (e *Exporter) exportOvnClusterInfoGauge() {
 	resetOvnClusterMetrics()
 	dirDbMap := map[string]string{
-		"nb": "OVN_Northbound",
-		"sb": "OVN_Southbound",
+		"nb": ovnnb.DatabaseName,
+		"sb": ovnsb.DatabaseName,
 	}
 	for direction, database := range dirDbMap {
 		clusterStatus, err := getClusterInfo(direction, database)
@@ -275,7 +277,7 @@ func (e *Exporter) exportOvnClusterInfoGauge() {
 
 func (e *Exporter) exportOvnDBStatusGauge() {
 	metricDBStatus.Reset()
-	dbList := []string{"OVN_Northbound", "OVN_Southbound"}
+	dbList := []string{ovnnb.DatabaseName, ovnsb.DatabaseName}
 	for _, database := range dbList {
 		ok, err := getDBStatus(database)
 		if err != nil {
@@ -288,7 +290,7 @@ func (e *Exporter) exportOvnDBStatusGauge() {
 			metricDBStatus.WithLabelValues(e.Client.System.Hostname, database).Set(0)
 
 			switch database {
-			case "OVN_Northbound":
+			case ovnnb.DatabaseName:
 				checkNbDbCnt++
 				if checkNbDbCnt < 6 {
 					klog.Warningf("Failed to get OVN NB DB status for %v times", checkNbDbCnt)
@@ -296,7 +298,7 @@ func (e *Exporter) exportOvnDBStatusGauge() {
 				}
 				klog.Warningf("Failed to get OVN NB DB status for %v times, ready to restore OVN DB", checkNbDbCnt)
 				checkNbDbCnt = 0
-			case "OVN_Southbound":
+			case ovnsb.DatabaseName:
 				checkSbDbCnt++
 				if checkSbDbCnt < 6 {
 					klog.Warningf("Failed to get OVN SB DB status for %v times", checkSbDbCnt)

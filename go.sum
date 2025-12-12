@@ -390,8 +390,8 @@ github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315 h1:PYw
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20251128080558-ab7d8b8b5a66 h1:FlIRHOhiL78OOMcvM8rfEACgdBKiDpw0E3FSn272wJA=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20251128080558-ab7d8b8b5a66/go.mod h1:98SIBmkgyZgcqIA+Rx3p2JLIk0Njjs5ZjyWu71epN7g=
-github.com/kubeovn/libovsdb v0.0.0-20251212070735-ef9e42652dea h1:ARkOdiGPF6Ls/riEmIEE0aJf7PW1+Qzn7M4vynjLKeE=
-github.com/kubeovn/libovsdb v0.0.0-20251212070735-ef9e42652dea/go.mod h1:uqOuVsuGSJPoHDOS5O9VkJz/TIPm6Az/YZesHZ3qwDw=
+github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e h1:/DjPaByhzfDJcJ8A9jqoi16q/O1N5nGOHy9VmNZVnVM=
+github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e/go.mod h1:uqOuVsuGSJPoHDOS5O9VkJz/TIPm6Az/YZesHZ3qwDw=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=

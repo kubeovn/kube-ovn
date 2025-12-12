@@ -66,7 +66,7 @@ func NewDynamicOvnNbClient(
 	ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int,
 	tables ...string,
 ) (*OVNNbClient, map[string]model.Model, error) {
-	dbModel, err := model.NewClientDBModel("OVN_Northbound", nil)
+	dbModel, err := model.NewClientDBModel(ovnnb.DatabaseName, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create client db model: %w", err)
 	}
@@ -113,7 +113,7 @@ func NewDynamicOvnNbClient(
 		models[name] = model
 	}
 
-	if dbModel, err = model.NewClientDBModel("OVN_Northbound", models); err != nil {
+	if dbModel, err = model.NewClientDBModel(ovnnb.DatabaseName, models); err != nil {
 		return nil, nil, fmt.Errorf("failed to create dynamic client db model: %w", err)
 	}
 
@@ -284,9 +284,9 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 
 	var dbType string
 	switch c.Schema().Name {
-	case "OVN_Northbound":
+	case ovnnb.DatabaseName:
 		dbType = "ovn-nb"
-	case "OVN_Southbound":
+	case ovnsb.DatabaseName:
 		dbType = "ovn-sb"
 	}
 

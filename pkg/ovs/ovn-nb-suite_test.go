@@ -38,7 +38,7 @@ type OvnClientTestSuite struct {
 }
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
-	return model.NewClientDBModel("OVN_Northbound", nil)
+	return model.NewClientDBModel(ovnnb.DatabaseName, nil)
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
