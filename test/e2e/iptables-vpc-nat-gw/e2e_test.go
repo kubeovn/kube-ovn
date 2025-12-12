@@ -431,7 +431,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		oldImage := cm.Data["image"]
-		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.12.18"
+		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.14.19"
 		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
@@ -957,6 +957,142 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		vipClient.DeleteSync(vipName)
 
 		ginkgo.By("13. Test completed: IptablesEIP finalizer correctly blocks deletion when used by NAT rules")
+	})
+
+	framework.ConformanceIt("Test VPC NAT Gateway with no IPAM NAD and noDefaultEIP", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
+		overlaySubnetV4Cidr := "10.0.5.0/24"
+		overlaySubnetV4Gw := "10.0.5.1"
+		lanIP := "10.0.5.254"
+		natgwQoS := ""
+		noIPAMNadName := "no-ipam-nad-" + framework.RandomSuffix()
+		noIPAMProvider := fmt.Sprintf("%s.%s", noIPAMNadName, framework.KubeOvnNamespace)
+
+		ginkgo.By("1. Setting up NAD without IPAM and creating subnet using standard flow")
+		// Create NAD without IPAM section
+		ginkgo.By("Getting docker network " + dockerExtNet1Name)
+		network, err := docker.NetworkInspect(dockerExtNet1Name)
+		framework.ExpectNoError(err, "getting docker network "+dockerExtNet1Name)
+
+		ginkgo.By("Creating network attachment definition without IPAM " + noIPAMNadName)
+		// NAD config without ipam - this is the key difference
+		attachConf := fmt.Sprintf(`{
+			"cniVersion": "0.3.0",
+			"type": "macvlan",
+			"master": "%s",
+			"mode": "bridge"
+		}`, net1NicName)
+
+		attachNet := framework.MakeNetworkAttachmentDefinition(noIPAMNadName, framework.KubeOvnNamespace, attachConf)
+		nad := attachNetClient.Create(attachNet)
+		ginkgo.By("Got network attachment definition " + nad.Name)
+
+		ginkgo.By("Creating underlay macvlan subnet " + noIPAMNadName)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerExtNet1Network.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet.Addr().String()) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
+				}
+			}
+		}
+		cidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			cidr = append(cidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			cidr = append(cidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address.IsValid() && f.HasIPv4() {
+				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
+			}
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
+			}
+		}
+		macvlanSubnet := framework.MakeSubnet(noIPAMNadName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", noIPAMProvider, excludeIPs, nil, nil)
+		_ = subnetClient.CreateSync(macvlanSubnet)
+
+		ginkgo.By("2. Creating custom vpc " + vpcName)
+		vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("3. Creating custom overlay subnet " + overlaySubnetName)
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+
+		ginkgo.By("4. Creating custom vpc nat gw with noDefaultEIP=true " + vpcNatGwName)
+		vpcNatGw := framework.MakeVpcNatGatewayWithNoDefaultEIP(vpcNatGwName, vpcName, overlaySubnetName, lanIP, noIPAMNadName, natgwQoS, true)
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+
+		ginkgo.By("5. Verifying VPC NAT Gateway is created")
+		createdGw := vpcNatGwClient.Get(vpcNatGwName)
+		framework.ExpectNotNil(createdGw, "VPC NAT Gateway should be created")
+		framework.ExpectTrue(createdGw.Spec.NoDefaultEIP, "noDefaultEIP should be true")
+
+		ginkgo.By("6. Verifying no default EIP is created")
+		time.Sleep(10 * time.Second)
+		eips, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{})
+		framework.ExpectNoError(err, "Failed to list IptablesEIPs")
+		hasDefaultEIP := false
+		for _, eip := range eips.Items {
+			if eip.Spec.NatGwDp == vpcNatGwName {
+				hasDefaultEIP = true
+				break
+			}
+		}
+		framework.ExpectFalse(hasDefaultEIP, "No default EIP should be created when noDefaultEIP is true")
+
+		ginkgo.By("7. Testing manual EIP creation")
+		eipName := "manual-eip-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, noIPAMNadName, "")
+		_ = iptablesEIPClient.CreateSync(eip)
+
+		ginkgo.By("8. Verifying manually created EIP")
+		eipCR := waitForIptablesEIPReady(iptablesEIPClient, eipName, 60*time.Second)
+		framework.ExpectNotNil(eipCR, "Manual EIP should be created successfully")
+		framework.ExpectNotEmpty(eipCR.Status.IP, "Manual EIP should have IP assigned")
+
+		ginkgo.By("9. Testing VIP and FIP with manual EIP")
+		vipName := "test-vip-no-ipam-" + framework.RandomSuffix()
+		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(vip)
+		vip = vipClient.Get(vipName)
+
+		fipName := "test-fip-no-ipam-" + framework.RandomSuffix()
+		fip := framework.MakeIptablesFIPRule(fipName, eipName, vip.Status.V4ip)
+		_ = iptablesFIPClient.CreateSync(fip)
+
+		ginkgo.By("10. Verifying FIP is created successfully")
+		createdFip := iptablesFIPClient.Get(fipName)
+		framework.ExpectNotNil(createdFip, "FIP should be created successfully")
+		framework.ExpectTrue(createdFip.Status.Ready, "FIP should be ready")
+
+		ginkgo.By("11. Cleaning up resources")
+		iptablesFIPClient.DeleteSync(fipName)
+		vipClient.DeleteSync(vipName)
+		iptablesEIPClient.DeleteSync(eipName)
+
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+		subnetClient.DeleteSync(overlaySubnetName)
+		subnetClient.DeleteSync(noIPAMNadName)
+		vpcClient.DeleteSync(vpcName)
+		attachNetClient.Delete(noIPAMNadName)
+
+		ginkgo.By("12. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
 	})
 })
 
