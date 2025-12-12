@@ -11,6 +11,7 @@ import (
 
 	dockernetwork "github.com/moby/moby/api/types/network"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -1120,7 +1121,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectNotEmpty(eipCR.Status.V4Ip, "OvnEip should have V4 IP assigned")
 
 		ginkgo.By("Step 3: Verifying finalizer is added to OvnEip")
-		framework.WaitUntil(time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			eipCR = ovnEipClient.Get(eipName)
 			return eipCR != nil && len(eipCR.Finalizers) > 0, nil
 		}, "OvnEip should have finalizer added")
@@ -1159,7 +1160,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Step 5: Deleting OvnEip and verifying cleanup")
 		ovnEipClient.DeleteSync(eipName)
 
-		framework.WaitUntil(time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err := f.KubeOVNClientSet.KubeovnV1().OvnEips().Get(context.Background(), eipName, metav1.GetOptions{})
 			return k8serrors.IsNotFound(err), nil
 		}, "OvnEip should be deleted")
@@ -1251,7 +1252,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = ovnFipClient.CreateSync(fip)
 
 		ginkgo.By("Step 5: Verifying EIP Status.Nat shows FIP usage")
-		framework.WaitUntil(time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			eipCR = ovnEipClient.Get(eipName)
 			return eipCR != nil && strings.Contains(eipCR.Status.Nat, util.FipUsingEip), nil
 		}, "EIP Status.Nat should contain 'fip'")
@@ -1271,13 +1272,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Step 8: Deleting FIP to unblock EIP deletion")
 		ovnFipClient.DeleteSync(fipName)
 
-		framework.WaitUntil(time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err := f.KubeOVNClientSet.KubeovnV1().OvnFips().Get(context.Background(), fipName, metav1.GetOptions{})
 			return k8serrors.IsNotFound(err), nil
 		}, "FIP should be deleted")
 
 		ginkgo.By("Step 9: Verifying EIP is now deleted after FIP removal")
-		framework.WaitUntil(time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err := f.KubeOVNClientSet.KubeovnV1().OvnEips().Get(context.Background(), eipName, metav1.GetOptions{})
 			return k8serrors.IsNotFound(err), nil
 		}, "EIP should be deleted after FIP is removed")

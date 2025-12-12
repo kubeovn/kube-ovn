@@ -38,7 +38,6 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
-
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {

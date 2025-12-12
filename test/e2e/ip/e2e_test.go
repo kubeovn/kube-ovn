@@ -44,11 +44,11 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("Creating vpc " + vpcName)
 		vpc := framework.MakeVpc(vpcName, "", false, false, []string{namespaceName})
-		vpc = vpcClient.CreateSync(vpc)
+		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", vpcName, "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		_ = subnetClient.CreateSync(subnet)
 	})
 
 	ginkgo.AfterEach(func() {
@@ -76,12 +76,12 @@ var _ = framework.Describe("[group:ip]", func() {
 		podName := "test-ip-pod-" + framework.RandomSuffix()
 		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(pod)
 
 		ginkgo.By("3. Wait for IP CR to be created and get IP CR name")
 		var ipCR *apiv1.IP
 		var ipName string
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			// IP CR name format: podName.namespaceName
 			ipName = fmt.Sprintf("%s.%s", podName, namespaceName)
 			ipCR = ipClient.Get(ipName)
@@ -94,7 +94,7 @@ var _ = framework.Describe("[group:ip]", func() {
 		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName, "IP CR should be in the correct subnet")
 
 		ginkgo.By("4. Wait for IP CR finalizer to be added")
-		for i := 0; i < 60; i++ {
+		for range 60 {
 			ipCR = ipClient.Get(ipName)
 			if ipCR != nil && len(ipCR.Finalizers) > 0 {
 				break
@@ -110,7 +110,8 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("6. Verify subnet status after IP CR creation")
 		afterCreateSubnet := subnetClient.Get(subnetName)
-		if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterCreateSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			// Verify IP count changed
 			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by 1 after IP creation")
@@ -127,7 +128,7 @@ var _ = framework.Describe("[group:ip]", func() {
 			podIP := ipCR.Spec.V4IPAddress
 			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V4UsingIPRange, podIP),
 				"Pod IP %s should be in V4UsingIPRange %s", podIP, afterCreateSubnet.Status.V4UsingIPRange)
-		} else if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			// Verify IP count changed
 			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should decrease by 1 after IP creation")
@@ -144,7 +145,7 @@ var _ = framework.Describe("[group:ip]", func() {
 			podIP := ipCR.Spec.V6IPAddress
 			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V6UsingIPRange, podIP),
 				"Pod IP %s should be in V6UsingIPRange %s", podIP, afterCreateSubnet.Status.V6UsingIPRange)
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by 1 after IP creation")
@@ -180,7 +181,7 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("8. Wait for IP CR to be deleted")
 		deleted := false
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			_, err := f.KubeOVNClientSet.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 			if err != nil && k8serrors.IsNotFound(err) {
 				deleted = true
@@ -195,7 +196,8 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("10. Verify subnet status after IP CR deletion")
 		afterDeleteSubnet := subnetClient.Get(subnetName)
-		if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterDeleteSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			// Verify IP count is restored
 			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should increase by 1 after IP deletion")
@@ -213,7 +215,7 @@ var _ = framework.Describe("[group:ip]", func() {
 				"V4AvailableIPs should return to initial value after IP deletion")
 			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
 				"V4UsingIPs should return to initial value after IP deletion")
-		} else if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			// Verify IP count is restored
 			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should increase by 1 after IP deletion")
@@ -231,7 +233,7 @@ var _ = framework.Describe("[group:ip]", func() {
 				"V6AvailableIPs should return to initial value after IP deletion")
 			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
 				"V6UsingIPs should return to initial value after IP deletion")
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should increase by 1 after IP deletion")
@@ -280,19 +282,19 @@ var _ = framework.Describe("[group:ip]", func() {
 		ipNames := make([]string, numPods)
 		cmd := []string{"sleep", "infinity"}
 
-		for i := 0; i < numPods; i++ {
+		for i := range numPods {
 			podName := fmt.Sprintf("test-multi-ip-pod-%d-%s", i, framework.RandomSuffix())
 			podNames[i] = podName
 			ipNames[i] = fmt.Sprintf("%s.%s", podName, namespaceName)
 
 			pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-			pod = podClient.CreateSync(pod)
+			_ = podClient.CreateSync(pod)
 		}
 
 		ginkgo.By("3. Wait for all IP CRs to be created and get finalizers")
-		for i := 0; i < numPods; i++ {
+		for i := range numPods {
 			var ipCR *apiv1.IP
-			for j := 0; j < 60; j++ {
+			for range 60 {
 				ipCR = ipClient.Get(ipNames[i])
 				if ipCR != nil && ipCR.Name != "" && len(ipCR.Finalizers) > 0 {
 					break
@@ -309,17 +311,18 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("5. Verify subnet status after multiple IP CR creations")
 		afterCreateSubnet := subnetClient.Get(subnetName)
-		if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterCreateSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			framework.ExpectEqual(initialV4AvailableIPs-float64(numPods), afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by %d after creating %d IPs", numPods, numPods)
 			framework.ExpectEqual(initialV4UsingIPs+float64(numPods), afterCreateSubnet.Status.V4UsingIPs,
 				"V4UsingIPs should increase by %d after creating %d IPs", numPods, numPods)
-		} else if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			framework.ExpectEqual(initialV6AvailableIPs-float64(numPods), afterCreateSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should decrease by %d after creating %d IPs", numPods, numPods)
 			framework.ExpectEqual(initialV6UsingIPs+float64(numPods), afterCreateSubnet.Status.V6UsingIPs,
 				"V6UsingIPs should increase by %d after creating %d IPs", numPods, numPods)
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(initialV4AvailableIPs-float64(numPods), afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by %d after creating %d IPs", numPods, numPods)
@@ -332,14 +335,14 @@ var _ = framework.Describe("[group:ip]", func() {
 		}
 
 		ginkgo.By("6. Delete all pods to trigger IP CR deletions")
-		for i := 0; i < numPods; i++ {
+		for i := range numPods {
 			podClient.DeleteSync(podNames[i])
 		}
 
 		ginkgo.By("7. Wait for all IP CRs to be deleted")
-		for i := 0; i < numPods; i++ {
+		for i := range numPods {
 			deleted := false
-			for j := 0; j < 30; j++ {
+			for range 30 {
 				_, err := f.KubeOVNClientSet.KubeovnV1().IPs().Get(context.Background(), ipNames[i], metav1.GetOptions{})
 				if err != nil && k8serrors.IsNotFound(err) {
 					deleted = true
@@ -355,17 +358,18 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("9. Verify subnet status after multiple IP CR deletions")
 		afterDeleteSubnet := subnetClient.Get(subnetName)
-		if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterDeleteSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should return to initial value after all IPs deleted")
 			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
 				"V4UsingIPs should return to initial value after all IPs deleted")
-		} else if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			framework.ExpectEqual(initialV6AvailableIPs, afterDeleteSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should return to initial value after all IPs deleted")
 			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
 				"V6UsingIPs should return to initial value after all IPs deleted")
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should return to initial value after all IPs deleted")
@@ -387,12 +391,12 @@ var _ = framework.Describe("[group:ip]", func() {
 		podName := "test-ip-finalizer-pod-" + framework.RandomSuffix()
 		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePod(namespaceName, podName, nil, nil, f.KubeOVNImage, cmd, nil)
-		pod = podClient.CreateSync(pod)
+		_ = podClient.CreateSync(pod)
 
 		ginkgo.By("2. Wait for IP CR to be created with finalizer")
 		ipName := fmt.Sprintf("%s.%s", podName, namespaceName)
 		var ipCR *apiv1.IP
-		for i := 0; i < 60; i++ {
+		for range 60 {
 			ipCR = ipClient.Get(ipName)
 			if ipCR != nil && ipCR.Name != "" && len(ipCR.Finalizers) > 0 {
 				break
@@ -417,7 +421,7 @@ var _ = framework.Describe("[group:ip]", func() {
 
 		ginkgo.By("5. Verify IP CR is eventually deleted")
 		deleted := false
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			_, err := f.KubeOVNClientSet.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 			if err != nil && k8serrors.IsNotFound(err) {
 				deleted = true

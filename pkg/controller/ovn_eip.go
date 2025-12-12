@@ -51,7 +51,6 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 		klog.Infof("enqueue update ovn eip %s", key)
 		c.updateOvnEipQueue.Add(key)
 	}
-
 }
 
 func (c *Controller) enqueueDelOvnEip(obj any) {

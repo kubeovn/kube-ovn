@@ -224,6 +224,15 @@ iptables-vpc-nat-gw-conformance-e2e:
 	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
 		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
 
+.PHONY: iptables-eip-qos-conformance-e2e
+iptables-eip-qos-conformance-e2e:
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-eip-qos
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_OUTPUT_OPT) --randomize-all -v \
+		--focus=CNI:Kube-OVN ./test/e2e/iptables-eip-qos/iptables-eip-qos.test -- $(TEST_BIN_ARGS)
+
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
 ovn-vpc-nat-gw-conformance-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-vpc-nat-gw
