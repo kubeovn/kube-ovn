@@ -25,7 +25,7 @@ concurrency:
 env:
   GO_VERSION: ''
   # renovate: datasource=github-releases depName=gosec packageName=securego/gosec
-  GOSEC_VERSION: 2.22.10
+  GOSEC_VERSION: 2.22.11
 
 jobs:
   filter:
