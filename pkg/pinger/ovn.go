@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
@@ -133,18 +134,29 @@ func getChassis(hostname string) (string, error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	// Create the OVSDB query with the hostname filter
-	query := fmt.Sprintf(`["%s",{"op":"select","table":"Chassis","where":[["hostname","==","%s"]],"columns":["_uuid"]}]`, ovnsb.DatabaseName, hostname)
-
+	operation := ovsdb.Operation{
+		Op:    ovsdb.OperationSelect,
+		Table: ovnsb.ChassisTable,
+		Where: []ovsdb.Condition{{
+			Column:   "hostname",
+			Function: ovsdb.ConditionEqual,
+			Value:    hostname,
+		}},
+		Columns: []string{"_uuid"},
+	}
+	query, err := operation.MarshalJSON()
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal operation %+v: %w", operation, err)
+	}
 	command := []string{
-		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,
+		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), query,
+			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), string(query),
 		}
 	}
 
@@ -168,21 +180,33 @@ func getChassis(hostname string) (string, error) {
 	return responses[0].Rows[0].UUID[1], nil
 }
 
-func getLogicalPort(chassis string) (set.Set[string], error) {
+func getLogicalPort(chassisUUID string) (set.Set[string], error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	query := fmt.Sprintf(`["%s",{"op":"select","table":"Port_Binding","where":[["chassis","==",["uuid","%s"]]],"columns":["logical_port"]}]`, ovnsb.DatabaseName, chassis)
-
+	operation := ovsdb.Operation{
+		Op:    ovsdb.OperationSelect,
+		Table: ovnsb.PortBindingTable,
+		Where: []ovsdb.Condition{{
+			Column:   "chassis",
+			Function: ovsdb.ConditionEqual,
+			Value:    ovsdb.UUID{GoUUID: chassisUUID},
+		}},
+		Columns: []string{"logical_port"},
+	}
+	query, err := operation.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal operation %+v: %w", operation, err)
+	}
 	command := []string{
-		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), query,
+		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), query,
+			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), string(query),
 		}
 	}
 	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
@@ -198,7 +222,7 @@ func getLogicalPort(chassis string) (set.Set[string], error) {
 	}
 
 	if len(responses) == 0 || len(responses[0].Rows) == 0 {
-		return nil, fmt.Errorf("no logical port found for chassis %q", chassis)
+		return nil, fmt.Errorf("no logical port found for chassis with uuid %q", chassisUUID)
 	}
 
 	ports := set.New[string]()
@@ -209,9 +233,9 @@ func getLogicalPort(chassis string) (set.Set[string], error) {
 }
 
 func checkSBBindings(config *Configuration) (set.Set[string], error) {
-	chassis, err := getChassis(config.NodeName)
+	chassisUUID, err := getChassis(config.NodeName)
 	if err != nil {
 		return nil, err
 	}
-	return getLogicalPort(chassis)
+	return getLogicalPort(chassisUUID)
 }

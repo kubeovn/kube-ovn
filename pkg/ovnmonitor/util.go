@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
-	"github.com/kubeovn/ovsdb"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
@@ -26,8 +26,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status " + ovnnb.DatabaseName
-	cmd := exec.Command("sh", "-c", cmdstr)
+	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
@@ -36,8 +35,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
 
 	// get ovn-southbound status
-	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status " + ovnsb.DatabaseName
-	cmd = exec.Command("sh", "-c", cmdstr)
+	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
@@ -51,9 +49,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 		klog.Errorf("read ovn-northd pid failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else {
-		cmdstr := fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn-northd.%s.ctl status", strings.Trim(string(pid), "\n"))
-		klog.V(3).Infof("cmd is %v", cmdstr)
-		cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
+		cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.Trim(string(pid), "\n")), "status")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			klog.Errorf("get ovn-northd status failed, err %v", err)
@@ -79,8 +75,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	cmdstr := "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status " + ovnnb.DatabaseName
-	cmd := exec.Command("sh", "-c", cmdstr)
+	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
@@ -91,8 +86,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	}
 
 	// get ovn-southbound status
-	cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status " + ovnsb.DatabaseName
-	cmd = exec.Command("sh", "-c", cmdstr)
+	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
@@ -106,8 +100,7 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 }
 
 func getClusterEnableState(dbName string) (bool, error) {
-	cmdstr := "ovsdb-tool db-is-clustered " + dbName
-	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
+	cmd := exec.Command("ovsdb-tool", "db-is-clustered", dbName) // #nosec G204
 	_, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Error(err)
@@ -181,16 +174,13 @@ func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 }
 
 func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
-	clusterStatus := &OVNDBClusterStatus{}
-	var err error
-
-	cmdstr := fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", direction, dbName)
-	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
+	cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/%s_db.ctl", direction), "cluster/status", dbName) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster/status info for database %s: %w", dbName, err)
 	}
 
+	clusterStatus := &OVNDBClusterStatus{}
 	for line := range strings.SplitSeq(string(output), "\n") {
 		idx := strings.Index(line, ":")
 		if idx == -1 {
@@ -314,16 +304,17 @@ func parseDbStatus(output string) int {
 }
 
 func getDBStatus(dbName string) (bool, error) {
-	var cmdstr string
+	var cmd *exec.Cmd
 	var result bool
 	switch dbName {
 	case ovnnb.DatabaseName:
-		cmdstr = "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status " + dbName
+		cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "ovsdb-server/get-db-storage-status", dbName) // #nosec G204
 	case ovnsb.DatabaseName:
-		cmdstr = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status " + dbName
+		cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "ovsdb-server/get-db-storage-status", dbName) // #nosec G204
+	default:
+		return false, fmt.Errorf("unknown db name %s", dbName)
 	}
 
-	cmd := exec.Command("sh", "-c", cmdstr) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("get %s status failed, err %v", dbName, err)
