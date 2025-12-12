@@ -226,7 +226,8 @@ var _ = framework.Describe("[group:vip]", func() {
 
 		ginkgo.By("4. Verify subnet status after VIP creation")
 		afterCreateSubnet := subnetClient.Get(subnetName)
-		if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterCreateSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			// Verify IP count changed
 			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by 1 after VIP creation")
@@ -243,7 +244,7 @@ var _ = framework.Describe("[group:vip]", func() {
 			vipIP := testVip.Status.V4ip
 			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V4UsingIPRange, vipIP),
 				"VIP IP %s should be in V4UsingIPRange %s", vipIP, afterCreateSubnet.Status.V4UsingIPRange)
-		} else if afterCreateSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			// Verify IP count changed
 			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should decrease by 1 after VIP creation")
@@ -260,7 +261,7 @@ var _ = framework.Describe("[group:vip]", func() {
 			vipIP := testVip.Status.V6ip
 			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V6UsingIPRange, vipIP),
 				"VIP IP %s should be in V6UsingIPRange %s", vipIP, afterCreateSubnet.Status.V6UsingIPRange)
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should decrease by 1 after VIP creation")
@@ -299,7 +300,8 @@ var _ = framework.Describe("[group:vip]", func() {
 
 		ginkgo.By("7. Verify subnet status after VIP deletion")
 		afterDeleteSubnet := subnetClient.Get(subnetName)
-		if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		switch afterDeleteSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
 			// Verify IP count is restored
 			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should increase by 1 after VIP deletion")
@@ -317,7 +319,7 @@ var _ = framework.Describe("[group:vip]", func() {
 				"V4AvailableIPs should return to initial value after VIP deletion")
 			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
 				"V4UsingIPs should return to initial value after VIP deletion")
-		} else if afterDeleteSubnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		case apiv1.ProtocolIPv6:
 			// Verify IP count is restored
 			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
 				"V6AvailableIPs should increase by 1 after VIP deletion")
@@ -335,7 +337,7 @@ var _ = framework.Describe("[group:vip]", func() {
 				"V6AvailableIPs should return to initial value after VIP deletion")
 			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
 				"V6UsingIPs should return to initial value after VIP deletion")
-		} else {
+		default:
 			// Dual stack
 			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
 				"V4AvailableIPs should increase by 1 after VIP deletion")
@@ -377,7 +379,7 @@ var _ = framework.Describe("[group:vip]", func() {
 
 		// Wait for finalizer to be added
 		ginkgo.By("Waiting for VIP finalizer to be added")
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			countingVip = vipClient.Get(countingVipName)
 			if len(countingVip.Finalizers) > 0 {
 				break

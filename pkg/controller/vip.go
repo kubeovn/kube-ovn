@@ -42,7 +42,6 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}
-
 }
 
 func (c *Controller) enqueueDelVirtualIP(obj any) {
