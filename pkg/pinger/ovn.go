@@ -134,7 +134,7 @@ func getChassis(hostname string) (string, error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	operation := ovsdb.Operation{
+	transaction := ovsdb.NewTransactArgs(ovnsb.DatabaseName, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: ovnsb.ChassisTable,
 		Where: []ovsdb.Condition{{
@@ -143,16 +143,16 @@ func getChassis(hostname string) (string, error) {
 			Value:    hostname,
 		}},
 		Columns: []string{"_uuid"},
-	}
-	query, err := operation.MarshalJSON()
+	})
+	query, err := json.Marshal(transaction)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal operation %+v: %w", operation, err)
+		return "", fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transaction, err)
 	}
-	command := []string{
+	args := []string{
 		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
-		command = []string{
+		args = []string{
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
@@ -161,7 +161,7 @@ func getChassis(hostname string) (string, error) {
 	}
 
 	// Execute the ovsdb-client command and get the JSON output.
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to find chassis %v", err)
 		return "", err
@@ -184,7 +184,7 @@ func getLogicalPort(chassisUUID string) (set.Set[string], error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 
-	operation := ovsdb.Operation{
+	transaction := ovsdb.NewTransactArgs(ovnsb.DatabaseName, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: ovnsb.PortBindingTable,
 		Where: []ovsdb.Condition{{
@@ -193,10 +193,10 @@ func getLogicalPort(chassisUUID string) (set.Set[string], error) {
 			Value:    ovsdb.UUID{GoUUID: chassisUUID},
 		}},
 		Columns: []string{"logical_port"},
-	}
-	query, err := operation.MarshalJSON()
+	})
+	query, err := json.Marshal(transaction)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal operation %+v: %w", operation, err)
+		return nil, fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transaction, err)
 	}
 	command := []string{
 		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),

@@ -113,7 +113,7 @@ func getClusterEnableState(dbName string) (bool, error) {
 func (e *Exporter) setLogicalSwitchInfoMetric() {
 	lsws, err := e.Client.GetLogicalSwitches()
 	if err != nil {
-		klog.Errorf("%s: %v", e.Client.Database.Southbound.Name, err)
+		klog.Errorf("failed to get logical switches: %v", err)
 		e.IncrementErrorCounter()
 	} else {
 		for _, lsw := range lsws {
@@ -175,7 +175,7 @@ func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 }
 
 func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
-	cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/%s_db.ctl", direction), "cluster/status", dbName) // #nosec G204
+	cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/ovn%s_db.ctl", direction), "cluster/status", dbName) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster/status info for database %s: %w", dbName, err)
