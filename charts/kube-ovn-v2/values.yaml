@@ -574,6 +574,29 @@ monitor:
       cpu: "200m"
       memory: "200Mi"
 
+  # -- Node affinity configuration for kube-ovn-monitor.
+  # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  # @section -- OVN monitoring daemon configuration
+  nodeAffinity:
+    # -- User-preferred node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    requiredDuringSchedulingIgnoredDuringExecution: []
+
   # -- kube-ovn-monitor metrics configuration.
   # @section -- OVN monitoring daemon configuration
   # @default -- "{}"
@@ -609,6 +632,29 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+
+  # -- Node affinity configuration for kube-ovn-controller.
+  # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  # @section -- Kube-OVN controller configuration
+  nodeAffinity:
+    # -- User-preferred node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    requiredDuringSchedulingIgnoredDuringExecution: []
 
   # -- Controller metrics configuration.
   # @section -- Kube-OVN controller configuration
@@ -646,6 +692,29 @@ central:
       cpu: "3"
       memory: "4Gi"
 
+  # -- Node affinity configuration for ovn-central.
+  # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  # @section -- OVN-central daemon configuration
+  nodeAffinity:
+    # -- User-preferred node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    requiredDuringSchedulingIgnoredDuringExecution: []
+
   # -- ""
   # @section -- OVN-central daemon configuration.
   ovnNorthdProbeInterval: 5000
@@ -655,6 +724,34 @@ central:
   # -- ""
   # @section -- OVN-central daemon configuration.
   ovnLeaderProbeInterval: 5
+
+
+# -- Configuration for the OVN interconnection (IC) controller.
+# @section -- OVN IC controller configuration
+# @default -- "{}"
+ic:
+  # -- Node affinity configuration for the OVN IC controller.
+  # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  # @section -- OVN IC controller configuration
+  nodeAffinity:
+    # -- User-preferred node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    # -- User-required node affinity matchExpressions. Each entry should be a series of match expressions to be AND'd together, and all entries will be OR'd together
+    # -- Each entry should look like the following:
+    # -- matchExpressions:
+    # --   - key: topology.kubernetes.io/zone
+    # --     operator: In
+    # --     values:
+    # --     - antarctica-east1
+    # --     - antarctica-west1
+    requiredDuringSchedulingIgnoredDuringExecution: []
 
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
 # @section -- CNI agent configuration

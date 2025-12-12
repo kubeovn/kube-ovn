@@ -151,3 +151,36 @@ Get IPs of master nodes from values
     65534
   {{- end -}}
 {{- end -}}
+
+{{/*
+Merge hardcoded node affinity expressions with user-provided values.
+Usage: include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedPreferred "hardcodedRequired" $hardcodedRequired "userPreferred" .Values.component.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.component.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution)
+*/}}
+{{- define "kube-ovn.affinities.nodeAffinity" -}}
+{{- $hardcodedPreferred := .hardcodedPreferred | default list -}}
+{{- $hardcodedRequired := .hardcodedRequired | default list -}}
+{{- $userPreferred := .userPreferred | default list -}}
+{{- $userRequired := .userRequired | default list -}}
+{{- $mergedPreferred := concat $hardcodedPreferred $userPreferred -}}
+{{- $mergedRequired := concat $hardcodedRequired $userRequired -}}
+{{- if or $mergedPreferred $mergedRequired -}}
+nodeAffinity:
+  {{- if $mergedPreferred }}
+  preferredDuringSchedulingIgnoredDuringExecution:
+    {{- range $mergedPreferred }}
+    - preference:
+        matchExpressions:
+          {{- toYaml .matchExpressions | nindent 10 }}
+      weight: {{ .weight | default 100 }}
+    {{- end }}
+  {{- end }}
+  {{- if $mergedRequired }}
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      {{- range $mergedRequired }}
+      - matchExpressions:
+          {{- toYaml .matchExpressions | nindent 8 }}
+      {{- end }}
+  {{- end }}
+{{- end -}}
+{{- end -}}
