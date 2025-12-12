@@ -10,13 +10,18 @@ import (
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 )
 
+var ipv6SysctlSettings = map[string]string{
+	"disable_ipv6": "0",
+	"accept_ra":    "0",
+}
+
 // For docker version >=17.x the "none" network will disable ipv6 by default.
 // We have to enable ipv6 here to add v6 address and gateway.
 // See https://github.com/containernetworking/cni/issues/531
 func sysctlEnableIPv6(nsPath string) error {
 	return ns.WithNetNSPath(nsPath, func(_ ns.NetNS) error {
 		for _, conf := range [...]string{"all", "default"} {
-			for k, v := range map[string]string{"disable_ipv6": "0", "accept_ra": "0"} {
+			for k, v := range ipv6SysctlSettings {
 				name := fmt.Sprintf("net.ipv6.conf.%s.%s", conf, k)
 				value, err := sysctl.Sysctl(name)
 				if err != nil {
