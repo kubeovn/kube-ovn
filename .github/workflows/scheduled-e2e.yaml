@@ -58,7 +58,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -148,7 +148,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -295,7 +295,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -375,7 +375,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -624,7 +624,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -702,7 +702,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -778,7 +778,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -916,7 +916,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -1010,7 +1010,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -1101,7 +1101,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -1263,7 +1263,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
@@ -1339,7 +1339,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
