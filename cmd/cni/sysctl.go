@@ -10,9 +10,12 @@ import (
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 )
 
-var ipv6SysctlSettings = map[string]string{
-	"disable_ipv6": "0",
-	"accept_ra":    "0",
+var ipv6SysctlSettings = []struct {
+	key   string
+	value string
+}{
+	{"disable_ipv6", "0"},
+	{"accept_ra", "0"},
 }
 
 // For docker version >=17.x the "none" network will disable ipv6 by default.
@@ -21,8 +24,8 @@ var ipv6SysctlSettings = map[string]string{
 func sysctlEnableIPv6(nsPath string) error {
 	return ns.WithNetNSPath(nsPath, func(_ ns.NetNS) error {
 		for _, conf := range [...]string{"all", "default"} {
-			for k, v := range ipv6SysctlSettings {
-				name := fmt.Sprintf("net.ipv6.conf.%s.%s", conf, k)
+			for _, settings := range ipv6SysctlSettings {
+				name := fmt.Sprintf("net.ipv6.conf.%s.%s", conf, settings.key)
 				value, err := sysctl.Sysctl(name)
 				if err != nil {
 					if os.IsNotExist(err) {
@@ -31,13 +34,13 @@ func sysctlEnableIPv6(nsPath string) error {
 					}
 					return fmt.Errorf("failed to get sysctl variable %s: %w", name, err)
 				}
-				if value != v {
-					if _, err = sysctl.Sysctl(name, v); err != nil {
+				if value != settings.value {
+					if _, err = sysctl.Sysctl(name, settings.value); err != nil {
 						if os.IsPermission(err) {
 							// We don't have permission to set the sysctl variable, so we can't set it
 							continue
 						}
-						return fmt.Errorf("failed to set sysctl variable %s to %s: %w", name, v, err)
+						return fmt.Errorf("failed to set sysctl variable %s to %s: %w", name, settings.value, err)
 					}
 				}
 			}
