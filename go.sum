@@ -46,8 +46,8 @@ github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1x
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cenkalti/hub v1.0.2 h1:Nqv9TNaA9boeO2wQFW8o87BY3zKthtnzXmWGmJqhAV8=
 github.com/cenkalti/hub v1.0.2/go.mod h1:8LAFAZcCasb83vfxatMUnZHRoQcffho2ELpHb+kaTJU=
-github.com/cenkalti/rpc2 v1.0.4 h1:MJWmm7mbt8r/ZkQS+qr/e2KMMrhMLPr/62CYZIHybdI=
-github.com/cenkalti/rpc2 v1.0.4/go.mod h1:2yfU5b86vOr16+iY1jN3MvT6Kxc9Nf8j5iZWwUf7iaw=
+github.com/cenkalti/rpc2 v1.0.5 h1:T6l4SS3ja3eaJfRyZrn7Oco/PSx/pr3YK5cjCgLVLTk=
+github.com/cenkalti/rpc2 v1.0.5/go.mod h1:2yfU5b86vOr16+iY1jN3MvT6Kxc9Nf8j5iZWwUf7iaw=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cert-manager/cert-manager v1.19.2 h1:jSprN1h5pgNDSl7HClAmIzXuTxic/5FXJ32kbQHqjlM=
 github.com/cert-manager/cert-manager v1.19.2/go.mod h1:e9NzLtOKxTw7y99qLyWGmPo6mrC1Nh0EKKcMkRfK+GE=
@@ -390,8 +390,8 @@ github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315 h1:PYw
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20250410045132-f48faac0d315/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20251128080558-ab7d8b8b5a66 h1:FlIRHOhiL78OOMcvM8rfEACgdBKiDpw0E3FSn272wJA=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20251128080558-ab7d8b8b5a66/go.mod h1:98SIBmkgyZgcqIA+Rx3p2JLIk0Njjs5ZjyWu71epN7g=
-github.com/kubeovn/libovsdb v0.0.0-20250902054237-bde1f5f13d47 h1:qWX4iRn+Bm+KxSeuPBeTPTAJQf0Be7uMikvEN9D5B9o=
-github.com/kubeovn/libovsdb v0.0.0-20250902054237-bde1f5f13d47/go.mod h1:/19bkWV962l/SCxz/XZ45UZvGyvOQhQKYquHmTxfWIk=
+github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e h1:/DjPaByhzfDJcJ8A9jqoi16q/O1N5nGOHy9VmNZVnVM=
+github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e/go.mod h1:uqOuVsuGSJPoHDOS5O9VkJz/TIPm6Az/YZesHZ3qwDw=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
