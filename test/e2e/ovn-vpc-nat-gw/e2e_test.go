@@ -128,57 +128,58 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// gw node is 2 means e2e HA cluster will have 2 gw nodes and a worker node
 		// in this env, tcpdump gw nat flows will be more clear
 
-		noBfdVpcName = "no-bfd-vpc-" + framework.RandomSuffix()
-		bfdVpcName = "bfd-vpc-" + framework.RandomSuffix()
+		randomSuffix := framework.RandomSuffix()
+		noBfdVpcName = "no-bfd-vpc-" + randomSuffix
+		bfdVpcName = "bfd-vpc-" + randomSuffix
 
 		// nats use ip crd name or vip crd
-		fipName = "fip-" + framework.RandomSuffix()
+		fipName = "fip-" + randomSuffix
 
-		countingEipName = "counting-eip-" + framework.RandomSuffix()
-		noBfdSubnetName = "no-bfd-subnet-" + framework.RandomSuffix()
-		noBfdExtraSubnetName = "no-bfd-extra-subnet-" + framework.RandomSuffix()
-		lrpEipSnatName = "lrp-eip-snat-" + framework.RandomSuffix()
-		lrpExtraEipSnatName = "lrp-extra-eip-snat-" + framework.RandomSuffix()
-		bfdSubnetName = "bfd-subnet-" + framework.RandomSuffix()
-		providerNetworkName = "external"
-		providerExtraNetworkName = "extra"
-		vlanName = "vlan-" + framework.RandomSuffix()
-		vlanExtraName = "vlan-extra-" + framework.RandomSuffix()
-		underlaySubnetName = "external"
-		underlayExtraSubnetName = "extra"
+		countingEipName = "counting-eip-" + randomSuffix
+		noBfdSubnetName = "no-bfd-subnet-" + randomSuffix
+		noBfdExtraSubnetName = "no-bfd-extra-subnet-" + randomSuffix
+		lrpEipSnatName = "lrp-eip-snat-" + randomSuffix
+		lrpExtraEipSnatName = "lrp-extra-eip-snat-" + randomSuffix
+		bfdSubnetName = "bfd-subnet-" + randomSuffix
+		providerNetworkName = "external-" + randomSuffix
+		providerExtraNetworkName = "extra-" + randomSuffix
+		vlanName = "vlan-" + randomSuffix
+		vlanExtraName = "vlan-extra-" + randomSuffix
+		underlaySubnetName = "external-" + randomSuffix
+		underlayExtraSubnetName = "extra-" + randomSuffix
 
 		// sharing case
-		sharedVipName = "shared-vip-" + framework.RandomSuffix()
-		sharedEipDnatName = "shared-eip-dnat-" + framework.RandomSuffix()
-		sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
-		sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
+		sharedVipName = "shared-vip-" + randomSuffix
+		sharedEipDnatName = "shared-eip-dnat-" + randomSuffix
+		sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + randomSuffix
+		sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + randomSuffix
 
 		// pod with fip
-		fipPodName = "fip-pod-" + framework.RandomSuffix()
+		fipPodName = "fip-pod-" + randomSuffix
 		podEipName = fipPodName
 		podFipName = fipPodName
 
 		// pod with fip for extra external subnet
-		fipExtraPodName = "fip-extra-pod-" + framework.RandomSuffix()
+		fipExtraPodName = "fip-extra-pod-" + randomSuffix
 		podExtraEipName = fipExtraPodName
 		podExtraFipName = fipExtraPodName
 
 		// fip use ip addr
-		ipFipVipName = "ip-fip-vip-" + framework.RandomSuffix()
-		ipFipEipName = "ip-fip-eip-" + framework.RandomSuffix()
-		ipFipName = "ip-fip-" + framework.RandomSuffix()
+		ipFipVipName = "ip-fip-vip-" + randomSuffix
+		ipFipEipName = "ip-fip-eip-" + randomSuffix
+		ipFipName = "ip-fip-" + randomSuffix
 
 		// dnat use ip addr
-		ipDnatVipName = "ip-dnat-vip-" + framework.RandomSuffix()
-		ipDnatEipName = "ip-dnat-eip-" + framework.RandomSuffix()
-		ipDnatName = "ip-dnat-" + framework.RandomSuffix()
+		ipDnatVipName = "ip-dnat-vip-" + randomSuffix
+		ipDnatEipName = "ip-dnat-eip-" + randomSuffix
+		ipDnatName = "ip-dnat-" + randomSuffix
 
 		// snat use ip cidr
-		cidrSnatEipName = "cidr-snat-eip-" + framework.RandomSuffix()
-		cidrSnatName = "cidr-snat-" + framework.RandomSuffix()
-		ipSnatVipName = "ip-snat-vip-" + framework.RandomSuffix()
-		ipSnatEipName = "ip-snat-eip-" + framework.RandomSuffix()
-		ipSnatName = "ip-snat-" + framework.RandomSuffix()
+		cidrSnatEipName = "cidr-snat-eip-" + randomSuffix
+		cidrSnatName = "cidr-snat-" + randomSuffix
+		ipSnatVipName = "ip-snat-vip-" + randomSuffix
+		ipSnatEipName = "ip-snat-eip-" + randomSuffix
+		ipSnatName = "ip-snat-" + randomSuffix
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -519,7 +520,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Checking underlay vlan " + oldUnderlayExternalSubnet.Name)
 		framework.ExpectEqual(oldUnderlayExternalSubnet.Spec.Vlan, vlanName)
 		framework.ExpectNotEqual(oldUnderlayExternalSubnet.Spec.CIDRBlock, "")
-		time.Sleep(3 * time.Second)
+		ginkgo.By("Wait for ovn eip finalizer to be added")
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			eipCR := ovnEipClient.Get(countingEipName)
+			return eipCR != nil && len(eipCR.Finalizers) > 0, nil
+		}, "OvnEip should have finalizer added")
+		ginkgo.By("Wait for subnet status to be updated after ovn eip creation")
+		time.Sleep(5 * time.Second)
 		newUnerlayExternalSubnet := subnetClient.Get(underlaySubnetName)
 		ginkgo.By("Check status using ovn eip for subnet " + underlaySubnetName)
 		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
@@ -536,7 +543,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// delete counting eip
 		oldUnderlayExternalSubnet = newUnerlayExternalSubnet
 		ovnEipClient.DeleteSync(countingEipName)
-		time.Sleep(3 * time.Second)
+		ginkgo.By("Wait for subnet status to be updated after ovn eip deletion")
+		time.Sleep(5 * time.Second)
 		newUnerlayExternalSubnet = subnetClient.Get(underlaySubnetName)
 		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPs+1, newUnerlayExternalSubnet.Status.V4AvailableIPs)
