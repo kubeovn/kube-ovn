@@ -35,8 +35,9 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 			// avoid delete eip twice
 			return
 		}
-		klog.Infof("enqueue del ovn eip %s", key)
-		c.delOvnEipQueue.Add(newEip)
+		// EIP with finalizer should be handled in updateOvnEipQueue
+		klog.Infof("enqueue update (deleting) ovn eip %s", key)
+		c.updateOvnEipQueue.Add(key)
 		return
 	}
 	oldEip := oldObj.(*kubeovnv1.OvnEip)
@@ -172,8 +173,9 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 			return err
 		}
 		if nat != "" {
-			klog.Infof("ovn eip %s is still being used by NAT rules: %s, waiting for them to be deleted", key, nat)
-			return nil
+			err := fmt.Errorf("ovn eip %s is still being used by NAT rules: %s, waiting for them to be deleted", key, nat)
+			klog.Error(err)
+			return err
 		}
 
 		// Clean up resources before removing finalizer
@@ -264,12 +266,28 @@ func (c *Controller) handleResetOvnEip(key string) error {
 }
 
 func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
-	// Cleanup is now handled in handleUpdateOvnEip before finalizer removal
-	// This function is kept for compatibility with the delete queue
-	klog.V(3).Infof("ovn eip %s cleanup already done in update handler", eip.Name)
+	// This handles deletion of EIPs without finalizers (race condition or direct deletion)
+	// EIPs with finalizers are handled in handleUpdateOvnEip
+	klog.Infof("handle del ovn eip %s (without finalizer)", eip.Name)
 
-	// For OvnEips deleted without finalizer (race condition or direct deletion),
-	// we need to ensure subnet status is updated as a safety net.
+	// Clean up resources if they still exist
+	if eip.Spec.Type == util.OvnEipTypeLSP {
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
+			return err
+		}
+	}
+	if eip.Spec.Type == util.OvnEipTypeLRP {
+		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
+			return err
+		}
+	}
+
+	// Release IP from IPAM
+	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
+
+	// Ensure subnet status is updated
 	if eip.Spec.ExternalSubnet != "" {
 		c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
 	}
