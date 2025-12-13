@@ -164,6 +164,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 		return nil
 	}
 	newQoSPolicies := cachedQoSPolicies.DeepCopy()
+	controllerutil.RemoveFinalizer(newQoSPolicies, util.DepreciatedFinalizerName)
 	controllerutil.RemoveFinalizer(newQoSPolicies, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicies, newQoSPolicies)
 	if err != nil {
@@ -435,6 +436,7 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		return nil
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()
+	controllerutil.RemoveFinalizer(newQoSPolicy, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newQoSPolicy, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedQoSPolicy, newQoSPolicy)
 	if err != nil {

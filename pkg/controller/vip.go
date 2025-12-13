@@ -519,6 +519,7 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
+	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -553,6 +554,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
+	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
 	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
