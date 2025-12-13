@@ -583,6 +583,7 @@ func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 		return nil
 	}
 	newFip := cachedFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {

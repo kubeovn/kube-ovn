@@ -114,6 +114,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 
+	controllerutil.RemoveFinalizer(gw, util.DepreciatedFinalizerName)
 	if controllerutil.AddFinalizer(gw, util.KubeOVNControllerFinalizer) {
 		updatedGateway, err := c.config.KubeOvnClient.KubeovnV1().VpcEgressGateways(gw.Namespace).
 			Update(context.Background(), gw, metav1.UpdateOptions{})
@@ -981,6 +982,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 	}
 
 	gw := cachedGateway.DeepCopy()
+	controllerutil.RemoveFinalizer(gw, util.DepreciatedFinalizerName)
 	if controllerutil.RemoveFinalizer(gw, util.KubeOVNControllerFinalizer) {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcEgressGateways(gw.Namespace).
 			Update(context.Background(), gw, metav1.UpdateOptions{}); err != nil {

@@ -530,6 +530,7 @@ func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEi
 		return nil
 	}
 	newEip := cachedEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newEip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {

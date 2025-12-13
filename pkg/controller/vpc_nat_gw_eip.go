@@ -704,6 +704,7 @@ func (c *Controller) handleAddOrUpdateIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
@@ -739,6 +740,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {

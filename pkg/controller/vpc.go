@@ -1182,11 +1182,13 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 	}
 
 	if vpc.DeletionTimestamp.IsZero() && !slices.Contains(vpc.GetFinalizers(), util.KubeOVNControllerFinalizer) {
+		controllerutil.RemoveFinalizer(vpc, util.DepreciatedFinalizerName)
 		controllerutil.AddFinalizer(vpc, util.KubeOVNControllerFinalizer)
 		changed = true
 	}
 
 	if !vpc.DeletionTimestamp.IsZero() && len(vpc.Status.Subnets) == 0 {
+		controllerutil.RemoveFinalizer(vpc, util.DepreciatedFinalizerName)
 		controllerutil.RemoveFinalizer(vpc, util.KubeOVNControllerFinalizer)
 		changed = true
 	}
