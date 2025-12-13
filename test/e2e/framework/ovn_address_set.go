@@ -65,9 +65,9 @@ func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 
 	model := models[ovnnb.AddressSetTable]
 	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
-		"Name":        reflect.TypeOf(""),
-		"Addresses":   reflect.SliceOf(reflect.TypeOf("")),
-		"ExternalIDs": reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf("")),
+		"Name":        reflect.TypeFor[string](),
+		"Addresses":   reflect.SliceOf(reflect.TypeFor[string]()),
+		"ExternalIDs": reflect.MapOf(reflect.TypeFor[string](), reflect.TypeFor[string]()),
 	})
 
 	err := wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {

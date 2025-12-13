@@ -163,11 +163,11 @@ func ipToCIDR(value string) (string, error) {
 // simplifyOVNAddress removes /32 and /128 suffixes for single IP addresses in OVN address sets.
 // OVN accepts both "10.0.0.1" and "10.0.0.1/32", but the former is simpler.
 func simplifyOVNAddress(cidr string) string {
-	if strings.HasSuffix(cidr, "/32") {
-		return strings.TrimSuffix(cidr, "/32")
+	if before, found := strings.CutSuffix(cidr, "/32"); found {
+		return before
 	}
-	if strings.HasSuffix(cidr, "/128") {
-		return strings.TrimSuffix(cidr, "/128")
+	if before, found := strings.CutSuffix(cidr, "/128"); found {
+		return before
 	}
 	return cidr
 }

@@ -573,7 +573,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	deploy := deployClient.Get(veg.Status.Workload.Name)
 	framework.ExpectEqual(deploy.Status.Replicas, replicas)
 	framework.ExpectEqual(deploy.Status.ReadyReplicas, replicas)
-	gvk := appsv1.SchemeGroupVersion.WithKind(reflect.TypeOf(deploy).Elem().Name())
+	gvk := appsv1.SchemeGroupVersion.WithKind(reflect.TypeFor[appsv1.Deployment]().Name())
 	framework.ExpectEqual(veg.Status.Workload.APIVersion, gvk.GroupVersion().String())
 	framework.ExpectEqual(veg.Status.Workload.Kind, gvk.Kind)
 	framework.ExpectHaveLen(veg.Status.Workload.Nodes, int(replicas))

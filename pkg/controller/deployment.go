@@ -18,12 +18,12 @@ var (
 )
 
 func init() {
-	name := reflect.TypeOf(&appsv1.Deployment{}).Elem().Name()
+	name := reflect.TypeFor[appsv1.Deployment]().Name()
 	gvk := appsv1.SchemeGroupVersion.WithKind(name)
 	deploymentGroupVersion = gvk.GroupVersion().String()
 	deploymentKind = gvk.Kind
 
-	name = reflect.TypeOf(&kubeovnv1.VpcEgressGateway{}).Elem().Name()
+	name = reflect.TypeFor[kubeovnv1.VpcEgressGateway]().Name()
 	gvk = kubeovnv1.SchemeGroupVersion.WithKind(name)
 	vpcEgressGatewayGroupVersion = gvk.GroupVersion().String()
 	vpcEgressGatewayKind = gvk.Kind
