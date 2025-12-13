@@ -141,12 +141,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		lrpEipSnatName = "lrp-eip-snat-" + randomSuffix
 		lrpExtraEipSnatName = "lrp-extra-eip-snat-" + randomSuffix
 		bfdSubnetName = "bfd-subnet-" + randomSuffix
-		providerNetworkName = "external-" + randomSuffix
-		providerExtraNetworkName = "extra-" + randomSuffix
+		// provider network name has 12 bytes limit, use short prefix
+		providerNetworkName = "external"
+		providerExtraNetworkName = "extra"
 		vlanName = "vlan-" + randomSuffix
 		vlanExtraName = "vlan-extra-" + randomSuffix
-		underlaySubnetName = "external-" + randomSuffix
-		underlayExtraSubnetName = "extra-" + randomSuffix
+		// underlay subnet names use fixed names for global reuse
+		underlaySubnetName = "external"
+		underlayExtraSubnetName = "extra"
 
 		// sharing case
 		sharedVipName = "shared-vip-" + randomSuffix
@@ -265,9 +267,16 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		itFn = func(exchangeLinkName bool, providerNetworkName string, linkMap map[string]*iproute.Link, bridgeIps *[]string) {
 			ginkgo.GinkgoHelper()
 
-			ginkgo.By("Creating provider network " + providerNetworkName)
-			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
-			pn = providerNetworkClient.CreateSync(pn)
+			ginkgo.By("Getting or creating provider network " + providerNetworkName)
+			// Try to get existing provider network first
+			pn, err := providerNetworkClient.ProviderNetworkInterface.Get(context.Background(), providerNetworkName, metav1.GetOptions{})
+			if err != nil && k8serrors.IsNotFound(err) {
+				// Provider network doesn't exist, create it
+				pn = makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
+				pn = providerNetworkClient.CreateSync(pn)
+			} else {
+				framework.ExpectNoError(err, "getting provider network "+providerNetworkName)
+			}
 
 			ginkgo.By("Getting k8s nodes")
 			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
@@ -472,11 +481,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		exchangeLinkName := false
 		itFn(exchangeLinkName, providerNetworkName, linkMap, &providerBridgeIps)
 
-		ginkgo.By("Creating underlay vlan " + vlanName)
-		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		ginkgo.By("Getting or creating underlay vlan " + vlanName)
+		_, err = vlanClient.VlanInterface.Get(context.Background(), vlanName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			// Vlan doesn't exist, create it
+			vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+			_ = vlanClient.Create(vlan)
+		} else {
+			framework.ExpectNoError(err, "getting vlan "+vlanName)
+		}
 
-		ginkgo.By("Creating underlay subnet " + underlaySubnetName)
+		ginkgo.By("Getting or creating underlay subnet " + underlaySubnetName)
 		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet.String()) {
@@ -513,8 +528,15 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 		vlanSubnetCidr := strings.Join(cidr, ",")
 		vlanSubnetGw := strings.Join(gateway, ",")
-		underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, vlanSubnetCidr, vlanSubnetGw, "", "", excludeIPs, nil, nil)
-		oldUnderlayExternalSubnet := subnetClient.CreateSync(underlaySubnet)
+		var oldUnderlayExternalSubnet *kubeovnv1.Subnet
+		oldUnderlayExternalSubnet, err = subnetClient.SubnetInterface.Get(context.Background(), underlaySubnetName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			// Subnet doesn't exist, create it
+			underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, vlanSubnetCidr, vlanSubnetGw, "", "", excludeIPs, nil, nil)
+			oldUnderlayExternalSubnet = subnetClient.CreateSync(underlaySubnet)
+		} else {
+			framework.ExpectNoError(err, "getting subnet "+underlaySubnetName)
+		}
 		countingEip := makeOvnEip(countingEipName, underlaySubnetName, "", "", "", "")
 		_ = ovnEipClient.CreateSync(countingEip)
 		ginkgo.By("Checking underlay vlan " + oldUnderlayExternalSubnet.Name)
@@ -703,11 +725,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err, "getting extra docker network "+dockerExtraNetworkName)
 		itFn(exchangeLinkName, providerExtraNetworkName, extraLinkMap, &extraProviderBridgeIps)
 
-		ginkgo.By("Creating underlay extra vlan " + vlanExtraName)
-		vlan = framework.MakeVlan(vlanExtraName, providerExtraNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		ginkgo.By("Getting or creating underlay extra vlan " + vlanExtraName)
+		_, err = vlanClient.VlanInterface.Get(context.Background(), vlanExtraName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			// Vlan doesn't exist, create it
+			vlan := framework.MakeVlan(vlanExtraName, providerExtraNetworkName, 0)
+			_ = vlanClient.Create(vlan)
+		} else {
+			framework.ExpectNoError(err, "getting vlan "+vlanExtraName)
+		}
 
-		ginkgo.By("Creating extra underlay subnet " + underlayExtraSubnetName)
+		ginkgo.By("Getting or creating extra underlay subnet " + underlayExtraSubnetName)
 		cidrV4, cidrV6, gatewayV4, gatewayV6 = "", "", "", ""
 		for _, config := range dockerExtraNetwork.IPAM.Config {
 			switch util.CheckProtocol(config.Subnet.String()) {
@@ -745,8 +773,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 		extraVlanSubnetCidr := strings.Join(cidr, ",")
 		extraVlanSubnetGw := strings.Join(gateway, ",")
-		underlayExtraSubnet := framework.MakeSubnet(underlayExtraSubnetName, vlanExtraName, extraVlanSubnetCidr, extraVlanSubnetGw, "", "", extraExcludeIPs, nil, nil)
-		_ = subnetClient.CreateSync(underlayExtraSubnet)
+		_, err = subnetClient.SubnetInterface.Get(context.Background(), underlayExtraSubnetName, metav1.GetOptions{})
+		if err != nil && k8serrors.IsNotFound(err) {
+			// Subnet doesn't exist, create it
+			underlayExtraSubnet := framework.MakeSubnet(underlayExtraSubnetName, vlanExtraName, extraVlanSubnetCidr, extraVlanSubnetGw, "", "", extraExcludeIPs, nil, nil)
+			_ = subnetClient.CreateSync(underlayExtraSubnet)
+		} else {
+			framework.ExpectNoError(err, "getting subnet "+underlayExtraSubnetName)
+		}
 		vlanExtraSubnet := subnetClient.Get(underlayExtraSubnetName)
 		ginkgo.By("Checking extra underlay vlan " + vlanExtraSubnet.Name)
 		framework.ExpectEqual(vlanExtraSubnet.Spec.Vlan, vlanExtraName)
