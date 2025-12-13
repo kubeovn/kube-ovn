@@ -11,12 +11,12 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/go-logr/stdr"
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/database/inmemory"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
-	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
-	"github.com/ovn-org/libovsdb/server"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/database/inmemory"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
+	"github.com/ovn-kubernetes/libovsdb/server"
 	"k8s.io/klog/v2"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +38,7 @@ type OvnClientTestSuite struct {
 }
 
 func emptyNbDatabaseModel() (model.ClientDBModel, error) {
-	return model.NewClientDBModel("OVN_Northbound", map[string]model.Model{})
+	return model.NewClientDBModel(ovnnb.DatabaseName, nil)
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
@@ -1293,7 +1293,7 @@ func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, sche
 	db := inmemory.NewDatabase(map[string]model.ClientDBModel{
 		schema.Name:       dbModel,
 		serverSchema.Name: serverDBModel,
-	})
+	}, nil)
 
 	dbMod, errs := model.NewDatabaseModel(schema, dbModel)
 	require.Empty(t, errs)
@@ -1301,7 +1301,7 @@ func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, sche
 	svrMod, errs := model.NewDatabaseModel(serverSchema, serverDBModel)
 	require.Empty(t, errs)
 
-	server, err := server.NewOvsdbServer(db, dbMod, svrMod)
+	server, err := server.NewOvsdbServer(db, nil, dbMod, svrMod)
 	require.NoError(t, err)
 
 	tmpfile := fmt.Sprintf("/tmp/ovsdb-%s.sock", name)

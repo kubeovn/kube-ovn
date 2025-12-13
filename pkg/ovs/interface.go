@@ -5,8 +5,7 @@ import (
 
 	netv1 "k8s.io/api/networking/v1"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
-
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"

@@ -18,7 +18,7 @@ import (
 	ovnnb "github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	ovnsb "github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	util "github.com/kubeovn/kube-ovn/pkg/util"
-	ovsdb "github.com/ovn-org/libovsdb/ovsdb"
+	ovsdb "github.com/ovn-kubernetes/libovsdb/ovsdb"
 	gomock "go.uber.org/mock/gomock"
 	v10 "k8s.io/api/networking/v1"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"

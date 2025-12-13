@@ -30,9 +30,7 @@ func (c *Controller) setIPLocalPortRangeMetric() {
 }
 
 func (c *Controller) setCheckSumErrMetric() {
-	cmdstr := "netstat -us"
-	cmd := exec.Command("sh", "-c", cmdstr)
-	output, err := cmd.CombinedOutput()
+	output, err := exec.Command("netstat", "-us").CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to exec cmd 'netstat -us', err %v", err)
 		return

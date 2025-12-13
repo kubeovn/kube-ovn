@@ -24,6 +24,8 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -345,9 +347,9 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	}
 
 	if !cfg.ISICDBServer {
-		sbLeader := isDBLeader("OVN_Southbound", 6642)
+		sbLeader := isDBLeader(ovnsb.DatabaseName, 6642)
 		patch := util.KVPatch{
-			"ovn-nb-leader":     strconv.FormatBool(isDBLeader("OVN_Northbound", 6641)),
+			"ovn-nb-leader":     strconv.FormatBool(isDBLeader(ovnnb.DatabaseName, 6641)),
 			"ovn-sb-leader":     strconv.FormatBool(sbLeader),
 			"ovn-northd-leader": strconv.FormatBool(checkNorthdActive()),
 		}
