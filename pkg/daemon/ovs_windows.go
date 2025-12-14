@@ -31,7 +31,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 	hnsNetwork, err := hcsshim.GetHNSNetworkByName(util.HnsNetwork)
 	if err != nil {
-		klog.Errorf("failed to get HNS network %s: %v", util.HnsNetwork)
+		klog.Errorf("failed to get HNS network %s: %v", util.HnsNetwork, err)
 		return nil, err
 	}
 	if hnsNetwork == nil {
@@ -179,12 +179,12 @@ func configureNic(name, ip string, mac net.HardwareAddr, mtu int) error {
 		}
 	}
 
-	addrToAdd := make(map[string]interface{})
+	addrToAdd := make(map[string]any)
 	for _, addr := range strings.Split(ip, ",") {
 		addrToAdd[addr] = true
 	}
 
-	addrToDel := make(map[string]interface{})
+	addrToDel := make(map[string]any)
 	for _, addr := range addresses {
 		// handle IPv6 address, e.g. fe80::e053:1757:f000:be40%47
 		addr.IPAddress = strings.TrimSuffix(addr.IPAddress, fmt.Sprintf("%%%d", addr.InterfaceIndex))
@@ -267,7 +267,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, raw)
-		return fmt.Errorf(raw)
+		return errors.New(raw)
 	}
 
 	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {

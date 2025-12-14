@@ -154,11 +154,11 @@ lint:
     ifeq ($(CI),true)
 		@echo "Running in GitHub Actions"
 		golangci-lint run -v
-		$(MODERNIZE_ENV) go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...
+		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated ./...
     else
 		@echo "Running in local environment"
 		golangci-lint run -v --fix
-		$(MODERNIZE_ENV) go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test --fix ./...
+		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated -fix ./...
     endif
 
 .PHONY: lint-windows

@@ -63,11 +63,9 @@ require (
 	k8s.io/apimachinery v0.34.3
 	k8s.io/apiserver v0.34.3
 	k8s.io/client-go v0.34.3
-	k8s.io/code-generator v0.34.3
 	k8s.io/component-base v0.34.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-aggregator v0.34.3
-	k8s.io/kube-openapi v0.34.3
 	k8s.io/kubectl v0.34.3
 	k8s.io/kubernetes v1.34.3
 	k8s.io/pod-security-admission v0.34.3
@@ -264,6 +262,7 @@ require (
 	k8s.io/cli-runtime v0.34.3 // indirect
 	k8s.io/cloud-provider v0.34.3 // indirect
 	k8s.io/cluster-bootstrap v0.34.3 // indirect
+	k8s.io/code-generator v0.34.3 // indirect
 	k8s.io/component-helpers v0.34.3 // indirect
 	k8s.io/controller-manager v0.34.3 // indirect
 	k8s.io/cri-api v0.34.3 // indirect
@@ -272,6 +271,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.34.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250820003526-c297c0c1eb9d // indirect
 	k8s.io/kms v0.34.3 // indirect
+	k8s.io/kube-openapi v0.34.3 // indirect
 	k8s.io/kube-scheduler v0.34.3 // indirect
 	k8s.io/kubelet v0.34.3 // indirect
 	k8s.io/mount-utils v0.34.3 // indirect
@@ -325,6 +325,18 @@ replace (
 	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20251128080558-ab7d8b8b5a66
 )
 
-tool go.uber.org/mock/mockgen
-
-tool github.com/ovn-kubernetes/libovsdb/cmd/modelgen
+tool (
+	github.com/kubeovn/kube-ovn/tools/modernize
+	github.com/ovn-kubernetes/libovsdb/cmd/modelgen
+	go.uber.org/mock/mockgen
+	k8s.io/code-generator/cmd/applyconfiguration-gen
+	k8s.io/code-generator/cmd/client-gen
+	k8s.io/code-generator/cmd/conversion-gen
+	k8s.io/code-generator/cmd/deepcopy-gen
+	k8s.io/code-generator/cmd/defaulter-gen
+	k8s.io/code-generator/cmd/go-to-protobuf
+	k8s.io/code-generator/cmd/informer-gen
+	k8s.io/code-generator/cmd/lister-gen
+	k8s.io/code-generator/cmd/register-gen
+	k8s.io/kube-openapi/cmd/openapi-gen
+)

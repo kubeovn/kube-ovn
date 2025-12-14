@@ -182,7 +182,7 @@ func RouteShow(table, device string, execFunc ExecFunc) ([]Route, error) {
 		// ignore the following error:
 		// Error: ipv4/ipv6: FIB table does not exist.
 		// Dump terminated
-		e.ignoredErrors = append(e.ignoredErrors, reflect.TypeOf(docker.ErrNonZeroExitCode{}))
+		e.ignoredErrors = append(e.ignoredErrors, reflect.TypeFor[docker.ErrNonZeroExitCode]())
 		args = " table " + table
 	}
 	args += devArg(device)

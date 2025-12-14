@@ -81,8 +81,7 @@ func TestAddResources(t *testing.T) {
 		}
 
 		var hasTypeMeta, hasObjMeta, hasListMeta bool
-		for i := range st.NumFields() {
-			v := st.Field(i)
+		for v := range st.Fields() {
 			if !v.Embedded() || !v.Exported() {
 				continue
 			}
