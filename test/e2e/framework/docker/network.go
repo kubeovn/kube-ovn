@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"strings"
 
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -114,6 +115,16 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 	defer cli.Close()
 
 	if _, err = cli.NetworkCreate(context.Background(), name, options); err != nil {
+		// Handle race condition: if network was created between our check and create attempt
+		// Docker returns error like "network with name xxx already exists"
+		if skipIfExists && strings.Contains(err.Error(), "already exists") {
+			// Network already exists, retrieve and return it
+			network, getErr := getNetwork(name, false)
+			if getErr != nil {
+				return nil, getErr
+			}
+			return network, nil
+		}
 		return nil, err
 	}
 

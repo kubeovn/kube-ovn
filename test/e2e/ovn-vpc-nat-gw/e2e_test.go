@@ -31,9 +31,9 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-const dockerNetworkName = "kube-ovn-vlan"
-
-const dockerExtraNetworkName = "kube-ovn-extra-vlan"
+// Docker network names will be initialized in init() with random suffix to avoid conflicts
+var dockerNetworkName string
+var dockerExtraNetworkName string
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *kubeovnv1.ProviderNetwork {
 	var defaultInterface string
@@ -203,14 +203,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		if dockerNetwork == nil {
 			ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
 			network, err := docker.NetworkCreate(dockerNetworkName, true, true)
-			framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
+			framework.ExpectNoError(err, "ensuring docker network "+dockerNetworkName+" exists")
 			dockerNetwork = network
 		}
 
 		if dockerExtraNetwork == nil {
 			ginkgo.By("Ensuring extra docker network " + dockerExtraNetworkName + " exists")
 			network, err := docker.NetworkCreate(dockerExtraNetworkName, true, true)
-			framework.ExpectNoError(err, "creating extra docker network "+dockerExtraNetworkName)
+			framework.ExpectNoError(err, "ensuring extra docker network "+dockerExtraNetworkName+" exists")
 			dockerExtraNetwork = network
 		}
 
@@ -459,16 +459,30 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 
-		if dockerNetwork != nil {
-			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
-		}
-
 		if dockerExtraNetwork != nil {
 			ginkgo.By("Disconnecting nodes from the docker extra network")
-			err = kind.NetworkDisconnect(dockerExtraNetwork.ID, nodes)
-			framework.ExpectNoError(err, "disconnecting nodes from extra network "+dockerExtraNetworkName)
+			if err = kind.NetworkDisconnect(dockerExtraNetwork.ID, nodes); err != nil {
+				framework.Logf("Warning: failed to disconnect nodes from extra network %s: %v", dockerExtraNetworkName, err)
+			}
+
+			ginkgo.By("Deleting docker extra network " + dockerExtraNetworkName)
+			if err = docker.NetworkRemove(dockerExtraNetwork.ID); err != nil {
+				framework.Logf("Warning: failed to remove docker extra network %s: %v", dockerExtraNetworkName, err)
+			}
+			dockerExtraNetwork = nil
+		}
+
+		if dockerNetwork != nil {
+			ginkgo.By("Disconnecting nodes from the docker network")
+			if err = kind.NetworkDisconnect(dockerNetwork.ID, nodes); err != nil {
+				framework.Logf("Warning: failed to disconnect nodes from network %s: %v", dockerNetworkName, err)
+			}
+
+			ginkgo.By("Deleting docker network " + dockerNetworkName)
+			if err = docker.NetworkRemove(dockerNetwork.ID); err != nil {
+				framework.Logf("Warning: failed to remove docker network %s: %v", dockerNetworkName, err)
+			}
+			dockerNetwork = nil
 		}
 	})
 
@@ -1335,6 +1349,11 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 })
 
 func init() {
+	// Generate unique network names for this test run to avoid conflicts with previous runs
+	suffix := framework.RandomSuffix()
+	dockerNetworkName = "kube-ovn-vlan-" + suffix
+	dockerExtraNetworkName = "kube-ovn-extra-vlan-" + suffix
+
 	klog.SetOutput(ginkgo.GinkgoWriter)
 
 	// Register flags.
