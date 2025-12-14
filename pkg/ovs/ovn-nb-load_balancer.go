@@ -16,6 +16,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateLoadBalancer create loadbalancer
@@ -43,6 +44,9 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
 		Protocol: &protocol,
+		ExternalIDs: map[string]string{
+			"vendor": util.CniTypeName,
+		},
 	}
 
 	if len(selectFields) != 0 {

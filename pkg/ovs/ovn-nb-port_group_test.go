@@ -11,6 +11,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreatePortGroup() {
@@ -32,7 +33,13 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 		require.Equal(t, pgName, pg.Name)
-		require.Equal(t, externalIDs, pg.ExternalIDs)
+		// vendor is automatically added by CreatePortGroup
+		expectedExternalIDs := map[string]string{
+			"type":   "test",
+			"key":    "value",
+			"vendor": util.CniTypeName,
+		}
+		require.Equal(t, expectedExternalIDs, pg.ExternalIDs)
 	})
 
 	t.Run("create existing port group", func(t *testing.T) {
@@ -52,7 +59,12 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 		require.Equal(t, pgName, pg.Name)
-		require.Equal(t, updatedExternalIDs, pg.ExternalIDs)
+		// vendor is automatically added by CreatePortGroup
+		expectedExternalIDs := map[string]string{
+			"new":    "data",
+			"vendor": util.CniTypeName,
+		}
+		require.Equal(t, expectedExternalIDs, pg.ExternalIDs)
 	})
 
 	t.Run("create port group with nil externalIDs", func(t *testing.T) {
@@ -63,7 +75,8 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 		require.Equal(t, pgName, pg.Name)
-		require.Empty(t, pg.ExternalIDs)
+		// vendor is automatically added by CreatePortGroup even with nil input
+		require.Equal(t, map[string]string{"vendor": util.CniTypeName}, pg.ExternalIDs)
 	})
 
 	t.Run("create port group with empty externalIDs", func(t *testing.T) {
@@ -74,7 +87,8 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 		require.Equal(t, pgName, pg.Name)
-		require.Empty(t, pg.ExternalIDs)
+		// vendor is automatically added by CreatePortGroup even with empty input
+		require.Equal(t, map[string]string{"vendor": util.CniTypeName}, pg.ExternalIDs)
 	})
 }
 

@@ -1056,6 +1056,27 @@ func (suite *OvnClientTestSuite) Test_NewOvnSbClient() {
 	suite.testNewOvnSbClient()
 }
 
+/* migration unit test */
+func (suite *OvnClientTestSuite) Test_MigrateVendorExternalIDs() {
+	suite.testMigrateVendorExternalIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_MigrateVendorExternalIDsIdempotent() {
+	suite.testMigrateVendorExternalIDsIdempotent()
+}
+
+func (suite *OvnClientTestSuite) Test_MigrateSkipsWhenVersionSet() {
+	suite.testMigrateSkipsWhenVersionSet()
+}
+
+func (suite *OvnClientTestSuite) Test_MigrateRunsWhenOldVersion() {
+	suite.testMigrateRunsWhenOldVersion()
+}
+
+func (suite *OvnClientTestSuite) Test_MigrateVendorExternalIDsSkipsNonKubeOvn() {
+	suite.testMigrateVendorExternalIDsSkipsNonKubeOvn()
+}
+
 /* sb chassis unit test */
 func (suite *OvnClientTestSuite) Test_GetChassis() {
 	suite.testGetChassis()

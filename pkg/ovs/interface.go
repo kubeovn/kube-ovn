@@ -27,6 +27,7 @@ type NBGlobal interface {
 	SetNodeLocalDNSIP(nodeLocalDNSIP string) error
 	SetSkipConntrackCidrs(skipConntrackCidrs string) error
 	GetNbGlobal() (*ovnnb.NBGlobal, error)
+	MigrateVendorExternalIDs() error
 }
 
 type LogicalRouter interface {

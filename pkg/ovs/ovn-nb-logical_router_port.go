@@ -189,6 +189,9 @@ func (c *OVNNbClient) CreateLogicalRouterPort(lrName, lrpName, mac string, netwo
 		Name:     lrpName,
 		MAC:      mac,
 		Networks: networks,
+		ExternalIDs: map[string]string{
+			"vendor": util.CniTypeName,
+		},
 	}
 
 	op, err := c.CreateLogicalRouterPortOp(lrp, lrName)

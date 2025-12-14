@@ -71,6 +71,13 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) migrateACLForVersionCompat() error {
+	// migrate vendor externalIDs to kube-ovn resources created in versions prior to v1.15.0
+	// this must run before ACL cleanup to ensure existing resources are properly tagged
+	if err := c.OVNNbClient.MigrateVendorExternalIDs(); err != nil {
+		klog.Errorf("failed to migrate vendor externalIDs: %v", err)
+		return err
+	}
+
 	// migrate tier field of ACL rules created in versions prior to v1.13.0
 	// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
 	// we need to migrate the tier field to the correct value
