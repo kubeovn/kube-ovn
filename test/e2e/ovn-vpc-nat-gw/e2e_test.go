@@ -31,9 +31,11 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-// Docker network names will be initialized in init() with random suffix to avoid conflicts
+// Docker network configurations will be initialized in init() with random names and subnets
 var dockerNetworkName string
 var dockerExtraNetworkName string
+var dockerNetworkSubnet string
+var dockerExtraNetworkSubnet string
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *kubeovnv1.ProviderNetwork {
 	var defaultInterface string
@@ -201,15 +203,15 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 
 		if dockerNetwork == nil {
-			ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-			network, err := docker.NetworkCreate(dockerNetworkName, true, true)
+			ginkgo.By("Ensuring docker network " + dockerNetworkName + " with subnet " + dockerNetworkSubnet + " exists")
+			network, err := docker.NetworkCreateWithSubnet(dockerNetworkName, dockerNetworkSubnet, true, true)
 			framework.ExpectNoError(err, "ensuring docker network "+dockerNetworkName+" exists")
 			dockerNetwork = network
 		}
 
 		if dockerExtraNetwork == nil {
-			ginkgo.By("Ensuring extra docker network " + dockerExtraNetworkName + " exists")
-			network, err := docker.NetworkCreate(dockerExtraNetworkName, true, true)
+			ginkgo.By("Ensuring extra docker network " + dockerExtraNetworkName + " with subnet " + dockerExtraNetworkSubnet + " exists")
+			network, err := docker.NetworkCreateWithSubnet(dockerExtraNetworkName, dockerExtraNetworkSubnet, true, true)
 			framework.ExpectNoError(err, "ensuring extra docker network "+dockerExtraNetworkName+" exists")
 			dockerExtraNetwork = network
 		}
@@ -1349,10 +1351,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 })
 
 func init() {
-	// Generate unique network names for this test run to avoid conflicts with previous runs
+	// Generate unique network names and subnets for this test run
+	// This avoids conflicts with other parallel test runs on the same host
 	suffix := framework.RandomSuffix()
 	dockerNetworkName = "kube-ovn-vlan-" + suffix
 	dockerExtraNetworkName = "kube-ovn-extra-vlan-" + suffix
+
+	// Generate random /24 subnets within 172.28.0.0/16
+	// This allows up to 256 parallel test runs on the same host
+	subnets := docker.GenerateRandomSubnets(2)
+	dockerNetworkSubnet = subnets[0]
+	dockerExtraNetworkSubnet = subnets[1]
 
 	klog.SetOutput(ginkgo.GinkgoWriter)
 

@@ -2596,8 +2596,15 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 		isIngress := true
 		isBanp := false
 
+		// Clean up any existing port group from previous test runs
+		_ = nbClient.DeletePortGroup(pgName)
+
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
+		defer func() {
+			err := nbClient.DeletePortGroup(pgName)
+			require.NoError(t, err)
+		}()
 		ops, err := nbClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
 		require.NoError(t, err)
 		require.NotEmpty(t, ops)
@@ -2616,8 +2623,15 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 		isIngress := false
 		isBanp := true
 
+		// Clean up any existing port group from previous test runs
+		_ = nbClient.DeletePortGroup(pgName)
+
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
+		defer func() {
+			err := nbClient.DeletePortGroup(pgName)
+			require.NoError(t, err)
+		}()
 		ops, err := nbClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
 		require.NoError(t, err)
 		require.NotEmpty(t, ops)
