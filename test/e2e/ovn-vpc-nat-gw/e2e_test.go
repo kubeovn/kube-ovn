@@ -466,6 +466,40 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting provider extra network " + providerExtraNetworkName)
 		providerNetworkClient.DeleteSync(providerExtraNetworkName)
 
+		ginkgo.By("Confirming provider networks are fully deleted")
+		startTime := time.Now()
+		checkCount := 0
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			checkCount++
+			elapsed := time.Since(startTime)
+
+			pn, err := providerNetworkClient.ProviderNetworkInterface.Get(context.Background(), providerNetworkName, metav1.GetOptions{})
+			if err != nil && !k8serrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				// Provider network still exists
+				framework.Logf("Warning: provider network %s still exists after %v (check #%d), DeletionTimestamp: %v",
+					providerNetworkName, elapsed, checkCount, pn.DeletionTimestamp)
+				return false, nil
+			}
+
+			extraPn, err := providerNetworkClient.ProviderNetworkInterface.Get(context.Background(), providerExtraNetworkName, metav1.GetOptions{})
+			if err != nil && !k8serrors.IsNotFound(err) {
+				return false, err
+			}
+			if err == nil {
+				// Extra provider network still exists
+				framework.Logf("Warning: provider extra network %s still exists after %v (check #%d), DeletionTimestamp: %v",
+					providerExtraNetworkName, elapsed, checkCount, extraPn.DeletionTimestamp)
+				return false, nil
+			}
+
+			// Both provider networks are deleted
+			framework.Logf("Provider networks fully deleted after %v (%d checks)", elapsed, checkCount)
+			return true, nil
+		}, "waiting for provider networks to be fully deleted")
+
 		ginkgo.By("Getting nodes")
 		nodes, err := kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
