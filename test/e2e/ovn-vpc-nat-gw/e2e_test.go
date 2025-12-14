@@ -94,7 +94,7 @@ func makeExternalGatewayConfigMap(gwNodes, switchName string, cidr []string, gwT
 	}
 }
 
-var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
+var _ = framework.Serial("[group:ovn-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("ovn-vpc-nat-gw")
 
 	var skip bool
