@@ -9,10 +9,10 @@ import (
 
 func TestGenerateRandomSubnets(t *testing.T) {
 	tests := []struct {
-		name          string
-		count         int
-		expectPanic   bool
-		validateFunc  func([]string) error
+		name         string
+		count        int
+		expectPanic  bool
+		validateFunc func([]string) error
 	}{
 		{
 			name:  "generate 1 subnet",

@@ -32,10 +32,12 @@ import (
 )
 
 // Docker network configurations will be initialized in init() with random names and subnets
-var dockerNetworkName string
-var dockerExtraNetworkName string
-var dockerNetworkSubnet string
-var dockerExtraNetworkSubnet string
+var (
+	dockerNetworkName        string
+	dockerExtraNetworkName   string
+	dockerNetworkSubnet      string
+	dockerExtraNetworkSubnet string
+)
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *kubeovnv1.ProviderNetwork {
 	var defaultInterface string

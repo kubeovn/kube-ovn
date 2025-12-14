@@ -110,7 +110,7 @@ func NetworkInspect(name string) (*network.Inspect, error) {
 }
 
 // NetworkCreateWithSubnet creates a docker network with specified IPv4 subnet
-func NetworkCreateWithSubnet(name string, ipv4Subnet string, ipv6, skipIfExists bool) (*network.Inspect, error) {
+func NetworkCreateWithSubnet(name, ipv4Subnet string, ipv6, skipIfExists bool) (*network.Inspect, error) {
 	if skipIfExists {
 		network, err := getNetwork(name, true)
 		if err != nil {
@@ -137,7 +137,7 @@ func NetworkCreateWithSubnet(name string, ipv4Subnet string, ipv6, skipIfExists 
 	if ipv4Subnet != "" {
 		gateway, err := util.FirstIP(ipv4Subnet)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get gateway for subnet %s: %v", ipv4Subnet, err)
+			return nil, fmt.Errorf("failed to get gateway for subnet %s: %w", ipv4Subnet, err)
 		}
 		config := network.IPAMConfig{
 			Subnet:  netip.MustParsePrefix(ipv4Subnet),
