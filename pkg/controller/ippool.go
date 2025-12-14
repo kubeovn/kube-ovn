@@ -215,6 +215,7 @@ func (c *Controller) handleAddIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
 	}
 
 	newIPPool := ippool.DeepCopy()
+	controllerutil.RemoveFinalizer(newIPPool, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIPPool, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(ippool, newIPPool)
 	if err != nil {

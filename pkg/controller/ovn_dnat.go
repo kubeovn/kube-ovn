@@ -34,8 +34,9 @@ func (c *Controller) enqueueUpdateOvnDnatRule(oldObj, newObj any) {
 			// avoid delete twice
 			return
 		}
-		klog.Infof("enqueue del ovn dnat %s", key)
-		c.delOvnDnatRuleQueue.Add(key)
+		// DNAT with finalizer should be handled in updateOvnDnatRuleQueue
+		klog.Infof("enqueue update (deleting) ovn dnat %s", key)
+		c.updateOvnDnatRuleQueue.Add(key)
 		return
 	}
 	oldDnat := oldObj.(*kubeovnv1.OvnDnatRule)
@@ -297,6 +298,48 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Handle deletion first (for DNATs with finalizers)
+	if !cachedDnat.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting ovn dnat %s", key)
+		if cachedDnat.Status.Vpc == "" {
+			// Already cleaned, just remove finalizer
+			if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
+				klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
+				return err
+			}
+			return nil
+		}
+
+		// ovn delete dnat
+		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
+			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
+				return err
+			}
+		}
+		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
+			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
+				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
+				return err
+			}
+		}
+
+		// Remove finalizer
+		if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
+			klog.Errorf("failed to remove finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
+			return err
+		}
+
+		// Reset eip
+		if cachedDnat.Spec.OvnEip != "" {
+			c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+		}
+		return nil
+	}
+
 	if !cachedDnat.Status.Ready {
 		// create dnat only in add process, just check to error out here
 		klog.Infof("wait ovn dnat %s to be ready only in the handle add process", cachedDnat.Name)
@@ -617,6 +660,7 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 		err     error
 	)
 
+	controllerutil.RemoveFinalizer(newDnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newDnat, util.KubeOVNControllerFinalizer)
 	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
@@ -655,5 +699,12 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 		klog.Errorf("failed to remove finalizer from ovn dnat '%s', %v", cachedDnat.Name, err)
 		return err
 	}
+
+	// Trigger associated EIP to recheck if it can be deleted now
+	if cachedDnat.Spec.OvnEip != "" {
+		klog.Infof("triggering eip %s update after dnat %s deletion", cachedDnat.Spec.OvnEip, cachedDnat.Name)
+		c.updateOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+	}
+
 	return nil
 }
