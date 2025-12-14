@@ -253,4 +253,7 @@ replace (
 	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20250507014510-dc51721a96f1
 )
 
-tool go.uber.org/mock/mockgen
+tool (
+	github.com/kubeovn/kube-ovn/tools/modernize
+	go.uber.org/mock/mockgen
+)
