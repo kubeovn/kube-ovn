@@ -1,8 +1,9 @@
 module github.com/kubeovn/kube-ovn/test/anp
 
-go 1.25.4
+go 1.25.5
 
 require (
+	golang.org/x/mod v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3

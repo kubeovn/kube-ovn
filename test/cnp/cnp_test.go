@@ -1,31 +1,63 @@
 package cnp
 
 import (
-	"fmt"
 	"os"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	"path"
+	"slices"
 	"testing"
 	"time"
 
+	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+
+	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	"sigs.k8s.io/network-policy-api/conformance/tests"
 	netpolv1config "sigs.k8s.io/network-policy-api/conformance/utils/config"
 	"sigs.k8s.io/network-policy-api/conformance/utils/suite"
 )
 
 const (
-	NetworkPolicyCNPAPIRepoURL = "https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/main"
-	cnpReportFileName          = "cnp-test-report.yaml"
+	NetworkPolicyAPIRepoRaw  = "https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api"
+	NetworkPolicyAPIRepoPath = "conformance/base/manifests.yaml"
+	cnpReportFileName        = "cnp-test-report.yaml"
 )
 
-var baseCnpManifests = fmt.Sprintf("%s/conformance/base/manifests.yaml", NetworkPolicyCNPAPIRepoURL)
-
 func TestClusterNetworkPolicyConformance(t *testing.T) {
+	content, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatalf("Failed to read go.mod: %v", err)
+	}
+
+	mf, err := modfile.Parse("go.mod", content, nil)
+	if err != nil {
+		t.Fatalf("Failed to parse go.mod: %v", err)
+	}
+
+	var version string
+	for r := range slices.Values(mf.Require) {
+		if r.Mod.Path != "sigs.k8s.io/network-policy-api" {
+			continue
+		}
+		t.Logf("network-policy-api module version: %s", r.Mod.Version)
+		version = r.Mod.Version
+	}
+
+	gitRef := version
+	if module.IsPseudoVersion(version) {
+		t.Logf("Pseudo version detected: %s", version)
+		if gitRef, err = module.PseudoVersionRev(version); err != nil {
+			t.Fatalf("Failed to get git revision from pseudo version: %v", err)
+		}
+	}
+	manifestsURL := path.Join(NetworkPolicyAPIRepoRaw, gitRef, NetworkPolicyAPIRepoPath)
+	t.Logf("Using manifests URL: %s", manifestsURL)
+
 	t.Log("Configuring environment for clusternetworkpolicies conformance tests")
 	cfg, err := config.GetConfig()
 	if err != nil {
@@ -43,7 +75,7 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error when creating Kubernetes ClientSet: %v", err)
 	}
-	err = netpolv1alpha2.AddToScheme(client.Scheme())
+	err = netpolv1alpha2.Install(client.Scheme())
 	if err != nil {
 		t.Fatalf("Error initializing API scheme: %v", err)
 	}
@@ -60,7 +92,7 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 				Debug:                true,
 				CleanupBaseResources: true,
 				SupportedFeatures:    suite.StandardFeatures,
-				BaseManifests:        baseCnpManifests,
+				BaseManifests:        manifestsURL,
 				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
 			},
 			ConformanceProfiles: profiles,
