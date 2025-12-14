@@ -293,15 +293,68 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ginkgo.GinkgoHelper()
 
 			ginkgo.By("Getting or creating provider network " + providerNetworkName)
-			// Try to get existing provider network first
-			pn, err := providerNetworkClient.ProviderNetworkInterface.Get(context.Background(), providerNetworkName, metav1.GetOptions{})
-			if err != nil && k8serrors.IsNotFound(err) {
-				// Provider network doesn't exist, create it
-				pn = makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
-				pn = providerNetworkClient.CreateSync(pn)
-			} else {
-				framework.ExpectNoError(err, "getting provider network "+providerNetworkName)
-			}
+			// Wait for existing provider network from other tests to be cleaned up, or create new one
+			var pn *kubeovnv1.ProviderNetwork
+			framework.WaitUntil(5*time.Second, 5*time.Minute, func(_ context.Context) (bool, error) {
+				existingPN, err := providerNetworkClient.ProviderNetworkInterface.Get(context.Background(), providerNetworkName, metav1.GetOptions{})
+				if err != nil && k8serrors.IsNotFound(err) {
+					// Provider network doesn't exist, try to create it
+					newPN := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
+					pn, err = providerNetworkClient.ProviderNetworkInterface.Create(context.Background(), newPN, metav1.CreateOptions{})
+					if err != nil {
+						if k8serrors.IsAlreadyExists(err) {
+							// Another test created it concurrently, retry in next iteration
+							return false, nil
+						}
+						return false, err
+					}
+					// Successfully created, wait for it to be ready
+					if !providerNetworkClient.WaitToBeReady(pn.Name, 2*time.Minute) {
+						return false, fmt.Errorf("provider network %s is not ready", pn.Name)
+					}
+					pn = providerNetworkClient.Get(pn.Name)
+					return true, nil
+				} else if err != nil {
+					return false, err
+				}
+
+				// Provider network exists, check if it's being deleted (has deletion timestamp)
+				if existingPN.DeletionTimestamp != nil {
+					// It's being deleted by another test, wait for it to be fully removed
+					klog.Infof("Provider network %s is being deleted, waiting for cleanup...", providerNetworkName)
+					return false, nil
+				}
+
+				// Provider network exists and is not being deleted, reuse it
+				pn = existingPN
+				return true, nil
+			}, fmt.Sprintf("waiting for provider network %s to be available", providerNetworkName))
+
+			ginkgo.By("Waiting for provider network node labels to be set correctly")
+			framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+				k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+				if err != nil {
+					return false, err
+				}
+				for _, node := range k8sNodes.Items {
+					link := linkMap[node.Name]
+					interfaceLabel := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName)
+					readyLabel := fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName)
+					mtuLabel := fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName)
+
+					// Check if labels are set correctly
+					if node.Labels[interfaceLabel] != link.IfName {
+						return false, nil
+					}
+					if node.Labels[readyLabel] != "true" {
+						return false, nil
+					}
+					if node.Labels[mtuLabel] != strconv.Itoa(link.Mtu) {
+						return false, nil
+					}
+				}
+				return true, nil
+			}, "waiting for provider network node labels to be set correctly")
 
 			ginkgo.By("Getting k8s nodes")
 			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
@@ -483,6 +536,27 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
+
+		ginkgo.By("Waiting for provider network node labels to be cleaned up")
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			if err != nil {
+				return false, err
+			}
+			for _, node := range k8sNodes.Items {
+				// Check if provider network labels still exist
+				interfaceLabel := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName)
+				if _, exists := node.Labels[interfaceLabel]; exists {
+					return false, nil
+				}
+				// Check extra provider network labels
+				extraInterfaceLabel := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerExtraNetworkName)
+				if _, exists := node.Labels[extraInterfaceLabel]; exists {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "waiting for provider network node labels to be cleaned up")
 
 		if dockerExtraNetwork != nil {
 			ginkgo.By("Disconnecting nodes from the docker extra network")
