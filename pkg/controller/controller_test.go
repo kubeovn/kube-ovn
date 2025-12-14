@@ -117,6 +117,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactory(nadClient, 0)
 	nadInformer := nadInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
@@ -149,6 +150,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		subnetSynced:          alwaysReady,
 		netAttachLister:       nadInformer.Lister(),
 		netAttachSynced:       alwaysReady,
+		configMapsLister:      configMapInformer.Lister(),
 		OVNNbClient:           mockOvnClient,
 		syncVirtualPortsQueue: newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 	}
