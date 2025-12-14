@@ -145,8 +145,16 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to get gateway chassis, %v", err)
 		return err
 	}
+
+	// Get external gateway switch using centralized logic
+	externalGwSwitch, err := c.getExternalGatewaySwitchWithConfigMap(config)
+	if err != nil {
+		klog.Errorf("failed to get external gateway switch: %v", err)
+		return err
+	}
+
 	var lrpIP, lrpMac string
-	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, externalGwSwitch)
 	lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
 	if err != nil {
 		klog.Errorf("failed to get lrp %s, %v", lrpName, err)
@@ -159,7 +167,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpMac = lrp.MAC
 		lrpIP = lrp.Networks[0]
 	case config["nic-ip"] == "":
-		if lrpIP, lrpMac, err = c.createDefaultVpcLrpEip(); err != nil {
+		if lrpIP, lrpMac, err = c.createDefaultVpcLrpEip(externalGwSwitch); err != nil {
 			klog.Errorf("failed to create ovn eip for default vpc lrp: %v", err)
 			return err
 		}
@@ -168,22 +176,22 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpMac = config["nic-mac"]
 	}
 
-	if err := c.OVNNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIP, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
-		klog.Errorf("failed to create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
+	if err := c.OVNNbClient.CreateGatewayLogicalSwitch(externalGwSwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIP, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
+		klog.Errorf("failed to create external gateway switch %s: %v", externalGwSwitch, err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
-	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+func (c *Controller) createDefaultVpcLrpEip(externalGwSwitch string) (string, string, error) {
+	cachedSubnet, err := c.subnetsLister.Get(externalGwSwitch)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+		klog.Errorf("failed to get subnet %s, %v", externalGwSwitch, err)
 		return "", "", err
 	}
 	needCreateEip := false
-	lrpEipName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+	lrpEipName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, externalGwSwitch)
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -203,12 +211,12 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 		}
 	} else {
 		var v6ip string
-		v4ip, v6ip, mac, err = c.acquireIPAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(externalGwSwitch, lrpEipName, lrpEipName)
 		if err != nil {
 			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-		if err := c.createOrUpdateOvnEipCR(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
+		if err := c.createOrUpdateOvnEipCR(lrpEipName, externalGwSwitch, v4ip, v6ip, mac, util.OvnEipTypeLRP); err != nil {
 			klog.Errorf("failed to create ovn lrp eip %s, %v", lrpEipName, err)
 			return "", "", err
 		}
@@ -219,6 +227,63 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 		return "", "", err
 	}
 	return v4ipCidr, mac, nil
+}
+
+// getExternalGatewaySwitchWithConfigMap determines which external gateway switch to use.
+// Logic (mutually exclusive modes):
+// 1. If default "external" subnet exists:
+//   - ConfigMap not specified or same name -> use default "external"
+//   - ConfigMap specifies different name -> ERROR (configuration conflict)
+//
+// 2. If default "external" subnet does NOT exist:
+//   - ConfigMap specifies a name -> use ConfigMap name
+//   - ConfigMap not specified -> return default name (will fail later with subnet not found)
+func (c *Controller) getExternalGatewaySwitchWithConfigMap(configData map[string]string) (string, error) {
+	defaultSwitch := c.config.ExternalGatewaySwitch
+	configSwitch := configData["external-gw-switch"]
+
+	// Check if default subnet exists
+	_, err := c.subnetsLister.Get(defaultSwitch)
+	defaultExists := err == nil
+
+	if defaultExists {
+		// Default subnet exists - MUST use it (backward compatibility)
+		if configSwitch != "" && configSwitch != defaultSwitch {
+			// Configuration conflict: both modes specified
+			return "", fmt.Errorf("configuration conflict: default external subnet %s exists, but ConfigMap specifies different subnet %s. Please use only one mode: either remove the default subnet or remove the ConfigMap setting", defaultSwitch, configSwitch)
+		}
+		return defaultSwitch, nil
+	}
+
+	// Default subnet does NOT exist - check ConfigMap
+	if configSwitch != "" {
+		// Use ConfigMap specified subnet
+		return configSwitch, nil
+	}
+
+	// Neither default nor ConfigMap specified subnet available
+	return defaultSwitch, nil // Return default name anyway for error messages
+}
+
+// getExternalGatewaySwitch returns the external gateway switch name by reading from ConfigMap
+// Logic: default subnet exists -> use default; default not exists + ConfigMap specified -> use ConfigMap
+func (c *Controller) getExternalGatewaySwitch() (string, error) {
+	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// ConfigMap doesn't exist, use default
+			return c.config.ExternalGatewaySwitch, nil
+		}
+		return "", fmt.Errorf("failed to get ConfigMap %s: %w", util.ExternalGatewayConfig, err)
+	}
+
+	// Check if ConfigMap is enabled
+	if cm.Data["enable-external-gw"] == "false" {
+		return c.config.ExternalGatewaySwitch, nil
+	}
+
+	// Use the centralized logic
+	return c.getExternalGatewaySwitchWithConfigMap(cm.Data)
 }
 
 func (c *Controller) getGatewayChassis(config map[string]string) ([]string, error) {

@@ -27,24 +27,31 @@ func (c *Controller) syncExternalVpc() {
 		return
 	}
 	for _, cachedVpc := range vpcs {
-		vpc := cachedVpc.DeepCopy()
-		if _, ok := logicalRouters[vpc.Name]; ok {
+		vpcName := cachedVpc.Name
+		if _, ok := logicalRouters[vpcName]; ok {
+			// Get the latest VPC object before updating status to avoid conflicts
+			vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get latest vpc %s: %v", vpcName, err)
+				continue
+			}
+
 			// update vpc status subnet list
 			vpc.Status.Subnets = []string{}
-			for _, ls := range logicalRouters[vpc.Name].LogicalSwitches {
+			for _, ls := range logicalRouters[vpcName].LogicalSwitches {
 				vpc.Status.Subnets = append(vpc.Status.Subnets, ls.Name)
 			}
 			_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{})
 			if err != nil {
-				klog.Errorf("failed to update vpc %s status: %v", vpc.Name, err)
+				klog.Errorf("failed to update vpc %s status: %v", vpcName, err)
 				continue
 			}
-			delete(logicalRouters, vpc.Name)
+			delete(logicalRouters, vpcName)
 		} else {
-			klog.Infof("external vpc %s has no ovn logical router, delete it", vpc.Name)
-			err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Delete(context.Background(), vpc.Name, metav1.DeleteOptions{})
+			klog.Infof("external vpc %s has no ovn logical router, delete it", vpcName)
+			err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Delete(context.Background(), vpcName, metav1.DeleteOptions{})
 			if err != nil {
-				klog.Errorf("failed to delete vpc %s: %v", vpc.Name, err)
+				klog.Errorf("failed to delete vpc %s: %v", vpcName, err)
 				continue
 			}
 		}

@@ -77,6 +77,23 @@ func makeOvnDnat(name, ovnEip, ipType, ipName, vpc, v4Ip, internalPort, external
 	return framework.MakeOvnDnatRule(name, ovnEip, ipType, ipName, vpc, v4Ip, internalPort, externalPort, protocol)
 }
 
+func makeExternalGatewayConfigMap(gwNodes, switchName string, cidr []string, gwType string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      util.ExternalGatewayConfig,
+			Namespace: framework.KubeOvnNamespace,
+		},
+		Data: map[string]string{
+			"enable-external-gw": "true",
+			"external-gw-nodes":  gwNodes,
+			"external-gw-switch": switchName,
+			"type":               gwType,
+			"external-gw-nic":    "eth1",
+			"external-gw-addr":   strings.Join(cidr, ","),
+		},
+	}
+}
+
 var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("ovn-vpc-nat-gw")
 
@@ -133,6 +150,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// in this env, tcpdump gw nat flows will be more clear
 
 		randomSuffix := framework.RandomSuffix()
+		// Use first 6 digits of random suffix for provider network names (12 byte limit)
+		shortSuffix := randomSuffix[:6]
 		noBfdVpcName = "no-bfd-vpc-" + randomSuffix
 		bfdVpcName = "bfd-vpc-" + randomSuffix
 
@@ -145,14 +164,16 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		lrpEipSnatName = "lrp-eip-snat-" + randomSuffix
 		lrpExtraEipSnatName = "lrp-extra-eip-snat-" + randomSuffix
 		bfdSubnetName = "bfd-subnet-" + randomSuffix
-		// provider network name has 12 bytes limit, use short prefix
+		// Default external network must use fixed "external" name for global reuse
+		// kube-ovn-cni creates default external subnet with name "external" when enable-eip-snat
 		providerNetworkName = "external"
-		providerExtraNetworkName = "extra"
-		vlanName = "vlan-" + randomSuffix
-		vlanExtraName = "vlan-extra-" + randomSuffix
-		// underlay subnet names use fixed names for global reuse
 		underlaySubnetName = "external"
-		underlayExtraSubnetName = "extra"
+		vlanName = "vlan"
+		// Extra network uses random suffix to test multi-external-subnet scenarios
+		// provider network name has 12 bytes limit, use short suffix
+		providerExtraNetworkName = "extra-" + shortSuffix
+		underlayExtraSubnetName = "extra-" + shortSuffix
+		vlanExtraName = "vlan-extra-" + randomSuffix
 
 		// sharing case
 		sharedVipName = "shared-vip-" + randomSuffix
@@ -600,20 +621,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		externalGwNodes := strings.Join(gwNodeNames, ",")
 		ginkgo.By("Creating config map ovn-external-gw-config for centralized case")
-		cmData := map[string]string{
-			"enable-external-gw": "true",
-			"external-gw-nodes":  externalGwNodes,
-			"type":               kubeovnv1.GWCentralizedType,
-			"external-gw-nic":    "eth1",
-			"external-gw-addr":   strings.Join(cidr, ","),
-		}
-		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      util.ExternalGatewayConfig,
-				Namespace: framework.KubeOvnNamespace,
-			},
-			Data: cmData,
-		}
+		configMap := makeExternalGatewayConfigMap(externalGwNodes, underlaySubnetName, cidr, kubeovnv1.GWCentralizedType)
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 		framework.ExpectNoError(err, "failed to create")
 
@@ -1000,21 +1008,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			_ = podClient.CreateSync(pod)
 		}
 		ginkgo.By("3. Updating config map ovn-external-gw-config for distributed case")
-		cmData = map[string]string{
-			"enable-external-gw": "true",
-			"external-gw-nodes":  externalGwNodes,
-			"type":               kubeovnv1.GWDistributedType,
-			"external-gw-nic":    "eth1",
-			"external-gw-addr":   strings.Join(cidr, ","),
-		}
 		// TODO:// external-gw-nodes could be auto managed by recognizing gw chassis node which has the external-gw-nic
-		configMap = &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      util.ExternalGatewayConfig,
-				Namespace: framework.KubeOvnNamespace,
-			},
-			Data: cmData,
-		}
+		configMap = makeExternalGatewayConfigMap(externalGwNodes, underlaySubnetName, cidr, kubeovnv1.GWDistributedType)
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
 		framework.ExpectNoError(err, "failed to update ConfigMap")
 
@@ -1356,8 +1351,8 @@ func init() {
 	// Generate unique network names and subnets for this test run
 	// This avoids conflicts with other parallel test runs on the same host
 	suffix := framework.RandomSuffix()
-	dockerNetworkName = "kube-ovn-vlan-" + suffix
-	dockerExtraNetworkName = "kube-ovn-extra-vlan-" + suffix
+	dockerNetworkName = "kube-ovn-vlan0-" + suffix
+	dockerExtraNetworkName = "kube-ovn-extra-vlan0-" + suffix
 
 	// Generate random /24 subnets within 172.28.0.0/16
 	// This allows up to 256 parallel test runs on the same host
