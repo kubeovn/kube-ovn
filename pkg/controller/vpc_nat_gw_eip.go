@@ -462,7 +462,7 @@ func (c *Controller) addEipQoSInPod(
 	burst string,
 ) error {
 	if v4ip == "" {
-		klog.Info("v4ip is nil")
+		klog.Infof("v4ip is empty for nat gateway %s, skipping QoS rule addition", dp)
 		return nil
 	}
 	var operation string
