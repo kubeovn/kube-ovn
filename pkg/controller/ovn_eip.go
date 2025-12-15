@@ -410,7 +410,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	time.Sleep(1 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
@@ -602,6 +602,8 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
 	return nil
 }

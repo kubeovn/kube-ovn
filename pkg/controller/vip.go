@@ -434,7 +434,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	time.Sleep(1 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
@@ -581,6 +581,8 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
 	return nil
 }

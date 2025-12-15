@@ -361,6 +361,8 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	for _, as := range cachedIP.Spec.AttachSubnets {
 		c.updateSubnetStatusQueue.Add(as)
@@ -525,7 +527,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 	}
 	// Trigger subnet status update after CR creation with finalizer
-	time.Sleep(1 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(ipCR.Spec.Subnet)
 	for _, as := range ipCR.Spec.AttachSubnets {
 		c.updateSubnetStatusQueue.Add(as)
