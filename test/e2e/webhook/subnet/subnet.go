@@ -95,7 +95,7 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		f.SkipVersionPriorTo(1, 15, "vpc cannot be set to non-ovn-cluster on update is not supported before 1.15.0")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating vpc can be changed from empty to ovn-cluster")
 		subnet = subnetClient.Get(subnetName)

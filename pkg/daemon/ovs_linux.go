@@ -1491,6 +1491,18 @@ func (c *Controller) configProviderNic(nicName, brName string, trunks []string) 
 
 	var mtu int
 	if !isUserspaceDP {
+		// Check if bridge exists before attempting to add port
+		output, err := ovs.Exec("list-br")
+		if err != nil {
+			klog.Errorf("failed to list OVS bridges: %v, %q", err, output)
+			return 0, err
+		}
+		if !slices.Contains(strings.Split(output, "\n"), brName) {
+			err := fmt.Errorf("bridge %s does not exist", brName)
+			klog.Error(err)
+			return 0, err
+		}
+
 		mtu, err = c.transferAddrsAndRoutes(nicName, brName, false)
 		if err != nil {
 			klog.Errorf("failed to transfer addresses and routes from %s to %s: %v", nicName, brName, err)
