@@ -348,6 +348,16 @@ const (
 
 	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
 	MasqueradeCheckIP             = "0.0.0.0"
+
+	DefaultHostVhostuserBaseDir = "/run/openvswitch/vhost_sockets"
+
+	ChassisLoc = "/etc/openvswitch/system-id.conf"
+
+	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
+	NetSysDir  = "/sys/class/net"
+
+	HtbQos   = "linux-htb"
+	NetemQos = "linux-netem"
 )
 
 var KubeVirtCRD = []string{"virtualmachineinstancemigrations.kubevirt.io", "virtualmachines.kubevirt.io"}

@@ -77,8 +77,7 @@
     },
     {
       "matchPackageNames": [
-        "github.com/kubeovn/**",
-        "windows"
+        "github.com/kubeovn/**"
       ],
       "enabled": false
     }

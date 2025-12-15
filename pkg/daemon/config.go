@@ -3,14 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -19,6 +17,7 @@ import (
 	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -30,6 +29,8 @@ import (
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+const defaultBindSocket = "/run/openvswitch/kube-ovn-daemon.sock"
 
 // Configuration is the daemon conf
 type Configuration struct {
@@ -215,9 +216,6 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 	}
-	if runtime.GOOS == "windows" {
-		config.EnableOVNIPSec = false
-	}
 
 	return config
 }
@@ -326,12 +324,6 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
-	if encapIsIPv6 && runtime.GOOS == "windows" {
-		// OVS windows datapath does not IPv6 tunnel in version v2.17
-		err = errors.New("IPv6 tunnel is not supported on Windows currently")
-		klog.Error(err)
-		return err
-	}
 
 	if config.MTU == 0 {
 		switch config.NetworkType {
@@ -554,5 +546,49 @@ func setChecksum(encapChecksum bool) error {
 		klog.Error(err)
 		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
 	}
+	return nil
+}
+
+func getSrcIPsByRoutes(iface *net.Interface) ([]string, error) {
+	link, err := netlink.LinkByName(iface.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get link %s: %w", iface.Name, err)
+	}
+	routes, err := netlink.RouteList(link, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routes on link %s: %w", iface.Name, err)
+	}
+
+	srcIPs := make([]string, 0, 2)
+	for _, r := range routes {
+		if r.Src != nil && r.Scope == netlink.SCOPE_LINK {
+			srcIPs = append(srcIPs, r.Src.String())
+		}
+	}
+	return srcIPs, nil
+}
+
+func getIfaceByIP(ip string) (string, int, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return "", 0, err
+	}
+
+	for _, link := range links {
+		addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to get addresses of link %s: %w", link.Attrs().Name, err)
+		}
+		for _, addr := range addrs {
+			if addr.Contains(net.ParseIP(ip)) && addr.IP.String() == ip {
+				return link.Attrs().Name, link.Attrs().MTU, nil
+			}
+		}
+	}
+
+	return "", 0, fmt.Errorf("failed to find interface by address %s", ip)
+}
+
+func (config *Configuration) initRuntimeConfig(_ *corev1.Node) error {
 	return nil
 }
