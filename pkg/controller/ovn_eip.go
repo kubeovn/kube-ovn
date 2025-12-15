@@ -409,6 +409,9 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 			}
 		}
 	}
+	// Trigger subnet status update after CR creation or update
+	time.Sleep(1 * time.Second)
+	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
 

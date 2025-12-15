@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -432,6 +433,9 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			}
 		}
 	}
+	// Trigger subnet status update after CR creation or update
+	time.Sleep(1 * time.Second)
+	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
 

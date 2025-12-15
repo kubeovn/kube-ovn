@@ -598,7 +598,6 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			return err
 		}
 	}
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	if needCreate {
 		klog.V(3).Infof("create eip cr %s", key)
 		// Create CR with finalizer, labels and status all at once
@@ -639,7 +638,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		if eip.Labels == nil {
 			eip.Labels = make(map[string]string)
 		}
-		eip.Labels[util.SubnetNameLabel] = externalNetwork
+		eip.Labels[util.SubnetNameLabel] = externalNet
 		eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
 		eip.Labels[util.EipV4IpLabel] = v4ip
 		if eip.Spec.QoSPolicy != "" {
@@ -685,6 +684,9 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			return err
 		}
 	}
+	// Trigger subnet status update after all operations complete
+	time.Sleep(1 * time.Second)
+	c.updateSubnetStatusQueue.Add(externalNet)
 	return nil
 }
 

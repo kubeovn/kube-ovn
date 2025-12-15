@@ -9,6 +9,7 @@ import (
 	"net"
 	"reflect"
 	"strings"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -484,7 +485,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				PodType:       podType,
 			},
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
+		if ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -522,6 +523,12 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 			klog.Error(err)
 			return err
 		}
+	}
+	// Trigger subnet status update after CR creation with finalizer
+	time.Sleep(1 * time.Second)
+	c.updateSubnetStatusQueue.Add(ipCR.Spec.Subnet)
+	for _, as := range ipCR.Spec.AttachSubnets {
+		c.updateSubnetStatusQueue.Add(as)
 	}
 	return nil
 }
