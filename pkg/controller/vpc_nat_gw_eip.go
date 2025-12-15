@@ -461,6 +461,10 @@ func (c *Controller) addEipQoSInPod(
 	dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
 	burst string,
 ) error {
+	if v4ip == "" {
+		klog.Infof("v4ip is empty for nat gateway %s, skipping QoS rule addition", dp)
+		return nil
+	}
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
