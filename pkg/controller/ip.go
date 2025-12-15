@@ -155,18 +155,6 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return nil
 	}
 
-	// Add finalizer FIRST before any resource allocation to prevent IP leak
-	if err = c.handleAddOrUpdateIPFinalizer(ip); err != nil {
-		klog.Errorf("failed to add finalizer for ip, %v", err)
-		return err
-	}
-	// Re-fetch the ip after adding finalizer (resourceVersion may have changed)
-	ip, err = c.ipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get ip after adding finalizer, %v", err)
-		return err
-	}
-
 	// not handle add the ip, which created in pod process, lsp created before ip
 	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
 	if err != nil {
@@ -219,6 +207,9 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		}
 	}
 
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, IP CR created with labels+finalizer
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -318,10 +309,6 @@ func (c *Controller) handleAddOrUpdateIPFinalizer(cachedIP *kubeovnv1.IP) error 
 		// IP is being deleted, don't handle finalizer add/update
 		return nil
 	}
-	if len(cachedIP.GetFinalizers()) != 0 {
-		// Finalizer already exists
-		return nil
-	}
 
 	newIP := cachedIP.DeepCopy()
 	controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
@@ -340,8 +327,9 @@ func (c *Controller) handleAddOrUpdateIPFinalizer(cachedIP *kubeovnv1.IP) error 
 		return err
 	}
 
-	// Trigger subnet status update after finalizer is added
-	// This ensures subnet status reflects the new IP allocation
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	for _, as := range cachedIP.Spec.AttachSubnets {
 		c.updateSubnetStatusQueue.Add(as)
@@ -469,9 +457,11 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	}
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCR == nil {
+		// Create CR with finalizer and labels all at once
 		ipCR = &kubeovnv1.IP{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: ipName,
+				Name:       ipName,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
 				Labels: map[string]string{
 					util.SubnetNameLabel: subnetName,
 					util.NodeNameLabel:   nodeName,

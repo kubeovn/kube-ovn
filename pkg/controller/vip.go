@@ -81,18 +81,6 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 
-	// Add finalizer FIRST before any resource allocation to prevent IP leak
-	if err := c.handleAddOrUpdateVipFinalizer(key); err != nil {
-		klog.Errorf("failed to add finalizer for vip, %v", err)
-		return err
-	}
-	// Re-fetch the vip after adding finalizer (resourceVersion may have changed)
-	cachedVip, err = c.virtualIpsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get vip after adding finalizer, %v", err)
-		return err
-	}
-
 	vip := cachedVip.DeepCopy()
 	var sourceV4Ip, sourceV6Ip, v4ip, v6ip, mac, subnetName string
 	subnetName = vip.Spec.Subnet
@@ -180,6 +168,10 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, VIP CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
@@ -374,14 +366,16 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Create CR with finalizer, labels and status all at once
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
+					Name:       key,
+					Namespace:  ns,
+					Finalizers: []string{util.KubeOVNControllerFinalizer},
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
 						util.IPReservedLabel: "",
 					},
-					Namespace: ns,
 				},
 				Spec: kubeovnv1.VipSpec{
 					Namespace:  ns,
@@ -389,6 +383,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 					V4ip:       v4ip,
 					V6ip:       v6ip,
 					MacAddress: mac,
+				},
+				Status: kubeovnv1.VipStatus{
+					V4ip: v4ip,
+					V6ip: v6ip,
+					Mac:  mac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				err := fmt.Errorf("failed to create crd vip '%s', %w", key, err)
@@ -520,7 +519,7 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedVip.DeletionTimestamp.IsZero() || len(cachedVip.GetFinalizers()) != 0 {
+	if !cachedVip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
@@ -540,8 +539,9 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 		return err
 	}
 
-	// Trigger subnet status update after finalizer is added
-	// This ensures subnet status reflects the new VIP allocation
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
 	return nil
 }

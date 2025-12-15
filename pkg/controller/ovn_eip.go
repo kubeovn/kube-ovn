@@ -91,18 +91,6 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	}
 	klog.Infof("handle add ovn eip %s", cachedEip.Name)
 
-	// Add finalizer FIRST before any resource allocation to prevent IP leak
-	if err = c.handleAddOrUpdateOvnEipFinalizer(cachedEip); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
-	}
-	// Re-fetch the eip after adding finalizer (resourceVersion may have changed)
-	cachedEip, err = c.ovnEipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get ovn eip after adding finalizer, %v", err)
-		return err
-	}
-
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
@@ -157,6 +145,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
+
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, OvnEip CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -308,9 +300,11 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Create CR with finalizer, labels and status all at once
 			_, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Create(context.Background(), &kubeovnv1.OvnEip{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
+					Name:       key,
+					Finalizers: []string{util.KubeOVNControllerFinalizer},
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
 						util.OvnEipTypeLabel: usageType,
@@ -324,6 +318,14 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 					V6Ip:           v6ip,
 					MacAddress:     mac,
 					Type:           usageType,
+				},
+				Status: kubeovnv1.OvnEipStatus{
+					V4Ip:       v4ip,
+					V6Ip:       v6ip,
+					MacAddress: mac,
+					Type:       usageType,
+					Nat:        "",
+					Ready:      false,
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
@@ -535,7 +537,7 @@ func (c *Controller) syncOvnEipFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
-	if !cachedEip.DeletionTimestamp.IsZero() || len(cachedEip.GetFinalizers()) != 0 {
+	if !cachedEip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newEip := cachedEip.DeepCopy()
@@ -555,8 +557,9 @@ func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEi
 		return err
 	}
 
-	// Trigger subnet status update after finalizer is added
-	// This ensures subnet status reflects the new OVN EIP allocation
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
 	return nil
 }

@@ -85,18 +85,6 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return nil
 	}
 
-	// Add finalizer FIRST before any resource allocation to prevent IP leak
-	if err := c.handleAddOrUpdateIptablesEipFinalizer(key); err != nil {
-		klog.Errorf("failed to add finalizer for iptables eip, %v", err)
-		return err
-	}
-	// Re-fetch the eip after adding finalizer (resourceVersion may have changed)
-	cachedEip, err = c.iptablesEipsLister.Get(key)
-	if err != nil {
-		klog.Errorf("failed to get iptables eip after adding finalizer, %v", err)
-		return err
-	}
-
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -166,6 +154,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, IptablesEIP CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -610,9 +601,11 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	if needCreate {
 		klog.V(3).Infof("create eip cr %s", key)
+		// Create CR with finalizer, labels and status all at once
 		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: key,
+				Name:       key,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
 				Labels: map[string]string{
 					util.SubnetNameLabel:        externalNet,
 					util.EipV4IpLabel:           v4ip,
@@ -624,6 +617,14 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				V6ip:       v6ip,
 				MacAddress: mac,
 				NatGwDp:    natGwDp,
+				QoSPolicy:  qos,
+			},
+			Status: kubeovnv1.IptablesEIPStatus{
+				IP:        v4ip,
+				Ready:     true,
+				QoSPolicy: qos,
+				Nat:       "",
+				Redo:      "",
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
@@ -707,7 +708,7 @@ func (c *Controller) handleAddOrUpdateIptablesEipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesEip.DeletionTimestamp.IsZero() || len(cachedIptablesEip.GetFinalizers()) != 0 {
+	if !cachedIptablesEip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
@@ -727,8 +728,9 @@ func (c *Controller) handleAddOrUpdateIptablesEipFinalizer(key string) error {
 		return err
 	}
 
-	// Trigger subnet status update after finalizer is added
-	// This ensures subnet status reflects the new Iptables EIP allocation
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 	return nil
