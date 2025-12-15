@@ -81,13 +81,16 @@ spec:
           {{- else if eq .Values.networking.stack "IPv6" -}}
           {{ .Values.pinger.targets.externalAddresses.v6 }}
           {{- end }}
+          
+          - --external-dns=
           {{- if eq .Values.networking.stack "Dual" -}}
-          - --external-dns={{ .Values.pinger.targets.externalDomain.v6 }}
+          {{ .Values.pinger.targets.externalDomain.v6 }}
           {{- else if eq .Values.networking.stack "IPv4" -}}
-          - --external-dns={{ .Values.pinger.targets.externalDomain.v4 }}
+          {{ .Values.pinger.targets.externalDomain.v4 }}
           {{- else if eq .Values.networking.stack "IPv6" -}}
-          - --external-dns={{ .Values.pinger.targets.externalDomain.v6 }}
+          {{ .Values.pinger.targets.externalDomain.v6 }}
           {{- end }}
+          
           - --ds-namespace={{ .Values.namespace }}
           - --logtostderr=false
           - --alsologtostderr=true
