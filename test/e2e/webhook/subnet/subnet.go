@@ -98,6 +98,7 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating vpc can be changed from empty to ovn-cluster")
+		subnet = subnetClient.Get(subnetName)
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.Vpc = util.DefaultVpc
 		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
