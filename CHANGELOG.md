@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.14.20 (2025-12-15)
+
+ * [fd2489a8a](https://github.com/kubeovn/kube-ovn/commit/fd2489a8a79c1d90cabfa54a0f6e2582cb8f6762) release v1.14.20
+ * [321b5dfd2](https://github.com/kubeovn/kube-ovn/commit/321b5dfd2df621bfc79692e8a9f15ce9444c2b90) cni: disable ipv6 RA (#6045)
+ * [958ed8619](https://github.com/kubeovn/kube-ovn/commit/958ed86191c459144756b1e4764b6bc6b3b1bb7d) fix: double quoting causing nxdomain (#6039)
+ * [a009a60fc](https://github.com/kubeovn/kube-ovn/commit/a009a60fc68b12931d0f014f37b10b5facffc54e) prepare for next release
+
+### Contributors
+
+ * Bryan Lee
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.19 (2025-12-10)
 
  * [06e6fe026](https://github.com/kubeovn/kube-ovn/commit/06e6fe02647617ca4fa38e12153a8adada497f13) release v1.14.19
