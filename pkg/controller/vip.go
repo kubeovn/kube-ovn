@@ -80,6 +80,19 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return nil
 	}
 	klog.V(3).Infof("handle add vip %s", key)
+
+	// Add finalizer FIRST before any resource allocation to prevent IP leak
+	if err := c.handleAddOrUpdateVipFinalizer(key); err != nil {
+		klog.Errorf("failed to add finalizer for vip, %v", err)
+		return err
+	}
+	// Re-fetch the vip after adding finalizer (resourceVersion may have changed)
+	cachedVip, err = c.virtualIpsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get vip after adding finalizer, %v", err)
+		return err
+	}
+
 	vip := cachedVip.DeepCopy()
 	var sourceV4Ip, sourceV6Ip, v4ip, v6ip, mac, subnetName string
 	subnetName = vip.Spec.Subnet
@@ -160,19 +173,11 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	if vip.Spec.Type == util.KubeHostVMVip {
 		// vm use the vip as its real ip
 		klog.Infof("created host network pod vm ip %s", key)
-		if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
-			klog.Errorf("failed to handle add or update vip finalizer %v", err)
-			return err
-		}
 		return nil
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
 		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
 		klog.Error(err)
-		return err
-	}
-	if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
-		klog.Errorf("failed to handle add or update vip finalizer %v", err)
 		return err
 	}
 	return nil

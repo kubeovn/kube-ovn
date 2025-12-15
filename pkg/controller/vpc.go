@@ -129,10 +129,9 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
-	// Delete both ConfigMap-specified and default external gateway switches
-	// to ensure cleanup even if configuration changed between creation and deletion
-	if err := c.deleteVpcExternalSubnets(vpc.Name); err != nil {
-		klog.Errorf("failed to delete external connections for vpc %s: %v", vpc.Name, err)
+	// Delete connection to default external network
+	if err := c.deleteVpc2ExternalConnection(vpc.Name); err != nil {
+		klog.Errorf("failed to delete default external connection for vpc %s: %v", vpc.Name, err)
 		return err
 	}
 
@@ -353,7 +352,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	// Determine which external gateway switch to use
 	// Logic: default subnet exists -> use default; default not exists + ConfigMap specified -> use ConfigMap
-	externalGwSwitch, err := c.getExternalGatewaySwitch()
+	externalGwSwitch, err := c.getConfigDefaultExternalSwitch()
 	if err != nil {
 		klog.Warningf("failed to get external gateway switch: %v", err)
 		externalGwSwitch = c.config.ExternalGatewaySwitch // fallback to default
@@ -1533,31 +1532,27 @@ func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) er
 	return nil
 }
 
-// deleteVpcExternalSubnets deletes both ConfigMap-specified and default external gateway switches
-// to ensure complete cleanup even if configuration changed between VPC creation and deletion
-func (c *Controller) deleteVpcExternalSubnets(vpcName string) error {
-	// Try to get ConfigMap-specified switch and delete it
-	externalGwSwitch, err := c.getExternalGatewaySwitch()
-	if err != nil {
-		klog.Warningf("failed to get external gateway switch during deletion: %v", err)
-		// Fallback to default if we can't determine ConfigMap setting
-		externalGwSwitch = c.config.ExternalGatewaySwitch
-	}
-
+// deleteVpc2ExternalConnection deletes VPC connections to external networks
+// Deletes both ConfigMap-specified and default connections to ensure complete cleanup
+// even if configuration changed during VPC lifecycle
+func (c *Controller) deleteVpc2ExternalConnection(vpcName string) error {
 	var anyErr error
-	if err := c.handleDelVpcRes2ExternalSubnet(vpcName, externalGwSwitch); err != nil {
-		klog.Errorf("failed to delete external connection %s for vpc %s: %v", externalGwSwitch, vpcName, err)
-		anyErr = err
+
+	// Try to delete ConfigMap-specified connection if exists
+	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+	if err == nil && cm.Data["external-gw-switch"] != "" {
+		configSwitch := cm.Data["external-gw-switch"]
+		if err := c.handleDelVpcRes2ExternalSubnet(vpcName, configSwitch); err != nil {
+			klog.Errorf("failed to delete ConfigMap-specified connection %s for vpc %s: %v", configSwitch, vpcName, err)
+			anyErr = err
+		}
 	}
 
-	// Also try to delete default switch if it's different from ConfigMap-specified
-	// This ensures cleanup even if configuration changed
-	if externalGwSwitch != c.config.ExternalGatewaySwitch {
-		if err := c.handleDelVpcRes2ExternalSubnet(vpcName, c.config.ExternalGatewaySwitch); err != nil {
-			klog.Errorf("failed to delete default external connection %s for vpc %s: %v", c.config.ExternalGatewaySwitch, vpcName, err)
-			if anyErr == nil {
-				anyErr = err
-			}
+	// Always try to delete default connection
+	if err := c.handleDelVpcRes2ExternalSubnet(vpcName, c.config.ExternalGatewaySwitch); err != nil {
+		klog.Errorf("failed to delete default connection %s for vpc %s: %v", c.config.ExternalGatewaySwitch, vpcName, err)
+		if anyErr == nil {
+			anyErr = err
 		}
 	}
 

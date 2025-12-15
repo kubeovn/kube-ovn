@@ -230,51 +230,71 @@ func (c *Controller) createDefaultVpcLrpEip(externalGwSwitch string) (string, st
 }
 
 // getExternalGatewaySwitchWithConfigMap determines which external gateway switch to use.
-// Logic (mutually exclusive modes):
-// 1. If default "external" subnet exists:
-//   - ConfigMap not specified or same name -> use default "external"
-//   - ConfigMap specifies different name -> ERROR (configuration conflict)
-//
-// 2. If default "external" subnet does NOT exist:
-//   - ConfigMap specifies a name -> use ConfigMap name
-//   - ConfigMap not specified -> return default name (will fail later with subnet not found)
+// Two modes:
+// - Traditional mode: c.config.ExternalGatewaySwitch (OVN LogicalSwitch, NOT managed by Subnet CRD)
+// - ConfigMap mode: User-specified subnet in ConfigMap (managed by Subnet CRD)
+// Logic:
+// 1. ConfigMap not specified -> use default (traditional mode)
+// 2. ConfigMap same as default -> use default (traditional mode)
+// 3. ConfigMap different from default -> check conflict and verify ConfigMap subnet exists
 func (c *Controller) getExternalGatewaySwitchWithConfigMap(configData map[string]string) (string, error) {
+	configMapSwitch := configData["external-gw-switch"]
 	defaultSwitch := c.config.ExternalGatewaySwitch
-	configSwitch := configData["external-gw-switch"]
 
-	// Check if default subnet exists
-	_, err := c.subnetsLister.Get(defaultSwitch)
-	defaultExists := err == nil
-
-	if defaultExists {
-		// Default subnet exists - MUST use it (backward compatibility)
-		if configSwitch != "" && configSwitch != defaultSwitch {
-			// Configuration conflict: both modes specified
-			return "", fmt.Errorf("configuration conflict: default external subnet %s exists, but ConfigMap specifies different subnet %s. Please use only one mode: either remove the default subnet or remove the ConfigMap setting", defaultSwitch, configSwitch)
-		}
+	// 1. ConfigMap not specified -> use default
+	if configMapSwitch == "" {
 		return defaultSwitch, nil
 	}
 
-	// Default subnet does NOT exist - check ConfigMap
-	if configSwitch != "" {
-		// Use ConfigMap specified subnet
-		return configSwitch, nil
+	// 2. ConfigMap specified same as default -> use default
+	if configMapSwitch == defaultSwitch {
+		return defaultSwitch, nil
 	}
 
-	// Neither default nor ConfigMap specified subnet available
-	return defaultSwitch, nil // Return default name anyway for error messages
+	// 3. ConfigMap specified different from default
+	// Check if default logical switch exists in OVN (configuration conflict)
+	// Note: c.config.ExternalGatewaySwitch is OVN LogicalSwitch, NOT Subnet CRD
+	exists, err := c.OVNNbClient.LogicalSwitchExists(defaultSwitch)
+	if err != nil {
+		klog.Errorf("failed to check if default logical switch %s exists: %v", defaultSwitch, err)
+		return "", err
+	}
+	if exists {
+		// Default logical switch exists - conflict
+		err := fmt.Errorf("configuration conflict: default external logical switch %s exists, but ConfigMap specifies different subnet %s. Please use only one mode: either remove the default logical switch or remove the ConfigMap setting", defaultSwitch, configMapSwitch)
+		klog.Error(err)
+		return "", err
+	}
+
+	// Default subnet does not exist, verify ConfigMap-specified subnet exists
+	_, err = c.subnetsLister.Get(configMapSwitch)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			err := fmt.Errorf("ConfigMap specifies external subnet %s, but it does not exist. Please create the subnet first or update the ConfigMap", configMapSwitch)
+			klog.Error(err)
+			return "", err
+		}
+		err := fmt.Errorf("failed to get subnet %s from lister: %w", configMapSwitch, err)
+		klog.Error(err)
+		return "", err
+	}
+
+	return configMapSwitch, nil
 }
 
-// getExternalGatewaySwitch returns the external gateway switch name by reading from ConfigMap
-// Logic: default subnet exists -> use default; default not exists + ConfigMap specified -> use ConfigMap
-func (c *Controller) getExternalGatewaySwitch() (string, error) {
+// getConfigDefaultExternalSwitch determines which (from config or configmap) external gateway switch to use
+// ConfigMap not specified -> use default;
+// default not exists + ConfigMap specified -> use ConfigMap
+func (c *Controller) getConfigDefaultExternalSwitch() (string, error) {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// ConfigMap doesn't exist, use default
 			return c.config.ExternalGatewaySwitch, nil
 		}
-		return "", fmt.Errorf("failed to get ConfigMap %s: %w", util.ExternalGatewayConfig, err)
+		err = fmt.Errorf("failed to get ConfigMap %s: %w", util.ExternalGatewayConfig, err)
+		klog.Error(err)
+		return "", err
 	}
 
 	// Check if ConfigMap is enabled

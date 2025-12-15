@@ -90,6 +90,19 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle add ovn eip %s", cachedEip.Name)
+
+	// Add finalizer FIRST before any resource allocation to prevent IP leak
+	if err = c.handleAddOrUpdateOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
+	// Re-fetch the eip after adding finalizer (resourceVersion may have changed)
+	cachedEip, err = c.ovnEipsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get ovn eip after adding finalizer, %v", err)
+		return err
+	}
+
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
@@ -143,10 +156,6 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
 			return err
 		}
-	}
-	if err = c.handleAddOrUpdateOvnEipFinalizer(cachedEip); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
 	}
 	return nil
 }

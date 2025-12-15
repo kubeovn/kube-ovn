@@ -85,6 +85,18 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return nil
 	}
 
+	// Add finalizer FIRST before any resource allocation to prevent IP leak
+	if err := c.handleAddOrUpdateIptablesEipFinalizer(key); err != nil {
+		klog.Errorf("failed to add finalizer for iptables eip, %v", err)
+		return err
+	}
+	// Re-fetch the eip after adding finalizer (resourceVersion may have changed)
+	cachedEip, err = c.iptablesEipsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get iptables eip after adding finalizer, %v", err)
+		return err
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -151,11 +163,6 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
-		return err
-	}
-
-	if err = c.handleAddOrUpdateIptablesEipFinalizer(key); err != nil {
-		klog.Errorf("failed to handle add or update finalizer for eip %s, %v", key, err)
 		return err
 	}
 

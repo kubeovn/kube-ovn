@@ -155,6 +155,18 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return nil
 	}
 
+	// Add finalizer FIRST before any resource allocation to prevent IP leak
+	if err = c.handleAddOrUpdateIPFinalizer(ip); err != nil {
+		klog.Errorf("failed to add finalizer for ip, %v", err)
+		return err
+	}
+	// Re-fetch the ip after adding finalizer (resourceVersion may have changed)
+	ip, err = c.ipsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get ip after adding finalizer, %v", err)
+		return err
+	}
+
 	// not handle add the ip, which created in pod process, lsp created before ip
 	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
 	if err != nil {
@@ -162,13 +174,8 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 	if lsp != nil {
-		// port already exists means the ip already created
-		// but we still need to ensure finalizer is added
-		klog.V(3).Infof("ip %s is ready, checking finalizer", portName)
-		if err = c.handleAddOrUpdateIPFinalizer(ip); err != nil {
-			klog.Errorf("failed to handle add or update finalizer for ip %s: %v", ip.Name, err)
-			return err
-		}
+		// port already exists means the ip already created, finalizer already added above
+		klog.V(3).Infof("ip %s is ready, finalizer already added", portName)
 		return nil
 	}
 
@@ -212,12 +219,6 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		}
 	}
 
-	// Handle add or update finalizer after IP is created/updated
-	if err = c.handleAddOrUpdateIPFinalizer(ip); err != nil {
-		klog.Errorf("failed to handle add or update finalizer for ip %s: %v", ip.Name, err)
-		return err
-	}
-
 	return nil
 }
 
@@ -231,12 +232,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 		return err
 	}
 
-	// Handle add or update finalizer
-	if err = c.handleAddOrUpdateIPFinalizer(cachedIP); err != nil {
-		klog.Errorf("failed to handle add or update finalizer for ip %s: %v", key, err)
-		return err
-	}
-
+	// Handle deletion first
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
@@ -277,7 +273,15 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
+		return nil
 	}
+
+	// Non-deletion case: ensure finalizer is added
+	if err = c.handleAddOrUpdateIPFinalizer(cachedIP); err != nil {
+		klog.Errorf("failed to handle add or update finalizer for ip %s: %v", key, err)
+		return err
+	}
+
 	return nil
 }
 
