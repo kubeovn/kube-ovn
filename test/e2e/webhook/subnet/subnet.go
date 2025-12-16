@@ -4,6 +4,7 @@ import (
 	"context"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -97,25 +98,37 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnetClient.CreateSync(subnet)
 
+		// TODO: Use Patch instead of Update to modify only the Spec.Vpc field.
+		// This would avoid resource conflicts caused by concurrent status updates from the controller.
+		// Example: subnetClient.Patch(subnet, modifiedSubnet, framework.Timeout())
 		ginkgo.By("Validating vpc can be changed from empty to ovn-cluster")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = util.DefaultVpc
-		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet := subnet.DeepCopy()
+			modifiedSubnet.Spec.Vpc = util.DefaultVpc
+			_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+			return err
+		})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to another value")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = "test-vpc"
-		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet := subnet.DeepCopy()
+			modifiedSubnet.Spec.Vpc = "test-vpc"
+			_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+			return err
+		})
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 
 		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to empty")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = ""
-		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet := subnet.DeepCopy()
+			modifiedSubnet.Spec.Vpc = ""
+			_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+			return err
+		})
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 	})
 
@@ -126,9 +139,13 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating vpc cannot be changed from empty to non-ovn-cluster value")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = "test-vpc"
-		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			subnet = subnetClient.Get(subnetName)
+			modifiedSubnet := subnet.DeepCopy()
+			modifiedSubnet.Spec.Vpc = "test-vpc"
+			_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+			return err
+		})
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 	})
 })
