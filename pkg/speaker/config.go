@@ -183,11 +183,11 @@ func ParseFlags() (*Configuration, error) {
 	if config.RouterID == nil {
 		if podIPv4 != "" {
 			config.RouterID = net.ParseIP(podIPv4)
-		} else {
-			config.RouterID = net.ParseIP(podIPv6)
 		}
+
 		if config.RouterID == nil {
-			return nil, errors.New("no router id or POD_IPS")
+			// RouterID must be an IPv4. If no IPv4 exists on the speaker, fallback to 0.0.0.0 to avoid GoBGP crashing.
+			config.RouterID = net.ParseIP("0.0.0.0")
 		}
 	}
 
