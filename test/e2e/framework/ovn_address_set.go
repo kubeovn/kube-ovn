@@ -204,7 +204,7 @@ func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model)
 
 		if !connected {
 			client.Close()
-			err = fmt.Errorf("client created but not connected")
+			err = errors.New("client created but not connected")
 			if try < ovnClientMaxRetry {
 				Logf("OVN NB client not connected (attempt %d/%d), retrying...", try+1, ovnClientMaxRetry+1)
 				time.Sleep(2 * time.Second)
