@@ -63,7 +63,7 @@ func NewLegacyClient(timeout int) *LegacyClient {
 
 func NewDynamicOvnNbClient(
 	ovnNbAddr string,
-	ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout int,
+	ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int,
 	tables ...string,
 ) (*OVNNbClient, map[string]model.Model, error) {
 	dbModel, err := model.NewClientDBModel(ovnnb.DatabaseName, nil)
@@ -71,16 +71,28 @@ func NewDynamicOvnNbClient(
 		return nil, nil, fmt.Errorf("failed to create client db model: %w", err)
 	}
 
-	nbClient, err := ovsclient.NewOvsDbClient(
-		ovsclient.NBDB,
-		ovnNbAddr,
-		dbModel,
-		nil,
-		ovsDbConTimeout,
-		ovsDbInactivityTimeout,
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create initial ovsdb client to fetch schema: %w", err)
+	// First connection to fetch schema with retry
+	var nbClient client.Client
+	try := 0
+	for {
+		nbClient, err = ovsclient.NewOvsDbClient(
+			ovsclient.NBDB,
+			ovnNbAddr,
+			dbModel,
+			nil,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
+		if err != nil {
+			klog.Errorf("failed to create initial OVN NB client to fetch schema: %v", err)
+		} else {
+			break
+		}
+		if try >= maxRetry {
+			return nil, nil, fmt.Errorf("failed to create initial ovsdb client to fetch schema after %d retries: %w", maxRetry, err)
+		}
+		time.Sleep(2 * time.Second)
+		try++
 	}
 
 	schemaTables := nbClient.Schema().Tables
@@ -117,15 +129,27 @@ func NewDynamicOvnNbClient(
 		return nil, nil, fmt.Errorf("failed to create dynamic client db model: %w", err)
 	}
 
-	if nbClient, err = ovsclient.NewOvsDbClient(
-		ovsclient.NBDB,
-		ovnNbAddr,
-		dbModel,
-		monitors,
-		ovsDbConTimeout,
-		ovsDbInactivityTimeout,
-	); err != nil {
-		return nil, nil, fmt.Errorf("failed to create dynamic ovsdb client: %w", err)
+	// Second connection with dynamic model and retry
+	try = 0
+	for {
+		nbClient, err = ovsclient.NewOvsDbClient(
+			ovsclient.NBDB,
+			ovnNbAddr,
+			dbModel,
+			monitors,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
+		if err != nil {
+			klog.Errorf("failed to create dynamic OVN NB client: %v", err)
+		} else {
+			break
+		}
+		if try >= maxRetry {
+			return nil, nil, fmt.Errorf("failed to create dynamic ovsdb client after %d retries: %w", maxRetry, err)
+		}
+		time.Sleep(2 * time.Second)
+		try++
 	}
 
 	c := &OVNNbClient{

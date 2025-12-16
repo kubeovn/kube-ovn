@@ -176,15 +176,48 @@ func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model)
 	})
 	ExpectNoError(ovnnbAddrErr)
 
-	client, models, err := ovs.NewDynamicOvnNbClient(
-		ovnnbAddr,
-		ovnNbTimeoutSeconds,
-		ovsdbConnTimeout,
-		ovsdbInactivityTimeout,
-		tables...,
-	)
-	ExpectNoError(err)
+	var client *ovs.OVNNbClient
+	var models map[string]model.Model
+	var err error
 
+	// Retry the entire client creation and connection verification process
+	for try := 0; try <= ovnClientMaxRetry; try++ {
+		client, models, err = ovs.NewDynamicOvnNbClient(
+			ovnnbAddr,
+			ovnNbTimeoutSeconds,
+			ovsdbConnTimeout,
+			ovsdbInactivityTimeout,
+			ovnClientMaxRetry,
+			tables...,
+		)
+		if err != nil {
+			if try < ovnClientMaxRetry {
+				Logf("Failed to create OVN NB client (attempt %d/%d): %v, retrying...", try+1, ovnClientMaxRetry+1, err)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			break
+		}
+
+		// Verify the connection is actually working by checking if we're connected
+		connected := client.Connected()
+
+		if !connected {
+			client.Close()
+			err = fmt.Errorf("client created but not connected")
+			if try < ovnClientMaxRetry {
+				Logf("OVN NB client not connected (attempt %d/%d), retrying...", try+1, ovnClientMaxRetry+1)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			break
+		}
+
+		// Connection verified, return the client
+		return client, models
+	}
+
+	ExpectNoError(err)
 	return client, models
 }
 
