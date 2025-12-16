@@ -157,6 +157,14 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 					},
 				},
 			},
+			{
+				Name: "POD_IPS",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIPs",
+					},
+				},
+			},
 		},
 		Args: args,
 	}
