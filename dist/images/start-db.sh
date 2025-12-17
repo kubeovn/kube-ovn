@@ -534,4 +534,7 @@ ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-/kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --enableCompact=${ENABLE_COMPACT}
+/kube-ovn/kube-ovn-leader-checker \
+    --probeInterval=${OVN_LEADER_PROBE_INTERVAL} \
+    --enableCompact=${ENABLE_COMPACT} \
+    --remoteAddresses="${NODE_IPS}"
