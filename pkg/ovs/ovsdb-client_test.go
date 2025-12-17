@@ -1,7 +1,6 @@
 package ovs
 
 import (
-	"os"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -47,7 +46,7 @@ func TestOvsdbServerAddress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("ENABLE_SSL", tt.envValue)
+			t.Setenv("ENABLE_SSL", tt.envValue)
 			result := OvsdbServerAddress(tt.host, tt.port)
 			if result != tt.expected {
 				t.Errorf("expected %s, got %s", tt.expected, result)

@@ -164,8 +164,7 @@ func checkOvnIsAlive() bool {
 	return true
 }
 
-// isDBLeader checks whether the ovn db is leader
-// return values: string: local ovsdb-server address, bool: is leader or not
+// isDBLeader checks whether the ovn db at address is leader for the given database
 func isDBLeader(address, database string) bool {
 	var dbAddr string
 	switch database {
