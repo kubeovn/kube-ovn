@@ -501,6 +501,10 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				Gw:        gw,
 				LinkIndex: containerLink.Attrs().Index,
 			}
+			// Set metric for route priority (lower metric = higher priority)
+			if r.Metric > 0 {
+				route.Priority = r.Metric
+			}
 			if err = netlink.RouteReplace(route); err != nil {
 				klog.Errorf("failed to add route %+v: %v", r, err)
 			}

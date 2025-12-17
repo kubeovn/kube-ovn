@@ -60,6 +60,71 @@ function init() {
     else
         echo "INFO: No IP addresses on $EXTERNAL_INTERFACE, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
     fi
+
+    # Send gratuitous ARP for net1 interface if it has IP addresses
+    net1_ips=$(ip -4 addr show dev net1 | awk '/inet /{print $2}' | cut -d/ -f1)
+    if [ -n "$net1_ips" ]; then
+        echo "Sending gratuitous ARP for IPs on net1"
+        echo "$net1_ips" | xargs -n1 arping -I net1 -c 3 -U
+        echo "Gratuitous ARP for net1 completed"
+    else
+        echo "INFO: No IP addresses on net1, skipping gratuitous ARP"
+    fi
+
+    # Initialize default SNAT for net2 if enabled via ENABLE_DEFAULT_SNAT environment variable
+    if [ "$ENABLE_DEFAULT_SNAT" = "true" ]; then
+        init_default_snat
+    fi
+}
+
+function init_default_snat() {
+    # Initialize default SNAT rule for net2 (fallback SNAT via OVN nat-outgoing)
+    # This function is called by init() when ENABLE_DEFAULT_SNAT=true
+    # It discovers VPC CIDR from eth0 routes and net2 IP automatically
+
+    # Check if net2 interface exists
+    if ! ip link show net2 &>/dev/null; then
+        >&2 echo "Error: ENABLE_DEFAULT_SNAT is true but net2 interface does not exist"
+        return 1
+    fi
+
+    echo "Initializing default SNAT for net2 (fallback route)..."
+
+    # Get VPC internal CIDR from eth0 routes
+    # Look for routes on eth0 that are not link-local or default
+    vpcCIDR=$(ip route show dev eth0 | grep -v "default" | grep -v "linklocal" | awk '{print $1}' | head -n1)
+    if [ -z "$vpcCIDR" ]; then
+        echo "Warning: Could not determine VPC CIDR from eth0 routes, skipping default SNAT"
+        return 0
+    fi
+
+    # Get net2 IP address (first IPv4 address)
+    net2IP=$(ip -4 addr show dev net2 | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1)
+    if [ -z "$net2IP" ]; then
+        echo "Warning: Could not get net2 IP address, skipping default SNAT"
+        return 0
+    fi
+
+    echo "Detected configuration: VPC CIDR=$vpcCIDR, net2 IP=$net2IP"
+
+    # Remove default route via eth0 to ensure traffic uses net2 as default route
+    if ip route show default dev eth0 &>/dev/null; then
+        echo "Removing default route via eth0 to use net2 as default gateway"
+        exec_cmd "ip route del default dev eth0"
+    fi
+
+    # Check if rule already exists
+    if $iptables_save_cmd | grep SHARED_SNAT | grep "\-o net2" | grep "\-s $vpcCIDR" | grep "source $net2IP" &>/dev/null; then
+        echo "Default SNAT rule already exists, skipping"
+        return 0
+    fi
+
+    # Add SNAT rule for net2 (fallback route)
+    # Traffic from VPC internal CIDR going out via net2 will be SNATed to net2's IP
+    # This provides automatic fallback when no public EIP is configured on net1
+    exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o net2 -s $vpcCIDR -j SNAT --to-source $net2IP --random-fully"
+
+    echo "Default SNAT rule added successfully: $vpcCIDR -> net2 ($net2IP)"
 }
 
 
@@ -435,6 +500,10 @@ case $opt in
         echo "init $rules"
         init $rules
         ;;
+    init-default-snat)
+        echo "init-default-snat $rules"
+        init_default_snat $rules
+        ;;
     subnet-route-add)
         echo "subnet-route-add $rules"
         add_vpc_internal_route $rules
@@ -504,7 +573,7 @@ case $opt in
         qos_del $rules
         ;;
     *)
-        echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
+        echo "Usage: $0 [init|init-default-snat|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
         exit 1
         ;;
 esac

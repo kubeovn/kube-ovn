@@ -261,25 +261,30 @@ func TestGenNatGwSelectors(t *testing.T) {
 
 func TestGenNatGwPodAnnotations(t *testing.T) {
 	tests := []struct {
-		name                 string
-		gw                   v1.VpcNatGateway
-		externalNadNamespace string
-		externalNadName      string
-		expected             map[string]string
+		name                    string
+		gw                      v1.VpcNatGateway
+		externalNadNamespace    string
+		externalNadName         string
+		defaultVpcNadNamespace  string
+		defaultVpcNadName       string
+		expected                map[string]string
 	}{
 		{
-			name: "All fields provided",
+			name: "All fields provided without default SNAT",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
 				},
 				Spec: v1.VpcNatGatewaySpec{
-					Subnet: "internal-subnet",
-					LanIP:  "10.20.30.40",
+					Subnet:            "internal-subnet",
+					LanIP:             "10.20.30.40",
+					EnableDefaultSnat: false,
 				},
 			},
 			externalNadName:      "external-subnet",
 			externalNadNamespace: "kube-system",
+			defaultVpcNadName:    "",
+			defaultVpcNadNamespace: "",
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
@@ -300,6 +305,8 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			},
 			externalNadName:      "external-subnet",
 			externalNadNamespace: "kube-system",
+			defaultVpcNadName:    "",
+			defaultVpcNadNamespace: "",
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
@@ -307,11 +314,59 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				IPAddressAnnotation:          "",
 			},
 		},
+		{
+			name: "With default VPC SNAT enabled",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet:            "internal-subnet",
+					LanIP:             "10.20.30.40",
+					EnableDefaultSnat: true,
+					DefaultSnatSubnet: "ovn-default",
+				},
+			},
+			externalNadName:        "external-subnet",
+			externalNadNamespace:   "kube-system",
+			defaultVpcNadName:      "ovn-default",
+			defaultVpcNadNamespace: "kube-system",
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet,kube-system/ovn-default",
+				LogicalSwitchAnnotation:      "internal-subnet",
+				IPAddressAnnotation:          "10.20.30.40",
+			},
+		},
+		{
+			name: "EnableDefaultSnat true but no NAD name provided",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet:            "internal-subnet",
+					LanIP:             "10.20.30.40",
+					EnableDefaultSnat: true,
+					DefaultSnatSubnet: "ovn-default",
+				},
+			},
+			externalNadName:        "external-subnet",
+			externalNadNamespace:   "kube-system",
+			defaultVpcNadName:      "", // NAD name empty
+			defaultVpcNadNamespace: "kube-system",
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet", // Should not add net2
+				LogicalSwitchAnnotation:      "internal-subnet",
+				IPAddressAnnotation:          "10.20.30.40",
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName)
+			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.defaultVpcNadNamespace, tc.defaultVpcNadName)
 			if !reflect.DeepEqual(tc.expected, result) {
 				t.Errorf("got %v, but want %v", result, tc.expected)
 			}
