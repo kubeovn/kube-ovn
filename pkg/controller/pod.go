@@ -648,19 +648,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				}
 			}
 
-			if isVMPod {
-				if _, ok := pod.Labels["kubevirt.io/migrationJobUID"]; ok {
-					if sourceNode, ok := pod.Labels["kubevirt.io/nodeName"]; ok && sourceNode != pod.Spec.NodeName {
-						klog.Infof("VM pod %s/%s is migrating from %s to %s",
-							pod.Namespace, pod.Name, sourceNode, pod.Spec.NodeName)
-						if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, pod.Spec.NodeName); err != nil {
-							klog.Errorf("failed to set migrate options for VM pod lsp %s: %v", portName, err)
-							return nil, err
-						}
-					}
-				}
-			}
-
 			if securityGroupAnnotation != "" || oldSgList != nil {
 				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 				newSgList := strings.Split(securityGroups, ",")

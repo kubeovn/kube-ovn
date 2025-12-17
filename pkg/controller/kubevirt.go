@@ -164,6 +164,49 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName := vmi.Status.MigrationState.SourceNode
 		targetNodeName := vmi.Status.MigrationState.TargetNode
 		switch vmiMigration.Status.Phase {
+		case kubevirtv1.MigrationScheduling:
+			selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kubevirt.io/migrationJobUID": string(vmiMigration.UID),
+				},
+			})
+			if err != nil {
+				err = fmt.Errorf("failed to create label selector for migration job UID %s: %w", vmiMigration.UID, err)
+				klog.Error(err)
+				return err
+			}
+
+			pods, err := c.podsLister.Pods(vmiMigration.Namespace).List(selector)
+			if err != nil {
+				err = fmt.Errorf("failed to list pods with migration job UID %s: %w", vmiMigration.UID, err)
+				klog.Error(err)
+				return err
+			}
+
+			if len(pods) > 0 {
+				targetPod := pods[0]
+				sourceNode := targetPod.Labels["kubevirt.io/nodeName"]
+
+				if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
+					klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
+						targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+					return nil
+				}
+
+				klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
+					targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+
+				if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+					err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
+					klog.Error(err)
+					return err
+				}
+				klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
+			} else {
+				klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
+					vmiMigration.UID, vmiMigration.Status.Phase)
+				return nil
+			}
 		case kubevirtv1.MigrationSucceeded:
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
