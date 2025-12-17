@@ -420,6 +420,9 @@ spec:
         - jsonPath: .spec.lanIp
           name: LanIP
           type: string
+        - jsonPath: .spec.enableDefaultSnat
+          name: EnableDefaultSnat
+          type: boolean
       name: v1
       served: true
       storage: true
@@ -752,6 +755,12 @@ spec:
                   items:
                     type: string
                   type: array
+                enableDefaultSnat:
+                  type: boolean
+                  description: "Enable fallback SNAT via default VPC subnet when no public EIP is available"
+                defaultSnatSubnet:
+                  type: string
+                  description: "Default SNAT subnet name for fallback SNAT (net2 interface)"
                 vpc:
                   type: string
                 selector:

@@ -41,6 +41,9 @@ type VpcNatGatewaySpec struct {
 	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
 	Routes          []Route             `json:"routes"`
 	NoDefaultEIP    bool                `json:"noDefaultEIP"`
+
+	EnableDefaultSnat bool   `json:"enableDefaultSnat,omitempty"`
+	DefaultSnatSubnet string `json:"defaultSnatSubnet,omitempty"`
 }
 
 type VpcBgpSpeaker struct {

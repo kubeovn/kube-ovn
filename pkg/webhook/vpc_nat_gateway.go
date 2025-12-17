@@ -373,6 +373,24 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		}
 	}
 
+	// Validate default SNAT configuration
+	if gw.Spec.EnableDefaultSnat {
+		if gw.Spec.DefaultSnatSubnet == "" {
+			return errors.New("defaultSnatSubnet cannot be empty when enableDefaultSnat is true")
+		}
+
+		defaultSnatSubnet := &ovnv1.Subnet{}
+		key = types.NamespacedName{Name: gw.Spec.DefaultSnatSubnet}
+		if err := v.cache.Get(ctx, key, defaultSnatSubnet); err != nil {
+			return fmt.Errorf("defaultSnatSubnet %s not found: %w", gw.Spec.DefaultSnatSubnet, err)
+		}
+
+		// Verify it's a subnet with NatOutgoing enabled for fallback SNAT to work
+		if !defaultSnatSubnet.Spec.NatOutgoing {
+			return fmt.Errorf("defaultSnatSubnet %s must have natOutgoing enabled for fallback SNAT to work", gw.Spec.DefaultSnatSubnet)
+		}
+	}
+
 	return nil
 }
 
