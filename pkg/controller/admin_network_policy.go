@@ -68,7 +68,7 @@ func (c *Controller) enqueueDeleteAnp(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
-	c.deleteAnpQueue.Add(anp)
+	c.deleteAnpQueue.Add(anp.DeepCopy())
 }
 
 func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {

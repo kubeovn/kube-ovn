@@ -97,7 +97,7 @@ func (c *Controller) enqueueDelVpc(obj any) {
 
 	if _, ok := vpc.Labels[util.VpcExternalLabel]; !vpc.Status.Default || !ok {
 		klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
-		c.delVpcQueue.Add(vpc)
+		c.delVpcQueue.Add(vpc.DeepCopy())
 	}
 }
 

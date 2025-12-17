@@ -64,7 +64,7 @@ func (c *Controller) enqueueDelVirtualIP(obj any) {
 
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)
-	c.delVirtualIPQueue.Add(vip)
+	c.delVirtualIPQueue.Add(vip.DeepCopy())
 }
 
 func (c *Controller) handleAddVirtualIP(key string) error {

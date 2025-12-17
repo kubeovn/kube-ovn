@@ -107,7 +107,7 @@ func (c *Controller) enqueueDeleteService(obj any) {
 			vpcSvc := &vpcService{
 				Protocol: port.Protocol,
 				Vpc:      svc.Annotations[util.VpcAnnotation],
-				Svc:      svc,
+				Svc:      svc.DeepCopy(),
 			}
 			for _, ip := range ips {
 				vpcSvc.Vips = append(vpcSvc.Vips, util.JoinHostPort(ip, port.Port))

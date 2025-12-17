@@ -59,7 +59,7 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
-	c.delIptablesEipQueue.Add(eip)
+	c.delIptablesEipQueue.Add(eip.DeepCopy())
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {

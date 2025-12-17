@@ -99,7 +99,7 @@ func (c *Controller) enqueueDeleteCnp(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete cnp %s", cache.MetaObjectToName(cnp).String())
-	c.deleteCnpQueue.Add(cnp)
+	c.deleteCnpQueue.Add(cnp.DeepCopy())
 }
 
 func (c *Controller) handleAddCnp(key string) (err error) {

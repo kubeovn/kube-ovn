@@ -44,7 +44,7 @@ func (c *Controller) enqueueDeleteIPPool(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete ippool %s", cache.MetaObjectToName(ippool).String())
-	c.deleteIPPoolQueue.Add(ippool)
+	c.deleteIPPoolQueue.Add(ippool.DeepCopy())
 }
 
 func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {

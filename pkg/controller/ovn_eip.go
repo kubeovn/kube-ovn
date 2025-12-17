@@ -73,7 +73,7 @@ func (c *Controller) enqueueDelOvnEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del ovn eip %s", key)
-	c.delOvnEipQueue.Add(eip)
+	c.delOvnEipQueue.Add(eip.DeepCopy())
 }
 
 func (c *Controller) handleAddOvnEip(key string) error {

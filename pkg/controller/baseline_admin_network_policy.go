@@ -40,7 +40,7 @@ func (c *Controller) enqueueDeleteBanp(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete bnp %s", cache.MetaObjectToName(bnp).String())
-	c.deleteBanpQueue.Add(bnp)
+	c.deleteBanpQueue.Add(bnp.DeepCopy())
 }
 
 func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {

@@ -53,7 +53,7 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
-	c.deleteSubnetQueue.Add(subnet)
+	c.deleteSubnetQueue.Add(subnet.DeepCopy())
 }
 
 func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {

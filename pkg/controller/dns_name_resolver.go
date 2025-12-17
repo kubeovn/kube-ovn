@@ -51,7 +51,7 @@ func (c *Controller) enqueueDeleteDNSNameResolver(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete dns name resolver %s", cache.MetaObjectToName(dnsNameResolver).String())
-	c.deleteDNSNameResolverQueue.Add(dnsNameResolver)
+	c.deleteDNSNameResolverQueue.Add(dnsNameResolver.DeepCopy())
 }
 
 func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {

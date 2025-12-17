@@ -107,7 +107,7 @@ func (c *Controller) enqueueDelIP(obj any) {
 
 	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue del ip %s", key)
-	c.delIPQueue.Add(ipObj)
+	c.delIPQueue.Add(ipObj.DeepCopy())
 }
 
 func (c *Controller) handleAddReservedIP(key string) error {
