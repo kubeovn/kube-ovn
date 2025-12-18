@@ -876,14 +876,14 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		// Check if we have a subnet provider, if so, use it to set the routes annotation
 		// This is useful when running in secondary CNI mode, as the subnet provider will be the
 		// one that has the routes to the subnet
-		subnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
+		vpcSubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
 		if err != nil {
 			klog.Errorf("%v", err)
 			return nil, err
 		}
-		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, subnetProvider)
-		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnetProvider)
-		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
+		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, vpcSubnetProvider)
+		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, vpcSubnetProvider)
+		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcSubnetProvider)
 		// Merge new annotations with existing ones
 		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
