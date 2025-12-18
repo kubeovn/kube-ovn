@@ -199,13 +199,198 @@ var _ = framework.Describe("[group:vip]", func() {
 		securityGroupClient.DeleteSync(securityGroupName)
 	})
 
+	framework.ConformanceIt("Test vip subnet status update with finalizer", func() {
+		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+
+		ginkgo.By("1. Get initial subnet status")
+		initialSubnet := subnetClient.Get(subnetName)
+		initialV4AvailableIPs := initialSubnet.Status.V4AvailableIPs
+		initialV4UsingIPs := initialSubnet.Status.V4UsingIPs
+		initialV6AvailableIPs := initialSubnet.Status.V6AvailableIPs
+		initialV6UsingIPs := initialSubnet.Status.V6UsingIPs
+		initialV4AvailableIPRange := initialSubnet.Status.V4AvailableIPRange
+		initialV4UsingIPRange := initialSubnet.Status.V4UsingIPRange
+		initialV6AvailableIPRange := initialSubnet.Status.V6AvailableIPRange
+		initialV6UsingIPRange := initialSubnet.Status.V6UsingIPRange
+
+		ginkgo.By("2. Create a VIP and verify finalizer is added")
+		testVipName := "test-vip-finalizer-" + framework.RandomSuffix()
+		testVip := makeOvnVip(namespaceName, testVipName, subnetName, "", "", "")
+		testVip = vipClient.CreateSync(testVip)
+
+		// Verify VIP has finalizer
+		framework.ExpectContainElement(testVip.Finalizers, util.KubeOVNControllerFinalizer)
+
+		ginkgo.By("3. Wait for subnet status to be updated after VIP creation")
+		time.Sleep(5 * time.Second)
+
+		ginkgo.By("4. Verify subnet status after VIP creation")
+		afterCreateSubnet := subnetClient.Get(subnetName)
+		switch afterCreateSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
+			// Verify IP count changed
+			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should decrease by 1 after VIP creation")
+			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should increase by 1 after VIP creation")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after VIP creation")
+			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after VIP creation")
+
+			// Verify the VIP's IP is in the using range
+			vipIP := testVip.Status.V4ip
+			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V4UsingIPRange, vipIP),
+				"VIP IP %s should be in V4UsingIPRange %s", vipIP, afterCreateSubnet.Status.V4UsingIPRange)
+		case apiv1.ProtocolIPv6:
+			// Verify IP count changed
+			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should decrease by 1 after VIP creation")
+			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should increase by 1 after VIP creation")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after VIP creation")
+			framework.ExpectNotEqual(initialV6UsingIPRange, afterCreateSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after VIP creation")
+
+			// Verify the VIP's IP is in the using range
+			vipIP := testVip.Status.V6ip
+			framework.ExpectTrue(strings.Contains(afterCreateSubnet.Status.V6UsingIPRange, vipIP),
+				"VIP IP %s should be in V6UsingIPRange %s", vipIP, afterCreateSubnet.Status.V6UsingIPRange)
+		default:
+			// Dual stack
+			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should decrease by 1 after VIP creation")
+			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should increase by 1 after VIP creation")
+			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should decrease by 1 after VIP creation")
+			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should increase by 1 after VIP creation")
+
+			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after VIP creation")
+			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after VIP creation")
+			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after VIP creation")
+			framework.ExpectNotEqual(initialV6UsingIPRange, afterCreateSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after VIP creation")
+		}
+
+		// Store the status after creation for later comparison
+		afterCreateV4AvailableIPs := afterCreateSubnet.Status.V4AvailableIPs
+		afterCreateV4UsingIPs := afterCreateSubnet.Status.V4UsingIPs
+		afterCreateV6AvailableIPs := afterCreateSubnet.Status.V6AvailableIPs
+		afterCreateV6UsingIPs := afterCreateSubnet.Status.V6UsingIPs
+		afterCreateV4AvailableIPRange := afterCreateSubnet.Status.V4AvailableIPRange
+		afterCreateV4UsingIPRange := afterCreateSubnet.Status.V4UsingIPRange
+		afterCreateV6AvailableIPRange := afterCreateSubnet.Status.V6AvailableIPRange
+		afterCreateV6UsingIPRange := afterCreateSubnet.Status.V6UsingIPRange
+
+		ginkgo.By("5. Delete the VIP")
+		vipClient.DeleteSync(testVipName)
+
+		ginkgo.By("6. Wait for subnet status to be updated after VIP deletion")
+		time.Sleep(5 * time.Second)
+
+		ginkgo.By("7. Verify subnet status after VIP deletion")
+		afterDeleteSubnet := subnetClient.Get(subnetName)
+		switch afterDeleteSubnet.Spec.Protocol {
+		case apiv1.ProtocolIPv4:
+			// Verify IP count is restored
+			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should increase by 1 after VIP deletion")
+			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should decrease by 1 after VIP deletion")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after VIP deletion")
+			framework.ExpectNotEqual(afterCreateV4UsingIPRange, afterDeleteSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after VIP deletion")
+
+			// Verify counts match initial state
+			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should return to initial value after VIP deletion")
+			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should return to initial value after VIP deletion")
+		case apiv1.ProtocolIPv6:
+			// Verify IP count is restored
+			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should increase by 1 after VIP deletion")
+			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should decrease by 1 after VIP deletion")
+
+			// Verify IP range changed
+			framework.ExpectNotEqual(afterCreateV6AvailableIPRange, afterDeleteSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after VIP deletion")
+			framework.ExpectNotEqual(afterCreateV6UsingIPRange, afterDeleteSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after VIP deletion")
+
+			// Verify counts match initial state
+			framework.ExpectEqual(initialV6AvailableIPs, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should return to initial value after VIP deletion")
+			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should return to initial value after VIP deletion")
+		default:
+			// Dual stack
+			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should increase by 1 after VIP deletion")
+			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should decrease by 1 after VIP deletion")
+			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should increase by 1 after VIP deletion")
+			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should decrease by 1 after VIP deletion")
+
+			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
+				"V4AvailableIPRange should change after VIP deletion")
+			framework.ExpectNotEqual(afterCreateV4UsingIPRange, afterDeleteSubnet.Status.V4UsingIPRange,
+				"V4UsingIPRange should change after VIP deletion")
+			framework.ExpectNotEqual(afterCreateV6AvailableIPRange, afterDeleteSubnet.Status.V6AvailableIPRange,
+				"V6AvailableIPRange should change after VIP deletion")
+			framework.ExpectNotEqual(afterCreateV6UsingIPRange, afterDeleteSubnet.Status.V6UsingIPRange,
+				"V6UsingIPRange should change after VIP deletion")
+
+			framework.ExpectEqual(initialV4AvailableIPs, afterDeleteSubnet.Status.V4AvailableIPs,
+				"V4AvailableIPs should return to initial value after VIP deletion")
+			framework.ExpectEqual(initialV4UsingIPs, afterDeleteSubnet.Status.V4UsingIPs,
+				"V4UsingIPs should return to initial value after VIP deletion")
+			framework.ExpectEqual(initialV6AvailableIPs, afterDeleteSubnet.Status.V6AvailableIPs,
+				"V6AvailableIPs should return to initial value after VIP deletion")
+			framework.ExpectEqual(initialV6UsingIPs, afterDeleteSubnet.Status.V6UsingIPs,
+				"V6UsingIPs should return to initial value after VIP deletion")
+		}
+
+		ginkgo.By("8. Test completed: VIP creation and deletion properly updates subnet status via finalizer handlers")
+	})
+
 	framework.ConformanceIt("Test vip", func() {
 		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
 		ginkgo.By("0. Test subnet status counting vip")
 		oldSubnet := subnetClient.Get(subnetName)
 		countingVip := makeOvnVip(namespaceName, countingVipName, subnetName, "", "", "")
-		_ = vipClient.CreateSync(countingVip)
-		time.Sleep(3 * time.Second)
+		countingVip = vipClient.CreateSync(countingVip)
+
+		// Wait for finalizer to be added
+		ginkgo.By("Waiting for VIP finalizer to be added")
+		for range 10 {
+			countingVip = vipClient.Get(countingVipName)
+			if len(countingVip.Finalizers) > 0 {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		framework.ExpectContainElement(countingVip.Finalizers, util.KubeOVNControllerFinalizer)
+
+		// Wait for subnet status to be updated
+		ginkgo.By("Waiting for subnet status to be updated after VIP creation")
+		time.Sleep(5 * time.Second)
 		newSubnet := subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
@@ -220,8 +405,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		}
 		oldSubnet = newSubnet
 		// delete counting vip
+		ginkgo.By("Deleting counting VIP and waiting for subnet status update")
 		vipClient.DeleteSync(countingVipName)
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Second)
 		newSubnet = subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
 			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)

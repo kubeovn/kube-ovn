@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,7 +64,7 @@ func (c *Controller) enqueueDelVirtualIP(obj any) {
 
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)
-	c.delVirtualIPQueue.Add(vip)
+	c.delVirtualIPQueue.Add(vip.DeepCopy())
 }
 
 func (c *Controller) handleAddVirtualIP(key string) error {
@@ -80,6 +81,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return nil
 	}
 	klog.V(3).Infof("handle add vip %s", key)
+
 	vip := cachedVip.DeepCopy()
 	var sourceV4Ip, sourceV6Ip, v4ip, v6ip, mac, subnetName string
 	subnetName = vip.Spec.Subnet
@@ -167,6 +169,10 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, VIP CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
@@ -182,6 +188,31 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	vip := cachedVip.DeepCopy()
 	// should delete
 	if !vip.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting vip %s", vip.Name)
+		// Clean up resources before removing finalizer
+		if vip.Spec.Type != "" {
+			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
+				return err
+			}
+			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+			klog.Infof("delete vip lsp %s", portName)
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
+				klog.Error(err)
+				return err
+			}
+		}
+		// delete virtual ports
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
+			return err
+		}
+		// Release IP from IPAM before removing finalizer
+		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
+
+		// Now remove finalizer, which will trigger subnet status update
 		if err = c.handleDelVipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle vip finalizer %v", err)
 			return err
@@ -217,38 +248,26 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			klog.Error(err)
 			return err
 		}
-		if err = c.handleAddVipFinalizer(key); err != nil {
-			klog.Errorf("failed to handle vip finalizer %v", err)
-			return err
-		}
+	}
+	// Always ensure finalizer is added regardless of Status
+	if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
+		klog.Errorf("failed to handle vip finalizer %v", err)
+		return err
 	}
 	return nil
 }
 
 func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
-	klog.Infof("handle delete vip %s", vip.Name)
-	// TODO:// clean vip in its parent port aap list
-	if vip.Spec.Type != "" {
-		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
-		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
-			return err
-		}
-		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-		klog.Infof("delete vip lsp %s", portName)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-			err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
-			klog.Error(err)
-			return err
-		}
+	// Cleanup is now handled in handleUpdateVirtualIP before finalizer removal
+	// This function is kept for compatibility with the delete queue
+	klog.V(3).Infof("vip %s cleanup already done in update handler", vip.Name)
+
+	// For VIPs deleted without finalizer (race condition or direct deletion),
+	// we need to ensure subnet status is updated as a safety net.
+	if vip.Spec.Subnet != "" {
+		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}
-	// delete virtual ports
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
-		klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
-		return err
-	}
-	c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
+
 	return nil
 }
 
@@ -348,14 +367,16 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Create CR with finalizer, labels and status all at once
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
+					Name:       key,
+					Namespace:  ns,
+					Finalizers: []string{util.KubeOVNControllerFinalizer},
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
 						util.IPReservedLabel: "",
 					},
-					Namespace: ns,
 				},
 				Spec: kubeovnv1.VipSpec{
 					Namespace:  ns,
@@ -363,6 +384,11 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 					V4ip:       v4ip,
 					V6ip:       v6ip,
 					MacAddress: mac,
+				},
+				Status: kubeovnv1.VipStatus{
+					V4ip: v4ip,
+					V6ip: v6ip,
+					Mac:  mac,
 				},
 			}, metav1.CreateOptions{}); err != nil {
 				err := fmt.Errorf("failed to create crd vip '%s', %w", key, err)
@@ -376,6 +402,14 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	} else {
 		vip := vipCR.DeepCopy()
+
+		// Ensure labels are set correctly
+		if vip.Labels == nil {
+			vip.Labels = make(map[string]string)
+		}
+		vip.Labels[util.SubnetNameLabel] = subnet
+		vip.Labels[util.IPReservedLabel] = ""
+
 		if vip.Status.Mac == "" && mac != "" ||
 			vip.Status.V4ip == "" && v4ip != "" ||
 			vip.Status.V6ip == "" && v6ip != "" {
@@ -391,39 +425,16 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Status.Mac = mac
 			vip.Status.Type = vip.Spec.Type
 			// TODO:// Ready = true as subnet.Status.Ready
+			// Update with labels, spec and status in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update vip '%s', %w", key, err)
 				klog.Error(err)
 				return err
 			}
 		}
-		var needUpdateLabel bool
-		var op string
-		if len(vip.Labels) == 0 {
-			op = "add"
-			vip.Labels = map[string]string{
-				util.SubnetNameLabel: subnet,
-				util.IPReservedLabel: "",
-			}
-			needUpdateLabel = true
-		}
-		if _, ok := vip.Labels[util.SubnetNameLabel]; !ok {
-			op = "add"
-			vip.Labels[util.SubnetNameLabel] = subnet
-			vip.Labels[util.IPReservedLabel] = ""
-			needUpdateLabel = true
-		}
-		if needUpdateLabel {
-			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-			raw, _ := json.Marshal(vip.Labels)
-			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType,
-				[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
-				klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
-				return err
-			}
-		}
 	}
+	// Trigger subnet status update after CR creation or update
+	time.Sleep(300 * time.Millisecond)
 	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
@@ -460,7 +471,6 @@ func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 		return err
 	}
 	c.ipam.ReleaseAddressByPod(vipName, vip.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
 
@@ -500,12 +510,11 @@ func (c *Controller) releaseVip(key string) error {
 		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
 			klog.Errorf("failed to recover IPAM from vip CR %s: %v", vip.Name, err)
 		}
-		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}
 	return nil
 }
 
-func (c *Controller) handleAddVipFinalizer(key string) error {
+func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -514,10 +523,11 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedVip.DeletionTimestamp.IsZero() || len(cachedVip.GetFinalizers()) != 0 {
+	if !cachedVip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
+	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -532,6 +542,11 @@ func (c *Controller) handleAddVipFinalizer(key string) error {
 		klog.Errorf("failed to add finalizer for vip '%s', %v", cachedVip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
+	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
 	return nil
 }
 
@@ -548,6 +563,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
+	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
 	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -562,6 +578,12 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		klog.Errorf("failed to remove finalizer from vip '%s', %v", cachedVip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is removed
+	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	time.Sleep(300 * time.Millisecond)
+	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
 	return nil
 }
 

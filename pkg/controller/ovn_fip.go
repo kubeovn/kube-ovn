@@ -35,8 +35,9 @@ func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj any) {
 			// avoid delete twice
 			return
 		}
-		klog.Infof("enqueue del ovn fip %s", key)
-		c.delOvnFipQueue.Add(key)
+		// FIP with finalizer should be handled in updateOvnFipQueue
+		klog.Infof("enqueue update (deleting) ovn fip %s", key)
+		c.updateOvnFipQueue.Add(key)
 		return
 	}
 	oldFip := oldObj.(*kubeovnv1.OvnFip)
@@ -267,6 +268,46 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Handle deletion first (for FIPs with finalizers)
+	if !cachedFip.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting ovn fip %s", key)
+		if cachedFip.Status.Vpc == "" {
+			// Already cleaned, just remove finalizer
+			if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
+				klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
+				return err
+			}
+			return nil
+		}
+
+		// ovn delete fip nat
+		if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
+			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+				klog.Errorf("failed to delete v4 fip %s, %v", key, err)
+				return err
+			}
+		}
+		if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
+			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+				klog.Errorf("failed to delete v6 fip %s, %v", key, err)
+				return err
+			}
+		}
+
+		// Remove finalizer
+		if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
+			klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
+			return err
+		}
+
+		// Reset eip
+		if cachedFip.Spec.OvnEip != "" {
+			c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
+		}
+		return nil
+	}
+
 	if !cachedFip.Status.Ready {
 		// create fip only in add process, just check to error out here
 		klog.Infof("wait ovn fip %s to be ready only in the handle add process", cachedFip.Name)
@@ -542,6 +583,7 @@ func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 		return nil
 	}
 	newFip := cachedFip.DeepCopy()
+	controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {
@@ -580,5 +622,12 @@ func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 		klog.Errorf("failed to remove finalizer from ovn fip '%s', %v", cachedFip.Name, err)
 		return err
 	}
+
+	// Trigger associated EIP to recheck if it can be deleted now
+	if cachedFip.Spec.OvnEip != "" {
+		klog.Infof("triggering eip %s update after fip %s deletion", cachedFip.Spec.OvnEip, cachedFip.Name)
+		c.updateOvnEipQueue.Add(cachedFip.Spec.OvnEip)
+	}
+
 	return nil
 }

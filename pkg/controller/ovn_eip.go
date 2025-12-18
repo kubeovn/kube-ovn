@@ -35,8 +35,9 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 			// avoid delete eip twice
 			return
 		}
-		klog.Infof("enqueue del ovn eip %s", key)
-		c.delOvnEipQueue.Add(key)
+		// EIP with finalizer should be handled in updateOvnEipQueue
+		klog.Infof("enqueue update (deleting) ovn eip %s", key)
+		c.updateOvnEipQueue.Add(key)
 		return
 	}
 	oldEip := oldObj.(*kubeovnv1.OvnEip)
@@ -72,7 +73,7 @@ func (c *Controller) enqueueDelOvnEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del ovn eip %s", key)
-	c.delOvnEipQueue.Add(key)
+	c.delOvnEipQueue.Add(eip.DeepCopy())
 }
 
 func (c *Controller) handleAddOvnEip(key string) error {
@@ -89,6 +90,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return nil
 	}
 	klog.Infof("handle add ovn eip %s", cachedEip.Name)
+
 	var v4ip, v6ip, mac, subnetName string
 	subnetName = cachedEip.Spec.ExternalSubnet
 	if subnetName == "" {
@@ -143,11 +145,10 @@ func (c *Controller) handleAddOvnEip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
-	}
-	c.updateSubnetStatusQueue.Add(subnetName)
+
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, OvnEip CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -160,6 +161,55 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Handle deletion first
+	if !cachedEip.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting ovn eip %s", key)
+
+		// Check if EIP is still being used by any NAT rules (FIP/DNAT/SNAT) BEFORE cleanup
+		// Only proceed with cleanup and finalizer removal when no NAT rules are using it
+		nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
+		if err != nil {
+			klog.Errorf("failed to get ovn eip %s nat rules, %v", key, err)
+			return err
+		}
+		if nat != "" {
+			err := fmt.Errorf("ovn eip %s is still being used by NAT rules: %s, waiting for them to be deleted", key, nat)
+			klog.Error(err)
+			return err
+		}
+
+		// Clean up resources before removing finalizer
+		if cachedEip.Spec.Type == util.OvnEipTypeLSP {
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(cachedEip.Name); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", cachedEip.Name, err)
+				return err
+			}
+		}
+		if cachedEip.Spec.Type == util.OvnEipTypeLRP {
+			if err := c.OVNNbClient.DeleteLogicalRouterPort(cachedEip.Name); err != nil {
+				klog.Errorf("failed to delete lrp %s, %v", cachedEip.Name, err)
+				return err
+			}
+		}
+
+		// Release IP from IPAM before removing finalizer
+		c.ipam.ReleaseAddressByPod(cachedEip.Name, cachedEip.Spec.ExternalSubnet)
+
+		// Now remove finalizer, which will trigger subnet status update
+		if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+			klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
+			return err
+		}
+		return nil
+	}
+
+	// Always ensure finalizer is added regardless of Status
+	if err = c.handleAddOrUpdateOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to handle add or update finalizer for ovn eip %s: %v", key, err)
+		return err
+	}
+
 	if !cachedEip.Status.Ready {
 		// create eip only in add process, just check to error out here
 		klog.Infof("wait ovn eip %s to be ready only in the handle add process", cachedEip.Name)
@@ -216,17 +266,12 @@ func (c *Controller) handleResetOvnEip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelOvnEip(key string) error {
-	klog.Infof("handle del ovn eip %s", key)
-	eip, err := c.ovnEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
+func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
+	// This handles deletion of EIPs without finalizers (race condition or direct deletion)
+	// EIPs with finalizers are handled in handleUpdateOvnEip
+	klog.Infof("handle del ovn eip %s (without finalizer)", eip.Name)
 
+	// Clean up resources if they still exist
 	if eip.Spec.Type == util.OvnEipTypeLSP {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
@@ -240,12 +285,14 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 	}
 
-	if err = c.handleDelOvnEipFinalizer(eip); err != nil {
-		klog.Errorf("failed to handle remove ovn eip finalizer , %v", err)
-		return err
-	}
+	// Release IP from IPAM
 	c.ipam.ReleaseAddressByPod(eip.Name, eip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
+
+	// Ensure subnet status is updated
+	if eip.Spec.ExternalSubnet != "" {
+		c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
+	}
+
 	return nil
 }
 
@@ -253,9 +300,11 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Create CR with finalizer, labels and status all at once
 			_, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Create(context.Background(), &kubeovnv1.OvnEip{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
+					Name:       key,
+					Finalizers: []string{util.KubeOVNControllerFinalizer},
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
 						util.OvnEipTypeLabel: usageType,
@@ -269,6 +318,14 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 					V6Ip:           v6ip,
 					MacAddress:     mac,
 					Type:           usageType,
+				},
+				Status: kubeovnv1.OvnEipStatus{
+					V4Ip:       v4ip,
+					V6Ip:       v6ip,
+					MacAddress: mac,
+					Type:       usageType,
+					Nat:        "",
+					Ready:      false,
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
@@ -284,8 +341,17 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		}
 	} else {
 		ovnEip := cachedEip.DeepCopy()
-		needUpdate := false
 
+		// Ensure labels are set correctly before any update
+		if ovnEip.Labels == nil {
+			ovnEip.Labels = make(map[string]string)
+		}
+		ovnEip.Labels[util.SubnetNameLabel] = subnet
+		ovnEip.Labels[util.OvnEipTypeLabel] = usageType
+		ovnEip.Labels[util.EipV4IpLabel] = v4ip
+		ovnEip.Labels[util.EipV6IpLabel] = v6ip
+
+		needUpdate := false
 		if mac != "" && ovnEip.Spec.MacAddress != mac {
 			ovnEip.Spec.MacAddress = mac
 			needUpdate = true
@@ -303,6 +369,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 			needUpdate = true
 		}
 		if needUpdate {
+			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update ovn eip '%s', %w", key, err)
 				klog.Error(errMsg)
@@ -341,42 +408,10 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 				return err
 			}
 		}
-
-		var needUpdateLabel bool
-		var op string
-		if len(ovnEip.Labels) == 0 {
-			op = "add"
-			ovnEip.Labels = map[string]string{
-				util.SubnetNameLabel: subnet,
-				util.OvnEipTypeLabel: usageType,
-				util.EipV4IpLabel:    v4ip,
-				util.EipV6IpLabel:    v6ip,
-			}
-			needUpdateLabel = true
-		}
-		if ovnEip.Labels[util.SubnetNameLabel] != subnet {
-			op = "replace"
-			ovnEip.Labels[util.SubnetNameLabel] = subnet
-			ovnEip.Labels[util.EipV4IpLabel] = v4ip
-			ovnEip.Labels[util.EipV6IpLabel] = v6ip
-			needUpdateLabel = true
-		}
-		if ovnEip.Labels[util.OvnEipTypeLabel] != usageType {
-			op = "replace"
-			ovnEip.Labels[util.OvnEipTypeLabel] = usageType
-			needUpdateLabel = true
-		}
-		if needUpdateLabel {
-			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-			raw, _ := json.Marshal(ovnEip.Labels)
-			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name, types.JSONPatchType,
-				[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
-				klog.Errorf("failed to patch label for ovn eip '%s', %v", ovnEip.Name, err)
-				return err
-			}
-		}
 	}
+	// Trigger subnet status update after CR creation or update
+	time.Sleep(300 * time.Millisecond)
+	c.updateSubnetStatusQueue.Add(subnet)
 	return nil
 }
 
@@ -504,11 +539,12 @@ func (c *Controller) syncOvnEipFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
-	if !cachedEip.DeletionTimestamp.IsZero() || len(cachedEip.GetFinalizers()) != 0 {
+func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
+	if !cachedEip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newEip := cachedEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newEip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
@@ -523,6 +559,11 @@ func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 		klog.Errorf("failed to add finalizer for ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
+	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
 	return nil
 }
 
@@ -558,6 +599,12 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 		klog.Errorf("failed to remove finalizer from ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is removed
+	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	time.Sleep(300 * time.Millisecond)
+	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
 	return nil
 }
 
