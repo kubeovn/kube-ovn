@@ -215,7 +215,10 @@ fi
 
 if [[ $ENABLE_OVN_LEADER_CHECK == "true" ]]; then
     chmod 600 /etc/ovn/*
-    /kube-ovn/kube-ovn-leader-checker --probeInterval=${OVN_LEADER_PROBE_INTERVAL} --isICDBServer=true
+    /kube-ovn/kube-ovn-leader-checker \
+        --probeInterval=${OVN_LEADER_PROBE_INTERVAL} \
+        --remoteAddresses="${NODE_IPS}" \
+        --isICDBServer=true
 else
     # Compatible with controller deployment methods before kube-ovn 1.11.16
     TS_NAME=${TS_NAME:-ts}
