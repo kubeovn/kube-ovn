@@ -64,7 +64,7 @@ func (c *Controller) enqueueDelVirtualIP(obj any) {
 
 	key := cache.MetaObjectToName(vip).String()
 	klog.Infof("enqueue del vip %s", key)
-	c.delVirtualIPQueue.Add(vip.DeepCopy())
+	c.delVirtualIPQueue.Add(vip)
 }
 
 func (c *Controller) handleAddVirtualIP(key string) error {
@@ -434,8 +434,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	time.Sleep(300 * time.Millisecond)
-	c.updateSubnetStatusQueue.Add(subnet)
+	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
 	return nil
 }
 
@@ -582,8 +581,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	time.Sleep(300 * time.Millisecond)
-	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
+	c.updateSubnetStatusQueue.AddAfter(cachedVip.Spec.Subnet, 300*time.Millisecond)
 	return nil
 }
 

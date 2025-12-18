@@ -59,7 +59,7 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
-	c.delIptablesEipQueue.Add(eip.DeepCopy())
+	c.delIptablesEipQueue.Add(eip)
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {
@@ -685,8 +685,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		}
 	}
 	// Trigger subnet status update after all operations complete
-	time.Sleep(300 * time.Millisecond)
-	c.updateSubnetStatusQueue.Add(externalNet)
+	c.updateSubnetStatusQueue.AddAfter(externalNet, 300*time.Millisecond)
 	return nil
 }
 
@@ -770,9 +769,8 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	time.Sleep(300 * time.Millisecond)
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
+	c.updateSubnetStatusQueue.AddAfter(externalNetwork, 300*time.Millisecond)
 	return nil
 }
 

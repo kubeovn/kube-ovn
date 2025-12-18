@@ -52,7 +52,7 @@ func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	newIPPool := newObj.(*kubeovnv1.IPPool)
 	if !newIPPool.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue delete ippool %s due to deletion timestamp", cache.MetaObjectToName(newIPPool).String())
-		c.deleteIPPoolQueue.Add(newIPPool.DeepCopy())
+		c.deleteIPPoolQueue.Add(newIPPool)
 		return
 	}
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||

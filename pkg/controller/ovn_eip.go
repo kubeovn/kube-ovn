@@ -73,7 +73,7 @@ func (c *Controller) enqueueDelOvnEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del ovn eip %s", key)
-	c.delOvnEipQueue.Add(eip.DeepCopy())
+	c.delOvnEipQueue.Add(eip)
 }
 
 func (c *Controller) handleAddOvnEip(key string) error {
@@ -410,8 +410,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	time.Sleep(300 * time.Millisecond)
-	c.updateSubnetStatusQueue.Add(subnet)
+	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
 	return nil
 }
 
@@ -603,8 +602,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	time.Sleep(300 * time.Millisecond)
-	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
+	c.updateSubnetStatusQueue.AddAfter(cachedEip.Spec.ExternalSubnet, 300*time.Millisecond)
 	return nil
 }
 
