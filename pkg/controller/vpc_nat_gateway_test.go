@@ -135,6 +135,7 @@ func TestGetDefaultSnatSubnetNadLogic(t *testing.T) {
 		enableDefaultSnat bool
 		defaultSnatSubnet string
 		shouldReturnEmpty bool
+		shouldReturnError bool
 		description       string
 	}{
 		{
@@ -142,20 +143,23 @@ func TestGetDefaultSnatSubnetNadLogic(t *testing.T) {
 			enableDefaultSnat: false,
 			defaultSnatSubnet: "ovn-default",
 			shouldReturnEmpty: true,
+			shouldReturnError: false,
 			description:       "Should return empty when feature is disabled",
 		},
 		{
-			name:              "DefaultSnatSubnet is empty",
+			name:              "EnableDefaultSnat true but DefaultSnatSubnet is empty",
 			enableDefaultSnat: true,
 			defaultSnatSubnet: "",
-			shouldReturnEmpty: true,
-			description:       "Should return empty when subnet name is not provided",
+			shouldReturnEmpty: false,
+			shouldReturnError: true,
+			description:       "Should return error when EnableDefaultSnat is true but DefaultSnatSubnet is not provided",
 		},
 		{
 			name:              "Both EnableDefaultSnat and DefaultSnatSubnet are set",
 			enableDefaultSnat: true,
 			defaultSnatSubnet: "ovn-default",
 			shouldReturnEmpty: false,
+			shouldReturnError: false,
 			description:       "Should return NAD info when properly configured",
 		},
 	}
@@ -164,16 +168,24 @@ func TestGetDefaultSnatSubnetNadLogic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the logic inline without calling the actual function
 			// This mimics the logic in getDefaultSnatSubnetNad
-			shouldReturn := !tt.enableDefaultSnat || tt.defaultSnatSubnet == ""
 
-			if shouldReturn != tt.shouldReturnEmpty {
-				t.Errorf("%s: expected shouldReturn=%v, got %v", tt.description, tt.shouldReturnEmpty, shouldReturn)
+			// When EnableDefaultSnat is false, should return empty without error
+			if !tt.enableDefaultSnat {
+				assert.True(t, tt.shouldReturnEmpty, "Should return empty when EnableDefaultSnat is false")
+				assert.False(t, tt.shouldReturnError, "Should not return error when EnableDefaultSnat is false")
+				return
 			}
 
-			// If not returning empty, verify subnet name is set
-			if !shouldReturn && tt.defaultSnatSubnet == "" {
-				t.Error("DefaultSnatSubnet should not be empty when returning NAD info")
+			// When EnableDefaultSnat is true but DefaultSnatSubnet is empty, should return error
+			if tt.enableDefaultSnat && tt.defaultSnatSubnet == "" {
+				assert.True(t, tt.shouldReturnError, "Should return error when EnableDefaultSnat is true but DefaultSnatSubnet is empty")
+				return
 			}
+
+			// When both are properly set, should return NAD info without error
+			assert.False(t, tt.shouldReturnEmpty, "Should not return empty when properly configured")
+			assert.False(t, tt.shouldReturnError, "Should not return error when properly configured")
+			assert.NotEmpty(t, tt.defaultSnatSubnet, "DefaultSnatSubnet should not be empty when returning NAD info")
 		})
 	}
 }

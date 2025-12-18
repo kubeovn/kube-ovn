@@ -850,11 +850,15 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
+
+	// Get default SNAT subnet NAD information if EnableDefaultSnat is enabled
+	// The function validates all required fields and returns error if validation fails
 	defaultSnatNadNamespace, defaultSnatNadName, err := c.getDefaultSnatSubnetNad(gw)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
+
 	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, defaultSnatNadNamespace, defaultSnatNadName)
 
 	// Restart logic to fix #5072
@@ -948,6 +952,24 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
+	// Users can specify custom routes to inject in the NAT GW via eth0 (OVN internal network)
+	// TODO: support multi nic routes
+	for _, route := range gw.Spec.Routes {
+		nexthop := route.NextHopIP
+
+		// Users can specify "gateway" instead of an actual IP as the next hop, and
+		// we will auto-determine the address of the gateway based on the protocol
+		if nexthop == "gateway" {
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
+				nexthop = eth0V4Gateway
+			} else {
+				nexthop = eth0V6Gateway
+			}
+		}
+
+		eth0Routes = append(eth0Routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
+	}
+
 	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, eth0Routes); err != nil {
 		klog.Error(err)
 		return nil, err
@@ -986,7 +1008,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	// Configure net2 (default SNAT subnet) fallback routes with lower priority
 	// This allows traffic to use OVN nat-outgoing when no public EIP is available on net1
 	// Scenario: EnableDefaultSnat=true -> net2 MUST have routes configured
-	if gw.Spec.EnableDefaultSnat && gw.Spec.DefaultSnatSubnet != "" {
+	// Note: DefaultSnatSubnet has already been validated in getDefaultSnatSubnetNad()
+	if gw.Spec.EnableDefaultSnat {
 		net2Subnet, err := c.subnetsLister.Get(gw.Spec.DefaultSnatSubnet)
 		if err != nil {
 			klog.Errorf("failed to get default SNAT subnet %s: %v", gw.Spec.DefaultSnatSubnet, err)
@@ -1042,6 +1065,14 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 							Name:    "vpc-nat-gw",
 							Image:   vpcNatImage,
 							Command: []string{"sleep", "infinity"},
+							Lifecycle: &corev1.Lifecycle{
+								PostStart: &corev1.LifecycleHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
+									},
+								},
+							},
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Env: []corev1.EnvVar{
 								{
 									Name:  "ENABLE_DEFAULT_SNAT",
@@ -1056,14 +1087,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 									Value: net1V6Gateway,
 								},
 							},
-							Lifecycle: &corev1.Lifecycle{
-								PostStart: &corev1.LifecycleHandler{
-									Exec: &corev1.ExecAction{
-										Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
-									},
-								},
-							},
-							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(true),
@@ -1119,8 +1142,15 @@ func (c *Controller) getExternalSubnetNad(gw *kubeovnv1.VpcNatGateway) (string, 
 // getDefaultSnatSubnetNad returns the namespace and name of the NetworkAttachmentDefinition associated with
 // the default SNAT subnet for fallback SNAT via OVN nat-outgoing
 func (c *Controller) getDefaultSnatSubnetNad(gw *kubeovnv1.VpcNatGateway) (string, string, error) {
-	if !gw.Spec.EnableDefaultSnat || gw.Spec.DefaultSnatSubnet == "" {
+	if !gw.Spec.EnableDefaultSnat {
 		return "", "", nil
+	}
+
+	// When EnableDefaultSnat is true, DefaultSnatSubnet must be specified
+	if gw.Spec.DefaultSnatSubnet == "" {
+		err := fmt.Errorf("EnableDefaultSnat is enabled but DefaultSnatSubnet is not specified for gateway %s", gw.Name)
+		klog.Error(err)
+		return "", "", err
 	}
 
 	defaultSnatSubnet, err := c.subnetsLister.Get(gw.Spec.DefaultSnatSubnet)
@@ -1132,6 +1162,13 @@ func (c *Controller) getDefaultSnatSubnetNad(gw *kubeovnv1.VpcNatGateway) (strin
 	name, namespace, ok := util.GetNadBySubnetProvider(defaultSnatSubnet.Spec.Provider)
 	if !ok {
 		err = fmt.Errorf("failed to get NAD info from subnet provider %s for default SNAT subnet %s", defaultSnatSubnet.Spec.Provider, gw.Spec.DefaultSnatSubnet)
+		klog.Error(err)
+		return "", "", err
+	}
+
+	// Ensure we got valid NAD information
+	if namespace == "" || name == "" {
+		err := fmt.Errorf("got empty NAD information from subnet provider %s for default SNAT subnet %s", defaultSnatSubnet.Spec.Provider, gw.Spec.DefaultSnatSubnet)
 		klog.Error(err)
 		return "", "", err
 	}
