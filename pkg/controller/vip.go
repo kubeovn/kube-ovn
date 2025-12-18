@@ -434,32 +434,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 	return nil
 }
 
-func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
-	oriVip, err := c.virtualIpsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vip := oriVip.DeepCopy()
-	var changed bool
-
-	if ready && v4ip != "" && vip.Status.V4ip != v4ip {
-		vip.Status.V4ip = v4ip
-		changed = true
-	}
-
-	if changed {
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update status for vip '%s', %v", key, err)
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 	// when pod use static vip, label vip reserved for pod
 	oriVip, err := c.virtualIpsLister.Get(vipName)
