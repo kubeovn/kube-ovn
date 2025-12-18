@@ -1178,17 +1178,43 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"routes should include metric 200 for fallback route")
 		ginkgo.By("Routes annotation for default SNAT subnet: " + routesJSON)
 
-		ginkgo.By("10. Cleaning up test resources")
+		ginkgo.By("10. Verifying three network interfaces (eth0, net1, net2) exist in the pod")
+		// Wait a moment for all network interfaces to be fully configured
+		time.Sleep(5 * time.Second)
+
+		// Execute 'ip link show' command in the NAT gateway pod to list all network interfaces
+		stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, natGwPod.Namespace, natGwPod.Name, "ip link show")
+		framework.ExpectNoError(err, "executing ip link show in NAT gateway pod")
+		if stderr != "" {
+			framework.Logf("stderr from ip link show: %s", stderr)
+		}
+
+		// Verify eth0 (OVN internal network)
+		framework.ExpectTrue(strings.Contains(stdout, "eth0"), "eth0 interface should exist (OVN internal network)")
+		ginkgo.By("✓ Found eth0 interface (OVN internal network)")
+
+		// Verify net1 (external network)
+		framework.ExpectTrue(strings.Contains(stdout, "net1"), "net1 interface should exist (external network)")
+		ginkgo.By("✓ Found net1 interface (external network)")
+
+		// Verify net2 (default SNAT network)
+		framework.ExpectTrue(strings.Contains(stdout, "net2"), "net2 interface should exist (default SNAT network)")
+		ginkgo.By("✓ Found net2 interface (default SNAT fallback network)")
+
+		framework.Logf("All three network interfaces verified in NAT gateway pod:\n%s", stdout)
+
+		ginkgo.By("11. Cleaning up test resources")
 		vpcNatGwClient.DeleteSync(testVpcNatGwName)
 		subnetClient.DeleteSync(testOverlaySubnetName)
 		vpcClient.DeleteSync(testVpcName)
 
-		ginkgo.By("11. Test completed: VPC NAT Gateway with EnableDefaultSnat works correctly")
+		ginkgo.By("12. Test completed: VPC NAT Gateway with EnableDefaultSnat works correctly")
 		ginkgo.By("Successfully verified:")
 		ginkgo.By("  ✓ NAT Gateway created with EnableDefaultSnat=true and DefaultSnatSubnet set")
 		ginkgo.By("  ✓ NAT Gateway pod has net2 interface attached to default SNAT subnet")
 		ginkgo.By("  ✓ ENABLE_DEFAULT_SNAT environment variable is set to true")
 		ginkgo.By("  ✓ Fallback routes with metric 200 are configured for net2")
+		ginkgo.By("  ✓ All three network interfaces (eth0, net1, net2) exist in the pod")
 		ginkgo.By("This allows the NAT Gateway to provide fallback SNAT via ovn-default subnet")
 		ginkgo.By("when no EIP is available on the external network (net1)")
 	})
