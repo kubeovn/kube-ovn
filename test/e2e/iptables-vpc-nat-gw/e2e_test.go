@@ -1094,6 +1094,104 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("12. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
 	})
+
+	framework.ConformanceIt("should support VPC NAT Gateway with EnableDefaultSnat and DefaultSnatSubnet", func() {
+		f.SkipVersionPriorTo(1, 13, "Support for EnableDefaultSnat was introduced in v1.13")
+
+		overlaySubnetV4Cidr := "10.177.0.0/16"
+		overlaySubnetV4Gw := "10.177.0.1"
+		lanIP := "10.177.255.253"
+		defaultSnatSubnetName := "ovn-default"
+		testVpcName := "vpc-enable-default-snat-" + framework.RandomSuffix()
+		testVpcNatGwName := "gw-enable-default-snat-" + framework.RandomSuffix()
+		testOverlaySubnetName := "subnet-enable-default-snat-" + framework.RandomSuffix()
+
+		ginkgo.By("1. Verifying ovn-default subnet exists as the default SNAT subnet")
+		defaultSnatSubnet := subnetClient.Get(defaultSnatSubnetName)
+		framework.ExpectNotNil(defaultSnatSubnet, "default SNAT subnet "+defaultSnatSubnetName+" should exist")
+		ginkgo.By("Default SNAT subnet " + defaultSnatSubnetName + " found with CIDR " + defaultSnatSubnet.Spec.CIDRBlock)
+
+		ginkgo.By("2. Creating test VPC: " + testVpcName)
+		testVpc := framework.MakeVpc(testVpcName, "", false, false, []string{framework.KubeOvnNamespace})
+		_ = vpcClient.CreateSync(testVpc)
+
+		ginkgo.By("3. Creating overlay subnet in the VPC: " + testOverlaySubnetName)
+		testOverlaySubnet := framework.MakeSubnet(testOverlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, testVpcName, "", nil, nil, nil)
+		testOverlaySubnet.Spec.Protocol = apiv1.ProtocolIPv4
+		_ = subnetClient.CreateSync(testOverlaySubnet)
+
+		ginkgo.By("4. Creating VPC NAT Gateway with EnableDefaultSnat=true and DefaultSnatSubnet")
+		// This simulates the user's configuration file (04-cust-vpc-gw.yaml)
+		testGw := framework.MakeVpcNatGateway(testVpcNatGwName, testVpcName, testOverlaySubnetName, lanIP, networkAttachDefName, "")
+		testGw.Spec.NoDefaultEIP = true
+		testGw.Spec.Selector = []string{"kubernetes.io/os: linux"}
+		// Enable default SNAT with fallback subnet - key feature being tested
+		testGw.Spec.EnableDefaultSnat = true
+		testGw.Spec.DefaultSnatSubnet = defaultSnatSubnetName
+
+		ginkgo.By("Creating VPC NAT Gateway: " + testVpcNatGwName)
+		_ = vpcNatGwClient.CreateSync(testGw, cs)
+
+		ginkgo.By("5. Verifying NAT Gateway is created successfully")
+		createdGw := vpcNatGwClient.Get(testVpcNatGwName)
+		framework.ExpectNotNil(createdGw, "VPC NAT Gateway should be created")
+		framework.ExpectEqual(createdGw.Spec.EnableDefaultSnat, true, "EnableDefaultSnat should be true")
+		framework.ExpectEqual(createdGw.Spec.DefaultSnatSubnet, defaultSnatSubnetName, "DefaultSnatSubnet should be set")
+
+		ginkgo.By("6. Verifying NAT Gateway pod has net2 (default SNAT) interface")
+		natGwPodName := util.GenNatGwPodName(testVpcNatGwName)
+		natGwPod, err := cs.CoreV1().Pods(framework.KubeOvnNamespace).Get(context.Background(), natGwPodName, metav1.GetOptions{})
+		framework.ExpectNoError(err, "getting NAT gateway pod")
+		framework.ExpectNotNil(natGwPod, "NAT gateway pod should exist")
+
+		ginkgo.By("7. Verifying pod has network attachment annotations with both net1 (external) and net2 (default SNAT)")
+		networkAttachment := natGwPod.Annotations["k8s.v1.cni.cncf.io/networks"]
+		framework.ExpectNotEmpty(networkAttachment, "pod should have network attachment annotation")
+		framework.ExpectTrue(strings.Contains(networkAttachment, networkAttachDefName),
+			"network attachment should include external subnet: "+networkAttachDefName)
+		// The default SNAT subnet attachment should be present
+		framework.ExpectTrue(strings.Contains(networkAttachment, ","),
+			"network attachment should have multiple NADs (net1 and net2)")
+		ginkgo.By("NAT Gateway pod has network attachments: " + networkAttachment)
+
+		ginkgo.By("8. Verifying ENABLE_DEFAULT_SNAT environment variable is set to true")
+		var enableDefaultSnatEnv string
+		for _, container := range natGwPod.Spec.Containers {
+			if container.Name == "vpc-nat-gw" {
+				for _, env := range container.Env {
+					if env.Name == "ENABLE_DEFAULT_SNAT" {
+						enableDefaultSnatEnv = env.Value
+						break
+					}
+				}
+			}
+		}
+		framework.ExpectEqual(enableDefaultSnatEnv, "true", "ENABLE_DEFAULT_SNAT environment variable should be set to true")
+
+		ginkgo.By("9. Verifying route annotations include fallback route with metric 200")
+		// Check for routes annotation with metric configuration for the default SNAT subnet
+		defaultSnatProvider := defaultSnatSubnet.Spec.Provider
+		routesAnnotationKey := fmt.Sprintf("%s.kubernetes.io/routes", defaultSnatProvider)
+		routesJSON := natGwPod.Annotations[routesAnnotationKey]
+		framework.ExpectNotEmpty(routesJSON, "pod should have routes annotation for default SNAT subnet")
+		framework.ExpectTrue(strings.Contains(routesJSON, "200"),
+			"routes should include metric 200 for fallback route")
+		ginkgo.By("Routes annotation for default SNAT subnet: " + routesJSON)
+
+		ginkgo.By("10. Cleaning up test resources")
+		vpcNatGwClient.DeleteSync(testVpcNatGwName)
+		subnetClient.DeleteSync(testOverlaySubnetName)
+		vpcClient.DeleteSync(testVpcName)
+
+		ginkgo.By("11. Test completed: VPC NAT Gateway with EnableDefaultSnat works correctly")
+		ginkgo.By("Successfully verified:")
+		ginkgo.By("  ✓ NAT Gateway created with EnableDefaultSnat=true and DefaultSnatSubnet set")
+		ginkgo.By("  ✓ NAT Gateway pod has net2 interface attached to default SNAT subnet")
+		ginkgo.By("  ✓ ENABLE_DEFAULT_SNAT environment variable is set to true")
+		ginkgo.By("  ✓ Fallback routes with metric 200 are configured for net2")
+		ginkgo.By("This allows the NAT Gateway to provide fallback SNAT via ovn-default subnet")
+		ginkgo.By("when no EIP is available on the external network (net1)")
+	})
 })
 
 func init() {
