@@ -147,16 +147,6 @@ function init() {
         echo "INFO: No IP addresses on $EXTERNAL_INTERFACE, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
     fi
 
-    # Send gratuitous ARP for net1 interface if it has IP addresses
-    net1_ips=$(ip -4 addr show dev net1 | awk '/inet /{print $2}' | cut -d/ -f1)
-    if [ -n "$net1_ips" ]; then
-        echo "Sending gratuitous ARP for IPs on net1"
-        echo "$net1_ips" | xargs -n1 arping -I net1 -c 3 -U
-        echo "Gratuitous ARP for net1 completed"
-    else
-        echo "INFO: No IP addresses on net1, skipping gratuitous ARP"
-    fi
-
     # Initialize default SNAT for net2 if enabled via ENABLE_DEFAULT_SNAT environment variable
     if [ "$ENABLE_DEFAULT_SNAT" = "true" ]; then
         init_default_snat
