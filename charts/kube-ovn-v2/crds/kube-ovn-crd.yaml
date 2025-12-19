@@ -1029,6 +1029,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
