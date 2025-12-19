@@ -179,7 +179,7 @@ func cleanVpcNatGwTestEnvironment(
 ) {
 	ginkgo.GinkgoHelper()
 
-	ginkgo.By("start to clean custom vpc nat gw      " + vpcNatGwName)
+	ginkgo.By("start to clean custom vpc nat gw " + vpcNatGwName)
 	ginkgo.By("clean custom vpc nat gw " + vpcNatGwName)
 	vpcNatGwClient.DeleteSync(vpcNatGwName)
 
@@ -318,6 +318,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
 		}
+		f.SkipVersionPriorTo(1, 15, "Skip e2e tests for Kube-OVN versions prior to 1.15 temporarily")
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
@@ -960,7 +961,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("Test VPC NAT Gateway with no IPAM NAD and noDefaultEIP", func() {
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 
 		overlaySubnetV4Cidr := "10.0.5.0/24"
 		overlaySubnetV4Gw := "10.0.5.1"

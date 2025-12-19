@@ -228,8 +228,6 @@ iptables-vpc-nat-gw-conformance-e2e:
 	$(MAKE) iptables-eip-conformance-e2e
 	$(MAKE) iptables-eip-qos-conformance-e2e
 
-
-
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
 ovn-vpc-nat-gw-conformance-e2e:
 	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-vpc-nat-gw
