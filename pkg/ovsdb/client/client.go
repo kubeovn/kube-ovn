@@ -70,16 +70,20 @@ func NewOvsDbClient(
 	ovsDbInactivityTimeout int,
 ) (client.Client, error) {
 	dbLogger := logger.WithValues("db", db)
+	options := []client.Option{
+		client.WithLeaderOnly(true),
+		client.WithLogger(&dbLogger),
+	}
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
-	options := []client.Option{
+	if inactivityTimeout > 0 {
 		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
 		// take longer than a normal ovsdb operation. Give it a bit more time so
 		// we don't time out and enter a reconnect loop. In addition it also enables
 		// inactivity check on the ovsdb connection.
-		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(true),
-		client.WithLogger(&dbLogger),
+		options = append(options, client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}))
+	} else {
+		options = append(options, client.WithReconnect(connectTimeout, &backoff.ZeroBackOff{}))
 	}
 	klog.Infof("connecting to OVN %s server %s", db, addr)
 	var ssl bool

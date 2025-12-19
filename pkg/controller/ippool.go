@@ -177,6 +177,8 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 		c.recorder.Eventf(ippool, corev1.EventTypeWarning, reason, errMsg)
 	} else {
 		ippool.Status.Ready(reason, "")
+		// to observe ippool status change to normal
+		c.recorder.Eventf(ippool, corev1.EventTypeNormal, reason, "")
 	}
 
 	return c.patchIPPoolStatus(ippool)
@@ -207,7 +209,7 @@ func (c *Controller) syncIPPoolFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleAddIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
-	if ippool == nil || !ippool.DeletionTimestamp.IsZero() {
+	if !ippool.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	if controllerutil.ContainsFinalizer(ippool, util.KubeOVNControllerFinalizer) {

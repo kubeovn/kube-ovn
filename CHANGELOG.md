@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.14.22 (2025-12-19)
+
+ * [a5ec31143](https://github.com/kubeovn/kube-ovn/commit/a5ec31143a103abbbb0f0e438185b71678ad07b3) release v1.14.22
+ * [c6e41bd81](https://github.com/kubeovn/kube-ovn/commit/c6e41bd8145d25921c3565e03ccc89462e9b3186) libovsdb: set inactivity timeout only when passed in value is greater than zero (#6078)
+ * [0bd0b3f34](https://github.com/kubeovn/kube-ovn/commit/0bd0b3f34bce5aef18f82f4cf0b2874debbfafd1) bump k8s to v1.32.11 (#6063)
+ * [1857e3d44](https://github.com/kubeovn/kube-ovn/commit/1857e3d4447f6fa802996070fc4ddcd5f797cd9b) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
+## v1.14.21 (2025-12-19)
+
+ * [0be1d9ea1](https://github.com/kubeovn/kube-ovn/commit/0be1d9ea1e21f4b89778d0de2be660898203d351) release v1.14.21
+ * [ec6279d2c](https://github.com/kubeovn/kube-ovn/commit/ec6279d2c04b82cb271f8522a1b3e3991d4d4dee) fix occasional migration failures caused by timing issues. (#6066)
+ * [19153d07f](https://github.com/kubeovn/kube-ovn/commit/19153d07fa8be6711ec71cdddc2ec95057b96fde) bump libovsdb to v0.8.1 (#5596)
+ * [490404903](https://github.com/kubeovn/kube-ovn/commit/490404903fe11a57120df0b322bc79b1d06935ee) ovsdb: exit clustered ovsdb server if multiple raft leaders found (#6065)
+ * [74fd118e7](https://github.com/kubeovn/kube-ovn/commit/74fd118e777730f27f32968c33bdce3332d20d43) fix(deps): update module libovsdb (#6046)
+ * [291048db4](https://github.com/kubeovn/kube-ovn/commit/291048db4b83777df483f1421672498bd7f97ba4) 跟踪日志发现在eip绑定qos以及修改qos的过程中，有v4ip为空的情况也会执行nat网关的tc规则，v4ip为空规则解析错误，排除该场景。 (#6055)
+ * [248d48135](https://github.com/kubeovn/kube-ovn/commit/248d4813582f8f0d3ba57653e45b1cd29bc5f291) lint: skip generated files (#6049)
+ * [1739a3172](https://github.com/kubeovn/kube-ovn/commit/1739a3172585a26af39f772c5641a8d5cdb1c3f2) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * mengyu0829
+ * 张祖建
+
 ## v1.14.20 (2025-12-15)
 
  * [fd2489a8a](https://github.com/kubeovn/kube-ovn/commit/fd2489a8a79c1d90cabfa54a0f6e2582cb8f6762) release v1.14.20

@@ -193,10 +193,27 @@ func setupVpcNatGwTestEnvironment(
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
-		vpcNatGwClient.DeleteSync(vpcNatGwName)
-	})
+}
+
+func cleanVpcNatGwTestEnvironment(
+	subnetClient *framework.SubnetClient,
+	vpcClient *framework.VpcClient,
+	vpcNatGwClient *framework.VpcNatGatewayClient,
+	vpcName string,
+	overlaySubnetName string,
+	vpcNatGwName string,
+) {
+	ginkgo.GinkgoHelper()
+
+	ginkgo.By("start to clean custom vpc nat gw " + vpcNatGwName)
+	ginkgo.By("clean custom vpc nat gw " + vpcNatGwName)
+	vpcNatGwClient.DeleteSync(vpcNatGwName)
+
+	ginkgo.By("clean custom overlay subnet " + overlaySubnetName)
+	subnetClient.DeleteSync(overlaySubnetName)
+
+	ginkgo.By("clean custom vpc " + vpcName)
+	vpcClient.DeleteSync(vpcName)
 }
 
 // waitForIptablesEIPReady waits for an IptablesEIP to be ready
@@ -322,6 +339,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
 		}
+		f.SkipVersionPriorTo(1, 15, "Skip e2e tests for Kube-OVN versions prior to 1.15 temporarily")
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
