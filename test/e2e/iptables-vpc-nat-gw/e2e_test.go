@@ -289,6 +289,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	var net2AttachDefName string
 
 	ginkgo.AfterAll(func() {
+		cleanVpcNatGwTestEnvironment(subnetClient, vpcClient, vpcNatGwClient, vpcName, overlaySubnetName, vpcNatGwName)
 		// Clean up shared NAD and its subnet (used by all tests)
 		// This runs once after all tests in this Describe block complete
 		ginkgo.By("Deleting macvlan underlay subnet " + networkAttachDefName)
@@ -1222,7 +1223,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err, "getting network attachment definition "+networkAttachDefName)
 			// NAD exists, update its config to remove IPAM if needed
 			existingNad.Spec.Config = externalNadConf
-			_, err = attachNetClient.NetworkAttachmentDefinitionInterface.Update(context.TODO(), existingNad, metav1.UpdateOptions{})
+			_, err = attachNetClient.Update(context.TODO(), existingNad, metav1.UpdateOptions{})
 			framework.ExpectNoError(err, "updating network attachment definition "+networkAttachDefName)
 		}
 		// Note: NAD cleanup is handled in AfterAll, not here
