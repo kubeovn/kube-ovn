@@ -370,12 +370,14 @@ spec:
                         type: string
                       port:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                       protocol:
                         type: string
                       targetPort:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                     type: object
@@ -776,8 +778,10 @@ spec:
                       type: boolean
                     asn:
                       type: integer
+                      format: uint32
                     remoteAsn:
                       type: integer
+                      format: uint32
                     neighbors:
                       type: array
                       items:
@@ -2371,6 +2375,8 @@ spec:
                     properties:
                       priority:
                         type: integer
+                        min: 0
+                        max: 32767
                       action:
                         type: string
                       match:
@@ -3357,6 +3363,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3365,8 +3373,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 egressRules:
@@ -3380,6 +3392,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3388,8 +3402,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 allowSameGroupTraffic:
