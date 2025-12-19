@@ -163,7 +163,8 @@ func (c Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason,
 		c.recorder.Eventf(ippool, corev1.EventTypeWarning, reason, errMsg)
 	} else {
 		ippool.Status.Ready(reason, "")
-		c.recorder.Eventf(ippool, corev1.EventTypeNormal, reason, errMsg)
+		// to observe ippool status change to normal
+		c.recorder.Eventf(ippool, corev1.EventTypeNormal, reason, "")
 	}
 
 	return c.patchIPPoolStatus(ippool)
