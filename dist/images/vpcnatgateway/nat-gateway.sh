@@ -29,6 +29,7 @@ function show_help() {
     echo ""
     echo "Commands:"
     echo "  init                     - Initialize iptables chains"
+    echo "  init-default-snat        - Initialize default SNAT for net2 (fallback route)"
     echo "  subnet-route-add         - Add VPC internal routes"
     echo "  subnet-route-del         - Delete VPC internal routes"
     echo "  eip-add                  - Add external IP"
@@ -656,7 +657,6 @@ case $opt in
         echo "Unknown command: $opt"
         echo ""
         show_help
-        echo "Usage: $0 [init|init-default-snat|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
         exit 1
         ;;
 esac
