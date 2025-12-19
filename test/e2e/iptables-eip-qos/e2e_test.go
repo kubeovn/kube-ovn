@@ -22,6 +22,7 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -29,15 +30,6 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
-)
-
-const (
-	dockerExtNet1Name      = "kube-ovn-ext-net1"
-	dockerExtNet2Name      = "kube-ovn-ext-net2"
-	vpcNatGWConfigMapName  = "ovn-vpc-nat-gw-config"
-	vpcNatConfigName       = "ovn-vpc-nat-config"
-	networkAttachDefName   = "ovn-vpc-external-network"
-	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 )
 
 const (
@@ -90,8 +82,7 @@ func setupNetworkAttachmentDefinition(
 	} else {
 		framework.ExpectNoError(err, "getting network attachment definition "+externalNetworkName)
 	}
-
-	ginkgo.By("Got network attachment definition " + nad.Name)
+	framework.Logf("Got/Created network attachment definition:\n%s", format.Object(nad, 2))
 
 	ginkgo.By("Creating underlay macvlan subnet " + externalNetworkName)
 	var cidrV4, cidrV6, gatewayV4, gatewayV6 string
@@ -168,8 +159,8 @@ func setupVpcNatGwTestEnvironment(
 			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName)
 	}
 
-	ginkgo.By("Getting config map " + vpcNatGWConfigMapName)
-	_, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
+	ginkgo.By("Getting config map " + util.VpcNatGatewayConfig)
+	_, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), util.VpcNatGatewayConfig, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to get ConfigMap")
 
 	ginkgo.By("Creating custom vpc " + vpcName)
@@ -744,6 +735,7 @@ var _ = framework.Describe("[group:qos-policy]", func() {
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
 		}
+		f.SkipVersionPriorTo(1, 15, "Skip e2e tests for Kube-OVN versions prior to 1.15 temporarily")
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")

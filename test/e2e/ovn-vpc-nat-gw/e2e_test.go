@@ -182,6 +182,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
 		}
+		f.SkipVersionPriorTo(1, 15, "Skip e2e tests for Kube-OVN versions prior to 1.15 temporarily")
 
 		if clusterName == "" {
 			ginkgo.By("Getting k8s nodes")
