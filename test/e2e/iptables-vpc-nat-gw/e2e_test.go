@@ -21,7 +21,6 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -267,11 +266,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	var vpcClient *framework.VpcClient
 	var vpcNatGwClient *framework.VpcNatGatewayClient
 	var subnetClient *framework.SubnetClient
-	var fipVipName, fipEipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName string
-	// sharing case
-	var sharedVipName, sharedEipName, sharedEipDnatName, sharedEipSnatName, sharedEipFipShouldOkName, sharedEipFipShouldFailName string
 	var vipClient *framework.VipClient
-	var ipClient *framework.IPClient
 	var iptablesEIPClient *framework.IptablesEIPClient
 	var iptablesFIPClient *framework.IptablesFIPClient
 	var iptablesSnatRuleClient *framework.IptablesSnatClient
@@ -280,47 +275,22 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	var dockerExtNet1Network *dockernetwork.Inspect
 	var net1NicName string
 
-	// multiple external network case
+	// dockerExtNet2 and related variables are used by BeforeEach for setting up test infrastructure
 	var dockerExtNet2Network *dockernetwork.Inspect
 	var net2NicName string
 	var net2AttachDefName string
-	var net2SubnetProvider string
-	var net2OverlaySubnetName string
-	var net2VpcNatGwName string
-	var net2VpcName string
-	var net2EipName string
 
 	ginkgo.BeforeEach(func() {
 		randomSuffix := framework.RandomSuffix()
 		vpcName = "vpc-" + randomSuffix
 		vpcNatGwName = "gw-" + randomSuffix
-
-		fipVipName = "fip-vip-" + randomSuffix
-		fipEipName = "fip-eip-" + randomSuffix
-		fipName = "fip-" + randomSuffix
-
-		dnatVipName = "dnat-vip-" + randomSuffix
-		dnatEipName = "dnat-eip-" + randomSuffix
-		dnatName = "dnat-" + randomSuffix
-
-		// sharing case
-		sharedVipName = "shared-vip-" + randomSuffix
-		sharedEipName = "shared-eip-" + randomSuffix
-		sharedEipDnatName = "shared-eip-dnat-" + randomSuffix
-		sharedEipSnatName = "shared-eip-snat-" + randomSuffix
-		sharedEipFipShouldOkName = "shared-eip-fip-should-ok-" + randomSuffix
-		sharedEipFipShouldFailName = "shared-eip-fip-should-fail-" + randomSuffix
-
-		snatEipName = "snat-eip-" + randomSuffix
-		snatName = "snat-" + randomSuffix
 		overlaySubnetName = "overlay-subnet-" + randomSuffix
 
+		// Note: net2-related variables are initialized here for potential future tests
+		// but are not currently used in active test cases
 		net2AttachDefName = "net2-ovn-vpc-external-network-" + randomSuffix
-		net2SubnetProvider = fmt.Sprintf("%s.%s", net2AttachDefName, framework.KubeOvnNamespace)
-		net2OverlaySubnetName = "net2-overlay-subnet-" + randomSuffix
-		net2VpcNatGwName = "net2-gw-" + randomSuffix
-		net2VpcName = "net2-vpc-" + randomSuffix
-		net2EipName = "net2-eip-" + randomSuffix
+		_ = net2AttachDefName // Mark as intentionally unused
+		_ = net2NicName       // Mark as intentionally unused
 
 		cs = f.ClientSet
 		attachNetClient = f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace)
@@ -329,7 +299,6 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		vpcNatGwClient = f.VpcNatGatewayClient()
 		iptablesEIPClient = f.IptablesEIPClient()
 		vipClient = f.VipClient()
-		ipClient = f.IPClient()
 		iptablesFIPClient = f.IptablesFIPClient()
 		iptablesSnatRuleClient = f.IptablesSnatClient()
 		iptablesDnatRuleClient = f.IptablesDnatClient()
@@ -477,6 +446,24 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
+		// Test-specific variables
+		randomSuffix := framework.RandomSuffix()
+		fipVipName := "fip-vip-" + randomSuffix
+		fipEipName := "fip-eip-" + randomSuffix
+		fipName := "fip-" + randomSuffix
+		dnatVipName := "dnat-vip-" + randomSuffix
+		dnatEipName := "dnat-eip-" + randomSuffix
+		dnatName := "dnat-" + randomSuffix
+		snatEipName := "snat-eip-" + randomSuffix
+		snatName := "snat-" + randomSuffix
+		// sharing case
+		sharedVipName := "shared-vip-" + randomSuffix
+		sharedEipName := "shared-eip-" + randomSuffix
+		sharedEipDnatName := "shared-eip-dnat-" + randomSuffix
+		sharedEipSnatName := "shared-eip-snat-" + randomSuffix
+		sharedEipFipShouldOkName := "shared-eip-fip-should-ok-" + randomSuffix
+		sharedEipFipShouldFailName := "shared-eip-fip-should-fail-" + randomSuffix
+
 		overlaySubnetV4Cidr := "10.0.1.0/24"
 		overlaySubnetV4Gw := "10.0.1.1"
 		lanIP := "10.0.1.254"
