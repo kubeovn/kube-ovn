@@ -466,6 +466,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
@@ -826,6 +827,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
