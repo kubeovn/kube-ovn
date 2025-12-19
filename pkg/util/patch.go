@@ -91,3 +91,32 @@ func GenerateMergePatchPayload(original, modified runtime.Object) ([]byte, error
 func createMergePatch(originalJSON, modifiedJSON []byte, _ any) ([]byte, error) {
 	return jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
 }
+
+// JSONPatchOperation represents a single JSON Patch operation
+type JSONPatchOperation struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
+}
+
+// GenerateJSONPatchPayload creates a JSON Patch payload for updating metadata fields
+// op: the operation type ("add", "replace", "remove")
+// path: the JSON path to the field (e.g., "/metadata/labels")
+// value: the value to set (will be JSON marshaled)
+func GenerateJSONPatchPayload(op, path string, value any) ([]byte, error) {
+	patch := []JSONPatchOperation{
+		{
+			Op:    op,
+			Path:  path,
+			Value: value,
+		},
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		klog.Errorf("failed to marshal JSON patch: %v", err)
+		return nil, err
+	}
+
+	return patchBytes, nil
+}

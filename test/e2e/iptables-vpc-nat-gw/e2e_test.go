@@ -2,6 +2,7 @@ package ovn_eip
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	dockernetwork "github.com/moby/moby/api/types/network"
+	"github.com/onsi/ginkgo/v2"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -17,8 +19,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-
-	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -53,17 +53,36 @@ func setupNetworkAttachmentDefinition(
 	network, err := docker.NetworkInspect(dockerExtNetName)
 	framework.ExpectNoError(err, "getting docker network "+dockerExtNetName)
 	ginkgo.By("Getting or creating network attachment definition " + externalNetworkName)
-	attachConf := fmt.Sprintf(`{
-		"cniVersion": "0.3.0",
-		"type": "macvlan",
-		"master": "%s",
-		"mode": "bridge",
-		"ipam": {
-		  "type": "kube-ovn",
-		  "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
-		  "provider": "%s"
-		}
-	  }`, nicName, provider)
+
+	// Create network attachment configuration using structured data
+	type ipamConfig struct {
+		Type         string `json:"type"`
+		ServerSocket string `json:"server_socket"`
+		Provider     string `json:"provider"`
+	}
+	type nadConfig struct {
+		CNIVersion string     `json:"cniVersion"`
+		Type       string     `json:"type"`
+		Master     string     `json:"master"`
+		Mode       string     `json:"mode"`
+		IPAM       ipamConfig `json:"ipam"`
+	}
+
+	config := nadConfig{
+		CNIVersion: "0.3.0",
+		Type:       "macvlan",
+		Master:     nicName,
+		Mode:       "bridge",
+		IPAM: ipamConfig{
+			Type:         "kube-ovn",
+			ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
+			Provider:     provider,
+		},
+	}
+
+	attachConfBytes, err := json.Marshal(config)
+	framework.ExpectNoError(err, "marshaling network attachment configuration")
+	attachConf := string(attachConfBytes)
 
 	// Try to get existing NAD first
 	nad, err := attachNetClient.NetworkAttachmentDefinitionInterface.Get(context.TODO(), externalNetworkName, metav1.GetOptions{})
@@ -475,52 +494,117 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Creating iptables vip for fip")
 		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up fip vip " + fipVipName)
+			vipClient.DeleteSync(fipVipName)
+		})
 		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating iptables eip for fip")
 		fipEip := framework.MakeIptablesEIP(fipEipName, "", "", "", vpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(fipEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up fip eip " + fipEipName)
+			iptablesEIPClient.DeleteSync(fipEipName)
+		})
+
 		ginkgo.By("Creating iptables fip")
 		fip := framework.MakeIptablesFIPRule(fipName, fipEipName, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.CreateSync(fip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up fip " + fipName)
+			iptablesFIPClient.DeleteSync(fipName)
+		})
 
 		ginkgo.By("Creating iptables eip for snat")
 		snatEip := framework.MakeIptablesEIP(snatEipName, "", "", "", vpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(snatEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up snat eip " + snatEipName)
+			iptablesEIPClient.DeleteSync(snatEipName)
+		})
+
 		ginkgo.By("Creating iptables snat")
 		snat := framework.MakeIptablesSnatRule(snatName, snatEipName, overlaySubnetV4Cidr)
 		_ = iptablesSnatRuleClient.CreateSync(snat)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up snat " + snatName)
+			iptablesSnatRuleClient.DeleteSync(snatName)
+		})
 
 		ginkgo.By("Creating iptables vip for dnat")
 		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up dnat vip " + dnatVipName)
+			vipClient.DeleteSync(dnatVipName)
+		})
 		dnatVip = vipClient.Get(dnatVipName)
+
 		ginkgo.By("Creating iptables eip for dnat")
 		dnatEip := framework.MakeIptablesEIP(dnatEipName, "", "", "", vpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(dnatEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up dnat eip " + dnatEipName)
+			iptablesEIPClient.DeleteSync(dnatEipName)
+		})
+
 		ginkgo.By("Creating iptables dnat")
 		dnat := framework.MakeIptablesDnatRule(dnatName, dnatEipName, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		_ = iptablesDnatRuleClient.CreateSync(dnat)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up dnat " + dnatName)
+			iptablesDnatRuleClient.DeleteSync(dnatName)
+		})
 
 		// share eip case
 		ginkgo.By("Creating share vip")
 		shareVip := framework.MakeVip(f.Namespace.Name, sharedVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared vip " + sharedVipName)
+			vipClient.DeleteSync(sharedVipName)
+		})
 		fipVip = vipClient.Get(fipVipName)
+
 		ginkgo.By("Creating share iptables eip")
 		shareEip := framework.MakeIptablesEIP(sharedEipName, "", "", "", vpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(shareEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared eip " + sharedEipName)
+			iptablesEIPClient.DeleteSync(sharedEipName)
+		})
+
 		ginkgo.By("Creating the first iptables fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeIptablesFIPRule(sharedEipFipShouldOkName, sharedEipName, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.CreateSync(shareFipShouldOk)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared fip (should ok) " + sharedEipFipShouldOkName)
+			iptablesFIPClient.DeleteSync(sharedEipFipShouldOkName)
+		})
+
 		ginkgo.By("Creating the second iptables fip with share eip vip should be failed")
 		shareFipShouldFail := framework.MakeIptablesFIPRule(sharedEipFipShouldFailName, sharedEipName, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.Create(shareFipShouldFail)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared fip (should fail) " + sharedEipFipShouldFailName)
+			iptablesFIPClient.DeleteSync(sharedEipFipShouldFailName)
+		})
+
 		ginkgo.By("Creating iptables dnat for dnat with share eip vip")
 		shareDnat := framework.MakeIptablesDnatRule(sharedEipDnatName, sharedEipName, "80", "tcp", fipVip.Status.V4ip, "8080")
 		_ = iptablesDnatRuleClient.CreateSync(shareDnat)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared dnat " + sharedEipDnatName)
+			iptablesDnatRuleClient.DeleteSync(sharedEipDnatName)
+		})
+
 		ginkgo.By("Creating iptables snat with share eip vip")
 		shareSnat := framework.MakeIptablesSnatRule(sharedEipSnatName, sharedEipName, overlaySubnetV4Cidr)
 		_ = iptablesSnatRuleClient.CreateSync(shareSnat)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up shared snat " + sharedEipSnatName)
+			iptablesSnatRuleClient.DeleteSync(sharedEipSnatName)
+		})
 
 		ginkgo.By("Get share eip")
 		shareEip = iptablesEIPClient.Get(sharedEipName)
@@ -547,110 +631,11 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// make sure eip is shared
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
-
-		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldOkName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShouldOkName)
-		ginkgo.By("Deleting share iptables fip " + sharedEipFipShouldFailName)
-		iptablesFIPClient.DeleteSync(sharedEipFipShouldFailName)
-		ginkgo.By("Deleting share iptables dnat " + sharedEipDnatName)
-		iptablesDnatRuleClient.DeleteSync(sharedEipDnatName)
-		ginkgo.By("Deleting share iptables snat " + sharedEipSnatName)
-		iptablesSnatRuleClient.DeleteSync(sharedEipSnatName)
-
-		ginkgo.By("Deleting iptables fip " + fipName)
-		iptablesFIPClient.DeleteSync(fipName)
-		ginkgo.By("Deleting iptables dnat " + dnatName)
-		iptablesDnatRuleClient.DeleteSync(dnatName)
-		ginkgo.By("Deleting iptables snat " + snatName)
-		iptablesSnatRuleClient.DeleteSync(snatName)
-
-		ginkgo.By("Deleting iptables eip " + fipEipName)
-		iptablesEIPClient.DeleteSync(fipEipName)
-		ginkgo.By("Deleting iptables eip " + dnatEipName)
-		iptablesEIPClient.DeleteSync(dnatEipName)
-		ginkgo.By("Deleting iptables eip " + snatEipName)
-		iptablesEIPClient.DeleteSync(snatEipName)
-		ginkgo.By("Deleting iptables share eip " + sharedEipName)
-		iptablesEIPClient.DeleteSync(sharedEipName)
-
-		ginkgo.By("Deleting vip " + fipVipName)
-		vipClient.DeleteSync(fipVipName)
-		ginkgo.By("Deleting vip " + dnatVipName)
-		vipClient.DeleteSync(dnatVipName)
-		ginkgo.By("Deleting vip " + sharedVipName)
-		vipClient.DeleteSync(sharedVipName)
-		// the only pod for vpc nat gateway
-		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		// delete vpc nat gw statefulset remaining ip for eth0 and net1
-		overlaySubnet := subnetClient.Get(overlaySubnetName)
-		macvlanSubnet := subnetClient.Get(networkAttachDefName)
-		eth0IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
-		net1IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
-
-		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(vpcNatGwName)
-
-		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-		ipClient.DeleteSync(eth0IpName)
-		ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-		ipClient.DeleteSync(net1IpName)
-
-		ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
-		subnetClient.DeleteSync(overlaySubnetName)
-
-		ginkgo.By("Deleting custom vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
-
-		// multiple external network case
-		net2OverlaySubnetV4Cidr := "10.0.1.0/24"
-		net2OoverlaySubnetV4Gw := "10.0.1.1"
-		net2LanIP := "10.0.1.254"
-		natgwQoS = ""
-		setupVpcNatGwTestEnvironment(
-			f, dockerExtNet2Network, attachNetClient,
-			subnetClient, vpcClient, vpcNatGwClient,
-			net2VpcName, net2OverlaySubnetName, net2VpcNatGwName, natgwQoS,
-			net2OverlaySubnetV4Cidr, net2OoverlaySubnetV4Gw, net2LanIP,
-			dockerExtNet2Name, net2AttachDefName, net2NicName,
-			net2SubnetProvider,
-			false,
-		)
-
-		ginkgo.By("Creating iptables eip of net2")
-		net2Eip := framework.MakeIptablesEIP(net2EipName, "", "", "", net2VpcNatGwName, net2AttachDefName, "")
-		_ = iptablesEIPClient.CreateSync(net2Eip)
-
-		ginkgo.By("Deleting iptables eip " + net2EipName)
-		iptablesEIPClient.DeleteSync(net2EipName)
-
-		ginkgo.By("Deleting custom vpc nat gw")
-		vpcNatGwClient.DeleteSync(net2VpcNatGwName)
-
-		// the only pod for vpc nat gateway
-		vpcNatGwPodName = util.GenNatGwPodName(net2VpcNatGwName)
-
-		// delete vpc nat gw statefulset remaining ip for eth0 and net2
-		overlaySubnet = subnetClient.Get(net2OverlaySubnetName)
-		macvlanSubnet = subnetClient.Get(net2AttachDefName)
-		eth0IpName = ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
-		net2IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
-		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-		ipClient.DeleteSync(eth0IpName)
-		ginkgo.By("Deleting vpc nat gw net2 ip " + net2IpName)
-		ipClient.DeleteSync(net2IpName)
-
-		ginkgo.By("Deleting macvlan underlay subnet " + net2AttachDefName)
-		subnetClient.DeleteSync(net2AttachDefName)
-
-		ginkgo.By("Deleting overlay subnet " + net2OverlaySubnetName)
-		subnetClient.DeleteSync(net2OverlaySubnetName)
-
-		ginkgo.By("Deleting custom vpc " + net2VpcName)
-		vpcClient.DeleteSync(net2VpcName)
+		// All cleanup is handled by DeferCleanup above, no need for manual cleanup
 	})
 
 	framework.ConformanceIt("should properly manage IptablesEIP lifecycle with finalizer and update subnet status", func() {
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
 
 		overlaySubnetV4Cidr := "10.0.3.0/24"
 		overlaySubnetV4Gw := "10.0.3.1"
@@ -853,7 +838,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("Test IptablesEIP finalizer cannot be removed when used by NAT rules", func() {
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
 
 		overlaySubnetV4Cidr := "10.0.4.0/24"
 		overlaySubnetV4Gw := "10.0.4.1"
@@ -960,7 +945,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("Test VPC NAT Gateway with no IPAM NAD and noDefaultEIP", func() {
-		f.SkipVersionPriorTo(1, 13, "This feature was introduced in v1.13")
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 
 		overlaySubnetV4Cidr := "10.0.5.0/24"
 		overlaySubnetV4Gw := "10.0.5.1"
@@ -977,12 +962,24 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating network attachment definition without IPAM " + noIPAMNadName)
 		// NAD config without ipam - this is the key difference
-		attachConf := fmt.Sprintf(`{
-			"cniVersion": "0.3.0",
-			"type": "macvlan",
-			"master": "%s",
-			"mode": "bridge"
-		}`, net1NicName)
+		// Create network attachment configuration using structured data
+		type nadConfigNoIPAM struct {
+			CNIVersion string `json:"cniVersion"`
+			Type       string `json:"type"`
+			Master     string `json:"master"`
+			Mode       string `json:"mode"`
+		}
+
+		configNoIPAM := nadConfigNoIPAM{
+			CNIVersion: "0.3.0",
+			Type:       "macvlan",
+			Master:     net1NicName,
+			Mode:       "bridge",
+		}
+
+		attachConfBytes, err := json.Marshal(configNoIPAM)
+		framework.ExpectNoError(err, "marshaling network attachment configuration")
+		attachConf := string(attachConfBytes)
 
 		attachNet := framework.MakeNetworkAttachmentDefinition(noIPAMNadName, framework.KubeOvnNamespace, attachConf)
 		nad := attachNetClient.Create(attachNet)
@@ -1096,7 +1093,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("should support VPC NAT Gateway with EnableDefaultSnat and DefaultSnatSubnet", func() {
-		f.SkipVersionPriorTo(1, 13, "Support for EnableDefaultSnat was introduced in v1.13")
+		f.SkipVersionPriorTo(1, 15, "Support for EnableDefaultSnat was introduced in v1.15")
 
 		overlaySubnetV4Cidr := "10.177.0.0/16"
 		overlaySubnetV4Gw := "10.177.0.1"
@@ -1114,11 +1111,19 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("2. Creating test VPC: " + testVpcName)
 		testVpc := framework.MakeVpc(testVpcName, "", false, false, []string{framework.KubeOvnNamespace})
 		_ = vpcClient.CreateSync(testVpc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up test VPC " + testVpcName)
+			vpcClient.DeleteSync(testVpcName)
+		})
 
 		ginkgo.By("3. Creating overlay subnet in the VPC: " + testOverlaySubnetName)
 		testOverlaySubnet := framework.MakeSubnet(testOverlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, testVpcName, "", nil, nil, nil)
 		testOverlaySubnet.Spec.Protocol = apiv1.ProtocolIPv4
 		_ = subnetClient.CreateSync(testOverlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up test overlay subnet " + testOverlaySubnetName)
+			subnetClient.DeleteSync(testOverlaySubnetName)
+		})
 
 		ginkgo.By("4. Creating VPC NAT Gateway with EnableDefaultSnat=true and DefaultSnatSubnet")
 		// This simulates the user's configuration file (04-cust-vpc-gw.yaml)
@@ -1131,6 +1136,10 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating VPC NAT Gateway: " + testVpcNatGwName)
 		_ = vpcNatGwClient.CreateSync(testGw, cs)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up test VPC NAT Gateway " + testVpcNatGwName)
+			vpcNatGwClient.DeleteSync(testVpcNatGwName)
+		})
 
 		ginkgo.By("5. Verifying NAT Gateway is created successfully")
 		createdGw := vpcNatGwClient.Get(testVpcNatGwName)
@@ -1171,7 +1180,7 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("9. Verifying route annotations include fallback route with metric 200")
 		// Check for routes annotation with metric configuration for the default SNAT subnet
 		defaultSnatProvider := defaultSnatSubnet.Spec.Provider
-		routesAnnotationKey := fmt.Sprintf("%s.kubernetes.io/routes", defaultSnatProvider)
+		routesAnnotationKey := fmt.Sprintf(util.RoutesAnnotationTemplate, defaultSnatProvider)
 		routesJSON := natGwPod.Annotations[routesAnnotationKey]
 		framework.ExpectNotEmpty(routesJSON, "pod should have routes annotation for default SNAT subnet")
 		framework.ExpectTrue(strings.Contains(routesJSON, "200"),
@@ -1203,12 +1212,8 @@ var _ = framework.SerialDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		framework.Logf("All three network interfaces verified in NAT gateway pod:\n%s", stdout)
 
-		ginkgo.By("11. Cleaning up test resources")
-		vpcNatGwClient.DeleteSync(testVpcNatGwName)
-		subnetClient.DeleteSync(testOverlaySubnetName)
-		vpcClient.DeleteSync(testVpcName)
-
-		ginkgo.By("12. Test completed: VPC NAT Gateway with EnableDefaultSnat works correctly")
+		// Cleanup is handled by DeferCleanup above
+		ginkgo.By("11. Test completed: VPC NAT Gateway with EnableDefaultSnat works correctly")
 		ginkgo.By("Successfully verified:")
 		ginkgo.By("  ✓ NAT Gateway created with EnableDefaultSnat=true and DefaultSnatSubnet set")
 		ginkgo.By("  ✓ NAT Gateway pod has net2 interface attached to default SNAT subnet")

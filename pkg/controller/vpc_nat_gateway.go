@@ -1258,11 +1258,13 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 		}
 	}
 	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(gw.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		patchPayload, err := util.GenerateJSONPatchPayload(op, "/metadata/labels", gw.Labels)
+		if err != nil {
+			klog.Errorf("failed to generate JSON patch for vpc nat gw %s: %v", gw.Name, err)
+			return err
+		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.JSONPatchType,
-			[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			patchPayload, metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch vpc nat gw %s: %v", gw.Name, err)
 			return err
 		}
