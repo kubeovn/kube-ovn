@@ -138,6 +138,8 @@ var _ = framework.Describe("[group:vip]", func() {
 		namespaceName = f.Namespace.Name
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 
+		f.SkipVersionPriorTo(1, 15, "Skip e2e tests for Kube-OVN versions prior to 1.15 temporarily")
+
 		// should create lower case static ipv6 address vip in ovn-default
 		lowerCaseStaticIpv6VipName = "lower-case-static-ipv6-vip-" + framework.RandomSuffix()
 		lowerCaseV6IP = "fd00:10:16::a1"
