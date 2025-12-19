@@ -22,7 +22,7 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
-  KIND_VERSION: v0.30.0
+  KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.7.2
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
