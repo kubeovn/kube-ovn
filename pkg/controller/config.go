@@ -301,7 +301,7 @@ func ParseFlags() (*Configuration, error) {
 		TLSMaxVersion:                  *argTLSMaxVersion,
 		TLSCipherSuites:                *argTLSCipherSuites,
 	}
-	if config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
+	if config.OvsDbInactivityTimeout > 0 && config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
 	}
 
