@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.14.22 (2025-12-19)
+
+ * [a5ec31143](https://github.com/kubeovn/kube-ovn/commit/a5ec31143a103abbbb0f0e438185b71678ad07b3) release v1.14.22
+ * [c6e41bd81](https://github.com/kubeovn/kube-ovn/commit/c6e41bd8145d25921c3565e03ccc89462e9b3186) libovsdb: set inactivity timeout only when passed in value is greater than zero (#6078)
+ * [0bd0b3f34](https://github.com/kubeovn/kube-ovn/commit/0bd0b3f34bce5aef18f82f4cf0b2874debbfafd1) bump k8s to v1.32.11 (#6063)
+ * [1857e3d44](https://github.com/kubeovn/kube-ovn/commit/1857e3d4447f6fa802996070fc4ddcd5f797cd9b) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.21 (2025-12-19)
 
  * [0be1d9ea1](https://github.com/kubeovn/kube-ovn/commit/0be1d9ea1e21f4b89778d0de2be660898203d351) release v1.14.21
