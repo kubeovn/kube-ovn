@@ -237,12 +237,7 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 	}
 
 	// Create temporary file with updated configuration
-	tmpDir := "/tmp"
-	if tmpDirEnv := os.Getenv("TMPDIR"); tmpDirEnv != "" {
-		tmpDir = tmpDirEnv
-	}
-
-	tmpFile, err := os.CreateTemp(tmpDir, "kind-config-*.yaml")
+	tmpFile, err := os.CreateTemp(os.TempDir(), "kind-config-*.yaml")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary config file: %w", err)
 	}

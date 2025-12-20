@@ -149,7 +149,9 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		return err
 	}
 
-	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
+	if ip.Spec.PodType != "" &&
+		ip.Spec.PodType != util.KindVirtualMachine &&
+		ip.Spec.PodType != util.KindStatefulSet {
 		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 		klog.Error(err)
 		return err

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cert-manager/cert-manager/pkg/apis/certmanager"
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/vishvananda/netlink"
@@ -245,8 +246,8 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 			Request: csrBytes,
 			IssuerRef: cmmeta.ObjectReference{
 				Name:  c.config.CertManagerIssuerName,
-				Kind:  "ClusterIssuer",
-				Group: "cert-manager.io",
+				Kind:  util.ObjectKind[*certmanagerv1.ClusterIssuer](),
+				Group: certmanager.GroupName,
 			},
 			Duration: &metav1.Duration{Duration: time.Second * time.Duration(c.config.IPSecCertDuration)},
 			Usages:   []certmanagerv1.KeyUsage{certmanagerv1.UsageIPsecTunnel},

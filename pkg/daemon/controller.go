@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	k8sexec "k8s.io/utils/exec"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -766,7 +767,7 @@ func (c *Controller) gcInterfaces() {
 			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
 			// Try to find launcher pods by this label.
 			if k8serrors.IsNotFound(err) {
-				selector := labels.SelectorFromSet(map[string]string{util.KubeVirtVMNameLabel: podName})
+				selector := labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: podName})
 				launcherPods, listErr := c.podsLister.Pods(podNamespace).List(selector)
 				if listErr != nil {
 					klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, listErr)

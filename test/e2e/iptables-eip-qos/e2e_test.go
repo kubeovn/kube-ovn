@@ -250,68 +250,59 @@ func checkQos(f *framework.Framework,
 }
 
 func getNicDefaultQoSPolicy(limit int) apiv1.QoSPolicyBandwidthLimitRules {
-	return apiv1.QoSPolicyBandwidthLimitRules{
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:      "net1-ingress",
-			Interface: "net1",
-			RateMax:   strconv.Itoa(limit),
-			BurstMax:  strconv.Itoa(limit),
-			Priority:  3,
-			Direction: apiv1.QoSDirectionIngress,
-		},
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:      "net1-egress",
-			Interface: "net1",
-			RateMax:   strconv.Itoa(limit),
-			BurstMax:  strconv.Itoa(limit),
-			Priority:  3,
-			Direction: apiv1.QoSDirectionEgress,
-		},
-	}
+	return apiv1.QoSPolicyBandwidthLimitRules{{
+		Name:      "net1-ingress",
+		Interface: "net1",
+		RateMax:   strconv.Itoa(limit),
+		BurstMax:  strconv.Itoa(limit),
+		Priority:  3,
+		Direction: apiv1.QoSDirectionIngress,
+	}, {
+		Name:      "net1-egress",
+		Interface: "net1",
+		RateMax:   strconv.Itoa(limit),
+		BurstMax:  strconv.Itoa(limit),
+		Priority:  3,
+		Direction: apiv1.QoSDirectionEgress,
+	}}
 }
 
 func getEIPQoSRule(limit int) apiv1.QoSPolicyBandwidthLimitRules {
-	return apiv1.QoSPolicyBandwidthLimitRules{
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:      "eip-ingress",
-			RateMax:   strconv.Itoa(limit),
-			BurstMax:  strconv.Itoa(limit),
-			Priority:  1,
-			Direction: apiv1.QoSDirectionIngress,
-		},
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:      "eip-egress",
-			RateMax:   strconv.Itoa(limit),
-			BurstMax:  strconv.Itoa(limit),
-			Priority:  1,
-			Direction: apiv1.QoSDirectionEgress,
-		},
-	}
+	return apiv1.QoSPolicyBandwidthLimitRules{{
+		Name:      "eip-ingress",
+		RateMax:   strconv.Itoa(limit),
+		BurstMax:  strconv.Itoa(limit),
+		Priority:  1,
+		Direction: apiv1.QoSDirectionIngress,
+	}, {
+		Name:      "eip-egress",
+		RateMax:   strconv.Itoa(limit),
+		BurstMax:  strconv.Itoa(limit),
+		Priority:  1,
+		Direction: apiv1.QoSDirectionEgress,
+	}}
 }
 
 func getSpecialQoSRule(limit int, ip string) apiv1.QoSPolicyBandwidthLimitRules {
-	return apiv1.QoSPolicyBandwidthLimitRules{
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:       "net1-extip-ingress",
-			Interface:  "net1",
-			RateMax:    strconv.Itoa(limit),
-			BurstMax:   strconv.Itoa(limit),
-			Priority:   2,
-			Direction:  apiv1.QoSDirectionIngress,
-			MatchType:  apiv1.QoSMatchTypeIP,
-			MatchValue: "src " + ip + "/32",
-		},
-		apiv1.QoSPolicyBandwidthLimitRule{
-			Name:       "net1-extip-egress",
-			Interface:  "net1",
-			RateMax:    strconv.Itoa(limit),
-			BurstMax:   strconv.Itoa(limit),
-			Priority:   2,
-			Direction:  apiv1.QoSDirectionEgress,
-			MatchType:  apiv1.QoSMatchTypeIP,
-			MatchValue: "dst " + ip + "/32",
-		},
-	}
+	return apiv1.QoSPolicyBandwidthLimitRules{{
+		Name:       "net1-extip-ingress",
+		Interface:  "net1",
+		RateMax:    strconv.Itoa(limit),
+		BurstMax:   strconv.Itoa(limit),
+		Priority:   2,
+		Direction:  apiv1.QoSDirectionIngress,
+		MatchType:  apiv1.QoSMatchTypeIP,
+		MatchValue: "src " + ip + "/32",
+	}, {
+		Name:       "net1-extip-egress",
+		Interface:  "net1",
+		RateMax:    strconv.Itoa(limit),
+		BurstMax:   strconv.Itoa(limit),
+		Priority:   2,
+		Direction:  apiv1.QoSDirectionEgress,
+		MatchType:  apiv1.QoSMatchTypeIP,
+		MatchValue: "dst " + ip + "/32",
+	}}
 }
 
 // defaultQoSCases test default qos policy=

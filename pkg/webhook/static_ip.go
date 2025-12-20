@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -120,7 +121,8 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	name := o.GetName()
 	// If the pod is created by a VM, we need to get the VM name from owner references
 	for _, owner := range o.GetOwnerReferences() {
-		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.KindVirtualMachineInstance &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
 			name = owner.Name
 			klog.V(3).Infof("pod %s is created by vm %s", o.GetName(), name)
 			break
@@ -130,7 +132,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 }
 
 func (v *ValidatingHook) allowLiveMigration(annotations map[string]string) bool {
-	if _, ok := annotations[util.MigrationJobAnnotation]; ok {
+	if _, ok := annotations[kubevirtv1.MigrationJobNameAnnotation]; ok {
 		return true
 	}
 	return false

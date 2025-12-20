@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -212,4 +213,15 @@ func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string
 	}
 
 	return nil
+}
+
+// ObjectKind returns the kind name of the given k8s object type T.
+// If T is a pointer type, it returns the kind name of the underlying type.
+// For example, if T is v1.Pod, it returns "Pod".
+func ObjectKind[T metav1.Object]() string {
+	typ := reflect.TypeFor[T]()
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	return typ.Name()
 }

@@ -405,7 +405,8 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
+		if ip.Spec.PodType != util.KindStatefulSet &&
+			ip.Spec.PodType != util.KindVirtualMachine {
 			continue
 		}
 
@@ -673,7 +674,7 @@ func (c *Controller) syncIPCR() error {
 		changed := false
 		ip = ip.DeepCopy()
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
-			ip.Spec.PodType = util.VM
+			ip.Spec.PodType = util.KindVirtualMachine
 			changed = true
 		}
 
