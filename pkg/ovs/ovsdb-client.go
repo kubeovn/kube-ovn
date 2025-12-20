@@ -12,6 +12,8 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // OvsdbServerAddress constructs the ovsdb-server address based on the given host and port.
@@ -22,7 +24,7 @@ import (
 //	OvsdbServerAddress("localhost:6641") returns "tcp:localhost:6641" or "ssl:localhost:6641" based on the ENABLE_SSL setting.
 func OvsdbServerAddress(host string, port intstr.IntOrString) string {
 	scheme := "tcp"
-	if os.Getenv("ENABLE_SSL") == "true" {
+	if os.Getenv(util.EnvSSLEnabled) == "true" {
 		scheme = "ssl"
 	}
 	return fmt.Sprintf("%s:%s", scheme, net.JoinHostPort(host, port.String()))
@@ -47,7 +49,7 @@ func Query(address, database string, timeout int, operations ...ovsdb.Operation)
 
 	args := []string{"--timeout", strconv.Itoa(timeout), "query", address, string(query)}
 	if strings.HasPrefix(address, "ssl:") {
-		args = slices.Insert(args, 0, "-p", "/var/run/tls/key", "-c", "/var/run/tls/cert", "-C", "/var/run/tls/cacert")
+		args = slices.Insert(args, 0, CmdSSLArgs()...)
 	}
 
 	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204

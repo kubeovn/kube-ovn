@@ -1317,7 +1317,7 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 }
 
 func (c *Controller) setOvnSubnetGatewayMetric() {
-	hostname := os.Getenv(util.HostnameEnv)
+	nodeName := os.Getenv(util.EnvNodeName)
 	for proto, iptables := range c.iptables {
 		rules, err := iptables.ListWithCounters("filter", "FORWARD")
 		if err != nil {
@@ -1389,10 +1389,10 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 
 			diffPackets := currentPackets - lastPackets
 			diffPacketBytes := currentPacketBytes - lastPacketBytes
-			klog.V(3).Infof(`hostname %s key %s cidr %s direction %s proto %s has diffPackets %d diffPacketBytes %d currentPackets %d currentPacketBytes %d lastPackets %d lastPacketBytes %d`,
-				hostname, key, cidr, direction, proto, diffPackets, diffPacketBytes, currentPackets, currentPacketBytes, lastPackets, lastPacketBytes)
-			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
-			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
+			klog.V(3).Infof(`nodeName %s key %s cidr %s direction %s proto %s has diffPackets %d diffPacketBytes %d currentPackets %d currentPacketBytes %d lastPackets %d lastPacketBytes %d`,
+				nodeName, key, cidr, direction, proto, diffPackets, diffPacketBytes, currentPackets, currentPacketBytes, lastPackets, lastPacketBytes)
+			metricOvnSubnetGatewayPackets.WithLabelValues(nodeName, key, cidr, direction, proto).Add(float64(diffPackets))
+			metricOvnSubnetGatewayPacketBytes.WithLabelValues(nodeName, key, cidr, direction, proto).Add(float64(diffPacketBytes))
 		}
 	}
 }
@@ -1568,7 +1568,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		return nil, err
 	}
 
-	nodeName := os.Getenv(util.HostnameEnv)
+	nodeName := os.Getenv(util.EnvNodeName)
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
 		if pod.Spec.HostNetwork ||

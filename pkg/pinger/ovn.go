@@ -2,7 +2,6 @@ package pinger
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -14,13 +13,13 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var sbServiceAddress string
 
 func init() {
-	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
-	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
+	sbHost, sbPort := util.InjectedServiceVariables("ovn-sb")
 	sbServiceAddress = ovs.OvsdbServerAddress(sbHost, intstr.FromString(sbPort))
 }
 

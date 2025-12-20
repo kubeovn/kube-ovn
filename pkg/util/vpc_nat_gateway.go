@@ -146,11 +146,11 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env: []corev1.EnvVar{
 			{
-				Name:  GatewayNameEnv,
+				Name:  EnvGatewayName,
 				Value: gatewayName,
 			},
 			{
-				Name: "POD_IP",
+				Name: EnvPodIP,
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						FieldPath: "status.podIP",
@@ -158,7 +158,7 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 				},
 			},
 			{
-				Name: "POD_IPS",
+				Name: EnvPodIPs,
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						FieldPath: "status.podIPs",

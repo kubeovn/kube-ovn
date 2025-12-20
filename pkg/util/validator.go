@@ -36,7 +36,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return err
 	}
 	if CheckProtocol(subnet.Spec.CIDRBlock) == "" {
-		return fmt.Errorf("CIDRBlock: %s formal error", subnet.Spec.CIDRBlock)
+		return fmt.Errorf("CIDRBlock: %q format error", subnet.Spec.CIDRBlock)
 	}
 	excludeIps := subnet.Spec.ExcludeIps
 	for _, ipr := range excludeIps {
@@ -124,7 +124,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.Vpc == DefaultVpc {
-		k8sAPIServer := os.Getenv("KUBERNETES_SERVICE_HOST")
+		k8sAPIServer := os.Getenv(EnvKubernetesServiceHost)
 		if k8sAPIServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sAPIServer) {
 			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sAPIServer)
 		}

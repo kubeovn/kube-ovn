@@ -288,8 +288,8 @@ func ParseFlags() (*Configuration, error) {
 		DefaultHostInterface:           *argDefaultInterfaceName,
 		DefaultExchangeLinkName:        *argDefaultExchangeLinkName,
 		DefaultVlanName:                *argDefaultVlanName,
-		PodName:                        os.Getenv("POD_NAME"),
-		PodNamespace:                   os.Getenv("KUBE_NAMESPACE"),
+		PodName:                        os.Getenv(util.EnvPodName),
+		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
 		PodNicType:                     *argPodNicType,
 		EnableLb:                       *argEnableLb,
 		EnableNP:                       *argEnableNP,
@@ -442,8 +442,8 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.ExtClient = ExtClient
 
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentTypeProtobuf
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
@@ -478,8 +478,8 @@ func (config *Configuration) initKubeFactoryClient() error {
 	}
 	config.KubeOvnFactoryClient = kubeOvnClient
 
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentTypeProtobuf
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

@@ -72,7 +72,7 @@ func NewDynamicOvnNbClient(
 	}
 
 	nbClient, err := ovsclient.NewOvsDbClient(
-		ovsclient.NBDB,
+		ovnnb.DatabaseName,
 		ovnNbAddr,
 		dbModel,
 		nil,
@@ -118,7 +118,7 @@ func NewDynamicOvnNbClient(
 	}
 
 	if nbClient, err = ovsclient.NewOvsDbClient(
-		ovsclient.NBDB,
+		ovnnb.DatabaseName,
 		ovnNbAddr,
 		dbModel,
 		monitors,
@@ -180,7 +180,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	var nbClient client.Client
 	for {
 		nbClient, err = ovsclient.NewOvsDbClient(
-			ovsclient.NBDB,
+			ovnnb.DatabaseName,
 			ovnNbAddr,
 			dbModel,
 			monitors,
@@ -222,7 +222,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	var sbClient client.Client
 	for {
 		sbClient, err = ovsclient.NewOvsDbClient(
-			ovsclient.SBDB,
+			ovnsb.DatabaseName,
 			ovnSbAddr,
 			dbModel,
 			monitors,

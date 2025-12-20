@@ -34,13 +34,9 @@ import (
 )
 
 const (
-	EnvSSL               = "ENABLE_SSL"
-	EnvPodName           = "POD_NAME"
-	EnvPodNameSpace      = "POD_NAMESPACE"
 	OvnNorthdServiceName = "ovn-northd"
 	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
 	DefaultProbeInterval = 5
-	OvnNorthdPort        = "6643"
 	MaxFailCount         = 3
 )
 
@@ -62,7 +58,7 @@ type Configuration struct {
 // ParseFlags parses cmd args then init kubeclient and conf
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
-	podIP := os.Getenv("POD_IP")
+	podIP := os.Getenv(util.EnvPodIP)
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader in seconds")
@@ -127,6 +123,9 @@ func KubeClientInit(cfg *Configuration) error {
 		klog.Errorf("init kubernetes cfg failed %v", err)
 		return err
 	}
+
+	kubeCfg.ContentType = util.ContentTypeProtobuf
+	kubeCfg.AcceptContentTypes = util.AcceptContentTypes
 	if cfg.KubeClient, err = kubernetes.NewForConfig(kubeCfg); err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
 		return err
@@ -169,13 +168,13 @@ func isDBLeader(address, database string) bool {
 	var dbAddr string
 	switch database {
 	case ovnnb.DatabaseName:
-		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(6641))
+		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(util.NBDatabasePort))
 	case ovnsb.DatabaseName:
-		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(6642))
-	case "OVN_IC_Northbound":
-		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(6645))
-	case "OVN_IC_Southbound":
-		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(6646))
+		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(util.SBDatabasePort))
+	case util.DatabaseICNB:
+		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(util.ICNBDatabasePort))
+	case util.DatabaseICSB:
+		dbAddr = ovs.OvsdbServerAddress(address, intstr.FromInt32(util.ICSBDatabasePort))
 	default:
 		klog.Errorf("isDBLeader: unsupported database %s", database)
 		return false
@@ -246,36 +245,16 @@ func checkNorthdActive() bool {
 }
 
 func stealLock() {
-	podIP := os.Getenv("POD_IP")
-
-	var command []string
-	if os.Getenv(EnvSSL) == "false" {
-		command = []string{
-			"-v",
-			"-t",
-			"1",
-			"steal",
-			fmt.Sprintf("tcp:%s:6642", podIP),
-			"ovn_northd",
-		}
-	} else {
-		command = []string{
-			"-v",
-			"-t",
-			"1",
-			"-p",
-			"/var/run/tls/key",
-			"-c",
-			"/var/run/tls/cert",
-			"-C",
-			"/var/run/tls/cacert",
-			"steal",
-			fmt.Sprintf("ssl:%s:6642", podIP),
-			"ovn_northd",
-		}
+	args := []string{
+		"-v", "-t", "1", "steal",
+		ovs.OvsdbServerAddress(os.Getenv(util.EnvPodIP), intstr.FromInt32(util.SBDatabasePort)),
+		"ovn_northd",
+	}
+	if os.Getenv(util.EnvSSLEnabled) == "true" {
+		args = slices.Insert(args, 0, ovs.CmdSSLArgs()...)
 	}
 
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -296,7 +275,7 @@ func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 }
 
 func checkNorthdEpAvailable(ip string) bool {
-	address := net.JoinHostPort(ip, OvnNorthdPort)
+	address := util.JoinHostPort(ip, util.NBRaftPort)
 	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 	if err != nil {
 		klog.Errorf("failed to connect to northd leader %s, err: %v", ip, err)
@@ -401,8 +380,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			compactOvnDatabase("sb")
 		}
 	} else {
-		icNbLeader := isDBLeader(cfg.localAddress, "OVN_IC_Northbound")
-		icSbLeader := isDBLeader(cfg.localAddress, "OVN_IC_Southbound")
+		icNbLeader := isDBLeader(cfg.localAddress, util.DatabaseICNB)
+		icSbLeader := isDBLeader(cfg.localAddress, util.DatabaseICSB)
 		patch := util.KVPatch{
 			"ovn-ic-nb-leader": strconv.FormatBool(icNbLeader),
 			"ovn-ic-sb-leader": strconv.FormatBool(icSbLeader),
@@ -420,10 +399,10 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		}
 
 		for addr := range slices.Values(cfg.remoteAddresses) {
-			if icNbLeader && isDBLeader(addr, "OVN_IC_Northbound") {
+			if icNbLeader && isDBLeader(addr, util.DatabaseICNB) {
 				klog.Fatalf("found another ovn-ic-nb leader at %s, exiting process to restart", addr)
 			}
-			if icSbLeader && isDBLeader(addr, "OVN_IC_Southbound") {
+			if icSbLeader && isDBLeader(addr, util.DatabaseICSB) {
 				klog.Fatalf("found another ovn-ic-sb leader at %s, exiting process to restart", addr)
 			}
 		}
@@ -431,8 +410,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 }
 
 func StartOvnLeaderCheck(cfg *Configuration) {
-	podName := os.Getenv(EnvPodName)
-	podNamespace := os.Getenv(EnvPodNameSpace)
+	podName := os.Getenv(util.EnvPodName)
+	podNamespace := os.Getenv(util.EnvPodNamespace)
 	interval := time.Duration(cfg.ProbeInterval) * time.Second
 	for {
 		doOvnLeaderCheck(cfg, podName, podNamespace)
@@ -449,7 +428,7 @@ func getTSName(index int) string {
 
 func getTSCidr(index int) (string, error) {
 	var proto, cidr string
-	podIpsEnv := os.Getenv("POD_IPS")
+	podIpsEnv := os.Getenv(util.EnvPodIPs)
 	podIps := strings.Split(podIpsEnv, ",")
 	if len(podIps) == 1 {
 		if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
@@ -502,7 +481,7 @@ func updateTS() error {
 			cmd := exec.Command("ovn-ic-nbctl",
 				ovs.MayExist, "ts-add", tsName,
 				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
-			if os.Getenv("ENABLE_SSL") == "true" {
+			if os.Getenv(util.EnvSSLEnabled) == "true" {
 				// #nosec G204
 				cmd = exec.Command("ovn-ic-nbctl",
 					"--private-key=/var/run/tls/key",
@@ -520,7 +499,7 @@ func updateTS() error {
 		for i := existTSCount - 1; i >= expectTSCount; i-- {
 			tsName := getTSName(i)
 			cmd := exec.Command("ovn-ic-nbctl", "ts-del", tsName) // #nosec G204
-			if os.Getenv("ENABLE_SSL") == "true" {
+			if os.Getenv(util.EnvSSLEnabled) == "true" {
 				// #nosec G204
 				cmd = exec.Command("ovn-ic-nbctl",
 					"--private-key=/var/run/tls/key",

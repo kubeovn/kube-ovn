@@ -34,6 +34,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type fakeControllerInformers struct {
@@ -72,7 +73,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
 			Annotations: map[string]string{
-				"ovn.kubernetes.io/logical_switch": "ovn-default",
+				util.LogicalSwitchAnnotation: util.DefaultSubnet,
 			},
 		},
 	}
@@ -243,7 +244,7 @@ func TestFakeControllerWithOptions(t *testing.T) {
 				Name:      "test-pod",
 				Namespace: "default",
 				Annotations: map[string]string{
-					"k8s.v1.cni.cncf.io/networks": `[{"name": "net1"}]`,
+					nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
 				},
 			},
 		},

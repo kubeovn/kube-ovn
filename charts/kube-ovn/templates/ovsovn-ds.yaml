@@ -115,7 +115,7 @@ spec:
               value: "{{- .Values.func.HW_OFFLOAD }}"
             - name: TUNNEL_TYPE
               value: "{{- .Values.networking.TUNNEL_TYPE }}"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName

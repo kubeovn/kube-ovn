@@ -75,7 +75,7 @@ func CmdMain() {
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
-		HealthProbeBindAddress: util.JoinHostPort(os.Getenv("POD_IP"), *healthProbePort),
+		HealthProbeBindAddress: util.JoinHostPort(os.Getenv(util.EnvPodIP), *healthProbePort),
 	})
 	if err != nil {
 		panic(err)

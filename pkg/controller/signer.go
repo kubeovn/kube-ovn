@@ -123,7 +123,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	}
 	// From this, point we are dealing with an approved CSR
 	// Get CA in from ovn-ipsec-ca
-	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
+	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv(util.EnvPodNamespace)).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
 		c.signerFailure(csr, "CAFailure",
 			fmt.Sprintf("Could not get CA certificate and key: %v", err))
