@@ -201,6 +201,9 @@ features:
   # -- Enable persistent VM IPs
   # @section -- Opt-in/out Features
   enableKeepVmIps: true
+  # -- Enable persistent OpenKruise StatefulSet IPs
+  # @section -- Opt-in/out Features
+  enableKeepKruiseStsIps: false
   # -- Enable secure serving
   # @section -- Opt-in/out Features
   enableSecureServing: false

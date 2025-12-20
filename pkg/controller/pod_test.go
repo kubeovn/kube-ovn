@@ -329,3 +329,200 @@ func TestGetPodKubeovnNetsNonPrimaryCNI(t *testing.T) {
 		})
 	}
 }
+
+func TestIsKruiseStatefulSetPod(t *testing.T) {
+	tests := []struct {
+		name          string
+		pod           *corev1.Pod
+		expectResult  bool
+		expectStsName string
+		description   string
+	}{
+		{
+			name: "Pod owned by standard Kubernetes StatefulSet",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-sts-0",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       util.StatefulSet,
+							Name:       "test-sts",
+							UID:        "test-uid",
+						},
+					},
+				},
+			},
+			expectResult:  false,
+			expectStsName: "",
+			description:   "Should return false for standard Kubernetes StatefulSet pod",
+		},
+		{
+			name: "Pod owned by OpenKruise StatefulSet v1beta1",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps.kruise.io/v1beta1",
+							Kind:       util.StatefulSet,
+							Name:       "kruise-sts",
+							UID:        "kruise-uid",
+						},
+					},
+				},
+			},
+			expectResult:  true,
+			expectStsName: "kruise-sts",
+			description:   "Should return true for OpenKruise StatefulSet v1beta1 pod",
+		},
+		{
+			name: "Pod owned by OpenKruise StatefulSet v1alpha1",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-1",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps.kruise.io/v1alpha1",
+							Kind:       util.StatefulSet,
+							Name:       "kruise-sts",
+							UID:        "kruise-uid",
+						},
+					},
+				},
+			},
+			expectResult:  true,
+			expectStsName: "kruise-sts",
+			description:   "Should return true for OpenKruise StatefulSet v1alpha1 pod",
+		},
+		{
+			name: "Pod without any owner reference",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "standalone-pod",
+					Namespace: "default",
+				},
+			},
+			expectResult:  false,
+			expectStsName: "",
+			description:   "Should return false for standalone pod",
+		},
+		{
+			name: "Pod owned by Deployment",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "deployment-pod-abc123",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       "ReplicaSet",
+							Name:       "deployment-pod-abc123",
+							UID:        "rs-uid",
+						},
+					},
+				},
+			},
+			expectResult:  false,
+			expectStsName: "",
+			description:   "Should return false for pod owned by Deployment/ReplicaSet",
+		},
+		{
+			name: "Pod name does not match owner name",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "other-pod-0",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps.kruise.io/v1beta1",
+							Kind:       util.StatefulSet,
+							Name:       "kruise-sts",
+							UID:        "kruise-uid",
+						},
+					},
+				},
+			},
+			expectResult:  false,
+			expectStsName: "",
+			description:   "Should return false when pod name does not start with owner name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isKruiseSts, stsName, _ := isKruiseStatefulSetPod(tt.pod)
+			assert.Equal(t, tt.expectResult, isKruiseSts, tt.description)
+			assert.Equal(t, tt.expectStsName, stsName, tt.description)
+		})
+	}
+}
+
+func TestGetPodType(t *testing.T) {
+	tests := []struct {
+		name            string
+		pod             *corev1.Pod
+		expectedPodType string
+		description     string
+	}{
+		{
+			name: "Pod owned by standard Kubernetes StatefulSet",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-sts-0",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       util.StatefulSet,
+							Name:       "test-sts",
+							UID:        "test-uid",
+						},
+					},
+				},
+			},
+			expectedPodType: util.StatefulSet,
+			description:     "Should return StatefulSet for standard Kubernetes StatefulSet pod",
+		},
+		{
+			name: "Pod owned by OpenKruise StatefulSet",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps.kruise.io/v1beta1",
+							Kind:       util.StatefulSet,
+							Name:       "kruise-sts",
+							UID:        "kruise-uid",
+						},
+					},
+				},
+			},
+			expectedPodType: util.KruiseStatefulSet,
+			description:     "Should return KruiseStatefulSet for OpenKruise StatefulSet pod",
+		},
+		{
+			name: "Pod without any owner reference",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "standalone-pod",
+					Namespace: "default",
+				},
+			},
+			expectedPodType: "",
+			description:     "Should return empty string for standalone pod",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			podType := getPodType(tt.pod)
+			assert.Equal(t, tt.expectedPodType, podType, tt.description)
+		})
+	}
+}

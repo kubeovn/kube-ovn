@@ -26,6 +26,7 @@ CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+ENABLE_KEEP_KRUISE_STS_IP=${ENABLE_KEEP_KRUISE_STS_IP:-false}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
 ENABLE_METRICS=${ENABLE_METRICS:-true}
 # comma-separated string of nodelocal DNS ip addresses
@@ -4817,6 +4818,7 @@ spec:
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
+          - --keep-kruise-sts-ip=$ENABLE_KEEP_KRUISE_STS_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS

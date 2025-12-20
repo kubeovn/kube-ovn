@@ -137,6 +137,7 @@ spec:
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
+          - --keep-kruise-sts-ip={{- .Values.func.ENABLE_KEEP_KRUISE_STS_IP }}
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
