@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	fakedynamic "k8s.io/client-go/dynamic/fake"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -523,6 +527,448 @@ func TestGetPodType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			podType := getPodType(tt.pod)
 			assert.Equal(t, tt.expectedPodType, podType, tt.description)
+		})
+	}
+}
+
+func TestCheckKruiseStatefulSetState(t *testing.T) {
+	scheme := runtime.NewScheme()
+
+	tests := []struct {
+		name           string
+		pod            *corev1.Pod
+		stsName        string
+		stsUID         types.UID
+		stsObject      *unstructured.Unstructured
+		expectedResult kruiseStsCheckResult
+		description    string
+	}{
+		{
+			name: "StatefulSet deleted",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+				},
+			},
+			stsName:        "kruise-sts",
+			stsUID:         "original-uid",
+			stsObject:      nil, // not found
+			expectedResult: kruiseStsCheckResultDelete,
+			description:    "Should return delete when statefulset is not found",
+		},
+		{
+			name: "StatefulSet being deleted",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":              "kruise-sts",
+						"namespace":         "default",
+						"uid":               "original-uid",
+						"deletionTimestamp": "2024-01-01T00:00:00Z",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3),
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultDelete,
+			description:    "Should return delete when statefulset is being deleted",
+		},
+		{
+			name: "StatefulSet recreated (UID mismatch)",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "new-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3),
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultDelete,
+			description:    "Should return delete when statefulset has different UID",
+		},
+		{
+			name: "StatefulSet down scaled",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-2",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(2), // scaled down from 3 to 2
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultDownScale,
+			description:    "Should return downscale when pod index >= replicas",
+		},
+		{
+			name: "StatefulSet down scaled with custom ordinals.start",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-7",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(2), // replicas = 2
+						"ordinals": map[string]any{
+							"start": int64(5), // start at 5, so valid pods are 5, 6
+						},
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultDownScale,
+			description:    "Should return downscale when pod index >= start + replicas",
+		},
+		{
+			name: "StatefulSet keep (pod within replicas)",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-1",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3),
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultKeep,
+			description:    "Should return keep when pod index < replicas",
+		},
+		{
+			name: "StatefulSet keep with custom ordinals.start",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-6",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3), // replicas = 3
+						"ordinals": map[string]any{
+							"start": int64(5), // start at 5, so valid pods are 5, 6, 7
+						},
+					},
+				},
+			},
+			expectedResult: kruiseStsCheckResultKeep,
+			description:    "Should return keep when pod index < start + replicas",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []runtime.Object
+			if tt.stsObject != nil {
+				objects = append(objects, tt.stsObject)
+			}
+			dynamicClient := fakedynamic.NewSimpleDynamicClient(scheme, objects...)
+
+			result := checkKruiseStatefulSetState(dynamicClient, tt.pod, tt.stsName, tt.stsUID)
+			assert.Equal(t, tt.expectedResult, result, tt.description)
+		})
+	}
+}
+
+func TestIsKruiseStatefulSetPodToDel(t *testing.T) {
+	scheme := runtime.NewScheme()
+
+	tests := []struct {
+		name        string
+		pod         *corev1.Pod
+		stsName     string
+		stsUID      types.UID
+		stsObject   *unstructured.Unstructured
+		expected    bool
+		description string
+	}{
+		{
+			name: "Delete when StatefulSet is deleted",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+				},
+			},
+			stsName:     "kruise-sts",
+			stsUID:      "original-uid",
+			stsObject:   nil,
+			expected:    true,
+			description: "Should return true when statefulset is deleted",
+		},
+		{
+			name: "Delete when StatefulSet is down scaled",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-2",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(2),
+					},
+				},
+			},
+			expected:    true,
+			description: "Should return true when statefulset is down scaled",
+		},
+		{
+			name: "Keep when pod within replicas",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-1",
+					Namespace: "default",
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3),
+					},
+				},
+			},
+			expected:    false,
+			description: "Should return false when pod is within replicas",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []runtime.Object
+			if tt.stsObject != nil {
+				objects = append(objects, tt.stsObject)
+			}
+			dynamicClient := fakedynamic.NewSimpleDynamicClient(scheme, objects...)
+
+			result := isKruiseStatefulSetPodToDel(dynamicClient, tt.pod, tt.stsName, tt.stsUID)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+func TestIsKruiseStatefulSetPodToGC(t *testing.T) {
+	scheme := runtime.NewScheme()
+
+	tests := []struct {
+		name        string
+		pod         *corev1.Pod
+		stsName     string
+		stsUID      types.UID
+		stsObject   *unstructured.Unstructured
+		expected    bool
+		description string
+	}{
+		{
+			name: "GC when StatefulSet is deleted",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-0",
+					Namespace: "default",
+				},
+			},
+			stsName:     "kruise-sts",
+			stsUID:      "original-uid",
+			stsObject:   nil,
+			expected:    true,
+			description: "Should return true when statefulset is deleted",
+		},
+		{
+			name: "GC when down scaled and pod not alive",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-2",
+					Namespace: "default",
+				},
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodFailed,
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(2),
+					},
+				},
+			},
+			expected:    true,
+			description: "Should return true when down scaled and pod is not alive",
+		},
+		{
+			name: "No GC when down scaled but pod still alive",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-2",
+					Namespace: "default",
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(2),
+					},
+				},
+			},
+			expected:    false,
+			description: "Should return false when down scaled but pod is still alive",
+		},
+		{
+			name: "No GC when pod within replicas",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kruise-sts-1",
+					Namespace: "default",
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+				},
+			},
+			stsName: "kruise-sts",
+			stsUID:  "original-uid",
+			stsObject: &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "apps.kruise.io/v1beta1",
+					"kind":       "StatefulSet",
+					"metadata": map[string]any{
+						"name":      "kruise-sts",
+						"namespace": "default",
+						"uid":       "original-uid",
+					},
+					"spec": map[string]any{
+						"replicas": int64(3),
+					},
+				},
+			},
+			expected:    false,
+			description: "Should return false when pod is within replicas",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []runtime.Object
+			if tt.stsObject != nil {
+				objects = append(objects, tt.stsObject)
+			}
+			dynamicClient := fakedynamic.NewSimpleDynamicClient(scheme, objects...)
+
+			result := isKruiseStatefulSetPodToGC(dynamicClient, tt.pod, tt.stsName, tt.stsUID)
+			assert.Equal(t, tt.expected, result, tt.description)
 		})
 	}
 }

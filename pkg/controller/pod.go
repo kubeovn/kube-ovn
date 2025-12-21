@@ -1468,118 +1468,59 @@ var kruiseStatefulSetGVR = schema.GroupVersionResource{
 	Resource: "statefulsets",
 }
 
-func isKruiseStatefulSetPodToDel(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
-	// only delete kruise statefulset pod lsp when statefulset deleted or down scaled
+// kruiseStsCheckResult represents the result of checking kruise statefulset state
+type kruiseStsCheckResult int
+
+const (
+	kruiseStsCheckResultKeep      kruiseStsCheckResult = iota // keep the pod IP
+	kruiseStsCheckResultDelete                                // delete the pod IP
+	kruiseStsCheckResultDownScale                             // statefulset is down scaled
+)
+
+// checkKruiseStatefulSetState checks the state of a kruise statefulset and returns the appropriate action
+func checkKruiseStatefulSetState(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) kruiseStsCheckResult {
 	unstructuredSts, err := c.Resource(kruiseStatefulSetGVR).Namespace(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
 	if err != nil {
 		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
 			klog.Infof("kruise statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
-			return true
+			return kruiseStsCheckResultDelete
 		}
 		klog.Errorf("failed to get kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
-	}
-
-	// statefulset is being deleted, or it's a newly created one
-	if unstructuredSts.GetDeletionTimestamp() != nil && !unstructuredSts.GetDeletionTimestamp().IsZero() {
-		klog.Infof("kruise statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
-		return true
-	}
-	if unstructuredSts.GetUID() != statefulSetUID {
-		klog.Infof("kruise statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
-		return true
-	}
-
-	// down scale statefulset
-	tempStrs := strings.Split(pod.Name, "-")
-	numStr := tempStrs[len(tempStrs)-1]
-	index, err := strconv.ParseInt(numStr, 10, 0)
-	if err != nil {
-		klog.Errorf("failed to parse %s to int", numStr)
-		return false
-	}
-
-	// get replicas from spec
-	spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
-	if err != nil || !found {
-		klog.Errorf("failed to get spec from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
-	}
-
-	replicas, found, err := unstructured.NestedInt64(spec, "replicas")
-	if err != nil || !found {
-		klog.Errorf("failed to get replicas from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
-	}
-
-	// get ordinals.start if exists
-	var startOrdinal int64
-	if ordinals, found, err := unstructured.NestedMap(spec, "ordinals"); err != nil {
-		klog.Errorf("failed to get ordinals from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-	} else if found {
-		if start, found, err := unstructured.NestedInt64(ordinals, "start"); err != nil {
-			klog.Errorf("failed to get ordinals.start from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		} else if found {
-			startOrdinal = start
-		}
-	}
-
-	// down scaled
-	if index >= startOrdinal+replicas {
-		klog.Infof("kruise statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
-		return true
-	}
-	return false
-}
-
-// only gc kruise statefulset pod lsp when:
-// 1. the statefulset has been deleted or is being deleted
-// 2. the statefulset has been deleted and recreated
-// 3. the statefulset is down scaled and the pod is not alive
-func isKruiseStatefulSetPodToGC(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
-	unstructuredSts, err := c.Resource(kruiseStatefulSetGVR).Namespace(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
-	if err != nil {
-		// the statefulset has been deleted
-		if k8serrors.IsNotFound(err) {
-			klog.Infof("kruise statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
-			return true
-		}
-		klog.Errorf("failed to get kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
+		return kruiseStsCheckResultKeep
 	}
 
 	// statefulset is being deleted
 	if unstructuredSts.GetDeletionTimestamp() != nil && !unstructuredSts.GetDeletionTimestamp().IsZero() {
 		klog.Infof("kruise statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
-		return true
+		return kruiseStsCheckResultDelete
 	}
 	// the statefulset has been deleted and recreated
 	if unstructuredSts.GetUID() != statefulSetUID {
 		klog.Infof("kruise statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
-		return true
+		return kruiseStsCheckResultDelete
 	}
 
-	// the statefulset is down scaled and the pod is not alive
+	// check if statefulset is down scaled
 	tempStrs := strings.Split(pod.Name, "-")
 	numStr := tempStrs[len(tempStrs)-1]
 	index, err := strconv.ParseInt(numStr, 10, 0)
 	if err != nil {
 		klog.Errorf("failed to parse %s to int", numStr)
-		return false
+		return kruiseStsCheckResultKeep
 	}
 
 	// get replicas from spec
 	spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
 	if err != nil || !found {
 		klog.Errorf("failed to get spec from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
+		return kruiseStsCheckResultKeep
 	}
 
 	replicas, found, err := unstructured.NestedInt64(spec, "replicas")
 	if err != nil || !found {
 		klog.Errorf("failed to get replicas from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
+		return kruiseStsCheckResultKeep
 	}
 
 	// get ordinals.start if exists
@@ -1597,11 +1538,28 @@ func isKruiseStatefulSetPodToGC(c dynamic.Interface, pod *v1.Pod, statefulSetNam
 	// down scaled
 	if index >= startOrdinal+replicas {
 		klog.Infof("kruise statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
-		if !isPodAlive(pod) {
-			return true
-		}
+		return kruiseStsCheckResultDownScale
 	}
+	return kruiseStsCheckResultKeep
+}
 
+// isKruiseStatefulSetPodToDel checks if a kruise statefulset pod's IP should be deleted
+// when statefulset is deleted, being deleted, recreated, or down scaled
+func isKruiseStatefulSetPodToDel(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	result := checkKruiseStatefulSetState(c, pod, statefulSetName, statefulSetUID)
+	return result == kruiseStsCheckResultDelete || result == kruiseStsCheckResultDownScale
+}
+
+// isKruiseStatefulSetPodToGC checks if a kruise statefulset pod's IP should be garbage collected
+// when statefulset is deleted, being deleted, recreated, or down scaled and the pod is not alive
+func isKruiseStatefulSetPodToGC(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	result := checkKruiseStatefulSetState(c, pod, statefulSetName, statefulSetUID)
+	if result == kruiseStsCheckResultDelete {
+		return true
+	}
+	if result == kruiseStsCheckResultDownScale && !isPodAlive(pod) {
+		return true
+	}
 	return false
 }
 
