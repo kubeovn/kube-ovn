@@ -1552,8 +1552,8 @@ func checkKruiseStatefulSetState(c dynamic.Interface, pod *v1.Pod, statefulSetNa
 		}
 	}
 
-	// down scaled
-	if index >= startOrdinal+replicas {
+	// down scaled: index is outside [startOrdinal, startOrdinal+replicas)
+	if index < startOrdinal || index >= startOrdinal+replicas {
 		klog.Infof("kruise statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
 		return kruiseStsCheckResultDownScale
 	}
