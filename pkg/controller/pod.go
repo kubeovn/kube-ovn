@@ -218,7 +218,7 @@ func (c *Controller) enqueueAddPod(obj any) {
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
-			if isKruiseStateful && c.config.EnableKeepKruiseStsIP && isKruiseStatefulSetPodToDel(c.config.DynamicClient, p, kruiseStatefulSetName, kruiseStatefulSetUID) {
+			if isKruiseStateful && isKruiseStatefulSetPodToDel(c.config.DynamicClient, p, kruiseStatefulSetName, kruiseStatefulSetUID) {
 				klog.V(3).Infof("enqueue delete kruise sts pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
@@ -1515,14 +1515,22 @@ func checkKruiseStatefulSetState(c dynamic.Interface, pod *v1.Pod, statefulSetNa
 
 	// get replicas from spec
 	spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
-	if err != nil || !found {
+	if err != nil {
 		klog.Errorf("failed to get spec from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+	if !found {
+		klog.Warningf("spec not found in kruise statefulset %s/%s", pod.Namespace, statefulSetName)
 		return kruiseStsCheckResultKeep
 	}
 
 	replicas, found, err := unstructured.NestedInt64(spec, "replicas")
-	if err != nil || !found {
+	if err != nil {
 		klog.Errorf("failed to get replicas from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+	if !found {
+		klog.Warningf("replicas not found in kruise statefulset %s/%s", pod.Namespace, statefulSetName)
 		return kruiseStsCheckResultKeep
 	}
 
@@ -2412,22 +2420,38 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 		}
 		// get template annotations from kruise statefulset
 		spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
-		if err != nil || !found {
+		if err != nil {
 			klog.Errorf("failed to get spec from Kruise StatefulSet %s: %v", ownerRefName, err)
 			return false, err
 		}
+		if !found {
+			klog.Warningf("spec not found in Kruise StatefulSet %s", ownerRefName)
+			return false, nil
+		}
 		template, found, err := unstructured.NestedMap(spec, "template")
-		if err != nil || !found {
+		if err != nil {
 			klog.Errorf("failed to get template from Kruise StatefulSet %s: %v", ownerRefName, err)
 			return false, err
 		}
+		if !found {
+			klog.Warningf("template not found in Kruise StatefulSet %s", ownerRefName)
+			return false, nil
+		}
 		metadata, found, err := unstructured.NestedMap(template, "metadata")
-		if err != nil || !found {
+		if err != nil {
+			klog.Errorf("failed to get template.metadata from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		if !found {
 			// template.metadata may not exist, which is fine
 			klog.V(3).Infof("template.metadata not found in Kruise StatefulSet %s", ownerRefName)
 		} else {
-			annotations, _, _ := unstructured.NestedStringMap(metadata, "annotations")
-			if annotations != nil && annotations[util.LogicalSwitchAnnotation] != "" {
+			annotations, found, err := unstructured.NestedStringMap(metadata, "annotations")
+			if err != nil {
+				klog.Errorf("failed to get annotations from Kruise StatefulSet %s metadata: %v", ownerRefName, err)
+				return false, err
+			}
+			if found && annotations[util.LogicalSwitchAnnotation] != "" {
 				ownerRefSubnetExist = true
 				ownerRefSubnet = annotations[util.LogicalSwitchAnnotation]
 			}

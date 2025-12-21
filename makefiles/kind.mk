@@ -241,7 +241,7 @@ kind-install: kind-load-image
 	@if [ "$(UNTAINT_CONTROL_PLANE)" = "true" ]; then \
 		$(MAKE) untaint-control-plane; \
 	fi
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | ENABLE_KEEP_KRUISE_STS_IP=$(ENABLE_KEEP_KRUISE_STS_IP) bash
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | ENABLE_KEEP_KRUISE_STS_IP="$(ENABLE_KEEP_KRUISE_STS_IP)" bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv4

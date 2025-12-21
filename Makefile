@@ -297,4 +297,4 @@ local-dev:
 	@DEBUG=1 $(MAKE) build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
-	@ENABLE_KEEP_KRUISE_STS_IP=$(ENABLE_KEEP_KRUISE_STS_IP) $(MAKE) kind-init kind-install
+	@ENABLE_KEEP_KRUISE_STS_IP="$(ENABLE_KEEP_KRUISE_STS_IP)" $(MAKE) kind-init kind-install

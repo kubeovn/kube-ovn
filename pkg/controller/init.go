@@ -405,7 +405,7 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 		// recover sts, kruise sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.KruiseStatefulSet && ip.Spec.PodType != util.VM {
+		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.KruiseStatefulSet && ip.Spec.PodType != util.KindVirtualMachine {
 			continue
 		}
 
