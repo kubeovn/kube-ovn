@@ -334,7 +334,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	}
 
 	// Check if VM exists
-	if ip.Spec.PodType == util.VM {
+	if ip.Spec.PodType == util.KindVirtualMachine {
 		_, err := c.config.KubevirtClient.VirtualMachine(ip.Spec.Namespace).Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, nil
@@ -343,7 +343,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	}
 
 	// Check if StatefulSet exists
-	if ip.Spec.PodType == util.StatefulSet {
+	if ip.Spec.PodType == util.KindStatefulSet {
 		// Extract StatefulSet name from pod name by removing the last part after '-'
 		// e.g., "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1-0" -> "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1"
 		stsName := ip.Spec.PodName

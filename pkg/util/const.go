@@ -1,5 +1,10 @@
 package util
 
+import (
+	appsv1 "k8s.io/api/apps/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+)
+
 const (
 	CniTypeName = "kube-ovn"
 
@@ -113,7 +118,6 @@ const (
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
-	KubeVirtVMNameLabel                = "vm.kubevirt.io/name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
@@ -331,8 +335,7 @@ const (
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
-	MigrationJobAnnotation = "kubevirt.io/migrationJobName" // migration job name
-	KubevirtNamespace      = "kubevirt"
+	KubevirtNamespace = "kubevirt"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
@@ -350,4 +353,11 @@ const (
 	MasqueradeCheckIP             = "0.0.0.0"
 )
 
-var KubeVirtCRD = []string{"virtualmachineinstancemigrations.kubevirt.io", "virtualmachines.kubevirt.io"}
+// Readonly kinds of Kubernetes objects
+var (
+	KindStatefulSet = ObjectKind[*appsv1.StatefulSet]()
+
+	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
+	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()
+	KindVirtualMachineInstanceMigration = ObjectKind[*kubevirtv1.VirtualMachineInstanceMigration]()
+)

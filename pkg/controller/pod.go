@@ -16,6 +16,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -1049,7 +1051,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, stsName, util.StatefulSet)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, stsName, util.KindStatefulSet)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -1083,7 +1085,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, vmName, util.VMInstance)
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, vmName, util.KindVirtualMachineInstance)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -1399,7 +1401,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 func isStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == util.StatefulSet && strings.HasPrefix(owner.APIVersion, "apps/") {
+		if owner.Kind == util.KindStatefulSet && strings.HasPrefix(owner.APIVersion, appsv1.SchemeGroupVersion.Group+"/") {
 			if strings.HasPrefix(pod.Name, owner.Name) {
 				return true, owner.Name, owner.UID
 			}
@@ -1543,7 +1545,7 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	}
 
 	migrate := false
-	if job, ok := pod.Annotations[util.MigrationJobAnnotation]; ok {
+	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok {
 		klog.Infof("pod %s/%s is in the migration job %s", pod.Namespace, pod.Name, job)
 		migrate = true
 	}
@@ -1844,7 +1846,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
 			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
-			if pod.Annotations[util.MigrationJobAnnotation] != "" {
+			if pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] != "" {
 				allowLiveMigration = true
 			}
 
@@ -2222,7 +2224,7 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 	var ownerRefSubnetExist bool
 	var ownerRefSubnet string
 	switch ownerRefKind {
-	case util.StatefulSet:
+	case util.KindStatefulSet:
 		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -2236,7 +2238,7 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 			ownerRefSubnet = ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation]
 		}
 
-	case util.VMInstance:
+	case util.KindVirtualMachineInstance:
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -2311,7 +2313,8 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 func isVMPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
 		// The name of vmi is consistent with vm's name.
-		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.KindVirtualMachineInstance &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
 			return true, owner.Name
 		}
 	}
@@ -2320,7 +2323,8 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	for _, owner := range vmi.GetOwnerReferences() {
-		if owner.Kind == util.VM && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.KindVirtualMachine &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
 			return true, owner.Name
 		}
 	}
@@ -2422,11 +2426,11 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 
 func getPodType(pod *v1.Pod) string {
 	if ok, _, _ := isStatefulSetPod(pod); ok {
-		return util.StatefulSet
+		return util.KindStatefulSet
 	}
 
 	if isVMPod, _ := isVMPod(pod); isVMPod {
-		return util.VM
+		return util.KindVirtualMachine
 	}
 	return ""
 }

@@ -141,7 +141,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	case kubevirtv1.MigrationScheduling:
 		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				"kubevirt.io/migrationJobUID": string(vmiMigration.UID),
+				kubevirtv1.MigrationJobLabel: string(vmiMigration.UID),
 			},
 		})
 		if err != nil {
@@ -204,15 +204,13 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	return nil
 }
 
-func (c *Controller) isKubevirtCRDInstalled() bool {
-	for _, crd := range util.KubeVirtCRD {
-		_, err := c.config.ExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), crd, metav1.GetOptions{})
-		if err != nil {
-			return false
-		}
-	}
-	klog.Info("Found KubeVirt CRDs")
-	return true
+func (c *Controller) isKubevirtCRDInstalled() (bool, error) {
+	return apiResourceExists(c.config.KubevirtClient.Discovery(),
+		kubevirtv1.GroupVersion.String(),
+		util.KindVirtualMachine,
+		util.KindVirtualMachineInstance,
+		util.KindVirtualMachineInstanceMigration,
+	)
 }
 
 func (c *Controller) StartKubevirtInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
@@ -222,7 +220,12 @@ func (c *Controller) StartKubevirtInformerFactory(ctx context.Context, kubevirtI
 		for {
 			select {
 			case <-ticker.C:
-				if c.isKubevirtCRDInstalled() {
+				ok, err := c.isKubevirtCRDInstalled()
+				if err != nil {
+					klog.Errorf("checking kubevirt CRD exists: %v", err)
+					continue
+				}
+				if ok {
 					klog.Info("Start kubevirt informer")
 					vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 					vmInformer := kubevirtInformerFactory.VirtualMachine()
