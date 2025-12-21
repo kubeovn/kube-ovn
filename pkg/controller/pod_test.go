@@ -383,7 +383,7 @@ func TestIsKruiseStatefulSetPod(t *testing.T) {
 			description:   "Should return true for OpenKruise StatefulSet v1beta1 pod",
 		},
 		{
-			name: "Pod owned by OpenKruise StatefulSet v1alpha1",
+			name: "Pod owned by OpenKruise StatefulSet v1alpha1 (unsupported)",
 			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "kruise-sts-1",
@@ -398,9 +398,9 @@ func TestIsKruiseStatefulSetPod(t *testing.T) {
 					},
 				},
 			},
-			expectResult:  true,
-			expectStsName: "kruise-sts",
-			description:   "Should return true for OpenKruise StatefulSet v1alpha1 pod",
+			expectResult:  false,
+			expectStsName: "",
+			description:   "Should return false for OpenKruise StatefulSet v1alpha1 pod (only v1beta1 is supported)",
 		},
 		{
 			name: "Pod without any owner reference",

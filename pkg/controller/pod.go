@@ -1452,7 +1452,8 @@ func isStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 
 func isKruiseStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == util.StatefulSet && strings.HasPrefix(owner.APIVersion, "apps.kruise.io/") {
+		// Only support apps.kruise.io/v1beta1, as the GVR is hardcoded to v1beta1
+		if owner.Kind == util.StatefulSet && owner.APIVersion == "apps.kruise.io/v1beta1" {
 			if strings.HasPrefix(pod.Name, owner.Name) {
 				return true, owner.Name, owner.UID
 			}
@@ -1462,6 +1463,8 @@ func isKruiseStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 }
 
 // kruiseStatefulSetGVR is the GroupVersionResource for OpenKruise StatefulSet
+// Note: Only v1beta1 is supported. The isKruiseStatefulSetPod function
+// detection logic is aligned to only match v1beta1 API version.
 var kruiseStatefulSetGVR = schema.GroupVersionResource{
 	Group:    "apps.kruise.io",
 	Version:  "v1beta1",
@@ -1525,12 +1528,18 @@ func checkKruiseStatefulSetState(c dynamic.Interface, pod *v1.Pod, statefulSetNa
 
 	// get ordinals.start if exists
 	var startOrdinal int64
-	if ordinals, found, err := unstructured.NestedMap(spec, "ordinals"); err != nil {
+	ordinals, found, err := unstructured.NestedMap(spec, "ordinals")
+	if err != nil {
 		klog.Errorf("failed to get ordinals from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-	} else if found {
-		if start, found, err := unstructured.NestedInt64(ordinals, "start"); err != nil {
+		return kruiseStsCheckResultKeep
+	}
+	if found {
+		start, found, err := unstructured.NestedInt64(ordinals, "start")
+		if err != nil {
 			klog.Errorf("failed to get ordinals.start from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		} else if found {
+			return kruiseStsCheckResultKeep
+		}
+		if found {
 			startOrdinal = start
 		}
 	}
@@ -2389,6 +2398,39 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 		if ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
 			ownerRefSubnet = ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation]
+		}
+
+	case util.KruiseStatefulSet:
+		unstructuredSts, err := c.config.DynamicClient.Resource(kruiseStatefulSetGVR).Namespace(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Infof("Kruise StatefulSet %s is not found", ownerRefName)
+				return true, nil
+			}
+			klog.Errorf("failed to get Kruise StatefulSet %s, %v", ownerRefName, err)
+			return false, err
+		}
+		// get template annotations from kruise statefulset
+		spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
+		if err != nil || !found {
+			klog.Errorf("failed to get spec from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		template, found, err := unstructured.NestedMap(spec, "template")
+		if err != nil || !found {
+			klog.Errorf("failed to get template from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		metadata, found, err := unstructured.NestedMap(template, "metadata")
+		if err != nil || !found {
+			// template.metadata may not exist, which is fine
+			klog.V(3).Infof("template.metadata not found in Kruise StatefulSet %s", ownerRefName)
+		} else {
+			annotations, _, _ := unstructured.NestedStringMap(metadata, "annotations")
+			if annotations != nil && annotations[util.LogicalSwitchAnnotation] != "" {
+				ownerRefSubnetExist = true
+				ownerRefSubnet = annotations[util.LogicalSwitchAnnotation]
+			}
 		}
 
 	case util.KindVirtualMachineInstance:
