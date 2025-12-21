@@ -1515,10 +1515,12 @@ func isKruiseStatefulSetPodToDel(c dynamic.Interface, pod *v1.Pod, statefulSetNa
 
 	// get ordinals.start if exists
 	var startOrdinal int64
-	ordinals, found, _ := unstructured.NestedMap(spec, "ordinals")
-	if found {
-		start, found, _ := unstructured.NestedInt64(ordinals, "start")
-		if found {
+	if ordinals, found, err := unstructured.NestedMap(spec, "ordinals"); err != nil {
+		klog.Errorf("failed to get ordinals from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+	} else if found {
+		if start, found, err := unstructured.NestedInt64(ordinals, "start"); err != nil {
+			klog.Errorf("failed to get ordinals.start from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		} else if found {
 			startOrdinal = start
 		}
 	}
@@ -1582,10 +1584,12 @@ func isKruiseStatefulSetPodToGC(c dynamic.Interface, pod *v1.Pod, statefulSetNam
 
 	// get ordinals.start if exists
 	var startOrdinal int64
-	ordinals, found, _ := unstructured.NestedMap(spec, "ordinals")
-	if found {
-		start, found, _ := unstructured.NestedInt64(ordinals, "start")
-		if found {
+	if ordinals, found, err := unstructured.NestedMap(spec, "ordinals"); err != nil {
+		klog.Errorf("failed to get ordinals from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+	} else if found {
+		if start, found, err := unstructured.NestedInt64(ordinals, "start"); err != nil {
+			klog.Errorf("failed to get ordinals.start from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		} else if found {
 			startOrdinal = start
 		}
 	}
