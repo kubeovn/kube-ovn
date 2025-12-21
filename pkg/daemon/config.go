@@ -3,14 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -215,9 +213,6 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 	}
-	if runtime.GOOS == "windows" {
-		config.EnableOVNIPSec = false
-	}
 
 	return config
 }
@@ -326,12 +321,6 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
-	if encapIsIPv6 && runtime.GOOS == "windows" {
-		// OVS windows datapath does not IPv6 tunnel in version v2.17
-		err = errors.New("IPv6 tunnel is not supported on Windows currently")
-		klog.Error(err)
-		return err
-	}
 
 	if config.MTU == 0 {
 		switch config.NetworkType {

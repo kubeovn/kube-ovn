@@ -26,12 +26,6 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-controller -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/test-server -v ./test/server
 
-.PHONY: build-go-windows
-build-go-windows:
-	go mod tidy
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/windows/kube-ovn.exe -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/windows/kube-ovn-daemon.exe -v ./cmd/daemon
-
 .PHONY: build-go-arm
 build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn -v ./cmd/cni
@@ -160,13 +154,6 @@ lint:
 		golangci-lint run -v --fix
 		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated -fix ./...
     endif
-
-.PHONY: lint-windows
-lint-windows:
-	@GOOS=windows go vet ./cmd/daemon/...
-	@GOOS=windows gosec ./pkg/util
-	@GOOS=windows gosec ./pkg/request
-	@GOOS=windows gosec ./cmd/cni
 
 .PHONY: scan
 scan:

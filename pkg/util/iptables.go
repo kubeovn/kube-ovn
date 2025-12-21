@@ -1,5 +1,3 @@
-//go:build !windows
-
 package util
 
 // IPTableRule wraps iptables rule
