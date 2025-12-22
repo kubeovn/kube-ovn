@@ -291,6 +291,7 @@ spec:
                   type: string
                 replicas:
                   type: integer
+                  format: int32
                   minimum: 1
                   maximum: 3
             status:
@@ -369,12 +370,14 @@ spec:
                         type: string
                       port:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                       protocol:
                         type: string
                       targetPort:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                     type: object
@@ -454,6 +457,8 @@ spec:
                         enum:
                           - Equal
                           - Exists
+                          - Lt
+                          - Gt
                       value:
                         type: string
                       effect:
@@ -463,6 +468,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
@@ -508,6 +514,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -602,6 +609,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -693,6 +701,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -769,8 +778,10 @@ spec:
                       type: boolean
                     asn:
                       type: integer
+                      format: uint32
                     remoteAsn:
                       type: integer
+                      format: uint32
                     neighbors:
                       type: array
                       items:
@@ -809,6 +820,8 @@ spec:
                         enum:
                           - Equal
                           - Exists
+                          - Lt
+                          - Gt
                       value:
                         type: string
                       effect:
@@ -818,6 +831,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
@@ -863,6 +877,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -957,6 +972,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -1048,6 +1064,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -1167,6 +1184,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   minimum: 0
                   maximum: 10
                 labelSelector:
@@ -1184,6 +1202,7 @@ spec:
                         maxLength: 32768
                         type: string
                       observedGeneration:
+                        format: int64
                         minimum: 0
                         type: integer
                       reason:
@@ -1264,6 +1283,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
@@ -1311,16 +1331,19 @@ spec:
                       default: false
                     minRX:
                       type: integer
+                      format: int32
                       default: 1000
                       minimum: 1
                       maximum: 3600000
                     minTX:
                       type: integer
+                      format: int32
                       default: 1000
                       minimum: 1
                       maximum: 3600000
                     multiplier:
                       type: integer
+                      format: int32
                       default: 3
                       minimum: 1
                       maximum: 3600000
@@ -1494,13 +1517,16 @@ spec:
                       operator:
                         description: |-
                           Operator represents a key's relationship to the value.
-                          Valid operators are Exists and Equal. Defaults to Equal.
+                          Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                           Exists is equivalent to wildcard for value, so that a pod can
                           tolerate all taints of a particular category.
+                          Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                         type: string
                         enum:
                           - Exists
                           - Equal
+                          - Lt
+                          - Gt
                       tolerationSeconds:
                         description: |-
                           TolerationSeconds represents the period of time the toleration (which must be
@@ -2349,6 +2375,8 @@ spec:
                     properties:
                       priority:
                         type: integer
+                        min: 0
+                        max: 32767
                       action:
                         type: string
                       match:
@@ -3335,6 +3363,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3343,8 +3373,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 egressRules:
@@ -3358,6 +3392,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3366,8 +3402,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 allowSameGroupTraffic:
