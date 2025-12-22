@@ -421,6 +421,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		klog.Infof("Processing %d explicitly specified VLAN interfaces", len(pn.Spec.VlanInterfaces))
 		for _, vlanIfName := range pn.Spec.VlanInterfaces {
 			if util.CheckInterfaceExists(vlanIfName) {
+				// Extract VLAN ID from interface name (e.g., "eth0.10" -> 10)
 				vlanID, err := util.ExtractVlanIDFromInterface(vlanIfName)
 				if err != nil {
 					klog.Warningf("Failed to extract VLAN ID from interface %s: %v", vlanIfName, err)
@@ -441,6 +442,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		vlanIDs := util.DetectVlanInterfaces(nic)
 		for _, vlanID := range vlanIDs {
 			vlanIfName := fmt.Sprintf("%s.%d", nic, vlanID)
+			// Only add if not already explicitly specified
 			if _, exists := vlanInterfaceMap[vlanIfName]; !exists {
 				vlanInterfaceMap[vlanIfName] = vlanID
 				vlans.Add(strconv.Itoa(vlanID))
