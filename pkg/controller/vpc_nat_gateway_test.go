@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"fmt"
+	"strconv"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -66,11 +66,11 @@ func TestGetDefaultSnatSubnetNadLogic(t *testing.T) {
 // TestRouteMetricConfiguration tests that routes are configured with correct metrics
 func TestRouteMetricConfiguration(t *testing.T) {
 	tests := []struct {
-		name           string
-		routes         []request.Route
-		expectedCount  int
-		hasMetric0     bool
-		hasMetric200   bool
+		name          string
+		routes        []request.Route
+		expectedCount int
+		hasMetric0    bool
+		hasMetric200  bool
 	}{
 		{
 			name: "Routes with different metrics",
@@ -300,7 +300,7 @@ func TestEnableDefaultSnatEnvVar(t *testing.T) {
 				"ENABLE_DEFAULT_SNAT": tt.expectedEnvValue,
 			}
 
-			actualEnvValue := fmt.Sprintf("%t", gw.Spec.EnableDefaultSnat)
+			actualEnvValue := strconv.FormatBool(gw.Spec.EnableDefaultSnat)
 			if actualEnvValue != expectedEnvVar["ENABLE_DEFAULT_SNAT"] {
 				t.Errorf("Expected ENABLE_DEFAULT_SNAT=%s, got %s", expectedEnvVar["ENABLE_DEFAULT_SNAT"], actualEnvValue)
 			}

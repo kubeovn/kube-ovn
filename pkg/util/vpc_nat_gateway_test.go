@@ -261,13 +261,13 @@ func TestGenNatGwSelectors(t *testing.T) {
 
 func TestGenNatGwPodAnnotations(t *testing.T) {
 	tests := []struct {
-		name                    string
-		gw                      v1.VpcNatGateway
-		externalNadNamespace    string
-		externalNadName         string
-		defaultVpcNadNamespace  string
-		defaultVpcNadName       string
-		expected                map[string]string
+		name                   string
+		gw                     v1.VpcNatGateway
+		externalNadNamespace   string
+		externalNadName        string
+		defaultVpcNadNamespace string
+		defaultVpcNadName      string
+		expected               map[string]string
 	}{
 		{
 			name: "All fields provided without default SNAT",
@@ -281,9 +281,9 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 					EnableDefaultSnat: false,
 				},
 			},
-			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
-			defaultVpcNadName:    "",
+			externalNadName:        "external-subnet",
+			externalNadNamespace:   "kube-system",
+			defaultVpcNadName:      "",
 			defaultVpcNadNamespace: "",
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
@@ -303,9 +303,9 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 					LanIP:  "",
 				},
 			},
-			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
-			defaultVpcNadName:    "",
+			externalNadName:        "external-subnet",
+			externalNadNamespace:   "kube-system",
+			defaultVpcNadName:      "",
 			defaultVpcNadNamespace: "",
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
