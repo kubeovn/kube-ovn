@@ -193,6 +193,10 @@ func setupVpcNatGwTestEnvironment(
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+	})
 }
 
 func cleanVpcNatGwTestEnvironment(
