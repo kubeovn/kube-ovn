@@ -3025,6 +3025,15 @@ spec:
                     type: string
                 autoCreateVlanSubinterfaces:
                   type: boolean
+                preserveVlanInterfaces:
+                  type: boolean
+                  description: Enable automatic detection and preservation of VLAN interfaces
+                vlanInterfaces:
+                  type: array
+                  items:
+                    type: string
+                    pattern: '^[a-zA-Z0-9_-]+\.[0-9]{1,4}$'
+                  description: Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
               required:
                 - defaultInterface
             status:
