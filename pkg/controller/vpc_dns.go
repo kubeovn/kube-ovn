@@ -294,12 +294,17 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns) (*v1.Deployme
 		klog.Errorf("failed to parse coredns template file, %v", err)
 		return nil, err
 	}
+	vpcDNSCorefile := vpcDNS.Spec.Corefile
+	if vpcDNSCorefile == "" {
+		vpcDNSCorefile = "vpc-dns-corefile"
+	}
 
 	buffer := new(bytes.Buffer)
 	name := genVpcDNSDpName(vpcDNS.Name)
 	if err := tmp.Execute(buffer, map[string]any{
-		"DeployName":   name,
-		"CorednsImage": corednsImage,
+		"DeployName":     name,
+		"CorednsImage":   corednsImage,
+		"VpcDnsCorefile": vpcDNSCorefile,
 	}); err != nil {
 		return nil, err
 	}

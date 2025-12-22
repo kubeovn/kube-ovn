@@ -28,6 +28,7 @@ type VpcDNSSpec struct {
 	Replicas int32  `json:"replicas"`
 	Vpc      string `json:"vpc"`
 	Subnet   string `json:"subnet"`
+	Corefile string `json:"corefile"`
 }
 
 type VpcDNSStatus struct {
