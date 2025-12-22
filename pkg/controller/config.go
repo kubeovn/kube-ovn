@@ -11,6 +11,7 @@ import (
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -41,6 +42,7 @@ type Configuration struct {
 	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
 	ExtClient       extClientSet.Interface
+	DynamicClient   dynamic.Interface
 
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
@@ -92,6 +94,7 @@ type Configuration struct {
 	EnableExternalVpc           bool
 	EnableEcmp                  bool
 	EnableKeepVMIP              bool
+	EnableKeepKruiseStsIP       bool
 	EnableLbSvc                 bool
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
@@ -195,6 +198,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argKeepKruiseStsIP             = pflag.Bool("keep-kruise-sts-ip", false, "Whether to keep ip for OpenKruise StatefulSet pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
@@ -301,6 +305,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayVlanID:          *argExternalGatewayVlanID,
 		EnableEcmp:                     *argEnableEcmp,
 		EnableKeepVMIP:                 *argKeepVMIP,
+		EnableKeepKruiseStsIP:          *argKeepKruiseStsIP,
 		NodePgProbeTime:                *argNodePgProbeTime,
 		GCInterval:                     *argGCInterval,
 		InspectInterval:                *argInspectInterval,
@@ -441,6 +446,13 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.ExtClient = ExtClient
+
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init dynamic client failed %v", err)
+		return err
+	}
+	config.DynamicClient = dynamicClient
 
 	cfg.ContentType = "application/vnd.kubernetes.protobuf"
 	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"

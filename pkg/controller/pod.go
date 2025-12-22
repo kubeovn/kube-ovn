@@ -20,9 +20,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -207,10 +210,16 @@ func (c *Controller) enqueueAddPod(obj any) {
 	key := cache.MetaObjectToName(p).String()
 	if !isPodAlive(p) {
 		isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(p)
+		isKruiseStateful, kruiseStatefulSetName, kruiseStatefulSetUID := isKruiseStatefulSetPod(p)
 		isVMPod, vmName := isVMPod(p)
-		if isStateful || (isVMPod && c.config.EnableKeepVMIP) {
+		if isStateful || (isKruiseStateful && c.config.EnableKeepKruiseStsIP) || (isVMPod && c.config.EnableKeepVMIP) {
 			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName, statefulSetUID) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
+				c.deletingPodObjMap.Store(key, p)
+				c.deletePodQueue.Add(key)
+			}
+			if isKruiseStateful && isKruiseStatefulSetPodToDel(c.config.DynamicClient, p, kruiseStatefulSetName, kruiseStatefulSetUID) {
+				klog.V(3).Infof("enqueue delete kruise sts pod %s", key)
 				c.deletingPodObjMap.Store(key, p)
 				c.deletePodQueue.Add(key)
 			}
@@ -372,8 +381,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(newPod)
+	isKruiseStateful, kruiseStatefulSetName, kruiseStatefulSetUID := isKruiseStatefulSetPod(newPod)
 	isVMPod, vmName := isVMPod(newPod)
-	if !isPodStatusPhaseAlive(newPod) && !isStateful && !isVMPod {
+	if !isPodStatusPhaseAlive(newPod) && !isStateful && (!isKruiseStateful || !c.config.EnableKeepKruiseStsIP) && !isVMPod {
 		klog.V(3).Infof("enqueue delete pod %s", key)
 		c.deletingPodObjMap.Store(key, newPod)
 		c.deletePodQueue.Add(key)
@@ -390,7 +400,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		}
 	}
 
-	if !newPod.DeletionTimestamp.IsZero() && !isStateful && !isVMPod {
+	if !newPod.DeletionTimestamp.IsZero() && !isStateful && (!isKruiseStateful || !c.config.EnableKeepKruiseStsIP) && !isVMPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
@@ -409,6 +419,15 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID) {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletingPodObjMap.Store(key, newPod)
+			c.deletePodQueue.AddAfter(key, delay)
+		}()
+		return
+	}
+	// do not delete kruise statefulset pod unless ownerReferences is deleted
+	if isKruiseStateful && c.config.EnableKeepKruiseStsIP && isKruiseStatefulSetPodToDel(c.config.DynamicClient, newPod, kruiseStatefulSetName, kruiseStatefulSetUID) {
+		go func() {
+			klog.V(3).Infof("enqueue delete kruise sts pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
 			c.deletePodQueue.AddAfter(key, delay)
 		}()
@@ -1062,6 +1081,27 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 	}
+	if ok, kruiseStsName, kruiseStsUID := isKruiseStatefulSetPod(pod); ok && c.config.EnableKeepKruiseStsIP {
+		if !pod.DeletionTimestamp.IsZero() {
+			klog.Infof("handle deletion of kruise sts pod %s", podKey)
+			toDel := isKruiseStatefulSetPodToDel(c.config.DynamicClient, pod, kruiseStsName, kruiseStsUID)
+			if !toDel {
+				klog.Infof("try keep ip for kruise sts pod %s", podKey)
+				keepIPCR = true
+			}
+		}
+		if keepIPCR {
+			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, kruiseStsName, util.KruiseStatefulSet)
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+			if isDelete {
+				klog.Infof("not keep ip for kruise sts pod %s", podKey)
+				keepIPCR = false
+			}
+		}
+	}
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
 		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
@@ -1408,6 +1448,136 @@ func isStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 		}
 	}
 	return false, "", ""
+}
+
+func isKruiseStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
+	for _, owner := range pod.OwnerReferences {
+		// Only support apps.kruise.io/v1beta1, as the GVR is hardcoded to v1beta1
+		if owner.Kind == util.StatefulSet && owner.APIVersion == "apps.kruise.io/v1beta1" {
+			if strings.HasPrefix(pod.Name, owner.Name) {
+				return true, owner.Name, owner.UID
+			}
+		}
+	}
+	return false, "", ""
+}
+
+// kruiseStatefulSetGVR is the GroupVersionResource for OpenKruise StatefulSet
+// Note: Only v1beta1 is supported. The isKruiseStatefulSetPod function
+// detection logic is aligned to only match v1beta1 API version.
+var kruiseStatefulSetGVR = schema.GroupVersionResource{
+	Group:    "apps.kruise.io",
+	Version:  "v1beta1",
+	Resource: "statefulsets",
+}
+
+// kruiseStsCheckResult represents the result of checking kruise statefulset state
+type kruiseStsCheckResult int
+
+const (
+	kruiseStsCheckResultKeep      kruiseStsCheckResult = iota // keep the pod IP
+	kruiseStsCheckResultDelete                                // delete the pod IP
+	kruiseStsCheckResultDownScale                             // statefulset is down scaled
+)
+
+// checkKruiseStatefulSetState checks the state of a kruise statefulset and returns the appropriate action
+func checkKruiseStatefulSetState(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) kruiseStsCheckResult {
+	unstructuredSts, err := c.Resource(kruiseStatefulSetGVR).Namespace(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
+	if err != nil {
+		// statefulset is deleted
+		if k8serrors.IsNotFound(err) {
+			klog.Infof("kruise statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
+			return kruiseStsCheckResultDelete
+		}
+		klog.Errorf("failed to get kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+
+	// statefulset is being deleted
+	if unstructuredSts.GetDeletionTimestamp() != nil && !unstructuredSts.GetDeletionTimestamp().IsZero() {
+		klog.Infof("kruise statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
+		return kruiseStsCheckResultDelete
+	}
+	// the statefulset has been deleted and recreated
+	if unstructuredSts.GetUID() != statefulSetUID {
+		klog.Infof("kruise statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
+		return kruiseStsCheckResultDelete
+	}
+
+	// check if statefulset is down scaled
+	tempStrs := strings.Split(pod.Name, "-")
+	numStr := tempStrs[len(tempStrs)-1]
+	index, err := strconv.ParseInt(numStr, 10, 0)
+	if err != nil {
+		klog.Errorf("failed to parse %s to int", numStr)
+		return kruiseStsCheckResultKeep
+	}
+
+	// get replicas from spec
+	spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
+	if err != nil {
+		klog.Errorf("failed to get spec from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+	if !found {
+		klog.Warningf("spec not found in kruise statefulset %s/%s", pod.Namespace, statefulSetName)
+		return kruiseStsCheckResultKeep
+	}
+
+	replicas, found, err := unstructured.NestedInt64(spec, "replicas")
+	if err != nil {
+		klog.Errorf("failed to get replicas from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+	if !found {
+		klog.Warningf("replicas not found in kruise statefulset %s/%s", pod.Namespace, statefulSetName)
+		return kruiseStsCheckResultKeep
+	}
+
+	// get ordinals.start if exists
+	var startOrdinal int64
+	ordinals, found, err := unstructured.NestedMap(spec, "ordinals")
+	if err != nil {
+		klog.Errorf("failed to get ordinals from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+		return kruiseStsCheckResultKeep
+	}
+	if found {
+		start, found, err := unstructured.NestedInt64(ordinals, "start")
+		if err != nil {
+			klog.Errorf("failed to get ordinals.start from kruise statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
+			return kruiseStsCheckResultKeep
+		}
+		if found {
+			startOrdinal = start
+		}
+	}
+
+	// down scaled: index is outside [startOrdinal, startOrdinal+replicas)
+	if index < startOrdinal || index >= startOrdinal+replicas {
+		klog.Infof("kruise statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
+		return kruiseStsCheckResultDownScale
+	}
+	return kruiseStsCheckResultKeep
+}
+
+// isKruiseStatefulSetPodToDel checks if a kruise statefulset pod's IP should be deleted
+// when statefulset is deleted, being deleted, recreated, or down scaled
+func isKruiseStatefulSetPodToDel(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	result := checkKruiseStatefulSetState(c, pod, statefulSetName, statefulSetUID)
+	return result == kruiseStsCheckResultDelete || result == kruiseStsCheckResultDownScale
+}
+
+// isKruiseStatefulSetPodToGC checks if a kruise statefulset pod's IP should be garbage collected
+// when statefulset is deleted, being deleted, recreated, or down scaled and the pod is not alive
+func isKruiseStatefulSetPodToGC(c dynamic.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	result := checkKruiseStatefulSetState(c, pod, statefulSetName, statefulSetUID)
+	if result == kruiseStsCheckResultDelete {
+		return true
+	}
+	if result == kruiseStsCheckResultDownScale && !isPodAlive(pod) {
+		return true
+	}
+	return false
 }
 
 func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
@@ -2238,6 +2408,55 @@ func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, o
 			ownerRefSubnet = ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation]
 		}
 
+	case util.KruiseStatefulSet:
+		unstructuredSts, err := c.config.DynamicClient.Resource(kruiseStatefulSetGVR).Namespace(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Infof("Kruise StatefulSet %s is not found", ownerRefName)
+				return true, nil
+			}
+			klog.Errorf("failed to get Kruise StatefulSet %s, %v", ownerRefName, err)
+			return false, err
+		}
+		// get template annotations from kruise statefulset
+		spec, found, err := unstructured.NestedMap(unstructuredSts.Object, "spec")
+		if err != nil {
+			klog.Errorf("failed to get spec from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		if !found {
+			klog.Warningf("spec not found in Kruise StatefulSet %s", ownerRefName)
+			return false, nil
+		}
+		template, found, err := unstructured.NestedMap(spec, "template")
+		if err != nil {
+			klog.Errorf("failed to get template from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		if !found {
+			klog.Warningf("template not found in Kruise StatefulSet %s", ownerRefName)
+			return false, nil
+		}
+		metadata, found, err := unstructured.NestedMap(template, "metadata")
+		if err != nil {
+			klog.Errorf("failed to get template.metadata from Kruise StatefulSet %s: %v", ownerRefName, err)
+			return false, err
+		}
+		if !found {
+			// template.metadata may not exist, which is fine
+			klog.V(3).Infof("template.metadata not found in Kruise StatefulSet %s", ownerRefName)
+		} else {
+			annotations, found, err := unstructured.NestedStringMap(metadata, "annotations")
+			if err != nil {
+				klog.Errorf("failed to get annotations from Kruise StatefulSet %s metadata: %v", ownerRefName, err)
+				return false, err
+			}
+			if found && annotations[util.LogicalSwitchAnnotation] != "" {
+				ownerRefSubnetExist = true
+				ownerRefSubnet = annotations[util.LogicalSwitchAnnotation]
+			}
+		}
+
 	case util.KindVirtualMachineInstance:
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
@@ -2427,6 +2646,10 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 func getPodType(pod *v1.Pod) string {
 	if ok, _, _ := isStatefulSetPod(pod); ok {
 		return util.KindStatefulSet
+	}
+
+	if ok, _, _ := isKruiseStatefulSetPod(pod); ok {
+		return util.KruiseStatefulSet
 	}
 
 	if isVMPod, _ := isVMPod(pod); isVMPod {

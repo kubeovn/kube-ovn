@@ -824,6 +824,7 @@ false
   "SET_VXLAN_TX_OFF": false,
   "enableExternalVpcs": false,
   "enableHardwareOffload": false,
+  "enableKeepKruiseStsIps": false,
   "enableKeepVmIps": true,
   "enableLiveMigrationOptimization": true,
   "enableLoadbalancer": true,
@@ -857,6 +858,15 @@ false
 </pre>
 </td>
 			<td>Enable hardware offloads</td>
+		</tr>
+		<tr>
+			<td>features.enableKeepKruiseStsIps</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable persistent OpenKruise StatefulSet IPs. When enabled, pods managed by OpenKruise StatefulSet will retain their IP addresses when recreated.</td>
 		</tr>
 		<tr>
 			<td>features.enableKeepVmIps</td>

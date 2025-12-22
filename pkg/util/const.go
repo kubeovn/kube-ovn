@@ -259,7 +259,8 @@ const (
 	VM         = "VirtualMachine"
 	VMInstance = "VirtualMachineInstance"
 
-	StatefulSet = "StatefulSet"
+	StatefulSet       = "StatefulSet"
+	KruiseStatefulSet = "KruiseStatefulSet"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"

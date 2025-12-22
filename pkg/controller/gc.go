@@ -411,6 +411,10 @@ func (c *Controller) markAndCleanLSP() error {
 			if isStatefulSetPodToGC(c.config.KubeClient, pod, stsName, stsUID) {
 				continue
 			}
+		} else if isKruiseStsPod, kruiseStsName, kruiseStsUID := isKruiseStatefulSetPod(pod); isKruiseStsPod && c.config.EnableKeepKruiseStsIP {
+			if isKruiseStatefulSetPodToGC(c.config.DynamicClient, pod, kruiseStsName, kruiseStsUID) {
+				continue
+			}
 		} else if !isPodAlive(pod) {
 			continue
 		}

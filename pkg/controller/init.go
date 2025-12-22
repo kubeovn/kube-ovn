@@ -404,9 +404,8 @@ func (c *Controller) InitIPAM() error {
 			c.updateIPQueue.Add(ip.Name)
 			continue
 		}
-		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != util.KindStatefulSet &&
-			ip.Spec.PodType != util.KindVirtualMachine {
+		// recover sts, kruise sts and kubevirt vm ip, other ip recover in later pod loop
+		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.KruiseStatefulSet && ip.Spec.PodType != util.KindVirtualMachine {
 			continue
 		}
 
@@ -434,7 +433,8 @@ func (c *Controller) InitIPAM() error {
 
 		isAlive := isPodAlive(pod)
 		isStsPod, _, _ := isStatefulSetPod(pod)
-		if !isAlive && !isStsPod {
+		isKruiseStsPod, _, _ := isKruiseStatefulSetPod(pod)
+		if !isAlive && !isStsPod && (!isKruiseStsPod || !c.config.EnableKeepKruiseStsIP) {
 			continue
 		}
 
