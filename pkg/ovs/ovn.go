@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/ovn-org/libovsdb/client"
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -203,9 +203,9 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 
 	var dbType string
 	switch c.Schema().Name {
-	case "OVN_Northbound":
+	case ovnnb.DatabaseName:
 		dbType = "ovn-nb"
-	case "OVN_Southbound":
+	case ovnsb.DatabaseName:
 		dbType = "ovn-sb"
 	}
 

@@ -6,13 +6,15 @@ package ovnsb
 import (
 	"encoding/json"
 
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
+
+const DatabaseName = "OVN_Southbound"
 
 // FullDatabaseModel returns the DatabaseModel object to be used in libovsdb
 func FullDatabaseModel() (model.ClientDBModel, error) {
-	return model.NewClientDBModel("OVN_Southbound", map[string]model.Model{
+	return model.NewClientDBModel(DatabaseName, map[string]model.Model{
 		"Address_Set":          &AddressSet{},
 		"BFD":                  &BFD{},
 		"Chassis":              &Chassis{},

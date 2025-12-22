@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGISTRY="docker.io/kubeovn"
-VERSION="v1.14.20"
+VERSION="v1.14.22"
 
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
@@ -4839,7 +4839,7 @@ spec:
       serviceAccountName: kube-ovn-cni
       automountServiceAccountToken: true
       hostNetwork: true
-      hostPID: false
+      hostPID: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault

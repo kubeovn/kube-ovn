@@ -301,6 +301,9 @@ func ParseFlags() (*Configuration, error) {
 		TLSMaxVersion:                  *argTLSMaxVersion,
 		TLSCipherSuites:                *argTLSCipherSuites,
 	}
+	if config.OvsDbInactivityTimeout > 0 && config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
+		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
+	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
 		return nil, errors.New("no host nic for vlan")
