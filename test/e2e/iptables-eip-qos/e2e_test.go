@@ -367,6 +367,10 @@ func defaultQoSCases(f *framework.Framework,
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
 	_ = qosPolicyClient.CreateSync(qosPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
+		qosPolicyClient.DeleteSync(qosPolicyName)
+	})
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
@@ -415,6 +419,10 @@ func eipQoSCases(f *framework.Framework,
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, false, apiv1.QoSBindingTypeEIP, rules)
 	qosPolicy = qosPolicyClient.CreateSync(qosPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
+		qosPolicyClient.DeleteSync(qosPolicyName)
+	})
 
 	ginkgo.By("Patch eip " + eipName + " with qos policy " + qosPolicyName)
 	_ = eipClient.PatchQoSPolicySync(eipName, qosPolicyName)
@@ -447,6 +455,10 @@ func eipQoSCases(f *framework.Framework,
 	newRules := getEIPQoSRule(newEIPLimit)
 	newQoSPolicy := framework.MakeQoSPolicy(newQoSPolicyName, false, apiv1.QoSBindingTypeEIP, newRules)
 	_ = qosPolicyClient.CreateSync(newQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up new qos policy " + newQoSPolicyName)
+		qosPolicyClient.DeleteSync(newQoSPolicyName)
+	})
 
 	ginkgo.By("Change qos policy of eip " + eipName + " to " + newQoSPolicyName)
 	_ = eipClient.PatchQoSPolicySync(eipName, newQoSPolicyName)
@@ -457,14 +469,9 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + eipName)
 	_ = eipClient.PatchQoSPolicySync(eipName, "")
 
-	ginkgo.By("Deleting qos policy " + qosPolicyName)
-	qosPolicyClient.DeleteSync(qosPolicyName)
-
-	ginkgo.By("Deleting qos policy " + newQoSPolicyName)
-	qosPolicyClient.DeleteSync(newQoSPolicyName)
-
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(newEIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, newEIPLimit, false)
+	// Cleanup is now handled by DeferCleanup
 }
 
 // specifyingIPQoSCases test default qos policy
@@ -487,6 +494,10 @@ func specifyingIPQoSCases(f *framework.Framework,
 
 	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
 	_ = qosPolicyClient.CreateSync(qosPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
+		qosPolicyClient.DeleteSync(qosPolicyName)
+	})
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
@@ -497,11 +508,9 @@ func specifyingIPQoSCases(f *framework.Framework,
 	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
 
-	ginkgo.By("Deleting qos policy " + qosPolicyName)
-	qosPolicyClient.DeleteSync(qosPolicyName)
-
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, false)
+	// Cleanup is now handled by DeferCleanup
 }
 
 // priorityQoSCases test qos match priority
@@ -527,6 +536,10 @@ func priorityQoSCases(f *framework.Framework,
 
 	natgwQoSPolicy := framework.MakeQoSPolicy(natGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, natgwRules)
 	_ = qosPolicyClient.CreateSync(natgwQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up natgw qos policy " + natGwQoSPolicyName)
+		qosPolicyClient.DeleteSync(natGwQoSPolicyName)
+	})
 
 	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + natGwQoSPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, natGwQoSPolicyName)
@@ -537,6 +550,10 @@ func priorityQoSCases(f *framework.Framework,
 
 	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, eipRules)
 	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up eip qos policy " + eipQoSPolicyName)
+		qosPolicyClient.DeleteSync(eipQoSPolicyName)
+	})
 
 	ginkgo.By("Patch eip " + eipName + " with qos policy " + eipQoSPolicyName)
 	_ = eipClient.PatchQoSPolicySync(eipName, eipQoSPolicyName)
@@ -547,9 +564,6 @@ func priorityQoSCases(f *framework.Framework,
 
 	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + eipName)
 	_ = eipClient.PatchQoSPolicySync(eipName, "")
-
-	ginkgo.By("Deleting qos policy " + eipQoSPolicyName)
-	qosPolicyClient.DeleteSync(eipQoSPolicyName)
 
 	// match qos of priority 2
 	ginkgo.By("Check qos to match priority 2 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
@@ -562,6 +576,10 @@ func priorityQoSCases(f *framework.Framework,
 
 	newNatgwQoSPolicy := framework.MakeQoSPolicy(newNatGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, newNatgwRules)
 	_ = qosPolicyClient.CreateSync(newNatgwQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up new natgw qos policy " + newNatGwQoSPolicyName)
+		qosPolicyClient.DeleteSync(newNatGwQoSPolicyName)
+	})
 
 	ginkgo.By("Change qos policy of natgw " + natgwName + " to " + newNatGwQoSPolicyName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, newNatGwQoSPolicyName)
@@ -573,14 +591,9 @@ func priorityQoSCases(f *framework.Framework,
 	ginkgo.By("Remove qos policy " + natGwQoSPolicyName + " from natgw " + natgwName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
 
-	ginkgo.By("Deleting qos policy " + natGwQoSPolicyName)
-	qosPolicyClient.DeleteSync(natGwQoSPolicyName)
-
-	ginkgo.By("Deleting qos policy " + newNatGwQoSPolicyName)
-	qosPolicyClient.DeleteSync(newNatGwQoSPolicyName)
-
 	ginkgo.By("Check qos " + natGwQoSPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, false)
+	// Cleanup is now handled by DeferCleanup
 }
 
 func createNatGwAndSetQosCases(f *framework.Framework,
