@@ -49,40 +49,21 @@ searchDomains:
   disableDefault: true
 ---
 apiVersion: v1alpha1
-kind: LinkAliasConfig
-name: eth0
-selector:
-  match: 'link.bus_path == "0000:00:05.0"'
----
-apiVersion: v1alpha1
-kind: LinkAliasConfig
-name: eth1
-selector:
-  match: 'link.bus_path == "0000:00:05.1"'
----
-apiVersion: v1alpha1
 kind: LinkConfig
-name: eth0
+name: enp0s5f0
 up: true
-mtu: 1500
----
-apiVersion: v1alpha1
-kind: LinkConfig
-name: eth1
-up: true
-mtu: 1500
 {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
 ---
 apiVersion: v1alpha1
 kind: DHCPv4Config
-name: eth0
+name: enp0s5f0
 ignoreHostname: true
 {%- endif %}
 {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
 ---
 apiVersion: v1alpha1
 kind: DHCPv6Config
-name: eth0
+name: enp0s5f0
 ignoreHostname: true
 clientIdentifier: duid
 duidRaw: "{{ duidv6 }}"

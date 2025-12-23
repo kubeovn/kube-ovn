@@ -3,7 +3,12 @@
 TALOS_ARCH = $(shell go env GOHOSTARCH)
 TALOS_VERSION ?= $(shell talosctl version --client --short | awk '{print $$NF}' | tail -n 1)
 TALOS_IMAGE_DIR ?= /var/lib/talos
-TALOS_IMAGE_URL = https://github.com/siderolabs/talos/releases/download/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+
+# generated image download link by Talos Linux Image Factory https://factory.talos.dev/
+# customization:
+#   extraKernelArgs:
+#     - talos.network.interface.ignore=enp0s5f1
+TALOS_IMAGE_URL = https://factory.talos.dev/image/9ecea35ddd146528c1d742aab47e680a1f1137a93fc7bab55edc1afee125a658/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
