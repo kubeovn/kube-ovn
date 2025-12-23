@@ -1,9 +1,14 @@
 # Makefile for managing Talos environment
 
 TALOS_ARCH = $(shell go env GOHOSTARCH)
-TALOS_VERSION = $(shell talosctl version --client --short | awk '{print $$NF}' | tail -n 1)
+TALOS_VERSION ?= $(shell talosctl version --client --short | awk '{print $$NF}' | tail -n 1)
 TALOS_IMAGE_DIR ?= /var/lib/talos
-TALOS_IMAGE_URL = https://github.com/siderolabs/talos/releases/download/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+
+# generated image download link by Talos Linux Image Factory https://factory.talos.dev/
+# customization:
+#   extraKernelArgs:
+#     - talos.network.interface.ignore=enp0s5f1
+TALOS_IMAGE_URL = https://factory.talos.dev/image/9ecea35ddd146528c1d742aab47e680a1f1137a93fc7bab55edc1afee125a658/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
@@ -65,7 +70,7 @@ talos-registry-mirror:
 .PHONY: talos-prepare-images
 talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
-	@for image in $$(talosctl image default | grep -v flannel); do \
+	@for image in ghcr.io/siderolabs/installer:$(TALOS_VERSION) $$(talosctl image default | grep -v flannel); do \
 		if echo "$$image" | grep -q kube; then \
 			image=$$(echo $$image | sed -e 's/v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/v$(TALOS_K8S_VERSION)/'); \
 		fi; \
@@ -87,7 +92,7 @@ talos-libvirt-init: talos-libvirt-clean
 	@if [ ! -f "$(TALOS_IMAGE_PATH)" ]; then \
 		sudo mkdir -p "$(TALOS_IMAGE_DIR)" && \
 		sudo chmod 777 "$(TALOS_IMAGE_DIR)" && \
-		echo ">>> Downloading Talos image $(TALOS_IMAGE_ISO) into $(TALOS_IMAGE_DIR)..." && \
+		echo ">>> Downloading Talos image $(TALOS_IMAGE_URL) into $(TALOS_IMAGE_DIR)..." && \
 		wget "$(TALOS_IMAGE_URL)" --quiet -O "$(TALOS_IMAGE_PATH)" && \
 		echo ">>> Talos image downloaded."; \
 	fi
@@ -172,14 +177,14 @@ talos-apply-config-%:
 		echo ">>>>>> Applying Talos control plane configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-config.yaml.j2 -o talos/machine-config.yaml && \
-		talosctl apply-config --insecure --nodes $${ip} --file talos/controlplane.yaml --config-patch "@talos/machine-config.yaml"; \
+		talosctl apply-config --insecure --nodes $${ip} --file talos/controlplane.yaml --config-patch "@talos/machine-config.yaml" || exit 1; \
 		echo ">>>>>> Talos control plane configuration applied to $${node}."; \
 	done
 	@sudo virsh list --name | grep '^$(TALOS_WORKER_NODE)' | while read node; do \
 		echo ">>>>>> Applying Talos worker configuration to $${node}..."; \
 		ip=$$(sudo virsh domifaddr --full "$${node}" | grep -w vnet0 | grep -iw ipv4 | awk '{print $$NF}' | awk -F/ '{print $$1}'); \
 		ip_family=$* cluster=$(TALOS_CLUSTER_NAME) node=$${node} jinjanate talos/machine-config.yaml.j2 -o talos/machine-config.yaml && \
-		talosctl apply-config --insecure --nodes $${ip} --file talos/worker.yaml --config-patch "@talos/machine-config.yaml"; \
+		talosctl apply-config --insecure --nodes $${ip} --file talos/worker.yaml --config-patch "@talos/machine-config.yaml" || exit 1; \
 		echo ">>>>>> Talos worker configuration applied to $${node}."; \
 	done
 	@$(MAKE) talos-libvirt-wait-address-$(TALOS_ENDPOINT_IP_FAMILY)
@@ -256,6 +261,10 @@ talos-init-%: talos-libvirt-init talos-prepare-images talos-apply-config-%
 
 .PHONY: talos-init
 talos-init: talos-init-ipv4
+
+.PHONY: talos-init-single
+talos-init-single:
+	@TALOS_WORKER_COUNT=0 $(MAKE) talos-init
 
 .PHONY: talos-clean
 talos-clean: talos-libvirt-clean
