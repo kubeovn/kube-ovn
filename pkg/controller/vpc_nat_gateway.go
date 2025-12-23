@@ -868,6 +868,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
+	// Check if we have a subnet provider, if so, use it to set the routes annotation
+	// This is useful when running in secondary CNI mode, as the subnet provider will be the
+	// one that has the routes to the subnet
+	vpcSubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
+	// must be ovn subnet provider
+	if err != nil {
+		klog.Errorf("%v", err)
+		return nil, err
+	}
+
 	if c.config.EnableNonPrimaryCNI {
 		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
 		var attachedNetworks string
@@ -877,14 +887,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 		// Attach the external network to attachedNetworks
 		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
-		// Check if we have a subnet provider, if so, use it to set the routes annotation
-		// This is useful when running in secondary CNI mode, as the subnet provider will be the
-		// one that has the routes to the subnet
-		vpcSubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
-		if err != nil {
-			klog.Errorf("%v", err)
-			return nil, err
-		}
+
 		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, vpcSubnetProvider)
 		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, vpcSubnetProvider)
 		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcSubnetProvider)
@@ -970,7 +973,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		eth0Routes = append(eth0Routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
 	}
 
-	if err = setPodRoutesAnnotation(annotations, util.OvnProvider, eth0Routes); err != nil {
+	if err = setPodRoutesAnnotation(annotations, vpcSubnetProvider, eth0Routes); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

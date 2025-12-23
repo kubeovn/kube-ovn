@@ -161,7 +161,7 @@ function init_default_snat() {
 
     # Check if net2 interface exists
     if ! ip link show net2 &>/dev/null; then
-        >&2 echo "Error: ENABLE_DEFAULT_SNAT is true but net2 interface does not exist"
+        echo "Error: ENABLE_DEFAULT_SNAT is true but net2 interface does not exist" >&2
         return 1
     fi
 
