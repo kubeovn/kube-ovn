@@ -112,9 +112,9 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
+	podName := os.Getenv(util.EnvPodName)
 	config := &Configuration{
 		KubeConfigFile:     *argKubeConfigFile,
-		KubeClient:         nil,
 		Port:               *argPort,
 		DaemonSetNamespace: *argDaemonSetNameSpace,
 		DaemonSetName:      *argDaemonSetName,
@@ -123,10 +123,10 @@ func ParseFlags() (*Configuration, error) {
 		ExitCode:           *argExitCode,
 		InternalDNS:        *argInternalDNS,
 		ExternalDNS:        *argExternalDNS,
-		PodIP:              os.Getenv("POD_IP"),
-		HostIP:             os.Getenv("HOST_IP"),
-		NodeName:           os.Getenv("NODE_NAME"),
-		PodName:            os.Getenv("POD_NAME"),
+		PodIP:              os.Getenv(util.EnvPodIP),
+		HostIP:             os.Getenv(util.EnvHostIP),
+		NodeName:           os.Getenv(util.EnvNodeName),
+		PodName:            podName,
 		ExternalAddress:    *argExternalAddress,
 		NetworkMode:        *argNetworkMode,
 		EnableMetrics:      *argEnableMetrics,
@@ -156,7 +156,6 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	podName := os.Getenv("POD_NAME")
 	for range 3 {
 		pod, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
@@ -207,8 +206,8 @@ func (config *Configuration) initKubeClient() error {
 	cfg.Timeout = 15 * time.Second
 	cfg.QPS = 1000
 	cfg.Burst = 2000
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentTypeProtobuf
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

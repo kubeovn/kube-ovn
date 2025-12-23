@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Controller) InitDefaultOVNIPsecCA() error {
-	namespace := os.Getenv("POD_NAMESPACE")
+	namespace := os.Getenv(util.EnvPodNamespace)
 	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err == nil {
 		klog.Infof("ovn ipsec CA secret already exists, skip")

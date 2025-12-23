@@ -393,7 +393,7 @@ func TestGenNatGwBgpSpeakerContainer(t *testing.T) {
 
 			// Check we inject the gateway name correctly, used by the speaker to retrieve EIPs by ownership
 			firstEnv := result.Env[0]
-			if firstEnv.Name != GatewayNameEnv || firstEnv.Value != tc.gatewayName {
+			if firstEnv.Name != EnvGatewayName || firstEnv.Value != tc.gatewayName {
 				t.Errorf("gateway name env injection is faulty, got %v", firstEnv)
 			}
 		})

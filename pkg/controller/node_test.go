@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestKubeOvnAnnotationsChanged(t *testing.T) {
@@ -21,14 +24,14 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 			name:           "kube-ovn annotation added",
 			oldAnnotations: map[string]string{},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/allocated": "true",
+				util.AllocatedAnnotation: "true",
 			},
 			expected: true,
 		},
 		{
 			name: "kube-ovn annotation removed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/allocated": "true",
+				util.AllocatedAnnotation: "true",
 			},
 			newAnnotations: map[string]string{},
 			expected:       true,
@@ -36,20 +39,20 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 		{
 			name: "kube-ovn annotation value changed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
+				util.IPAddressAnnotation: "10.0.0.1",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.2",
+				util.IPAddressAnnotation: "10.0.0.2",
 			},
 			expected: true,
 		},
 		{
 			name: "kube-ovn annotation unchanged",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
+				util.IPAddressAnnotation: "10.0.0.1",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
+				util.IPAddressAnnotation: "10.0.0.1",
 			},
 			expected: false,
 		},
@@ -66,60 +69,60 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 		{
 			name: "mixed annotations, only non-kube-ovn changed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
-				"other.io/annotation":          "value1",
+				util.IPAddressAnnotation: "10.0.0.1",
+				"other.io/annotation":    "value1",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
-				"other.io/annotation":          "value2",
+				util.IPAddressAnnotation: "10.0.0.1",
+				"other.io/annotation":    "value2",
 			},
 			expected: false,
 		},
 		{
 			name: "mixed annotations, kube-ovn changed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
-				"other.io/annotation":          "value1",
+				util.IPAddressAnnotation: "10.0.0.1",
+				"other.io/annotation":    "value1",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.2",
-				"other.io/annotation":          "value2",
+				util.IPAddressAnnotation: "10.0.0.2",
+				"other.io/annotation":    "value2",
 			},
 			expected: true,
 		},
 		{
 			name: "multiple kube-ovn annotations unchanged",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:55",
-				"ovn.kubernetes.io/allocated":   "true",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:55",
+				util.AllocatedAnnotation:  "true",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:55",
-				"ovn.kubernetes.io/allocated":   "true",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:55",
+				util.AllocatedAnnotation:  "true",
 			},
 			expected: false,
 		},
 		{
 			name: "multiple kube-ovn annotations, one changed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:55",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:55",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:56",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:56",
 			},
 			expected: true,
 		},
 		{
 			name: "provider network annotation changed",
 			oldAnnotations: map[string]string{
-				"net1.kubernetes.io/provider_network": "provider1",
+				fmt.Sprintf(util.ProviderNetworkTemplate, "net1"): "provider1",
 			},
 			newAnnotations: map[string]string{
-				"net1.kubernetes.io/provider_network": "provider2",
+				fmt.Sprintf(util.ProviderNetworkTemplate, "net1"): "provider2",
 			},
 			expected: true,
 		},
@@ -137,17 +140,17 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 			name:           "empty to kube-ovn annotations",
 			oldAnnotations: map[string]string{},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:55",
-				"ovn.kubernetes.io/chassis":     "node1",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:55",
+				util.ChassisAnnotation:    "node1",
 			},
 			expected: true,
 		},
 		{
 			name: "kube-ovn annotations to empty",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address":  "10.0.0.1",
-				"ovn.kubernetes.io/mac_address": "00:11:22:33:44:55",
+				util.IPAddressAnnotation:  "10.0.0.1",
+				util.MacAddressAnnotation: "00:11:22:33:44:55",
 			},
 			newAnnotations: map[string]string{},
 			expected:       true,
@@ -155,12 +158,12 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 		{
 			name: "non-kube-ovn added and removed",
 			oldAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
-				"old.annotation":               "value",
+				util.IPAddressAnnotation: "10.0.0.1",
+				"old.annotation":         "value",
 			},
 			newAnnotations: map[string]string{
-				"ovn.kubernetes.io/ip_address": "10.0.0.1",
-				"new.annotation":               "value",
+				util.IPAddressAnnotation: "10.0.0.1",
+				"new.annotation":         "value",
 			},
 			expected: false,
 		},

@@ -750,7 +750,7 @@ func UDPConnectivityListen(endpoint string) error {
 
 func GetDefaultListenAddr() []string {
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		if podIPs := os.Getenv("POD_IPS"); podIPs != "" {
+		if podIPs := os.Getenv(EnvPodIPs); podIPs != "" {
 			return strings.Split(podIPs, ",")
 		}
 		klog.Error("environment variable POD_IPS is not set, cannot bind to local ip")

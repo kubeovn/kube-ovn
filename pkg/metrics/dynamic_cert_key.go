@@ -26,6 +26,8 @@ import (
 	"k8s.io/klog/v2"
 	netutil "k8s.io/utils/net"
 	"k8s.io/utils/ptr"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
@@ -39,14 +41,14 @@ func init() {
 		panic(fmt.Sprintf("failed to get hostname: %v", err))
 	}
 	altDNS = []string{hostname}
-	for podIP := range strings.SplitSeq(os.Getenv("POD_IPS"), ",") {
+	for podIP := range strings.SplitSeq(os.Getenv(util.EnvPodIPs), ",") {
 		if podIP = strings.TrimSpace(podIP); podIP == "" {
 			continue
 		}
 		if ip := net.ParseIP(podIP); ip != nil {
 			altIPs = append(altIPs, ip)
 		} else {
-			panic(fmt.Sprintf("failed to parse POD_IPS %q", os.Getenv("POD_IPS")))
+			panic(fmt.Sprintf("failed to parse environment variable %s=%q", util.EnvPodIPs, os.Getenv(util.EnvPodIPs)))
 		}
 	}
 }

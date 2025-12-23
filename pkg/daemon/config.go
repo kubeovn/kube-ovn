@@ -220,7 +220,7 @@ func ParseFlags() *Configuration {
 func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 	if config.NodeName == "" {
 		klog.Info("node name not specified in command line parameters, fall back to the environment variable")
-		if config.NodeName = strings.ToLower(os.Getenv(util.HostnameEnv)); config.NodeName == "" {
+		if config.NodeName = strings.ToLower(os.Getenv(util.EnvNodeName)); config.NodeName == "" {
 			klog.Info("node name not specified in environment variables, fall back to the hostname")
 			hostname, err := os.Hostname()
 			if err != nil {
@@ -360,7 +360,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 }
 
 func (config *Configuration) getEncapIP(node *corev1.Node) string {
-	if podIP := os.Getenv(util.PodIP); podIP != "" {
+	if podIP := os.Getenv(util.EnvPodIP); podIP != "" {
 		return podIP
 	}
 
@@ -430,7 +430,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeOvnClient = kubeOvnClient
 
-	cfg.ContentType = util.ContentType
+	cfg.ContentType = util.ContentTypeProtobuf
 	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
@@ -440,7 +440,7 @@ func (config *Configuration) initKubeClient() error {
 	config.KubeClient = kubeClient
 
 	if config.CertManagerIPSecCert {
-		cfg.ContentType = "application/json"
+		cfg.ContentType = util.ContentTypeJSON
 		cmClient, err := certmanagerclientset.NewForConfig(cfg)
 		if err != nil {
 			klog.Errorf("init certmanager client failed %v", err)

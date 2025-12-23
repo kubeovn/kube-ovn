@@ -54,7 +54,7 @@ spec:
               value: "{{- .Values.networking.TUNNEL_TYPE }}"
             - name: DPDK_TUNNEL_IFACE
               value: "{{- .Values.networking.DPDK_TUNNEL_IFACE }}"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName

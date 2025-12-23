@@ -324,8 +324,9 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
 	if !ok {
-		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
-		return errors.New("annotation for node ovn.kubernetes.io/gateway not exists")
+		err = fmt.Errorf("gateway annotation for node %s does not exist", node.Name)
+		klog.Error(err)
+		return err
 	}
 	nic, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
@@ -727,12 +728,12 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 			return nil, nil, err
 		}
 
-		hostname := os.Getenv(util.HostnameEnv)
+		nodeName := os.Getenv(util.EnvNodeName)
 		for _, pod := range pods {
 			if pod.Spec.HostNetwork ||
 				pod.Status.PodIP == "" ||
 				pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name ||
-				pod.Spec.NodeName != hostname {
+				pod.Spec.NodeName != nodeName {
 				continue
 			}
 

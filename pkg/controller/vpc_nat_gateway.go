@@ -789,7 +789,7 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
 
 // setNatGwAPIRoute adds routes to a pod to reach the K8S API server
 func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespace, nadName string) error {
-	dst := os.Getenv("KUBERNETES_SERVICE_HOST")
+	dst := os.Getenv(util.EnvKubernetesServiceHost)
 
 	protocol := util.CheckProtocol(dst)
 	if !strings.ContainsRune(dst, '/') {

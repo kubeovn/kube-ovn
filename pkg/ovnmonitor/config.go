@@ -78,9 +78,9 @@ func ParseFlags() (*Configuration, error) {
 		argDatabaseNorthboundFileDataPath  = pflag.String("database.northbound.file.data.path", "/etc/ovn/ovnnb_db.db", "OVN NB db file.")
 		argDatabaseNorthboundFileLogPath   = pflag.String("database.northbound.file.log.path", "/var/log/ovn/ovsdb-server-nb.log", "OVN NB db log file.")
 		argDatabaseNorthboundFilePidPath   = pflag.String("database.northbound.file.pid.path", "/run/ovn/ovnnb_db.pid", "OVN NB db process id file.")
-		argDatabaseNorthboundPortDefault   = pflag.Int("database.northbound.port.default", 6641, "OVN NB db network socket port.")
+		argDatabaseNorthboundPortDefault   = pflag.Int("database.northbound.port.default", int(util.NBDatabasePort), "OVN NB db network socket port.")
 		argDatabaseNorthboundPortSsl       = pflag.Int("database.northbound.port.ssl", 6631, "OVN NB db network socket secure port.")
-		argDatabaseNorthboundPortRaft      = pflag.Int("database.northbound.port.raft", 6643, "OVN NB db network port for clustering (raft)")
+		argDatabaseNorthboundPortRaft      = pflag.Int("database.northbound.port.raft", int(util.NBRaftPort), "OVN NB db network port for clustering (raft)")
 
 		argDatabaseSouthboundName          = pflag.String("database.southbound.name", ovnsb.DatabaseName, "The name of OVN SB (southbound) db.")
 		argDatabaseSouthboundSocketRemote  = pflag.String("database.southbound.socket.remote", "unix:/run/ovn/ovnsb_db.sock", "JSON-RPC unix socket to OVN SB db.")
@@ -88,9 +88,9 @@ func ParseFlags() (*Configuration, error) {
 		argDatabaseSouthboundFileDataPath  = pflag.String("database.southbound.file.data.path", "/etc/ovn/ovnsb_db.db", "OVN SB db file.")
 		argDatabaseSouthboundFileLogPath   = pflag.String("database.southbound.file.log.path", "/var/log/ovn/ovsdb-server-sb.log", "OVN SB db log file.")
 		argDatabaseSouthboundFilePidPath   = pflag.String("database.southbound.file.pid.path", "/run/ovn/ovnsb_db.pid", "OVN SB db process id file.")
-		argDatabaseSouthboundPortDefault   = pflag.Int("database.southbound.port.default", 6642, "OVN SB db network socket port.")
+		argDatabaseSouthboundPortDefault   = pflag.Int("database.southbound.port.default", int(util.SBDatabasePort), "OVN SB db network socket port.")
 		argDatabaseSouthboundPortSsl       = pflag.Int("database.southbound.port.ssl", 6632, "OVN SB db network socket secure port.")
-		argDatabaseSouthboundPortRaft      = pflag.Int("database.southbound.port.raft", 6644, "OVN SB db network port for clustering (raft)")
+		argDatabaseSouthboundPortRaft      = pflag.Int("database.southbound.port.raft", int(util.SBRaftPort), "OVN SB db network port for clustering (raft)")
 
 		argServiceVswitchdFileLogPath = pflag.String("service.vswitchd.file.log.path", "/var/log/openvswitch/ovs-vswitchd.log", "OVS vswitchd daemon log file.")
 		argServiceVswitchdFilePidPath = pflag.String("service.vswitchd.file.pid.path", "/var/run/openvswitch/ovs-vswitchd.pid", "OVS vswitchd daemon process id file.")

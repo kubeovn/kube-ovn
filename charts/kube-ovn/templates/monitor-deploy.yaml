@@ -81,7 +81,7 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName

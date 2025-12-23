@@ -231,7 +231,7 @@ func resolveOVNNbConnection() (string, error) {
 	}
 
 	var targets []string
-	port := int32(6641)
+	port := util.NBDatabasePort
 
 	if dbIPs != "" {
 		for _, host := range splitAndTrim(dbIPs) {

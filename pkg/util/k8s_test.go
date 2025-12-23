@@ -705,6 +705,50 @@ func TestDeploymentIsReady(t *testing.T) {
 	}
 }
 
+func TestInjectedServiceVariables(t *testing.T) {
+	tests := []struct {
+		name         string
+		serviceName  string
+		injectedEnv  map[string]string
+		expectedHost string
+		expectedPort string
+	}{
+		{
+			name:        "simple service name",
+			serviceName: "foo",
+			injectedEnv: map[string]string{
+				"FOO_SERVICE_HOST": "1.1.1.1",
+				"FOO_SERVICE_PORT": "8080",
+			},
+			expectedHost: "1.1.1.1",
+			expectedPort: "8080",
+		},
+		{
+			name:        "service name with dashes",
+			serviceName: "example-service-name",
+			injectedEnv: map[string]string{
+				"EXAMPLE_SERVICE_NAME_SERVICE_HOST": "::1",
+			},
+			expectedHost: "::1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.injectedEnv {
+				t.Setenv(k, v)
+			}
+			hostVar, portVar := InjectedServiceVariables(tt.serviceName)
+			if hostVar != tt.expectedHost {
+				t.Errorf("InjectedServiceVariables(%q) host = %q, want %q", tt.serviceName, hostVar, tt.expectedHost)
+			}
+			if portVar != tt.expectedPort {
+				t.Errorf("InjectedServiceVariables(%q) port = %q, want %q", tt.serviceName, portVar, tt.expectedPort)
+			}
+		})
+	}
+}
+
 func TestObjectKind(t *testing.T) {
 	tests := []struct {
 		name     string

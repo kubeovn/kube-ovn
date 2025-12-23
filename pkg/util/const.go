@@ -2,6 +2,7 @@ package util
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
@@ -246,20 +247,12 @@ const (
 	DpdkType    = "dpdk-port"
 	VethType    = "veth-pair"
 
-	HostnameEnv    = "KUBE_NODE_NAME"
-	GatewayNameEnv = "GATEWAY_NAME"
-
 	MirrosRetryMaxTimes = 5
 	MirrosRetryInterval = 1
 
 	ChassisRetryMaxTimes           = 5
 	ChassisCniDaemonRetryInterval  = 1
 	ChassisControllerRetryInterval = 3
-
-	VM         = "VirtualMachine"
-	VMInstance = "VirtualMachineInstance"
-
-	StatefulSet = "StatefulSet"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
@@ -275,10 +268,6 @@ const (
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
 	NetemQosJitterAnnotationTemplate  = "%s.kubernetes.io/jitter"
-
-	PodIP              = "POD_IP"
-	ContentType        = "application/vnd.kubernetes.protobuf"
-	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 
 	AttachmentProvider = "ovn.kubernetes.io/attachmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
@@ -301,9 +290,6 @@ const (
 	DefaultServiceSessionStickinessTimeout = 10800
 
 	OvnSubnetGatewayIptables = "ovn-subnet-gateway"
-
-	QoSDirectionIngress = "ingress"
-	QoSDirectionEgress  = "egress"
 
 	MainRouteTable = ""
 
@@ -352,6 +338,53 @@ const (
 
 	MasqueradeExternalLBAccessMac = "00:00:00:01:00:01"
 	MasqueradeCheckIP             = "0.0.0.0"
+)
+
+const (
+	EnvKubernetesServiceHost = "KUBERNETES_SERVICE_HOST"
+	EnvKubernetesServicePort = "KUBERNETES_SERVICE_PORT"
+
+	EnvPodName      = "POD_NAME"
+	EnvPodNamespace = "POD_NAMESPACE"
+	EnvPodIP        = "POD_IP"
+	EnvPodIPs       = "POD_IPS"
+	EnvNodeName     = "NODE_NAME"
+	EnvHostIP       = "HOST_IP"
+	EnvHostIPs      = "HOST_IPS"
+
+	EnvSSLEnabled  = "ENABLE_SSL"
+	EnvGatewayName = "GATEWAY_NAME"
+)
+
+const (
+	DatabaseICNB = "OVN_IC_Northbound"
+	DatabaseICSB = "OVN_IC_Southbound"
+)
+
+const (
+	NBDatabasePort = int32(6641)
+	SBDatabasePort = int32(6642)
+	NBRaftPort     = int32(6643)
+	SBRaftPort     = int32(6644)
+)
+
+const (
+	ICNBDatabasePort = int32(6645)
+	ICSBDatabasePort = int32(6646)
+	ICNBRaftPort     = int32(6647)
+	ICSBRaftPort     = int32(6648)
+)
+
+const (
+	SslCACert   = "/var/run/tls/cacert"
+	SslCertPath = "/var/run/tls/cert"
+	SslKeyPath  = "/var/run/tls/key"
+)
+
+const (
+	ContentTypeJSON     = "application/json"
+	ContentTypeProtobuf = runtime.ContentTypeProtobuf
+	AcceptContentTypes  = runtime.ContentTypeProtobuf + "," + "application/json"
 )
 
 // Readonly kinds of Kubernetes objects

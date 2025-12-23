@@ -79,7 +79,7 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
 
-		PodNamespace:           os.Getenv("POD_NAMESPACE"),
+		PodNamespace:           os.Getenv(util.EnvPodNamespace),
 		OvnNbAddr:              *argOvnNbAddr,
 		OvnSbAddr:              *argOvnSbAddr,
 		OvnTimeout:             *argOvnTimeout,
@@ -127,8 +127,8 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeOvnClient = kubeOvnClient
 
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentTypeProtobuf
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

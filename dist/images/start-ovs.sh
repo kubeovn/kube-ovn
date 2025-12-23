@@ -143,7 +143,7 @@ ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
-ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
+ovs-vsctl set open . external-ids:hostname="${NODE_NAME}"
 
 # Start ovn-controller
 if [[ "$ENABLE_SSL" == "false" ]]; then

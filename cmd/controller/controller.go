@@ -136,7 +136,7 @@ func CmdMain() {
 
 	recorder := record.NewBroadcaster().NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderResource,
-		Host:      os.Getenv(util.HostnameEnv),
+		Host:      os.Getenv(util.EnvNodeName),
 	})
 	rl, err := resourcelock.NewFromKubeconfig(resourcelock.LeasesResourceLock,
 		config.PodNamespace,
