@@ -273,6 +273,9 @@ spec:
         - jsonPath: .spec.subnet
           name: Subnet
           type: string
+        - jsonPath: .spec.corefile
+          name: Corefile
+          type: string
       name: v1
       served: true
       storage: true
@@ -293,6 +296,9 @@ spec:
                   type: integer
                   minimum: 1
                   maximum: 3
+                corefile:
+                  type: string
+                  default: vpc-dns-corefile
             status:
               type: object
               properties:

@@ -295,9 +295,6 @@ func (c *Controller) genVpcDNSDeployment(vpcDNS *kubeovnv1.VpcDns) (*v1.Deployme
 		return nil, err
 	}
 	vpcDNSCorefile := vpcDNS.Spec.Corefile
-	if vpcDNSCorefile == "" {
-		vpcDNSCorefile = "vpc-dns-corefile"
-	}
 
 	buffer := new(bytes.Buffer)
 	name := genVpcDNSDpName(vpcDNS.Name)
