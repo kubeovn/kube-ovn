@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.14.23 (2025-12-24)
+
+ * [339e0f84f](https://github.com/kubeovn/kube-ovn/commit/339e0f84f57c96bb075fe0eb5e35f4ae1ce6e02a) release v1.14.23
+ * [7d10dc1ad](https://github.com/kubeovn/kube-ovn/commit/7d10dc1ad2eee8f03ca740d172773e4f04c8c07d) cni-server: fix ovn0 gateway check (#6098)
+ * [1a9ce7562](https://github.com/kubeovn/kube-ovn/commit/1a9ce75626956780dda7b1a7cc55dc39c862349c) ci: fix talos cluster initialization (#6093)
+ * [720f7ae15](https://github.com/kubeovn/kube-ovn/commit/720f7ae1587e9e744e988a04dc3048dceb5caf9b) cni-server: partially revert #5973 to enable hostPID (#6087)
+ * [0144fef32](https://github.com/kubeovn/kube-ovn/commit/0144fef32b5c4c58a31c32e03c0c7c2216ee6f50) fix: correct typo in Makefile and enhance IP pool status event logging (#6071)
+ * [fe76cbc7d](https://github.com/kubeovn/kube-ovn/commit/fe76cbc7d3deeec55bee347d4d4ebec502df74c2) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * zbb88888
+ * 张祖建
+
 ## v1.14.22 (2025-12-19)
 
  * [a5ec31143](https://github.com/kubeovn/kube-ovn/commit/a5ec31143a103abbbb0f0e438185b71678ad07b3) release v1.14.22
