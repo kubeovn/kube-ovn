@@ -565,7 +565,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCheckMode int, intr, ipAddr, gateway string, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
 		// ignore error if disableGatewayCheck=true
-		_ = waitNetworkReady(intr, ipAddr, gateway, verbose, 1, nil)
+		_ = waitNetworkReady(intr, ipAddr, gateway, true, verbose, 1, nil)
 		return nil
 	}
 
@@ -600,14 +600,14 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 		}
 	}()
 
-	return waitNetworkReady(intr, ipAddr, gateway, verbose, gatewayCheckMaxRetry, done)
+	return waitNetworkReady(intr, ipAddr, gateway, true, verbose, gatewayCheckMaxRetry, done)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, verbose bool, maxRetry int, done chan struct{}) error {
+func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxRetry int, done chan struct{}) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
-		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
@@ -721,8 +721,8 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	status := corev1.ConditionFalse
 	reason := "JoinSubnetGatewayReachable"
 	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
-	if err = waitNetworkReady(util.NodeNic, ip, gw, true, gatewayCheckMaxRetry, nil); err != nil {
-		klog.Errorf("failed to init ovn0 check: %v", err)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry, nil); err != nil {
+		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
 		status = corev1.ConditionTrue
 		reason = "JoinSubnetGatewayUnreachable"
 		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
@@ -739,11 +739,11 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 func (c *Controller) loopOvn0Check() {
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to get ovn0 nic")
+		util.LogFatalAndExit(err, "failed to get node nic "+util.NodeNic)
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		util.LogFatalAndExit(err, "ovn0 nic is down")
+		util.LogFatalAndExit(err, "node nic "+util.NodeNic+" is down")
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -756,8 +756,8 @@ func (c *Controller) loopOvn0Check() {
 	status := corev1.ConditionFalse
 	reason := "JoinSubnetGatewayReachable"
 	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
-	if err = waitNetworkReady(util.NodeNic, ip, gw, false, 5, nil); err != nil {
-		klog.Errorf("failed to init ovn0 check: %v", err)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, false, 5, nil); err != nil {
+		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
 		status = corev1.ConditionTrue
 		reason = "JoinSubnetGatewayUnreachable"
 		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
@@ -778,7 +778,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
+		util.LogFatalAndExit(err, "failed to ping %s gateway %s", util.NodeNic, gw)
 	}
 }
 
@@ -831,7 +831,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 	}
 	if exists {
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, 3, nil)
+			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 			if err == nil {
 				if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
 					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
@@ -956,7 +956,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			klog.Error(err)
 			return err
 		}
-		return waitNetworkReady(util.NodeGwNic, ip, gw, true, 3, nil)
+		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 	})
 }
 
