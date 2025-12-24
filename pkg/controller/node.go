@@ -630,7 +630,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 						if !pingSucceeded || !nodeIsReady {
 							if exist {
 								if !pingSucceeded {
-									klog.Warningf("failed to ping ovn0 ip %s on node %s", ip, node.Name)
+									klog.Warningf("failed to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
 								}
 								if !nodeIsReady {
 									klog.Warningf("node %s is not ready", node.Name)
@@ -645,7 +645,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 								}
 							}
 						} else {
-							klog.V(3).Infof("succeeded to ping ovn0 ip %s on node %s", ip, node.Name)
+							klog.V(3).Infof("succeeded to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
 							if !exist {
 								nextHops.Add(ip)
 								if nameIPMap == nil {

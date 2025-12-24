@@ -61,7 +61,7 @@ func InitNodeGateway(config *Configuration) error {
 			return err
 		}
 		if node.Annotations[util.IPAddressAnnotation] == "" {
-			klog.Warningf("no ovn0 address for node %s, please check kube-ovn-controller logs", nodeName)
+			klog.Warningf("no %s address for node %s, please check kube-ovn-controller logs", util.NodeNic, nodeName)
 			time.Sleep(3 * time.Second)
 			continue
 		}
