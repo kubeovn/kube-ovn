@@ -739,11 +739,11 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 func (c *Controller) loopOvn0Check() {
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to get node nic "+util.NodeNic)
+		util.LogFatalAndExit(err, "failed to get node nic %s", util.NodeNic)
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		util.LogFatalAndExit(err, "node nic "+util.NodeNic+" is down")
+		util.LogFatalAndExit(err, "node nic %s is down", util.NodeNic)
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
