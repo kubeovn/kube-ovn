@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.14.24 (2025-12-25)
+
+ * [2a7fcd9f8](https://github.com/kubeovn/kube-ovn/commit/2a7fcd9f85cd377f5ccc73ec16b0fe2d01a58f07) release v1.14.24
+ * [e262b2fe6](https://github.com/kubeovn/kube-ovn/commit/e262b2fe641b71f3b6279e998daa07b5809e3e9e) cni-server: do not limit read-only ovs-vsctl commands (#6104)
+ * [bf81a984f](https://github.com/kubeovn/kube-ovn/commit/bf81a984fd312eba7cab9166797ea18fee78152c) controller: fix LSP gc when no ls key in external-ids (#6103)
+ * [c975191c9](https://github.com/kubeovn/kube-ovn/commit/c975191c96ed5ec47d620e43c5c52c69e8a31044) northd: set dl_src for packets redirected by router port (#6102)
+ * [d1c6af6b8](https://github.com/kubeovn/kube-ovn/commit/d1c6af6b8562fb00c91721c480ca2e7f3633a41e) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.23 (2025-12-24)
 
  * [339e0f84f](https://github.com/kubeovn/kube-ovn/commit/339e0f84f57c96bb075fe0eb5e35f4ae1ce6e02a) release v1.14.23
