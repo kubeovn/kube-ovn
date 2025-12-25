@@ -43,7 +43,7 @@ index 5932e2709d0..5bea5a349ab 100644
 +            return true;
 +        }
 +        struct ofbundle* port = mac_entry_get_port(ml, mac);
-+        if (strcmp(port->name, ((struct ofbundle*)in_port)->name)) {
++        if (!strcmp(port->name, ((struct ofbundle*)in_port)->name)) {
 +            return false;
 +        }
 +        return age > 0;
