@@ -3,38 +3,15 @@ package ovs
 import (
 	"fmt"
 	"net"
-	"strconv"
+	"slices"
 
-	ovs "github.com/digitalocean/go-openvswitch/ovs"
-	v1 "k8s.io/api/core/v1"
+	"github.com/digitalocean/go-openvswitch/ovs"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-func getOfportByPeer(peer string) (int, error) {
-	// ovs-vsctl find interface options:peer="<peer>"
-	ifaceNames, err := ovsFind("Interface", "name", fmt.Sprintf(`options:peer="%s"`, peer))
-	if err != nil {
-		return -1, fmt.Errorf("failed to find interface with peer %s: %w", peer, err)
-	}
-	if len(ifaceNames) == 0 {
-		return -1, fmt.Errorf("no interface found with peer %s", peer)
-	}
-	if len(ifaceNames) > 1 {
-		// This should not happen for patch ports
-		klog.Warningf("multiple interfaces found with peer %s: %v", peer, ifaceNames)
-	}
-	ifaceName := ifaceNames[0]
-
-	ofportStr, err := ovsGet("Interface", ifaceName, "ofport", "")
-	if err != nil {
-		return -1, fmt.Errorf("failed to get ofport for interface %s: %w", ifaceName, err)
-	}
-
-	return strconv.Atoi(ofportStr)
-}
 
 func AddOrUpdateUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, lbServiceIP, protocol, dstMAC, underlayNic string, lbServicePort uint16) error {
 	isIPv6 := util.CheckProtocol(lbServiceIP) == kubeovnv1.ProtocolIPv6
@@ -71,12 +48,12 @@ func AddOrUpdateUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, l
 
 	var protocolType ovs.Protocol
 	switch protocol {
-	case string(v1.ProtocolTCP):
+	case string(corev1.ProtocolTCP):
 		protocolType = ovs.ProtocolTCPv4
 		if isIPv6 {
 			protocolType = ovs.ProtocolTCPv6
 		}
-	case string(v1.ProtocolUDP):
+	case string(corev1.ProtocolUDP):
 		protocolType = ovs.ProtocolUDPv4
 		if isIPv6 {
 			protocolType = ovs.ProtocolUDPv6
@@ -118,12 +95,12 @@ func DeleteUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, lbServ
 
 	var protocolType ovs.Protocol
 	switch protocol {
-	case string(v1.ProtocolTCP):
+	case string(corev1.ProtocolTCP):
 		protocolType = ovs.ProtocolTCPv4
 		if isIPv6 {
 			protocolType = ovs.ProtocolTCPv6
 		}
-	case string(v1.ProtocolUDP):
+	case string(corev1.ProtocolUDP):
 		protocolType = ovs.ProtocolUDPv4
 		if isIPv6 {
 			protocolType = ovs.ProtocolUDPv6
@@ -167,121 +144,39 @@ func DeleteUnderlaySubnetSvcLocalOpenFlow(client *ovs.Client, bridgeName, lbServ
 	return nil
 }
 
-func AddOrUpdateU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, podMac, chassisMac, subnetName string) error {
-	var localnetPatchPortID int
-	var podMacAddr net.HardwareAddr
-	var err error
-	var matchs []ovs.Match
-	var protocolType ovs.Protocol
-	isIPv6 := util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6
-
-	peer := fmt.Sprintf("patch-br-int-to-localnet.%s", subnetName)
-	localnetPatchPortID, err = getOfportByPeer(peer)
+// ClearU2OFlows clears obsolete U2O flows
+func ClearU2OFlows(client *ovs.Client) error {
+	bridges, err := Bridges()
 	if err != nil {
-		klog.Errorf("failed to get ofport for peer %s: %v", peer, err)
+		klog.Errorf("failed to get ovs bridges: %v", err)
 		return err
 	}
 
-	podMacAddr, err = net.ParseMAC(podMac)
-	if err != nil {
-		klog.Errorf("failed to parse MAC address %s: %v", podMac, err)
-		return err
-	}
-
-	if isIPv6 {
-		protocolType = ovs.ProtocolIPv6
-		matchs = []ovs.Match{
-			ovs.IPv6Source(podIP),
-			ovs.DataLinkSource(chassisMac),
-		}
-	} else {
-		protocolType = ovs.ProtocolIPv4
-		matchs = []ovs.Match{
-			ovs.NetworkSource(podIP),
-			ovs.DataLinkSource(chassisMac),
-		}
-	}
-
-	matchFlow := &ovs.MatchFlow{
-		InPort:   localnetPatchPortID,
-		Protocol: protocolType,
-		Matches:  matchs,
-	}
-
-	flows, err := client.OpenFlow.DumpFlowsWithFlowArgs(bridgeName, matchFlow)
-	if err != nil {
-		klog.Errorf("failed to dump flows from bridge %s: %v", bridgeName, err)
-		return err
-	}
-
-	expectedAction := fmt.Sprintf("mod_dl_src:%s", podMac)
-	for _, flow := range flows {
-		if flow.Priority != util.U2OKeepSrcMacPriority || flow.InPort != localnetPatchPortID {
-			continue
+	for bridge := range slices.Values(bridges) {
+		flows, err := client.OpenFlow.DumpFlows(bridge)
+		if err != nil {
+			klog.Errorf("failed to dump flows on bridge %s: %v", bridge, err)
+			return err
 		}
 
-		for _, action := range flow.Actions {
-			if actionText, _ := action.MarshalText(); string(actionText) == expectedAction {
-				klog.V(3).Infof("flow already exists in bridge %s for in_port=%d, ip_src=%s, dl_src=%s, actions=mod_dl_src:%s",
-					bridgeName, localnetPatchPortID, podIP, chassisMac, podMac)
-				return nil
+		for flow := range slices.Values(flows) {
+			if flow.Priority != util.U2OKeepSrcMacPriority {
+				continue
+			}
+
+			klog.Infof("deleting obsolete U2O keep src mac flow from bridge %s: %+v", bridge, flow)
+			if err = client.OpenFlow.DelFlows(bridge, &ovs.MatchFlow{
+				Protocol: flow.Protocol,
+				InPort:   flow.InPort,
+				Matches:  flow.Matches,
+				Table:    flow.Table,
+				Cookie:   flow.Cookie,
+			}); err != nil {
+				klog.Errorf("failed to delete obsolete U2O keep src mac flow from bridge %s: %v", bridge, err)
+				return err
 			}
 		}
 	}
 
-	flow := &ovs.Flow{
-		Priority: util.U2OKeepSrcMacPriority,
-		InPort:   localnetPatchPortID,
-		Protocol: protocolType,
-		Actions: []ovs.Action{
-			ovs.ModDataLinkSource(podMacAddr),
-			ovs.Normal(),
-		},
-		Matches: matchs,
-	}
-
-	klog.V(3).Infof("adding flow to bridge %s: in_port=%d, ip_src=%s, dl_src=%s, actions=mod_dl_src:%s,normal",
-		bridgeName, localnetPatchPortID, podIP, chassisMac, podMac)
-
-	return client.OpenFlow.AddFlow(bridgeName, flow)
-}
-
-func DeleteU2OKeepSrcMac(client *ovs.Client, bridgeName, podIP, chassisMac, subnetName string) error {
-	var localnetPatchPortID int
-	var err error
-	var matchs []ovs.Match
-	var protocolType ovs.Protocol
-	isIPv6 := util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6
-
-	peer := fmt.Sprintf("patch-br-int-to-localnet.%s", subnetName)
-	localnetPatchPortID, err = getOfportByPeer(peer)
-	if err != nil {
-		klog.Errorf("failed to get ofport for peer %s: %v", peer, err)
-		return err
-	}
-
-	if isIPv6 {
-		protocolType = ovs.ProtocolIPv6
-		matchs = []ovs.Match{
-			ovs.IPv6Source(podIP),
-			ovs.DataLinkSource(chassisMac),
-		}
-	} else {
-		protocolType = ovs.ProtocolIPv4
-		matchs = []ovs.Match{
-			ovs.NetworkSource(podIP),
-			ovs.DataLinkSource(chassisMac),
-		}
-	}
-
-	matchFlow := &ovs.MatchFlow{
-		InPort:   localnetPatchPortID,
-		Protocol: protocolType,
-		Matches:  matchs,
-	}
-
-	klog.Infof("deleting flow from bridge %s: in_port=%d, ip_src=%s, dl_src=%s",
-		bridgeName, localnetPatchPortID, podIP, chassisMac)
-
-	return client.OpenFlow.DelFlows(bridgeName, matchFlow)
+	return nil
 }

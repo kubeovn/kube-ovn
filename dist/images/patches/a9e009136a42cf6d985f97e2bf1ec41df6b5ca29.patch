@@ -42,7 +42,7 @@ index af0c92954c..71633ae788 100644
 +        struct ovn_northd_lb_backend *backend_nb =
 +            &lb_vip_nb->backends_nb[j];
 +        backend_nb->logical_port = xstrdup(port_name);
-+        
++
 +        free(port_name);
 +    }
 +
@@ -184,7 +184,7 @@ index a58db7dbde..0b84ac822e 100644
 +                bool reject = build_lb_vip_actions(lb, lb_vip, lb_vip_nb, action,
 +                                                   lb->selection_fields,
 +                                                   NULL, NULL, true, features,
-+                                                   svc_monitor_map, 
++                                                   svc_monitor_map,
 +                                                   entry->backend_ips, 
 +                                                   &entry->logical_ports);
 +
@@ -254,7 +254,7 @@ index a58db7dbde..0b84ac822e 100644
                                             lb->selection_fields,
                                             NULL, NULL, true, features,
 -                                           svc_monitor_map);
-+                                           svc_monitor_map, 
++                                           svc_monitor_map,
 +                                           NULL, NULL);
  
          ds_put_format(match, "ct.new && %s.dst == %s", ip_match,

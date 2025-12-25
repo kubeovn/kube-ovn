@@ -54,7 +54,6 @@ type Controller struct {
 	podsLister     listerv1.PodLister
 	podsSynced     cache.InformerSynced
 	updatePodQueue workqueue.TypedRateLimitingInterface[string]
-	deletePodQueue workqueue.TypedRateLimitingInterface[*podEvent]
 
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
@@ -116,7 +115,6 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
 		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
-		deletePodQueue: newTypedRateLimitingQueue[*podEvent]("DeletePod", nil),
 
 		nodesLister: nodeInformer.Lister(),
 		nodesSynced: nodeInformer.Informer().HasSynced,
@@ -178,7 +176,6 @@ func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFac
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueueUpdatePod,
-		DeleteFunc: controller.enqueueDeletePod,
 	}); err != nil {
 		return nil, err
 	}
@@ -477,10 +474,6 @@ type serviceEvent struct {
 	oldObj, newObj any
 }
 
-type podEvent struct {
-	oldObj any
-}
-
 func (c *Controller) enqueueAddSubnet(obj any) {
 	c.subnetQueue.Add(&subnetEvent{newObj: obj})
 }
@@ -596,34 +589,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 }
 
-func (c *Controller) enqueueDeletePod(obj any) {
-	var pod *v1.Pod
-	switch t := obj.(type) {
-	case *v1.Pod:
-		pod = t
-	case cache.DeletedFinalStateUnknown:
-		p, ok := t.Obj.(*v1.Pod)
-		if !ok {
-			klog.Warningf("unexpected object type: %T", t.Obj)
-			return
-		}
-		pod = p
-	default:
-		klog.Warningf("unexpected type: %T", obj)
-		return
-	}
-
-	klog.V(3).Infof("enqueue delete pod %s", pod.Name)
-	c.deletePodQueue.Add(&podEvent{oldObj: pod})
-}
-
 func (c *Controller) runUpdatePodWorker() {
 	for c.processNextUpdatePodWorkItem() {
-	}
-}
-
-func (c *Controller) runDeletePodWorker() {
-	for c.processNextDeletePodWorkItem() {
 	}
 }
 
@@ -642,28 +609,6 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		c.updatePodQueue.Forget(key)
 		return nil
 	}(key)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeletePodWorkItem() bool {
-	event, shutdown := c.deletePodQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(event *podEvent) error {
-		defer c.deletePodQueue.Done(event)
-		if err := c.handleDeletePod(event); err != nil {
-			c.deletePodQueue.AddRateLimited(event)
-			return fmt.Errorf("error syncing pod event: %w, requeuing", err)
-		}
-		c.deletePodQueue.Forget(event)
-		return nil
-	}(event)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -706,7 +651,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.subnetQueue.ShutDown()
 	defer c.serviceQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
-	defer c.deletePodQueue.ShutDown()
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
@@ -725,7 +669,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
-	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
