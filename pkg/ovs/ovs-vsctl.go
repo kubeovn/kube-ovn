@@ -12,11 +12,36 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var limiter = new(Limiter)
+
+var readOnlyCommands = set.New(
+	"",                   // no method specified
+	"show",               // print overview of database contents
+	"list-br",            // print the names of all the bridges
+	"br-exists",          // exit 2 if BRIDGE does not exist
+	"br-to-vlan",         // print the VLAN which BRIDGE is on
+	"br-to-parent",       // print the parent of BRIDGE
+	"br-get-external-id", // print value of KEY on BRIDGE or list key-value pairs on BRIDGE
+	"list-ports",         // print the names of all the ports on BRIDGE
+	"port-to-br",         // print name of bridge that contains PORT
+	"list-ifaces",        // print the names of all interfaces on BRIDGE
+	"iface-to-br",        // print name of bridge that contains IFACE
+	"get-controller",     // print the controllers for BRIDGE
+	"get-fail-mode",      // print the fail-mode for BRIDGE
+	"get-manager",        // print the managers
+	"get-ssl",            // print the SSL configuration
+	"get-aa-mapping",     // get Auto Attach mappings from BRIDGE
+	"list-zone-limits",   // list all limits configured on DATAPATH
+	"list",               // list RECord (or all records) in TBL
+	"find",               // list records satisfying CONDITION in TBL
+	"get",                // print values of COLumns in RECord in TBL
+	"wait-until",         // wait until condition is true
+)
 
 func UpdateOVSVsctlLimiter(c int32) {
 	if c >= 0 {
@@ -39,31 +64,7 @@ func Exec(args ...string) (string, error) {
 		}
 	}
 
-	switch method {
-	case "", // no method specified
-		"show",               // print overview of database contents
-		"list-br",            // print the names of all the bridges
-		"br-exists",          // exit 2 if BRIDGE does not exist
-		"br-to-vlan",         // print the VLAN which BRIDGE is on
-		"br-to-parent",       // print the parent of BRIDGE
-		"br-get-external-id", // print value of KEY on BRIDGE or list key-value pairs on BRIDGE
-		"list-ports",         // print the names of all the ports on BRIDGE
-		"port-to-br",         // print name of bridge that contains PORT
-		"list-ifaces",        // print the names of all interfaces on BRIDGE
-		"iface-to-br",        // print name of bridge that contains IFACE
-		"get-controller",     // print the controllers for BRIDGE
-		"get-fail-mode",      // print the fail-mode for BRIDGE
-		"get-manager",        // print the managers
-		"get-ssl",            // print the SSL configuration
-		"get-aa-mapping",     // get Auto Attach mappings from BRIDGE
-		"list-zone-limits",   // list all limits configured on DATAPATH
-		"list",               // list RECord (or all records) in TBL
-		"find",               // list records satisfying CONDITION in TBL
-		"get",                // print values of COLumns in RECord in TBL
-		"wait-until":         // wait until condition is true
-		// read-only commands are not limited
-	default:
-		// write commands are limited by concurrency
+	if !readOnlyCommands.Has(method) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
