@@ -2587,8 +2587,8 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 	}
 
 	t.Run("ingress ACL for ANP", func(t *testing.T) {
-		pgName := "test-pg-ingress"
-		asName := "test-as-ingress"
+		pgName := "test-pg-anp-ingress"
+		asName := "test-as-anp-ingress"
 		protocol := "tcp"
 		aclName := "test-acl"
 		priority := 1000
@@ -2598,7 +2598,9 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 		isIngress := true
 		isBanp := false
 
-		err := nbClient.CreatePortGroup(pgName, nil)
+		err := nbClient.DeletePortGroup(pgName)
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 		ops, err := nbClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
 		require.NoError(t, err)
@@ -2607,8 +2609,8 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 	})
 
 	t.Run("egress ACL for BANP", func(t *testing.T) {
-		pgName := "test-pg-egress"
-		asName := "test-as-egress"
+		pgName := "test-pg-banp-egress"
+		asName := "test-as-banp-egress"
 		protocol := "udp"
 		aclName := "test-acl"
 		priority := 2000
@@ -2618,7 +2620,9 @@ func (suite *OvnClientTestSuite) testUpdateAnpRuleACLOps() {
 		isIngress := false
 		isBanp := true
 
-		err := nbClient.CreatePortGroup(pgName, nil)
+		err := nbClient.DeletePortGroup(pgName)
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 		ops, err := nbClient.UpdateAnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, isBanp)
 		require.NoError(t, err)
@@ -2644,8 +2648,8 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 	}
 
 	t.Run("ingress ACL for CNP", func(t *testing.T) {
-		pgName := "test-pg-ingress"
-		asName := "test-as-ingress"
+		pgName := "test-pg-cnp-ingress"
+		asName := "test-as-cnp-ingress"
 		protocol := "IPv4"
 		aclName := "test-acl"
 		priority := 1000
@@ -2654,7 +2658,9 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
 		isIngress := true
 
-		err := nbClient.CreatePortGroup(pgName, nil)
+		err := nbClient.DeletePortGroup(pgName)
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 		ops, err := nbClient.UpdateCnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, 3)
 		require.NoError(t, err)
@@ -2663,8 +2669,8 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 	})
 
 	t.Run("egress ACL for CNP", func(t *testing.T) {
-		pgName := "test-pg-egress"
-		asName := "test-as-egress"
+		pgName := "test-pg-cnp-egress"
+		asName := "test-as-cnp-egress"
 		protocol := "IPv6"
 		aclName := "test-acl"
 		priority := 2000
@@ -2673,7 +2679,9 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
 		isIngress := false
 
-		err := nbClient.CreatePortGroup(pgName, nil)
+		err := nbClient.DeletePortGroup(pgName)
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 		ops, err := nbClient.UpdateCnpRuleACLOps(pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, 2)
 		require.NoError(t, err)
