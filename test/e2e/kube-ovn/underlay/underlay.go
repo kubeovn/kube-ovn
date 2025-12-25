@@ -643,7 +643,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("1. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step2: Disable u2o check")
 
@@ -663,7 +663,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("2. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step3: Recover enable u2o check")
 
@@ -683,7 +683,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("3. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step4: Check if kube-ovn-controller restart")
 
@@ -695,7 +695,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("4. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
 
@@ -715,7 +715,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("5. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step6: Recover enable u2o check after restart kube-ovn-controller")
 
@@ -735,7 +735,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("6. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		if f.VersionPriorTo(1, 9) {
 			return
@@ -779,7 +779,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			subnet = subnetClient.Get(subnetName)
 			ginkgo.By("7. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 			waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-			checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+			checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 		}
 
 		if f.VersionPriorTo(1, 11) {
@@ -822,7 +822,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("8. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, podOverlayCustomVPC, true)
 
 		ginkgo.By("step9: Change underlay subnet interconnection to overlay subnet in default vpc")
 
@@ -843,7 +843,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("9. waiting for U2OInterconnection status of subnet " + subnetName + " to be true")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 
 		ginkgo.By("step10: Disable u2o")
 
@@ -863,7 +863,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		subnet = subnetClient.Get(subnetName)
 		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
-		checkU2OItems(f, subnet, underlayPod, overlayPod, false, providerNetworkName)
+		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
 	})
 
 	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
@@ -1178,7 +1178,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 })
 
-func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool, pnName string) {
+func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("checking subnet's u2o interconnect ip of underlay subnet " + subnet.Name)
