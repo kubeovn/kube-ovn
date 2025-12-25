@@ -9,7 +9,7 @@ global:
     kubeovn:
       repository: kube-ovn
       vpcRepository: vpc-nat-gateway
-      tag: v1.14.23
+      tag: v1.14.24
       support_arm: true
       thirdparty: true
 
