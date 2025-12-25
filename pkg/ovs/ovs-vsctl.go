@@ -20,7 +20,7 @@ import (
 var limiter = new(Limiter)
 
 var readOnlyCommands = set.New(
-	"",                   // no method specified
+	"",                   // no command specified
 	"show",               // print overview of database contents
 	"list-br",            // print the names of all the bridges
 	"br-exists",          // exit 2 if BRIDGE does not exist
@@ -56,15 +56,15 @@ func UpdateOVSVsctlLimiter(c int32) {
 var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
-	var method string
+	var command string
 	for arg := range slices.Values(args) {
 		if !strings.HasPrefix(arg, "-") {
-			method = arg
+			command = arg
 			break
 		}
 	}
 
-	if !readOnlyCommands.Has(method) {
+	if !readOnlyCommands.Has(command) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
@@ -84,7 +84,7 @@ func Exec(args ...string) (string, error) {
 
 	code := "0"
 	defer func() {
-		ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
+		ovsClientRequestLatency.WithLabelValues("ovsdb", command, code).Observe(elapsed)
 	}()
 
 	if err != nil {
