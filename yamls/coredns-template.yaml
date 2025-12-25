@@ -77,7 +77,7 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: vpc-dns-corefile
+            name: {{ .VpcDnsCorefile }}
             items:
             - key: Corefile
               path: Corefile
