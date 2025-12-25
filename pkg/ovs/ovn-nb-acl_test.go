@@ -1066,7 +1066,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 					match = fmt.Sprintf("(ip6.src == %s && ip6.dst == %s) || (ip6.src == %s && ip6.dst == %s)", cidr, subnet, subnet, cidr)
 				}
 
-				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+				acl, err = nbClient.GetACL(lsName, direction, util.SubnetCrossAllowPriority, match, false)
 				require.NoError(t, err)
 				require.Contains(t, ls.ACLs, acl.UUID)
 			}
@@ -1135,7 +1135,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 					match = fmt.Sprintf("(ip6.src == %s && ip6.dst == %s) || (ip6.src == %s && ip6.dst == %s)", cidr, subnet, subnet, cidr)
 				}
 
-				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+				acl, err = nbClient.GetACL(lsName, direction, util.SubnetCrossAllowPriority, match, false)
 				require.NoError(t, err)
 				require.Contains(t, ls.ACLs, acl.UUID)
 			}

@@ -91,7 +91,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var gatewayCheckMode int
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, vmName, latency, limit, loss, jitter, u2oInterconnectionIP, oldPodName string
 	var routes []request.Route
-	var isDefaultRoute bool
+	var isDefaultRoute, noIPAM bool
 	var pod *v1.Pod
 	var err error
 	for range 20 {
@@ -130,7 +130,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
 		vmName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
-		ipAddr, err = util.GetIPAddrWithMask(ip, cidr)
+		ipAddr, noIPAM, err = util.GetIPAddrWithMaskForCNI(ip, cidr)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get ip address with mask, %w", err)
 			klog.Error(errMsg)
@@ -210,11 +210,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if subnet == "" && podSubnet != nil {
 		subnet = podSubnet.Name
 	}
-	if err := csh.UpdateIPCR(podRequest, subnet, ip); err != nil {
-		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
-			klog.Errorf("failed to write response, %v", err)
+	if !noIPAM {
+		if err := csh.UpdateIPCR(podRequest, subnet, ip); err != nil {
+			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
+				klog.Errorf("failed to write response, %v", err)
+			}
+			return
 		}
-		return
 	}
 
 	if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && util.IsOvnProvider(podRequest.Provider) {

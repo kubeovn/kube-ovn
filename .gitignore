@@ -51,6 +51,7 @@ profile.cov
 kube-ovn-app-sa.yaml
 kube-ovn-cni-sa.yaml
 kube-ovn-sa.yaml
+kube-ovn-pinger.yaml
 ovn-ovs-sa.yaml
 ovs-ovn-ds.yaml
 cacert.pem
@@ -65,3 +66,4 @@ talos/controlplane.yaml
 talos/worker.yaml
 talos/cluster-config.yaml
 talos/machine-config.yaml
+kube-ovn-pinger.yaml
