@@ -63,6 +63,7 @@ ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch $SRC_DIR
 ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
+ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -125,7 +126,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # northd: skip arp/nd request for lrp addresses from localnet ports
     git apply $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch && \
     # add skip conntrack ipcidrs support
-    git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch
+    git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch && \
+    # set dl_src for packets redirected by router port
+    git apply $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \

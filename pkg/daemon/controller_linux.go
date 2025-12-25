@@ -150,6 +150,10 @@ func (c *Controller) initRuntime() error {
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
+	if err = ovs.ClearU2OFlows(c.ovsClient); err != nil {
+		util.LogFatalAndExit(err, "failed to clear obsolete u2o flows")
+	}
+
 	c.nmSyncer = newNetworkManagerSyncer()
 	c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
@@ -227,13 +231,6 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 			if newSubnet, ok = event.newObj.(*kubeovnv1.Subnet); !ok {
 				klog.Errorf("expected new subnet in subnetEvent but got %#v", event.newObj)
 				return nil
-			}
-		}
-
-		isAdd, needAction := c.CheckSubnetU2OChangeAction(oldSubnet, newSubnet)
-		if needAction {
-			if err := c.HandleU2OForSubnet(newSubnet, isAdd); err != nil {
-				return err
 			}
 		}
 
@@ -780,99 +777,6 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	return rules, routes, nil
 }
 
-func (c *Controller) GetProviderInfoFromSubnet(subnet *kubeovnv1.Subnet) (bridgeName, chassisMac string, err error) {
-	if subnet == nil {
-		return "", "", nil
-	}
-	if subnet.Spec.Vlan == "" {
-		return "", "", nil
-	}
-
-	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get vlan %s: %w", subnet.Spec.Vlan, err)
-	}
-	providerName := vlan.Spec.Provider
-	chassisMac, err = GetProviderChassisMac(providerName)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get chassis mac for provider %s: %w", providerName, err)
-	}
-
-	bridgeName = util.ExternalBridgeName(providerName)
-	return bridgeName, chassisMac, nil
-}
-
-func HandleU2OForPod(ovsClient *ovsutil.Client, pod *v1.Pod, bridgeName, chassisMac, subnetName string, isAdd bool) error {
-	if pod == nil {
-		return errors.New("pod is nil")
-	}
-
-	podMac := pod.Annotations[util.MacAddressAnnotation]
-
-	podIPs := []string{}
-	if pod.Annotations != nil && pod.Annotations[util.IPAddressAnnotation] != "" {
-		podIPs = append(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ",")...)
-
-		for _, podIP := range podIPs {
-			var err error
-			if isAdd {
-				err = ovs.AddOrUpdateU2OKeepSrcMac(ovsClient, bridgeName, podIP, podMac, chassisMac, subnetName)
-			} else {
-				err = ovs.DeleteU2OKeepSrcMac(ovsClient, bridgeName, podIP, chassisMac, subnetName)
-			}
-
-			if err != nil {
-				action := "add"
-				if !isAdd {
-					action = "delete"
-				}
-				return fmt.Errorf("failed to %s U2O rule for pod %s/%s: %w", action, pod.Namespace, pod.Name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) HandleU2OForSubnet(subnet *kubeovnv1.Subnet, isAdd bool) error {
-	klog.Infof("U2O processing for subnet %s, action: %v", subnet.Name, isAdd)
-
-	bridgeName, chassisMac, err := c.GetProviderInfoFromSubnet(subnet)
-	if err != nil {
-		return fmt.Errorf("failed to get provider info: %w", err)
-	}
-
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	for _, pod := range pods {
-		if pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
-			continue
-		}
-		if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, isAdd); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) CheckSubnetU2OChangeAction(oldSubnet, newSubnet *kubeovnv1.Subnet) (bool, bool) {
-	if newSubnet == nil ||
-		(oldSubnet != nil && oldSubnet.Spec.U2OInterconnection == newSubnet.Spec.U2OInterconnection) {
-		return false, false
-	}
-
-	if newSubnet.Spec.Vlan == "" || newSubnet.Spec.LogicalGateway {
-		return false, false
-	}
-
-	return newSubnet.Spec.U2OInterconnection, true
-}
-
 func (c *Controller) handleUpdatePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -894,26 +798,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
-	}
-
-	if _, ok := pod.Annotations[util.LogicalSwitchAnnotation]; ok {
-		subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		if subnet.Spec.U2OInterconnection {
-			bridgeName, chassisMac, err := c.GetProviderInfoFromSubnet(subnet)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, true); err != nil {
-				klog.Error(err)
-				return err
-			}
-		}
 	}
 
 	podName := pod.Name
@@ -976,43 +860,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 				return err
 			}
 		}
-	}
-
-	return nil
-}
-
-func (c *Controller) handleDeletePod(event *podEvent) error {
-	var pod *v1.Pod
-	if event.oldObj != nil {
-		pod = event.oldObj.(*v1.Pod)
-	} else {
-		return nil
-	}
-
-	logicalSwitch, ok := pod.Annotations[util.LogicalSwitchAnnotation]
-	if !ok {
-		return nil
-	}
-
-	subnet, err := c.subnetsLister.Get(logicalSwitch)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	if !subnet.Spec.U2OInterconnection {
-		return nil
-	}
-
-	bridgeName, chassisMac, err := c.GetProviderInfoFromSubnet(subnet)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	if err := HandleU2OForPod(c.ovsClient, pod, bridgeName, chassisMac, subnet.Name, false); err != nil {
-		klog.Error(err)
-		return err
 	}
 
 	return nil
