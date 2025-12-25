@@ -16,11 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var limiter *Limiter
-
-func init() {
-	limiter = new(Limiter)
-}
+var limiter = new(Limiter)
 
 func UpdateOVSVsctlLimiter(c int32) {
 	if c >= 0 {
@@ -35,38 +31,57 @@ func UpdateOVSVsctlLimiter(c int32) {
 var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	var (
-		start        time.Time
-		elapsed      float64
-		output       []byte
-		method, code string
-		err          error
-	)
-
-	if err = limiter.Wait(ctx); err != nil {
-		klog.V(4).Infof("command %s %s waiting for execution timeout by concurrency limit of %d", OvsVsCtl, strings.Join(args, " "), limiter.Limit())
-		return "", err
-	}
-	defer limiter.Done()
-	klog.V(4).Infof("command %s %s waiting for execution concurrency %d/%d", OvsVsCtl, strings.Join(args, " "), limiter.Current(), limiter.Limit())
-
-	start = time.Now()
-	args = append([]string{"--timeout=30"}, args...)
-	output, err = exec.Command(OvsVsCtl, args...).CombinedOutput()
-	elapsed = float64((time.Since(start)) / time.Millisecond)
-	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
-
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "--") {
+	var method string
+	for arg := range slices.Values(args) {
+		if !strings.HasPrefix(arg, "-") {
 			method = arg
 			break
 		}
 	}
 
-	code = "0"
+	switch method {
+	case "", // no method specified
+		"show",               // print overview of database contents
+		"list-br",            // print the names of all the bridges
+		"br-exists",          // exit 2 if BRIDGE does not exist
+		"br-to-vlan",         // print the VLAN which BRIDGE is on
+		"br-to-parent",       // print the parent of BRIDGE
+		"br-get-external-id", // print value of KEY on BRIDGE or list key-value pairs on BRIDGE
+		"list-ports",         // print the names of all the ports on BRIDGE
+		"port-to-br",         // print name of bridge that contains PORT
+		"list-ifaces",        // print the names of all interfaces on BRIDGE
+		"iface-to-br",        // print name of bridge that contains IFACE
+		"get-controller",     // print the controllers for BRIDGE
+		"get-fail-mode",      // print the fail-mode for BRIDGE
+		"get-manager",        // print the managers
+		"get-ssl",            // print the SSL configuration
+		"get-aa-mapping",     // get Auto Attach mappings from BRIDGE
+		"list-zone-limits",   // list all limits configured on DATAPATH
+		"list",               // list RECord (or all records) in TBL
+		"find",               // list records satisfying CONDITION in TBL
+		"get",                // print values of COLumns in RECord in TBL
+		"wait-until":         // wait until condition is true
+		// read-only commands are not limited
+	default:
+		// write commands are limited by concurrency
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		if err := limiter.Wait(ctx); err != nil {
+			klog.V(4).Infof("command %s %s waiting for execution timeout by concurrency limit of %d", OvsVsCtl, strings.Join(args, " "), limiter.Limit())
+			return "", err
+		}
+		defer limiter.Done()
+		klog.V(4).Infof("command %s %s waiting for execution concurrency %d/%d", OvsVsCtl, strings.Join(args, " "), limiter.Current(), limiter.Limit())
+	}
+
+	start := time.Now()
+	args = slices.Insert(args, 0, "--timeout=30")
+	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
+
+	code := "0"
 	defer func() {
 		ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
 	}()
@@ -78,6 +93,7 @@ func Exec(args ...string) (string, error) {
 	} else if elapsed > 500 {
 		klog.Warningf("ovs-vsctl command took too long: %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
 	}
+
 	return trimCommandOutput(output), nil
 }
 
