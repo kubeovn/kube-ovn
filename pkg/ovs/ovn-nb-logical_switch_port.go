@@ -810,13 +810,15 @@ func (c *OVNNbClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, ls
 
 // DeleteLogicalSwitchPortOp create operations which delete logical switch port
 func (c *OVNNbClient) DeleteLogicalSwitchPortOp(lsName, lspUUID string) ([]ovsdb.Operation, error) {
-	exist, err := c.LogicalSwitchExists(lsName)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-	if !exist {
-		lsName = ""
+	if lsName != "" {
+		exist, err := c.LogicalSwitchExists(lsName)
+		if err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+		if !exist {
+			lsName = ""
+		}
 	}
 	klog.Infof("delete logical switch port with UUID %s from logical switch %q", lspUUID, lsName)
 	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationDelete)

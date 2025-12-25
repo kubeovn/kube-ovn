@@ -1812,7 +1812,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 
 	t.Run("failed client delete nonexistent logical switch port", func(t *testing.T) {
 		ops, err := failedNbClient.DeleteLogicalSwitchPortOp("", "")
-		require.Error(t, err)
+		require.NoError(t, err)
 		require.Nil(t, ops)
 		_, err = failedNbClient.DeleteLogicalSwitchPortOp("", uuid.NewString())
 		require.Error(t, err)
