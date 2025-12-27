@@ -152,6 +152,9 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	if !slices.Equal(gw.Spec.Selector, gw.Status.Selector) {
 		return true
 	}
+	if !maps.Equal(gw.Spec.Annotations, gw.Status.Annotations) {
+		return true
+	}
 	if !reflect.DeepEqual(gw.Spec.Tolerations, gw.Status.Tolerations) {
 		return true
 	}
@@ -886,6 +889,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
 		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
 	}
+
+	// Merge user-defined annotations
+	maps.Copy(podAnnotations, gw.Spec.Annotations)
+
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
