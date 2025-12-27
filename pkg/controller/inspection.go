@@ -21,15 +21,11 @@ func (c *Controller) inspectPod() error {
 	}
 
 	for _, oriPod := range pods {
+		if oriPod.Spec.HostNetwork || !isPodAlive(oriPod) {
+			continue
+		}
+
 		pod := oriPod.DeepCopy()
-		if pod.Spec.HostNetwork {
-			continue
-		}
-
-		if !isPodAlive(pod) {
-			continue
-		}
-
 		podName := c.getNameByPod(pod)
 		key := cache.MetaObjectToName(pod).String()
 		podNets, err := c.getPodKubeovnNets(pod)

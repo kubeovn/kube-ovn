@@ -725,12 +725,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 			return nil, nil, err
 		}
 
-		nodeName := os.Getenv(util.EnvNodeName)
 		for _, pod := range pods {
-			if pod.Spec.HostNetwork ||
-				pod.Status.PodIP == "" ||
-				pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name ||
-				pod.Spec.NodeName != nodeName {
+			if pod.Status.PodIP == "" ||
+				pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 				continue
 			}
 

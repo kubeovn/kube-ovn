@@ -4,6 +4,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 const (
@@ -389,7 +391,11 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
+	KindDeployment  = ObjectKind[*appsv1.Deployment]()
+	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()
 	KindStatefulSet = ObjectKind[*appsv1.StatefulSet]()
+
+	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()

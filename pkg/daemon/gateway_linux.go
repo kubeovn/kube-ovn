@@ -1568,12 +1568,9 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		return nil, err
 	}
 
-	nodeName := os.Getenv(util.EnvNodeName)
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
-		if pod.Spec.HostNetwork ||
-			!pod.DeletionTimestamp.IsZero() ||
-			pod.Spec.NodeName != nodeName ||
+		if !pod.DeletionTimestamp.IsZero() ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
 			pod.Annotations[util.IPAddressAnnotation] == "" {
 			continue

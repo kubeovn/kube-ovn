@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -85,7 +84,7 @@ func main() {
 	stopCh := ctx.Done()
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
-			listOption.FieldSelector = "spec.nodeName=" + config.NodeName
+			listOption.FieldSelector = "spec.nodeName=" + config.NodeName + ",spec.hostNetwork=false"
 			listOption.AllowWatchBookmarks = true
 		}))
 	nodeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
@@ -99,7 +98,8 @@ func main() {
 
 	caSecretInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
-			listOption.FieldSelector = fmt.Sprintf("metadata.name=%s", util.DefaultOVNIPSecCA)
+			listOption.FieldSelector = "metadata.name=" + util.DefaultOVNIPSecCA
+			listOption.AllowWatchBookmarks = true
 		}),
 		kubeinformers.WithNamespace(os.Getenv(util.EnvPodNamespace)),
 	)

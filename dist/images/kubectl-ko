@@ -573,8 +573,6 @@ spec:
           command:
             - /kube-ovn/kube-ovn-pinger
           args:
-            - --ds-namespace=$KUBE_OVN_NS
-            - --ds-name=$subnetName-$CONN_CHECK_SERVER
             - --enable-verbose-conn-check=true
             - --tcp-conn-check-port=$TCP_CONN_CHECK_PORT
             - --udp-conn-check-port=$UDP_CONN_CHECK_PORT
@@ -583,6 +581,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           readinessProbe:
             failureThreshold: 1
             initialDelaySeconds: 3
@@ -780,7 +782,7 @@ diagnose(){
 
       pingers=$(kubectl -n $KUBE_OVN_NS get po --no-headers -o custom-columns=NAME:.metadata.name -l app=kube-ovn-pinger)
       cmd=(
-        /kube-ovn/kube-ovn-pinger --mode=job --ds-name=$subnetName-$CONN_CHECK_SERVER --ds-namespace=$KUBE_OVN_NS
+        /kube-ovn/kube-ovn-pinger --mode=job
         --tcp-conn-check-port=$TCP_CONN_CHECK_PORT --udp-conn-check-port=$UDP_CONN_CHECK_PORT
         --external-address=1.1.1.1,2606:4700:4700::1111 --target-ip-ports=$targetIPPorts
       )

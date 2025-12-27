@@ -260,10 +260,6 @@ func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
 	}
 
 	for _, pod := range pods {
-		if pod.Spec.HostNetwork || pod.Spec.NodeName != c.config.NodeName {
-			continue
-		}
-
 		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
 		if !ok {
 			continue

@@ -14,7 +14,6 @@ import (
 	goping "github.com/prometheus-community/pro-bing"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -173,12 +172,7 @@ func pingNodes(config *Configuration, setMetrics bool) error {
 
 func pingPods(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check pod connectivity")
-	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get peer ds: %v", err)
-		return err
-	}
-	pods, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(ds.Spec.Selector.MatchLabels).String()})
+	pods, err := config.KubeClient.CoreV1().Pods(config.PodNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: config.LabelSelector})
 	if err != nil {
 		klog.Errorf("failed to list peer pods: %v", err)
 		return err
