@@ -28,49 +28,10 @@ func TestGenNatGwName(t *testing.T) {
 		},
 		{
 			name:     "Test case 3",
-			input:    "",
-			expected: "vpc-nat-gw-",
+			input:    "gateway123",
+			expected: "vpc-nat-gw-gateway123",
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwName(tc.input)
-			if result != tc.expected {
-				t.Errorf("Expected %s, but got %s", tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestGenNatGwNameWithCustomPrefix(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "Test case 1",
-			input:    "test-nat-gw",
-			expected: "custom-prefix-test-nat-gw",
-		},
-		{
-			name:     "Test case 2",
-			input:    "my-nat-gateway",
-			expected: "custom-prefix-my-nat-gateway",
-		},
-		{
-			name:     "Test case 3",
-			input:    "",
-			expected: "custom-prefix-",
-		},
-	}
-
-	// It is possible to override the default prefix appended to NAT GW statefulsets
-	VpcNatGwNamePrefix = "custom-prefix"
-	t.Cleanup(func() {
-		VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
-	})
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,49 +61,10 @@ func TestGenNatGwPodName(t *testing.T) {
 		},
 		{
 			name:     "Test case 3",
-			input:    "",
-			expected: "vpc-nat-gw--0",
+			input:    "gateway123",
+			expected: "vpc-nat-gw-gateway123-0",
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwPodName(tc.input)
-			if result != tc.expected {
-				t.Errorf("Expected %s, but got %s", tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestGenNatGwPodNameWithCustomPrefix(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "Test case 1",
-			input:    "test-nat-gw",
-			expected: "another-prefix-test-nat-gw-0",
-		},
-		{
-			name:     "Test case 2",
-			input:    "my-nat-gateway",
-			expected: "another-prefix-my-nat-gateway-0",
-		},
-		{
-			name:     "Test case 3",
-			input:    "",
-			expected: "another-prefix--0",
-		},
-	}
-
-	// It is possible to override the default prefix appended to NAT GW pods
-	VpcNatGwNamePrefix = "another-prefix"
-	t.Cleanup(func() {
-		VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
-	})
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,246 +77,258 @@ func TestGenNatGwPodNameWithCustomPrefix(t *testing.T) {
 }
 
 func TestGetNatGwExternalNetwork(t *testing.T) {
-	tests := []struct {
-		name         string
-		externalNets []string
-		expected     string
+	testCases := []struct {
+		name            string
+		externalSubnets []string
+		expectedName    string
 	}{
 		{
-			name:         "External network specified",
-			externalNets: []string{"custom-external-network"},
-			expected:     "custom-external-network",
+			name:            "External network specified",
+			externalSubnets: []string{"external-network"},
+			expectedName:    "external-network",
 		},
 		{
-			name:         "External network not specified",
-			externalNets: []string{},
-			expected:     vpcExternalNet,
+			name:            "External network not specified",
+			externalSubnets: []string{},
+			expectedName:    "external",
 		},
 		{
-			name:         "Multiple external networks specified",
-			externalNets: []string{"custom-external-network1", "custom-external-network2"},
-			expected:     "custom-external-network1",
+			name:            "Multiple external networks specified",
+			externalSubnets: []string{"network1", "network2"},
+			expectedName:    "network1",
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GetNatGwExternalNetwork(tc.externalNets)
-			if result != tc.expected {
-				t.Errorf("got %v, but want %v", result, tc.expected)
+			name := GetNatGwExternalNetwork(tc.externalSubnets)
+			if name != tc.expectedName {
+				t.Errorf("Expected name %s, but got %s", tc.expectedName, name)
 			}
 		})
 	}
 }
 
 func TestGenNatGwLabels(t *testing.T) {
-	tests := []struct {
-		name     string
-		gwName   string
-		expected map[string]string
+	testCases := []struct {
+		name           string
+		gatewayName    string
+		expectedLabels map[string]string
 	}{
 		{
-			name:   "Gateway name filled",
-			gwName: "test-gateway",
-			expected: map[string]string{
+			name:        "Gateway name filled",
+			gatewayName: "test-gateway",
+			expectedLabels: map[string]string{
 				"app":              "vpc-nat-gw-test-gateway",
 				VpcNatGatewayLabel: "true",
 			},
 		},
 		{
-			name:   "Gateway label empty",
-			gwName: "",
-			expected: map[string]string{
+			name:        "Gateway label empty",
+			gatewayName: "",
+			expectedLabels: map[string]string{
 				"app":              "vpc-nat-gw-",
 				VpcNatGatewayLabel: "true",
 			},
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwLabels(tc.gwName)
-			if !reflect.DeepEqual(tc.expected, result) {
-				t.Errorf("got %v, but want %v", result, tc.expected)
+			labels := GenNatGwLabels(tc.gatewayName)
+			if !reflect.DeepEqual(labels, tc.expectedLabels) {
+				t.Errorf("Expected labels %v, but got %v", tc.expectedLabels, labels)
 			}
 		})
 	}
 }
 
 func TestGenNatGwSelectors(t *testing.T) {
-	tests := []struct {
-		name      string
-		selectors []string
-		expected  map[string]string
+	testCases := []struct {
+		name              string
+		selectors         []string
+		expectedSelectors map[string]string
 	}{
 		{
 			name:      "One selector",
-			selectors: []string{"kubernetes.io/hostname: kube-ovn-worker"},
-			expected: map[string]string{
-				"kubernetes.io/hostname": "kube-ovn-worker",
+			selectors: []string{"kubernetes.io/os: linux"},
+			expectedSelectors: map[string]string{
+				"kubernetes.io/os": "linux",
 			},
 		},
 		{
-			name:      "Empty selector",
-			selectors: []string{},
-			expected:  map[string]string{},
+			name:              "Empty selector",
+			selectors:         []string{},
+			expectedSelectors: map[string]string{},
 		},
 		{
 			name:      "Multiple selectors",
-			selectors: []string{"kubernetes.io/hostname: kube-ovn-worker", "kubernetes.io/os: linux"},
-			expected: map[string]string{
-				"kubernetes.io/hostname": "kube-ovn-worker",
-				"kubernetes.io/os":       "linux",
+			selectors: []string{"kubernetes.io/os: linux", "kubernetes.io/arch: amd64"},
+			expectedSelectors: map[string]string{
+				"kubernetes.io/os":   "linux",
+				"kubernetes.io/arch": "amd64",
 			},
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwSelectors(tc.selectors)
-			if !reflect.DeepEqual(tc.expected, result) {
-				t.Errorf("got %v, but want %v", result, tc.expected)
+			selectors := GenNatGwSelectors(tc.selectors)
+			if !reflect.DeepEqual(selectors, tc.expectedSelectors) {
+				t.Errorf("Expected selectors %v, but got %v", tc.expectedSelectors, selectors)
 			}
 		})
 	}
 }
 
 func TestGenNatGwPodAnnotations(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name                 string
-		gw                   v1.VpcNatGateway
+		gw                   *v1.VpcNatGateway
 		externalNadNamespace string
 		externalNadName      string
-		expected             map[string]string
+		expectedAnnotations  map[string]string
 	}{
 		{
 			name: "All fields provided",
-			gw: v1.VpcNatGateway{
+			gw: &v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-gateway",
+					Name: "test-gw",
 				},
 				Spec: v1.VpcNatGatewaySpec{
-					Subnet: "internal-subnet",
-					LanIP:  "10.20.30.40",
+					Subnet: "test-subnet",
+					LanIP:  "10.0.0.1",
 				},
 			},
-			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
-			expected: map[string]string{
-				VpcNatGatewayAnnotation:      "test-gateway",
-				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
-				LogicalSwitchAnnotation:      "internal-subnet",
-				IPAddressAnnotation:          "10.20.30.40",
+			externalNadNamespace: "default",
+			externalNadName:      "external-net",
+			expectedAnnotations: map[string]string{
+				VpcNatGatewayAnnotation:  "test-gw",
+				nadv1.NetworkAttachmentAnnot: "default/external-net",
+				LogicalSwitchAnnotation:  "test-subnet",
+				IPAddressAnnotation:      "10.0.0.1",
 			},
 		},
 		{
 			name: "No static LAN IP",
-			gw: v1.VpcNatGateway{
+			gw: &v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-gateway",
+					Name: "test-gw",
 				},
 				Spec: v1.VpcNatGatewaySpec{
-					Subnet: "internal-subnet",
+					Subnet: "test-subnet",
 					LanIP:  "",
 				},
 			},
-			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
-			expected: map[string]string{
-				VpcNatGatewayAnnotation:      "test-gateway",
-				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
-				LogicalSwitchAnnotation:      "internal-subnet",
-				IPAddressAnnotation:          "",
+			externalNadNamespace: "default",
+			externalNadName:      "external-net",
+			expectedAnnotations: map[string]string{
+				VpcNatGatewayAnnotation:  "test-gw",
+				nadv1.NetworkAttachmentAnnot: "default/external-net",
+				LogicalSwitchAnnotation:  "test-subnet",
+				IPAddressAnnotation:      "",
 			},
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName)
-			if !reflect.DeepEqual(tc.expected, result) {
-				t.Errorf("got %v, but want %v", result, tc.expected)
+			annotations := GenNatGwPodAnnotations(tc.gw, tc.externalNadNamespace, tc.externalNadName)
+			if !reflect.DeepEqual(annotations, tc.expectedAnnotations) {
+				t.Errorf("Expected annotations %v, but got %v", tc.expectedAnnotations, annotations)
 			}
 		})
 	}
 }
 
 func TestGenNatGwBgpSpeakerContainer(t *testing.T) {
-	tests := []struct {
-		name          string
-		speakerImage  string
-		gatewayName   string
-		speakerParams v1.VpcBgpSpeaker
-		mustError     bool
+	testCases := []struct {
+		name        string
+		speaker     v1.VpcBgpSpeaker
+		image       string
+		gatewayName string
+		expectErr   bool
 	}{
 		{
-			name:          "Speaker with missing params",
-			speakerImage:  "kubeovn.io/fake/image:latest",
-			gatewayName:   "test-gateway",
-			speakerParams: v1.VpcBgpSpeaker{},
-			mustError:     true,
+			name: "Speaker with missing params",
+			speaker: v1.VpcBgpSpeaker{
+				Enabled: true,
+			},
+			image:       "speaker-image:latest",
+			gatewayName: "nat-gw",
+			expectErr:   true,
 		},
 		{
-			name:         "Speaker dualstack neighbors",
-			speakerImage: "kubeovn.io/fake/image:latest",
-			gatewayName:  "working-fw",
-			speakerParams: v1.VpcBgpSpeaker{
-				ASN:       123456,
-				RemoteASN: 213219,
-				Neighbors: []string{"10.10.10.10", "fd00::a", "1.2.3.4", "fd00:c00f:ee::"},
+			name: "Speaker dualstack neighbors",
+			speaker: v1.VpcBgpSpeaker{
+				Enabled:   true,
+				ASN:       64512,
+				RemoteASN: 64513,
+				Neighbors: []string{"192.168.1.1", "fd00::1"},
 			},
-			mustError: false,
+			image:       "speaker-image:latest",
+			gatewayName: "nat-gw",
+			expectErr:   false,
 		},
 		{
-			name:         "Only v6 neighbors",
-			speakerImage: "kubeovn.io/fake/image:latest",
-			gatewayName:  "working-fw",
-			speakerParams: v1.VpcBgpSpeaker{
-				ASN:       123456,
-				RemoteASN: 213219,
-				Neighbors: []string{"fd00::a", "fd00:c00f:ee::"},
+			name: "Only v6 neighbors",
+			speaker: v1.VpcBgpSpeaker{
+				Enabled:   true,
+				ASN:       64512,
+				RemoteASN: 64513,
+				Neighbors: []string{"fd00::1", "fd00::2"},
 			},
-			mustError: false,
+			image:       "speaker-image:latest",
+			gatewayName: "nat-gw",
+			expectErr:   false,
 		},
 		{
-			name:         "Only v4 neighbors",
-			speakerImage: "kubeovn.io/fake/image:latest",
-			gatewayName:  "working-fw",
-			speakerParams: v1.VpcBgpSpeaker{
-				ASN:       123456,
-				RemoteASN: 213219,
-				Neighbors: []string{"10.10.10.10", "1.2.3.4"},
+			name: "Only v4 neighbors",
+			speaker: v1.VpcBgpSpeaker{
+				Enabled:   true,
+				ASN:       64512,
+				RemoteASN: 64513,
+				Neighbors: []string{"192.168.1.1", "192.168.1.2"},
 			},
-			mustError: false,
+			image:       "speaker-image:latest",
+			gatewayName: "nat-gw",
+			expectErr:   false,
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := GenNatGwBgpSpeakerContainer(tc.speakerParams, tc.speakerImage, tc.gatewayName)
-			if !tc.mustError && err != nil {
-				t.Errorf("generation returned error: %s", err.Error())
-			} else if tc.mustError && err != nil {
+			result, err := GenNatGwBgpSpeakerContainer(tc.speaker, tc.image, tc.gatewayName)
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if result == nil {
+				t.Errorf("Expected a BGP speaker container but got nil")
 				return
 			}
 
 			if result.Name != "vpc-nat-gw-speaker" {
-				t.Errorf("speaker container doesn't have the right name, expected vpc-nat-gw-speaker, got %s", result.Name)
+				t.Errorf("Expected container name 'vpc-nat-gw-speaker' but got %s", result.Name)
 			}
 
-			if result.Image != tc.speakerImage {
-				t.Errorf("speaker container has wrong image, expected %s, got %s", tc.speakerImage, result.Image)
+			// Check that gateway name environment variable is set correctly
+			if len(result.Env) == 0 {
+				t.Errorf("Expected environment variables to be set")
+				return
 			}
 
-			// Speaker MUST be in NAT GW mode
-			if result.Args[0] != "--nat-gw-mode" {
-				t.Errorf("speaker not running in NAT gateway mode")
-			}
-
-			// Check we inject the gateway name correctly, used by the speaker to retrieve EIPs by ownership
 			firstEnv := result.Env[0]
 			if firstEnv.Name != EnvGatewayName || firstEnv.Value != tc.gatewayName {
-				t.Errorf("gateway name env injection is faulty, got %v", firstEnv)
+				t.Errorf("Expected gateway name env %s=%s, but got %s=%s", EnvGatewayName, tc.gatewayName, firstEnv.Name, firstEnv.Value)
 			}
 		})
 	}

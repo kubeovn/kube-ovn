@@ -35,6 +35,7 @@ type VpcNatGatewaySpec struct {
 	ExternalSubnets []string            `json:"externalSubnets"`
 	LanIP           string              `json:"lanIp"`
 	Selector        []string            `json:"selector"`
+	Annotations     map[string]string   `json:"annotations,omitempty"`
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
 	QoSPolicy       string              `json:"qosPolicy"`
@@ -59,6 +60,7 @@ type VpcNatGatewayStatus struct {
 	QoSPolicy       string              `json:"qosPolicy" patchStrategy:"merge"`
 	ExternalSubnets []string            `json:"externalSubnets" patchStrategy:"merge"`
 	Selector        []string            `json:"selector" patchStrategy:"merge"`
+	Annotations     map[string]string   `json:"annotations,omitempty" patchStrategy:"merge"`
 	Tolerations     []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 }
