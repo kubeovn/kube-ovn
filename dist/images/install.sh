@@ -443,6 +443,10 @@ spec:
                   type: array
                   items:
                     type: string
+                annotations:
+                  type: object
+                  additionalProperties:
+                    type: string
                 qosPolicy:
                   type: string
                 tolerations:
@@ -766,6 +770,10 @@ spec:
                 selector:
                   type: array
                   items:
+                    type: string
+                annotations:
+                  type: object
+                  additionalProperties:
                     type: string
                 qosPolicy:
                   type: string

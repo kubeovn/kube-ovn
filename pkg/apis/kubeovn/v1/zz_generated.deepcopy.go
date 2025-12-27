@@ -1465,6 +1465,11 @@ func (in *ProviderNetworkSpec) DeepCopyInto(out *ProviderNetworkSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.VlanInterfaces != nil {
+		in, out := &in.VlanInterfaces, &out.VlanInterfaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -2851,6 +2856,13 @@ func (in *VpcNatGatewaySpec) DeepCopyInto(out *VpcNatGatewaySpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Annotations != nil {
+		in, out := &in.Annotations, &out.Annotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.Tolerations != nil {
 		in, out := &in.Tolerations, &out.Tolerations
 		*out = make([]corev1.Toleration, len(*in))
@@ -2890,6 +2902,13 @@ func (in *VpcNatGatewayStatus) DeepCopyInto(out *VpcNatGatewayStatus) {
 		in, out := &in.Selector, &out.Selector
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.Annotations != nil {
+		in, out := &in.Annotations, &out.Annotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
 	if in.Tolerations != nil {
 		in, out := &in.Tolerations, &out.Tolerations
