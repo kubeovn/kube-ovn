@@ -91,7 +91,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	for _, pod := range opts.Pods {
 		kubeObjects = append(kubeObjects, pod)
 	}
-	kubeClient := fake.NewSimpleClientset(kubeObjects...)
+	kubeClient := fake.NewClientset(kubeObjects...)
 
 	// Create fake NAD client
 	nadClient := nadfake.NewSimpleClientset()
@@ -104,7 +104,12 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	// Create fake KubeOVN client
-	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	// subnetObjects := make([]runtime.Object, 0, len(opts.Subnets))
+	// for _, subnet := range opts.Subnets {
+	// 	subnetObjects = append(subnetObjects, subnet)
+	// }
+	// kubeovnClient := kubeovnfake.NewClientset(subnetObjects...)
+	kubeovnClient := kubeovnfake.NewClientset()
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
 			context.Background(), subnet, metav1.CreateOptions{})
@@ -139,6 +144,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	// Create mock OVN client
 	mockOvnClient := mockovs.NewMockNbClient(gomock.NewController(t))
 
+	t.Log("Creating fake controller")
+
 	// Create controller with all informers
 	ctrl := &Controller{
 		servicesLister:        serviceInformer.Lister(),
@@ -155,8 +162,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	ctrl.config = &Configuration{
-		ClusterRouter:        "ovn-cluster",
-		DefaultLogicalSwitch: "ovn-default",
+		ClusterRouter:        util.DefaultVpc,
+		DefaultLogicalSwitch: util.DefaultSubnet,
 		NodeSwitch:           "join",
 		KubeOvnClient:        kubeovnClient,
 		KubeClient:           kubeClient,
@@ -168,12 +175,16 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	stopCh := make(chan struct{})
 	t.Cleanup(func() { close(stopCh) })
 
+	t.Logf("Starting informer factories")
 	kubeInformerFactory.Start(stopCh)
 	nadInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 
+	t.Logf("Waiting for k8s informer caches to sync")
 	kubeInformerFactory.WaitForCacheSync(stopCh)
-	nadInformerFactory.WaitForCacheSync(stopCh)
+	t.Logf("Waiting for nad informer caches to sync")
+	// nadInformerFactory.WaitForCacheSync(stopCh)
+	t.Logf("Waiting for kube-ovn informer caches to sync")
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
 
 	return &fakeController{
@@ -191,25 +202,47 @@ func newFakeController(t *testing.T) *fakeController {
 }
 
 func Test_allSubnetReady(t *testing.T) {
+	// fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+	// 	Subnets: []*kubeovnv1.Subnet{{
+	// 		TypeMeta: metav1.TypeMeta{
+	// 			Kind:       reflect.TypeFor[kubeovnv1.Subnet]().Name(),
+	// 			APIVersion: kubeovn.GroupName,
+	// 		},
+	// 		ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+	// 	}, {
+	// 		TypeMeta: metav1.TypeMeta{
+	// 			Kind:       reflect.TypeFor[kubeovnv1.Subnet]().Name(),
+	// 			APIVersion: kubeovn.GroupName,
+	// 		},
+	// 		ObjectMeta: metav1.ObjectMeta{Name: "join"},
+	// 	}},
+	// })
 	fakeController, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 
-	subnets := []string{"ovn-default", "join"}
+	subnets := []string{util.DefaultSubnet, "join"}
 
 	t.Run("all subnet ready", func(t *testing.T) {
+		t.Log("Testing all subnet ready scenario")
+
 		mockOvnClient.EXPECT().LogicalSwitchExists(gomock.Any()).Return(true, nil).Times(2)
 
+		t.Log("Checking if all subnets are ready")
 		ready, err := ctrl.allSubnetReady(subnets...)
 		require.NoError(t, err)
 		require.True(t, ready)
 	})
 
 	t.Run("some subnet are not ready", func(t *testing.T) {
+		t.Log("Testing some subnet are not ready scenario")
+
+		t.Logf("Setting up mock expectations for subnets: %v", subnets)
 		mockOvnClient.EXPECT().LogicalSwitchExists(subnets[0]).Return(true, nil)
 		mockOvnClient.EXPECT().LogicalSwitchExists(subnets[1]).Return(false, nil)
 
+		t.Log("Checking if all subnets are ready")
 		ready, err := ctrl.allSubnetReady(subnets...)
 		require.NoError(t, err)
 		require.False(t, ready)

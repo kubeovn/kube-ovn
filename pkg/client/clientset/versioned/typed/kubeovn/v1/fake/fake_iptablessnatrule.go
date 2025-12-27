@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeIptablesSnatRules implements IptablesSnatRuleInterface
 type fakeIptablesSnatRules struct {
-	*gentype.FakeClientWithList[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList]
+	*gentype.FakeClientWithListAndApply[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList, *kubeovnv1.IptablesSnatRuleApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeIptablesSnatRules(fake *FakeKubeovnV1) kubeovnv1.IptablesSnatRuleInterface {
+func newFakeIptablesSnatRules(fake *FakeKubeovnV1) typedkubeovnv1.IptablesSnatRuleInterface {
 	return &fakeIptablesSnatRules{
-		gentype.NewFakeClientWithList[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList](
+		gentype.NewFakeClientWithListAndApply[*v1.IptablesSnatRule, *v1.IptablesSnatRuleList, *kubeovnv1.IptablesSnatRuleApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("iptables-snat-rules"),

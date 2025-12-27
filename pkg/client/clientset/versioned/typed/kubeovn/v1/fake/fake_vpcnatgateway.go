@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeVpcNatGateways implements VpcNatGatewayInterface
 type fakeVpcNatGateways struct {
-	*gentype.FakeClientWithList[*v1.VpcNatGateway, *v1.VpcNatGatewayList]
+	*gentype.FakeClientWithListAndApply[*v1.VpcNatGateway, *v1.VpcNatGatewayList, *kubeovnv1.VpcNatGatewayApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVpcNatGateways(fake *FakeKubeovnV1) kubeovnv1.VpcNatGatewayInterface {
+func newFakeVpcNatGateways(fake *FakeKubeovnV1) typedkubeovnv1.VpcNatGatewayInterface {
 	return &fakeVpcNatGateways{
-		gentype.NewFakeClientWithList[*v1.VpcNatGateway, *v1.VpcNatGatewayList](
+		gentype.NewFakeClientWithListAndApply[*v1.VpcNatGateway, *v1.VpcNatGatewayList, *kubeovnv1.VpcNatGatewayApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("vpc-nat-gateways"),

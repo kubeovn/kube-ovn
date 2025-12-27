@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeSwitchLBRules implements SwitchLBRuleInterface
 type fakeSwitchLBRules struct {
-	*gentype.FakeClientWithList[*v1.SwitchLBRule, *v1.SwitchLBRuleList]
+	*gentype.FakeClientWithListAndApply[*v1.SwitchLBRule, *v1.SwitchLBRuleList, *kubeovnv1.SwitchLBRuleApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeSwitchLBRules(fake *FakeKubeovnV1) kubeovnv1.SwitchLBRuleInterface {
+func newFakeSwitchLBRules(fake *FakeKubeovnV1) typedkubeovnv1.SwitchLBRuleInterface {
 	return &fakeSwitchLBRules{
-		gentype.NewFakeClientWithList[*v1.SwitchLBRule, *v1.SwitchLBRuleList](
+		gentype.NewFakeClientWithListAndApply[*v1.SwitchLBRule, *v1.SwitchLBRuleList, *kubeovnv1.SwitchLBRuleApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("switch-lb-rules"),
