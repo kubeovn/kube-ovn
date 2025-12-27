@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeVpcDnses implements VpcDnsInterface
 type fakeVpcDnses struct {
-	*gentype.FakeClientWithList[*v1.VpcDns, *v1.VpcDnsList]
+	*gentype.FakeClientWithListAndApply[*v1.VpcDns, *v1.VpcDnsList, *kubeovnv1.VpcDnsApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVpcDnses(fake *FakeKubeovnV1) kubeovnv1.VpcDnsInterface {
+func newFakeVpcDnses(fake *FakeKubeovnV1) typedkubeovnv1.VpcDnsInterface {
 	return &fakeVpcDnses{
-		gentype.NewFakeClientWithList[*v1.VpcDns, *v1.VpcDnsList](
+		gentype.NewFakeClientWithListAndApply[*v1.VpcDns, *v1.VpcDnsList, *kubeovnv1.VpcDnsApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("vpc-dnses"),

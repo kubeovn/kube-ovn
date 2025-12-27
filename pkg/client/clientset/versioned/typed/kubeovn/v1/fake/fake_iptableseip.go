@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeIptablesEIPs implements IptablesEIPInterface
 type fakeIptablesEIPs struct {
-	*gentype.FakeClientWithList[*v1.IptablesEIP, *v1.IptablesEIPList]
+	*gentype.FakeClientWithListAndApply[*v1.IptablesEIP, *v1.IptablesEIPList, *kubeovnv1.IptablesEIPApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeIptablesEIPs(fake *FakeKubeovnV1) kubeovnv1.IptablesEIPInterface {
+func newFakeIptablesEIPs(fake *FakeKubeovnV1) typedkubeovnv1.IptablesEIPInterface {
 	return &fakeIptablesEIPs{
-		gentype.NewFakeClientWithList[*v1.IptablesEIP, *v1.IptablesEIPList](
+		gentype.NewFakeClientWithListAndApply[*v1.IptablesEIP, *v1.IptablesEIPList, *kubeovnv1.IptablesEIPApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("iptables-eips"),

@@ -17,7 +17,7 @@ import (
 )
 
 func TestPatchAnnotations(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	nodeClient := client.CoreV1().Nodes()
 	tests := []struct {
 		name    string
@@ -64,7 +64,7 @@ func TestPatchAnnotations(t *testing.T) {
 }
 
 func TestPatchLabels(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	nsClient := client.CoreV1().Namespaces()
 	tests := []struct {
 		name      string
