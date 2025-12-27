@@ -76,8 +76,6 @@ type Controller struct {
 	protocol string
 
 	ControllerRuntime
-	localPodName   string
-	localNamespace string
 
 	k8sExec k8sexec.Interface
 }
@@ -479,45 +477,21 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 }
 
 func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
-	var currentPod *v1.Pod
-	var err error
-	if c.localPodName == "" {
-		pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{
-			LabelSelector: "app=kube-ovn-cni",
-			FieldSelector: "spec.nodeName=" + c.config.NodeName,
-		})
-		if err != nil {
-			klog.Errorf("failed to list pod: %v", err)
-			return
-		}
-		for _, pod := range pods.Items {
-			if pod.Spec.NodeName == c.config.NodeName && pod.Status.Phase == v1.PodRunning {
-				c.localPodName = pod.Name
-				c.localNamespace = pod.Namespace
-				currentPod = &pod
-				break
-			}
-		}
-		if currentPod == nil {
-			klog.Warning("failed to get self pod")
-			return
-		}
-	} else {
-		if currentPod, err = c.podsLister.Pods(c.localNamespace).Get(c.localPodName); err != nil {
-			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)
-			return
-		}
+	pod, err := c.podsLister.Pods(c.config.PodNamespace).Get(c.config.PodName)
+	if err != nil {
+		klog.Errorf("failed to get pod %s/%s, %v", c.config.PodNamespace, c.config.PodName, err)
+		return
 	}
 
 	patch := util.KVPatch{}
-	if currentPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
+	if pod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
 		if errMsg == "" {
 			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = nil
 		} else {
 			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
 		}
-		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(c.localNamespace), c.localPodName, patch); err != nil {
-			klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+			klog.Errorf("failed to patch pod %s/%s: %v", pod.Namespace, pod.Name, err)
 			return
 		}
 	}
@@ -754,39 +728,34 @@ func (c *Controller) gcInterfaces() {
 			continue
 		}
 
-		if podEntity, err := c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+		if _, err = c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get pod %s/%s: %v", podNamespace, podName, err)
+				continue
+			}
+
 			// Pod not found by name. Check if this might be a KubeVirt VM.
 			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VM name (not the launcher pod name).
 			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
 			// Try to find launcher pods by this label.
-			if k8serrors.IsNotFound(err) {
-				selector := labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: podName})
-				launcherPods, listErr := c.podsLister.Pods(podNamespace).List(selector)
-				if listErr != nil {
-					klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, listErr)
-					continue
-				}
-
-				// If we found launcher pod(s) for this VM, keep the interface
-				if len(launcherPods) > 0 {
-					klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
-						len(launcherPods), podNamespace, podName, iface)
-					continue
-				}
-
-				// No pod and no launcher pod found - safe to delete
-				klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
-				if err := ovs.CleanInterface(iface); err != nil {
-					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-				}
+			selector := labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: podName})
+			launcherPods, err := c.podsLister.Pods(podNamespace).List(selector)
+			if err != nil {
+				klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, err)
+				continue
 			}
-		} else {
-			// If the pod is found, compare the pod's node with the current cni node. If they differ, delete the interface.
-			if podEntity.Spec.NodeName != c.config.NodeName {
-				klog.Infof("pod %s/%s is on node %s, delete ovs interface %s on node %s ", podNamespace, podName, podEntity.Spec.NodeName, iface, c.config.NodeName)
-				if err := ovs.CleanInterface(iface); err != nil {
-					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-				}
+
+			// If we found launcher pod(s) for this VM, keep the interface
+			if len(launcherPods) > 0 {
+				klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
+					len(launcherPods), podNamespace, podName, iface)
+				continue
+			}
+
+			// No pod on this node and no launcher pod found - safe to delete
+			klog.Infof("pod %s/%s not found on this node, delete ovs interface %s", podNamespace, podName, iface)
+			if err = ovs.CleanInterface(iface); err != nil {
+				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
 			}
 		}
 	}

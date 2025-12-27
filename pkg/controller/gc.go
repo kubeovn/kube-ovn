@@ -360,11 +360,11 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 
 	// Check if Normal Pod exists
 	if ip.Spec.PodType == "" {
-		_, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
+		pod, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, nil
 		}
-		return true, err
+		return !pod.Spec.HostNetwork, err
 	}
 
 	return true, nil
@@ -407,6 +407,10 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipMap := strset.NewWithSize(len(pods) + len(nodes))
 	for _, pod := range pods {
+		if pod.Spec.HostNetwork {
+			continue
+		}
+
 		if isStsPod, stsName, stsUID := isStatefulSetPod(pod); isStsPod {
 			if isStatefulSetPodToGC(c.config.KubeClient, pod, stsName, stsUID) {
 				continue
