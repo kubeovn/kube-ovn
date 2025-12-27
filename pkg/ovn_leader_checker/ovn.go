@@ -1,7 +1,9 @@
 package ovn_leader_checker
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -333,6 +335,56 @@ func compactOvnDatabase(db string) {
 	}
 }
 
+// backupRaftHeader backs up the raft header of the ovn db file.
+// The backup file name is ovn<db>_db.hdr, e.g., ovnnb_db.hdr for ovnnb database file named ovnnb_db.db.
+// Example content of the header file:
+//
+//	{
+//	  "server_id": "8d77699d-8dc6-4f32-b1ba-b66aad05ba46",
+//	  "name": "OVN_Northbound",
+//	  "local_address": "tcp:[172.18.0.2]:6643",
+//	  "cluster_id": "6d240b86-177e-4f17-aded-ed1b7b364d97"
+//	}
+func backupRaftHeader(db string) {
+	args := []string{"db-raft-header", fmt.Sprintf("/etc/ovn/ovn%s_db.db", db)}
+	hdr, err := exec.Command("ovsdb-tool", args...).CombinedOutput() // #nosec G204
+	if err != nil {
+		klog.Errorf("failed to backup raft header of ovn%s database: error = %v, output = %s", db, err, string(hdr))
+		return
+	}
+
+	var data map[string]any
+	if err = json.Unmarshal(hdr, &data); err != nil {
+		klog.Errorf("failed to unmarshal raft header json content for ovn%s database: %v", db, err)
+		return
+	}
+
+	hdr, _ = json.MarshalIndent(data, "", "  ")
+	hdrFile := fmt.Sprintf("/etc/ovn/ovn%s_db.hdr", db)
+	content, err := os.ReadFile(hdrFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			klog.Errorf("failed to read raft header file %s: %v", hdrFile, err)
+		}
+		klog.V(5).Infof("raft header file %s does not exist, created new one", hdrFile)
+	}
+
+	if bytes.Equal(content, hdr) {
+		klog.V(5).Infof("raft header file %s is up-to-date, no need to update", hdrFile)
+		return
+	}
+
+	klog.Infof("Found changes in raft header for ovn%s database, updating file %s", db, hdrFile)
+	klog.Infof("Previous content of raft header file %s:\n%s", hdrFile, string(content))
+
+	if err = os.WriteFile(hdrFile, hdr, 0o600); err != nil {
+		klog.Errorf("failed to write raft header file %s: %v", hdrFile, err)
+		return
+	}
+
+	klog.Infof("succeeded to backup raft header of ovn%s database to file %s with content:\n%s", db, hdrFile, string(hdr))
+}
+
 func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	if podName == "" || podNamespace == "" {
 		util.LogFatalAndExit(nil, "env variables POD_NAME and POD_NAMESPACE must be set")
@@ -379,6 +431,9 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			compactOvnDatabase("nb")
 			compactOvnDatabase("sb")
 		}
+
+		backupRaftHeader("nb")
+		backupRaftHeader("sb")
 	} else {
 		icNbLeader := isDBLeader(cfg.localAddress, util.DatabaseICNB)
 		icSbLeader := isDBLeader(cfg.localAddress, util.DatabaseICSB)

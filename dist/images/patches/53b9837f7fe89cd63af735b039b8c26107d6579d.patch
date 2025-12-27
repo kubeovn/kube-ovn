@@ -1,0 +1,138 @@
+From 53b9837f7fe89cd63af735b039b8c26107d6579d Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Fri, 26 Dec 2025 08:24:04 +0000
+Subject: [PATCH] ovsdb-tool: add commands db-raft-header/rejoin-cluster
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ ovsdb/ovsdb-tool.c | 93 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 93 insertions(+)
+
+diff --git a/ovsdb/ovsdb-tool.c b/ovsdb/ovsdb-tool.c
+index bfd54a97f..9ec2c5d48 100644
+--- a/ovsdb/ovsdb-tool.c
++++ b/ovsdb/ovsdb-tool.c
+@@ -358,6 +358,63 @@ do_join_cluster(struct ovs_cmdl_context *ctx)
+     sset_destroy(&remote_addrs);
+ }
+ 
++static void
++do_rejoin_cluster(struct ovs_cmdl_context *ctx)
++{
++    const char *db_file_name = ctx->argv[1];
++    const char *hdr_file_name = ctx->argv[2];
++    const char *local = ctx->argv[3];
++    struct json *remote_addrs = json_array_create_empty();
++    for (size_t i = 4; i < ctx->argc; i++) {
++        json_array_add(remote_addrs, json_string_create(ctx->argv[i]));
++    }
++
++    FILE *fp = fopen(hdr_file_name, "r");
++    if (fp == NULL) {
++        ovs_fatal(errno, "failed to open %s for reading", hdr_file_name);
++    }
++
++    char data[4096];
++    size_t n = fread(data, 1, sizeof data, fp);
++    if (n == 0 && ferror(fp)) {
++        ovs_fatal(errno, "failed to read from %s", hdr_file_name);
++    }
++    fclose(fp);
++    if (n == sizeof data) {
++        ovs_fatal(0, "%s: header file too large", hdr_file_name);
++    }
++    data[n] = '\0';
++    struct json *hdr = parse_json(data);
++    if (hdr->type != JSON_OBJECT) {
++        ovs_fatal(0, "%s: expected JSON object", hdr_file_name);
++    }
++    json_object_put(hdr, "remote_addresses", remote_addrs);
++
++    struct raft_header h;
++    check_ovsdb_error(raft_header_from_json(&h, hdr));
++    json_destroy(hdr);
++
++    if (!h.name || !*h.name) {
++        ovs_fatal(0, "%s: missing or empty database name", hdr_file_name);
++    }
++    if (!ovsdb_parser_is_id(h.name)) {
++        ovs_fatal(0, "%s: not a valid schema name", h.name);
++    }
++    if (uuid_is_zero(&h.cid)) {
++        ovs_fatal(0, "%s: missing or zero cluster ID", hdr_file_name);
++    }
++    if (uuid_is_zero(&h.sid)) {
++        ovs_fatal(0, "%s: missing or zero server ID", hdr_file_name);
++    }
++
++    /* Create database file. */
++    check_ovsdb_error(raft_join_cluster(db_file_name, h.name, local,
++                                        &h.remote_addresses,
++                                        uuid_is_zero(&h.cid) ? NULL : &h.cid,
++                                        uuid_is_zero(&h.sid) ? NULL : &h.sid));
++    raft_header_uninit(&h);
++}
++
+ static struct ovsdb_error *
+ write_standalone_db(const char *file_name, const char *comment,
+                     const struct ovsdb *db)
+@@ -584,6 +641,39 @@ do_db_local_address(struct ovs_cmdl_context *ctx)
+     raft_metadata_destroy(&md);
+ }
+ 
++static void
++do_db_raft_header(struct ovs_cmdl_context *ctx)
++{
++    const char *db_file_name = ctx->argv[1];
++    struct ovsdb_log *log;
++
++    check_ovsdb_error(ovsdb_log_open(db_file_name, OVSDB_MAGIC"|"RAFT_MAGIC,
++                                     OVSDB_LOG_READ_ONLY, -1, &log));
++    if (strcmp(ovsdb_log_get_magic(log), RAFT_MAGIC)) {
++        ovs_fatal(0, "%s: not a clustered database", db_file_name);
++    }
++
++    struct json *header;
++    check_ovsdb_error(ovsdb_log_read(log, &header));
++    ovsdb_log_close(log);
++
++    struct raft_header h;
++    check_ovsdb_error(raft_header_from_json(&h, header));
++    json_destroy(header);
++    raft_entry_uninit(&h.snap);
++    h.snap.data.full_json = NULL;
++    h.snap.data.serialized = NULL;
++    h.snap.servers = NULL;
++    h.snap_index = 0;
++
++    header = raft_header_to_json(&h);
++    raft_header_uninit(&h);
++    char *s = json_to_string(header, JSSF_PRETTY);
++    json_destroy(header);
++    puts(s);
++    free(s);
++}
++
+ static void
+ do_db_has_magic(struct ovs_cmdl_context *ctx, const char *magic)
+ {
+@@ -2153,6 +2243,8 @@ static const struct ovs_cmdl_command all_commands[] = {
+     { "create-cluster", "db contents local", 3, 3, do_create_cluster, OVS_RW },
+     { "join-cluster", "db name local remote...", 4, INT_MAX, do_join_cluster,
+       OVS_RW },
++    { "rejoin-cluster", "db hdr local remote...", 4, INT_MAX, do_rejoin_cluster,
++      OVS_RW },
+     { "compact", "[db [dst]]", 0, 2, do_compact, OVS_RW },
+     { "convert", "[db [schema [dst]]]", 0, 3, do_convert, OVS_RW },
+     { "needs-conversion", NULL, 0, 2, do_needs_conversion, OVS_RO },
+@@ -2162,6 +2254,7 @@ static const struct ovs_cmdl_command all_commands[] = {
+     { "db-cid", "db", 1, 1, do_db_cid, OVS_RO },
+     { "db-sid", "db", 1, 1, do_db_sid, OVS_RO },
+     { "db-local-address", "db", 1, 1, do_db_local_address, OVS_RO },
++    { "db-raft-header", "db", 1, 1, do_db_raft_header, OVS_RO },
+     { "db-is-clustered", "db", 1, 1, do_db_is_clustered, OVS_RO },
+     { "db-is-standalone", "db", 1, 1, do_db_is_standalone, OVS_RO },
+     { "schema-name", "[schema]", 0, 1, do_schema_name, OVS_RO },
+-- 
+2.43.0
+
