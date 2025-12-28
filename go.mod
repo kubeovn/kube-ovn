@@ -3,7 +3,7 @@ module github.com/kubeovn/kube-ovn
 go 1.25.5
 
 require (
-	github.com/brianvoe/gofakeit/v7 v7.13.0
+	github.com/brianvoe/gofakeit/v7 v7.14.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cert-manager/cert-manager v1.19.2
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
