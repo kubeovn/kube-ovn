@@ -152,6 +152,9 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	if !slices.Equal(gw.Spec.Selector, gw.Status.Selector) {
 		return true
 	}
+	if !maps.Equal(gw.Spec.Annotations, gw.Status.Annotations) {
+		return true
+	}
 	if !reflect.DeepEqual(gw.Spec.Tolerations, gw.Status.Tolerations) {
 		return true
 	}
@@ -843,19 +846,17 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 }
 
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
-	annotations := make(map[string]string, 7)
-	if oldSts != nil && len(oldSts.Annotations) != 0 {
-		annotations = maps.Clone(oldSts.Annotations)
-	}
-
 	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
-	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName)
+	templateAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName)
 
-	// Restart logic to fix #5072
 	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
-		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
-			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
+		if val, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; ok {
+			templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = val
 		}
+	}
+	// Restart logic to fix #5072
+	if _, ok := templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
+		templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
 	}
 
 	subnetProvider := util.OvnProvider
@@ -881,22 +882,21 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnetProvider)
 		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, subnetProvider)
 		// Merge new annotations with existing ones
-		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
-		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
-		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
-		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
+		templateAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+		templateAnnotations[vpcNatGwNameAnnotation] = gw.Name
+		templateAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
+		templateAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
 	}
-	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
+
+	klog.V(3).Infof("%s templateAnnotations:%v", gw.Name, templateAnnotations)
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
 	if gw.Spec.BgpSpeaker.Enabled {
-		if err := c.setNatGwAPIAccess(podAnnotations); err != nil {
+		if err := c.setNatGwAPIAccess(templateAnnotations); err != nil {
 			klog.Errorf("couldn't add an API interface to the NAT gateway: %v", err)
 			return nil, err
 		}
 	}
-
-	maps.Copy(annotations, podAnnotations)
 
 	// Retrieve all subnets in existence
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -959,7 +959,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
 	}
 
-	if err = setPodRoutesAnnotation(annotations, subnetProvider, routes); err != nil {
+	if err = setPodRoutesAnnotation(templateAnnotations, subnetProvider, routes); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -981,7 +981,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 	// TODO:// check NAD if has ipam to disable ipam
 	if !gw.Spec.NoDefaultEIP {
-		if err = setPodRoutesAnnotation(annotations, subnet.Spec.Provider, routes); err != nil {
+		if err = setPodRoutesAnnotation(templateAnnotations, subnet.Spec.Provider, routes); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -989,7 +989,16 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		// NAT gateway uses no-IPAM mode in network attachment definition when NoDefaultEIP is enabled
 		// This allows macvlan/other CNI plugins to work without IP allocation from Kube-OVN
 		klog.Infof("skipping IP allocation for NAT gateway %s (NoDefaultEIP enabled)", gw.Name)
-		annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
+		templateAnnotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
+	}
+
+	// Merge user-defined annotations in gw spec, but do not overwrite existing system-generated annotations
+	for k, v := range gw.Spec.Annotations {
+		if _, ok := templateAnnotations[k]; ok {
+			klog.Warningf("user-defined annotation %q on VpcNatGateway %s is ignored as it conflicts with a system-generated annotation", k, gw.Name)
+			continue
+		}
+		templateAnnotations[k] = v
 	}
 
 	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
@@ -1010,7 +1019,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: annotations,
+					Annotations: templateAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To(int64(0)),
@@ -1246,6 +1255,10 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	}
 	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
 		gw.Status.Affinity = gw.Spec.Affinity
+		changed = true
+	}
+	if !maps.Equal(gw.Spec.Annotations, gw.Status.Annotations) {
+		gw.Status.Annotations = maps.Clone(gw.Spec.Annotations)
 		changed = true
 	}
 
