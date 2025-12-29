@@ -51,6 +51,8 @@ type Configuration struct {
 	KubeClient                kubernetes.Interface
 	KubeOvnClient             clientset.Interface
 	CertManagerClient         certmanagerclientset.Interface
+	PodName                   string
+	PodNamespace              string
 	NodeName                  string
 	NodeIPv4                  string
 	NodeIPv6                  string
@@ -102,7 +104,6 @@ func ParseFlags() *Configuration {
 		argCniConfFile      = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
 		argsCniConfName     = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 
-		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
@@ -185,7 +186,9 @@ func ParseFlags() *Configuration {
 		SecureServing:             *argSecureServing,
 		PprofPort:                 *argPprofPort,
 		MacLearningFallback:       *argMacLearningFallback,
-		NodeName:                  strings.ToLower(*argNodeName),
+		NodeName:                  os.Getenv(util.EnvNodeName),
+		PodNamespace:              os.Getenv(util.EnvPodNamespace),
+		PodName:                   os.Getenv(util.EnvPodName),
 		ServiceClusterIPRange:     *argServiceClusterIPRange,
 		ClusterRouter:             *argClusterRouter,
 		NodeSwitch:                *argNodeSwitch,

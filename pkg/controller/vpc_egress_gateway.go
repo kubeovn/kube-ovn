@@ -563,7 +563,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 
 	// return the source CIDR blocks for later OVN resources reconciliation
-	deploy.APIVersion, deploy.Kind = deploymentGroupVersion, deploymentKind
+	deploy.APIVersion, deploy.Kind = appsv1.SchemeGroupVersion.String(), util.KindDeployment
 	return attachmentNetworkName, intRouteDstIPv4, intRouteDstIPv6, deploy, nil
 }
 

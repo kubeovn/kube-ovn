@@ -87,7 +87,7 @@ func (c *Controller) syncSubnetRoutes() {
 	}
 
 	for _, pod := range pods {
-		if pod.Spec.HostNetwork || pod.Status.PodIP == "" || len(pod.Annotations) == 0 || !isPodAlive(pod) {
+		if pod.Status.PodIP == "" || len(pod.Annotations) == 0 || !isPodAlive(pod) {
 			continue
 		}
 

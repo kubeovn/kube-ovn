@@ -316,10 +316,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		}
 	}
 
-	if oldPod.ResourceVersion == newPod.ResourceVersion {
-		return
-	}
-	if newPod.Spec.HostNetwork {
+	if newPod.Spec.HostNetwork || oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
 
