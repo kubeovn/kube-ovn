@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.14.25 (2025-12-29)
+
+ * [cf5da16a7](https://github.com/kubeovn/kube-ovn/commit/cf5da16a78c6d9ebc321977e61c1ca101d2d349e) release v1.14.25
+ * [9a607a8bf](https://github.com/kubeovn/kube-ovn/commit/9a607a8bf516e704d01950764fe53c1da32c3283) ovn db: join cluster with raft header backup (#6106)
+ * [dabfbb94d](https://github.com/kubeovn/kube-ovn/commit/dabfbb94d6e72d210e558133857df55e0fe252e7) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.24 (2025-12-25)
 
  * [2a7fcd9f8](https://github.com/kubeovn/kube-ovn/commit/2a7fcd9f85cd377f5ccc73ec16b0fe2d01a58f07) release v1.14.24
