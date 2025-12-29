@@ -39,6 +39,8 @@ function show_help() {
     echo "  dnat-del                 - Delete DNAT rule"
     echo "  snat-add                 - Add SNAT rule"
     echo "  snat-del                 - Delete SNAT rule"
+    echo "  hairpin-snat-add         - Add hairpin SNAT rule for internal FIP access"
+    echo "  hairpin-snat-del         - Delete hairpin SNAT rule"
     echo "  qos-add                  - Add QoS rule"
     echo "  qos-del                  - Delete QoS rule"
     echo "  eip-ingress-qos-add      - Add EIP ingress QoS"
@@ -124,6 +126,7 @@ function init() {
     $iptables_cmd -t nat -N SNAT_FILTER
     $iptables_cmd -t nat -N EXCLUSIVE_DNAT # floatingIp DNAT
     $iptables_cmd -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
+    $iptables_cmd -t nat -N HAIRPIN_SNAT   # hairpin SNAT for internal FIP access
     $iptables_cmd -t nat -N SHARED_DNAT
     $iptables_cmd -t nat -N SHARED_SNAT
 
@@ -134,6 +137,7 @@ function init() {
     $iptables_cmd -t nat -A POSTROUTING -j SNAT_FILTER
     $iptables_cmd -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
+    $iptables_cmd -t nat -A SNAT_FILTER -j HAIRPIN_SNAT
 
     # Send gratuitous ARP for all the IPs on the external network interface at initialization
     # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker
@@ -151,6 +155,26 @@ function init() {
 
 function get_iptables_version() {
   exec_cmd "$iptables_cmd --version"
+}
+
+# Check if the given CIDR exists in VPC_INTERFACE's routes (indicates it's an internal CIDR)
+# This is used to determine if hairpin SNAT is needed for a given SNAT rule
+# Args: $1 - CIDR to check (e.g., "10.0.1.0/24")
+# Returns: 0 if the CIDR is found in VPC_INTERFACE routes, 1 otherwise
+# Example: VPC_INTERFACE=eth0, route "10.0.1.0/24 dev eth0" exists
+#          is_internal_cidr "10.0.1.0/24" -> returns 0 (true)
+#          is_internal_cidr "192.168.1.0/24" -> returns 1 (false, not in routes)
+function is_internal_cidr() {
+    local cidr="$1"
+    if [ -z "$cidr" ]; then
+        return 1
+    fi
+    # Match CIDR at the start of line to ensure exact match
+    # e.g., "10.0.1.0/24 dev eth0" matches, but "10.0.1.0/25 ..." does not
+    if ip -4 route show dev "$VPC_INTERFACE" | grep -q "^$cidr "; then
+        return 0
+    fi
+    return 1
 }
 
 function add_vpc_internal_route() {
@@ -270,9 +294,16 @@ function add_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
-        # check if already exist
-        $iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        # check if already exist, skip adding if exists (idempotent)
+        if ! $iptables_save_cmd | grep SHARED_SNAT | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )" > /dev/null; then
+            exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        fi
+        # Add hairpin SNAT when internalCIDR is routed via VPC_INTERFACE
+        # This enables internal VMs to access other internal VMs via FIP
+        if is_internal_cidr "$internalCIDR"; then
+            echo "SNAT cidr $internalCIDR is internal, adding hairpin SNAT with EIP $eip"
+            add_hairpin_snat "$eip,$internalCIDR"
+        fi
     done
 }
 function del_snat() {
@@ -285,10 +316,79 @@ function del_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         # check if already exist
-        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip")
+        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
         if [ "$?" -eq 0 ];then
           ruleMatch=$(echo $ruleMatch | sed 's/-A //')
           exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
+        fi
+        # Delete hairpin SNAT when internalCIDR is routed via VPC_INTERFACE
+        if is_internal_cidr "$internalCIDR"; then
+            echo "SNAT cidr $internalCIDR is internal, deleting hairpin SNAT with EIP $eip"
+            del_hairpin_snat "$eip,$internalCIDR"
+        fi
+    done
+}
+
+# Hairpin SNAT: Enables internal VM to access another internal VM's FIP
+# Packet flow when VM A accesses VM B's EIP:
+# 1. VM A (10.0.1.6) -> EIP (10.1.69.216) arrives at NAT GW
+# 2. DNAT translates destination to VM B's internal IP (10.0.1.11)
+# 3. Without hairpin SNAT, reply from VM B goes directly to VM A (same subnet),
+#    but VM A expects reply from EIP, causing asymmetric routing failure
+# 4. Hairpin SNAT translates source to EIP, ensuring symmetric return path via NAT GW
+#
+# RECOMMENDED: NAT-GW binds to a single VPC internal subnet. In this case,
+# only one hairpin SNAT rule is needed (matching the VPC's directly connected route).
+#
+# Multi-subnet scenarios are supported but NOT recommended. For multiple subnets,
+# create separate NAT gateways for each subnet to achieve more direct forwarding paths.
+# Each CIDR can only have one hairpin rule to avoid conflicting SNAT sources.
+#
+# Rule format: eip,internalCIDR
+# Example: 10.1.69.219,10.0.1.0/24
+# Creates: iptables -t nat -A HAIRPIN_SNAT -s 10.0.1.0/24 -d 10.0.1.0/24 -j SNAT --to-source 10.1.69.219
+function add_hairpin_snat() {
+    # make sure inited
+    check_inited
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        eip=(${arr[0]//\// })
+        internalCIDR=${arr[1]}
+
+        # Cache iptables-save output to avoid redundant calls (performance optimization)
+        local existing_rules
+        existing_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR")
+
+        # Check if this exact rule already exists (idempotent)
+        if echo "$existing_rules" | grep -qE -- "--to-source $eip(\$| )"; then
+            echo "Hairpin SNAT rule for $internalCIDR with EIP $eip already exists, skipping"
+            continue
+        fi
+
+        # Check if this CIDR already has a hairpin rule with a different EIP
+        if [ -n "$existing_rules" ]; then
+            echo "WARNING: Hairpin SNAT rule for $internalCIDR already exists with different EIP. Skipping."
+            continue
+        fi
+
+        exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT -s $internalCIDR -d $internalCIDR -j SNAT --to-source $eip"
+        echo "Hairpin SNAT rule added: $internalCIDR -> $eip"
+    done
+}
+
+function del_hairpin_snat() {
+    # make sure inited
+    check_inited
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        eip=(${arr[0]//\// })
+        internalCIDR=${arr[1]}
+        # check if rule exists (idempotent - skip if not found)
+        if $iptables_save_cmd -t nat | grep HAIRPIN_SNAT | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR" | grep -E -- "--to-source $eip(\$| )" > /dev/null; then
+            exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT -s $internalCIDR -d $internalCIDR -j SNAT --to-source $eip"
+            echo "Hairpin SNAT rule deleted: $internalCIDR -> $eip"
         fi
     done
 }
@@ -561,6 +661,14 @@ case $opt in
     floating-ip-del)
         echo "floating-ip-del $rules"
         del_floating_ip $rules
+        ;;
+    hairpin-snat-add)
+        echo "hairpin-snat-add $rules"
+        add_hairpin_snat $rules
+        ;;
+    hairpin-snat-del)
+        echo "hairpin-snat-del $rules"
+        del_hairpin_snat $rules
         ;;
     get-iptables-version)
         echo "get-iptables-version $rules"
