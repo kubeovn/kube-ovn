@@ -44,6 +44,7 @@ ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
 ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
 ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
+ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
@@ -86,6 +87,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
     # ovsdb-tool: add command fix-cluster
     git apply $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
+    # ovsdb-tool: add commands db-raft-header/rejoin-cluster
+    git apply $SRC_DIR/53b9837f7fe89cd63af735b039b8c26107d6579d.patch && \
     # netdev: reduce cpu utilization for getting device addresses
     git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
