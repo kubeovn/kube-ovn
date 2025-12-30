@@ -706,6 +706,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
+	// Start OpenFlow sync loop
+	go c.runFlowSync(stopCh)
+
 	<-stopCh
 	klog.Info("Shutting down workers")
 }

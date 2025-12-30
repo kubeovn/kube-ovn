@@ -25,6 +25,12 @@ func (c *Controller) initRuntime() error {
 	return nil
 }
 
+func (c *Controller) syncFlows() {}
+
+func (c *Controller) runFlowSync(stopCh <-chan struct{}) {
+	<-stopCh
+}
+
 func (c *Controller) reconcileServices(_ *serviceEvent) error {
 	return nil
 }
@@ -141,7 +147,7 @@ func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toD
 	return
 }
 
-func (c *Controller) handleDeletePod(event *podEvent) error {
+func (c *Controller) handleDeletePod(_ any) error {
 	return nil
 }
 

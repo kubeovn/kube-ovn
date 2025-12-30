@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 
 	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
@@ -49,6 +50,10 @@ type ControllerRuntime struct {
 
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
+
+	flowCache      map[string]map[string][]string // key: bridgeName -> flowKey -> flow rules
+	flowCacheMutex sync.RWMutex
+	flowChan       chan struct{} // channel to trigger immediate flow sync
 }
 
 type LbServiceRules struct {
@@ -102,6 +107,10 @@ func (c *Controller) initRuntime() error {
 	c.k8siptables = make(map[string]k8siptables.Interface)
 	c.k8sipsets = k8sipset.New(c.k8sExec)
 	c.ovsClient = ovsutil.New()
+
+	// Initialize OpenFlow flow cache (ovn-kubernetes style)
+	c.flowCache = make(map[string]map[string][]string)
+	c.flowChan = make(chan struct{}, 1)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -493,8 +502,8 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 	if len(lbServiceRulesToAdd) > 0 {
 		for _, rule := range lbServiceRulesToAdd {
 			klog.Infof("Adding LB service rule: %+v", rule)
-			if err := ovs.AddOrUpdateUnderlaySubnetSvcLocalOpenFlow(c.ovsClient, rule.BridgeName, rule.IP, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.Port); err != nil {
-				klog.Errorf("failed to add or update underlay subnet svc local openflow: %v", err)
+			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName); err != nil {
+				klog.Errorf("failed to update underlay subnet svc local openflow cache: %v", err)
 			}
 		}
 	}
@@ -502,9 +511,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 	if len(lbServiceRulesToDel) > 0 {
 		for _, rule := range lbServiceRulesToDel {
 			klog.Infof("Delete LB service rule: %+v", rule)
-			if err := ovs.DeleteUnderlaySubnetSvcLocalOpenFlow(c.ovsClient, rule.BridgeName, rule.IP, rule.Protocol, rule.UnderlayNic, rule.Port); err != nil {
-				klog.Errorf("failed to delete underlay subnet svc local openflow: %v", err)
-			}
+			c.deleteUnderlaySubnetSvcLocalFlowCache(rule.BridgeName, rule.IP, rule.Port, rule.Protocol)
 		}
 	}
 
