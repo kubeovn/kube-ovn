@@ -366,3 +366,88 @@ func TestDiffNatGwRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestDiffNatGwRoutesContent(t *testing.T) {
+	tests := []struct {
+		name             string
+		desiredRoutes    map[string]string
+		currentRoutes    map[string]string
+		expectedDel      []string
+		expectedAdd      []string
+		expectedResolved []kubeovnv1.Route
+		description      string
+	}{
+		{
+			name: "add single route",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			currentRoutes: map[string]string{},
+			expectedDel:   []string{},
+			expectedAdd:   []string{"10.0.0.0/8,192.168.1.1"},
+			expectedResolved: []kubeovnv1.Route{
+				{CIDR: "10.0.0.0/8", NextHopIP: "192.168.1.1"},
+			},
+			description: "Should correctly format route to add",
+		},
+		{
+			name:          "delete single route",
+			desiredRoutes: map[string]string{},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			expectedDel:      []string{"10.0.0.0/8,192.168.1.1"},
+			expectedAdd:      []string{},
+			expectedResolved: []kubeovnv1.Route{},
+			description:      "Should correctly format route to delete",
+		},
+		{
+			name: "update nexthop - route should be in add list",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.2",
+			},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			expectedDel: []string{},
+			expectedAdd: []string{"10.0.0.0/8,192.168.1.2"},
+			expectedResolved: []kubeovnv1.Route{
+				{CIDR: "10.0.0.0/8", NextHopIP: "192.168.1.2"},
+			},
+			description: "Changed nexthop should trigger add with new value",
+		},
+		{
+			name: "mixed operations with content verification",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8":     "192.168.1.1", // keep unchanged
+				"192.168.0.0/16": "172.16.0.1",  // add new
+			},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8":    "192.168.1.1", // keep unchanged
+				"172.16.0.0/12": "192.168.1.1", // delete this
+			},
+			expectedDel: []string{"172.16.0.0/12,192.168.1.1"},
+			expectedAdd: []string{"192.168.0.0/16,172.16.0.1"},
+			expectedResolved: []kubeovnv1.Route{
+				{CIDR: "10.0.0.0/8", NextHopIP: "192.168.1.1"},
+				{CIDR: "192.168.0.0/16", NextHopIP: "172.16.0.1"},
+			},
+			description: "Mixed add/delete should have correct content",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			routesToDel, routesToAdd, resolvedRoutes := diffNatGwRoutes(tt.desiredRoutes, tt.currentRoutes)
+
+			// Verify delete content
+			assert.ElementsMatch(t, tt.expectedDel, routesToDel, "delete routes content mismatch: %s", tt.description)
+
+			// Verify add content
+			assert.ElementsMatch(t, tt.expectedAdd, routesToAdd, "add routes content mismatch: %s", tt.description)
+
+			// Verify resolved routes content
+			assert.ElementsMatch(t, tt.expectedResolved, resolvedRoutes, "resolved routes content mismatch: %s", tt.description)
+		})
+	}
+}
