@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -77,7 +78,7 @@ func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
 
 func (c *Controller) getPortID(bridgeName, portName string) (int, error) {
 	if c.ovsClient == nil {
-		return 0, fmt.Errorf("ovs client not initialized")
+		return 0, errors.New("ovs client not initialized")
 	}
 
 	portInfo, err := c.ovsClient.OpenFlow.DumpPort(bridgeName, portName)
