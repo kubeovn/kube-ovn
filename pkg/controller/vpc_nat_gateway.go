@@ -612,10 +612,10 @@ func diffNatGwRoutes(desiredRoutes, currentRoutes map[string]string) (routesToDe
 	routesToAdd = make([]string, 0, len(desiredRoutes))
 	resolvedRoutes = make([]kubeovnv1.Route, 0, len(desiredRoutes))
 
-	// Calculate routes to delete: exist in current but not in desired
-	for cidr, nextHop := range currentRoutes {
-		if _, exists := desiredRoutes[cidr]; !exists {
-			routesToDel = append(routesToDel, fmt.Sprintf("%s,%s", cidr, nextHop))
+	// Calculate routes to delete: routes that no longer exist in desired config or have changed nextHopIP
+	for cidr, currentNextHop := range currentRoutes {
+		if desiredNextHop, exists := desiredRoutes[cidr]; !exists || currentNextHop != desiredNextHop {
+			routesToDel = append(routesToDel, fmt.Sprintf("%s,%s", cidr, currentNextHop))
 		}
 	}
 

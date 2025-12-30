@@ -316,7 +316,7 @@ func TestDiffNatGwRoutes(t *testing.T) {
 			currentRoutes: map[string]string{
 				"10.0.0.0/8": "192.168.1.1",
 			},
-			wantDelCount:   0, // no delete needed, just update
+			wantDelCount:   1, // delete old route with old nexthop
 			wantAddCount:   1, // add with new nexthop
 			wantRouteCount: 1,
 		},
@@ -409,12 +409,12 @@ func TestDiffNatGwRoutesContent(t *testing.T) {
 			currentRoutes: map[string]string{
 				"10.0.0.0/8": "192.168.1.1",
 			},
-			expectedDel: []string{},
+			expectedDel: []string{"10.0.0.0/8,192.168.1.1"},
 			expectedAdd: []string{"10.0.0.0/8,192.168.1.2"},
 			expectedResolved: []kubeovnv1.Route{
 				{CIDR: "10.0.0.0/8", NextHopIP: "192.168.1.2"},
 			},
-			description: "Changed nexthop should trigger add with new value",
+			description: "Changed nexthop should trigger delete and add",
 		},
 		{
 			name: "mixed operations with content verification",
