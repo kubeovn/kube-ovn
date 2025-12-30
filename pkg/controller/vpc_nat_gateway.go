@@ -865,21 +865,24 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 	if c.config.EnableNonPrimaryCNI {
 		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
-		var attachedNetworks string
-		// Get NetworkAttachmentDefinition if specified by user from pod annotations
-		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
-			attachedNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot] + ", "
-		}
-		// Attach the external network to attachedNetworks
-		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
 		// Check if we have a subnet provider, if so, use it to set the routes annotation
 		// This is useful when running in secondary CNI mode, as the subnet provider will be the
 		// one that has the routes to the subnet
 		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, eth0SubnetProvider)
 		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, eth0SubnetProvider)
 		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, eth0SubnetProvider)
-		// Merge new annotations with existing ones
-		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+
+		// If user has specified custom network attachments in VpcNatGateway annotations, use them directly
+		// This preserves both JSON array format and comma-separated format specified by the user
+		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
+			// User has provided custom network attachments, use them as-is
+			podAnnotations[nadv1.NetworkAttachmentAnnot] = gw.Annotations[nadv1.NetworkAttachmentAnnot]
+		} else {
+			// No custom attachments specified, use the default external network only
+			podAnnotations[nadv1.NetworkAttachmentAnnot] = fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+		}
+
+		// Merge provider-specific annotations
 		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
 		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
 		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
