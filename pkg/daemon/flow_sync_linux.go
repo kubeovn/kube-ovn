@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -13,14 +14,14 @@ import (
 
 const flowSyncPeriod = 15 * time.Second
 
-var managedFlowCookieSet = map[uint64]struct{}{
-	util.UnderlaySvcLocalOpenFlowCookieV4: {},
-	util.UnderlaySvcLocalOpenFlowCookieV6: {},
-}
+var managedFlowCookieSet = sets.New[uint64](
+	util.UnderlaySvcLocalOpenFlowCookieV4,
+	util.UnderlaySvcLocalOpenFlowCookieV6,
+)
 
 func (c *Controller) requestFlowSync() {
 	if c.flowChan == nil {
-		return
+		util.LogFatalAndExit(nil, "flowChan is not initialized")
 	}
 
 	select {
@@ -36,7 +37,7 @@ func (c *Controller) syncFlows() {
 		return
 	}
 
-	flowsByBridge := c.storeFlowCache()
+	flowCacheByBridge := c.storeFlowCache()
 
 	bridges, err := ovs.Bridges()
 	if err != nil {
@@ -52,18 +53,18 @@ func (c *Controller) syncFlows() {
 		}
 
 		preserved := filterUnmanagedFlows(existing)
-		managed := flowsByBridge[bridgeName]
-		merged := append(preserved, managed...)
+		cachedFlows := flowCacheByBridge[bridgeName]
+		finalFlows := append(preserved, cachedFlows...)
 
-		if err := ovs.ReplaceFlows(bridgeName, merged); err != nil {
+		if err := ovs.ReplaceFlows(bridgeName, finalFlows); err != nil {
 			klog.Errorf("failed to replace flows for bridge %s: %v", bridgeName, err)
 			continue
 		}
-		if len(managed) == 0 {
-			klog.V(5).Infof("no managed flows for bridge %s", bridgeName)
+		if len(cachedFlows) == 0 {
+			klog.V(5).Infof("no cached flows for bridge %s", bridgeName)
 			continue
 		}
-		klog.V(3).Infof("synced %d managed flows on bridge %s", len(managed), bridgeName)
+		klog.V(3).Infof("synced %d cached flows on bridge %s", len(cachedFlows), bridgeName)
 	}
 }
 
@@ -73,29 +74,18 @@ func (c *Controller) storeFlowCache() map[string][]string {
 	c.flowCacheMutex.RLock()
 	defer c.flowCacheMutex.RUnlock()
 
-	appendFlowCache(snapshot, c.flowCache)
-
-	return snapshot
-}
-
-func appendFlowCache(dst map[string][]string, src map[string]map[string][]string) {
-	for bridgeName, entries := range src {
-		if len(entries) == 0 {
-			if _, ok := dst[bridgeName]; !ok {
-				dst[bridgeName] = nil
-			}
-			continue
+	for bridgeName, entries := range c.flowCache {
+		if _, ok := snapshot[bridgeName]; !ok {
+			snapshot[bridgeName] = nil
 		}
 		for _, flows := range entries {
-			if len(flows) == 0 {
-				if _, ok := dst[bridgeName]; !ok {
-					dst[bridgeName] = nil
-				}
-				continue
+			if len(flows) > 0 {
+				snapshot[bridgeName] = append(snapshot[bridgeName], flows...)
 			}
-			dst[bridgeName] = append(dst[bridgeName], flows...)
 		}
 	}
+
+	return snapshot
 }
 
 func filterUnmanagedFlows(flows []string) []string {
@@ -114,8 +104,7 @@ func isManagedFlow(flow string) bool {
 	if !ok {
 		return false
 	}
-	_, exists := managedFlowCookieSet[cookie]
-	return exists
+	return managedFlowCookieSet.Has(cookie)
 }
 
 func extractFlowCookie(flow string) (uint64, bool) {
@@ -143,10 +132,7 @@ func extractFlowCookie(flow string) (uint64, bool) {
 }
 
 func parseHexUint64(value string) (uint64, error) {
-	if !strings.HasPrefix(value, "0x") {
-		value = "0x" + value
-	}
-	return strconv.ParseUint(value, 0, 64)
+	return strconv.ParseUint(strings.TrimPrefix(value, "0x"), 16, 64)
 }
 
 func (c *Controller) runFlowSync(stopCh <-chan struct{}) {

@@ -505,6 +505,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 			klog.Infof("Adding LB service rule: %+v", rule)
 			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName); err != nil {
 				klog.Errorf("failed to update underlay subnet svc local openflow cache: %v", err)
+				return err
 			}
 		}
 	}
