@@ -11,6 +11,152 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestResolveNatGwRoutes(t *testing.T) {
+	tests := []struct {
+		name        string
+		gw          *kubeovnv1.VpcNatGateway
+		subnet      *kubeovnv1.Subnet
+		wantRoutes  map[string]string
+		wantErr     bool
+		description string
+	}{
+		{
+			name: "resolve gateway keyword to v4",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "test-subnet",
+					Routes: []kubeovnv1.Route{
+						{CIDR: "10.0.0.0/8", NextHopIP: "gateway"},
+					},
+				},
+			},
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+				Spec:       kubeovnv1.SubnetSpec{Gateway: "192.168.1.1"},
+			},
+			wantRoutes:  map[string]string{"10.0.0.0/8": "192.168.1.1"},
+			wantErr:     false,
+			description: "Should resolve 'gateway' to v4 gateway IP for v4 CIDR",
+		},
+		{
+			name: "resolve gateway keyword to v6",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "test-subnet",
+					Routes: []kubeovnv1.Route{
+						{CIDR: "fd00::/8", NextHopIP: "gateway"},
+					},
+				},
+			},
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+				Spec:       kubeovnv1.SubnetSpec{Gateway: "192.168.1.1,fd00::1"},
+			},
+			wantRoutes:  map[string]string{"fd00::/8": "fd00::1"},
+			wantErr:     false,
+			description: "Should resolve 'gateway' to v6 gateway IP for v6 CIDR",
+		},
+		{
+			name: "explicit nexthop IP",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "test-subnet",
+					Routes: []kubeovnv1.Route{
+						{CIDR: "10.0.0.0/8", NextHopIP: "172.16.0.1"},
+					},
+				},
+			},
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+				Spec:       kubeovnv1.SubnetSpec{Gateway: "192.168.1.1"},
+			},
+			wantRoutes:  map[string]string{"10.0.0.0/8": "172.16.0.1"},
+			wantErr:     false,
+			description: "Should use explicit nexthop IP as-is",
+		},
+		{
+			name: "skip empty nexthop",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "test-subnet",
+					Routes: []kubeovnv1.Route{
+						{CIDR: "10.0.0.0/8", NextHopIP: ""},
+						{CIDR: "172.16.0.0/12", NextHopIP: "192.168.1.1"},
+					},
+				},
+			},
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+				Spec:       kubeovnv1.SubnetSpec{Gateway: "192.168.1.1"},
+			},
+			wantRoutes:  map[string]string{"172.16.0.0/12": "192.168.1.1"},
+			wantErr:     false,
+			description: "Should skip routes with empty nextHopIP",
+		},
+		{
+			name: "subnet not found",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "non-existent",
+					Routes: []kubeovnv1.Route{
+						{CIDR: "10.0.0.0/8", NextHopIP: "gateway"},
+					},
+				},
+			},
+			subnet:      nil,
+			wantRoutes:  nil,
+			wantErr:     true,
+			description: "Should return error when subnet not found",
+		},
+		{
+			name: "empty routes",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Subnet: "test-subnet",
+					Routes: []kubeovnv1.Route{},
+				},
+			},
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+				Spec:       kubeovnv1.SubnetSpec{Gateway: "192.168.1.1"},
+			},
+			wantRoutes:  map[string]string{},
+			wantErr:     false,
+			description: "Should return empty map for empty routes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var subnets []*kubeovnv1.Subnet
+			if tt.subnet != nil {
+				subnets = []*kubeovnv1.Subnet{tt.subnet}
+			}
+
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: subnets,
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+
+			gotRoutes, err := controller.resolveNatGwRoutes(tt.gw)
+
+			if tt.wantErr {
+				assert.Error(t, err, tt.description)
+				return
+			}
+			require.NoError(t, err, tt.description)
+			assert.Equal(t, tt.wantRoutes, gotRoutes, tt.description)
+		})
+	}
+}
+
 func TestGetSubnetProvider(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -122,4 +268,101 @@ func TestGetSubnetProvider(t *testing.T) {
 		_, err = controller.GetSubnetProvider("missing-subnet")
 		assert.Error(t, err, "Should error for missing subnet")
 	})
+}
+
+func TestDiffNatGwRoutes(t *testing.T) {
+	tests := []struct {
+		name           string
+		desiredRoutes  map[string]string
+		currentRoutes  map[string]string
+		wantDelCount   int
+		wantAddCount   int
+		wantRouteCount int
+	}{
+		{
+			name:           "empty to empty",
+			desiredRoutes:  map[string]string{},
+			currentRoutes:  map[string]string{},
+			wantDelCount:   0,
+			wantAddCount:   0,
+			wantRouteCount: 0,
+		},
+		{
+			name: "add new routes",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8":    "192.168.1.1",
+				"172.16.0.0/12": "192.168.1.1",
+			},
+			currentRoutes:  map[string]string{},
+			wantDelCount:   0,
+			wantAddCount:   2,
+			wantRouteCount: 2,
+		},
+		{
+			name:          "delete all routes",
+			desiredRoutes: map[string]string{},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			wantDelCount:   1,
+			wantAddCount:   0,
+			wantRouteCount: 0,
+		},
+		{
+			name: "update route nexthop",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.2", // changed nexthop
+			},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			wantDelCount:   0, // no delete needed, just update
+			wantAddCount:   1, // add with new nexthop
+			wantRouteCount: 1,
+		},
+		{
+			name: "mixed add and delete",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8":     "192.168.1.1", // keep
+				"192.168.0.0/16": "192.168.1.1", // add
+			},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8":    "192.168.1.1", // keep
+				"172.16.0.0/12": "192.168.1.1", // delete
+			},
+			wantDelCount:   1,
+			wantAddCount:   1,
+			wantRouteCount: 2,
+		},
+		{
+			name: "no changes needed",
+			desiredRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			currentRoutes: map[string]string{
+				"10.0.0.0/8": "192.168.1.1",
+			},
+			wantDelCount:   0,
+			wantAddCount:   0,
+			wantRouteCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			routesToDel, routesToAdd, resolvedRoutes := diffNatGwRoutes(tt.desiredRoutes, tt.currentRoutes)
+
+			assert.Len(t, routesToDel, tt.wantDelCount, "delete count mismatch")
+			assert.Len(t, routesToAdd, tt.wantAddCount, "add count mismatch")
+			assert.Len(t, resolvedRoutes, tt.wantRouteCount, "resolved routes count mismatch")
+
+			// Verify format of routesToAdd/routesToDel: "cidr,nextHopIP"
+			for _, r := range routesToAdd {
+				assert.Contains(t, r, ",", "route string should contain comma separator")
+			}
+			for _, r := range routesToDel {
+				assert.Contains(t, r, ",", "route string should contain comma separator")
+			}
+		})
+	}
 }

@@ -61,6 +61,7 @@ type VpcNatGatewayStatus struct {
 	Selector        []string            `json:"selector" patchStrategy:"merge"`
 	Tolerations     []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
+	Routes          []Route             `json:"routes,omitempty" patchStrategy:"merge"`
 }
 
 type Route struct {
