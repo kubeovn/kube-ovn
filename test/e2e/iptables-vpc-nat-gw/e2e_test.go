@@ -1125,13 +1125,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNotNil(pod, "NAT GW pod should exist")
 
 		ginkgo.By("5. Checking route table in NAT GW pod")
-		// Execute ip route show in the NAT GW pod to verify custom routes
-		stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
-		framework.ExpectNoError(err, "Failed to execute ip route in NAT GW pod")
-
-		// Verify the custom routes exist with correct nexthop
-		framework.ExpectContainSubstring(stdout, "192.168.100.0/24 via "+overlaySubnetV4Gw, "Custom route 192.168.100.0/24 should exist with correct nexthop")
-		framework.ExpectContainSubstring(stdout, "172.16.0.0/16 via "+overlaySubnetV4Gw, "Custom route 172.16.0.0/16 with 'gateway' nexthop should be resolved and exist")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to execute ip route in NAT GW pod")
+			g.Expect(stdout).To(gomega.ContainSubstring("192.168.100.0/24 via "+overlaySubnetV4Gw), "Custom route 192.168.100.0/24 should exist with correct nexthop")
+			g.Expect(stdout).To(gomega.ContainSubstring("172.16.0.0/16 via "+overlaySubnetV4Gw), "Custom route 172.16.0.0/16 with 'gateway' nexthop should be resolved and exist")
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
 
 		ginkgo.By("6. Test completed: VPC NAT Gateway custom routes work correctly")
 	})
@@ -1182,20 +1181,21 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 		vpcNatGwClient.Patch(originalGw, modifiedGw)
 
-		ginkgo.By("5. Waiting for routes to be applied")
-		time.Sleep(5 * time.Second)
+		ginkgo.By("5. Verifying routes are injected into NAT GW pod")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.And(
+				gomega.ContainSubstring("192.168.200.0/24 via "+overlaySubnetV4Gw),
+				gomega.ContainSubstring("10.100.0.0/16 via "+overlaySubnetV4Gw),
+			))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
 
-		ginkgo.By("6. Verifying routes are injected into NAT GW pod")
-		stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
-		framework.ExpectNoError(err, "Failed to execute ip route in NAT GW pod")
-		framework.ExpectContainSubstring(stdout, "192.168.200.0/24 via "+overlaySubnetV4Gw, "Added route 192.168.200.0/24 should exist")
-		framework.ExpectContainSubstring(stdout, "10.100.0.0/16 via "+overlaySubnetV4Gw, "Added route 10.100.0.0/16 should exist")
-
-		ginkgo.By("7. Verifying status.routes is updated")
+		ginkgo.By("6. Verifying status.routes is updated")
 		updatedGw := vpcNatGwClient.Get(vpcNatGwName)
 		framework.ExpectEqual(len(updatedGw.Status.Routes), 2, "Status should have 2 routes")
 
-		ginkgo.By("8. Modifying routes - change one, keep one")
+		ginkgo.By("7. Modifying routes - change one, keep one")
 		originalGw = vpcNatGwClient.Get(vpcNatGwName)
 		modifiedGw = originalGw.DeepCopy()
 		modifiedGw.Spec.Routes = []apiv1.Route{
@@ -1204,36 +1204,38 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 		vpcNatGwClient.Patch(originalGw, modifiedGw)
 
-		ginkgo.By("9. Waiting for route changes to be applied")
-		time.Sleep(5 * time.Second)
+		ginkgo.By("8. Verifying route changes in NAT GW pod")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.And(
+				gomega.ContainSubstring("192.168.200.0/24 via "+overlaySubnetV4Gw),
+				gomega.ContainSubstring("172.31.0.0/16 via "+overlaySubnetV4Gw),
+				gomega.Not(gomega.ContainSubstring("10.100.0.0/16")),
+			))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
 
-		ginkgo.By("10. Verifying route changes in NAT GW pod")
-		stdout, _, err = framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
-		framework.ExpectNoError(err, "Failed to execute ip route in NAT GW pod")
-		framework.ExpectContainSubstring(stdout, "192.168.200.0/24 via "+overlaySubnetV4Gw, "Kept route 192.168.200.0/24 should still exist")
-		framework.ExpectContainSubstring(stdout, "172.31.0.0/16 via "+overlaySubnetV4Gw, "New route 172.31.0.0/16 should exist")
-		framework.ExpectNotContainSubstring(stdout, "10.100.0.0/16", "Removed route 10.100.0.0/16 should not exist")
-
-		ginkgo.By("11. Removing all routes")
+		ginkgo.By("9. Removing all routes")
 		originalGw = vpcNatGwClient.Get(vpcNatGwName)
 		modifiedGw = originalGw.DeepCopy()
 		modifiedGw.Spec.Routes = nil
 		vpcNatGwClient.Patch(originalGw, modifiedGw)
 
-		ginkgo.By("12. Waiting for routes to be removed")
-		time.Sleep(5 * time.Second)
+		ginkgo.By("10. Verifying all custom routes are removed")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.Not(gomega.Or(
+				gomega.ContainSubstring("192.168.200.0/24"),
+				gomega.ContainSubstring("172.31.0.0/16"),
+			)))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
 
-		ginkgo.By("13. Verifying all custom routes are removed")
-		stdout, _, err = framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
-		framework.ExpectNoError(err, "Failed to execute ip route in NAT GW pod")
-		framework.ExpectNotContainSubstring(stdout, "192.168.200.0/24", "Route 192.168.200.0/24 should be removed")
-		framework.ExpectNotContainSubstring(stdout, "172.31.0.0/16", "Route 172.31.0.0/16 should be removed")
-
-		ginkgo.By("14. Verifying status.routes is empty")
+		ginkgo.By("11. Verifying status.routes is empty")
 		updatedGw = vpcNatGwClient.Get(vpcNatGwName)
 		framework.ExpectEqual(len(updatedGw.Status.Routes), 0, "Status routes should be empty after removing all routes")
 
-		ginkgo.By("15. Test completed: VPC NAT Gateway dynamic routes update works correctly")
+		ginkgo.By("12. Test completed: VPC NAT Gateway dynamic routes update works correctly")
 	})
 })
 

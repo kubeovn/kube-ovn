@@ -41,8 +41,6 @@ const (
 	VpcFloatingIPMd5Annotation              = "ovn.kubernetes.io/vpc_floating_ips"
 	VpcDnatMd5Annotation                    = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation                    = "ovn.kubernetes.io/vpc_snat_md5"
-	VpcCIDRsAnnotation                      = "ovn.kubernetes.io/vpc_cidrs"
-	VpcCIDRsAnnotationTemplate              = "%s.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation                         = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel                        = "ovn.kubernetes.io/vpc_external"
 	VpcEipAnnotation                        = "ovn.kubernetes.io/vpc_eip"
