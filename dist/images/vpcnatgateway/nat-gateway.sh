@@ -295,7 +295,8 @@ function add_snat() {
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
         # check if already exist, skip adding if exists (idempotent)
-        if ! $iptables_save_cmd | grep SHARED_SNAT | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )" > /dev/null; then
+        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
+        if [ -z "$ruleMatch" ]; then
             exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
         fi
         # Add hairpin SNAT when internalCIDR is routed via VPC_INTERFACE
@@ -306,6 +307,7 @@ function add_snat() {
         fi
     done
 }
+
 function del_snat() {
     # make sure inited
     check_inited
@@ -316,7 +318,7 @@ function del_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         # check if already exist
-        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
+        ruleMatch=$($iptables_save_cmd | grep SHARED_SNAT | grep "\-s $internalCIDR" | grep "source $eip")
         if [ "$?" -eq 0 ];then
           ruleMatch=$(echo $ruleMatch | sed 's/-A //')
           exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
@@ -350,15 +352,17 @@ function del_snat() {
 function add_hairpin_snat() {
     # make sure inited
     check_inited
+    local all_hairpin_rules
+    all_hairpin_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT)
     for rule in $@
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
 
-        # Cache iptables-save output to avoid redundant calls (performance optimization)
+        # Filter from cached rules for this specific CIDR
         local existing_rules
-        existing_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR")
+        existing_rules=$(echo "$all_hairpin_rules" | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR")
 
         # Check if this exact rule already exists (idempotent)
         if echo "$existing_rules" | grep -qE -- "--to-source $eip(\$| )"; then
@@ -380,13 +384,15 @@ function add_hairpin_snat() {
 function del_hairpin_snat() {
     # make sure inited
     check_inited
+    local all_hairpin_rules
+    all_hairpin_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT)
     for rule in $@
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         # check if rule exists (idempotent - skip if not found)
-        if $iptables_save_cmd -t nat | grep HAIRPIN_SNAT | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR" | grep -E -- "--to-source $eip(\$| )" > /dev/null; then
+        if echo "$all_hairpin_rules" | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR" | grep -qE -- "--to-source $eip(\$| )"; then
             exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT -s $internalCIDR -d $internalCIDR -j SNAT --to-source $eip"
             echo "Hairpin SNAT rule deleted: $internalCIDR -> $eip"
         fi

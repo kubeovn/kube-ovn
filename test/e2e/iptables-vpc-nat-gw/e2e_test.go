@@ -248,6 +248,64 @@ func verifySubnetStatusAfterEIPOperation(subnetClient *framework.SubnetClient, s
 	}
 }
 
+// checkHairpinSnatRuleExists checks if hairpin SNAT rule exists in the NAT gateway pod
+// Returns true if rule exists, false otherwise (including when HAIRPIN_SNAT chain doesn't exist)
+// This is used with gomega.Eventually for polling-based verification
+func checkHairpinSnatRuleExists(natGwPodName, cidr, eip string) bool {
+	cmd := []string{"iptables-save", "-t", "nat"}
+	stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, natGwPodName, cmd...)
+	if err != nil {
+		framework.Logf("Failed to exec iptables-save in NAT gateway pod %s: %v", natGwPodName, err)
+		return false
+	}
+
+	iptablesOutput := string(stdout)
+
+	// If HAIRPIN_SNAT chain doesn't exist, rule cannot exist
+	if !strings.Contains(iptablesOutput, ":HAIRPIN_SNAT") && !strings.Contains(iptablesOutput, "-N HAIRPIN_SNAT") {
+		return false
+	}
+
+	hairpinRulePattern := fmt.Sprintf("-A HAIRPIN_SNAT -s %s -d %s -j SNAT --to-source %s", cidr, cidr, eip)
+	return strings.Contains(iptablesOutput, hairpinRulePattern)
+}
+
+// verifyHairpinSnatRule verifies hairpin SNAT rule exists or not in the NAT gateway pod
+// Hairpin SNAT enables internal VMs to access other internal VMs via their FIP/EIP
+// The rule format: -A HAIRPIN_SNAT -s <cidr> -d <cidr> -j SNAT --to-source <eip>
+// This feature was introduced in v1.15, so the function will skip verification
+// if HAIRPIN_SNAT chain does not exist (for backward compatibility)
+func verifyHairpinSnatRule(natGwPodName, cidr, eip string, shouldExist bool) {
+	ginkgo.GinkgoHelper()
+
+	cmd := []string{"iptables-save", "-t", "nat"}
+	stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, natGwPodName, cmd...)
+	framework.ExpectNoError(err, "failed to exec iptables-save in NAT gateway pod %s", natGwPodName)
+
+	iptablesOutput := string(stdout)
+
+	// Check if HAIRPIN_SNAT chain exists (feature introduced in v1.15)
+	// Skip verification if the chain doesn't exist for backward compatibility
+	if !strings.Contains(iptablesOutput, ":HAIRPIN_SNAT") && !strings.Contains(iptablesOutput, "-N HAIRPIN_SNAT") {
+		framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin SNAT verification (feature requires v1.15+)")
+		return
+	}
+
+	// Check for hairpin SNAT rule pattern: -A HAIRPIN_SNAT -s <cidr> -d <cidr> -j SNAT --to-source <eip>
+	hairpinRulePattern := fmt.Sprintf("-A HAIRPIN_SNAT -s %s -d %s -j SNAT --to-source %s", cidr, cidr, eip)
+	ruleExists := strings.Contains(iptablesOutput, hairpinRulePattern)
+
+	if shouldExist {
+		framework.ExpectTrue(ruleExists,
+			"Hairpin SNAT rule should exist: %s\niptables output:\n%s", hairpinRulePattern, iptablesOutput)
+		framework.Logf("Verified hairpin SNAT rule exists: %s", hairpinRulePattern)
+	} else {
+		framework.ExpectFalse(ruleExists,
+			"Hairpin SNAT rule should NOT exist: %s\niptables output:\n%s", hairpinRulePattern, iptablesOutput)
+		framework.Logf("Verified hairpin SNAT rule does not exist for CIDR %s", cidr)
+	}
+}
+
 var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
@@ -456,6 +514,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[2] iptables EIP FIP SNAT DNAT", func() {
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 		// Test-specific variables
 		randomSuffix := framework.RandomSuffix()
 		fipVipName := "fip-vip-" + randomSuffix
@@ -527,6 +586,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			ginkgo.By("Cleaning up snat " + snatName)
 			iptablesSnatRuleClient.DeleteSync(snatName)
 		})
+
+		// Verify hairpin SNAT rule is automatically created for internal CIDR
+		ginkgo.By("Verifying hairpin SNAT rule exists in NAT gateway pod")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		snatEip = iptablesEIPClient.Get(snatEipName)
+		verifyHairpinSnatRule(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP, true)
 
 		ginkgo.By("Creating iptables vip for dnat")
 		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
@@ -603,8 +668,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesSnatRuleClient.DeleteSync(sharedEipSnatName)
 		})
 
-		ginkgo.By("Get share eip")
+		// Verify hairpin SNAT rule is created for shared SNAT as well
+		ginkgo.By("Getting share eip for hairpin verification")
 		shareEip = iptablesEIPClient.Get(sharedEipName)
+		framework.ExpectNotEmpty(shareEip.Status.IP, "shareEip.Status.IP should not be empty for hairpin verification")
+		ginkgo.By("Verifying hairpin SNAT rule exists for shared snat")
+		verifyHairpinSnatRule(vpcNatGwPodName, overlaySubnetV4Cidr, shareEip.Status.IP, true)
+
 		ginkgo.By("Get share dnat")
 		shareDnat = iptablesDnatRuleClient.Get(sharedEipDnatName)
 		ginkgo.By("Get share snat")
@@ -628,6 +698,16 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// make sure eip is shared
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
+
+		// Verify hairpin SNAT rule cleanup when SNAT is deleted
+		ginkgo.By("Deleting snat to verify hairpin SNAT rule cleanup")
+		iptablesSnatRuleClient.DeleteSync(snatName)
+		ginkgo.By("Verifying hairpin SNAT rule is deleted after snat deletion")
+		gomega.Eventually(func() bool {
+			return checkHairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Hairpin SNAT rule should be deleted after SNAT deletion")
+
 		// All cleanup is handled by DeferCleanup above, no need for manual cleanup
 	})
 
