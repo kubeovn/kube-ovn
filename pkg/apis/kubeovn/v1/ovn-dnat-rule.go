@@ -17,8 +17,9 @@ type OvnDnatRuleList struct {
 }
 
 // +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
 // +resourceName=ovn-dnat-rules
 type OvnDnatRule struct {
 	metav1.TypeMeta   `json:",inline"`
