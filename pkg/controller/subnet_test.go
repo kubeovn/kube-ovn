@@ -9,9 +9,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func Test_reconcileVips(t *testing.T) {
@@ -138,8 +140,6 @@ func Test_formatSubnet(t *testing.T) {
 
 	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController
-	// enable := true
-	disable := false
 
 	tests := map[string]struct {
 		input  *kubeovnv1.Subnet
@@ -164,9 +164,9 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:     "192.168.0.1",
 					Vpc:         ctrl.config.ClusterRouter,
 					ExcludeIps:  []string{"192.168.0.1"},
-					Provider:    "ovn",
+					Provider:    util.OvnProvider,
 					GatewayType: kubeovnv1.GWDistributedType,
-					EnableLb:    &ctrl.config.EnableLb,
+					EnableLb:    ptr.To(ctrl.config.EnableLb),
 				},
 			},
 		},
@@ -183,7 +183,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    &disable,
+					EnableLb:    ptr.To(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -198,7 +198,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    &disable,
+					EnableLb:    ptr.To(false),
 				},
 			},
 		},
@@ -214,7 +214,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   &disable,
+					EnableLb:   ptr.To(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -228,7 +228,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   &disable,
+					EnableLb:   ptr.To(false),
 				},
 			},
 		},
@@ -243,7 +243,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   &disable,
+					EnableLb:   ptr.To(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -256,7 +256,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   &disable,
+					EnableLb:   ptr.To(false),
 				},
 			},
 		},
@@ -268,6 +268,7 @@ func Test_formatSubnet(t *testing.T) {
 			require.NoError(t, err)
 			formattedSubnet, err := ctrl.formatSubnet(tc.input)
 			require.NoError(t, err)
+			formattedSubnet.SetManagedFields(nil)
 			require.Equal(t, tc.output, formattedSubnet)
 			err = ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Delete(context.Background(), tc.input.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)

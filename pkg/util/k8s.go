@@ -16,6 +16,7 @@ import (
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -232,4 +233,17 @@ func ObjectKind[T metav1.Object]() string {
 		typ = typ.Elem()
 	}
 	return typ.Name()
+}
+
+// TrimManagedFields removes the managed fields from the given k8s object.
+// It returns the modified object and any error encountered during the process.
+func TrimManagedFields(obj any) (any, error) {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return nil, err
+	}
+	if accessor.GetManagedFields() != nil {
+		accessor.SetManagedFields(nil)
+	}
+	return obj, nil
 }

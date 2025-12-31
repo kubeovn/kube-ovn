@@ -27,7 +27,7 @@ func (c *Controller) resyncProviderNetworkStatus() {
 		return
 	}
 
-	pods, err := c.podsLister.Pods("").List(labels.Set{"app": "kube-ovn-cni"}.AsSelector())
+	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(labels.Set{"app": "kube-ovn-cni"}.AsSelector())
 	if err != nil {
 		klog.Errorf("failed to list kube-ovn-cni pods: %v", err)
 		return

@@ -62,7 +62,6 @@ require (
 	k8s.io/client-go v0.34.3
 	k8s.io/component-base v0.34.3
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kube-aggregator v0.34.3
 	k8s.io/kubectl v0.34.3
 	k8s.io/kubernetes v1.34.3
 	k8s.io/pod-security-admission v0.34.3
@@ -268,6 +267,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.34.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250820003526-c297c0c1eb9d // indirect
 	k8s.io/kms v0.34.3 // indirect
+	k8s.io/kube-aggregator v0.34.3 // indirect
 	k8s.io/kube-openapi v0.34.3 // indirect
 	k8s.io/kube-scheduler v0.34.3 // indirect
 	k8s.io/kubelet v0.34.3 // indirect

@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	cli "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -22,11 +21,11 @@ import (
 )
 
 var (
-	vpcNatGatewayGVK = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "VpcNatGateway"}
-	iptablesEIPGVK   = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IptablesEIP"}
-	iptablesDnatRule = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IptablesDnatRule"}
-	iptablesSnatRule = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IptablesSnatRule"}
-	iptablesFIPRule  = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IptablesFIPRule"}
+	vpcNatGatewayGVK = ovnv1.SchemeGroupVersion.WithKind(util.KindVpcNatGateway)
+	iptablesEIPGVK   = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesEIP)
+	iptablesDnatRule = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesDnatRule)
+	iptablesSnatRule = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesSnatRule)
+	iptablesFIPRule  = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesFIPRule)
 )
 
 func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -324,7 +323,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return errors.New("parameter \"vpc\" cannot be empty")
 	}
 	vpc := &ovnv1.Vpc{}
-	key := types.NamespacedName{Name: gw.Spec.Vpc}
+	key := cli.ObjectKey{Name: gw.Spec.Vpc}
 	if err := v.cache.Get(ctx, key, vpc); err != nil {
 		return err
 	}
@@ -334,7 +333,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key = types.NamespacedName{Name: gw.Spec.Subnet}
+	key = cli.ObjectKey{Name: gw.Spec.Subnet}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}
@@ -367,7 +366,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 
 	if gw.Spec.QoSPolicy != "" {
 		qos := &ovnv1.QoSPolicy{}
-		key = types.NamespacedName{Name: gw.Spec.QoSPolicy}
+		key = cli.ObjectKey{Name: gw.Spec.QoSPolicy}
 		if err := v.cache.Get(ctx, key, qos); err != nil {
 			return err
 		}
@@ -378,7 +377,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 
 func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error {
 	cm := &corev1.ConfigMap{}
-	cmKey := types.NamespacedName{Namespace: "kube-system", Name: util.VpcNatGatewayConfig}
+	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: util.VpcNatGatewayConfig}
 	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return fmt.Errorf("configMap \"%s\" not configured", util.VpcNatGatewayConfig)
@@ -401,7 +400,7 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 
 	subnet := &ovnv1.Subnet{}
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-	key := types.NamespacedName{Name: externalNetwork}
+	key := cli.ObjectKey{Name: externalNetwork}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}
@@ -444,7 +443,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return errors.New("parameter \"eip\" cannot be empty")
 	}
 	eip := &ovnv1.IptablesEIP{}
-	key := types.NamespacedName{Name: dnat.Spec.EIP}
+	key := cli.ObjectKey{Name: dnat.Spec.EIP}
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
@@ -492,7 +491,7 @@ func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.I
 		return errors.New("parameter \"eip\" cannot be empty")
 	}
 	eip := &ovnv1.IptablesEIP{}
-	key := types.NamespacedName{Name: snat.Spec.EIP}
+	key := cli.ObjectKey{Name: snat.Spec.EIP}
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
@@ -510,7 +509,7 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 		return err
 	}
 	eip := &ovnv1.IptablesEIP{}
-	key := types.NamespacedName{Name: fip.Spec.EIP}
+	key := cli.ObjectKey{Name: fip.Spec.EIP}
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}

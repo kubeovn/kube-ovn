@@ -10,6 +10,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
@@ -690,7 +691,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP allocation failure")
 		eventClient := f.EventClient()
-		_ = eventClient.WaitToHaveEvent("Pod", podName, "Warning", "AcquireAddressFailed", "kube-ovn-controller", "")
+		_ = eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
 	})
 
 	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", func() {

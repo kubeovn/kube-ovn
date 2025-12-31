@@ -483,7 +483,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 }
 
 func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet) (string, string, string, error) {
-	key := fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
+	key := cache.NewObjectName(ip.Spec.Namespace, ip.Spec.PodName).String()
 	portName := ovs.PodNameToPortName(ip.Spec.PodName, ip.Spec.Namespace, subnet.Spec.Provider)
 	ipStr := util.GetStringIP(ip.Spec.V4IPAddress, ip.Spec.V6IPAddress)
 
