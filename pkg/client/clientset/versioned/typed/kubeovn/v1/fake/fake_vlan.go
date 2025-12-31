@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeVlans implements VlanInterface
 type fakeVlans struct {
-	*gentype.FakeClientWithList[*v1.Vlan, *v1.VlanList]
+	*gentype.FakeClientWithListAndApply[*v1.Vlan, *v1.VlanList, *kubeovnv1.VlanApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVlans(fake *FakeKubeovnV1) kubeovnv1.VlanInterface {
+func newFakeVlans(fake *FakeKubeovnV1) typedkubeovnv1.VlanInterface {
 	return &fakeVlans{
-		gentype.NewFakeClientWithList[*v1.Vlan, *v1.VlanList](
+		gentype.NewFakeClientWithListAndApply[*v1.Vlan, *v1.VlanList, *kubeovnv1.VlanApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("vlans"),

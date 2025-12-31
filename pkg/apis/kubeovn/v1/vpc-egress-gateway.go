@@ -34,6 +34,7 @@ type VpcEgressGatewayList struct {
 // +genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/api/autoscaling/v1.Scale
 // +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/api/autoscaling/v1.Scale,result=k8s.io/api/autoscaling/v1.Scale
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
 // +resourceName=vpc-egress-gateways
 // vpc egress gateway is used to forward the egress traffic from the VPC to the external network
 type VpcEgressGateway struct {

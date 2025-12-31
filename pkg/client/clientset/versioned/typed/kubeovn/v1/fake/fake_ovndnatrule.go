@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeOvnDnatRules implements OvnDnatRuleInterface
 type fakeOvnDnatRules struct {
-	*gentype.FakeClientWithList[*v1.OvnDnatRule, *v1.OvnDnatRuleList]
+	*gentype.FakeClientWithListAndApply[*v1.OvnDnatRule, *v1.OvnDnatRuleList, *kubeovnv1.OvnDnatRuleApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeOvnDnatRules(fake *FakeKubeovnV1) kubeovnv1.OvnDnatRuleInterface {
+func newFakeOvnDnatRules(fake *FakeKubeovnV1) typedkubeovnv1.OvnDnatRuleInterface {
 	return &fakeOvnDnatRules{
-		gentype.NewFakeClientWithList[*v1.OvnDnatRule, *v1.OvnDnatRuleList](
+		gentype.NewFakeClientWithListAndApply[*v1.OvnDnatRule, *v1.OvnDnatRuleList, *kubeovnv1.OvnDnatRuleApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("ovn-dnat-rules"),

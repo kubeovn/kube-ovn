@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -89,7 +90,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	for _, pod := range opts.Pods {
 		kubeObjects = append(kubeObjects, pod)
 	}
-	kubeClient := fake.NewSimpleClientset(kubeObjects...)
+	kubeClient := fake.NewClientset(kubeObjects...)
 
 	// Create fake NAD client
 	nadClient := nadfake.NewSimpleClientset()
@@ -102,7 +103,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	// Create fake KubeOVN client
-	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	kubeovnClient := kubeovnfake.NewClientset()
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
 			context.Background(), subnet, metav1.CreateOptions{})
@@ -286,4 +287,49 @@ func TestFakeControllerWithOptions(t *testing.T) {
 	retrievedSubnet, err := subnetClient.Get(context.Background(), "net1-subnet", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "net1-subnet", retrievedSubnet.Name)
+}
+
+func Test_trimManagedFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		arg   any
+		check bool
+	}{{
+		name: "trim managed fields from object",
+		arg: &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-subnet",
+				ManagedFields: []metav1.ManagedFieldsEntry{{
+					Manager:   "controller",
+					Operation: metav1.ManagedFieldsOperationApply,
+				}},
+			},
+		},
+		check: true,
+	}, {
+		name: "object without managed fields",
+		arg: &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-subnet-no-managed-fields",
+			},
+		},
+		check: true,
+	}, {
+		name:  "non-object input",
+		arg:   "this is a string, not an object",
+		check: false,
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret, err := trimManagedFields(tt.arg)
+			require.NoError(t, err) // trimManagedFields should not error out
+			if tt.check {
+				// check whether managed fields are trimmed
+				accessor, err := meta.Accessor(ret)
+				require.NoError(t, err)
+				require.Empty(t, accessor.GetManagedFields())
+			}
+		})
+	}
 }

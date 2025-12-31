@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type QoSPolicyInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.QoSPolicyList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.QoSPolicy, err error)
+	Apply(ctx context.Context, qoSPolicy *applyconfigurationkubeovnv1.QoSPolicyApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.QoSPolicy, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, qoSPolicy *applyconfigurationkubeovnv1.QoSPolicyApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.QoSPolicy, err error)
 	QoSPolicyExpansion
 }
 
 // qoSPolicies implements QoSPolicyInterface
 type qoSPolicies struct {
-	*gentype.ClientWithList[*kubeovnv1.QoSPolicy, *kubeovnv1.QoSPolicyList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.QoSPolicy, *kubeovnv1.QoSPolicyList, *applyconfigurationkubeovnv1.QoSPolicyApplyConfiguration]
 }
 
 // newQoSPolicies returns a QoSPolicies
 func newQoSPolicies(c *KubeovnV1Client) *qoSPolicies {
 	return &qoSPolicies{
-		gentype.NewClientWithList[*kubeovnv1.QoSPolicy, *kubeovnv1.QoSPolicyList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.QoSPolicy, *kubeovnv1.QoSPolicyList, *applyconfigurationkubeovnv1.QoSPolicyApplyConfiguration](
 			"qos-policies",
 			c.RESTClient(),
 			scheme.ParameterCodec,

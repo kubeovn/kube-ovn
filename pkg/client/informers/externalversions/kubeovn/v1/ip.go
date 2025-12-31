@@ -56,7 +56,7 @@ func NewIPInformer(client versioned.Interface, resyncPeriod time.Duration, index
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredIPInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -81,7 +81,7 @@ func NewFilteredIPInformer(client versioned.Interface, resyncPeriod time.Duratio
 				}
 				return client.KubeovnV1().IPs().Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apiskubeovnv1.IP{},
 		resyncPeriod,
 		indexers,

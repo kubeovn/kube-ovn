@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeDNSNameResolvers implements DNSNameResolverInterface
 type fakeDNSNameResolvers struct {
-	*gentype.FakeClientWithList[*v1.DNSNameResolver, *v1.DNSNameResolverList]
+	*gentype.FakeClientWithListAndApply[*v1.DNSNameResolver, *v1.DNSNameResolverList, *kubeovnv1.DNSNameResolverApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeDNSNameResolvers(fake *FakeKubeovnV1) kubeovnv1.DNSNameResolverInterface {
+func newFakeDNSNameResolvers(fake *FakeKubeovnV1) typedkubeovnv1.DNSNameResolverInterface {
 	return &fakeDNSNameResolvers{
-		gentype.NewFakeClientWithList[*v1.DNSNameResolver, *v1.DNSNameResolverList](
+		gentype.NewFakeClientWithListAndApply[*v1.DNSNameResolver, *v1.DNSNameResolverList, *kubeovnv1.DNSNameResolverApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("dnsnameresolvers"),

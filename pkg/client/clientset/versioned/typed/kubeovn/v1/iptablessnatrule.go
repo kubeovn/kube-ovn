@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type IptablesSnatRuleInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.IptablesSnatRuleList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.IptablesSnatRule, err error)
+	Apply(ctx context.Context, iptablesSnatRule *applyconfigurationkubeovnv1.IptablesSnatRuleApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.IptablesSnatRule, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, iptablesSnatRule *applyconfigurationkubeovnv1.IptablesSnatRuleApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.IptablesSnatRule, err error)
 	IptablesSnatRuleExpansion
 }
 
 // iptablesSnatRules implements IptablesSnatRuleInterface
 type iptablesSnatRules struct {
-	*gentype.ClientWithList[*kubeovnv1.IptablesSnatRule, *kubeovnv1.IptablesSnatRuleList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.IptablesSnatRule, *kubeovnv1.IptablesSnatRuleList, *applyconfigurationkubeovnv1.IptablesSnatRuleApplyConfiguration]
 }
 
 // newIptablesSnatRules returns a IptablesSnatRules
 func newIptablesSnatRules(c *KubeovnV1Client) *iptablesSnatRules {
 	return &iptablesSnatRules{
-		gentype.NewClientWithList[*kubeovnv1.IptablesSnatRule, *kubeovnv1.IptablesSnatRuleList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.IptablesSnatRule, *kubeovnv1.IptablesSnatRuleList, *applyconfigurationkubeovnv1.IptablesSnatRuleApplyConfiguration](
 			"iptables-snat-rules",
 			c.RESTClient(),
 			scheme.ParameterCodec,
