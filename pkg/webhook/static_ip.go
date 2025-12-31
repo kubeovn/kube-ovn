@@ -24,8 +24,8 @@ var (
 	deploymentGVK  = appsv1.SchemeGroupVersion.WithKind(util.KindDeployment)
 	statefulSetGVK = appsv1.SchemeGroupVersion.WithKind(util.KindStatefulSet)
 	daemonSetGVK   = appsv1.SchemeGroupVersion.WithKind(util.KindDaemonSet)
-	jobSetGVK      = batchv1.SchemeGroupVersion.WithKind(util.KindJob)
-	cornJobSetGVK  = batchv1.SchemeGroupVersion.WithKind(util.KindCronJob)
+	jobGVK         = batchv1.SchemeGroupVersion.WithKind(util.KindJob)
+	cronJobGVK     = batchv1.SchemeGroupVersion.WithKind(util.KindCronJob)
 	podGVK         = corev1.SchemeGroupVersion.WithKind(util.KindPod)
 	subnetGVK      = ovnv1.SchemeGroupVersion.WithKind(util.KindSubnet)
 	vpcGVK         = ovnv1.SchemeGroupVersion.WithKind(util.KindVpc)
@@ -73,7 +73,7 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) JobCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	o := batchv1.Job{}
 	if err := v.decoder.Decode(req, &o); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -87,7 +87,7 @@ func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Req
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) CronJobCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	o := batchv1.CronJob{}
 	if err := v.decoder.Decode(req, &o); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
