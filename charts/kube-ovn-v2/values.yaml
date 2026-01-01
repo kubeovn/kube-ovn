@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.14.0
+      tag: v1.16.0
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -304,7 +304,7 @@ natGw:
     repository: docker.io/kubeovn/vpc-nat-gateway
     # -- Image tag.
     # @section -- NAT gateways configuration
-    tag: v1.15.0
+    tag: v1.16.0
     # -- Image pull policy.
     # @section -- NAT gateways configuration
     pullPolicy: IfNotPresent
@@ -321,7 +321,7 @@ natGw:
       repository: docker.io/kubeovn/kube-ovn
       # -- Image tag.
       # @section -- NAT gateways configuration
-      tag: v1.15.0
+      tag: v1.16.0
       # -- Image pull policy.
       # @section -- NAT gateways configuration
       pullPolicy: IfNotPresent
@@ -429,7 +429,7 @@ ovsOvn:
     enabled: false
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
-    tag: "v1.14.0-dpdk"
+    tag: v1.16.0
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
