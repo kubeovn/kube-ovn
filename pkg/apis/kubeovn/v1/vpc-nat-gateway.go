@@ -39,6 +39,10 @@ type VpcNatGatewaySpec struct {
 	Affinity        corev1.Affinity     `json:"affinity"`
 	QoSPolicy       string              `json:"qosPolicy"`
 	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
+	NoDefaultEIP    bool                `json:"noDefaultEIP"`
+
+	EnableDefaultSnat bool   `json:"enableDefaultSnat,omitempty"`
+	DefaultSnatSubnet string `json:"defaultSnatSubnet,omitempty"`
 }
 
 type VpcBgpSpeaker struct {

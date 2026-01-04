@@ -156,8 +156,9 @@ const (
 
 	AllowEWTrafficPriority = "1900"
 
-	SubnetAllowPriority = "1001"
-	DefaultDropPriority = "1000"
+	SubnetCrossAllowPriority = "2004" // Same priority as SecurityGroupAllowPriority to allow subnet allowSubnets to work with security groups
+	SubnetAllowPriority      = "1001" // For same-subnet traffic (basic intra-subnet connectivity)
+	DefaultDropPriority      = "1000"
 
 	GwChassisMaxPriority = 100
 	AnpMaxRules          = 100
@@ -224,6 +225,8 @@ const (
 	NodeRouterPolicyPriority         = 30000
 	NodeLocalDNSPolicyPriority       = 30100
 	SubnetRouterPolicyPriority       = 31000
+
+	VpcNatGwFallbackRouteMetric = 200
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
