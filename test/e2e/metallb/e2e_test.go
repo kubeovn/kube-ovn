@@ -480,7 +480,7 @@ func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, se
 
 	bridgeName := util.ExternalBridgeName(providerNetworkName)
 	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
-	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -F %s | grep -F %s",
+	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
 		nodeName, bridgeName, serviceIP, matchPort)
 
 	var flowFound bool
