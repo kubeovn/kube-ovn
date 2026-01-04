@@ -34,7 +34,7 @@ func (c *Controller) requestFlowSync() {
 
 func (c *Controller) syncFlows() {
 	if c.ovsClient == nil {
-		return
+		util.LogFatalAndExit(nil, "ovsClient is not initialized")
 	}
 
 	flowCacheByBridge := c.storeFlowCache()
@@ -75,13 +75,8 @@ func (c *Controller) storeFlowCache() map[string][]string {
 	defer c.flowCacheMutex.RUnlock()
 
 	for bridgeName, entries := range c.flowCache {
-		if _, ok := snapshot[bridgeName]; !ok {
-			snapshot[bridgeName] = nil
-		}
 		for _, flows := range entries {
-			if len(flows) > 0 {
-				snapshot[bridgeName] = append(snapshot[bridgeName], flows...)
-			}
+			snapshot[bridgeName] = append(snapshot[bridgeName], flows...)
 		}
 	}
 
@@ -168,10 +163,5 @@ func (c *Controller) setFlowCache(cache map[string]map[string][]string, bridgeNa
 func (c *Controller) deleteFlowCache(cache map[string]map[string][]string, bridgeName, key string) {
 	c.flowCacheMutex.Lock()
 	defer c.flowCacheMutex.Unlock()
-
-	entries := cache[bridgeName]
-	if entries == nil {
-		return
-	}
-	delete(entries, key)
+	delete(cache[bridgeName], key)
 }
