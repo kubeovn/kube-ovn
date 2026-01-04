@@ -22,7 +22,8 @@ import (
 	context "context"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gentype "k8s.io/client-go/gentype"
@@ -31,13 +32,13 @@ import (
 
 // fakeVpcEgressGateways implements VpcEgressGatewayInterface
 type fakeVpcEgressGateways struct {
-	*gentype.FakeClientWithList[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList]
+	*gentype.FakeClientWithListAndApply[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList, *kubeovnv1.VpcEgressGatewayApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVpcEgressGateways(fake *FakeKubeovnV1, namespace string) kubeovnv1.VpcEgressGatewayInterface {
+func newFakeVpcEgressGateways(fake *FakeKubeovnV1, namespace string) typedkubeovnv1.VpcEgressGatewayInterface {
 	return &fakeVpcEgressGateways{
-		gentype.NewFakeClientWithList[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList](
+		gentype.NewFakeClientWithListAndApply[*v1.VpcEgressGateway, *v1.VpcEgressGatewayList, *kubeovnv1.VpcEgressGatewayApplyConfiguration](
 			fake.Fake,
 			namespace,
 			v1.SchemeGroupVersion.WithResource("vpc-egress-gateways"),

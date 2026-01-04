@@ -3,7 +3,9 @@
 .PHONY: ut
 ut:
 	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
-	go test -coverprofile=profile.cov $$(go list ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
+	@# Disable WatchListClient until the underlying issue is resolved
+	@# Ref: https://github.com/kubernetes/kubernetes/issues/126850, https://github.com/kubernetes/kubernetes/issues/135895
+	KUBE_FEATURE_WatchListClient=false go test -coverprofile=profile.cov $$(go list ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
 
 .PHONY: ovs-sandbox
 ovs-sandbox: clean-ovs-sandbox

@@ -13,8 +13,9 @@ type SwitchLBRuleList struct {
 }
 
 // +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
 // +resourceName=switch-lb-rules
 type SwitchLBRule struct {
 	metav1.TypeMeta   `json:",inline"`

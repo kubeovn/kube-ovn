@@ -56,7 +56,7 @@ func NewIptablesSnatRuleInformer(client versioned.Interface, resyncPeriod time.D
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredIptablesSnatRuleInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -81,7 +81,7 @@ func NewFilteredIptablesSnatRuleInformer(client versioned.Interface, resyncPerio
 				}
 				return client.KubeovnV1().IptablesSnatRules().Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apiskubeovnv1.IptablesSnatRule{},
 		resyncPeriod,
 		indexers,

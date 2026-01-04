@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type SwitchLBRuleInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.SwitchLBRuleList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.SwitchLBRule, err error)
+	Apply(ctx context.Context, switchLBRule *applyconfigurationkubeovnv1.SwitchLBRuleApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.SwitchLBRule, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, switchLBRule *applyconfigurationkubeovnv1.SwitchLBRuleApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.SwitchLBRule, err error)
 	SwitchLBRuleExpansion
 }
 
 // switchLBRules implements SwitchLBRuleInterface
 type switchLBRules struct {
-	*gentype.ClientWithList[*kubeovnv1.SwitchLBRule, *kubeovnv1.SwitchLBRuleList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.SwitchLBRule, *kubeovnv1.SwitchLBRuleList, *applyconfigurationkubeovnv1.SwitchLBRuleApplyConfiguration]
 }
 
 // newSwitchLBRules returns a SwitchLBRules
 func newSwitchLBRules(c *KubeovnV1Client) *switchLBRules {
 	return &switchLBRules{
-		gentype.NewClientWithList[*kubeovnv1.SwitchLBRule, *kubeovnv1.SwitchLBRuleList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.SwitchLBRule, *kubeovnv1.SwitchLBRuleList, *applyconfigurationkubeovnv1.SwitchLBRuleApplyConfiguration](
 			"switch-lb-rules",
 			c.RESTClient(),
 			scheme.ParameterCodec,

@@ -35,6 +35,8 @@ func deepCopyObjectTestHelper[T any](t *testing.T, in DeepCopyObject[T]) {
 }
 
 func TestDeepCopyObject(t *testing.T) {
+	deepCopyObjectTestHelper(t, &DNSNameResolver{})
+	deepCopyObjectTestHelper(t, &DNSNameResolverList{})
 	deepCopyObjectTestHelper(t, &IP{})
 	deepCopyObjectTestHelper(t, &IPList{})
 	deepCopyObjectTestHelper(t, &IPPool{})

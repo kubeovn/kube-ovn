@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeQoSPolicies implements QoSPolicyInterface
 type fakeQoSPolicies struct {
-	*gentype.FakeClientWithList[*v1.QoSPolicy, *v1.QoSPolicyList]
+	*gentype.FakeClientWithListAndApply[*v1.QoSPolicy, *v1.QoSPolicyList, *kubeovnv1.QoSPolicyApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeQoSPolicies(fake *FakeKubeovnV1) kubeovnv1.QoSPolicyInterface {
+func newFakeQoSPolicies(fake *FakeKubeovnV1) typedkubeovnv1.QoSPolicyInterface {
 	return &fakeQoSPolicies{
-		gentype.NewFakeClientWithList[*v1.QoSPolicy, *v1.QoSPolicyList](
+		gentype.NewFakeClientWithListAndApply[*v1.QoSPolicy, *v1.QoSPolicyList, *kubeovnv1.QoSPolicyApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("qos-policies"),

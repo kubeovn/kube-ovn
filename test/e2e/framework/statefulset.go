@@ -180,7 +180,10 @@ func (c *StatefulSetClient) RolloutStatus(name string) *appsv1.StatefulSet {
 
 func MakeStatefulSet(name, svcName string, replicas int32, labels map[string]string, image string) *appsv1.StatefulSet {
 	sts := statefulset.NewStatefulSet(name, "", svcName, replicas, nil, nil, labels)
-	sts.Spec.Template.Spec.Containers[0].Image = image
-	sts.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+	sts.Spec.Template.Spec.Containers = []corev1.Container{{
+		Name:            name,
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+	}}
 	return sts
 }

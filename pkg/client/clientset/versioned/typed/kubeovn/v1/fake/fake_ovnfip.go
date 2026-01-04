@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeOvnFips implements OvnFipInterface
 type fakeOvnFips struct {
-	*gentype.FakeClientWithList[*v1.OvnFip, *v1.OvnFipList]
+	*gentype.FakeClientWithListAndApply[*v1.OvnFip, *v1.OvnFipList, *kubeovnv1.OvnFipApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeOvnFips(fake *FakeKubeovnV1) kubeovnv1.OvnFipInterface {
+func newFakeOvnFips(fake *FakeKubeovnV1) typedkubeovnv1.OvnFipInterface {
 	return &fakeOvnFips{
-		gentype.NewFakeClientWithList[*v1.OvnFip, *v1.OvnFipList](
+		gentype.NewFakeClientWithListAndApply[*v1.OvnFip, *v1.OvnFipList, *kubeovnv1.OvnFipApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("ovn-fips"),

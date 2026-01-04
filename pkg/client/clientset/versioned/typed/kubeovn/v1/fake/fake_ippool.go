@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeIPPools implements IPPoolInterface
 type fakeIPPools struct {
-	*gentype.FakeClientWithList[*v1.IPPool, *v1.IPPoolList]
+	*gentype.FakeClientWithListAndApply[*v1.IPPool, *v1.IPPoolList, *kubeovnv1.IPPoolApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeIPPools(fake *FakeKubeovnV1) kubeovnv1.IPPoolInterface {
+func newFakeIPPools(fake *FakeKubeovnV1) typedkubeovnv1.IPPoolInterface {
 	return &fakeIPPools{
-		gentype.NewFakeClientWithList[*v1.IPPool, *v1.IPPoolList](
+		gentype.NewFakeClientWithListAndApply[*v1.IPPool, *v1.IPPoolList, *kubeovnv1.IPPoolApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("ippools"),
