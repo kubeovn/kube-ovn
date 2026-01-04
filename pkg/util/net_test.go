@@ -1768,3 +1768,62 @@ func TestCIDRContainsCIDR(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePort(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		port    string
+		wantErr bool
+		errMsg  string
+	}{
+		{name: "valid port 80", port: "80", wantErr: false},
+		{name: "valid port 1", port: "1", wantErr: false},
+		{name: "valid port 65535", port: "65535", wantErr: false},
+		{name: "invalid port 0", port: "0", wantErr: true, errMsg: "must be between 1 and 65535"},
+		{name: "invalid port 65536", port: "65536", wantErr: true, errMsg: "must be between 1 and 65535"},
+		{name: "invalid port negative", port: "-1", wantErr: true, errMsg: "must be between 1 and 65535"},
+		{name: "invalid port not a number", port: "abc", wantErr: true, errMsg: "must be a number"},
+		{name: "invalid port with spaces", port: " 80 ", wantErr: true, errMsg: "must be a number"},
+		{name: "invalid port float", port: "80.5", wantErr: true, errMsg: "must be a number"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePort(tt.port)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateProtocol(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		protocol string
+		wantErr  bool
+	}{
+		{name: "valid tcp lowercase", protocol: "tcp", wantErr: false},
+		{name: "valid udp lowercase", protocol: "udp", wantErr: false},
+		{name: "valid TCP uppercase", protocol: "TCP", wantErr: false},
+		{name: "valid UDP uppercase", protocol: "UDP", wantErr: false},
+		{name: "valid mixed case", protocol: "Tcp", wantErr: false},
+		{name: "invalid protocol icmp", protocol: "icmp", wantErr: true},
+		{name: "invalid protocol sctp", protocol: "sctp", wantErr: true},
+		{name: "empty string", protocol: "", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateProtocol(tt.protocol)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
