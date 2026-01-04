@@ -1,10 +1,9 @@
 package daemon
 
 import (
-	"strconv"
-	"strings"
 	"time"
 
+	openvswitch "github.com/digitalocean/go-openvswitch/ovs"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
@@ -95,39 +94,11 @@ func filterUnmanagedFlows(flows []string) []string {
 }
 
 func isManagedFlow(flow string) bool {
-	cookie, ok := extractFlowCookie(flow)
-	if !ok {
+	var f openvswitch.Flow
+	if err := f.UnmarshalText([]byte(flow)); err != nil {
 		return false
 	}
-	return managedFlowCookieSet.Has(cookie)
-}
-
-func extractFlowCookie(flow string) (uint64, bool) {
-	idx := strings.Index(flow, "cookie=")
-	if idx == -1 {
-		return 0, false
-	}
-	cookieField := flow[idx+len("cookie="):]
-	if comma := strings.Index(cookieField, ","); comma != -1 {
-		cookieField = cookieField[:comma]
-	}
-	if slash := strings.Index(cookieField, "/"); slash != -1 {
-		cookieField = cookieField[:slash]
-	}
-	cookieField = strings.TrimSpace(cookieField)
-	if cookieField == "" {
-		return 0, false
-	}
-
-	cookie, err := parseHexUint64(cookieField)
-	if err != nil {
-		return 0, false
-	}
-	return cookie, true
-}
-
-func parseHexUint64(value string) (uint64, error) {
-	return strconv.ParseUint(strings.TrimPrefix(value, "0x"), 16, 64)
+	return managedFlowCookieSet.Has(f.Cookie)
 }
 
 func (c *Controller) runFlowSync(stopCh <-chan struct{}) {
