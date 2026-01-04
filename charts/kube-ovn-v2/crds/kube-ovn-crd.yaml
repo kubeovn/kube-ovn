@@ -500,6 +500,15 @@ spec:
                           type: array
                       type: object
                   type: object
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
             spec:
               type: object
               properties:
@@ -1023,13 +1032,13 @@ spec:
                 - externalSubnet
               x-kubernetes-validations:
                 - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
-                  message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
+                  message: "Size of Internal IPs MUST be equal to or greater than Replicas"
                   fieldPath: ".internalIPs"
                 - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
-                  message: 'Size of External IPs MUST be equal to or greater than Replicas'
+                  message: "Size of External IPs MUST be equal to or greater than Replicas"
                   fieldPath: ".externalIPs"
                 - rule: "size(self.policies) != 0 || size(self.selectors) != 0"
-                  message: 'Each VPC Egress Gateway MUST have at least one policy or selector'
+                  message: "Each VPC Egress Gateway MUST have at least one policy or selector"
               properties:
                 replicas:
                   type: integer
@@ -1127,7 +1136,7 @@ spec:
                                 - operator
                         x-kubernetes-validations:
                           - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                            message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
+                            message: "Each namespace selector MUST have at least one matchLabels or matchExpressions"
                       podSelector:
                         type: object
                         properties:
@@ -1153,7 +1162,7 @@ spec:
                                 - operator
                         x-kubernetes-validations:
                           - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                            message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
+                            message: "Each pod selector MUST have at least one matchLabels or matchExpressions"
                 policies:
                   type: array
                   items:
@@ -1179,7 +1188,7 @@ spec:
                           minLength: 1
                     x-kubernetes-validations:
                       - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
-                        message: 'Each policy MUST have at least one ipBlock or subnet'
+                        message: "Each policy MUST have at least one ipBlock or subnet"
                 trafficPolicy:
                   type: string
                   enum:
@@ -2188,7 +2197,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                     - rule: "self.enabled == false || self.ip != ''"
-                      message: 'Port IP must be set when BFD Port is enabled'
+                      message: "Port IP must be set when BFD Port is enabled"
               type: object
             status:
               properties:

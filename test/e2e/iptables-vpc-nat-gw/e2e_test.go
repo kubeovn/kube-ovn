@@ -1078,6 +1078,165 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// All cleanup is handled by DeferCleanup above
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
 	})
+
+	framework.ConformanceIt("[6] VPC NAT Gateway with custom eth0 routes", func() {
+		// Test-specific variables
+		randomSuffix := framework.RandomSuffix()
+		vpcName := "vpc-routes-" + randomSuffix
+		overlaySubnetName := "overlay-subnet-routes-" + randomSuffix
+		vpcNatGwName := "gw-routes-" + randomSuffix
+		overlaySubnetV4Cidr := "10.0.6.0/24"
+		overlaySubnetV4Gw := "10.0.6.1"
+		lanIP := "10.0.6.254"
+		natgwQoS := ""
+
+		ginkgo.By("1. Creating VPC")
+		vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc " + vpcName)
+			vpcClient.DeleteSync(vpcName)
+		})
+
+		ginkgo.By("2. Creating overlay subnet")
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom overlay subnet " + overlaySubnetName)
+			subnetClient.DeleteSync(overlaySubnetName)
+		})
+
+		ginkgo.By("3. Creating VPC NAT Gateway with custom routes")
+		vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, networkAttachDefName, natgwQoS)
+		// Add custom routes to eth0 (VPC internal interface)
+		vpcNatGw.Spec.Routes = []apiv1.Route{
+			{CIDR: "192.168.100.0/24", NextHopIP: overlaySubnetV4Gw},
+			{CIDR: "172.16.0.0/16", NextHopIP: "gateway"}, // "gateway" should be resolved to overlaySubnetV4Gw
+		}
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
+			vpcNatGwClient.DeleteSync(vpcNatGwName)
+		})
+
+		ginkgo.By("4. Verifying custom routes are injected into NAT GW pod")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		pod := f.PodClientNS(framework.KubeOvnNamespace).GetPod(vpcNatGwPodName)
+		framework.ExpectNotNil(pod, "NAT GW pod should exist")
+
+		ginkgo.By("5. Checking route table in NAT GW pod")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to execute ip route in NAT GW pod")
+			g.Expect(stdout).To(gomega.ContainSubstring("192.168.100.0/24 via "+overlaySubnetV4Gw), "Custom route 192.168.100.0/24 should exist with correct nexthop")
+			g.Expect(stdout).To(gomega.ContainSubstring("172.16.0.0/16 via "+overlaySubnetV4Gw), "Custom route 172.16.0.0/16 with 'gateway' nexthop should be resolved and exist")
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
+
+		ginkgo.By("6. Test completed: VPC NAT Gateway custom routes work correctly")
+	})
+
+	framework.ConformanceIt("[7] VPC NAT Gateway dynamic routes update after running", func() {
+		// Test-specific variables
+		randomSuffix := framework.RandomSuffix()
+		vpcName := "vpc-dyn-routes-" + randomSuffix
+		overlaySubnetName := "overlay-subnet-dyn-routes-" + randomSuffix
+		vpcNatGwName := "gw-dyn-routes-" + randomSuffix
+		overlaySubnetV4Cidr := "10.0.7.0/24"
+		overlaySubnetV4Gw := "10.0.7.1"
+		lanIP := "10.0.7.254"
+		natgwQoS := ""
+
+		ginkgo.By("1. Creating VPC")
+		vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc " + vpcName)
+			vpcClient.DeleteSync(vpcName)
+		})
+
+		ginkgo.By("2. Creating overlay subnet")
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom overlay subnet " + overlaySubnetName)
+			subnetClient.DeleteSync(overlaySubnetName)
+		})
+
+		ginkgo.By("3. Creating VPC NAT Gateway without routes")
+		vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, networkAttachDefName, natgwQoS)
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
+			vpcNatGwClient.DeleteSync(vpcNatGwName)
+		})
+
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		ginkgo.By("4. Adding routes to running NAT Gateway")
+		originalGw := vpcNatGwClient.Get(vpcNatGwName)
+		modifiedGw := originalGw.DeepCopy()
+		modifiedGw.Spec.Routes = []apiv1.Route{
+			{CIDR: "192.168.200.0/24", NextHopIP: overlaySubnetV4Gw},
+			{CIDR: "10.100.0.0/16", NextHopIP: "gateway"},
+		}
+		vpcNatGwClient.Patch(originalGw, modifiedGw)
+
+		ginkgo.By("5. Verifying routes are injected into NAT GW pod")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.And(
+				gomega.ContainSubstring("192.168.200.0/24 via "+overlaySubnetV4Gw),
+				gomega.ContainSubstring("10.100.0.0/16 via "+overlaySubnetV4Gw),
+			))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
+
+		ginkgo.By("6. Verifying status.routes is updated")
+		updatedGw := vpcNatGwClient.Get(vpcNatGwName)
+		framework.ExpectEqual(len(updatedGw.Status.Routes), 2, "Status should have 2 routes")
+
+		ginkgo.By("7. Modifying routes - change one, keep one")
+		originalGw = vpcNatGwClient.Get(vpcNatGwName)
+		modifiedGw = originalGw.DeepCopy()
+		modifiedGw.Spec.Routes = []apiv1.Route{
+			{CIDR: "192.168.200.0/24", NextHopIP: overlaySubnetV4Gw}, // Keep this route
+			{CIDR: "172.31.0.0/16", NextHopIP: overlaySubnetV4Gw},    // New route, replace 10.100.0.0/16
+		}
+		vpcNatGwClient.Patch(originalGw, modifiedGw)
+
+		ginkgo.By("8. Verifying route changes in NAT GW pod")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.And(
+				gomega.ContainSubstring("192.168.200.0/24 via "+overlaySubnetV4Gw),
+				gomega.ContainSubstring("172.31.0.0/16 via "+overlaySubnetV4Gw),
+				gomega.Not(gomega.ContainSubstring("10.100.0.0/16")),
+			))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
+
+		ginkgo.By("9. Removing all routes")
+		originalGw = vpcNatGwClient.Get(vpcNatGwName)
+		modifiedGw = originalGw.DeepCopy()
+		modifiedGw.Spec.Routes = nil
+		vpcNatGwClient.Patch(originalGw, modifiedGw)
+
+		ginkgo.By("10. Verifying all custom routes are removed")
+		gomega.Eventually(func(g gomega.Gomega) {
+			stdout, _, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, vpcNatGwPodName, "ip route show")
+			g.Expect(err).NotTo(gomega.HaveOccurred())
+			g.Expect(stdout).To(gomega.Not(gomega.Or(
+				gomega.ContainSubstring("192.168.200.0/24"),
+				gomega.ContainSubstring("172.31.0.0/16"),
+			)))
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed())
+
+		ginkgo.By("11. Verifying status.routes is empty")
+		updatedGw = vpcNatGwClient.Get(vpcNatGwName)
+		framework.ExpectEqual(len(updatedGw.Status.Routes), 0, "Status routes should be empty after removing all routes")
+
+		ginkgo.By("12. Test completed: VPC NAT Gateway dynamic routes update works correctly")
+	})
 })
 
 func init() {

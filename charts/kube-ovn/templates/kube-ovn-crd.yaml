@@ -500,6 +500,15 @@ spec:
                           type: array
                       type: object
                   type: object
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
             spec:
               type: object
               properties:
@@ -1023,13 +1032,13 @@ spec:
                 - externalSubnet
               x-kubernetes-validations:
                 - rule: "!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas"
-                  message: 'Size of Internal IPs MUST be equal to or greater than Replicas'
+                  message: "Size of Internal IPs MUST be equal to or greater than Replicas"
                   fieldPath: ".internalIPs"
                 - rule: "!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas"
-                  message: 'Size of External IPs MUST be equal to or greater than Replicas'
+                  message: "Size of External IPs MUST be equal to or greater than Replicas"
                   fieldPath: ".externalIPs"
                 - rule: "size(self.policies) != 0 || size(self.selectors) != 0"
-                  message: 'Each VPC Egress Gateway MUST have at least one policy or selector'
+                  message: "Each VPC Egress Gateway MUST have at least one policy or selector"
               properties:
                 replicas:
                   type: integer
@@ -1127,7 +1136,7 @@ spec:
                                 - operator
                         x-kubernetes-validations:
                           - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                            message: 'Each namespace selector MUST have at least one matchLabels or matchExpressions'
+                            message: "Each namespace selector MUST have at least one matchLabels or matchExpressions"
                       podSelector:
                         type: object
                         properties:
@@ -1153,7 +1162,7 @@ spec:
                                 - operator
                         x-kubernetes-validations:
                           - rule: "size(self.matchLabels) != 0 || size(self.matchExpressions) != 0"
-                            message: 'Each pod selector MUST have at least one matchLabels or matchExpressions'
+                            message: "Each pod selector MUST have at least one matchLabels or matchExpressions"
                 policies:
                   type: array
                   items:
@@ -1179,7 +1188,7 @@ spec:
                           minLength: 1
                     x-kubernetes-validations:
                       - rule: "size(self.ipBlocks) != 0 || size(self.subnets) != 0"
-                        message: 'Each policy MUST have at least one ipBlock or subnet'
+                        message: "Each policy MUST have at least one ipBlock or subnet"
                 trafficPolicy:
                   type: string
                   enum:
@@ -1314,21 +1323,21 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .status.ip
-        name: IP
-        type: string
-      - jsonPath: .spec.macAddress
-        name: Mac
-        type: string
-      - jsonPath: .status.nat
-        name: Nat
-        type: string
-      - jsonPath: .spec.natGwDp
-        name: NatGwDp
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
+        - jsonPath: .status.ip
+          name: IP
+          type: string
+        - jsonPath: .spec.macAddress
+          name: Mac
+          type: string
+        - jsonPath: .status.nat
+          name: Nat
+          type: string
+        - jsonPath: .spec.natGwDp
+          name: NatGwDp
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -1400,24 +1409,24 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.eip
-        name: Eip
-        type: string
-      - jsonPath: .status.v4ip
-        name: V4ip
-        type: string
-      - jsonPath: .spec.internalIp
-        name: InternalIp
-        type: string
-      - jsonPath: .status.v6ip
-        name: V6ip
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
-      - jsonPath: .status.natGwDp
-        name: NatGwDp
-        type: string
+        - jsonPath: .spec.eip
+          name: Eip
+          type: string
+        - jsonPath: .status.v4ip
+          name: V4ip
+          type: string
+        - jsonPath: .spec.internalIp
+          name: InternalIp
+          type: string
+        - jsonPath: .status.v6ip
+          name: V6ip
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+        - jsonPath: .status.natGwDp
+          name: NatGwDp
+          type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -1483,33 +1492,33 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.eip
-        name: Eip
-        type: string
-      - jsonPath: .spec.protocol
-        name: Protocol
-        type: string
-      - jsonPath: .status.v4ip
-        name: V4ip
-        type: string
-      - jsonPath: .status.v6ip
-        name: V6ip
-        type: string
-      - jsonPath: .spec.internalIp
-        name: InternalIp
-        type: string
-      - jsonPath: .spec.externalPort
-        name: ExternalPort
-        type: string
-      - jsonPath: .spec.internalPort
-        name: InternalPort
-        type: string
-      - jsonPath: .status.natGwDp
-        name: NatGwDp
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
+        - jsonPath: .spec.eip
+          name: Eip
+          type: string
+        - jsonPath: .spec.protocol
+          name: Protocol
+          type: string
+        - jsonPath: .status.v4ip
+          name: V4ip
+          type: string
+        - jsonPath: .status.v6ip
+          name: V6ip
+          type: string
+        - jsonPath: .spec.internalIp
+          name: InternalIp
+          type: string
+        - jsonPath: .spec.externalPort
+          name: ExternalPort
+          type: string
+        - jsonPath: .spec.internalPort
+          name: InternalPort
+          type: string
+        - jsonPath: .status.natGwDp
+          name: NatGwDp
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -1587,24 +1596,24 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.eip
-        name: EIP
-        type: string
-      - jsonPath: .status.v4ip
-        name: V4ip
-        type: string
-      - jsonPath: .status.v6ip
-        name: V6ip
-        type: string
-      - jsonPath: .spec.internalCIDR
-        name: InternalCIDR
-        type: string
-      - jsonPath: .status.natGwDp
-        name: NatGwDp
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
+        - jsonPath: .spec.eip
+          name: EIP
+          type: string
+        - jsonPath: .status.v4ip
+          name: V4ip
+          type: string
+        - jsonPath: .status.v6ip
+          name: V6ip
+          type: string
+        - jsonPath: .spec.internalCIDR
+          name: InternalCIDR
+          type: string
+        - jsonPath: .status.natGwDp
+          name: NatGwDp
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -1670,27 +1679,27 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .status.v4Ip
-        name: V4IP
-        type: string
-      - jsonPath: .status.v6Ip
-        name: V6IP
-        type: string
-      - jsonPath: .status.macAddress
-        name: Mac
-        type: string
-      - jsonPath: .status.type
-        name: Type
-        type: string
-      - jsonPath: .status.nat
-        name: Nat
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
-      - jsonPath: .spec.externalSubnet
-        name: ExternalSubnet
-        type: string
+        - jsonPath: .status.v4Ip
+          name: V4IP
+          type: string
+        - jsonPath: .status.v6Ip
+          name: V6IP
+          type: string
+        - jsonPath: .status.macAddress
+          name: Mac
+          type: string
+        - jsonPath: .status.type
+          name: Type
+          type: string
+        - jsonPath: .status.nat
+          name: Nat
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+        - jsonPath: .spec.externalSubnet
+          name: ExternalSubnet
+          type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -1762,33 +1771,33 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .status.vpc
-        name: Vpc
-        type: string
-      - jsonPath: .spec.type
-        name: Type
-        type: string
-      - jsonPath: .status.v4Eip
-        name: V4Eip
-        type: string
-      - jsonPath: .status.v6Eip
-        name: V6Eip
-        type: string
-      - jsonPath: .status.v4Ip
-        name: V4Ip
-        type: string
-      - jsonPath: .status.v6Ip
-        name: V6Ip
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
-      - jsonPath: .spec.ipType
-        name: IpType
-        type: string
-      - jsonPath: .spec.ipName
-        name: IpName
-        type: string
+        - jsonPath: .status.vpc
+          name: Vpc
+          type: string
+        - jsonPath: .spec.type
+          name: Type
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v6Eip
+          name: V6Eip
+          type: string
+        - jsonPath: .status.v4Ip
+          name: V4Ip
+          type: string
+        - jsonPath: .status.v6Ip
+          name: V6Ip
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+        - jsonPath: .spec.ipType
+          name: IpType
+          type: string
+        - jsonPath: .spec.ipName
+          name: IpName
+          type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -1864,24 +1873,24 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .status.vpc
-        name: Vpc
-        type: string
-      - jsonPath: .status.v4Eip
-        name: V4Eip
-        type: string
-      - jsonPath: .status.v6Eip
-        name: V6Eip
-        type: string
-      - jsonPath: .status.v4IpCidr
-        name: V4IpCidr
-        type: string
-      - jsonPath: .status.v6IpCidr
-        name: V6IpCidr
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
+        - jsonPath: .status.vpc
+          name: Vpc
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v6Eip
+          name: V6Eip
+          type: string
+        - jsonPath: .status.v4IpCidr
+          name: V4IpCidr
+          type: string
+        - jsonPath: .status.v6IpCidr
+          name: V6IpCidr
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -2188,7 +2197,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                     - rule: "self.enabled == false || self.ip != ''"
-                      message: 'Port IP must be set when BFD Port is enabled'
+                      message: "Port IP must be set when BFD Port is enabled"
               type: object
             status:
               properties:
@@ -2282,21 +2291,21 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: V4IP
-        type: string
-        jsonPath: .spec.v4IpAddress
-      - name: V6IP
-        type: string
-        jsonPath: .spec.v6IpAddress
-      - name: Mac
-        type: string
-        jsonPath: .spec.macAddress
-      - name: Node
-        type: string
-        jsonPath: .spec.nodeName
-      - name: Subnet
-        type: string
-        jsonPath: .spec.subnet
+        - name: V4IP
+          type: string
+          jsonPath: .spec.v4IpAddress
+        - name: V6IP
+          type: string
+          jsonPath: .spec.v6IpAddress
+        - name: Mac
+          type: string
+          jsonPath: .spec.macAddress
+        - name: Node
+          type: string
+          jsonPath: .spec.nodeName
+        - name: Subnet
+          type: string
+          jsonPath: .spec.subnet
       schema:
         openAPIV3Schema:
           type: object
@@ -2363,24 +2372,24 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: Namespace
-        type: string
-        jsonPath: .spec.namespace
-      - name: V4IP
-        type: string
-        jsonPath: .status.v4ip
-      - name: V6IP
-        type: string
-        jsonPath: .status.v6ip
-      - name: Mac
-        type: string
-        jsonPath: .status.mac
-      - name: Subnet
-        type: string
-        jsonPath: .spec.subnet
-      - name: Type
-        type: string
-        jsonPath: .status.type
+        - name: Namespace
+          type: string
+          jsonPath: .spec.namespace
+        - name: V4IP
+          type: string
+          jsonPath: .status.v4ip
+        - name: V6IP
+          type: string
+          jsonPath: .status.v6ip
+        - name: Mac
+          type: string
+          jsonPath: .status.mac
+        - name: Subnet
+          type: string
+          jsonPath: .spec.subnet
+        - name: Type
+          type: string
+          jsonPath: .status.type
       schema:
         openAPIV3Schema:
           type: object
@@ -2454,51 +2463,51 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - name: Provider
-        type: string
-        jsonPath: .spec.provider
-      - name: Vpc
-        type: string
-        jsonPath: .spec.vpc
-      - name: Vlan
-        type: string
-        jsonPath: .spec.vlan
-      - name: Protocol
-        type: string
-        jsonPath: .spec.protocol
-      - name: CIDR
-        type: string
-        jsonPath: .spec.cidrBlock
-      - name: Private
-        type: boolean
-        jsonPath: .spec.private
-      - name: NAT
-        type: boolean
-        jsonPath: .spec.natOutgoing
-      - name: Default
-        type: boolean
-        jsonPath: .spec.default
-      - name: GatewayType
-        type: string
-        jsonPath: .spec.gatewayType
-      - name: V4Used
-        type: number
-        jsonPath: .status.v4usingIPs
-      - name: V4Available
-        type: number
-        jsonPath: .status.v4availableIPs
-      - name: V6Used
-        type: number
-        jsonPath: .status.v6usingIPs
-      - name: V6Available
-        type: number
-        jsonPath: .status.v6availableIPs
-      - name: ExcludeIPs
-        type: string
-        jsonPath: .spec.excludeIps
-      - name: U2OInterconnectionIP
-        type: string
-        jsonPath: .status.u2oInterconnectionIP
+        - name: Provider
+          type: string
+          jsonPath: .spec.provider
+        - name: Vpc
+          type: string
+          jsonPath: .spec.vpc
+        - name: Vlan
+          type: string
+          jsonPath: .spec.vlan
+        - name: Protocol
+          type: string
+          jsonPath: .spec.protocol
+        - name: CIDR
+          type: string
+          jsonPath: .spec.cidrBlock
+        - name: Private
+          type: boolean
+          jsonPath: .spec.private
+        - name: NAT
+          type: boolean
+          jsonPath: .spec.natOutgoing
+        - name: Default
+          type: boolean
+          jsonPath: .spec.default
+        - name: GatewayType
+          type: string
+          jsonPath: .spec.gatewayType
+        - name: V4Used
+          type: number
+          jsonPath: .status.v4usingIPs
+        - name: V4Available
+          type: number
+          jsonPath: .status.v4availableIPs
+        - name: V6Used
+          type: number
+          jsonPath: .status.v6usingIPs
+        - name: V6Available
+          type: number
+          jsonPath: .status.v6availableIPs
+        - name: ExcludeIPs
+          type: string
+          jsonPath: .spec.excludeIps
+        - name: U2OInterconnectionIP
+          type: string
+          jsonPath: .status.u2oInterconnectionIP
       schema:
         openAPIV3Schema:
           type: object
@@ -2785,27 +2794,27 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - name: Subnet
-        type: string
-        jsonPath: .spec.subnet
-      - name: enableAddressSet
-        type: boolean
-        jsonPath: .spec.enableAddressSet
-      - name: IPs
-        type: string
-        jsonPath: .spec.ips
-      - name: V4Used
-        type: number
-        jsonPath: .status.v4UsingIPs
-      - name: V4Available
-        type: number
-        jsonPath: .status.v4AvailableIPs
-      - name: V6Used
-        type: number
-        jsonPath: .status.v6UsingIPs
-      - name: V6Available
-        type: number
-        jsonPath: .status.v6AvailableIPs
+        - name: Subnet
+          type: string
+          jsonPath: .spec.subnet
+        - name: enableAddressSet
+          type: boolean
+          jsonPath: .spec.enableAddressSet
+        - name: IPs
+          type: string
+          jsonPath: .spec.ips
+        - name: V4Used
+          type: number
+          jsonPath: .status.v4UsingIPs
+        - name: V4Available
+          type: number
+          jsonPath: .status.v4AvailableIPs
+        - name: V6Used
+          type: number
+          jsonPath: .status.v6UsingIPs
+        - name: V6Available
+          type: number
+          jsonPath: .status.v6AvailableIPs
       schema:
         openAPIV3Schema:
           type: object
@@ -2929,15 +2938,15 @@ spec:
                 conflict:
                   type: boolean
       additionalPrinterColumns:
-      - name: ID
-        type: string
-        jsonPath: .spec.id
-      - name: Provider
-        type: string
-        jsonPath: .spec.provider
-      - name: conflict
-        type: boolean
-        jsonPath: .status.conflict
+        - name: ID
+          type: string
+          jsonPath: .spec.id
+        - name: Provider
+          type: string
+          jsonPath: .spec.provider
+        - name: conflict
+          type: boolean
+          jsonPath: .status.conflict
   scope: Cluster
   names:
     plural: vlans
@@ -3073,12 +3082,12 @@ spec:
                       lastTransitionTime:
                         type: string
       additionalPrinterColumns:
-      - name: DefaultInterface
-        type: string
-        jsonPath: .spec.defaultInterface
-      - name: Ready
-        type: boolean
-        jsonPath: .status.ready
+        - name: DefaultInterface
+          type: string
+          jsonPath: .spec.defaultInterface
+        - name: Ready
+          type: boolean
+          jsonPath: .status.ready
   scope: Cluster
   names:
     plural: provider-networks
@@ -3212,12 +3221,12 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.shared
-        name: Shared
-        type: string
-      - jsonPath: .spec.bindingType
-        name: BindingType
-        type: string
+        - jsonPath: .spec.shared
+          name: Shared
+          type: string
+        - jsonPath: .spec.bindingType
+          name: BindingType
+          type: string
       schema:
         openAPIV3Schema:
           type: object

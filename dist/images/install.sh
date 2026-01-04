@@ -750,6 +750,15 @@ spec:
                           type: array
                       type: object
                   type: object
+                routes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
             spec:
               type: object
               properties:

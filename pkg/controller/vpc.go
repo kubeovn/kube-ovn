@@ -209,7 +209,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	}
 	for _, gw := range natGws {
 		if key == gw.Spec.Vpc {
-			c.updateVpcSubnetQueue.Add(gw.Name)
+			c.updateNatGwRoutesQueue.Add(gw.Name)
 		}
 	}
 	return nil
