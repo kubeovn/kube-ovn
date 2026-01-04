@@ -1159,8 +1159,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
 
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		eventClient = f.EventClientNS("default")
-		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
+		eventClient = f.EventClientNS(metav1.NamespaceDefault)
+		events := eventClient.WaitToHaveEvent(util.KindSubnet, subnetName, corev1.EventTypeNormal, "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
 		message := fmt.Sprintf("subnet gateway type changes from %q to %q", apiv1.GWDistributedType, apiv1.GWCentralizedType)
 		found := false
@@ -1172,7 +1172,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
 		found = false
-		events = eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
+		events = eventClient.WaitToHaveEvent(util.KindSubnet, subnetName, corev1.EventTypeNormal, "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
 		message = fmt.Sprintf("gateway node changes from %q to %q", "", modifiedSubnet.Spec.GatewayNode)
 		for _, event := range events {
 			if event.Message == message {
@@ -1491,7 +1491,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		// Check if there are any events with conflict information
 		hasConflictError := false
 		for _, event := range events.Items {
-			if event.Type == "Warning" && strings.Contains(event.Message, "AddressConflict") {
+			if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
 				hasConflictError = true
 				framework.Logf("Found conflict event: %s", event.Message)
 				break

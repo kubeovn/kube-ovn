@@ -475,7 +475,7 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 						{
 							Addresses: []string{"10.244.0.5"}, // Primary IP
 							TargetRef: &corev1.ObjectReference{
-								Kind: "Pod",
+								Kind: util.KindPod,
 								Name: "test-pod-1",
 							},
 						},
@@ -556,7 +556,7 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 						{
 							Addresses: []string{"10.244.0.5"}, // Primary IP
 							TargetRef: &corev1.ObjectReference{
-								Kind: "Pod",
+								Kind: util.KindPod,
 								Name: "test-pod-1",
 							},
 						},
@@ -637,7 +637,7 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 						{
 							Addresses: []string{"10.244.0.5"},
 							TargetRef: &corev1.ObjectReference{
-								Kind: "Pod",
+								Kind: util.KindPod,
 								Name: "test-pod-1",
 							},
 						},
@@ -690,7 +690,7 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 						{
 							Addresses: []string{"10.244.0.5"},
 							TargetRef: &corev1.ObjectReference{
-								Kind: "Pod",
+								Kind: util.KindPod,
 								Name: "test-pod-1",
 							},
 						},

@@ -33,7 +33,7 @@ func generateSvcName(name string) string {
 func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
 	namespace := slr.Spec.Namespace
 	if namespace == "" {
-		namespace = "default"
+		namespace = metav1.NamespaceDefault
 	}
 
 	vips := make([]string, 0, len(slr.Spec.Ports))

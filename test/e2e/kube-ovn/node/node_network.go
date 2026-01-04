@@ -239,7 +239,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 				return false, nil
 			}
 			for _, event := range events.Items {
-				if event.Type == "Warning" && strings.Contains(event.Message, "network") && strings.Contains(event.Message, "not found") {
+				if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "network") && strings.Contains(event.Message, "not found") {
 					framework.Logf("Found expected event: %s", event.Message)
 					return true, nil
 				}

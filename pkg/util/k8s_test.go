@@ -13,7 +13,8 @@ import (
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -34,7 +35,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 	}{
 		{
 			name: "Match Labels",
-			object: &v1.Pod{
+			object: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": "nginx"},
 				},
@@ -44,7 +45,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		},
 		{
 			name: "No Match Labels",
-			object: &v1.Pod{
+			object: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": "apache"},
 				},
@@ -54,7 +55,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		},
 		{
 			name: "Invalid Selector",
-			object: &v1.Pod{
+			object: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": "nginx"},
 				},
@@ -64,7 +65,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		},
 		{
 			name: "Nil Selector",
-			object: &v1.Pod{
+			object: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": "nginx"},
 				},
@@ -73,7 +74,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		},
 		{
 			name: "No Labels",
-			object: &v1.Pod{
+			object: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{},
 				},
@@ -211,15 +212,15 @@ func TestDialAPIServer(t *testing.T) {
 func TestGetNodeInternalIP(t *testing.T) {
 	tests := []struct {
 		name string
-		node v1.Node
+		node corev1.Node
 		exp4 string
 		exp6 string
 	}{
 		{
 			name: "correct",
-			node: v1.Node{
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{{
+			node: corev1.Node{
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
 						Type:    "InternalIP",
 						Address: "192.168.0.2",
 					}, {
@@ -236,9 +237,9 @@ func TestGetNodeInternalIP(t *testing.T) {
 		},
 		{
 			name: "correctWithDiff",
-			node: v1.Node{
-				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{{
+			node: corev1.Node{
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
 						Type:    "InternalIP",
 						Address: "ffff:ffff:ffff:ffff:ffff::23",
 					}, {
@@ -266,14 +267,14 @@ func TestGetNodeInternalIP(t *testing.T) {
 func TestPodIPs(t *testing.T) {
 	tests := []struct {
 		name string
-		pod  v1.Pod
+		pod  corev1.Pod
 		exp  []string
 	}{
 		{
 			name: "pod_with_one_pod_ipv4_ip",
-			pod: v1.Pod{
-				Status: v1.PodStatus{
-					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}},
+			pod: corev1.Pod{
+				Status: corev1.PodStatus{
+					PodIPs: []corev1.PodIP{{IP: "192.168.1.100"}},
 					PodIP:  "192.168.1.100",
 				},
 			},
@@ -281,9 +282,9 @@ func TestPodIPs(t *testing.T) {
 		},
 		{
 			name: "pod_with_one_pod_dual_ip",
-			pod: v1.Pod{
-				Status: v1.PodStatus{
-					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}, {IP: "fd00:10:16::8"}},
+			pod: corev1.Pod{
+				Status: corev1.PodStatus{
+					PodIPs: []corev1.PodIP{{IP: "192.168.1.100"}, {IP: "fd00:10:16::8"}},
 					PodIP:  "192.168.1.100",
 				},
 			},
@@ -291,9 +292,9 @@ func TestPodIPs(t *testing.T) {
 		},
 		{
 			name: "pod_with_no_pod_ip",
-			pod: v1.Pod{
-				Status: v1.PodStatus{
-					PodIPs: []v1.PodIP{},
+			pod: corev1.Pod{
+				Status: corev1.PodStatus{
+					PodIPs: []corev1.PodIP{},
 					PodIP:  "",
 				},
 			},
@@ -301,9 +302,9 @@ func TestPodIPs(t *testing.T) {
 		},
 		{
 			name: "pod_with_podip",
-			pod: v1.Pod{
-				Status: v1.PodStatus{
-					PodIPs: []v1.PodIP{},
+			pod: corev1.Pod{
+				Status: corev1.PodStatus{
+					PodIPs: []corev1.PodIP{},
 					PodIP:  "192.168.1.100",
 				},
 			},
@@ -322,13 +323,13 @@ func TestPodIPs(t *testing.T) {
 func TestServiceClusterIPs(t *testing.T) {
 	tests := []struct {
 		name string
-		svc  v1.Service
+		svc  corev1.Service
 		exp  []string
 	}{
 		{
 			name: "service_with_one_cluster_ip",
-			svc: v1.Service{
-				Spec: v1.ServiceSpec{
+			svc: corev1.Service{
+				Spec: corev1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{"10.96.0.1"},
 				},
@@ -337,8 +338,8 @@ func TestServiceClusterIPs(t *testing.T) {
 		},
 		{
 			name: "service_with_two_cluster_ip",
-			svc: v1.Service{
-				Spec: v1.ServiceSpec{
+			svc: corev1.Service{
+				Spec: corev1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{"10.96.0.1", "fd00:10:16::1"},
 				},
@@ -347,8 +348,8 @@ func TestServiceClusterIPs(t *testing.T) {
 		},
 		{
 			name: "service_with_no_cluster_ip",
-			svc: v1.Service{
-				Spec: v1.ServiceSpec{
+			svc: corev1.Service{
+				Spec: corev1.ServiceSpec{
 					ClusterIP:  "",
 					ClusterIPs: []string{},
 				},
@@ -357,8 +358,8 @@ func TestServiceClusterIPs(t *testing.T) {
 		},
 		{
 			name: "service_with_no_clusterips",
-			svc: v1.Service{
-				Spec: v1.ServiceSpec{
+			svc: corev1.Service{
+				Spec: corev1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{},
 				},
@@ -367,8 +368,8 @@ func TestServiceClusterIPs(t *testing.T) {
 		},
 		{
 			name: "service_with_invalid_cluster_ip",
-			svc: v1.Service{
-				Spec: v1.ServiceSpec{
+			svc: corev1.Service{
+				Spec: corev1.ServiceSpec{
 					ClusterIP:  "",
 					ClusterIPs: []string{"10.96.0.1", "invalid ip"},
 				},
@@ -425,17 +426,17 @@ func TestSetOwnerReference(t *testing.T) {
 					UID:  uuid.NewUUID(),
 				},
 			},
-			object: &v1.Pod{},
+			object: &corev1.Pod{},
 		},
 		{
 			name: "not registered",
-			owner: &v1.Pod{
+			owner: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
 					UID:  uuid.NewUUID(),
 				},
 			},
-			object:  &v1.Pod{},
+			object:  &corev1.Pod{},
 			wantErr: true,
 		},
 	}
@@ -461,14 +462,14 @@ func TestSetOwnerReference(t *testing.T) {
 func TestPodAttachmentIPs(t *testing.T) {
 	tests := []struct {
 		name    string
-		pod     *v1.Pod
+		pod     *corev1.Pod
 		network string
 		wantErr bool
 		ips     []string
 	}{
 		{
 			name: "ipv4",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv4", "ips": ["1.1.1.1"]}]`,
@@ -480,7 +481,7 @@ func TestPodAttachmentIPs(t *testing.T) {
 		},
 		{
 			name: "ipv6",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv6", "ips": ["fd00::1"]}]`,
@@ -492,7 +493,7 @@ func TestPodAttachmentIPs(t *testing.T) {
 		},
 		{
 			name: "dual-stack",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `[{"name": "default/dual", "ips": ["1.1.1.1", "fd00::1"]}]`,
@@ -509,12 +510,12 @@ func TestPodAttachmentIPs(t *testing.T) {
 		},
 		{
 			name:    "no network status annotation",
-			pod:     &v1.Pod{},
+			pod:     &corev1.Pod{},
 			wantErr: true,
 		},
 		{
 			name: "unexpected network status annotation",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `foo_bar`,
@@ -525,7 +526,7 @@ func TestPodAttachmentIPs(t *testing.T) {
 		},
 		{
 			name: "empty network name",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `[{"name": "default/xxx", "ips": ["1.1.1.1", "fd00::1"]}]`,
@@ -537,7 +538,7 @@ func TestPodAttachmentIPs(t *testing.T) {
 		},
 		{
 			name: "network status not found",
-			pod: &v1.Pod{
+			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						nadv1.NetworkStatusAnnot: `[{"name": "default/xyz", "ips": ["1.1.1.1", "fd00::1"]}]`,
@@ -757,12 +758,12 @@ func TestObjectKind(t *testing.T) {
 	}{
 		{
 			name:     "Pod object",
-			result:   ObjectKind[*v1.Pod](),
+			result:   ObjectKind[*corev1.Pod](),
 			expected: "Pod",
 		},
 		{
 			name:     "Service object",
-			result:   ObjectKind[*v1.Service](),
+			result:   ObjectKind[*corev1.Service](),
 			expected: "Service",
 		},
 		{
@@ -781,6 +782,52 @@ func TestObjectKind(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.result != tt.expected {
 				t.Errorf("ObjectKind() = %q, want %q", tt.result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTrimManagedFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		arg     any
+		wantErr bool
+	}{{
+		name: "trim managed fields from object",
+		arg: &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-pod",
+				ManagedFields: []metav1.ManagedFieldsEntry{{
+					Manager:   "controller",
+					Operation: metav1.ManagedFieldsOperationApply,
+				}},
+			},
+		},
+	}, {
+		name: "object without managed fields",
+		arg: &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-subnet-no-managed-fields",
+			},
+		},
+	}, {
+		name:    "non-object input",
+		arg:     "this is a string, not an object",
+		wantErr: true,
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ret, err := TrimManagedFields(tt.arg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TrimManagedFields() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err == nil {
+				// check whether managed fields are trimmed
+				accessor, err := meta.Accessor(ret)
+				require.NoError(t, err)
+				require.Empty(t, accessor.GetManagedFields())
 			}
 		})
 	}

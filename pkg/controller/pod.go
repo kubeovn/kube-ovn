@@ -1307,7 +1307,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, error) {
 	podName := c.getNameByPod(pod)
-	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	key := cache.NewObjectName(pod.Namespace, podName).String()
 	targetPortNameList := strset.NewWithSize(len(podNets))
 	portsNeedToDel := []string{}
 	annotationsNeedToDel := []string{}
@@ -1957,7 +1957,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	podName := c.getNameByPod(pod)
-	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	key := cache.NewObjectName(pod.Namespace, podName).String()
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	var checkVMPod bool

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -370,7 +372,7 @@ func TestPodNameToPortName(t *testing.T) {
 		{
 			name:      "NonOvnProvider",
 			pod:       "test-pod",
-			namespace: "kube-system",
+			namespace: metav1.NamespaceSystem,
 			provider:  "custom-provider",
 			expected:  "test-pod.kube-system.custom-provider",
 		},

@@ -304,7 +304,7 @@ func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlices []*
 		needsUpdate := false
 		// Check if any endpoints need updating first
 		for j, ep := range endpoint.Endpoints {
-			if ep.TargetRef != nil && ep.TargetRef.Kind == "Pod" {
+			if ep.TargetRef != nil && ep.TargetRef.Kind == util.KindPod {
 				podName := ep.TargetRef.Name
 				// Skip if already processed this pod
 				// Include slice index to handle pod in multiple slices

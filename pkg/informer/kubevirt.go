@@ -28,10 +28,8 @@ import (
 
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	aggregatorclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 
 	kubev1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -47,6 +45,8 @@ const (
 var errUnexpectedObject = errors.New("unexpected object")
 
 type newSharedInformer func() cache.SharedIndexInformer
+
+type SharedInformerOption func(*kubeInformerFactory) *kubeInformerFactory
 
 type KubeVirtInformerFactory interface {
 	// Starts any informers that have not been started yet
@@ -64,30 +64,40 @@ type KubeVirtInformerFactory interface {
 }
 
 type kubeInformerFactory struct {
-	restClient       *rest.RESTClient
-	clientSet        kubecli.KubevirtClient
-	aggregatorClient aggregatorclient.Interface
-	lock             sync.Mutex
-	defaultResync    time.Duration
+	restClient    *rest.RESTClient
+	clientSet     kubecli.KubevirtClient
+	lock          sync.Mutex
+	defaultResync time.Duration
+	transform     cache.TransformFunc
 
-	informers         map[string]cache.SharedIndexInformer
-	startedInformers  map[string]bool
-	kubevirtNamespace string
-	k8sInformers      informers.SharedInformerFactory
+	informers        map[string]cache.SharedIndexInformer
+	startedInformers map[string]bool
 }
 
-func NewKubeVirtInformerFactory(restClient *rest.RESTClient, clientSet kubecli.KubevirtClient, aggregatorClient aggregatorclient.Interface, kubevirtNamespace string) KubeVirtInformerFactory {
-	return &kubeInformerFactory{
-		restClient:       restClient,
-		clientSet:        clientSet,
-		aggregatorClient: aggregatorClient,
-		// Resulting resync period will be between 12 and 24 hours, like the default for k8s
-		defaultResync:     ResyncPeriod(12 * time.Hour),
-		informers:         make(map[string]cache.SharedIndexInformer),
-		startedInformers:  make(map[string]bool),
-		kubevirtNamespace: kubevirtNamespace,
-		k8sInformers:      informers.NewSharedInformerFactoryWithOptions(clientSet, 0),
+// WithTransform sets a transform on all informers.
+func WithTransform(transform cache.TransformFunc) SharedInformerOption {
+	return func(factory *kubeInformerFactory) *kubeInformerFactory {
+		factory.transform = transform
+		return factory
 	}
+}
+
+func NewKubeVirtInformerFactoryWithOptions(restClient *rest.RESTClient, clientSet kubecli.KubevirtClient, options ...SharedInformerOption) KubeVirtInformerFactory {
+	factory := &kubeInformerFactory{
+		restClient: restClient,
+		clientSet:  clientSet,
+		// Resulting resync period will be between 12 and 24 hours, like the default for k8s
+		defaultResync:    ResyncPeriod(12 * time.Hour),
+		informers:        make(map[string]cache.SharedIndexInformer),
+		startedInformers: make(map[string]bool),
+	}
+
+	// Apply all options
+	for _, opt := range options {
+		factory = opt(factory)
+	}
+
+	return factory
 }
 
 // Start can be called from multiple controllers in different go routines safely.
@@ -107,7 +117,6 @@ func (f *kubeInformerFactory) Start(stopCh <-chan struct{}) {
 		go informer.Run(stopCh)
 		f.startedInformers[name] = true
 	}
-	f.k8sInformers.Start(stopCh)
 }
 
 func (f *kubeInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) {
@@ -135,6 +144,7 @@ func (f *kubeInformerFactory) getInformer(key string, newFunc newSharedInformer)
 		return informer
 	}
 	informer = newFunc()
+	_ = informer.SetTransform(f.transform)
 	f.informers[key] = informer
 
 	return informer

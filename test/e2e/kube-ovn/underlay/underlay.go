@@ -15,6 +15,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
+	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
@@ -539,7 +541,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Waiting for pod events")
-		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
+		events := eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.FailedCreatePodSandBox, kubeletserver.ComponentKubelet, "")
 		ip = networkInfo.IPAddress.String()
 		if f.IsIPv6() {
 			ip = networkInfo.GlobalIPv6Address.String()

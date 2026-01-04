@@ -68,19 +68,17 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		opts = &FakeControllerOptions{}
 	}
 
-	// Create default namespace if none provided
-	defaultNamespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "default",
-			Annotations: map[string]string{
-				util.LogicalSwitchAnnotation: util.DefaultSubnet,
-			},
-		},
-	}
-
 	namespaces := opts.Namespaces
 	if len(namespaces) == 0 {
-		namespaces = []*corev1.Namespace{defaultNamespace}
+		// Create default namespace if none provided
+		namespaces = []*corev1.Namespace{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: metav1.NamespaceDefault,
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: util.DefaultSubnet,
+				},
+			},
+		}}
 	}
 
 	// Create fake Kubernetes client with namespaces and pods
@@ -114,15 +112,32 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	// Create informer factories
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
+		informers.WithTransform(util.TrimManagedFields),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.Watch = true
+			options.AllowWatchBookmarks = true
+		}),
+	)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 
-	nadInformerFactory := nadinformers.NewSharedInformerFactory(nadClient, 0)
+	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
+		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.Watch = true
+			options.AllowWatchBookmarks = true
+		}),
+	)
 	nadInformer := nadInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
-	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
+	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactoryWithOptions(kubeovnClient, 0,
+		kubeovninformerfactory.WithTransform(util.TrimManagedFields),
+		kubeovninformerfactory.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.Watch = true
+			options.AllowWatchBookmarks = true
+		}),
+	)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
@@ -155,12 +170,12 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	ctrl.config = &Configuration{
-		ClusterRouter:        "ovn-cluster",
-		DefaultLogicalSwitch: "ovn-default",
+		ClusterRouter:        util.DefaultVpc,
+		DefaultLogicalSwitch: util.DefaultSubnet,
 		NodeSwitch:           "join",
 		KubeOvnClient:        kubeovnClient,
 		KubeClient:           kubeClient,
-		PodNamespace:         "kube-system",
+		PodNamespace:         metav1.NamespaceSystem,
 		AttachNetClient:      nadClient,
 	}
 
@@ -191,12 +206,18 @@ func newFakeController(t *testing.T) *fakeController {
 }
 
 func Test_allSubnetReady(t *testing.T) {
-	fakeController, err := newFakeControllerWithOptions(t, nil)
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{
+			ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{Name: "join"},
+		}},
+	})
 	require.NoError(t, err)
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 
-	subnets := []string{"ovn-default", "join"}
+	subnets := []string{util.DefaultSubnet, "join"}
 
 	t.Run("all subnet ready", func(t *testing.T) {
 		mockOvnClient.EXPECT().LogicalSwitchExists(gomock.Any()).Return(true, nil).Times(2)
@@ -219,41 +240,29 @@ func Test_allSubnetReady(t *testing.T) {
 // TestFakeControllerWithOptions demonstrates usage of the unified fake controller
 func TestFakeControllerWithOptions(t *testing.T) {
 	// Example: creating a fake controller with NADs, subnets, and pods
-	nads := []*nadv1.NetworkAttachmentDefinition{
-		{
+	opts := &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{
+			ObjectMeta: metav1.ObjectMeta{Name: "net1-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
+		}},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "net1",
-				Namespace: "default",
+				Namespace: metav1.NamespaceDefault,
 			},
 			Spec: nadv1.NetworkAttachmentDefinitionSpec{
 				Config: `{"cniVersion": "0.3.1", "name": "net1", "type": "kube-ovn"}`,
 			},
-		},
-	}
-
-	subnets := []*kubeovnv1.Subnet{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "net1-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
-		},
-	}
-
-	pods := []*corev1.Pod{
-		{
+		}},
+		Pods: []*corev1.Pod{{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod",
-				Namespace: "default",
+				Namespace: metav1.NamespaceDefault,
 				Annotations: map[string]string{
 					nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
 				},
 			},
-		},
-	}
-
-	opts := &FakeControllerOptions{
-		Subnets:            subnets,
-		NetworkAttachments: nads,
-		Pods:               pods,
+		}},
 	}
 
 	fakeCtrl, err := newFakeControllerWithOptions(t, opts)
@@ -267,7 +276,7 @@ func TestFakeControllerWithOptions(t *testing.T) {
 	require.NotNil(t, ctrl.config.KubeOvnClient)
 
 	// Verify that NADs can be retrieved
-	nadClient := ctrl.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions("default")
+	nadClient := ctrl.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(metav1.NamespaceDefault)
 	retrievedNAD, err := nadClient.Get(context.Background(), "net1", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "net1", retrievedNAD.Name)

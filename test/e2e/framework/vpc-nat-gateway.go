@@ -146,7 +146,7 @@ func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) 
 func (c *VpcNatGatewayClient) WaitGwPodReady(name string, timeout time.Duration, clientSet clientset.Interface) bool {
 	podName := util.GenNatGwPodName(name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		pod, err := clientSet.CoreV1().Pods("kube-system").Get(context.Background(), podName, metav1.GetOptions{})
+		pod, err := clientSet.CoreV1().Pods(metav1.NamespaceSystem).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				Logf("natgw %s is not ready err: %s", name, err)

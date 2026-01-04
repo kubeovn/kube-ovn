@@ -12,6 +12,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
+	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -123,7 +125,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Waiting for pod readiness probe failure")
-		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "Unhealthy", "kubelet", "")
+		events := eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.ContainerUnhealthy, kubeletserver.ComponentKubelet, "")
 		var found bool
 		for _, event := range events {
 			if strings.Contains(event.Message, "Readiness probe failed") {
@@ -168,7 +170,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		podClient.WaitForRunning(podName)
 
 		ginkgo.By("Waiting for pod readiness probe failure")
-		events = eventClient.WaitToHaveEvent("Pod", podName, "Warning", "Unhealthy", "kubelet", "")
+		events = eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.ContainerUnhealthy, kubeletserver.ComponentKubelet, "")
 		found = false
 		for _, event := range events {
 			if strings.Contains(event.Message, "Readiness probe failed") {
