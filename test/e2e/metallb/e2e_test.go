@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -382,6 +383,16 @@ var _ = framework.Describe("[group:metallb]", func() {
 		checkReachable(f, containerID, clientip, lbsvcIP, "80", clusterName, true)
 		checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
 
+		ginkgo.By("Restarting ds kube-ovn-cni")
+		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+		ds := daemonSetClient.Get("kube-ovn-cni")
+		daemonSetClient.RestartSync(ds)
+
+		ginkgo.By("Waiting for underlay OpenFlow rules to be restored within 15s")
+		vipNode := getVIPNode(containerID, lbsvcIP, clusterName)
+		flowRestored := waitUnderlayServiceFlow(vipNode, providerNetworkName, lbsvcIP, curlListenPort, 15*time.Second)
+		framework.ExpectEqual(flowRestored, true, "underlay service OpenFlow should be restored within 15s")
+
 		ginkgo.By("Deleting the first service")
 		serviceClient.DeleteSync(serviceName)
 
@@ -420,8 +431,19 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	backendPodName := strings.TrimSpace(string(output))
 	framework.Logf("Packet reached backend: %s", backendPodName)
 
-	cmd = strings.Fields("ip neigh show " + targetIP)
-	output, _, err = docker.Exec(containerID, nil, cmd...)
+	vipNode := getVIPNode(containerID, targetIP, clusterName)
+
+	ginkgo.By("Checking the backend pod's host is same as the metallb vip's node")
+	backendPod := f.PodClient().GetPod(backendPodName)
+	backendPodNode := backendPod.Spec.NodeName
+	framework.ExpectEqual(backendPodNode, vipNode)
+}
+
+func getVIPNode(containerID, targetIP, clusterName string) string {
+	ginkgo.GinkgoHelper()
+
+	cmd := strings.Fields("ip neigh show " + targetIP)
+	output, _, err := docker.Exec(containerID, nil, cmd...)
 	framework.ExpectNoError(err)
 	framework.Logf("ip neigh: %s", string(output))
 	lines := strings.Split(string(output), "\n")
@@ -450,8 +472,23 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	framework.ExpectNotEmpty(vipNode, "Failed to find the node with MAC address: %s", vipMac)
 	framework.Logf("Node with MAC address %s is %s", vipMac, vipNode)
 
-	ginkgo.By("Checking the backend pod's host is same as the metallb vip's node")
-	backendPod := f.PodClient().GetPod(backendPodName)
-	backendPodNode := backendPod.Spec.NodeName
-	framework.ExpectEqual(backendPodNode, vipNode)
+	return vipNode
+}
+
+func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) bool {
+	ginkgo.GinkgoHelper()
+
+	bridgeName := util.ExternalBridgeName(providerNetworkName)
+	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
+	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
+		nodeName, bridgeName, serviceIP, matchPort)
+
+	var flowFound bool
+	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
+		_, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		flowFound = err == nil
+		return flowFound, nil
+	}, "")
+
+	return flowFound
 }
