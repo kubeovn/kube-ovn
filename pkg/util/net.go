@@ -791,3 +791,37 @@ func InvalidNetworkMask(network *net.IPNet) error {
 	}
 	return nil
 }
+
+// ValidatePort checks if the port string is a valid port number (1-65535).
+func ValidatePort(port string) error {
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return errors.New("must be a number")
+	}
+	if p < 1 || p > 65535 {
+		return errors.New("must be between 1 and 65535")
+	}
+	return nil
+}
+
+// ValidateIP checks if the given string is a valid IP address.
+func ValidateIP(ip string) error {
+	if net.ParseIP(ip) == nil {
+		return errors.New("invalid IP address")
+	}
+	return nil
+}
+
+// ValidateCIDR checks if the given string is a valid CIDR.
+func ValidateCIDR(cidr string) error {
+	return CheckCidrs(cidr)
+}
+
+// ValidateProtocol checks if the protocol is valid (tcp or udp).
+func ValidateProtocol(protocol string) error {
+	p := strings.ToLower(protocol)
+	if p != ProtocolTCP && p != ProtocolUDP {
+		return fmt.Errorf("must be %s or %s", ProtocolTCP, ProtocolUDP)
+	}
+	return nil
+}
