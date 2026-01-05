@@ -4,8 +4,8 @@ import (
 	"context"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-	updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-	deleteHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+	createHooks = make(map[schema.GroupVersionKind]admission.HandlerFunc)
+	updateHooks = make(map[schema.GroupVersionKind]admission.HandlerFunc)
+	deleteHooks = make(map[schema.GroupVersionKind]admission.HandlerFunc)
 )
 
 type ValidatingHook struct {
@@ -36,8 +36,8 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[deploymentGVK] = v.DeploymentCreateHook
 	createHooks[statefulSetGVK] = v.StatefulSetCreateHook
 	createHooks[daemonSetGVK] = v.DaemonSetCreateHook
-	createHooks[cornJobSetGVK] = v.CornJobSetCreateHook
-	createHooks[jobSetGVK] = v.JobSetCreateHook
+	createHooks[cronJobGVK] = v.CronJobCreateHook
+	createHooks[jobGVK] = v.JobCreateHook
 	createHooks[podGVK] = v.PodCreateHook
 
 	createHooks[subnetGVK] = v.SubnetCreateHook
@@ -88,23 +88,33 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 		}
 	}()
 
+	key := client.ObjectKey{
+		Namespace: req.Namespace,
+		Name:      req.Name,
+	}.String()
+	gvk := schema.GroupVersionKind{
+		Group:   req.Kind.Group,
+		Version: req.Kind.Version,
+		Kind:    req.Kind.Kind,
+	}
+	klog.V(3).Infof("admission request for %s %s: operation=%s, uid=%s", gvk.String(), key, req.Operation, req.UID)
 	switch req.Operation {
 	case admissionv1.Create:
-		if createHooks[req.Kind] != nil {
-			klog.Infof("handle create %s %s@%s", req.Kind, req.Name, req.Namespace)
-			resp = createHooks[req.Kind](ctx, req)
+		if createHooks[gvk] != nil {
+			klog.Infof("handle create %s %s", gvk, key)
+			resp = createHooks[gvk](ctx, req)
 			return resp
 		}
 	case admissionv1.Update:
-		if updateHooks[req.Kind] != nil {
-			klog.Infof("handle update %s %s@%s", req.Kind, req.Name, req.Namespace)
-			resp = updateHooks[req.Kind](ctx, req)
+		if updateHooks[gvk] != nil {
+			klog.Infof("handle update %s %s", gvk, key)
+			resp = updateHooks[gvk](ctx, req)
 			return resp
 		}
 	case admissionv1.Delete:
-		if deleteHooks[req.Kind] != nil {
-			klog.Infof("handle delete %s %s@%s", req.Kind, req.Name, req.Namespace)
-			resp = deleteHooks[req.Kind](ctx, req)
+		if deleteHooks[gvk] != nil {
+			klog.Infof("handle delete %s %s", gvk, key)
+			resp = deleteHooks[gvk](ctx, req)
 			return resp
 		}
 	}

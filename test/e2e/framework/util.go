@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	KubeOvnNamespace = "kube-system"
+	KubeOvnNamespace = metav1.NamespaceSystem
 	DaemonSetOvsOvn  = "ovs-ovn"
 )
 

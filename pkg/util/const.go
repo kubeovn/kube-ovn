@@ -2,6 +2,8 @@ package util
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -324,8 +326,6 @@ const (
 	ConsumptionKubevirt       = "kubevirt"
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
-	KubevirtNamespace = "kubevirt"
-
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
@@ -391,11 +391,28 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
+	KindPod = ObjectKind[*corev1.Pod]()
+
 	KindDeployment  = ObjectKind[*appsv1.Deployment]()
 	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()
 	KindStatefulSet = ObjectKind[*appsv1.StatefulSet]()
+	KindJob         = ObjectKind[*batchv1.Job]()
+	KindCronJob     = ObjectKind[*batchv1.CronJob]()
 
+	KindIP               = ObjectKind[*kubeovnv1.IP]()
+	KindIptablesEIP      = ObjectKind[*kubeovnv1.IptablesEIP]()
+	KindIptablesDnatRule = ObjectKind[*kubeovnv1.IptablesDnatRule]()
+	KindIptablesSnatRule = ObjectKind[*kubeovnv1.IptablesSnatRule]()
+	KindIptablesFIPRule  = ObjectKind[*kubeovnv1.IptablesFIPRule]()
+	KindOvnEip           = ObjectKind[*kubeovnv1.OvnEip]()
+	KindOvnFip           = ObjectKind[*kubeovnv1.OvnFip]()
+	KindOvnDnatRule      = ObjectKind[*kubeovnv1.OvnDnatRule]()
+	KindOvnSnatRule      = ObjectKind[*kubeovnv1.OvnSnatRule]()
+	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
+	KindVip              = ObjectKind[*kubeovnv1.Vip]()
+	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
+	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()

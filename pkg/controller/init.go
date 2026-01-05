@@ -446,7 +446,7 @@ func (c *Controller) InitIPAM() error {
 
 		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+		key := cache.NewObjectName(pod.Namespace, podName).String()
 		for _, podNet := range podNets {
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)

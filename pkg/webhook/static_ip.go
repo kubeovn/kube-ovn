@@ -10,10 +10,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -22,14 +21,14 @@ import (
 )
 
 var (
-	deploymentGVK  = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "Deployment"}
-	statefulSetGVK = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "StatefulSet"}
-	daemonSetGVK   = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "DaemonSet"}
-	jobSetGVK      = metav1.GroupVersionKind{Group: batchv1.SchemeGroupVersion.Group, Version: batchv1.SchemeGroupVersion.Version, Kind: "Job"}
-	cornJobSetGVK  = metav1.GroupVersionKind{Group: batchv1.SchemeGroupVersion.Group, Version: batchv1.SchemeGroupVersion.Version, Kind: "CronJob"}
-	podGVK         = metav1.GroupVersionKind{Group: corev1.SchemeGroupVersion.Group, Version: corev1.SchemeGroupVersion.Version, Kind: "Pod"}
-	subnetGVK      = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "Subnet"}
-	vpcGVK         = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "Vpc"}
+	deploymentGVK  = appsv1.SchemeGroupVersion.WithKind(util.KindDeployment)
+	statefulSetGVK = appsv1.SchemeGroupVersion.WithKind(util.KindStatefulSet)
+	daemonSetGVK   = appsv1.SchemeGroupVersion.WithKind(util.KindDaemonSet)
+	jobGVK         = batchv1.SchemeGroupVersion.WithKind(util.KindJob)
+	cronJobGVK     = batchv1.SchemeGroupVersion.WithKind(util.KindCronJob)
+	podGVK         = corev1.SchemeGroupVersion.WithKind(util.KindPod)
+	subnetGVK      = ovnv1.SchemeGroupVersion.WithKind(util.KindSubnet)
+	vpcGVK         = ovnv1.SchemeGroupVersion.WithKind(util.KindVpc)
 )
 
 func (v *ValidatingHook) DeploymentCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -74,7 +73,7 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) JobCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	o := batchv1.Job{}
 	if err := v.decoder.Decode(req, &o); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -88,7 +87,7 @@ func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Req
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) CronJobCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	o := batchv1.CronJob{}
 	if err := v.decoder.Decode(req, &o); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -171,7 +170,7 @@ func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map
 	if ipPool != "" {
 		if !strings.ContainsRune(ipPool, ',') && net.ParseIP(ipPool) == nil {
 			pool := &ovnv1.IPPool{}
-			if err := v.cache.Get(ctx, types.NamespacedName{Name: ipPool}, pool); err != nil {
+			if err := v.cache.Get(ctx, client.ObjectKey{Name: ipPool}, pool); err != nil {
 				return fmt.Errorf("ippool %q not found", ipPool)
 			}
 		} else if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {

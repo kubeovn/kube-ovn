@@ -28,7 +28,7 @@ const (
 	podDNATAdd     = "dnat-add"
 	podDNATDel     = "dnat-del"
 	attachmentName = "lb-svc-attachment"
-	attachmentNs   = "kube-system"
+	attachmentNs   = metav1.NamespaceSystem
 )
 
 func genLbSvcDpName(name string) string {

@@ -7,8 +7,7 @@ import (
 	"net"
 	"net/http"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var ipGVK = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "IP"}
+var ipGVK = ovnv1.SchemeGroupVersion.WithKind(util.KindIP)
 
 func (v *ValidatingHook) IPCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	ip := ovnv1.IP{}
@@ -84,7 +83,7 @@ func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key := types.NamespacedName{Name: ip.Spec.Subnet}
+	key := client.ObjectKey{Name: ip.Spec.Subnet}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}

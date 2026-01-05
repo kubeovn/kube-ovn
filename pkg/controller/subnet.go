@@ -1794,7 +1794,7 @@ func (c *Controller) acquireU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName, u2
 		case kubeovnv1.ProtocolDual:
 			subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 		}
-		err = c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, "default", "", "")
+		err = c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
 			return "", "", "", err
@@ -1844,7 +1844,7 @@ func (c *Controller) acquireMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 			subnet.Status.McastQuerierIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 		}
 
-		err := c.createOrUpdateIPCR("", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, "default", "", "")
+		err := c.createOrUpdateIPCR("", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
 			return isMcastQuerierChanged, err
@@ -2860,7 +2860,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			"mcast_eth_src": subnet.Status.McastQuerierMAC,
 		}
 		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, "default", false, "", "", false, nil, ""); err != nil {
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, metav1.NamespaceDefault, false, "", "", false, nil, ""); err != nil {
 			err = fmt.Errorf("failed to create mcast querier lsp %s: %w", mcastQuerierLspName, err)
 			klog.Error(err)
 			return err

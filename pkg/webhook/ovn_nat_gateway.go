@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	cli "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -21,10 +19,10 @@ import (
 )
 
 var (
-	ovnEip  = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "OvnEip"}
-	ovnFip  = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "OvnFip"}
-	ovnDnat = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "OvnDnatRule"}
-	ovnSnat = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "OvnSnatRule"}
+	ovnEip  = ovnv1.SchemeGroupVersion.WithKind(util.KindOvnEip)
+	ovnFip  = ovnv1.SchemeGroupVersion.WithKind(util.KindOvnFip)
+	ovnDnat = ovnv1.SchemeGroupVersion.WithKind(util.KindOvnDnatRule)
+	ovnSnat = ovnv1.SchemeGroupVersion.WithKind(util.KindOvnSnatRule)
 )
 
 func (v *ValidatingHook) ovnEipCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -230,7 +228,7 @@ func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Req
 func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) error {
 	subnet := &ovnv1.Subnet{}
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-	key := types.NamespacedName{Name: externalNetwork}
+	key := cli.ObjectKey{Name: externalNetwork}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}
@@ -280,7 +278,7 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
-	key := types.NamespacedName{Name: dnat.Spec.OvnEip}
+	key := cli.ObjectKey{Name: dnat.Spec.OvnEip}
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
@@ -342,7 +340,7 @@ func (v *ValidatingHook) ValidateOvnSnat(ctx context.Context, snat *ovnv1.OvnSna
 	}
 
 	eip := &ovnv1.OvnEip{}
-	key := types.NamespacedName{Name: snat.Spec.OvnEip}
+	key := cli.ObjectKey{Name: snat.Spec.OvnEip}
 	return v.cache.Get(ctx, key, eip)
 }
 
@@ -356,6 +354,6 @@ func (v *ValidatingHook) ValidateOvnFip(ctx context.Context, fip *ovnv1.OvnFip) 
 		return err
 	}
 	eip := &ovnv1.OvnEip{}
-	key := types.NamespacedName{Name: fip.Spec.OvnEip}
+	key := cli.ObjectKey{Name: fip.Spec.OvnEip}
 	return v.cache.Get(ctx, key, eip)
 }

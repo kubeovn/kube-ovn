@@ -279,7 +279,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				},
 			},
 			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
+			externalNadNamespace: metav1.NamespaceSystem,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
@@ -299,7 +299,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				},
 			},
 			externalNadName:      "external-subnet",
-			externalNadNamespace: "kube-system",
+			externalNadNamespace: metav1.NamespaceSystem,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",

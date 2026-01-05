@@ -507,7 +507,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 }
 
 func (c *Controller) getDefaultCoreDNSImage() (string, error) {
-	dp, err := c.config.KubeClient.AppsV1().Deployments("kube-system").
+	dp, err := c.config.KubeClient.AppsV1().Deployments(metav1.NamespaceSystem).
 		Get(context.Background(), "coredns", metav1.GetOptions{})
 	if err != nil {
 		klog.Error(err)

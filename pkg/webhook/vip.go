@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"reflect"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -17,7 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var vipGVK = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "Vip"}
+var vipGVK = ovnv1.SchemeGroupVersion.WithKind(util.KindVip)
 
 func (v *ValidatingHook) VipCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	vip := ovnv1.Vip{}
@@ -61,7 +60,7 @@ func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error 
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key := types.NamespacedName{Name: vip.Spec.Subnet}
+	key := client.ObjectKey{Name: vip.Spec.Subnet}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}

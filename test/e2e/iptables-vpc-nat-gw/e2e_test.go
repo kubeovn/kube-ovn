@@ -430,7 +430,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		oldImage := cm.Data["image"]
-		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.14.19"
+		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.14.25"
 		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
@@ -444,7 +444,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			true, // skipNADSetup: shared NAD created in BeforeAll
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		pod := f.PodClientNS("kube-system").GetPod(vpcNatGwPodName)
+		pod := f.PodClientNS(metav1.NamespaceSystem).GetPod(vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
