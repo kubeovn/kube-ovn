@@ -3,14 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -53,6 +51,8 @@ type Configuration struct {
 	KubeClient                kubernetes.Interface
 	KubeOvnClient             clientset.Interface
 	CertManagerClient         certmanagerclientset.Interface
+	PodName                   string
+	PodNamespace              string
 	NodeName                  string
 	NodeIPv4                  string
 	NodeIPv6                  string
@@ -104,7 +104,6 @@ func ParseFlags() *Configuration {
 		argCniConfFile      = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
 		argsCniConfName     = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 
-		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
@@ -187,7 +186,9 @@ func ParseFlags() *Configuration {
 		SecureServing:             *argSecureServing,
 		PprofPort:                 *argPprofPort,
 		MacLearningFallback:       *argMacLearningFallback,
-		NodeName:                  strings.ToLower(*argNodeName),
+		NodeName:                  os.Getenv(util.EnvNodeName),
+		PodNamespace:              os.Getenv(util.EnvPodNamespace),
+		PodName:                   os.Getenv(util.EnvPodName),
 		ServiceClusterIPRange:     *argServiceClusterIPRange,
 		ClusterRouter:             *argClusterRouter,
 		NodeSwitch:                *argNodeSwitch,
@@ -215,9 +216,6 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 	}
-	if runtime.GOOS == "windows" {
-		config.EnableOVNIPSec = false
-	}
 
 	return config
 }
@@ -225,7 +223,7 @@ func ParseFlags() *Configuration {
 func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 	if config.NodeName == "" {
 		klog.Info("node name not specified in command line parameters, fall back to the environment variable")
-		if config.NodeName = strings.ToLower(os.Getenv(util.HostnameEnv)); config.NodeName == "" {
+		if config.NodeName = strings.ToLower(os.Getenv(util.EnvNodeName)); config.NodeName == "" {
 			klog.Info("node name not specified in environment variables, fall back to the hostname")
 			hostname, err := os.Hostname()
 			if err != nil {
@@ -326,12 +324,6 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
-	if encapIsIPv6 && runtime.GOOS == "windows" {
-		// OVS windows datapath does not IPv6 tunnel in version v2.17
-		err = errors.New("IPv6 tunnel is not supported on Windows currently")
-		klog.Error(err)
-		return err
-	}
 
 	if config.MTU == 0 {
 		switch config.NetworkType {
@@ -371,7 +363,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 }
 
 func (config *Configuration) getEncapIP(node *corev1.Node) string {
-	if podIP := os.Getenv(util.PodIP); podIP != "" {
+	if podIP := os.Getenv(util.EnvPodIP); podIP != "" {
 		return podIP
 	}
 
@@ -441,7 +433,7 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeOvnClient = kubeOvnClient
 
-	cfg.ContentType = util.ContentType
+	cfg.ContentType = util.ContentTypeProtobuf
 	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
@@ -451,7 +443,7 @@ func (config *Configuration) initKubeClient() error {
 	config.KubeClient = kubeClient
 
 	if config.CertManagerIPSecCert {
-		cfg.ContentType = "application/json"
+		cfg.ContentType = util.ContentTypeJSON
 		cmClient, err := certmanagerclientset.NewForConfig(cfg)
 		if err != nil {
 			klog.Errorf("init certmanager client failed %v", err)

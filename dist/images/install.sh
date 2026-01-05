@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGISTRY="docker.io/kubeovn"
-VERSION="v1.15.0"
+VERSION="v1.16.0"
 
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
@@ -294,6 +294,7 @@ spec:
                   type: string
                 replicas:
                   type: integer
+                  format: int32
                   minimum: 1
                   maximum: 3
                 corefile:
@@ -375,12 +376,14 @@ spec:
                         type: string
                       port:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                       protocol:
                         type: string
                       targetPort:
                         type: integer
+                        format: int32
                         minimum: 1
                         maximum: 65535
                     type: object
@@ -460,6 +463,8 @@ spec:
                         enum:
                           - Equal
                           - Exists
+                          - Lt
+                          - Gt
                       value:
                         type: string
                       effect:
@@ -469,6 +474,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
@@ -514,6 +520,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -608,6 +615,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -699,6 +707,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -775,8 +784,10 @@ spec:
                       type: boolean
                     asn:
                       type: integer
+                      format: uint32
                     remoteAsn:
                       type: integer
+                      format: uint32
                     neighbors:
                       type: array
                       items:
@@ -815,6 +826,8 @@ spec:
                         enum:
                           - Equal
                           - Exists
+                          - Lt
+                          - Gt
                       value:
                         type: string
                       effect:
@@ -824,6 +837,7 @@ spec:
                           - NoSchedule
                           - PreferNoSchedule
                       tolerationSeconds:
+                        format: int64
                         type: integer
                 affinity:
                   properties:
@@ -869,6 +883,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -963,6 +978,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -1054,6 +1070,7 @@ spec:
                                 type: object
                               weight:
                                 type: integer
+                                format: int32
                                 minimum: 1
                                 maximum: 100
                             required:
@@ -1173,6 +1190,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   minimum: 0
                   maximum: 10
                 labelSelector:
@@ -1190,6 +1208,7 @@ spec:
                         maxLength: 32768
                         type: string
                       observedGeneration:
+                        format: int64
                         minimum: 0
                         type: integer
                       reason:
@@ -1270,6 +1289,7 @@ spec:
               properties:
                 replicas:
                   type: integer
+                  format: int32
                   default: 1
                   minimum: 0
                   maximum: 10
@@ -1317,16 +1337,19 @@ spec:
                       default: false
                     minRX:
                       type: integer
+                      format: int32
                       default: 1000
                       minimum: 1
                       maximum: 3600000
                     minTX:
                       type: integer
+                      format: int32
                       default: 1000
                       minimum: 1
                       maximum: 3600000
                     multiplier:
                       type: integer
+                      format: int32
                       default: 3
                       minimum: 1
                       maximum: 3600000
@@ -1500,13 +1523,16 @@ spec:
                       operator:
                         description: |-
                           Operator represents a key's relationship to the value.
-                          Valid operators are Exists and Equal. Defaults to Equal.
+                          Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                           Exists is equivalent to wildcard for value, so that a pod can
                           tolerate all taints of a particular category.
+                          Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                         type: string
                         enum:
                           - Exists
                           - Equal
+                          - Lt
+                          - Gt
                       tolerationSeconds:
                         description: |-
                           TolerationSeconds represents the period of time the toleration (which must be
@@ -2355,6 +2381,8 @@ spec:
                     properties:
                       priority:
                         type: integer
+                        min: 0
+                        max: 32767
                       action:
                         type: string
                       match:
@@ -3253,6 +3281,15 @@ spec:
                     type: string
                 autoCreateVlanSubinterfaces:
                   type: boolean
+                preserveVlanInterfaces:
+                  type: boolean
+                  description: Enable automatic detection and preservation of VLAN interfaces
+                vlanInterfaces:
+                  type: array
+                  items:
+                    type: string
+                    pattern: '^[a-zA-Z0-9_-]+\.[0-9]{1,4}$'
+                  description: Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
               required:
                 - defaultInterface
             status:
@@ -3341,6 +3378,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3349,8 +3388,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 egressRules:
@@ -3364,6 +3407,8 @@ spec:
                         type: string
                       priority:
                         type: integer
+                        min: 1
+                        max: 200
                       remoteType:
                         type: string
                       remoteAddress:
@@ -3372,8 +3417,12 @@ spec:
                         type: string
                       portRangeMin:
                         type: integer
+                        min: 1
+                        max: 65535
                       portRangeMax:
                         type: integer
+                        min: 1
+                        max: 65535
                       policy:
                         type: string
                 allowSameGroupTraffic:
@@ -4426,7 +4475,7 @@ spec:
               value: "$HW_OFFLOAD"
             - name: TUNNEL_TYPE
               value: "$TUNNEL_TYPE"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
@@ -4577,7 +4626,7 @@ spec:
               value: "$TUNNEL_TYPE"
             - name: DPDK_TUNNEL_IFACE
               value: "$DPDK_TUNNEL_IFACE"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
@@ -4854,11 +4903,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: KUBE_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
@@ -4957,7 +5002,7 @@ spec:
       serviceAccountName: kube-ovn-cni
       automountServiceAccountToken: true
       hostNetwork: true
-      hostPID: false
+      hostPID: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -5057,7 +5102,7 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIP
-          - name: KUBE_NODE_NAME
+          - name: NODE_NAME
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
@@ -5277,7 +5322,7 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
-            - name: KUBE_NODE_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
@@ -5669,6 +5714,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

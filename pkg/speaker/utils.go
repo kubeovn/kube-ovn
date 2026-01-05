@@ -70,7 +70,7 @@ func parsePrefix(s string) (netip.Prefix, error) {
 
 // getGatewayName returns the name of the NAT GW hosting this speaker
 func getGatewayName() string {
-	return os.Getenv(util.GatewayNameEnv)
+	return os.Getenv(util.EnvGatewayName)
 }
 
 // prefixToAFI converts a network prefix to BGP AFI by checking its bit length

@@ -16,6 +16,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -314,10 +316,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		}
 	}
 
-	if oldPod.ResourceVersion == newPod.ResourceVersion {
-		return
-	}
-	if newPod.Spec.HostNetwork {
+	if newPod.Spec.HostNetwork || oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
 
@@ -664,19 +663,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", err.Error())
 					klog.Errorf("%v", err)
 					return nil, err
-				}
-			}
-
-			if isVMPod {
-				if _, ok := pod.Labels["kubevirt.io/migrationJobUID"]; ok {
-					if sourceNode, ok := pod.Labels["kubevirt.io/nodeName"]; ok && sourceNode != pod.Spec.NodeName {
-						klog.Infof("VM pod %s/%s is migrating from %s to %s",
-							pod.Namespace, pod.Name, sourceNode, pod.Spec.NodeName)
-						if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, pod.Spec.NodeName); err != nil {
-							klog.Errorf("failed to set migrate options for VM pod lsp %s: %v", portName, err)
-							return nil, err
-						}
-					}
 				}
 			}
 
@@ -1051,23 +1037,25 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
-	var keepIPCR bool
-	if ok, stsName, stsUID := isStatefulSetPod(pod); ok {
+	var keepIPCR, isOwnerRefToDel, isOwnerRefDeleted bool
+	var ipcrToDelete []string
+	isStsPod, stsName, stsUID := isStatefulSetPod(pod)
+	if isStsPod {
 		if !pod.DeletionTimestamp.IsZero() {
 			klog.Infof("handle deletion of sts pod %s", podKey)
-			toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUID)
-			if !toDel {
+			isOwnerRefToDel = isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUID)
+			if !isOwnerRefToDel {
 				klog.Infof("try keep ip for sts pod %s", podKey)
 				keepIPCR = true
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, stsName, util.StatefulSet)
+			isOwnerRefDeleted, ipcrToDelete, err = appendCheckPodNetToDel(c, pod, stsName, util.KindStatefulSet)
 			if err != nil {
 				klog.Error(err)
 				return err
 			}
-			if isDelete {
+			if isOwnerRefDeleted || len(ipcrToDelete) != 0 {
 				klog.Infof("not keep ip for sts pod %s", podKey)
 				keepIPCR = false
 			}
@@ -1089,19 +1077,19 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		}
 		if pod.DeletionTimestamp != nil {
 			klog.Infof("handle deletion of vm pod %s", podKey)
-			vmToBeDel := c.isVMToDel(pod, vmName)
-			if !vmToBeDel {
+			isOwnerRefToDel = c.isVMToDel(pod, vmName)
+			if !isOwnerRefToDel {
 				klog.Infof("try keep ip for vm pod %s", podKey)
 				keepIPCR = true
 			}
 		}
 		if keepIPCR {
-			isDelete, err := appendCheckPodNonMultusNetToDel(c, pod, vmName, util.VMInstance)
+			isOwnerRefDeleted, ipcrToDelete, err = appendCheckPodNetToDel(c, pod, vmName, util.KindVirtualMachineInstance)
 			if err != nil {
 				klog.Error(err)
 				return err
 			}
-			if isDelete {
+			if isOwnerRefDeleted || len(ipcrToDelete) != 0 {
 				klog.Infof("not keep ip for vm pod %s", podKey)
 				keepIPCR = false
 			}
@@ -1186,6 +1174,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		klog.Infof("try release all ip address for deleting pod %s", podKey)
 		for _, podNet := range podNets {
 			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			// if the OwnerRef has been deleted or is in the process of being deleted, all associated IPCRs must be cleaned up
+			if (isStsPod || isVMPod) && !isOwnerRefToDel && !isOwnerRefDeleted &&
+				!slices.Contains(ipcrToDelete, portName) {
+				klog.Infof("skip clean ip CR %s", portName)
+				continue
+			}
 			ipCR, err := c.ipsLister.Get(portName)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
@@ -1204,6 +1198,9 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 				// release ipam address after delete ip CR
 				c.ipam.ReleaseAddressByNic(podKey, portName, podNet.Subnet.Name)
+				// Trigger subnet status update after IPAM release
+				// This is needed when IP CR is deleted without finalizer (race condition)
+				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
 			}
 		}
 		if pod.Annotations[util.VipAnnotation] != "" {
@@ -1409,7 +1406,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 func isStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == util.StatefulSet && strings.HasPrefix(owner.APIVersion, "apps/") {
+		if owner.Kind == util.KindStatefulSet && strings.HasPrefix(owner.APIVersion, appsv1.SchemeGroupVersion.Group+"/") {
 			if strings.HasPrefix(pod.Name, owner.Name) {
 				return true, owner.Name, owner.UID
 			}
@@ -1553,7 +1550,7 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	}
 
 	migrate := false
-	if job, ok := pod.Annotations[util.MigrationJobAnnotation]; ok {
+	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok {
 		klog.Infof("pod %s/%s is in the migration job %s", pod.Namespace, pod.Name, job)
 		migrate = true
 	}
@@ -1854,7 +1851,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
 			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
-			if pod.Annotations[util.MigrationJobAnnotation] != "" {
+			if pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] != "" {
 				allowLiveMigration = true
 			}
 
@@ -2220,108 +2217,139 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 	return v4IP, v6IP, macStr, nil
 }
 
-func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
-	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
+func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, []string, error) {
+	// subnet for ns has been changed, and statefulset/vm pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
-		return false, err
+		return false, nil, err
 	}
 
-	// check if subnet exist in OwnerReference
-	var ownerRefSubnetExist bool
-	var ownerRefSubnet string
+	var ownerRefAnnotations map[string]string
 	switch ownerRefKind {
-	case util.StatefulSet:
+	case util.KindStatefulSet:
 		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				klog.Infof("Statefulset %s is not found", ownerRefName)
-				return true, nil
+				return true, nil, nil
 			}
 			klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
 		}
-		if ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation] != "" {
-			ownerRefSubnetExist = true
-			ownerRefSubnet = ss.Spec.Template.Annotations[util.LogicalSwitchAnnotation]
+		if ss.Spec.Template.Annotations != nil {
+			ownerRefAnnotations = ss.Spec.Template.Annotations
 		}
 
-	case util.VMInstance:
+	case util.KindVirtualMachineInstance:
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				klog.Infof("VirtualMachine %s is not found", ownerRefName)
-				return true, nil
+				return true, nil, nil
 			}
 			klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
 		}
 		if vm != nil &&
 			vm.Spec.Template != nil &&
-			vm.Spec.Template.ObjectMeta.Annotations != nil &&
-			vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
-			ownerRefSubnetExist = true
-			ownerRefSubnet = vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
-		}
-	}
-	podSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
-	if podSwitch == "" {
-		// pod has no default ovn logical switch annotation, only use multus specs, nothing to clean
-		klog.Infof("pod %s/%s has no  default ovn logical switch annotation, not auto clean ip", pod.Namespace, pod.Name)
-		return false, nil
-	}
-	if !ownerRefSubnetExist {
-		nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
-		// check if pod use the subnet of its ns
-		if nsSubnetNames != "" && !slices.Contains(strings.Split(nsSubnetNames, ","), podSwitch) {
-			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
-			return true, nil
+			vm.Spec.Template.ObjectMeta.Annotations != nil {
+			ownerRefAnnotations = vm.Spec.Template.ObjectMeta.Annotations
 		}
 	}
 
+	var ipcrToDelete []string
+	if defaultIPCRName := appendCheckPodNonMultusNetToDel(c, pod, ownerRefName, ownerRefAnnotations, podNs); defaultIPCRName != "" {
+		ipcrToDelete = append(ipcrToDelete, defaultIPCRName)
+	}
+
+	if multusIPCRNames := appendCheckPodMultusNetToDel(c, pod, ownerRefName, ownerRefAnnotations); len(multusIPCRNames) != 0 {
+		ipcrToDelete = append(ipcrToDelete, multusIPCRNames...)
+	}
+
+	return false, ipcrToDelete, nil
+}
+
+func appendCheckPodNonMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName string, ownerRefAnnotations map[string]string, podNs *v1.Namespace) string {
+	podDefaultSwitch := strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])
+	if podDefaultSwitch != "" {
+		ownerRefSubnet := ownerRefAnnotations[util.LogicalSwitchAnnotation]
+		defaultIPCRName := ovs.PodNameToPortName(ownerRefName, pod.Namespace, util.OvnProvider)
+		if ownerRefSubnet == "" {
+			nsSubnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+			// check if pod use the subnet of its ns
+			if nsSubnetNames != "" && !slices.Contains(strings.Split(nsSubnetNames, ","), podDefaultSwitch) {
+				klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, nsSubnetNames, pod.Name)
+				return defaultIPCRName
+			}
+		} else {
+			podIP := pod.Annotations[util.IPAddressAnnotation]
+			if shouldCleanPodNet(c, pod, ownerRefName, ownerRefSubnet, podDefaultSwitch, podIP) {
+				return defaultIPCRName
+			}
+		}
+	}
+	return ""
+}
+
+func appendCheckPodMultusNetToDel(c *Controller, pod *v1.Pod, ownerRefName string, ownerRefAnnotations map[string]string) []string {
+	var multusIPCRNames []string
+	attachmentNets, _ := c.getPodAttachmentNet(pod)
+	for _, attachmentNet := range attachmentNets {
+		ipCRName := ovs.PodNameToPortName(ownerRefName, pod.Namespace, attachmentNet.ProviderName)
+		podSwitch := strings.TrimSpace(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, attachmentNet.ProviderName)])
+		ownerRefSubnet := ownerRefAnnotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, attachmentNet.ProviderName)]
+		podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, attachmentNet.ProviderName)]
+		if shouldCleanPodNet(c, pod, ownerRefName, ownerRefSubnet, podSwitch, podIP) {
+			multusIPCRNames = append(multusIPCRNames, ipCRName)
+		}
+	}
+	return multusIPCRNames
+}
+
+func shouldCleanPodNet(c *Controller, pod *v1.Pod, ownerRefName, ownerRefSubnet, podSwitch, podIP string) bool {
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podSubnet, err := c.subnetsLister.Get(podSwitch)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Infof("subnet %s not found for pod %s/%s, not auto clean ip", podSwitch, pod.Namespace, pod.Name)
-			return false, nil
+			return false
 		}
 		klog.Errorf("failed to get subnet %s, %v, not auto clean ip", podSwitch, err)
-		return false, err
+		return false
 	}
 	if podSubnet == nil {
 		// TODO: remove: CRD get interface will retrun a nil subnet ?
 		klog.Errorf("pod %s/%s subnet %s is nil, not auto clean ip", pod.Namespace, pod.Name, podSwitch)
-		return false, nil
+		return false
 	}
-	podIP := pod.Annotations[util.IPAddressAnnotation]
 	if podIP == "" {
 		// delete pod just after it created < 1ms
 		klog.Infof("pod %s/%s annotaions has no ip address, not auto clean ip", pod.Namespace, pod.Name)
-		return false, nil
+		return false
 	}
 	podSubnetCidr := podSubnet.Spec.CIDRBlock
 	if podSubnetCidr == "" {
 		// subnet spec cidr changed by user
 		klog.Errorf("invalid pod subnet %s empty cidr %s, not auto clean ip", podSwitch, podSubnetCidr)
-		return false, nil
+		return false
 	}
 	if !util.CIDRContainIP(podSubnetCidr, podIP) {
-		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IPAddressAnnotation], podSubnet.Name)
-		return true, nil
+		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", podIP, podSubnet.Name)
+		return true
 	}
 	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch
 	if ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
 		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s/%s", ownerRefName, podSubnet.Name, ownerRefSubnet, pod.Namespace, pod.Name)
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
 func isVMPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
 		// The name of vmi is consistent with vm's name.
-		if owner.Kind == util.VMInstance && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.KindVirtualMachineInstance &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
 			return true, owner.Name
 		}
 	}
@@ -2330,7 +2358,8 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 	for _, owner := range vmi.GetOwnerReferences() {
-		if owner.Kind == util.VM && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+		if owner.Kind == util.KindVirtualMachine &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
 			return true, owner.Name
 		}
 	}
@@ -2432,11 +2461,11 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 
 func getPodType(pod *v1.Pod) string {
 	if ok, _, _ := isStatefulSetPod(pod); ok {
-		return util.StatefulSet
+		return util.KindStatefulSet
 	}
 
 	if isVMPod, _ := isVMPod(pod); isVMPod {
-		return util.VM
+		return util.KindVirtualMachine
 	}
 	return ""
 }

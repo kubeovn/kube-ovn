@@ -1,5 +1,3 @@
-//go:build !windows
-
 package daemon
 
 import (
@@ -15,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cert-manager/cert-manager/pkg/apis/certmanager"
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/vishvananda/netlink"
@@ -235,18 +234,18 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 }
 
 func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
-	namespace := os.Getenv("POD_NAMESPACE")
+	namespace := os.Getenv(util.EnvPodNamespace)
 	newCR := &certmanagerv1.CertificateRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ovn-ipsec-" + os.Getenv("HOSTNAME"),
+			Name:      "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
 			Namespace: namespace,
 		},
 		Spec: certmanagerv1.CertificateRequestSpec{
 			Request: csrBytes,
 			IssuerRef: cmmeta.ObjectReference{
 				Name:  c.config.CertManagerIssuerName,
-				Kind:  "ClusterIssuer",
-				Group: "cert-manager.io",
+				Kind:  util.ObjectKind[*certmanagerv1.ClusterIssuer](),
+				Group: certmanager.GroupName,
 			},
 			Duration: &metav1.Duration{Duration: time.Second * time.Duration(c.config.IPSecCertDuration)},
 			Usages:   []certmanagerv1.KeyUsage{certmanagerv1.UsageIPsecTunnel},
@@ -298,7 +297,7 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 func (c *Controller) getSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	csr := &v1.CertificateSigningRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-ipsec-" + os.Getenv("HOSTNAME"),
+			Name: "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
 		},
 		Spec: v1.CertificateSigningRequestSpec{
 			Request:    csrBytes,

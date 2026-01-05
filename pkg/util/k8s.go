@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -212,4 +214,22 @@ func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string
 	}
 
 	return nil
+}
+
+// InjectedServiceVariables returns the environment variable values for the given service name.
+// For a service named "my-service", it returns values of "MY_SERVICE_SERVICE_HOST" and "MY_SERVICE_SERVICE_PORT".
+func InjectedServiceVariables(service string) (string, string) {
+	prefix := strings.ToUpper(strings.ReplaceAll(service, "-", "_"))
+	return os.Getenv(prefix + "_SERVICE_HOST"), os.Getenv(prefix + "_SERVICE_PORT")
+}
+
+// ObjectKind returns the kind name of the given k8s object type T.
+// If T is a pointer type, it returns the kind name of the underlying type.
+// For example, if T is v1.Pod, it returns "Pod".
+func ObjectKind[T metav1.Object]() string {
+	typ := reflect.TypeFor[T]()
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	return typ.Name()
 }

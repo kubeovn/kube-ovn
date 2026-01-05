@@ -41,7 +41,7 @@ init-ovs-ctr
 
 for i in $(kubectl -n kube-system get pods -o wide | grep ovs-ovn | awk '{print $1}');
   do
-    NODE=$(ovs-exec $i "printenv KUBE_NODE_NAME")
+    NODE=$(ovs-exec $i "printenv NODE_NAME")
     NODEIP=$(ovs-exec $i "printenv OVN_DB_IPS")
     NSNAME=$(kubectl get pods -o wide -A | grep $NODE | grep -v $NODEIP | awk '{print $2 "." $1}')
     for j in $NSNAME;

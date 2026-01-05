@@ -44,6 +44,7 @@ ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
 ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
 ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
+ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
@@ -63,6 +64,7 @@ ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch $SRC_DIR
 ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
+ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -85,6 +87,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
     # ovsdb-tool: add command fix-cluster
     git apply $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
+    # ovsdb-tool: add commands db-raft-header/rejoin-cluster
+    git apply $SRC_DIR/53b9837f7fe89cd63af735b039b8c26107d6579d.patch && \
     # netdev: reduce cpu utilization for getting device addresses
     git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
@@ -125,7 +129,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # northd: skip arp/nd request for lrp addresses from localnet ports
     git apply $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch && \
     # add skip conntrack ipcidrs support
-    git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch
+    git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch && \
+    # set dl_src for packets redirected by router port
+    git apply $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -183,7 +189,7 @@ ARG CNI_PLUGINS_VERSION=v1.9.0
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
 ARG KUBECTL_VERSION=v1.34.3
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
-ARG GOBGP_VERSION=4.1.0
+ARG GOBGP_VERSION=4.2.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
 
 RUN apk --no-cache add curl jq

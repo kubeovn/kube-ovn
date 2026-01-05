@@ -1,20 +1,27 @@
 package pinger
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+var sbServiceAddress string
+
+func init() {
+	sbHost, sbPort := util.InjectedServiceVariables("ovn-sb")
+	sbServiceAddress = ovs.OvsdbServerAddress(sbHost, intstr.FromString(sbPort))
+}
 
 func checkOvs(config *Configuration, setMetrics bool) error {
 	for component, err := range getOvsStatus() {
@@ -111,43 +118,8 @@ func checkOvsBindings() (set.Set[string], error) {
 	return result, nil
 }
 
-func ovnSBQuery(database string, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	transArgs := ovsdb.NewTransactArgs(database, operations...)
-	query, err := json.Marshal(transArgs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ovsdb transaction args %+v: %w", transArgs, err)
-	}
-
-	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
-	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
-
-	args := []string{
-		"--timeout=10", "query", fmt.Sprintf("tcp:[%s]:%s", sbHost, sbPort), string(query),
-	}
-	if os.Getenv("ENABLE_SSL") == "true" {
-		args = []string{
-			"-p", "/var/run/tls/key",
-			"-c", "/var/run/tls/cert",
-			"-C", "/var/run/tls/cacert",
-			"--timeout=10", "query", fmt.Sprintf("ssl:[%s]:%s", sbHost, sbPort), string(query),
-		}
-	}
-
-	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute ovsdb-client with args %v: %w\noutput: %s", args, err, string(output))
-	}
-
-	var result []ovsdb.OperationResult
-	if err = json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ovsdb-client output %q: %w", string(output), err)
-	}
-
-	return result, nil
-}
-
 func getChassis(hostname string) (string, error) {
-	result, err := ovnSBQuery(ovnsb.DatabaseName, ovsdb.Operation{
+	result, err := ovs.Query(sbServiceAddress, ovnsb.DatabaseName, 10, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: ovnsb.ChassisTable,
 		Where: []ovsdb.Condition{{
@@ -179,7 +151,7 @@ func getChassis(hostname string) (string, error) {
 }
 
 func getLogicalPort(chassisUUID string) (set.Set[string], error) {
-	result, err := ovnSBQuery(ovnsb.DatabaseName, ovsdb.Operation{
+	result, err := ovs.Query(sbServiceAddress, ovnsb.DatabaseName, 10, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: ovnsb.PortBindingTable,
 		Where: []ovsdb.Condition{{

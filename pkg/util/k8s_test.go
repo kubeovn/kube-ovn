@@ -218,24 +218,17 @@ func TestGetNodeInternalIP(t *testing.T) {
 		{
 			name: "correct",
 			node: v1.Node{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.NodeSpec{},
 				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{
-							Type:    "InternalIP",
-							Address: "192.168.0.2",
-						},
-						{
-							Type:    "ExternalIP",
-							Address: "192.188.0.4",
-						},
-						{
-							Type:    "InternalIP",
-							Address: "ffff:ffff:ffff:ffff:ffff::23",
-						},
-					},
+					Addresses: []v1.NodeAddress{{
+						Type:    "InternalIP",
+						Address: "192.168.0.2",
+					}, {
+						Type:    "ExternalIP",
+						Address: "192.188.0.4",
+					}, {
+						Type:    "InternalIP",
+						Address: "ffff:ffff:ffff:ffff:ffff::23",
+					}},
 				},
 			},
 			exp4: "192.168.0.2",
@@ -244,24 +237,17 @@ func TestGetNodeInternalIP(t *testing.T) {
 		{
 			name: "correctWithDiff",
 			node: v1.Node{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.NodeSpec{},
 				Status: v1.NodeStatus{
-					Addresses: []v1.NodeAddress{
-						{
-							Type:    "InternalIP",
-							Address: "ffff:ffff:ffff:ffff:ffff::23",
-						},
-						{
-							Type:    "ExternalIP",
-							Address: "192.188.0.4",
-						},
-						{
-							Type:    "InternalIP",
-							Address: "192.188.0.43",
-						},
-					},
+					Addresses: []v1.NodeAddress{{
+						Type:    "InternalIP",
+						Address: "ffff:ffff:ffff:ffff:ffff::23",
+					}, {
+						Type:    "ExternalIP",
+						Address: "192.188.0.4",
+					}, {
+						Type:    "InternalIP",
+						Address: "192.188.0.43",
+					}},
 				},
 			},
 			exp4: "192.188.0.43",
@@ -286,9 +272,6 @@ func TestPodIPs(t *testing.T) {
 		{
 			name: "pod_with_one_pod_ipv4_ip",
 			pod: v1.Pod{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.PodSpec{},
 				Status: v1.PodStatus{
 					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}},
 					PodIP:  "192.168.1.100",
@@ -299,9 +282,6 @@ func TestPodIPs(t *testing.T) {
 		{
 			name: "pod_with_one_pod_dual_ip",
 			pod: v1.Pod{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.PodSpec{},
 				Status: v1.PodStatus{
 					PodIPs: []v1.PodIP{{IP: "192.168.1.100"}, {IP: "fd00:10:16::8"}},
 					PodIP:  "192.168.1.100",
@@ -312,9 +292,6 @@ func TestPodIPs(t *testing.T) {
 		{
 			name: "pod_with_no_pod_ip",
 			pod: v1.Pod{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.PodSpec{},
 				Status: v1.PodStatus{
 					PodIPs: []v1.PodIP{},
 					PodIP:  "",
@@ -325,9 +302,6 @@ func TestPodIPs(t *testing.T) {
 		{
 			name: "pod_with_podip",
 			pod: v1.Pod{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
-				Spec:       v1.PodSpec{},
 				Status: v1.PodStatus{
 					PodIPs: []v1.PodIP{},
 					PodIP:  "192.168.1.100",
@@ -354,8 +328,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		{
 			name: "service_with_one_cluster_ip",
 			svc: v1.Service{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{"10.96.0.1"},
@@ -366,8 +338,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		{
 			name: "service_with_two_cluster_ip",
 			svc: v1.Service{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{"10.96.0.1", "fd00:10:16::1"},
@@ -378,8 +348,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		{
 			name: "service_with_no_cluster_ip",
 			svc: v1.Service{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "",
 					ClusterIPs: []string{},
@@ -390,8 +358,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		{
 			name: "service_with_no_clusterips",
 			svc: v1.Service{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{},
@@ -402,8 +368,6 @@ func TestServiceClusterIPs(t *testing.T) {
 		{
 			name: "service_with_invalid_cluster_ip",
 			svc: v1.Service{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "",
 					ClusterIPs: []string{"10.96.0.1", "invalid ip"},
@@ -737,6 +701,87 @@ func TestDeploymentIsReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ready := DeploymentIsReady(tt.deploy)
 			require.Equal(t, tt.ready, ready)
+		})
+	}
+}
+
+func TestInjectedServiceVariables(t *testing.T) {
+	tests := []struct {
+		name         string
+		serviceName  string
+		injectedEnv  map[string]string
+		expectedHost string
+		expectedPort string
+	}{
+		{
+			name:        "simple service name",
+			serviceName: "foo",
+			injectedEnv: map[string]string{
+				"FOO_SERVICE_HOST": "1.1.1.1",
+				"FOO_SERVICE_PORT": "8080",
+			},
+			expectedHost: "1.1.1.1",
+			expectedPort: "8080",
+		},
+		{
+			name:        "service name with dashes",
+			serviceName: "example-service-name",
+			injectedEnv: map[string]string{
+				"EXAMPLE_SERVICE_NAME_SERVICE_HOST": "::1",
+			},
+			expectedHost: "::1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.injectedEnv {
+				t.Setenv(k, v)
+			}
+			hostVar, portVar := InjectedServiceVariables(tt.serviceName)
+			if hostVar != tt.expectedHost {
+				t.Errorf("InjectedServiceVariables(%q) host = %q, want %q", tt.serviceName, hostVar, tt.expectedHost)
+			}
+			if portVar != tt.expectedPort {
+				t.Errorf("InjectedServiceVariables(%q) port = %q, want %q", tt.serviceName, portVar, tt.expectedPort)
+			}
+		})
+	}
+}
+
+func TestObjectKind(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   string
+		expected string
+	}{
+		{
+			name:     "Pod object",
+			result:   ObjectKind[*v1.Pod](),
+			expected: "Pod",
+		},
+		{
+			name:     "Service object",
+			result:   ObjectKind[*v1.Service](),
+			expected: "Service",
+		},
+		{
+			name:     "DaemonSet object",
+			result:   ObjectKind[*appsv1.DaemonSet](),
+			expected: "DaemonSet",
+		},
+		{
+			name:     "Custom Resource object",
+			result:   ObjectKind[*kubeovnv1.Subnet](),
+			expected: "Subnet",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.result != tt.expected {
+				t.Errorf("ObjectKind() = %q, want %q", tt.result, tt.expected)
+			}
 		})
 	}
 }

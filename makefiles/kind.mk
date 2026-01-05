@@ -8,15 +8,8 @@ VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 CILIUM_VERSION ?= v1.18.4
 CILIUM_IMAGE_REPO ?= quay.io/cilium
 
-OS_LINUX = 0
-ifneq ($(OS),Windows_NT)
-ifeq ($(shell uname -s),Linux)
-OS_LINUX = 1
-endif
-endif
-
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
-K8S_VERSION ?= v1.34.2
+K8S_VERSION ?= v1.35.0
 
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
@@ -81,20 +74,9 @@ define kind_load_kwok_image
 endef
 
 define kind_subctl_join
-	@if [ $(OS_LINUX) -ne 1 ]; then \
-		set -e; \
-		docker exec $(1)-control-plane bash -c "command -v xz >/dev/null || (apt update && apt install -y xz-utils)"; \
-		docker exec -e VERSION=v$(SUBMARINER_VERSION) -e DESTDIR=/usr/local/bin $(1)-control-plane bash -c "command -v subctl >/dev/null || curl -Ls https://get.submariner.io | bash"; \
-		docker cp broker-info-internal.subm $(1)-control-plane:/broker-info-internal.subm; \
-	fi
-
 	kubectl config use-context kind-$(1)
 	kubectl label --overwrite node $(1)-worker submariner.io/gateway=true
-	@if [ $(OS_LINUX) -eq 1 ]; then \
-		subctl join broker-info-internal.subm --clusterid $(2) --clustercidr $$(echo '$(3)' | tr ';' ',') --natt=false --cable-driver vxlan --health-check=false --context=kind-$(1); \
-	else \
-		docker exec $(1)-control-plane sh -c "subctl join /broker-info-internal.subm --clusterid $(2) --clustercidr $$(echo '$(3)' | tr ';' ',') --natt=false --cable-driver vxlan --health-check=false"; \
-	fi
+	subctl join broker-info-internal.subm --clusterid $(2) --clustercidr $$(echo '$(3)' | tr ';' ',') --natt=false --cable-driver vxlan --health-check=false --context=kind-$(1)
 	$(call kubectl_wait_submariner_ready)
 endef
 

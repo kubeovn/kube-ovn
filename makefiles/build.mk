@@ -26,12 +26,6 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-controller -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/test-server -v ./test/server
 
-.PHONY: build-go-windows
-build-go-windows:
-	go mod tidy
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/windows/kube-ovn.exe -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/windows/kube-ovn-daemon.exe -v ./cmd/daemon
-
 .PHONY: build-go-arm
 build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn -v ./cmd/cni
@@ -98,7 +92,7 @@ image-kube-ovn-dpdk: build-go
 image-vpc-nat-gateway:
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
-.PHOONY: image-test
+.PHONY: image-test
 image-test: build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
 
@@ -160,13 +154,6 @@ lint:
 		golangci-lint run -v --fix
 		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated -fix ./...
     endif
-
-.PHONY: lint-windows
-lint-windows:
-	@GOOS=windows go vet ./cmd/daemon/...
-	@GOOS=windows gosec ./pkg/util
-	@GOOS=windows gosec ./pkg/request
-	@GOOS=windows gosec ./cmd/cni
 
 .PHONY: scan
 scan:

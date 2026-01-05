@@ -21,13 +21,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
-)
 
-const (
-	NBDB   = "nbdb"
-	SBDB   = "sbdb"
-	ICNBDB = "icnbdb"
-	ICSBDB = "icsbdb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var namedUUIDCounter uint32
@@ -70,16 +65,20 @@ func NewOvsDbClient(
 	ovsDbInactivityTimeout int,
 ) (client.Client, error) {
 	dbLogger := logger.WithValues("db", db)
+	options := []client.Option{
+		client.WithLeaderOnly(true),
+		client.WithLogger(&dbLogger),
+	}
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
-	options := []client.Option{
+	if inactivityTimeout > 0 {
 		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
 		// take longer than a normal ovsdb operation. Give it a bit more time so
 		// we don't time out and enter a reconnect loop. In addition it also enables
 		// inactivity check on the ovsdb connection.
-		client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(true),
-		client.WithLogger(&dbLogger),
+		options = append(options, client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}))
+	} else {
+		options = append(options, client.WithReconnect(connectTimeout, &backoff.ZeroBackOff{}))
 	}
 	klog.Infof("connecting to OVN %s server %s", db, addr)
 	var ssl bool
@@ -91,12 +90,12 @@ func NewOvsDbClient(
 		options = append(options, client.WithEndpoint(ep))
 	}
 	if ssl {
-		cert, err := tls.LoadX509KeyPair("/var/run/tls/cert", "/var/run/tls/key")
+		cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
 		}
-		caCert, err := os.ReadFile("/var/run/tls/cacert")
+		caCert, err := os.ReadFile(util.SslCACert)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("failed to read ca cert: %w", err)

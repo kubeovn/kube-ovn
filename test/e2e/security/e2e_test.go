@@ -22,6 +22,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
@@ -131,7 +132,7 @@ var _ = framework.Describe("[group:security]", func() {
 	})
 
 	framework.ConformanceIt("ovn db should listen on specified addresses for client connections", func() {
-		checkDeployment(f, "ovn-central", "ovsdb-server", "6641", "6642")
+		checkDeployment(f, "ovn-central", "ovsdb-server", strconv.Itoa(int(util.NBDatabasePort)), strconv.Itoa(int(util.SBDatabasePort)))
 	})
 
 	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", func() {

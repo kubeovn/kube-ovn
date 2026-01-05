@@ -378,11 +378,11 @@ func setCoreDNSEnv(dp *v1.Deployment) {
 	var env []corev1.EnvVar
 
 	if len(k8sServiceHost) != 0 {
-		env = append(env, corev1.EnvVar{Name: "KUBERNETES_SERVICE_HOST", Value: k8sServiceHost})
+		env = append(env, corev1.EnvVar{Name: util.EnvKubernetesServiceHost, Value: k8sServiceHost})
 	}
 
 	if len(k8sServicePort) != 0 {
-		env = append(env, corev1.EnvVar{Name: "KUBERNETES_SERVICE_PORT", Value: k8sServicePort})
+		env = append(env, corev1.EnvVar{Name: util.EnvKubernetesServicePort, Value: k8sServicePort})
 	}
 
 	for i, container := range dp.Spec.Template.Spec.Containers {
@@ -396,7 +396,7 @@ func setCoreDNSEnv(dp *v1.Deployment) {
 func setVpcDNSRoute(dp *v1.Deployment, subnetGw string) {
 	dst := k8sServiceHost
 	if len(dst) == 0 {
-		dst = os.Getenv("KUBERNETES_SERVICE_HOST")
+		dst = os.Getenv(util.EnvKubernetesServiceHost)
 	}
 
 	protocol := util.CheckProtocol(dst)

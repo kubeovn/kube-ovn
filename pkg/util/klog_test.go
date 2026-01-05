@@ -9,11 +9,13 @@ import (
 	"testing"
 )
 
+const envHelperProcess = "GO_WANT_HELPER_PROCESS"
+
 func TestLogFatalAndExit(t *testing.T) {
 	expectedMessage := "An error occurred: test error"
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
+	cmd.Env = append(os.Environ(), envHelperProcess+"=1")
 	cmd.Stderr = &bytes.Buffer{}
 	err := cmd.Run()
 
@@ -30,7 +32,7 @@ func TestLogFatalAndExit(t *testing.T) {
 }
 
 func TestHelperProcess(*testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+	if os.Getenv(envHelperProcess) != "1" {
 		return
 	}
 	err := errors.New("test error")

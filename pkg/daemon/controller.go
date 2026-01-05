@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	k8sexec "k8s.io/utils/exec"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -57,7 +58,6 @@ type Controller struct {
 	podsLister     listerv1.PodLister
 	podsSynced     cache.InformerSynced
 	updatePodQueue workqueue.TypedRateLimitingInterface[string]
-	deletePodQueue workqueue.TypedRateLimitingInterface[*podEvent]
 
 	nodesLister     listerv1.NodeLister
 	nodesSynced     cache.InformerSynced
@@ -76,8 +76,6 @@ type Controller struct {
 	protocol string
 
 	ControllerRuntime
-	localPodName   string
-	localNamespace string
 
 	k8sExec k8sexec.Interface
 }
@@ -129,7 +127,6 @@ func NewController(config *Configuration,
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
 		updatePodQueue: newTypedRateLimitingQueue[string]("UpdatePod", nil),
-		deletePodQueue: newTypedRateLimitingQueue[*podEvent]("DeletePod", nil),
 
 		nodesLister:     nodeInformer.Lister(),
 		nodesSynced:     nodeInformer.Informer().HasSynced,
@@ -197,7 +194,6 @@ func NewController(config *Configuration,
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueueUpdatePod,
-		DeleteFunc: controller.enqueueDeletePod,
 	}); err != nil {
 		return nil, err
 	}
@@ -378,6 +374,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 
 	vlans := strset.NewWithSize(len(pn.Status.Vlans) + 1)
@@ -396,6 +393,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	// always add trunk 0 so that the ovs bridge can communicate with the external network
 	vlans.Add("0")
 
+	// Auto-create VLAN subinterface if enabled and nic contains VLAN ID
 	if pn.Spec.AutoCreateVlanSubinterfaces && strings.Contains(nic, ".") {
 		parts := strings.SplitN(nic, ".", 2)
 		parentIf := parts[0]
@@ -410,10 +408,52 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		}
 	}
 
+	// VLAN sub-interface handling - use map for efficiency
+	vlanInterfaceMap := make(map[string]int) // interfaceName -> vlanID
+
+	// Process explicitly specified VLAN interfaces
+	if len(pn.Spec.VlanInterfaces) > 0 {
+		klog.Infof("Processing %d explicitly specified VLAN interfaces", len(pn.Spec.VlanInterfaces))
+		for _, vlanIfName := range pn.Spec.VlanInterfaces {
+			if util.CheckInterfaceExists(vlanIfName) {
+				// Extract VLAN ID from interface name (e.g., "eth0.10" -> 10)
+				vlanID, err := util.ExtractVlanIDFromInterface(vlanIfName)
+				if err != nil {
+					klog.Warningf("Failed to extract VLAN ID from interface %s: %v", vlanIfName, err)
+					continue
+				}
+				vlanInterfaceMap[vlanIfName] = vlanID
+				vlans.Add(strconv.Itoa(vlanID))
+				klog.V(3).Infof("Added explicit VLAN interface %s (VLAN ID %d)", vlanIfName, vlanID)
+			} else {
+				klog.Warningf("Explicitly specified VLAN interface %s does not exist, skipping", vlanIfName)
+			}
+		}
+	}
+
+	// Auto-detection of additional VLAN interfaces (if enabled)
+	if pn.Spec.PreserveVlanInterfaces {
+		klog.Infof("Auto-detecting VLAN interfaces on %s", nic)
+		vlanIDs := util.DetectVlanInterfaces(nic)
+		for _, vlanID := range vlanIDs {
+			vlanIfName := fmt.Sprintf("%s.%d", nic, vlanID)
+			// Only add if not already explicitly specified
+			if _, exists := vlanInterfaceMap[vlanIfName]; !exists {
+				vlanInterfaceMap[vlanIfName] = vlanID
+				vlans.Add(strconv.Itoa(vlanID))
+				klog.V(3).Infof("Auto-detected VLAN interface %s (VLAN ID %d)", vlanIfName, vlanID)
+			} else {
+				klog.V(3).Infof("VLAN interface %s already explicitly specified, skipping auto-detection", vlanIfName)
+			}
+		}
+		klog.Infof("Auto-detected %d additional VLAN interfaces for %s", len(vlanIDs), nic)
+	}
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
-	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
+	// Configure main interface with ALL VLANs (including detected ones) in trunk
+	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
 		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
 		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
 			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
@@ -425,6 +465,9 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
 	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
 	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
+	if len(vlanInterfaceMap) > 0 {
+		patch[fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name)] = "true"
+	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
@@ -434,45 +477,21 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 }
 
 func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
-	var currentPod *v1.Pod
-	var err error
-	if c.localPodName == "" {
-		pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{
-			LabelSelector: "app=kube-ovn-cni",
-			FieldSelector: "spec.nodeName=" + c.config.NodeName,
-		})
-		if err != nil {
-			klog.Errorf("failed to list pod: %v", err)
-			return
-		}
-		for _, pod := range pods.Items {
-			if pod.Spec.NodeName == c.config.NodeName && pod.Status.Phase == v1.PodRunning {
-				c.localPodName = pod.Name
-				c.localNamespace = pod.Namespace
-				currentPod = &pod
-				break
-			}
-		}
-		if currentPod == nil {
-			klog.Warning("failed to get self pod")
-			return
-		}
-	} else {
-		if currentPod, err = c.podsLister.Pods(c.localNamespace).Get(c.localPodName); err != nil {
-			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)
-			return
-		}
+	pod, err := c.podsLister.Pods(c.config.PodNamespace).Get(c.config.PodName)
+	if err != nil {
+		klog.Errorf("failed to get pod %s/%s, %v", c.config.PodNamespace, c.config.PodName, err)
+		return
 	}
 
 	patch := util.KVPatch{}
-	if currentPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
+	if pod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] != errMsg {
 		if errMsg == "" {
 			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = nil
 		} else {
 			patch[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, providerNetwork)] = errMsg
 		}
-		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(c.localNamespace), c.localPodName, patch); err != nil {
-			klog.Errorf("failed to patch pod %s: %v", c.localPodName, err)
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+			klog.Errorf("failed to patch pod %s/%s: %v", pod.Namespace, pod.Name, err)
 			return
 		}
 	}
@@ -518,6 +537,7 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
@@ -542,10 +562,6 @@ type subnetEvent struct {
 
 type serviceEvent struct {
 	oldObj, newObj any
-}
-
-type podEvent struct {
-	oldObj any
 }
 
 func (c *Controller) enqueueAddSubnet(obj any) {
@@ -663,34 +679,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 }
 
-func (c *Controller) enqueueDeletePod(obj any) {
-	var pod *v1.Pod
-	switch t := obj.(type) {
-	case *v1.Pod:
-		pod = t
-	case cache.DeletedFinalStateUnknown:
-		p, ok := t.Obj.(*v1.Pod)
-		if !ok {
-			klog.Warningf("unexpected object type: %T", t.Obj)
-			return
-		}
-		pod = p
-	default:
-		klog.Warningf("unexpected type: %T", obj)
-		return
-	}
-
-	klog.V(3).Infof("enqueue delete pod %s", pod.Name)
-	c.deletePodQueue.Add(&podEvent{oldObj: pod})
-}
-
 func (c *Controller) runUpdatePodWorker() {
 	for c.processNextUpdatePodWorkItem() {
-	}
-}
-
-func (c *Controller) runDeletePodWorker() {
-	for c.processNextDeletePodWorkItem() {
 	}
 }
 
@@ -709,28 +699,6 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		c.updatePodQueue.Forget(key)
 		return nil
 	}(key)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeletePodWorkItem() bool {
-	event, shutdown := c.deletePodQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(event *podEvent) error {
-		defer c.deletePodQueue.Done(event)
-		if err := c.handleDeletePod(event); err != nil {
-			c.deletePodQueue.AddRateLimited(event)
-			return fmt.Errorf("error syncing pod event: %w, requeuing", err)
-		}
-		c.deletePodQueue.Forget(event)
-		return nil
-	}(event)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -760,39 +728,34 @@ func (c *Controller) gcInterfaces() {
 			continue
 		}
 
-		if podEntity, err := c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+		if _, err = c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get pod %s/%s: %v", podNamespace, podName, err)
+				continue
+			}
+
 			// Pod not found by name. Check if this might be a KubeVirt VM.
 			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VM name (not the launcher pod name).
 			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
 			// Try to find launcher pods by this label.
-			if k8serrors.IsNotFound(err) {
-				selector := labels.SelectorFromSet(map[string]string{util.KubeVirtVMNameLabel: podName})
-				launcherPods, listErr := c.podsLister.Pods(podNamespace).List(selector)
-				if listErr != nil {
-					klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, listErr)
-					continue
-				}
-
-				// If we found launcher pod(s) for this VM, keep the interface
-				if len(launcherPods) > 0 {
-					klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
-						len(launcherPods), podNamespace, podName, iface)
-					continue
-				}
-
-				// No pod and no launcher pod found - safe to delete
-				klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
-				if err := ovs.CleanInterface(iface); err != nil {
-					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-				}
+			selector := labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: podName})
+			launcherPods, err := c.podsLister.Pods(podNamespace).List(selector)
+			if err != nil {
+				klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, err)
+				continue
 			}
-		} else {
-			// If the pod is found, compare the pod's node with the current cni node. If they differ, delete the interface.
-			if podEntity.Spec.NodeName != c.config.NodeName {
-				klog.Infof("pod %s/%s is on node %s, delete ovs interface %s on node %s ", podNamespace, podName, podEntity.Spec.NodeName, iface, c.config.NodeName)
-				if err := ovs.CleanInterface(iface); err != nil {
-					klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-				}
+
+			// If we found launcher pod(s) for this VM, keep the interface
+			if len(launcherPods) > 0 {
+				klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
+					len(launcherPods), podNamespace, podName, iface)
+				continue
+			}
+
+			// No pod on this node and no launcher pod found - safe to delete
+			klog.Infof("pod %s/%s not found on this node, delete ovs interface %s", podNamespace, podName, iface)
+			if err = ovs.CleanInterface(iface); err != nil {
+				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
 			}
 		}
 	}
@@ -878,7 +841,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.subnetQueue.ShutDown()
 	defer c.serviceQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
-	defer c.deletePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
@@ -898,7 +860,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
-	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
@@ -906,7 +867,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
 	go wait.Until(func() {
 		if err := c.reconcileRouters(nil); err != nil {
-			klog.Errorf("failed to reconcile ovn0 routes: %v", err)
+			klog.Errorf("failed to reconcile %s routes: %v", util.NodeNic, err)
 		}
 	}, 3*time.Second, stopCh)
 
@@ -926,6 +887,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("stop and clear ipsec resource error: %v", err)
 		}
 	}
+
+	// Start OpenFlow sync loop
+	go c.runFlowSync(stopCh)
 
 	<-stopCh
 	klog.Info("Shutting down workers")

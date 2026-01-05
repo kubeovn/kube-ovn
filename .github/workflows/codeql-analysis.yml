@@ -75,7 +75,6 @@ jobs:
     - name: Build
       run: |
         make build-go
-        make build-go-windows
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4

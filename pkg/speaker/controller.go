@@ -42,6 +42,7 @@ type Controller struct {
 	natgatewaySynced cache.InformerSynced
 
 	informerFactory        kubeinformers.SharedInformerFactory
+	podInformerFactory     kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
 }
@@ -58,12 +59,17 @@ func NewController(config *Configuration) *Controller {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.FieldSelector = "spec.hostNetwork=false"
+			listOption.AllowWatchBookmarks = true
+		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
-	podInformer := informerFactory.Core().V1().Pods()
+	podInformer := podInformerFactory.Core().V1().Pods()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	serviceInformer := informerFactory.Core().V1().Services()
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
@@ -84,6 +90,7 @@ func NewController(config *Configuration) *Controller {
 		natgatewaySynced: natgatewayInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
+		podInformerFactory:     podInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 		recorder:               recorder,
 	}
@@ -94,6 +101,7 @@ func NewController(config *Configuration) *Controller {
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	c.informerFactory.Start(stopCh)
+	c.podInformerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced) {

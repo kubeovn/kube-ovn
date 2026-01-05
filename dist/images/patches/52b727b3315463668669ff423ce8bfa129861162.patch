@@ -1,0 +1,100 @@
+From 52b727b3315463668669ff423ce8bfa129861162 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 25 Dec 2025 00:25:36 +0000
+Subject: [PATCH] set dl_src for packets redirected by router port
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 69 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 1b07d80e0..cc9762a97 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -8675,6 +8675,74 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
+     }
+ }
+ 
++static void
++build_lswitch_mod_dl_src_rules(struct ovn_port *op,
++                               struct lflow_table *lflows,
++                               const struct hmap *lr_ports,
++                               struct ds *actions,
++                               struct ds *match)
++{
++    if (!op->nbsp || !op->od || !op->od->nbs ||
++        !op->od->n_router_ports || !op->od->n_localnet_ports) {
++        return;
++    }
++    if (!lsp_is_enabled(op->nbsp)) {
++        return;
++    }
++    if (!strcmp(op->nbsp->type, "virtual") ||
++        !strcmp(op->nbsp->type, "localport")) {
++        return;
++    }
++    if (lsp_is_external(op->nbsp) || lsp_is_router(op->nbsp) ||
++        op->has_unknown) {
++        return;
++    }
++
++    if (op->n_lsp_addrs != 1 || !strlen(op->lsp_addrs[0].ea_s) ||
++        (!op->lsp_addrs[0].n_ipv4_addrs && !op->lsp_addrs[0].n_ipv6_addrs)) {
++        return;
++    }
++
++    ds_clear(actions);
++    ds_put_format(actions, "eth.src = %s; next(pipeline=ingress, table=%d);",
++                  op->lsp_addrs[0].ea_s,
++                  ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
++
++    for (size_t i = 0; i < op->od->n_router_ports; i++) {
++        struct ovn_port *rp = op->od->router_ports[i];
++        if (!rp || !rp->nbsp) {
++            continue;
++        }
++        struct ovn_port *peer = ovn_port_get_peer(lr_ports, rp);
++        if (!peer || !peer->nbrp || peer->primary_port ||
++            peer->nbrp->n_gateway_chassis || peer->nbrp->ha_chassis_group) {
++            continue;
++        }
++
++        for (size_t j = 0; j < op->lsp_addrs[0].n_ipv4_addrs; j++) {
++            ds_clear(match);
++            ds_put_format(match,
++                          "inport == %s && ip4.src == %s && eth.src != %s",
++                          rp->json_key, op->lsp_addrs[0].ipv4_addrs[j].addr_s,
++                          op->lsp_addrs[0].ea_s);
++            ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
++                                    ds_cstr(match), ds_cstr(actions),
++                                    &op->nbsp->header_, op->lflow_ref);
++        }
++
++        for (size_t j = 0; j < op->lsp_addrs[0].n_ipv6_addrs; j++) {
++            ds_clear(match);
++            ds_put_format(match,
++                          "inport == %s && ip6.src == %s && eth.src != %s",
++                          rp->json_key, op->lsp_addrs[0].ipv6_addrs[j].addr_s,
++                          op->lsp_addrs[0].ea_s);
++            ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
++                                    ds_cstr(match), ds_cstr(actions),
++                                    &op->nbsp->header_, op->lflow_ref);
++        }
++    }
++}
++
+ static void
+ build_stateful(struct ovn_datapath *od,
+                struct lflow_table *lflows,
+@@ -18327,6 +18395,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+     build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
+                                              meter_groups, actions, match);
+     build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
++    build_lswitch_mod_dl_src_rules(op, lflows, lr_ports, actions, match);
+     build_lswitch_arp_nd_forward_for_unknown_ips(op, lflows, actions, match);
+     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
+     build_lswitch_external_port(op, lflows);
+-- 
+2.43.0
+

@@ -38,13 +38,6 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
-
-	// Trigger subnet status update when EIP CR is updated
-	// This ensures both CR labels and IPAM state are synced before status calculation
-	if oldEip.Status.IP != newEip.Status.IP || oldEip.Status.Ready != newEip.Status.Ready {
-		externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
-		c.updateSubnetStatusQueue.Add(externalNetwork)
-	}
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -66,12 +59,7 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
-	c.delIptablesEipQueue.Add(key)
-
-	// Trigger subnet status update when EIP is deleted
-	// This ensures subnet status reflects the IP release
-	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
+	c.delIptablesEipQueue.Add(eip)
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {
@@ -166,6 +154,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
+	// Trigger subnet status update after all operations complete
+	// At this point: IPAM allocated, IptablesEIP CR created with labels+status+finalizer
+	c.updateSubnetStatusQueue.Add(subnet.Name)
 	return nil
 }
 
@@ -225,6 +216,21 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		klog.Infof("clean eip %q in pod", key)
+
+		// Check if EIP is still being used by any NAT rules (FIP/DNAT/SNAT)
+		// Only remove finalizer when no NAT rules are using it
+		// Note: We query NAT rules directly instead of relying on cachedEip.Status.Nat
+		// to avoid cache staleness issues
+		nat, err := c.getIptablesEipNat(cachedEip.Spec.V4ip)
+		if err != nil {
+			klog.Errorf("failed to get eip %s nat rules, %v", key, err)
+			return err
+		}
+		if nat != "" {
+			klog.Infof("eip %s is still being used by NAT rules: %s, waiting for them to be deleted", key, nat)
+			return nil
+		}
+
 		if vpcNatEnabled == "true" {
 			v4ipCidr, err := util.GetIPAddrWithMask(cachedEip.Status.IP, v4Cidr)
 			if err != nil {
@@ -243,11 +249,14 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
+		// Release IP from IPAM before removing finalizer
+		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
+
+		// Now remove finalizer, which will trigger subnet status update
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
 		}
-		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
 
 		return nil
 	}
@@ -344,8 +353,16 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelIptablesEip(key string) error {
-	klog.Infof("handle delete iptables eip %s", key)
+func (c *Controller) handleDelIptablesEip(eip *kubeovnv1.IptablesEIP) error {
+	klog.Infof("handle delete iptables eip %s", eip.Name)
+
+	// For IptablesEIPs deleted without finalizer (race condition or direct deletion),
+	// we need to ensure subnet status is updated as a safety net.
+	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
+	if externalNetwork != "" {
+		c.updateSubnetStatusQueue.Add(externalNetwork)
+	}
+
 	return nil
 }
 
@@ -581,12 +598,13 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			return err
 		}
 	}
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	if needCreate {
 		klog.V(3).Infof("create eip cr %s", key)
+		// Create CR with finalizer, labels and status all at once
 		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: key,
+				Name:       key,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
 				Labels: map[string]string{
 					util.SubnetNameLabel:        externalNet,
 					util.EipV4IpLabel:           v4ip,
@@ -598,6 +616,14 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				V6ip:       v6ip,
 				MacAddress: mac,
 				NatGwDp:    natGwDp,
+				QoSPolicy:  qos,
+			},
+			Status: kubeovnv1.IptablesEIPStatus{
+				IP:        v4ip,
+				Ready:     true,
+				QoSPolicy: qos,
+				Nat:       "",
+				Redo:      "",
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
@@ -607,12 +633,25 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		}
 	} else {
 		eip := cachedEip.DeepCopy()
+
+		// Ensure labels are set correctly before any update
+		if eip.Labels == nil {
+			eip.Labels = make(map[string]string)
+		}
+		eip.Labels[util.SubnetNameLabel] = externalNet
+		eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
+		eip.Labels[util.EipV4IpLabel] = v4ip
+		if eip.Spec.QoSPolicy != "" {
+			eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
+		}
+
 		if v4ip != "" {
 			klog.V(3).Infof("update eip cr %s", key)
 			eip.Spec.V4ip = v4ip
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
+			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)
 				klog.Error(errMsg)
@@ -639,38 +678,14 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				return err
 			}
 		}
-		var needUpdateLabel bool
-		var op string
-		if len(eip.Labels) == 0 {
-			op = "add"
-			eip.Labels = map[string]string{
-				util.SubnetNameLabel:        externalNetwork,
-				util.VpcNatGatewayNameLabel: natGwDp,
-				util.EipV4IpLabel:           v4ip,
-			}
-			needUpdateLabel = true
-		} else if eip.Labels[util.SubnetNameLabel] != externalNetwork {
-			op = "replace"
-			eip.Labels[util.SubnetNameLabel] = externalNetwork
-			eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
-			needUpdateLabel = true
-		}
-		if eip.Spec.QoSPolicy != "" && eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy {
-			eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
-			needUpdateLabel = true
-		}
-		if needUpdateLabel {
-			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
-				klog.Errorf("failed to update eip %s labels, %v", eip.Name, err)
-				return err
-			}
-		}
 
 		if err = c.handleAddIptablesEipFinalizer(key); err != nil {
-			klog.Errorf("failed to handle add finalizer for eip, %v", err)
+			klog.Errorf("failed to handle add or update finalizer for eip, %v", err)
 			return err
 		}
 	}
+	// Trigger subnet status update after all operations complete
+	c.updateSubnetStatusQueue.AddAfter(externalNet, 300*time.Millisecond)
 	return nil
 }
 
@@ -694,10 +709,11 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedIptablesEip.DeletionTimestamp.IsZero() || len(cachedIptablesEip.GetFinalizers()) != 0 {
+	if !cachedIptablesEip.DeletionTimestamp.IsZero() {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
@@ -712,6 +728,12 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		klog.Errorf("failed to add finalizer for iptables eip '%s', %v", cachedIptablesEip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is processed as a fallback
+	// This handles cases where finalizer was not added during creation
+	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
+	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
+	c.updateSubnetStatusQueue.Add(externalNetwork)
 	return nil
 }
 
@@ -728,6 +750,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
@@ -742,6 +765,12 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		klog.Errorf("failed to remove finalizer from iptables eip '%s', %v", cachedIptablesEip.Name, err)
 		return err
 	}
+
+	// Trigger subnet status update after finalizer is removed
+	// This ensures subnet status reflects the IP release
+	// Add delay to ensure API server completes the finalizer removal
+	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
+	c.updateSubnetStatusQueue.AddAfter(externalNetwork, 300*time.Millisecond)
 	return nil
 }
 

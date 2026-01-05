@@ -384,7 +384,7 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 		"--ovn-northd-nb-db="+c.config.OvnNbAddr,
 		"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 		"start_ic")
-	if os.Getenv("ENABLE_SSL") == "true" {
+	if os.Getenv(util.EnvSSLEnabled) == "true" {
 		// #nosec G204
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 			"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),

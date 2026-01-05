@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb.LogicalRouterPort {
@@ -15,7 +16,8 @@ func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb
 		MAC:      mac,
 		Networks: networks,
 		ExternalIDs: map[string]string{
-			"lr": lrName,
+			"lr":     lrName,
+			"vendor": util.CniTypeName,
 		},
 	}
 }

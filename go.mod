@@ -3,15 +3,12 @@ module github.com/kubeovn/kube-ovn
 go 1.25.5
 
 require (
-	github.com/Microsoft/go-winio v0.6.2
-	github.com/Microsoft/hcsshim v0.14.0-rc.1
-	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
-	github.com/brianvoe/gofakeit/v7 v7.12.1
+	github.com/brianvoe/gofakeit/v7 v7.14.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cert-manager/cert-manager v1.19.2
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
-	github.com/containerd/containerd/v2 v2.2.0
-	github.com/containerd/nerdctl/v2 v2.2.0
+	github.com/containerd/containerd/v2 v2.2.1
+	github.com/containerd/nerdctl/v2 v2.2.1
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.0
 	github.com/digitalocean/go-openvswitch v0.0.0-20251118231545-85aec29b8ee6
@@ -37,7 +34,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.3
-	github.com/osrg/gobgp/v4 v4.1.0
+	github.com/osrg/gobgp/v4 v4.2.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.7.0
@@ -56,7 +53,7 @@ require (
 	golang.org/x/sys v0.39.0
 	golang.org/x/time v0.14.0
 	golang.org/x/tools v0.40.0
-	google.golang.org/grpc v1.77.0
+	google.golang.org/grpc v1.78.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.3
 	k8s.io/api v0.34.3
 	k8s.io/apiextensions-apiserver v0.34.3
@@ -84,13 +81,14 @@ require (
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
+	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Microsoft/hcsshim v0.14.0-rc.1 // indirect
 	github.com/Microsoft/hnslib v0.1.2 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
 	github.com/cenkalti/rpc2 v1.0.5 // indirect
@@ -166,7 +164,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/juju/errors v1.0.0 // indirect
 	github.com/k-sone/critbitgo v1.4.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect

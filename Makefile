@@ -20,7 +20,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 FRR_VERSION = 9.1.3
 FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 
-CLAB_IMAGE = ghcr.io/srl-labs/clab:0.71.1
+CLAB_IMAGE = ghcr.io/srl-labs/clab:0.72.0
 
 # renovate: datasource=github-releases depName=multus packageName=k8snetworkplumbingwg/multus-cni
 MULTUS_VERSION = v4.2.3
@@ -44,7 +44,7 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
-CILIUM_VERSION = v1.18.4
+CILIUM_VERSION = v1.18.5
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager

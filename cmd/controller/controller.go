@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -135,9 +136,9 @@ func CmdMain() {
 
 	recorder := record.NewBroadcaster().NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderResource,
-		Host:      os.Getenv(util.HostnameEnv),
+		Host:      os.Getenv(util.EnvNodeName),
 	})
-	rl, err := resourcelock.NewFromKubeconfig("leases",
+	rl, err := resourcelock.NewFromKubeconfig(resourcelock.LeasesResourceLock,
 		config.PodNamespace,
 		ovnLeaderResource,
 		resourcelock.ResourceLockConfig{
@@ -183,7 +184,7 @@ func checkPermission(config *controller.Configuration) error {
 			Spec: v1.SelfSubjectAccessReviewSpec{
 				ResourceAttributes: &v1.ResourceAttributes{
 					Verb:     "watch",
-					Group:    "kubeovn.io",
+					Group:    kubeovn.GroupName,
 					Resource: res,
 				},
 			},

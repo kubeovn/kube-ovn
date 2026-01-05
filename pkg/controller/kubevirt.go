@@ -121,77 +121,96 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 
-	if vmi.Status.MigrationState == nil {
-		klog.Infof("VMI instance %s migration state is nil, skipping", key)
-		return nil
+	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
+	var srcNodeName, targetNodeName string
+	if vmi.Status.MigrationState != nil {
+		klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
+			vmiMigration.Status.Phase,
+			vmi.Status.MigrationState.TargetNode,
+			vmi.Status.MigrationState.SourceNode,
+			vmi.Status.MigrationState.TargetPod,
+			vmi.Status.MigrationState.SourcePod)
+		srcNodeName = vmi.Status.MigrationState.SourceNode
+		targetNodeName = vmi.Status.MigrationState.TargetNode
+	} else {
+		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 	}
 
-	if vmi.Status.MigrationState.SourcePod == "" {
-		klog.Infof("VMI instance %s source pod is nil, skipping", key)
-		return nil
-	}
-
-	// use VirtualMachineInsance's MigrationState because VirtualMachineInsanceMigration's MigrationState is not updated util migration finished
-	klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
-		vmiMigration.Status.Phase,
-		vmi.Status.MigrationState.TargetNode,
-		vmi.Status.MigrationState.SourceNode,
-		vmi.Status.MigrationState.TargetPod,
-		vmi.Status.MigrationState.SourcePod)
-
-	sourcePodName := vmi.Status.MigrationState.SourcePod
-	sourcePod, err := c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), sourcePodName, metav1.GetOptions{})
-	if err != nil {
-		err = fmt.Errorf("failed to get source pod %s, %w", sourcePodName, err)
-		klog.Error(err)
-		return err
-	}
-
-	podNets, err := c.getPodKubeovnNets(sourcePod)
-	if err != nil {
-		err = fmt.Errorf("failed to get pod nets %w", err)
-		klog.Error(err)
-		return err
-	}
-
-	for _, podNet := range podNets {
-		// Skip non-OVN subnets that don't create OVN logical switch ports
-		if !isOvnSubnet(podNet.Subnet) {
-			continue
+	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
+	switch vmiMigration.Status.Phase {
+	case kubevirtv1.MigrationScheduling:
+		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				kubevirtv1.MigrationJobLabel: string(vmiMigration.UID),
+			},
+		})
+		if err != nil {
+			err = fmt.Errorf("failed to create label selector for migration job UID %s: %w", vmiMigration.UID, err)
+			klog.Error(err)
+			return err
 		}
 
-		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, podNet.ProviderName)
-		srcNodeName := vmi.Status.MigrationState.SourceNode
-		targetNodeName := vmi.Status.MigrationState.TargetNode
-		switch vmiMigration.Status.Phase {
-		case kubevirtv1.MigrationSucceeded:
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+		pods, err := c.podsLister.Pods(vmiMigration.Namespace).List(selector)
+		if err != nil {
+			err = fmt.Errorf("failed to list pods with migration job UID %s: %w", vmiMigration.UID, err)
+			klog.Error(err)
+			return err
+		}
+
+		if len(pods) > 0 {
+			targetPod := pods[0]
+			// During MigrationScheduling phase, use vmi.Status.NodeName if SourceNode is empty
+			// because vmi.Status.MigrationState may not be fully synchronized yet
+			sourceNode := srcNodeName
+			if sourceNode == "" {
+				sourceNode = vmi.Status.NodeName
+			}
+
+			if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
+				klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
+					targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+				return nil
+			}
+
+			klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
+				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+
+			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+				err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
 				klog.Error(err)
 				return err
 			}
-		case kubevirtv1.MigrationFailed:
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-				klog.Error(err)
-				return err
-			}
+			klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
+		} else {
+			klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
+				vmiMigration.UID, vmiMigration.Status.Phase)
+			return nil
+		}
+	case kubevirtv1.MigrationSucceeded:
+		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
+		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
+			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+			klog.Error(err)
+			return err
+		}
+	case kubevirtv1.MigrationFailed:
+		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
+		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
+			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
 }
 
-func (c *Controller) isKubevirtCRDInstalled() bool {
-	for _, crd := range util.KubeVirtCRD {
-		_, err := c.config.ExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), crd, metav1.GetOptions{})
-		if err != nil {
-			return false
-		}
-	}
-	klog.Info("Found KubeVirt CRDs")
-	return true
+func (c *Controller) isKubevirtCRDInstalled() (bool, error) {
+	return apiResourceExists(c.config.KubevirtClient.Discovery(),
+		kubevirtv1.GroupVersion.String(),
+		util.KindVirtualMachine,
+		util.KindVirtualMachineInstance,
+		util.KindVirtualMachineInstanceMigration,
+	)
 }
 
 func (c *Controller) StartKubevirtInformerFactory(ctx context.Context, kubevirtInformerFactory informer.KubeVirtInformerFactory) {
@@ -201,7 +220,12 @@ func (c *Controller) StartKubevirtInformerFactory(ctx context.Context, kubevirtI
 		for {
 			select {
 			case <-ticker.C:
-				if c.isKubevirtCRDInstalled() {
+				ok, err := c.isKubevirtCRDInstalled()
+				if err != nil {
+					klog.Errorf("checking kubevirt CRD exists: %v", err)
+					continue
+				}
+				if ok {
 					klog.Info("Start kubevirt informer")
 					vmiMigrationInformer := kubevirtInformerFactory.VirtualMachineInstanceMigration()
 					vmInformer := kubevirtInformerFactory.VirtualMachine()

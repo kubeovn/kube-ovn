@@ -334,7 +334,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	}
 
 	// Check if VM exists
-	if ip.Spec.PodType == util.VM {
+	if ip.Spec.PodType == util.KindVirtualMachine {
 		_, err := c.config.KubevirtClient.VirtualMachine(ip.Spec.Namespace).Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, nil
@@ -343,7 +343,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	}
 
 	// Check if StatefulSet exists
-	if ip.Spec.PodType == util.StatefulSet {
+	if ip.Spec.PodType == util.KindStatefulSet {
 		// Extract StatefulSet name from pod name by removing the last part after '-'
 		// e.g., "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1-0" -> "vpc-nat-gw-rg-f6d4e7973976430-default-sto-1"
 		stsName := ip.Spec.PodName
@@ -360,11 +360,11 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 
 	// Check if Normal Pod exists
 	if ip.Spec.PodType == "" {
-		_, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
+		pod, err := c.podsLister.Pods(ip.Spec.Namespace).Get(ip.Spec.PodName)
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, nil
 		}
-		return true, err
+		return !pod.Spec.HostNetwork, err
 	}
 
 	return true, nil
@@ -407,6 +407,10 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipMap := strset.NewWithSize(len(pods) + len(nodes))
 	for _, pod := range pods {
+		if pod.Spec.HostNetwork {
+			continue
+		}
+
 		if isStsPod, stsName, stsUID := isStatefulSetPod(pod); isStsPod {
 			if isStatefulSetPodToGC(c.config.KubeClient, pod, stsName, stsUID) {
 				continue
@@ -599,7 +603,12 @@ func (c *Controller) gcLoadBalancer() error {
 			}
 		}
 		// lbs will remove from logical switch automatically when delete lbs
+		// Only delete load balancers that belong to kube-ovn (vendor=kube-ovn)
+		// This prevents deleting load balancers managed by external systems like OpenStack Neutron
 		if err = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+			if lb.ExternalIDs["vendor"] != util.CniTypeName {
+				return false
+			}
 			return !vpcLbs.Has(lb.Name)
 		}); err != nil {
 			klog.Errorf("delete all load balancers: %v", err)
@@ -740,8 +749,9 @@ func (c *Controller) gcLoadBalancer() error {
 
 func (c *Controller) gcAddressSet() error {
 	klog.Infof("start to gc address set")
-	// get all address
-	addressSets, err := c.OVNNbClient.ListAddressSets(nil)
+	// Only list address sets that belong to kube-ovn (vendor=kube-ovn)
+	// This prevents deleting address sets managed by external systems like OpenStack Neutron
+	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list address set,%v", err)
 		return err
@@ -784,7 +794,9 @@ func (c *Controller) gcSecurityGroup() error {
 		sgSet.Add(sg.Name)
 	}
 
-	pgs, err := c.OVNNbClient.ListPortGroups(nil)
+	// Only list port groups that belong to kube-ovn (vendor=kube-ovn)
+	// This prevents deleting port groups managed by external systems like OpenStack Neutron
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list port group,%v", err)
 		return err
@@ -1220,6 +1232,12 @@ func (c *Controller) gcVPCDNS() error {
 
 func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.LogicalRouterPort) bool {
 	return func(lrp *ovnnb.LogicalRouterPort) bool {
+		// Only delete logical router ports that belong to kube-ovn (vendor=kube-ovn)
+		// This prevents deleting LRPs managed by external systems like OpenStack Neutron
+		if lrp.ExternalIDs["vendor"] != util.CniTypeName {
+			return false
+		}
+
 		if exceptPeerPorts.Has(lrp.Name) {
 			return false // ignore except lrp
 		}

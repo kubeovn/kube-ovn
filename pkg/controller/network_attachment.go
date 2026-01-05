@@ -3,12 +3,11 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -16,20 +15,11 @@ import (
 )
 
 func (c *Controller) isNetAttachCRDInstalled() (bool, error) {
-	resources, err := c.config.AttachNetClient.Discovery().ServerResourcesForGroupVersion("k8s.cni.cncf.io/v1")
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("getting server resources for k8s.cni.cncf.io/v1; %w", err)
-	}
-
-	for _, resource := range resources.APIResources {
-		if resource.Name == "network-attachment-definitions" {
-			return true, nil
-		}
-	}
-	return false, nil
+	return apiResourceExists(
+		c.config.AttachNetClient.Discovery(),
+		nadv1.SchemeGroupVersion.String(),
+		util.ObjectKind[*nadv1.NetworkAttachmentDefinition](),
+	)
 }
 
 // the network-attachment-definition CRD is not required to be installed so

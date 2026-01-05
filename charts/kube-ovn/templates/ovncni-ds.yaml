@@ -28,7 +28,7 @@ spec:
       serviceAccountName: kube-ovn-cni
       automountServiceAccountToken: true
       hostNetwork: true
-      hostPID: false
+      hostPID: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -143,7 +143,7 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIP
-          - name: KUBE_NODE_NAME
+          - name: NODE_NAME
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName

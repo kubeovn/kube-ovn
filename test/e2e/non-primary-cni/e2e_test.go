@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -237,12 +238,7 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 	}
 
 	// Create temporary file with updated configuration
-	tmpDir := "/tmp"
-	if tmpDirEnv := os.Getenv("TMPDIR"); tmpDirEnv != "" {
-		tmpDir = tmpDirEnv
-	}
-
-	tmpFile, err := os.CreateTemp(tmpDir, "kind-config-*.yaml")
+	tmpFile, err := os.CreateTemp(os.TempDir(), "kind-config-*.yaml")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary config file: %w", err)
 	}
@@ -267,10 +263,12 @@ func waitForResourceReady(name string, getFunc func(string) any, readyFunc func(
 	}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(), fmt.Sprintf("Resource %s should be ready", name))
 }
 
-// Helper function to get pod IP (primary or non-primary)
-func getPodIP(pod *corev1.Pod) string {
+// Helper function to get pod IPs (primary or non-primary)
+func getPodIPs(pod *corev1.Pod) []string {
+	ginkgo.GinkgoHelper()
+
 	if isKubeOVNPrimaryCNI() {
-		return pod.Status.PodIP
+		return util.PodIPs(*pod)
 	}
 	return getPodNonPrimaryIP(pod)
 }
@@ -332,15 +330,18 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			pod2 := podClient.GetPod(podNames[1])
 
 			// Get pod IPs
-			pod1IP := getPodIP(pod1)
-			pod2IP := getPodIP(pod2)
+			pod1IPs := getPodIPs(pod1)
+			pod2IPs := getPodIPs(pod2)
 
-			framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
-			framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
+			framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at least one IP address")
+			framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at least one IP address")
 
-			description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
-			err := testPodConnectivity(pod1, pod2IP, description)
-			framework.ExpectNoError(err, "Ping should succeed between pods in VPC")
+			pod1IP := strings.Join(pod1IPs, ",")
+			for _, pod2IP := range pod2IPs {
+				description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
+				err := testPodConnectivity(pod1, pod2IP, description)
+				framework.ExpectNoError(err, "Ping should succeed between pods in VPC")
+			}
 		})
 	})
 })
@@ -476,8 +477,9 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				framework.ExpectNotEmpty(snatEip.Status.IP, "EIP should have an IP address for SNAT testing")
 
 				// Get source pod IP for SNAT
-				sourcePodIP := getPodIP(podObjs[i])
-				framework.ExpectNotEmpty(sourcePodIP, "Source pod should have an IP address for SNAT testing")
+				sourcePodIPs := getPodIPs(podObjs[i])
+				sourcePodIP := strings.Join(sourcePodIPs, ",")
+				framework.ExpectNotEmpty(sourcePodIPs, "Source pod should have an IP address for SNAT testing")
 
 				ginkgo.By(fmt.Sprintf("Verifying SNAT mapping from pod %s (%s) to EIP %s",
 					podObjs[i].Name, sourcePodIP, snatEip.Status.IP))
@@ -517,17 +519,22 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				framework.ExpectNotEmpty(dnatEip.Status.IP, "EIP should have an IP address for DNAT testing")
 
 				// Get target pod IP for DNAT
-				targetPodIP := getPodIP(podObjs[i])
-				framework.ExpectNotEmpty(targetPodIP, "Target pod should have an IP address for DNAT testing")
+				targetPodIPs := getPodIPs(podObjs[i])
+				framework.ExpectNotEmpty(targetPodIPs, "Target pod should have an IP address for DNAT testing")
 
-				ginkgo.By(fmt.Sprintf("Verifying DNAT mapping from EIP %s to pod %s (%s)",
-					dnatEip.Status.IP, podObjs[i].Name, targetPodIP))
-				// We do not test the actual packet forwarding here, just the rule configuration
-				// The actual packet forwarding is not tested since it needs done from outside the cluster
-				// Use helper function to verify DNAT rule configuration
-				verifyDNATRule(&dnatRule, targetPodIP, dnatEip)
-				ginkgo.By(fmt.Sprintf("DNAT rule %s properly configured: EIP=%s -> Internal=%s",
-					dnatRule.Name, dnatRule.Spec.EIP, dnatRule.Spec.InternalIP))
+				for _, targetPodIP := range targetPodIPs {
+					if util.CheckProtocol(targetPodIP) != util.CheckProtocol(dnatEip.Status.IP) {
+						continue
+					}
+					ginkgo.By(fmt.Sprintf("Verifying DNAT mapping from EIP %s to pod %s (%s)",
+						dnatEip.Status.IP, podObjs[i].Name, targetPodIP))
+					// We do not test the actual packet forwarding here, just the rule configuration
+					// The actual packet forwarding is not tested since it needs done from outside the cluster
+					// Use helper function to verify DNAT rule configuration
+					verifyDNATRule(&dnatRule, targetPodIP, dnatEip)
+					ginkgo.By(fmt.Sprintf("DNAT rule %s properly configured: EIP=%s -> Internal=%s",
+						dnatRule.Name, dnatRule.Spec.EIP, dnatRule.Spec.InternalIP))
+				}
 			}
 
 			ginkgo.By("Test pod-to-pod connectivity within VPC")
@@ -536,12 +543,14 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				pod1 := podObjs[0]
 				pod2 := podObjs[1]
 
-				pod1IP := getPodIP(pod1)
-				pod2IP := getPodIP(pod2)
+				pod1IPs := getPodIPs(pod1)
+				pod2IPs := getPodIPs(pod2)
 
-				framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
-				framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
+				framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at lease one IP address")
+				framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at lease one IP address")
 
+				pod1IP := strings.Join(pod1IPs, ",")
+				pod2IP := strings.Join(pod2IPs, ",")
 				description := fmt.Sprintf("pod-to-pod within VPC from %s (%s) to %s (%s)",
 					pod1.Name, pod1IP, pod2.Name, pod2IP)
 				err = testPodConnectivity(pod1, pod2IP, description)
@@ -623,52 +632,59 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			pod2 := podClient.GetPod(podNames[1])
 
 			// Get pod IPs
-			pod1IP := getPodIP(pod1)
-			pod2IP := getPodIP(pod2)
+			pod1IPs := getPodIPs(pod1)
+			pod2IPs := getPodIPs(pod2)
+			framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at lease one IP address")
+			framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at lease one IP address")
 
-			framework.ExpectNotEmpty(pod1IP, "Pod1 should have an IP address")
-			framework.ExpectNotEmpty(pod2IP, "Pod2 should have an IP address")
-
-			description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
-			err := testPodConnectivity(pod1, pod2IP, description)
-			framework.ExpectNoError(err, "Ping should succeed between pods in logical network")
+			pod1IP := strings.Join(pod1IPs, ",")
+			for _, pod2IP := range pod2IPs {
+				description := fmt.Sprintf("from %s (%s) to %s (%s)", pod1.Name, pod1IP, pod2.Name, pod2IP)
+				err := testPodConnectivity(pod1, pod2IP, description)
+				framework.ExpectNoError(err, "Ping should succeed between pods in logical network")
+			}
 		})
 	})
 })
 
 // Helper function to get non-primary IP from pod annotation
-func getPodNonPrimaryIP(pod *corev1.Pod) string {
+func getPodNonPrimaryIP(pod *corev1.Pod) []string {
+	ginkgo.GinkgoHelper()
+
 	// For non-primary CNI, look for k8s.v1.cni.cncf.io/networks annotation
-	networkStatus := pod.Annotations["k8s.v1.cni.cncf.io/networks"]
-	if networkStatus == "" {
-		return ""
+	network := pod.Annotations[nadv1.NetworkAttachmentAnnot]
+	if network == "" {
+		return nil
 	}
+
+	ips, err := util.PodAttachmentIPs(pod, network)
+	framework.ExpectNoError(err, "Failed to get pod attachment IPs for pod %s", pod.Name)
+	if len(ips) != 0 {
+		return ips
+	}
+
 	// For Kube-OVN non-primary CNI, the IP is stored in a specific annotation format:
 	// {network-attachment-name}.{namespace}.ovn.kubernetes.io/ip_address
 	// Example: vpc-simple-nad.vpc-simple-ns.ovn.kubernetes.io/ip_address: 10.100.0.2
 	// Extract the network attachment definition name from the networks annotation
 	// Format: namespace/nad-name (e.g., "vpc-simple-ns/vpc-simple-nad")
-	nadName := networkStatus
-	if nadName == "" {
-		return ""
-	}
 	// Convert namespace/nad-name to nad-name.namespace.ovn.kubernetes.io/ip_address format
-	parts := strings.Split(nadName, "/")
+	parts := strings.Split(network, "/")
 	if len(parts) != 2 {
-		return ""
+		return nil
 	}
 	namespace := parts[0]
 	name := parts[1]
 
 	// Construct the Kube-OVN IP annotation key
-	ipAnnotationKey := fmt.Sprintf("%s.%s.ovn.kubernetes.io/ip_address", name, namespace)
+	ipAnnotationKey := fmt.Sprintf(util.IPAddressAnnotationTemplate, fmt.Sprintf("%s.%s", name, namespace))
 	// Get the IP from the annotation
 	ip := pod.Annotations[ipAnnotationKey]
 	if ip != "" {
-		return ip
+		return strings.Split(ip, ",")
 	}
 
-	return ""
+	return nil
 }
 
 // Helper function to verify DNAT rule configuration

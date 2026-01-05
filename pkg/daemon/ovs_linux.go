@@ -565,7 +565,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCheckMode int, intr, ipAddr, gateway string, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
 		// ignore error if disableGatewayCheck=true
-		_ = waitNetworkReady(intr, ipAddr, gateway, verbose, 1, nil)
+		_ = waitNetworkReady(intr, ipAddr, gateway, true, verbose, 1, nil)
 		return nil
 	}
 
@@ -600,14 +600,14 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 		}
 	}()
 
-	return waitNetworkReady(intr, ipAddr, gateway, verbose, gatewayCheckMaxRetry, done)
+	return waitNetworkReady(intr, ipAddr, gateway, true, verbose, gatewayCheckMaxRetry, done)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, verbose bool, maxRetry int, done chan struct{}) error {
+func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxRetry int, done chan struct{}) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
-		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
@@ -721,8 +721,8 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	status := corev1.ConditionFalse
 	reason := "JoinSubnetGatewayReachable"
 	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
-	if err = waitNetworkReady(util.NodeNic, ip, gw, true, gatewayCheckMaxRetry, nil); err != nil {
-		klog.Errorf("failed to init ovn0 check: %v", err)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry, nil); err != nil {
+		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
 		status = corev1.ConditionTrue
 		reason = "JoinSubnetGatewayUnreachable"
 		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
@@ -739,11 +739,11 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 func (c *Controller) loopOvn0Check() {
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to get ovn0 nic")
+		util.LogFatalAndExit(err, "failed to get node nic %s", util.NodeNic)
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		util.LogFatalAndExit(err, "ovn0 nic is down")
+		util.LogFatalAndExit(err, "node nic %s is down", util.NodeNic)
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -756,8 +756,8 @@ func (c *Controller) loopOvn0Check() {
 	status := corev1.ConditionFalse
 	reason := "JoinSubnetGatewayReachable"
 	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
-	if err = waitNetworkReady(util.NodeNic, ip, gw, false, 5, nil); err != nil {
-		klog.Errorf("failed to init ovn0 check: %v", err)
+	if err = waitNetworkReady(util.NodeNic, ip, gw, false, false, 5, nil); err != nil {
+		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
 		status = corev1.ConditionTrue
 		reason = "JoinSubnetGatewayUnreachable"
 		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
@@ -778,7 +778,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 
 	if err != nil {
-		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
+		util.LogFatalAndExit(err, "failed to ping %s gateway %s", util.NodeNic, gw)
 	}
 }
 
@@ -831,7 +831,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 	}
 	if exists {
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, 3, nil)
+			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 			if err == nil {
 				if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
 					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
@@ -956,7 +956,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			klog.Error(err)
 			return err
 		}
-		return waitNetworkReady(util.NodeGwNic, ip, gw, true, 3, nil)
+		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
 	})
 }
 
@@ -2028,15 +2028,215 @@ func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName string) error
 
 	klog.Infof("Found %d auto-created VLAN interfaces to clean up for provider %s: %v", len(createdInterfaces), providerName, createdInterfaces)
 
-	// Delete each auto-created interface
 	for _, ifaceName := range createdInterfaces {
 		klog.Infof("Cleaning up auto-created VLAN interface %s", ifaceName)
 		output, err := exec.Command("ip", "link", "delete", ifaceName).CombinedOutput()
 		if err != nil {
 			klog.Warningf("Failed to delete auto-created VLAN interface %s: %v, output: %s", ifaceName, err, string(output))
-			// Continue with other interfaces even if deletion fails
 		} else {
 			klog.Infof("Successfully deleted auto-created VLAN interface %s", ifaceName)
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]int, brName string) error {
+	for vlanIfName, vlanID := range vlanInterfaceMap {
+		klog.V(3).Infof("configuring VLAN interface %s (VLAN %d) on bridge %s", vlanIfName, vlanID, brName)
+
+		internalPortName := fmt.Sprintf("%s-vlan%d", brName, vlanID)
+
+		args := []string{
+			ovs.MayExist, "add-port", brName, internalPortName,
+			"--", "set", "interface", internalPortName, "type=internal",
+			"--", "set", "port", internalPortName, fmt.Sprintf("tag=%d", vlanID),
+			"external_ids:vendor=" + util.CniTypeName,
+		}
+
+		if _, err := ovs.Exec(args...); err != nil {
+			klog.Errorf("failed to create OVS internal port %s: %v", internalPortName, err)
+			return err
+		}
+
+		if err := util.SetLinkUp(internalPortName); err != nil {
+			klog.Errorf("failed to set OVS internal port %s up: %v", internalPortName, err)
+			return err
+		}
+
+		if err := c.transferVlanAddrsToInternalPort(vlanIfName, internalPortName); err != nil {
+			klog.Errorf("failed to transfer addresses and routes from %s to %s: %v", vlanIfName, internalPortName, err)
+			return err
+		}
+
+		klog.Infof("Successfully configured OVS internal port %s for VLAN %d", internalPortName, vlanID)
+	}
+
+	return nil
+}
+
+func (c *Controller) transferVlanAddrsToInternalPort(srcName, dstName string) error {
+	klog.Infof("transferring addresses and routes from %s to %s", srcName, dstName)
+
+	src, err := netlink.LinkByName(srcName)
+	if err != nil {
+		return fmt.Errorf("failed to get source interface %s: %w", srcName, err)
+	}
+	dst, err := netlink.LinkByName(dstName)
+	if err != nil {
+		return fmt.Errorf("failed to get destination interface %s: %w", dstName, err)
+	}
+
+	addrs, err := netlink.AddrList(src, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get addresses on source %s: %w", srcName, err)
+	}
+
+	for _, addr := range addrs {
+		if addr.IP.IsLinkLocalUnicast() {
+			continue
+		}
+
+		if err = netlink.AddrDel(src, &addr); err != nil {
+			klog.Warningf("failed to delete address %q on source %s: %v", addr.String(), srcName, err)
+		} else {
+			klog.Infof("address %q has been removed from link %s", addr.String(), srcName)
+		}
+
+		addr.Label = ""
+		addr.PreferedLft, addr.ValidLft = 0, 0
+		if err = netlink.AddrReplace(dst, &addr); err != nil {
+			return fmt.Errorf("failed to replace address %q on destination %s: %w", addr.String(), dstName, err)
+		}
+		klog.Infof("address %q has been added/replaced to link %s", addr.String(), dstName)
+	}
+
+	if err = netlink.LinkSetUp(dst); err != nil {
+		return fmt.Errorf("failed to set link %s up: %w", dstName, err)
+	}
+
+	routes, err := netlink.RouteList(src, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get routes on source %s: %w", srcName, err)
+	}
+
+	for _, route := range routes {
+		if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		route.LinkIndex = dst.Attrs().Index
+		if err = netlink.RouteReplace(&route); err != nil {
+			klog.Warningf("failed to add/replace route %s to destination %s: %v", route.String(), dstName, err)
+		} else {
+			klog.Infof("route %q has been added/replaced to link %s", route.String(), dstName)
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) removeProviderVlanInterface(internalPortName, brName string, vlanID int) error {
+	klog.Infof("Cleaning up VLAN internal port %s (VLAN %d) from bridge %s", internalPortName, vlanID, brName)
+
+	parts := strings.Split(internalPortName, "-vlan")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid VLAN internal port name format: %s", internalPortName)
+	}
+	baseInterfaceName := strings.TrimPrefix(parts[0], "br-")
+
+	internalPort, err := netlink.LinkByName(internalPortName)
+	if err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			klog.Warningf("VLAN internal port %s not found, may already be cleaned up", internalPortName)
+			return nil
+		}
+		return fmt.Errorf("failed to get VLAN internal port %s: %w", internalPortName, err)
+	}
+
+	addrs, err := netlink.AddrList(internalPort, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get addresses on VLAN internal port %s: %w", internalPortName, err)
+	}
+
+	routes, err := netlink.RouteList(internalPort, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get routes on VLAN internal port %s: %w", internalPortName, err)
+	}
+
+	if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, internalPortName); err != nil {
+		return fmt.Errorf("failed to remove VLAN internal port %s from OVS bridge %s: %w", internalPortName, brName, err)
+	}
+	klog.Infof("VLAN internal port %s has been removed from bridge %s", internalPortName, brName)
+
+	if len(addrs) > 0 || len(routes) > 0 {
+		kernelVlanName := fmt.Sprintf("%s.%d", baseInterfaceName, vlanID)
+
+		baseLink, err := netlink.LinkByName(baseInterfaceName)
+		if err != nil {
+			klog.Warningf("Base interface %s not found, cannot recreate kernel VLAN %s", baseInterfaceName, kernelVlanName)
+			return nil
+		}
+
+		if _, err := netlink.LinkByName(kernelVlanName); err == nil {
+			klog.Infof("Kernel VLAN interface %s already exists, using existing interface", kernelVlanName)
+		} else {
+			vlan := &netlink.Vlan{
+				LinkAttrs: netlink.LinkAttrs{
+					Name:        kernelVlanName,
+					ParentIndex: baseLink.Attrs().Index,
+				},
+				VlanId: vlanID,
+			}
+
+			if err := netlink.LinkAdd(vlan); err != nil {
+				return fmt.Errorf("failed to create kernel VLAN interface %s: %w", kernelVlanName, err)
+			}
+			klog.Infof("Created kernel VLAN interface %s", kernelVlanName)
+		}
+
+		vlanLink, err := netlink.LinkByName(kernelVlanName)
+		if err != nil {
+			return fmt.Errorf("failed to get kernel VLAN interface %s: %w", kernelVlanName, err)
+		}
+
+		for _, addr := range addrs {
+			if addr.IP.IsLinkLocalUnicast() {
+				continue
+			}
+
+			addr.Label = ""
+			if err := netlink.AddrReplace(vlanLink, &addr); err != nil {
+				klog.Errorf("failed to restore address %s to kernel VLAN %s: %v", addr.String(), kernelVlanName, err)
+			} else {
+				klog.Infof("Restored address %s to kernel VLAN interface %s", addr.String(), kernelVlanName)
+			}
+		}
+
+		if err := netlink.LinkSetUp(vlanLink); err != nil {
+			klog.Errorf("failed to set kernel VLAN interface %s up: %v", kernelVlanName, err)
+		}
+
+		scopeOrders := [...]netlink.Scope{
+			netlink.SCOPE_HOST,
+			netlink.SCOPE_LINK,
+			netlink.SCOPE_SITE,
+			netlink.SCOPE_UNIVERSE,
+		}
+
+		for _, scope := range scopeOrders {
+			for _, route := range routes {
+				if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+					continue
+				}
+				if route.Scope == scope {
+					route.LinkIndex = vlanLink.Attrs().Index
+					if err := netlink.RouteReplace(&route); err != nil {
+						klog.Errorf("failed to restore route %s to kernel VLAN %s: %v", route.String(), kernelVlanName, err)
+					} else {
+						klog.Infof("Restored route %s to kernel VLAN interface %s", route.String(), kernelVlanName)
+					}
+				}
+			}
 		}
 	}
 

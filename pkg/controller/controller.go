@@ -13,10 +13,12 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -30,17 +32,17 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
+	"k8s.io/utils/set"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
 	anplisterv1alpha2 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
 
-	"github.com/kubeovn/kube-ovn/pkg/informer"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -159,7 +161,7 @@ type Controller struct {
 	addIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
 	updateIptablesEipQueue workqueue.TypedRateLimitingInterface[string]
 	resetIptablesEipQueue  workqueue.TypedRateLimitingInterface[string]
-	delIptablesEipQueue    workqueue.TypedRateLimitingInterface[string]
+	delIptablesEipQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IptablesEIP]
 
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
@@ -184,7 +186,7 @@ type Controller struct {
 	addOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
 	updateOvnEipQueue workqueue.TypedRateLimitingInterface[string]
 	resetOvnEipQueue  workqueue.TypedRateLimitingInterface[string]
-	delOvnEipQueue    workqueue.TypedRateLimitingInterface[string]
+	delOvnEipQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.OvnEip]
 
 	ovnFipsLister     kubeovnlister.OvnFipLister
 	ovnFipSynced      cache.InformerSynced
@@ -472,7 +474,7 @@ func Run(ctx context.Context, config *Configuration) {
 		addIptablesEipQueue:    newTypedRateLimitingQueue("AddIptablesEip", custCrdRateLimiter),
 		updateIptablesEipQueue: newTypedRateLimitingQueue("UpdateIptablesEip", custCrdRateLimiter),
 		resetIptablesEipQueue:  newTypedRateLimitingQueue("ResetIptablesEip", custCrdRateLimiter),
-		delIptablesEipQueue:    newTypedRateLimitingQueue("DeleteIptablesEip", custCrdRateLimiter),
+		delIptablesEipQueue:    newTypedRateLimitingQueue[*kubeovnv1.IptablesEIP]("DeleteIptablesEip", nil),
 
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
@@ -563,7 +565,7 @@ func Run(ctx context.Context, config *Configuration) {
 		addOvnEipQueue:    newTypedRateLimitingQueue("AddOvnEip", custCrdRateLimiter),
 		updateOvnEipQueue: newTypedRateLimitingQueue("UpdateOvnEip", custCrdRateLimiter),
 		resetOvnEipQueue:  newTypedRateLimitingQueue("ResetOvnEip", custCrdRateLimiter),
-		delOvnEipQueue:    newTypedRateLimitingQueue("DeleteOvnEip", custCrdRateLimiter),
+		delOvnEipQueue:    newTypedRateLimitingQueue[*kubeovnv1.OvnEip]("DeleteOvnEip", nil),
 
 		ovnFipsLister:     ovnFipInformer.Lister(),
 		ovnFipSynced:      ovnFipInformer.Informer().HasSynced,
@@ -585,7 +587,7 @@ func Run(ctx context.Context, config *Configuration) {
 
 		csrLister:           csrInformer.Lister(),
 		csrSynced:           csrInformer.Informer().HasSynced,
-		addOrUpdateCsrQueue: newTypedRateLimitingQueue[string]("AddOrUpdateCSR", custCrdRateLimiter),
+		addOrUpdateCsrQueue: newTypedRateLimitingQueue("AddOrUpdateCSR", custCrdRateLimiter),
 
 		addOrUpdateVMIMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVMIMigration", nil),
 		deleteVMQueue:                newTypedRateLimitingQueue[string]("DeleteVM", nil),
@@ -1572,4 +1574,27 @@ func runWorker[T comparable](action string, queue workqueue.TypedRateLimitingInt
 		for processNextWorkItem(action, queue, handler, getWorkItemKey) {
 		}
 	}
+}
+
+// apiResourceExists checks if all specified kinds exist in the given group version.
+// It returns true if all kinds are found, false otherwise.
+// Parameters:
+// - discoveryClient: The discovery client to use for querying API resources.
+// - gv: The group version string (e.g., "apps/v1").
+// - kinds: A variadic list of kind names to check for existence (e.g., "Deployment", "StatefulSet").
+func apiResourceExists(discoveryClient discovery.DiscoveryInterface, gv string, kinds ...string) (bool, error) {
+	apiResourceLists, err := discoveryClient.ServerResourcesForGroupVersion(gv)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to discover api resources for %s: %w", gv, err)
+	}
+
+	existingKinds := set.New[string]()
+	for _, apiResource := range apiResourceLists.APIResources {
+		existingKinds.Insert(apiResource.Kind)
+	}
+
+	return existingKinds.HasAll(kinds...), nil
 }

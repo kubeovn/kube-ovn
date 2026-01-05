@@ -125,7 +125,9 @@ func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 		return errors.New("subnet parameter cannot be empty")
 	}
 
-	if ip.Spec.PodType != "" && ip.Spec.PodType != util.VM && ip.Spec.PodType != util.StatefulSet {
+	if ip.Spec.PodType != "" &&
+		ip.Spec.PodType != util.KindVirtualMachine &&
+		ip.Spec.PodType != util.KindStatefulSet {
 		return fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 	}
 

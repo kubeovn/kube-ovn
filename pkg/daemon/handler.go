@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -254,7 +255,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		var vmMigration bool
 		subnetHasVlan := podSubnet.Spec.Vlan != ""
 		// skip ping check gateway for pods during live migration
-		if pod.Annotations[util.MigrationJobAnnotation] == "" {
+		if pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] == "" {
 			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
 				if podSubnet.Spec.DisableGatewayCheck {
 					gatewayCheckMode = gatewayCheckModeArpingNotConcerned

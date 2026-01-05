@@ -30,8 +30,24 @@ import (
 func (c *Controller) InitOVN() error {
 	var err error
 
-	if err = c.migrateACLForVersionCompat(); err != nil {
-		klog.Errorf("failed to sync the older acl : %v", err)
+	// migrate vendor externalIDs to kube-ovn resources created in versions prior to v1.15.0
+	// this must run before ACL cleanup to ensure existing resources are properly tagged
+	if err = c.OVNNbClient.MigrateVendorExternalIDs(); err != nil {
+		klog.Errorf("failed to migrate vendor externalIDs: %v", err)
+		return err
+	}
+
+	// migrate tier field of ACL rules created in versions prior to v1.13.0
+	// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
+	// we need to migrate the tier field to the correct value
+	if err = c.OVNNbClient.MigrateACLTier(); err != nil {
+		klog.Errorf("failed to migrate ACL tier: %v", err)
+		return err
+	}
+
+	// clean all no parent key acls
+	if err = c.OVNNbClient.CleanNoParentKeyAcls(); err != nil {
+		klog.Errorf("failed to clean all no parent key acls: %v", err)
 		return err
 	}
 
@@ -67,22 +83,6 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
-	return nil
-}
-
-func (c *Controller) migrateACLForVersionCompat() error {
-	// migrate tier field of ACL rules created in versions prior to v1.13.0
-	// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
-	// we need to migrate the tier field to the correct value
-	if err := c.OVNNbClient.MigrateACLTier(); err != nil {
-		klog.Errorf("failed to migrate ACL tier: %v", err)
-		return err
-	}
-	// clean all no parent key acls
-	if err := c.OVNNbClient.CleanNoParentKeyAcls(); err != nil {
-		klog.Errorf("failed to clean all no parent key acls: %v", err)
-		return err
-	}
 	return nil
 }
 
@@ -405,7 +405,8 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
-		if ip.Spec.PodType != util.StatefulSet && ip.Spec.PodType != util.VM {
+		if ip.Spec.PodType != util.KindStatefulSet &&
+			ip.Spec.PodType != util.KindVirtualMachine {
 			continue
 		}
 
@@ -673,7 +674,7 @@ func (c *Controller) syncIPCR() error {
 		changed := false
 		ip = ip.DeepCopy()
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
-			ip.Spec.PodType = util.VM
+			ip.Spec.PodType = util.KindVirtualMachine
 			changed = true
 		}
 

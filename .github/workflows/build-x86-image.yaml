@@ -22,13 +22,15 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
-  KIND_VERSION: v0.30.0
+  KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.7.2
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v4.0.4
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.21.2
+  # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
+  TALOS_VERSION: v1.12.0
 
 jobs:
   build-kube-ovn-base:
@@ -1152,8 +1154,6 @@ jobs:
       - name: Create kind cluster
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # KubeVirt < v1.7 does not support k8s >= v1.34
-          K8S_VERSION: v1.33.2
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -2235,7 +2235,7 @@ jobs:
       - name: Create kind cluster
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          k8s_version: ${{ matrix.k8s-version }}
+          K8S_VERSION: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -2293,7 +2293,11 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install talosctl
-        run: curl -sL https://talos.dev/install | sh
+        run: |
+          curl -sLo install-talosctl.sh https://talos.dev/install
+          sed -i "s|/latest/download/|/download/${{ env.TALOS_VERSION }}/|g" install-talosctl.sh
+          sed -i "s|/latest/|/${{ env.TALOS_VERSION }}/|g" install-talosctl.sh
+          sh install-talosctl.sh
 
       - name: Install KVM and libvirt
         run: |
