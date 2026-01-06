@@ -354,6 +354,8 @@ kind-install-ovn-submariner: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 
 	kubectl config use-context kind-kube-ovn1
+	kubectl create namespace submariner-operator
+	kubectl create configmap submariner-global --namespace=submariner-operator --from-literal=use-nftables=false
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0.0/10.112.0.0/g' \
@@ -363,11 +365,12 @@ kind-install-ovn-submariner: kind-install
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
+	kubectl create namespace submariner-operator
+	kubectl create configmap submariner-global --namespace=submariner-operator --from-literal=use-nftables=false
 	subctl deploy-broker
 	cat broker-info.subm | base64 -d | \
 		jq '.brokerURL = "https://$(shell docker inspect --format='{{.NetworkSettings.Networks.kind.IPAddress}}' kube-ovn-control-plane):6443"' | \
 		base64 > broker-info-internal.subm
-
 	$(call kind_subctl_join,kube-ovn,cluster0,100.64.0.0/16;10.16.0.0/16)
 	$(call kind_subctl_join,kube-ovn1,cluster1,100.68.0.0/16;10.18.0.0/16)
 
