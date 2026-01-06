@@ -1667,6 +1667,9 @@ jobs:
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
+      - name: Load vpc-nat-gateway image into kind cluster
+        run: make kind-load-image-vpc-nat-gateway
+
       - name: Install Mults-CNI, Cilium, and Kube-OVN
         id: install
         run: make kind-install-multus-cilium-kubeovn-non-primary-${{ matrix.ip-family }}
@@ -1679,9 +1682,7 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
           KUBE_OVN_PRIMARY_CNI: "false"
-        run: |
-          make kind-load-image-vpc-nat-gateway
-          make kube-ovn-non-primary-cni-e2e
+        run: make kube-ovn-non-primary-cni-e2e
 
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'

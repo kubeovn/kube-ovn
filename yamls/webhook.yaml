@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kube-ovn-webhook
-          image: "docker.io/kubeovn/kube-ovn:v1.14.0"
+          image: "docker.io/kubeovn/kube-ovn:v1.16.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-webhook
