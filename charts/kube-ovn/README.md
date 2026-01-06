@@ -1,6 +1,8 @@
 # Kube-OVN-helm
 
-Currently supported version: 1.9
+> [!CAUTION]
+> This chart is maintained as best effort, the v2 chart is the recommended way of deploying Kube-OVN.  
+> Please head [to this Helm Chart](../kube-ovn-v2) instead.
 
 ## Installing the Chart
 
