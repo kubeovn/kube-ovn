@@ -1502,9 +1502,11 @@ jobs:
         run: docker load -i kube-ovn.tar
 
       - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1658,13 +1660,16 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
-      - name: Create kind cluster and install CNIs
-        id: install
+      - name: Create kind cluster
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-install-multus-cilium-kubeovn-non-primary-${{ matrix.ip-family }}
+          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+
+      - name: Install Mults-CNI, Cilium, and Kube-OVN
+        id: install
+        run: make kind-install-multus-cilium-kubeovn-non-primary-${{ matrix.ip-family }}
 
       - name: Run non-primary CNI e2e
         id: e2e
@@ -1674,7 +1679,9 @@ jobs:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
           KUBE_OVN_PRIMARY_CNI: "false"
-        run: make kube-ovn-non-primary-cni-e2e
+        run: |
+          make kind-load-image-vpc-nat-gateway
+          make kube-ovn-non-primary-cni-e2e
 
       - name: Collect k8s events
         if: failure() && steps.e2e.conclusion == 'failure'

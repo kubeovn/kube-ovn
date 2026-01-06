@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
+	"go.podman.io/image/v5/docker/reference"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
@@ -71,7 +73,11 @@ type Framework struct {
 	ClusterIPFamily string
 	// overlay/underlay/underlay-hairpin
 	ClusterNetworkMode string
+	// image info
 	KubeOVNImage       string
+	KubeOVNImageDomain string
+	KubeOVNImageRepo   string
+	KubeOVNImageTag    string
 }
 
 func (f *Framework) parseEnv() {
@@ -259,6 +265,15 @@ func (f *Framework) BeforeEach() {
 		framework.Logf("Getting Kube-OVN image")
 		f.KubeOVNImage = GetKubeOvnImage(f.ClientSet)
 		framework.Logf("Got Kube-OVN image: %s", f.KubeOVNImage)
+		ref, err := reference.Parse(f.KubeOVNImage)
+		ExpectNoError(err)
+		taggedRef := ref.(reference.Tagged)
+		ExpectNotNil(taggedRef, "Failed to get tagged reference from Kube-OVN image")
+		f.KubeOVNImageTag = taggedRef.Tag()
+		namedRef := ref.(reference.Named)
+		ExpectNotNil(namedRef, "Failed to get named reference from Kube-OVN image")
+		f.KubeOVNImageDomain = reference.Domain(namedRef)
+		f.KubeOVNImageRepo = reference.Path(namedRef)
 	}
 
 	framework.TestContext.Host = ""
@@ -276,6 +291,19 @@ func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 	if f.VersionPriorTo(major, minor) {
 		ginkgo.Skip(reason)
 	}
+}
+
+// Image returns the image reference with the specified name.
+// .e.g. Image("vpc-nat-gateway") returns "docker.io/kubeovn/vpc-nat-gateway:v1.16.0"
+func (f *Framework) Image(name string) string {
+	repo := path.Clean(path.Join(path.Dir(f.KubeOVNImageRepo), name))
+	return fmt.Sprintf("%s/%s:%s", f.KubeOVNImageDomain, repo, f.KubeOVNImageTag)
+}
+
+// VpcNatGatewayImage returns the VPC NAT gateway image reference.
+// .e.g. "docker.io/kubeovn/vpc-nat-gateway:v1.16.0"
+func (f *Framework) VpcNatGatewayImage() string {
+	return f.Image("vpc-nat-gateway")
 }
 
 func (f *Framework) ValidateFinalizers(obj metav1.Object) {

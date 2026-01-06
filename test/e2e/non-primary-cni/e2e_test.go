@@ -2,7 +2,6 @@ package non_primary_cni
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -53,14 +52,10 @@ func TestE2E(t *testing.T) {
 const (
 	EnvTestConfigPath    = "TEST_CONFIG_PATH"
 	EnvKubeOVNPrimaryCNI = "KUBE_OVN_PRIMARY_CNI"
-	EnvKubeOVNVersion    = "VERSION"
-	EnvKubeOVNRegistry   = "REGISTRY"
 
 	DefaultNetworkInterface = "net1"
 	DefaultConfigPath       = "/opt/testconfigs"
 	DefaultCommandTimeout   = 30 * time.Second
-	DefaultKubeOVNVersion   = "v1.15.0"
-	DefaultKubeOVNRegistry  = "docker.io/kubeovn"
 )
 
 // Helper functions
@@ -84,6 +79,8 @@ func isKubeOVNPrimaryCNI() bool {
 
 // removeFinalizers removes finalizers from Kube-OVN resources to ensure cleanup
 func removeFinalizers(configStage string) {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(fmt.Sprintf("Removing finalizers from config-stage=%s resources", configStage))
 
 	// Get all resources with the specific config-stage label
@@ -106,52 +103,16 @@ func removeFinalizers(configStage string) {
 			name := fields[2]
 
 			var patchCmd string
-			if namespace == "<none>" || namespace == "" {
+			if namespace == "<none>" || namespace == metav1.NamespaceNone {
 				// Cluster-scoped resource
-				patchCmd = fmt.Sprintf("kubectl patch %s %s --type=merge -p '{\"metadata\":{\"finalizers\":[]}}' 2>/dev/null || true", strings.ToLower(kind), name)
+				patchCmd = fmt.Sprintf(`kubectl patch %s %s --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true`, strings.ToLower(kind), name)
 			} else {
 				// Namespaced resource
-				patchCmd = fmt.Sprintf("kubectl patch %s %s -n %s --type=merge -p '{\"metadata\":{\"finalizers\":[]}}' 2>/dev/null || true", strings.ToLower(kind), name, namespace)
+				patchCmd = fmt.Sprintf(`kubectl patch %s %s -n %s --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true`, strings.ToLower(kind), name, namespace)
 			}
 			_, _ = runBashCommand(patchCmd)
 		}
 	}
-}
-
-// getKubeOVNVersion dynamically determines the KubeOVN version
-func getKubeOVNVersion() string {
-	if version := os.Getenv(EnvKubeOVNVersion); version != "" {
-		return version
-	}
-	if versionFromFile := readVersionFile(); versionFromFile != "" {
-		return versionFromFile
-	}
-	return DefaultKubeOVNVersion
-}
-
-// getKubeOVNRegistry dynamically determines the KubeOVN registry
-func getKubeOVNRegistry() string {
-	if registry := os.Getenv(EnvKubeOVNRegistry); registry != "" {
-		return registry
-	}
-	return DefaultKubeOVNRegistry
-}
-
-// readVersionFile reads version from VERSION file
-func readVersionFile() string {
-	// Try multiple possible locations for VERSION file
-	possiblePaths := []string{
-		"VERSION",
-		"../../../VERSION",
-		"/tmp/kube-ovn/VERSION",
-	}
-
-	for _, path := range possiblePaths {
-		if content, err := os.ReadFile(path); err == nil {
-			return strings.TrimSpace(string(content))
-		}
-	}
-	return ""
 }
 
 // KindBridgeNetwork represents KIND bridge network configuration
@@ -161,21 +122,22 @@ type KindBridgeNetwork struct {
 }
 
 // detectKindBridgeNetwork dynamically detects KIND bridge network configuration
-func detectKindBridgeNetwork() (*KindBridgeNetwork, error) {
+func detectKindBridgeNetwork() *KindBridgeNetwork {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By("Detecting KIND bridge network configuration")
 
 	network, err := docker.NetworkInspect(kind.NetworkName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect KIND network: %w", err)
-	}
+	framework.ExpectNoError(err, "Failed to inspect KIND network %s", kind.NetworkName)
 
 	for _, config := range network.IPAM.Config {
 		if config.Subnet.IsValid() && util.CheckProtocol(config.Subnet.String()) == kubeovnv1.ProtocolIPv4 {
 			ginkgo.By(fmt.Sprintf("Detected KIND bridge network: CIDR=%s, Gateway=%s", config.Subnet, config.Gateway))
-			return &KindBridgeNetwork{CIDR: config.Subnet.String(), Gateway: config.Gateway.String()}, nil
+			return &KindBridgeNetwork{CIDR: config.Subnet.String(), Gateway: config.Gateway.String()}
 		}
 	}
-	return nil, errors.New("no IPv4 subnet found in KIND network")
+	framework.Failf("No IPv4 subnet found in KIND network %s", kind.NetworkName)
+	return nil
 }
 
 // generateExcludeIPs creates a YAML list of IPs to exclude based on the gateway
@@ -193,32 +155,25 @@ func generateExcludeIPs(_, gateway string) string {
 }
 
 // processConfigWithKindBridge dynamically updates YAML configuration with KIND bridge network
-func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork) (string, error) {
+func processConfigWithKindBridge(vpcNatGatewayImage, yamlPath string, kindNetwork *KindBridgeNetwork) string {
+	ginkgo.GinkgoHelper()
+
 	ginkgo.By(fmt.Sprintf("Processing config file %s with KIND bridge network", yamlPath))
 
 	content, err := os.ReadFile(yamlPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	yamlContent := string(content)
+	framework.ExpectNoError(err, "Failed to read config file %s", yamlPath)
 
 	// Replace common bridge network CIDRs with actual KIND bridge CIDR
 	bridgeCIDRs := []string{"172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/16"}
 	bridgeGateways := []string{"172.17.0.1", "172.18.0.1", "172.19.0.1", "172.20.0.1"}
 
+	yamlContent := string(content)
 	for _, cidr := range bridgeCIDRs {
 		yamlContent = strings.ReplaceAll(yamlContent, cidr, kindNetwork.CIDR)
 	}
-
 	for _, gw := range bridgeGateways {
 		yamlContent = strings.ReplaceAll(yamlContent, gw, kindNetwork.Gateway)
 	}
-
-	// Replace template placeholders with KIND bridge network values
-	registry := getKubeOVNRegistry()
-	version := getKubeOVNVersion()
-	vpcNatGatewayImage := fmt.Sprintf("%s/vpc-nat-gateway:%s", registry, version)
 
 	templateReplacements := map[string]string{
 		"<cidrBlock01>":                          kindNetwork.CIDR,
@@ -239,17 +194,15 @@ func processConfigWithKindBridge(yamlPath string, kindNetwork *KindBridgeNetwork
 
 	// Create temporary file with updated configuration
 	tmpFile, err := os.CreateTemp(os.TempDir(), "kind-config-*.yaml")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary config file: %w", err)
-	}
+	framework.ExpectNoError(err, "Failed to create temporary config file")
 	defer tmpFile.Close()
 
-	if _, err := tmpFile.WriteString(yamlContent); err != nil {
-		return "", fmt.Errorf("failed to write updated config: %w", err)
-	}
+	framework.Logf("Writing config to temporary file %s:\n%s", tmpFile.Name(), yamlContent)
+	_, err = tmpFile.WriteString(yamlContent)
+	framework.ExpectNoError(err, "Failed to write updated config")
 
 	ginkgo.By(fmt.Sprintf("Created dynamic config file: %s", tmpFile.Name()))
-	return tmpFile.Name(), nil
+	return tmpFile.Name()
 }
 
 // Helper function to wait for resource to be ready with Eventually
@@ -378,11 +331,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			natGwClient = f.VpcNatGatewayClient()
 
 			ginkgo.By("Detect KIND bridge network and generate dynamic config")
-			kindNetwork, err := detectKindBridgeNetwork()
-			framework.ExpectNoError(err)
-
-			yamlFile, err = processConfigWithKindBridge(originalYamlFile, kindNetwork)
-			framework.ExpectNoError(err)
+			kindNetwork := detectKindBridgeNetwork()
+			yamlFile = processConfigWithKindBridge(f.VpcNatGatewayImage(), originalYamlFile, kindNetwork)
 			ginkgo.DeferCleanup(func() {
 				if yamlFile != originalYamlFile {
 					os.Remove(yamlFile)
@@ -587,11 +537,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			}
 
 			ginkgo.By("Detect KIND bridge network and generate dynamic config")
-			kindNetwork, err := detectKindBridgeNetwork()
-			framework.ExpectNoError(err)
-
-			yamlFile, err = processConfigWithKindBridge(originalYamlFile, kindNetwork)
-			framework.ExpectNoError(err)
+			kindNetwork := detectKindBridgeNetwork()
+			yamlFile = processConfigWithKindBridge(f.VpcNatGatewayImage(), originalYamlFile, kindNetwork)
 			ginkgo.DeferCleanup(func() {
 				if yamlFile != originalYamlFile {
 					os.Remove(yamlFile)
