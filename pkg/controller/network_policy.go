@@ -733,7 +733,15 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 		return nil, fmt.Errorf("failed to list netpols, %w", err)
 	}
 	match := set.New[string]()
-	ns, _ := c.namespacesLister.Get(svc.Namespace)
+	ns, err := c.namespacesLister.Get(svc.Namespace)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("namespace %s not found when matching network policies for service %s/%s", svc.Namespace, svc.Namespace, svc.Name)
+			return match.UnsortedList(), nil
+		}
+		return nil, fmt.Errorf("failed to get namespace %s: %w", svc.Namespace, err)
+	}
+
 	for _, pod := range pods {
 		for _, np := range nps {
 			key := cache.MetaObjectToName(np).String()
