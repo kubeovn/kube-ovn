@@ -242,6 +242,19 @@ func (c *Controller) enqueueAddPod(obj any) {
 	}
 }
 
+func (c *Controller) getNsLabels(nsName, podName string) map[string]string {
+	podNs, err := c.namespacesLister.Get(nsName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("namespace %s not found for pod %s, use empty ns labels", nsName, podName)
+		} else {
+			klog.Errorf("failed to get namespace %s: %v, use empty ns labels", nsName, err)
+		}
+		return nil
+	}
+	return podNs.Labels
+}
+
 func (c *Controller) enqueueDeletePod(obj any) {
 	var p *v1.Pod
 	switch t := obj.(type) {
@@ -274,9 +287,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(p.Namespace)
-		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
-		c.updateCnpsByLabelsMatch(podNs.Labels, p.Labels)
+		nsLabels := c.getNsLabels(p.Namespace, p.Name)
+		c.updateAnpsByLabelsMatch(nsLabels, p.Labels)
+		c.updateCnpsByLabelsMatch(nsLabels, p.Labels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -351,18 +364,18 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
+		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
+			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 		}
 
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			if oldAllocated != newAllocated {
-				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
+				c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 				break
 			}
 		}
