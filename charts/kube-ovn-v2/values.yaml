@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.14.0
+      tag: v1.15.0
 
 # -- Image configuration.
 # @section -- Global parameters
