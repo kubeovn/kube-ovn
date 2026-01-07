@@ -69,7 +69,10 @@ func parsePrefix(s string) (netip.Prefix, error) {
 }
 
 // getGatewayName returns the name of the NAT GW hosting this speaker
-func getGatewayName() string {
+func getGatewayName(config *Configuration) string {
+	if config != nil && config.VpcNatGatewayName != "" {
+		return config.VpcNatGatewayName
+	}
 	return os.Getenv(util.EnvGatewayName)
 }
 
