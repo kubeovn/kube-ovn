@@ -120,6 +120,9 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+            {{- with .Values.monitor.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- with .Values.monitor.resources }}
           resources:
             {{- toYaml . | trim | nindent 12 }}
