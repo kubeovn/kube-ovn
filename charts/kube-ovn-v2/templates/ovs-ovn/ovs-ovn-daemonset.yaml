@@ -18,9 +18,11 @@ spec:
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
+    {{- if eq (include "kubeovn.ovs-ovn.updateStrategy" .) "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: {{ .Values.ovsOvn.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.ovsOvn.strategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
   template:
     metadata:
       {{- with .Values.ovsOvn.podAnnotations }}
