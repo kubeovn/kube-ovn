@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.14.0
+      tag: v1.15.0
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -429,7 +429,7 @@ ovsOvn:
     enabled: false
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
-    tag: "v1.14.0-dpdk"
+    tag: "v1.15.0-dpdk"
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
@@ -493,7 +493,8 @@ pinger:
   annotations: {}
   # -- Labels to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
   # @section -- Ping daemon configuration
-  labels: {}
+  labels:
+    app: kube-ovn-pinger
   # -- Annotations to be added to kube-ovn-pinger pods.
   # @section -- Ping daemon configuration
   podAnnotations: {}
@@ -555,7 +556,8 @@ monitor:
   annotations: {}
   # -- Labels to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
   # @section -- OVN monitoring daemon configuration
-  labels: {}
+  labels:
+    app: kube-ovn-monitor
   # -- Annotations to be added to kube-ovn-monitor pods.
   # @section -- OVN monitoring daemon configuration
   podAnnotations: {}
@@ -614,7 +616,8 @@ controller:
   annotations: {}
   # -- Labels to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
   # @section -- Kube-OVN controller configuration
-  labels: {}
+  labels:
+    app: kube-ovn-controller
   # -- Annotations to be added to kube-ovn-controller pods.
   # @section -- Kube-OVN controller configuration
   podAnnotations: {}
@@ -673,7 +676,8 @@ central:
   annotations: {}
   # -- Labels to be added to all top-level ovn-central objects (resources under templates/central)
   # @section -- OVN-central daemon configuration
-  labels: {}
+  labels:
+    app: kube-ovn-central
   # -- Annotations to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   podAnnotations: {}
@@ -762,7 +766,8 @@ agent:
   annotations: {}
   # -- Labels to be added to all top-level agent objects (resources under templates/agent)
   # @section -- CNI agent configuration
-  labels: {}
+  labels:
+    app: kube-ovn-cni
   # -- Annotations to be added to the agent pods (kube-ovn-cni)
   # @section -- CNI agent configuration
   podAnnotations: {}
