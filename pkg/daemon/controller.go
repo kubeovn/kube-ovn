@@ -52,6 +52,8 @@ type Controller struct {
 	subnetsSynced cache.InformerSynced
 	subnetQueue   workqueue.TypedRateLimitingInterface[*subnetEvent]
 
+	macvlanSubnetQueue workqueue.TypedRateLimitingInterface[*subnetEvent]
+
 	ovnEipsLister kubeovnlister.OvnEipLister
 	ovnEipsSynced cache.InformerSynced
 
@@ -70,6 +72,11 @@ type Controller struct {
 	caSecretLister listerv1.SecretLister
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
+
+	iptablesEipsLister     kubeovnlister.IptablesEIPLister
+	iptablesEipsSynced     cache.InformerSynced
+	iptablesEipQueue       workqueue.TypedRateLimitingInterface[eipRouteInfo]
+	iptablesEipDeleteQueue workqueue.TypedRateLimitingInterface[eipRouteInfo]
 
 	recorder record.EventRecorder
 
@@ -101,6 +108,7 @@ func NewController(config *Configuration,
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	servicesInformer := nodeInformerFactory.Core().V1().Services()
@@ -121,6 +129,8 @@ func NewController(config *Configuration,
 		subnetsSynced: subnetInformer.Informer().HasSynced,
 		subnetQueue:   newTypedRateLimitingQueue[*subnetEvent]("Subnet", nil),
 
+		macvlanSubnetQueue: newTypedRateLimitingQueue[*subnetEvent]("MacvlanSubnet", nil),
+
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
@@ -139,6 +149,11 @@ func NewController(config *Configuration,
 		caSecretLister: caSecretInformer.Lister(),
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
+
+		iptablesEipsLister:     iptablesEipInformer.Lister(),
+		iptablesEipsSynced:     iptablesEipInformer.Informer().HasSynced,
+		iptablesEipQueue:       newTypedRateLimitingQueue[eipRouteInfo]("IptablesEip", nil),
+		iptablesEipDeleteQueue: newTypedRateLimitingQueue[eipRouteInfo]("IptablesEipDelete", nil),
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
@@ -161,7 +176,8 @@ func NewController(config *Configuration,
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced,
+		controller.iptablesEipsSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -207,6 +223,15 @@ func NewController(config *Configuration,
 		UpdateFunc: controller.enqueueUpdateNode,
 	}); err != nil {
 		return nil, err
+	}
+	if config.EnableNodeLocalAccessVpcNatGwEIP {
+		if _, err = iptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddIptablesEip,
+			UpdateFunc: controller.enqueueUpdateIptablesEip,
+			DeleteFunc: controller.enqueueDeleteIptablesEip,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	return controller, nil
@@ -564,21 +589,68 @@ type serviceEvent struct {
 	oldObj, newObj any
 }
 
+// subnetHasMacvlanMaster checks if a subnet has NadMacvlanMasterAnnotation set
+func subnetHasMacvlanMaster(obj any) bool {
+	if subnet, ok := obj.(*kubeovnv1.Subnet); ok {
+		return subnet.Annotations[util.NadMacvlanMasterAnnotation] != ""
+	}
+	return false
+}
+
 func (c *Controller) enqueueAddSubnet(obj any) {
-	c.subnetQueue.Add(&subnetEvent{newObj: obj})
+	event := &subnetEvent{newObj: obj}
+	c.subnetQueue.Add(event)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(obj) {
+		c.macvlanSubnetQueue.Add(event)
+	}
 }
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
-	c.subnetQueue.Add(&subnetEvent{oldObj: oldObj, newObj: newObj})
+	event := &subnetEvent{oldObj: oldObj, newObj: newObj}
+	c.subnetQueue.Add(event)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && (subnetHasMacvlanMaster(oldObj) || subnetHasMacvlanMaster(newObj)) {
+		c.macvlanSubnetQueue.Add(event)
+	}
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	c.subnetQueue.Add(&subnetEvent{oldObj: obj})
+	event := &subnetEvent{oldObj: obj}
+	c.subnetQueue.Add(event)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(obj) {
+		c.macvlanSubnetQueue.Add(event)
+	}
 }
 
 func (c *Controller) runSubnetWorker() {
 	for c.processNextSubnetWorkItem() {
 	}
+}
+
+func (c *Controller) runMacvlanSubnetWorker() {
+	for c.processNextMacvlanSubnetItem() {
+	}
+}
+
+func (c *Controller) processNextMacvlanSubnetItem() bool {
+	obj, shutdown := c.macvlanSubnetQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj *subnetEvent) error {
+		defer c.macvlanSubnetQueue.Done(obj)
+		if err := c.reconcileMacvlanSubnet(obj); err != nil {
+			c.macvlanSubnetQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing macvlan for %v: %w, requeuing", obj, err)
+		}
+		c.macvlanSubnetQueue.Forget(obj)
+		return nil
+	}(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
 }
 
 func (c *Controller) enqueueAddService(obj any) {
@@ -646,6 +718,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	key := cache.MetaObjectToName(newPod).String()
+
+	// Handle NAT GW pod update for EIP route management
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP {
+		c.handleNatGwPodUpdate(oldPod, newPod)
+	}
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
@@ -839,10 +916,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.addOrUpdateProviderNetworkQueue.ShutDown()
 	defer c.deleteProviderNetworkQueue.ShutDown()
 	defer c.subnetQueue.ShutDown()
+	defer c.macvlanSubnetQueue.ShutDown()
 	defer c.serviceQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
+	defer c.iptablesEipQueue.ShutDown()
+	defer c.iptablesEipDeleteQueue.ShutDown()
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -862,6 +942,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP {
+		go wait.Until(c.runMacvlanSubnetWorker, time.Second, stopCh)
+		go wait.Until(c.runIptablesEipWorker, time.Second, stopCh)
+		go wait.Until(c.runIptablesEipDeleteWorker, time.Second, stopCh)
+	}
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)

@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -39,8 +40,9 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 // GenNatGwLabels returns the labels to set on a NAT gateway
 func GenNatGwLabels(gwName string) map[string]string {
 	return map[string]string{
-		"app":              GenNatGwName(gwName),
-		VpcNatGatewayLabel: "true",
+		"app":                  GenNatGwName(gwName),
+		VpcNatGatewayLabel:     "true",
+		VpcNatGatewayNameLabel: gwName,
 	}
 }
 
@@ -170,4 +172,41 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	return bgpSpeakerContainer, nil
+}
+
+const (
+	// MacvlanLinkPrefix is the prefix for macvlan sub-interfaces created for node local EIP access.
+	// Format: "mac" (3 chars) + master interface name or FNV hash (up to 12 chars) = max 15 chars.
+	MacvlanLinkPrefix = "mac"
+)
+
+// GenMacvlanIfaceName generates macvlan sub-interface name from master interface name.
+// Format: "mac" (3 chars) + master name or FNV hash (up to 12 chars) = max 15 chars.
+// Linux interface names are limited to 15 characters.
+//
+// For short master names (<=12 chars), appends master name directly.
+// For longer names, uses FNV-1a 32-bit hash to ensure uniqueness.
+//
+// Examples:
+//
+//	master "eth0"        -> "maceth0"
+//	master "bond0"       -> "macbond0"
+//	master "enp0s25"     -> "macenp0s25"
+//	master "very-long-interface-name" -> "mac" + hash
+func GenMacvlanIfaceName(master string) (string, error) {
+	if master == "" {
+		return "", errors.New("master interface name is empty")
+	}
+
+	maxMasterLen := 15 - len(MacvlanLinkPrefix) // 12 chars for master part
+
+	// If master name fits, use it directly
+	if len(master) <= maxMasterLen {
+		return MacvlanLinkPrefix + master, nil
+	}
+
+	// For longer names, use FNV-1a 32-bit hash (8 hex chars)
+	h := fnv.New32a()
+	h.Write([]byte(master))
+	return fmt.Sprintf("%s%08x", MacvlanLinkPrefix, h.Sum32()), nil
 }

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -541,6 +542,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !isOvnSubnet(subnet) {
 		// subnet provider is not ovn, and vpc is empty, should not reconcile
 		if err = c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		// For non-OVN subnets with macvlan NAD, set the macvlan master annotation
+		if err = c.syncNadMacvlanMasterAnnotation(subnet); err != nil {
+			// Return error to retry - NAD might not be created yet
 			klog.Error(err)
 			return err
 		}
@@ -2896,6 +2904,70 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			klog.Error(err)
 			return err
 		}
+	}
+	return nil
+}
+
+// syncNadMacvlanMasterAnnotation checks if the subnet's provider NAD is macvlan type,
+// and if so, sets the NadMacvlanMasterAnnotation with the master interface name.
+// This annotation is used by daemon for node-local EIP access feature.
+func (c *Controller) syncNadMacvlanMasterAnnotation(subnet *kubeovnv1.Subnet) error {
+	provider := subnet.Spec.Provider
+	if provider == "" || provider == util.OvnProvider {
+		return nil
+	}
+
+	// Parse provider format: <nad-name>.<namespace> or <nad-name>.<namespace>.ovn
+	nadName, nadNamespace, ok := util.GetNadBySubnetProvider(provider)
+	if !ok {
+		return nil
+	}
+
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(nadNamespace).Get(nadName)
+	if err != nil {
+		// If NAD doesn't exist yet, return error to retry later
+		// NAD might be created after subnet, so we need to retry
+		err = fmt.Errorf("failed to get NAD %s/%s for subnet %s: %w", nadNamespace, nadName, subnet.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	// Parse NAD config to check if it's macvlan type
+	var netConf struct {
+		Type   string `json:"type"`
+		Master string `json:"master"`
+	}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), &netConf); err != nil {
+		// Malformed JSON is a configuration error, not a transient error.
+		// Retrying won't fix it - user needs to fix the NAD config.
+		// Log error and return nil to avoid infinite retry loop.
+		klog.Errorf("failed to parse NAD %s/%s config for subnet %s (not retrying): %v", nadNamespace, nadName, subnet.Name, err)
+		return nil
+	}
+
+	if netConf.Type != "macvlan" {
+		// If NAD is not macvlan type, remove the annotation if it exists
+		if _, ok := subnet.Annotations[util.NadMacvlanMasterAnnotation]; ok {
+			patch := util.KVPatch{util.NadMacvlanMasterAnnotation: nil}
+			if err := util.PatchAnnotations(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+				err = fmt.Errorf("failed to remove annotation from subnet %s: %w", subnet.Name, err)
+				klog.Error(err)
+				return err
+			}
+			klog.Infof("removed subnet %s annotation %s", subnet.Name, util.NadMacvlanMasterAnnotation)
+		}
+		return nil
+	}
+
+	// Update annotation if master interface changed
+	if subnet.Annotations[util.NadMacvlanMasterAnnotation] != netConf.Master {
+		patch := util.KVPatch{util.NadMacvlanMasterAnnotation: netConf.Master}
+		if err := util.PatchAnnotations(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch subnet %s annotation: %w", subnet.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("set subnet %s annotation %s=%s", subnet.Name, util.NadMacvlanMasterAnnotation, netConf.Master)
 	}
 	return nil
 }

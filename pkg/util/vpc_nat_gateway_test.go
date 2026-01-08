@@ -2,6 +2,7 @@ package util
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -197,16 +198,18 @@ func TestGenNatGwLabels(t *testing.T) {
 			name:   "Gateway name filled",
 			gwName: "test-gateway",
 			expected: map[string]string{
-				"app":              "vpc-nat-gw-test-gateway",
-				VpcNatGatewayLabel: "true",
+				"app":                  "vpc-nat-gw-test-gateway",
+				VpcNatGatewayLabel:     "true",
+				VpcNatGatewayNameLabel: "test-gateway",
 			},
 		},
 		{
 			name:   "Gateway label empty",
 			gwName: "",
 			expected: map[string]string{
-				"app":              "vpc-nat-gw-",
-				VpcNatGatewayLabel: "true",
+				"app":                  "vpc-nat-gw-",
+				VpcNatGatewayLabel:     "true",
+				VpcNatGatewayNameLabel: "",
 			},
 		},
 	}
@@ -398,4 +401,114 @@ func TestGenNatGwBgpSpeakerContainer(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenMacvlanIfaceName(t *testing.T) {
+	tests := []struct {
+		name     string
+		master   string
+		expected string
+	}{
+		{
+			name:     "short interface name",
+			master:   "eth0",
+			expected: "maceth0",
+		},
+		{
+			name:     "bond interface",
+			master:   "bond0",
+			expected: "macbond0",
+		},
+		{
+			name:     "longer interface name",
+			master:   "enp0s25",
+			expected: "macenp0s25",
+		},
+		{
+			name:     "max length interface name (12 chars)",
+			master:   "eth0.1234567",
+			expected: "maceth0.1234567",
+		},
+		{
+			name:   "long interface name (exceeds 12 chars, uses hash)",
+			master: "very-long-interface-name",
+			// Name will be "mac" + 8 hex chars (FNV-1a hash)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := GenMacvlanIfaceName(tt.master)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result) > 15 {
+				t.Errorf("interface name should not exceed 15 chars, got %d", len(result))
+			}
+			if !strings.HasPrefix(result, MacvlanLinkPrefix) {
+				t.Errorf("should have '%s' prefix, got %s", MacvlanLinkPrefix, result)
+			}
+			if tt.expected != "" && result != tt.expected {
+				t.Errorf("got %s, want %s", result, tt.expected)
+			}
+			// Verify consistent output
+			result2, _ := GenMacvlanIfaceName(tt.master)
+			if result != result2 {
+				t.Errorf("same input should produce same output: %s vs %s", result, result2)
+			}
+		})
+	}
+
+	// Verify uniqueness for different master interfaces
+	t.Run("different masters produce different outputs", func(t *testing.T) {
+		names := make(map[string]string)
+		inputs := []string{
+			"eth0",
+			"eth1",
+			"bond0",
+			"bond1",
+			"enp0s25",
+			"very-long-interface-name",
+			"another-long-interface",
+		}
+		for _, input := range inputs {
+			result, err := GenMacvlanIfaceName(input)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", input, err)
+			}
+			if existing, ok := names[result]; ok {
+				t.Errorf("collision detected: %q and %q both produce %q", existing, input, result)
+			}
+			names[result] = input
+		}
+	})
+
+	// Verify that long interface names are properly hashed
+	t.Run("long names are hashed to fit 15 char limit", func(t *testing.T) {
+		longName := "this-is-a-very-long-interface-name"
+		result, err := GenMacvlanIfaceName(longName)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result) > 15 {
+			t.Errorf("should not exceed 15 chars, got %d", len(result))
+		}
+		if !strings.HasPrefix(result, MacvlanLinkPrefix) {
+			t.Errorf("should have '%s' prefix", MacvlanLinkPrefix)
+		}
+		// Should be "mac" + 8 hex chars = 11 chars
+		if len(result) != 11 {
+			t.Errorf("expected 11 chars for hashed name, got %d", len(result))
+		}
+	})
+
+	t.Run("empty master returns error", func(t *testing.T) {
+		_, err := GenMacvlanIfaceName("")
+		if err == nil {
+			t.Error("expected error for empty master")
+		}
+		if !strings.Contains(err.Error(), "empty") {
+			t.Errorf("error should mention 'empty', got: %v", err)
+		}
+	})
 }

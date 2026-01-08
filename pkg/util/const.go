@@ -129,6 +129,9 @@ const (
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
 	ACLLogMeterAnnotation              = "ovn.kubernetes.io/acl_log_meter_rate"
 
+	// NadMacvlanMasterAnnotation value indicates the macvlan master interface
+	NadMacvlanMasterAnnotation = "ovn.kubernetes.io/nad-macvlan-master"
+
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"
 
