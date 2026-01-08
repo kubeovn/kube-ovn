@@ -10,6 +10,13 @@ else
 GO_BUILD_FLAGS = -trimpath -ldflags "-w -s $(GOLDFLAGS)"
 endif
 
+GO_MOD_VERSION := $(shell awk '/^go[[:space:]]+/ { print $$2; exit }' go.mod)
+ifeq ($(strip $(GO_MOD_VERSION)),)
+$(error failed to determine Go version from go.mod)
+endif
+GOTOOLCHAIN_VERSION := go$(GO_MOD_VERSION)
+MODERNIZE_ENV := GOTOOLCHAIN=$(GOTOOLCHAIN_VERSION)
+
 .PHONY: build-go
 build-go:
 	go mod tidy
@@ -90,6 +97,18 @@ image-kube-ovn-dpdk: build-go
 .PHONY: image-vpc-nat-gateway
 image-vpc-nat-gateway:
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-vpc-nat-gateway-cn
+image-vpc-nat-gateway-cn:
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) --build-arg CN=true -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-vpc-nat-gateway-arm64
+image-vpc-nat-gateway-arm64:
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-vpc-nat-gateway-cn-arm64
+image-vpc-nat-gateway-cn-arm64:
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) --build-arg CN=true -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 .PHONY: image-test
 image-test: build-go

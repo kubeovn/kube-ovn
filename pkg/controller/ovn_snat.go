@@ -33,8 +33,9 @@ func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj any) {
 			// avoid delete twice
 			return
 		}
-		klog.Infof("enqueue del ovn snat %s", key)
-		c.delOvnSnatRuleQueue.Add(key)
+		// SNAT with finalizer should be handled in updateOvnSnatRuleQueue
+		klog.Infof("enqueue update (deleting) ovn snat %s", key)
+		c.updateOvnSnatRuleQueue.Add(key)
 		return
 	}
 	oldSnat := oldObj.(*kubeovnv1.OvnSnatRule)
@@ -197,6 +198,46 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Handle deletion first (for SNATs with finalizers)
+	if !cachedSnat.DeletionTimestamp.IsZero() {
+		klog.Infof("handle deleting ovn snat %s", key)
+		if cachedSnat.Status.Vpc == "" {
+			// Already cleaned, just remove finalizer
+			if err = c.handleDelOvnSnatFinalizer(cachedSnat); err != nil {
+				klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
+				return err
+			}
+			return nil
+		}
+
+		// ovn delete snat
+		if cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
+			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+				klog.Errorf("failed to delete v4 snat %s, %v", key, err)
+				return err
+			}
+		}
+		if cachedSnat.Status.V6Eip != "" && cachedSnat.Status.V6IpCidr != "" {
+			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
+				klog.Errorf("failed to delete v6 snat %s, %v", key, err)
+				return err
+			}
+		}
+
+		// Remove finalizer
+		if err = c.handleDelOvnSnatFinalizer(cachedSnat); err != nil {
+			klog.Errorf("failed to remove finalizer for ovn snat %s, %v", cachedSnat.Name, err)
+			return err
+		}
+
+		// Reset eip
+		if cachedSnat.Spec.OvnEip != "" {
+			c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
+		}
+		return nil
+	}
+
 	if !cachedSnat.Status.Ready {
 		klog.Infof("wait ovn snat %s to be ready only in the handle add process", cachedSnat.Name)
 		return nil
@@ -458,6 +499,7 @@ func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 		return nil
 	}
 	newSnat := cachedSnat.DeepCopy()
+	controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
@@ -495,5 +537,12 @@ func (c *Controller) handleDelOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 		klog.Errorf("failed to remove finalizer from ovn snat '%s', %v", cachedSnat.Name, err)
 		return err
 	}
+
+	// Trigger associated EIP to recheck if it can be deleted now
+	if cachedSnat.Spec.OvnEip != "" {
+		klog.Infof("triggering eip %s update after snat %s deletion", cachedSnat.Spec.OvnEip, cachedSnat.Name)
+		c.updateOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
+	}
+
 	return nil
 }

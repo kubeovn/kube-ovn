@@ -17,6 +17,7 @@ type CniServerClient struct {
 type Route struct {
 	Destination string `json:"dst,omitempty"`
 	Gateway     string `json:"gw,omitempty"`
+	Metric      int    `json:"metric,omitempty"`
 }
 
 // CniRequest is the cniserver request format
