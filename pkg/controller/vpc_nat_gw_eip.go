@@ -612,11 +612,12 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				},
 			},
 			Spec: kubeovnv1.IptablesEIPSpec{
-				V4ip:       v4ip,
-				V6ip:       v6ip,
-				MacAddress: mac,
-				NatGwDp:    natGwDp,
-				QoSPolicy:  qos,
+				V4ip:           v4ip,
+				V6ip:           v6ip,
+				MacAddress:     mac,
+				NatGwDp:        natGwDp,
+				QoSPolicy:      qos,
+				ExternalSubnet: externalNet,
 			},
 			Status: kubeovnv1.IptablesEIPStatus{
 				IP:        v4ip,
@@ -651,6 +652,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
+			eip.Spec.ExternalSubnet = externalNet
 			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)

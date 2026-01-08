@@ -364,6 +364,31 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 		}
 	}
 
+	// Handle macvlan sub-interface for external subnets (node-local EIP access)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && event != nil {
+		var oldSubnet, newSubnet *kubeovnv1.Subnet
+		if event.oldObj != nil {
+			oldSubnet, _ = event.oldObj.(*kubeovnv1.Subnet)
+		}
+		if event.newObj != nil {
+			newSubnet, _ = event.newObj.(*kubeovnv1.Subnet)
+		}
+
+		// Handle subnet deletion
+		if oldSubnet != nil && newSubnet == nil {
+			if err := c.deleteSubnetMacvlan(oldSubnet); err != nil {
+				klog.Errorf("failed to cleanup macvlan for subnet %s: %v", oldSubnet.Name, err)
+			}
+		}
+
+		// Handle subnet creation or update
+		if newSubnet != nil {
+			if err := c.reconcileSubnetMacvlan(newSubnet); err != nil {
+				klog.Errorf("failed to reconcile macvlan for subnet %s: %v", newSubnet.Name, err)
+			}
+		}
+	}
+
 	return nil
 }
 

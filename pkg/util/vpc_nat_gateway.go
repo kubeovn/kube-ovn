@@ -39,8 +39,9 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 // GenNatGwLabels returns the labels to set on a NAT gateway
 func GenNatGwLabels(gwName string) map[string]string {
 	return map[string]string{
-		"app":              GenNatGwName(gwName),
-		VpcNatGatewayLabel: "true",
+		"app":                  GenNatGwName(gwName),
+		VpcNatGatewayLabel:     "true",
+		VpcNatGatewayNameLabel: gwName,
 	}
 }
 
