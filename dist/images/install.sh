@@ -289,6 +289,7 @@ spec:
               type: object
               properties:
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the DNS service. This field is immutable after creation.
                 subnet:
@@ -792,6 +793,7 @@ spec:
                   type: array
                   description: External subnets accessible through the NAT gateway
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the NAT gateway. This field is immutable after creation.
                 selector:
@@ -1353,6 +1355,7 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the egress gateway. This field is immutable after creation.
                 internalSubnet:
@@ -1884,6 +1887,7 @@ spec:
                   type: string
                   description: Redo operation status
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type of the DNAT rule
                 internalIp:
@@ -1929,6 +1933,7 @@ spec:
                   type: string
                   description: External port number
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 internalIp:
@@ -2217,6 +2222,7 @@ spec:
                   type: string
                   description: IPv6 address mapped to the FIP
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the FIP is configured
                 conditions:
@@ -2259,6 +2265,7 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
@@ -2330,6 +2337,7 @@ spec:
                   type: string
                   description: IPv6 CIDR configured in the SNAT rule
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the SNAT rule is configured
                 conditions:
@@ -2369,6 +2377,7 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4IpCidr:
@@ -2455,6 +2464,7 @@ spec:
                   type: string
                   description: IPv6 address configured in the DNAT rule
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the DNAT rule is configured
                 externalPort:
@@ -2464,6 +2474,7 @@ spec:
                   type: string
                   description: Internal port configured in the DNAT rule
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type configured in the DNAT rule
                 ipName:
@@ -2512,9 +2523,11 @@ spec:
                   type: string
                   description: Internal port number to forward traffic to
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
@@ -2569,15 +2582,18 @@ spec:
                   type: boolean
                   description: Enable BFD (Bidirectional Forwarding Detection) for the VPC
                 namespaces:
+                  description: List of namespaces associated with this subnet.
                   items:
                     type: string
                   type: array
                   description: List of namespaces that can use this VPC
                 extraExternalSubnets:
+                  description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
                     type: string
                   type: array
                 staticRoutes:
+                  description: Static routes for the VPC.
                   items:
                     properties:
                       policy:
@@ -2595,6 +2611,7 @@ spec:
                     type: object
                   type: array
                 policyRoutes:
+                  description: Policy routes for the VPC.
                   items:
                     properties:
                       priority:
@@ -2611,6 +2628,7 @@ spec:
                     type: object
                   type: array
                 vpcPeerings:
+                  description: VPC peering configurations.
                   items:
                     properties:
                       remoteVpc:
@@ -2689,6 +2707,7 @@ spec:
                     type: object
                   type: array
                 default:
+                  description: Whether this is the default subnet.
                   type: boolean
                 defaultLogicalSwitch:
                   type: string
@@ -2705,10 +2724,12 @@ spec:
                     type: string
                   type: array
                 extraExternalSubnets:
+                  description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
                     type: string
                   type: array
                 vpcPeerings:
+                  description: VPC peering configurations.
                   items:
                     type: string
                   type: array
@@ -3042,6 +3063,7 @@ spec:
                 dhcpV6OptionsUUID:
                   type: string
                 u2oInterconnectionIP:
+                  description: Underlay to overlay interconnection IP.
                   type: string
                 u2oInterconnectionMAC:
                   type: string
@@ -3060,6 +3082,7 @@ spec:
                 v6availableIPrange:
                   type: string
                 natOutgoingPolicyRules:
+                  description: NAT outgoing policy rules.
                   type: array
                   items:
                     type: object
@@ -3099,42 +3122,55 @@ spec:
               type: object
               properties:
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                 default:
+                  description: Whether this is the default subnet.
                   type: boolean
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   enum:
                     - IPv4
                     - IPv6
                     - Dual
                 cidrBlock:
+                  description: CIDR block for the subnet. Immutable after creation.
                   type: string
                 namespaces:
+                  description: List of namespaces associated with this subnet.
                   type: array
                   items:
                     type: string
                 gateway:
+                  description: Gateway IP address for the subnet.
                   type: string
                 provider:
+                  description: Provider network name.
                   type: string
                 excludeIps:
+                  description: IP addresses to exclude from allocation.
                   type: array
                   items:
                     type: string
                 vips:
+                  description: Virtual IP addresses for the subnet.
                   type: array
                   items:
                     type: string
                 gatewayType:
+                  description: Gateway type (distributed or centralized).
                   type: string
                 allowSubnets:
+                  description: Allowed subnets for east-west traffic.
                   type: array
                   items:
                     type: string
                 gatewayNode:
+                  description: Gateway node for centralized gateway mode.
                   type: string
                 gatewayNodeSelectors:
+                  description: Node selectors for gateway placement.
                   type: array
                   items:
                     type: object
@@ -3157,14 +3193,18 @@ spec:
                               items:
                                 type: string
                 natOutgoing:
+                  description: Enable NAT for outgoing traffic.
                   type: boolean
                 externalEgressGateway:
+                  description: External egress gateway for the subnet.
                   type: string
                 policyRoutingPriority:
+                  description: Policy routing priority.
                   type: integer
                   minimum: 1
                   maximum: 32765
                 policyRoutingTableID:
+                  description: Policy routing table ID.
                   type: integer
                   minimum: 1
                   maximum: 2147483647
@@ -3175,32 +3215,45 @@ spec:
                       - 254 # main
                       - 255 # local
                 mtu:
+                  description: Maximum transmission unit for the subnet.
                   type: integer
                   minimum: 68
                   maximum: 65535
                 private:
+                  description: Whether the subnet is private.
                   type: boolean
                 vlan:
+                  description: VLAN ID for the subnet. Immutable after creation.
                   type: string
                 logicalGateway:
+                  description: Whether to use logical gateway.
                   type: boolean
                 disableGatewayCheck:
+                  description: Disable gateway connectivity check.
                   type: boolean
                 disableInterConnection:
+                  description: Disable subnet interconnection.
                   type: boolean
                 enableDHCP:
+                  description: Enable DHCP for the subnet.
                   type: boolean
                 dhcpV4Options:
+                  description: DHCPv4 options for the subnet.
                   type: string
                 dhcpV6Options:
+                  description: DHCPv6 options for the subnet.
                   type: string
                 enableIPv6RA:
+                  description: Enable IPv6 router advertisement.
                   type: boolean
                 ipv6RAConfigs:
+                  description: IPv6 router advertisement configurations.
                   type: string
                 allowEWTraffic:
+                  description: Allow east-west traffic between pods.
                   type: boolean
                 acls:
+                  description: Access control lists for the subnet.
                   type: array
                   items:
                     type: object
@@ -3225,6 +3278,7 @@ spec:
                           - drop
                           - reject
                 natOutgoingPolicyRules:
+                  description: NAT outgoing policy rules.
                   type: array
                   items:
                     type: object
@@ -3242,20 +3296,28 @@ spec:
                           dstIPs:
                             type: string
                 u2oInterconnection:
+                  description: Enable underlay to overlay interconnection.
                   type: boolean
                 u2oInterconnectionIP:
+                  description: Underlay to overlay interconnection IP.
                   type: string
                 enableLb:
+                  description: Enable load balancer for the subnet.
                   type: boolean
                 enableEcmp:
+                  description: Enable ECMP for the subnet.
                   type: boolean
                 enableMulticastSnoop:
+                  description: Enable multicast snooping.
                   type: boolean
                 enableExternalLBAddress:
+                  description: Enable external load balancer address.
                   type: boolean
                 routeTable:
+                  description: Route table for the subnet.
                   type: string
                 namespaceSelectors:
+                  description: Namespace selectors for subnet association.
                   type: array
                   items:
                     type: object
@@ -3278,6 +3340,7 @@ spec:
                               items:
                                 type: string
                 nodeNetwork:
+                  description: Node network for the subnet.
                   type: string
   scope: Cluster
   names:
@@ -3335,6 +3398,7 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 namespaces:
+                  description: List of namespaces associated with this subnet.
                   type: array
                   x-kubernetes-list-type: set
                   description: Namespaces that can use this IP pool
@@ -3910,6 +3974,7 @@ spec:
                   x-kubernetes-list-map-keys:
                     - name
                   x-kubernetes-list-type: map
+
 EOF
 
 cat <<EOF > ovn-ovs-sa.yaml
