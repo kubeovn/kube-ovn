@@ -36,6 +36,7 @@ spec:
               type: object
               properties:
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the DNS service. This field is immutable after creation.
                 subnet:
@@ -519,6 +520,7 @@ spec:
                   type: array
                   description: External subnets accessible through the NAT gateway
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the NAT gateway. This field is immutable after creation.
                 selector:
@@ -1045,6 +1047,7 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the egress gateway. This field is immutable after creation.
                 internalSubnet:
@@ -1570,6 +1573,7 @@ spec:
                   type: string
                   description: Redo operation status
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type of the DNAT rule
                 internalIp:
@@ -1615,6 +1619,7 @@ spec:
                   type: string
                   description: External port number
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 internalIp:
@@ -1903,6 +1908,7 @@ spec:
                   type: string
                   description: IPv6 address mapped to the FIP
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the FIP is configured
                 conditions:
@@ -1945,6 +1951,7 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
@@ -2016,6 +2023,7 @@ spec:
                   type: string
                   description: IPv6 CIDR configured in the SNAT rule
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the SNAT rule is configured
                 conditions:
@@ -2055,6 +2063,7 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4IpCidr:
@@ -2141,6 +2150,7 @@ spec:
                   type: string
                   description: IPv6 address configured in the DNAT rule
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the DNAT rule is configured
                 externalPort:
@@ -2150,6 +2160,7 @@ spec:
                   type: string
                   description: Internal port configured in the DNAT rule
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type configured in the DNAT rule
                 ipName:
@@ -2198,9 +2209,11 @@ spec:
                   type: string
                   description: Internal port number to forward traffic to
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
@@ -2260,10 +2273,12 @@ spec:
                   type: array
                   description: List of namespaces that can use this VPC
                 extraExternalSubnets:
+                  description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
                     type: string
                   type: array
                 staticRoutes:
+                  description: Static routes for the VPC.
                   items:
                     properties:
                       policy:
@@ -2281,6 +2296,7 @@ spec:
                     type: object
                   type: array
                 policyRoutes:
+                  description: Policy routes for the VPC.
                   items:
                     properties:
                       priority:
@@ -2294,6 +2310,7 @@ spec:
                     type: object
                   type: array
                 vpcPeerings:
+                  description: VPC peering configurations.
                   items:
                     properties:
                       remoteVpc:
@@ -2388,10 +2405,12 @@ spec:
                     type: string
                   type: array
                 extraExternalSubnets:
+                  description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
                     type: string
                   type: array
                 vpcPeerings:
+                  description: VPC peering configurations.
                   items:
                     type: string
                   type: array
@@ -2780,22 +2799,26 @@ spec:
               type: object
               properties:
                 vpc:
+                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                 default:
                   type: boolean
                 protocol:
+                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   enum:
                     - IPv4
                     - IPv6
                     - Dual
                 cidrBlock:
+                  description: CIDR block for the subnet. Immutable after creation.
                   type: string
                 namespaces:
                   type: array
                   items:
                     type: string
                 gateway:
+                  description: Gateway IP address for the subnet.
                   type: string
                 provider:
                   type: string
@@ -2816,6 +2839,7 @@ spec:
                 gatewayNode:
                   type: string
                 natOutgoing:
+                  description: Enable NAT for outgoing traffic.
                   type: boolean
                 externalEgressGateway:
                   type: string
@@ -2840,6 +2864,7 @@ spec:
                 private:
                   type: boolean
                 vlan:
+                  description: VLAN ID for the subnet. Immutable after creation.
                   type: string
                 logicalGateway:
                   type: boolean
@@ -2848,6 +2873,7 @@ spec:
                 disableInterConnection:
                   type: boolean
                 enableDHCP:
+                  description: Enable DHCP for the subnet.
                   type: boolean
                 dhcpV4Options:
                   type: string
@@ -2858,8 +2884,10 @@ spec:
                 ipv6RAConfigs:
                   type: string
                 allowEWTraffic:
+                  description: Allow east-west traffic between pods.
                   type: boolean
                 acls:
+                  description: Access control lists for the subnet.
                   type: array
                   items:
                     type: object
