@@ -127,6 +127,7 @@ spec:
               properties:
                 namespace:
                   type: string
+                  description: Namespace of the pod
                 vip:
                   type: string
                 sessionAffinity:
@@ -2342,6 +2343,7 @@ spec:
                         type: string
                       routeTable:
                         type: string
+                        description: Route table for the subnet
                     type: object
                   type: array
                 policyRoutes:
@@ -2440,6 +2442,7 @@ spec:
                   type: array
                 default:
                   type: boolean
+                  description: Whether this is the default subnet
                 defaultLogicalSwitch:
                   type: string
                 router:
@@ -2448,8 +2451,10 @@ spec:
                   type: boolean
                 enableExternal:
                   type: boolean
+                  description: Enable external connectivity for the VPC
                 enableBfd:
                   type: boolean
+                  description: Enable BFD (Bidirectional Forwarding Detection) for the VPC
                 subnets:
                   items:
                     type: string
@@ -2779,36 +2784,52 @@ spec:
               properties:
                 v4availableIPs:
                   type: number
+                  description: Number of available IPv4 addresses
                 v4usingIPs:
                   type: number
+                  description: Number of used IPv4 addresses
                 v6availableIPs:
                   type: number
+                  description: Number of available IPv6 addresses
                 v6usingIPs:
                   type: number
+                  description: Number of used IPv6 addresses
                 activateGateway:
                   type: string
+                  description: Active gateway node for the subnet
                 dhcpV4OptionsUUID:
                   type: string
+                  description: UUID of DHCPv4 options
                 dhcpV6OptionsUUID:
                   type: string
+                  description: UUID of DHCPv6 options
                 u2oInterconnectionIP:
                   type: string
+                  description: IP address for underlay to overlay interconnection
                 u2oInterconnectionMAC:
                   type: string
+                  description: MAC address for underlay to overlay interconnection
                 u2oInterconnectionVPC:
                   type: string
+                  description: VPC for underlay to overlay interconnection
                 mcastQuerierIP:
                   type: string
+                  description: Multicast querier IP address
                 mcastQuerierMAC:
                   type: string
+                  description: Multicast querier MAC address
                 v4usingIPrange:
                   type: string
+                  description: Used IPv4 address range
                 v4availableIPrange:
                   type: string
+                  description: Available IPv4 address range
                 v6usingIPrange:
                   type: string
+                  description: Used IPv6 address range
                 v6availableIPrange:
                   type: string
+                  description: Available IPv6 address range
                 natOutgoingPolicyRules:
                   type: array
                   items:
@@ -2850,40 +2871,52 @@ spec:
               properties:
                 vpc:
                   type: string
+                  description: VPC name for the subnet
                 default:
                   type: boolean
+                  description: Whether this is the default subnet
                 protocol:
                   type: string
+                  description: Network protocol (IPv4, IPv6, or Dual)
                   enum:
                     - IPv4
                     - IPv6
                     - Dual
                 cidrBlock:
                   type: string
+                  description: CIDR block for the subnet
                 namespaces:
                   type: array
+                  description: List of namespaces using this subnet
                   items:
                     type: string
                 gateway:
                   type: string
+                  description: Gateway IP address for the subnet
                 provider:
                   type: string
+                  description: Underlying network provider
                 excludeIps:
                   type: array
+                  description: List of IP addresses to exclude from allocation
                   items:
                     type: string
                 vips:
                   type: array
+                  description: List of virtual IP addresses
                   items:
                     type: string
                 gatewayType:
                   type: string
+                  description: Type of gateway (distributed or centralized)
                 allowSubnets:
                   type: array
+                  description: List of subnets allowed to communicate with this subnet
                   items:
                     type: string
                 gatewayNode:
                   type: string
+                  description: Gateway node for the subnet
                 gatewayNodeSelectors:
                   type: array
                   items:
@@ -2908,14 +2941,18 @@ spec:
                                 type: string
                 natOutgoing:
                   type: boolean
+                  description: Enable NAT for outgoing traffic
                 externalEgressGateway:
                   type: string
+                  description: External egress gateway for the subnet
                 policyRoutingPriority:
                   type: integer
+                  description: Priority for policy routing
                   minimum: 1
                   maximum: 32765
                 policyRoutingTableID:
                   type: integer
+                  description: Table ID for policy routing
                   minimum: 1
                   maximum: 2147483647
                   not:
@@ -2926,30 +2963,42 @@ spec:
                       - 255 # local
                 mtu:
                   type: integer
+                  description: Maximum Transmission Unit for the subnet
                   minimum: 68
                   maximum: 65535
                 private:
                   type: boolean
+                  description: Whether the subnet is private
                 vlan:
                   type: string
+                  description: VLAN ID for the subnet
                 logicalGateway:
                   type: boolean
+                  description: Whether to use logical gateway
                 disableGatewayCheck:
                   type: boolean
+                  description: Disable gateway connectivity check
                 disableInterConnection:
                   type: boolean
+                  description: Disable inter-connection between subnets
                 enableDHCP:
                   type: boolean
+                  description: Enable DHCP for the subnet
                 dhcpV4Options:
                   type: string
+                  description: DHCPv4 options for the subnet
                 dhcpV6Options:
                   type: string
+                  description: DHCPv6 options for the subnet
                 enableIPv6RA:
                   type: boolean
+                  description: Enable IPv6 Router Advertisement
                 ipv6RAConfigs:
                   type: string
+                  description: IPv6 Router Advertisement configurations
                 allowEWTraffic:
                   type: boolean
+                  description: Allow east-west traffic between pods in the subnet
                 acls:
                   type: array
                   items:
@@ -2993,20 +3042,28 @@ spec:
                             type: string
                 u2oInterconnection:
                   type: boolean
+                  description: Enable underlay to overlay interconnection
                 u2oInterconnectionIP:
                   type: string
+                  description: IP address for underlay to overlay interconnection
                 enableLb:
                   type: boolean
+                  description: Enable load balancer for the subnet
                 enableEcmp:
                   type: boolean
+                  description: Enable ECMP (Equal-Cost Multi-Path) routing
                 enableMulticastSnoop:
                   type: boolean
+                  description: Enable multicast snooping
                 enableExternalLBAddress:
                   type: boolean
+                  description: Enable external load balancer address
                 routeTable:
                   type: string
+                  description: Route table for the subnet
                 namespaceSelectors:
                   type: array
+                  description: Label selectors to choose namespaces using this subnet
                   items:
                     type: object
                     properties:
@@ -3029,6 +3086,7 @@ spec:
                                 type: string
                 nodeNetwork:
                   type: string
+                  description: Node network for the subnet
   scope: Cluster
   names:
     plural: subnets
