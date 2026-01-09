@@ -179,6 +179,9 @@ spec:
             value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
+          {{- with .Values.agent.extraEnv }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
         volumeMounts:
           - name: usr-local-sbin
             mountPath: /usr/local/sbin

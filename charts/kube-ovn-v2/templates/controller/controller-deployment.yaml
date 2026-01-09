@@ -200,6 +200,9 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+            {{- with .Values.controller.extraEnv }}
+              {{- toYaml . | nindent 18 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
