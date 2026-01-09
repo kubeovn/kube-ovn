@@ -94,6 +94,9 @@ spec:
                   fieldPath: metadata.namespace
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            {{- with .Values.ic.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           resources:
             requests:
               cpu: 300m

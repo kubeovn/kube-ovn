@@ -285,6 +285,11 @@ validatingWebhook:
   # -- Labels to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   podLabels: {}
+  # -- Extra environment variables to be added to kube-ovn-webhook pods.
+  # @section -- Validating webhook configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
 # -- Configuration for the NAT gateways.
 # @section -- NAT gateways configuration
@@ -387,6 +392,12 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to ovs-ovn pods.
+  # @section -- OVS/OVN daemons configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- ovs-ovn resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- OVS/OVN daemons configuration
@@ -470,6 +481,12 @@ bgpSpeaker:
   # @section -- BGP speaker configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-speaker pods.
+  # @section -- BGP speaker configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-speaker resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- BGP speaker configuration
@@ -508,6 +525,12 @@ pinger:
   # -- Labels to be added to kube-ovn-pinger pods.
   # @section -- Ping daemon configuration
   podLabels: {}
+
+  # -- Extra environment variables to be added to kube-ovn-pinger pods.
+  # @section -- Ping daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
   # -- kube-ovn-pinger resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
@@ -571,6 +594,12 @@ monitor:
   # @section -- OVN monitoring daemon configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-monitor pods.
+  # @section -- OVN monitoring daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-monitor resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- OVN monitoring daemon configuration
@@ -630,6 +659,12 @@ controller:
   # @section -- Kube-OVN controller configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-controller pods.
+  # @section -- Kube-OVN controller configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-controller resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- Kube-OVN controller configuration
@@ -688,6 +723,12 @@ central:
   # -- Labels to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   podLabels: {}
+
+  # -- Extra environment variables to be added to ovn-central pods.
+  # @section -- OVN-central daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
   # -- ovn-central resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
@@ -761,6 +802,12 @@ ic:
     # --     - antarctica-west1
     requiredDuringSchedulingIgnoredDuringExecution: []
 
+  # -- Extra environment variables to be added to ovn-ic-controller pods.
+  # @section -- OVN IC controller configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
 # @section -- CNI agent configuration
 # @default -- "{}"
@@ -777,6 +824,12 @@ agent:
   # -- Labels to be added to the agent pods (kube-ovn-cni)
   # @section -- CNI agent configuration
   podLabels: {}
+
+  # -- Extra environment variables to be added to kube-ovn-cni pods.
+  # @section -- CNI agent configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
   # -- Agent daemon resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/

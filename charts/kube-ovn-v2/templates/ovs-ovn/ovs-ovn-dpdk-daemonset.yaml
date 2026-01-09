@@ -79,6 +79,9 @@ spec:
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteOpenflowInterval }}"
+            {{- with .Values.ovsOvn.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /opt/ovs-config
               name: host-config-ovs
