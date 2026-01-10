@@ -770,6 +770,12 @@ function kube::codegen::gen_register() {
     fi
 }
 
+kube::codegen::gen_openapi \
+  --boilerplate "${KUBE_CODEGEN_ROOT}/../hack/boilerplate.go.txt" \
+  --output-dir "pkg/generated/openapi" \
+  --output-pkg "github.com/kubeovn/kube-ovn/pkg/generated/openapi" \
+  --update-report \
+  "pkg/apis"
 kube::codegen::gen_helpers \
   --boilerplate ${KUBE_CODEGEN_ROOT}/../hack/boilerplate.go.txt \
   pkg/apis
@@ -778,6 +784,8 @@ kube::codegen::gen_register \
   pkg/apis
 kube::codegen::gen_client \
   --with-watch \
+  --with-applyconfig \
+  --applyconfig-openapi-schema <(go tool github.com/kubeovn/kube-ovn/tools/models-schema) \
   --output-dir pkg/client \
   --output-pkg github.com/kubeovn/kube-ovn/pkg/client \
   --boilerplate ${KUBE_CODEGEN_ROOT}/../hack/boilerplate.go.txt \

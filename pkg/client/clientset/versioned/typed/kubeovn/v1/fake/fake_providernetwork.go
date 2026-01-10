@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeProviderNetworks implements ProviderNetworkInterface
 type fakeProviderNetworks struct {
-	*gentype.FakeClientWithList[*v1.ProviderNetwork, *v1.ProviderNetworkList]
+	*gentype.FakeClientWithListAndApply[*v1.ProviderNetwork, *v1.ProviderNetworkList, *kubeovnv1.ProviderNetworkApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeProviderNetworks(fake *FakeKubeovnV1) kubeovnv1.ProviderNetworkInterface {
+func newFakeProviderNetworks(fake *FakeKubeovnV1) typedkubeovnv1.ProviderNetworkInterface {
 	return &fakeProviderNetworks{
-		gentype.NewFakeClientWithList[*v1.ProviderNetwork, *v1.ProviderNetworkList](
+		gentype.NewFakeClientWithListAndApply[*v1.ProviderNetwork, *v1.ProviderNetworkList, *kubeovnv1.ProviderNetworkApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("provider-networks"),

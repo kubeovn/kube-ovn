@@ -36,8 +36,9 @@ type QoSPolicyList struct {
 }
 
 // +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
 // +resourceName=qos-policies
 type QoSPolicy struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -1603,4 +1604,14 @@ func apiResourceExists(discoveryClient discovery.DiscoveryInterface, gv string, 
 	}
 
 	return existingKinds.HasAll(kinds...), nil
+}
+
+func trimManagedFields(obj any) (any, error) {
+	if accessor, err := meta.Accessor(obj); err == nil {
+		if accessor.GetManagedFields() != nil {
+			accessor.SetManagedFields(nil)
+			return obj, nil
+		}
+	}
+	return obj, nil
 }

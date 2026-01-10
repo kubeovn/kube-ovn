@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -45,18 +46,19 @@ type IPInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.IPList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.IP, err error)
+	Apply(ctx context.Context, iP *applyconfigurationkubeovnv1.IPApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.IP, err error)
 	IPExpansion
 }
 
 // iPs implements IPInterface
 type iPs struct {
-	*gentype.ClientWithList[*kubeovnv1.IP, *kubeovnv1.IPList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.IP, *kubeovnv1.IPList, *applyconfigurationkubeovnv1.IPApplyConfiguration]
 }
 
 // newIPs returns a IPs
 func newIPs(c *KubeovnV1Client) *iPs {
 	return &iPs{
-		gentype.NewClientWithList[*kubeovnv1.IP, *kubeovnv1.IPList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.IP, *kubeovnv1.IPList, *applyconfigurationkubeovnv1.IPApplyConfiguration](
 			"ips",
 			c.RESTClient(),
 			scheme.ParameterCodec,
