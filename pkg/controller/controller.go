@@ -107,7 +107,7 @@ type Controller struct {
 	updateVpcFloatingIPQueue      workqueue.TypedRateLimitingInterface[string]
 	updateVpcDnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
-	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
+	updateNatGwRoutesQueue        workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
 	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
@@ -438,7 +438,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcFloatingIPQueue:         newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
 		updateVpcDnatQueue:               newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),
 		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
-		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
+		updateNatGwRoutesQueue:           newTypedRateLimitingQueue("UpdateNatGwRoutes", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
@@ -1163,7 +1163,7 @@ func (c *Controller) shutdown() {
 	c.updateVpcFloatingIPQueue.ShutDown()
 	c.updateVpcDnatQueue.ShutDown()
 	c.updateVpcSnatQueue.ShutDown()
-	c.updateVpcSubnetQueue.ShutDown()
+	c.updateNatGwRoutesQueue.ShutDown()
 
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
@@ -1274,7 +1274,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())
 	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
-	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
+	go wait.Until(runWorker("update routes for vpc nat gateway", c.updateNatGwRoutesQueue, c.handleUpdateNatGwRoutes), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
 	// add default and join subnet and wait them ready
 	for range c.config.WorkerNum {
