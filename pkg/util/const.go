@@ -391,7 +391,8 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
-	KindPod = ObjectKind[*corev1.Pod]()
+	KindNode = ObjectKind[*corev1.Node]()
+	KindPod  = ObjectKind[*corev1.Pod]()
 
 	KindDeployment  = ObjectKind[*appsv1.Deployment]()
 	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()
