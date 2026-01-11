@@ -71,6 +71,10 @@ type Controller struct {
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
 
+	iptablesEipsLister kubeovnlister.IptablesEIPLister
+	iptablesEipsSynced cache.InformerSynced
+	iptablesEipQueue   workqueue.TypedRateLimitingInterface[string]
+
 	recorder record.EventRecorder
 
 	protocol string
@@ -101,6 +105,7 @@ func NewController(config *Configuration,
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	servicesInformer := nodeInformerFactory.Core().V1().Services()
@@ -140,6 +145,10 @@ func NewController(config *Configuration,
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
+		iptablesEipsLister: iptablesEipInformer.Lister(),
+		iptablesEipsSynced: iptablesEipInformer.Informer().HasSynced,
+		iptablesEipQueue:   newTypedRateLimitingQueue[string]("IptablesEip", nil),
+
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
 	}
@@ -161,7 +170,8 @@ func NewController(config *Configuration,
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced,
+		controller.iptablesEipsSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -207,6 +217,15 @@ func NewController(config *Configuration,
 		UpdateFunc: controller.enqueueUpdateNode,
 	}); err != nil {
 		return nil, err
+	}
+	if config.EnableNodeLocalAccessVpcNatGwEIP {
+		if _, err = iptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddIptablesEip,
+			UpdateFunc: controller.enqueueUpdateIptablesEip,
+			DeleteFunc: controller.enqueueDeleteIptablesEip,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	return controller, nil
@@ -647,6 +666,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	newPod := newObj.(*v1.Pod)
 	key := cache.MetaObjectToName(newPod).String()
 
+	// Handle NAT GW pod update for EIP route management
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP {
+		c.handleNatGwPodUpdate(oldPod, newPod)
+	}
+
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
 		oldPod.Annotations[util.NetemQosLatencyAnnotation] != newPod.Annotations[util.NetemQosLatencyAnnotation] ||
@@ -843,6 +867,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
+	defer c.iptablesEipQueue.ShutDown()
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -862,6 +887,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP {
+		go wait.Until(c.runIptablesEipWorker, time.Second, stopCh)
+	}
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)

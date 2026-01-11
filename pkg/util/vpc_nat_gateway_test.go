@@ -197,16 +197,18 @@ func TestGenNatGwLabels(t *testing.T) {
 			name:   "Gateway name filled",
 			gwName: "test-gateway",
 			expected: map[string]string{
-				"app":              "vpc-nat-gw-test-gateway",
-				VpcNatGatewayLabel: "true",
+				"app":                  "vpc-nat-gw-test-gateway",
+				VpcNatGatewayLabel:     "true",
+				VpcNatGatewayNameLabel: "test-gateway",
 			},
 		},
 		{
 			name:   "Gateway label empty",
 			gwName: "",
 			expected: map[string]string{
-				"app":              "vpc-nat-gw-",
-				VpcNatGatewayLabel: "true",
+				"app":                  "vpc-nat-gw-",
+				VpcNatGatewayLabel:     "true",
+				VpcNatGatewayNameLabel: "",
 			},
 		},
 	}

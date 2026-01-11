@@ -1035,6 +1035,14 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 									Name:  "GATEWAY_V6",
 									Value: net1V6Gateway,
 								},
+								{
+									Name: "HOST_IP",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "status.hostIP",
+										},
+									},
+								},
 							},
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               ptr.To(true),
