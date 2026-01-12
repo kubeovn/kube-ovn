@@ -107,6 +107,10 @@ const (
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
+	// TunnelKeyAnnotation stores the OVN logical switch tunnel_key from Datapath_Binding
+	TunnelKeyAnnotation         = "ovn.kubernetes.io/tunnel_key"
+	TunnelKeyAnnotationTemplate = "%s.kubernetes.io/tunnel_key"
+
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 	NodeNetworksAnnotation    = "ovn.kubernetes.io/node_networks"
 

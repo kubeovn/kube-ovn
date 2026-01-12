@@ -717,6 +717,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	// Sync tunnel_key from OVN SB to subnet status (only when enabled and not already set)
+	// OVN subnets must have tunnel_key; non-OVN subnets (e.g., underlay) skip this
+	if c.config.EnableRecordTunnelKey && isOvnSubnet(subnet) && subnet.Status.TunnelKey == 0 {
+		if err := c.syncSubnetTunnelKey(subnet); err != nil {
+			klog.Errorf("failed to sync tunnel key for subnet %s: %v", subnet.Name, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -2897,5 +2906,22 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Controller) syncSubnetTunnelKey(subnet *kubeovnv1.Subnet) error {
+	tunnelKey, err := c.OVNSbClient.GetLogicalSwitchTunnelKey(subnet.Name)
+	if err != nil {
+		err = fmt.Errorf("failed to get tunnel key for logical switch %s: %w", subnet.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	patch := []byte(fmt.Sprintf(`{"status":{"tunnelKey":%d}}`, tunnelKey))
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch tunnel key for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+	klog.Infof("synced tunnel key %d for subnet %s", tunnelKey, subnet.Name)
 	return nil
 }

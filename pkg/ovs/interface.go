@@ -274,6 +274,7 @@ type NbClient interface {
 
 type SbClient interface {
 	Chassis
+	DatapathBinding
 	Common
 }
 
@@ -292,4 +293,8 @@ type Chassis interface {
 	UpdateChassisTag(chassisName, nodeName string) error
 	UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error
 	ListChassis() (*[]ovnsb.Chassis, error)
+}
+
+type DatapathBinding interface {
+	GetLogicalSwitchTunnelKey(lsName string) (int, error)
 }

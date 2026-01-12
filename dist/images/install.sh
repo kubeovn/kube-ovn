@@ -58,6 +58,7 @@ OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+ENABLE_RECORD_TUNNEL_KEY=${ENABLE_RECORD_TUNNEL_KEY:-false}
 
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
@@ -3081,6 +3082,8 @@ spec:
                   type: string
                 v6availableIPrange:
                   type: string
+                tunnelKey:
+                  type: integer
                 natOutgoingPolicyRules:
                   description: NAT outgoing policy rules.
                   type: array
@@ -5303,6 +5306,7 @@ spec:
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           - --enable-ovn-lb-prefer-local=$ENABLE_OVN_LB_PREFER_LOCAL
+          - --enable-record-tunnel-key=$ENABLE_RECORD_TUNNEL_KEY
           - --image=$REGISTRY/kube-ovn:$VERSION
           securityContext:
             runAsUser: ${RUN_AS_USER}

@@ -2820,6 +2820,8 @@ spec:
                   type: string
                 mcastQuerierMAC:
                   type: string
+                tunnelKey:
+                  type: integer
                 v4usingIPrange:
                   type: string
                 v4availableIPrange:

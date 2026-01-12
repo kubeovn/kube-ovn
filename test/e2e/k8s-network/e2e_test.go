@@ -4,12 +4,11 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/onsi/ginkgo/v2"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-
-	"github.com/onsi/ginkgo/v2"
 
 	// Import tests.
 	_ "k8s.io/kubernetes/test/e2e/network"

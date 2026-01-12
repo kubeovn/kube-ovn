@@ -2823,6 +2823,9 @@ spec:
                   type: string
                 mcastQuerierMAC:
                   type: string
+                tunnelKey:
+                  description: OVN logical switch tunnel key (VNI) from Datapath_Binding.
+                  type: integer
                 v4usingIPrange:
                   type: string
                 v4availableIPrange:

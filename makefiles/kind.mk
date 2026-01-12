@@ -870,3 +870,7 @@ kind-setup-non-primary-cni: kind-install-multus-cilium-kubeovn-non-primary
 
 .PHONY: kind-setup-non-primary-cni-v2
 kind-setup-non-primary-cni-v2: kind-install-multus-cilium-kubeovn-non-primary-v2
+
+.PHONY: kind-install-enable-record-tunnel
+kind-install-enable-record-tunnel:
+	@ENABLE_RECORD_TUNNEL_KEY=true $(MAKE) kind-install
