@@ -20,8 +20,8 @@ spec:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
     {{- if eq (include "kubeovn.ovs-ovn.updateStrategy" .) "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: {{ .Values.ovsOvn.strategy.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ .Values.ovsOvn.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.ovsOvn.updateStrategy.maxSurge }}
+      maxUnavailable: {{ .Values.ovsOvn.updateStrategy.maxUnavailable }}
     {{- end }}
   template:
     metadata:
