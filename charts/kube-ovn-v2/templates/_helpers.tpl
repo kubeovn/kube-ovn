@@ -117,7 +117,7 @@ Get IPs of master nodes from values
       {{- end -}}
     {{- end -}}
   {{- else -}}
-    {{- $.Values.ovsOvn.updateStrategy -}}
+    {{- $.Values.ovsOvn.updateStrategy.type -}}
   {{- end -}}
 {{- end -}}
 
