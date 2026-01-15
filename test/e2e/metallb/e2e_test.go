@@ -177,7 +177,11 @@ var _ = framework.Describe("[group:metallb]", func() {
 		containerID = containerInfo.ID
 		ContainerInspect, err := docker.ContainerInspect(containerID)
 		framework.ExpectNoError(err)
-		clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress.String()
+		if f.HasIPv6() {
+			clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].GlobalIPv6Address.String()
+		} else {
+			clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress.String()
+		}
 	})
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Delete service")
@@ -377,11 +381,14 @@ var _ = framework.Describe("[group:metallb]", func() {
 		ginkgo.By("Checking both services are reachable")
 		service = f.ServiceClient().Get(serviceName)
 		service2 = f.ServiceClient().Get(serviceName2)
-		lbsvcIP := service.Status.LoadBalancer.Ingress[0].IP
-		lbsvcIP2 := service2.Status.LoadBalancer.Ingress[0].IP
 
-		checkReachable(f, containerID, clientip, lbsvcIP, "80", clusterName, true)
-		checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
+		for _, svc := range []*corev1.Service{service, service2} {
+			for i, ingress := range svc.Status.LoadBalancer.Ingress {
+				lbsvcIP := ingress.IP
+				ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s", svc.Name, i, lbsvcIP))
+				checkReachable(f, containerID, clientip, lbsvcIP, "80", clusterName, true)
+			}
+		}
 
 		ginkgo.By("Restarting ds kube-ovn-cni")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
@@ -389,22 +396,42 @@ var _ = framework.Describe("[group:metallb]", func() {
 		daemonSetClient.RestartSync(ds)
 
 		ginkgo.By("Waiting for underlay OpenFlow rules to be restored within 15s")
-		vipNode := getVIPNode(containerID, lbsvcIP, clusterName)
-		flowRestored := waitUnderlayServiceFlow(vipNode, providerNetworkName, lbsvcIP, curlListenPort, 15*time.Second)
-		framework.ExpectEqual(flowRestored, true, "underlay service OpenFlow should be restored within 15s")
+		for i, ingress := range service.Status.LoadBalancer.Ingress {
+			lbsvcIP := ingress.IP
+			ginkgo.By(fmt.Sprintf("Checking flow restoration for service %s[%d] with IP %s", service.Name, i, lbsvcIP))
+			vipNode := getVIPNode(containerID, lbsvcIP, clusterName)
+			flowRestored := waitUnderlayServiceFlow(vipNode, providerNetworkName, lbsvcIP, curlListenPort, 15*time.Second)
+			framework.ExpectEqual(flowRestored, true, "underlay service OpenFlow should be restored within 15s")
+		}
 
 		ginkgo.By("Deleting the first service")
 		serviceClient.DeleteSync(serviceName)
 
 		ginkgo.By("Checking the second service is still reachable after first service deletion")
-		checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
+		for i, ingress := range service2.Status.LoadBalancer.Ingress {
+			lbsvcIP2 := ingress.IP
+			ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s after first service deletion", service2.Name, i, lbsvcIP2))
+			checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
+		}
 	})
 })
 
 func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, targetPort, clusterName string, expectReachable bool) {
 	ginkgo.GinkgoHelper()
 	ginkgo.By("checking curl reachable")
-	cmd := strings.Fields(fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(targetIP, targetPort)))
+	isIPv6 := util.CheckProtocol(targetIP) == apiv1.ProtocolIPv6
+	var cmd []string
+	if isIPv6 {
+		cmd = []string{
+			"curl", "-q", "-s", "-g", "--connect-timeout", "2", "--max-time", "2",
+			fmt.Sprintf("[%s]:%s/clientip", targetIP, targetPort),
+		}
+	} else {
+		cmd = []string{
+			"curl", "-q", "-s", "--connect-timeout", "2", "--max-time", "2",
+			fmt.Sprintf("%s:%s/clientip", targetIP, targetPort),
+		}
+	}
 	output, _, err := docker.Exec(containerID, nil, cmd...)
 	if expectReachable {
 		framework.ExpectNoError(err)
@@ -417,15 +444,26 @@ func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, tar
 	}
 
 	ginkgo.By("checking vip node is same as backend pod's host")
-	// the arp may not be stable when just started
-	cmd = strings.Fields(fmt.Sprintf("arping -c 5 %s", targetIP))
-	output, _, err = docker.Exec(containerID, nil, cmd...)
-	if err != nil {
-		framework.Failf("arping failed: %v, output: %s", err, output)
+	if !isIPv6 {
+		cmd = strings.Fields(fmt.Sprintf("arping -c 5 -W 2 %s", targetIP))
+		output, _, err = docker.Exec(containerID, nil, cmd...)
+		if err != nil {
+			framework.Failf("arping failed: %v, output: %s", err, output)
+		}
+		framework.Logf("arping result is %s ", output)
 	}
-	framework.Logf("arping result is %s ", output)
 
-	cmd = strings.Fields(fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/hostname", net.JoinHostPort(targetIP, targetPort)))
+	if isIPv6 {
+		cmd = []string{
+			"curl", "-q", "-s", "-g", "--connect-timeout", "2", "--max-time", "2",
+			fmt.Sprintf("[%s]:%s/hostname", targetIP, targetPort),
+		}
+	} else {
+		cmd = []string{
+			"curl", "-q", "-s", "--connect-timeout", "2", "--max-time", "2",
+			fmt.Sprintf("%s:%s/hostname", targetIP, targetPort),
+		}
+	}
 	output, _, err = docker.Exec(containerID, nil, cmd...)
 	framework.ExpectNoError(err)
 	backendPodName := strings.TrimSpace(string(output))
