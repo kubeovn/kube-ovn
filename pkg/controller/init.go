@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"maps"
 	"strings"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -483,6 +483,9 @@ func (c *Controller) InitIPAM() error {
 		if _, _, _, err = c.ipam.GetStaticAddress(vip.Name, portName, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
+		if err := c.initIpamVipIp(vip.Spec.Subnet, vip.Name, vip.Status.V4ip, vip.Status.V6ip); err != nil {
+			klog.Errorf("failed to new ipam from vip %s  ip %s: %v", vip.Name, vip.Status.V4ip, err)
+		}
 	}
 
 	klog.Infof("Init IPAM from iptables EIP CR")
@@ -533,6 +536,32 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	klog.Infof("take %.2f seconds to initialize IPAM", time.Since(start).Seconds())
+	return nil
+}
+
+func (c *Controller) initIpamVipIp(subnet, vipname, v4ip, v6ip string) error {
+	klog.Infof("new ipam ip from subnet  vip %s  ipv4 %s ipv6 %s", subnet, vipname, v4ip, v6ip)
+	pool := c.ipam.Subnets[subnet]
+	if v4ip != "" {
+		vipipv4, err := ipam.NewIP(v4ip)
+		if err != nil {
+			return err
+		}
+		pool.V4Using.Add(vipipv4)
+		pool.V4Available.Remove(vipipv4)
+		pool.V4Free.Remove(vipipv4)
+	}
+
+	if v6ip != "" {
+		vipipv6, err := ipam.NewIP(v6ip)
+		if err != nil {
+			return err
+		}
+		pool.V6Using.Add(vipipv6)
+		pool.V6Free.Remove(vipipv6)
+		pool.V6Available.Remove(vipipv6)
+	}
+
 	return nil
 }
 
