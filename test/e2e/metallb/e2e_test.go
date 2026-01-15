@@ -264,51 +264,63 @@ var _ = framework.Describe("[group:metallb]", func() {
 				if f.HasIPv4() {
 					cidrV4 = config.Subnet.String()
 					gatewayV4 = config.Gateway.String()
+					framework.Logf("IPv4 config: cidr=%s, gateway=%s", cidrV4, gatewayV4)
 				}
 			case apiv1.ProtocolIPv6:
 				if f.HasIPv6() {
 					cidrV6 = config.Subnet.String()
 					gatewayV6 = config.Gateway.String()
+					framework.Logf("IPv6 config: cidr=%s, gateway=%s", cidrV6, gatewayV6)
 				}
 			}
 		}
 
 		if f.HasIPv4() {
 			underlayCidr = append(underlayCidr, cidrV4)
-			gateway = append(gateway, gatewayV4)
+			if gatewayV4 != "" {
+				gateway = append(gateway, gatewayV4)
+			}
 			for index := range 10 {
 				startIP := strings.Split(cidrV4, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv4s = append(metallbVIPv4s, ip.Add(100+int64(index)).String())
 			}
 			metallbVIPv4Str = fmt.Sprintf("%s-%s", metallbVIPv4s[0], metallbVIPv4s[len(metallbVIPv4s)-1])
+			framework.Logf("metallbVIPv4s: %v", metallbVIPv4s)
 		}
 		if f.HasIPv6() {
 			underlayCidr = append(underlayCidr, cidrV6)
-			gateway = append(gateway, gatewayV6)
+			if gatewayV6 != "" {
+				gateway = append(gateway, gatewayV6)
+			}
 			for index := range 10 {
 				startIP := strings.Split(cidrV6, "/")[0]
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv6s = append(metallbVIPv6s, ip.Add(100+int64(index)).String())
 			}
 			metallbVIPv6Str = fmt.Sprintf("%s-%s", metallbVIPv6s[0], metallbVIPv6s[len(metallbVIPv6s)-1])
+			framework.Logf("metallbVIPv6s: %v", metallbVIPv6s)
 		}
+
+		framework.Logf("Final gateway array: %v", gateway)
 
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
 			if container.IPv4Address.IsValid() && f.HasIPv4() {
 				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
-				if len(metallbVIPv4s) > 0 {
-					excludeIPs = append(excludeIPs, metallbVIPv4s...)
-				}
 			}
 			if container.IPv6Address.IsValid() && f.HasIPv6() {
 				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
-				if len(metallbVIPv6s) > 0 {
-					excludeIPs = append(excludeIPs, metallbVIPv6s...)
-				}
 			}
 		}
+		if len(metallbVIPv4s) > 0 {
+			excludeIPs = append(excludeIPs, metallbVIPv4s...)
+		}
+		if len(metallbVIPv6s) > 0 {
+			excludeIPs = append(excludeIPs, metallbVIPv6s...)
+		}
+
+		framework.Logf("Final excludeIPs array: %v, len: %d", excludeIPs, len(excludeIPs))
 
 		ginkgo.By("Creating an IPAddressPool for metallb with address " + metallbVIPv4Str + " and " + metallbVIPv6Str)
 		ipAddressPool := &metallbv1beta1.IPAddressPool{
@@ -421,6 +433,59 @@ var _ = framework.Describe("[group:metallb]", func() {
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
 			ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s after first service deletion", service2.Name, i, lbsvcIP2))
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
+		}
+
+		ginkgo.By("Enabling u2oInterconnection on subnet")
+		subnet = subnetClient.Get(subnetName)
+		subnet.Spec.U2OInterconnection = true
+		subnet = subnetClient.UpdateSync(subnet, metav1.UpdateOptions{}, 30*time.Second)
+
+		ginkgo.By("Waiting for u2oInterconnection MAC to be set")
+		framework.WaitUntil(5*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			return subnet.Status.U2OInterconnectionMAC != "", nil
+		}, "u2oInterconnection MAC not set")
+
+		ginkgo.By("Checking service is still reachable with u2oInterconnection enabled")
+		service2 = f.ServiceClient().Get(serviceName2)
+		for _, ingress := range service2.Status.LoadBalancer.Ingress {
+			lbsvcIP2 := ingress.IP
+			ginkgo.By(fmt.Sprintf("Checking service %s with IP %s (with u2oInterconnection)", service2.Name, lbsvcIP2))
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
+		}
+
+		ginkgo.By("Verifying OpenFlow rules use u2oInterconnection MAC")
+		u2oMAC := subnet.Status.U2OInterconnectionMAC
+		framework.ExpectNotEmpty(u2oMAC, "u2oInterconnection MAC should be set")
+
+		for _, ingress := range service2.Status.LoadBalancer.Ingress {
+			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+				lbsvcIP := ingress.IP
+				bridgeName := util.ExternalBridgeName(providerNetworkName)
+				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep 'mod_dl_dst:%s' | grep %s",
+					nodeNames[0], bridgeName, u2oMAC, lbsvcIP)
+				output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+				framework.ExpectNoError(err, "OpenFlow rule with u2oInterconnection MAC not found, output: %s", string(output))
+				framework.Logf("Found OpenFlow rule with u2oInterconnection MAC: %s", strings.TrimSpace(string(output)))
+			}
+		}
+
+		ginkgo.By("Disabling u2oInterconnection on subnet")
+		subnet = subnetClient.Get(subnetName)
+		subnet.Spec.U2OInterconnection = false
+		subnet = subnetClient.UpdateSync(subnet, metav1.UpdateOptions{}, 30*time.Second)
+
+		ginkgo.By("Waiting for u2oInterconnection MAC to be cleared")
+		framework.WaitUntil(5*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			return subnet.Status.U2OInterconnectionMAC == "", nil
+		}, "u2oInterconnection MAC not cleared")
+
+		ginkgo.By("Checking service is still reachable after disabling u2oInterconnection")
+		for _, ingress := range service2.Status.LoadBalancer.Ingress {
+			lbsvcIP2 := ingress.IP
+			ginkgo.By(fmt.Sprintf("Checking service %s with IP %s (after disabling u2oInterconnection)", service2.Name, lbsvcIP2))
 			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
 		}
 	})
