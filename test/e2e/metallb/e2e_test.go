@@ -85,7 +85,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var dockerNetwork *dockernetwork.Inspect
 	var deployClient *framework.DeploymentClient
-	var clientip string
+	var clientIPv4, clientIPv6 string
 
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14.")
@@ -177,10 +177,12 @@ var _ = framework.Describe("[group:metallb]", func() {
 		containerID = containerInfo.ID
 		ContainerInspect, err := docker.ContainerInspect(containerID)
 		framework.ExpectNoError(err)
-		if f.HasIPv6() {
-			clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].GlobalIPv6Address.String()
-		} else {
-			clientip = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress.String()
+		// Save both IPv4 and IPv6 addresses for dual stack testing
+		if ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress.IsValid() {
+			clientIPv4 = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].IPAddress.String()
+		}
+		if ContainerInspect.NetworkSettings.Networks[dockerNetworkName].GlobalIPv6Address.IsValid() {
+			clientIPv6 = ContainerInspect.NetworkSettings.Networks[dockerNetworkName].GlobalIPv6Address.String()
 		}
 	})
 	ginkgo.AfterEach(func() {
@@ -364,7 +366,11 @@ var _ = framework.Describe("[group:metallb]", func() {
 			},
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
-		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		if f.IsDual() {
+			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
+		} else {
+			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		}
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
@@ -372,7 +378,11 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 		ginkgo.By("Creating the second service for the same deployment")
 		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
-		service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		if f.IsDual() {
+			service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
+		} else {
+			service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		}
 		service2.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
@@ -386,7 +396,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 			for i, ingress := range svc.Status.LoadBalancer.Ingress {
 				lbsvcIP := ingress.IP
 				ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s", svc.Name, i, lbsvcIP))
-				checkReachable(f, containerID, clientip, lbsvcIP, "80", clusterName, true)
+				checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP, "80", clusterName, true)
 			}
 		}
 
@@ -411,15 +421,24 @@ var _ = framework.Describe("[group:metallb]", func() {
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
 			ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s after first service deletion", service2.Name, i, lbsvcIP2))
-			checkReachable(f, containerID, clientip, lbsvcIP2, "80", clusterName, true)
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
 		}
 	})
 })
 
-func checkReachable(f *framework.Framework, containerID, sourceIP, targetIP, targetPort, clusterName string, expectReachable bool) {
+func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6, targetIP, targetPort, clusterName string, expectReachable bool) {
 	ginkgo.GinkgoHelper()
 	ginkgo.By("checking curl reachable")
 	isIPv6 := util.CheckProtocol(targetIP) == apiv1.ProtocolIPv6
+
+	// Select the appropriate source IP based on target IP protocol
+	var sourceIP string
+	if isIPv6 {
+		sourceIP = sourceIPv6
+	} else {
+		sourceIP = sourceIPv4
+	}
+
 	var cmd []string
 	if isIPv6 {
 		cmd = []string{
