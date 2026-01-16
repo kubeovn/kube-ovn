@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.14.0
