@@ -529,6 +529,30 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.26 (2026-01-16)
+
+ * [42213f789](https://github.com/kubeovn/kube-ovn/commit/42213f7893e22352c2bb1dc3830e552c0c60cb93) release v1.14.26
+ * [545c01cde](https://github.com/kubeovn/kube-ovn/commit/545c01cded9e6ce39179220945a3a5496841320b) 1. fix u2o cause metallb underlay err (#6173)
+ * [5c72c5512](https://github.com/kubeovn/kube-ovn/commit/5c72c55123b87c44820dd9217b2a498d2af6fad7) chore(deps): update dependency go to v1.25.6 (#6171)
+ * [32c5cd2fb](https://github.com/kubeovn/kube-ovn/commit/32c5cd2fb7529f79657fd6277bd1202657262b7a) fix(helm): rolling upgrade strategy for ovs is wrong (#6160)
+ * [164b74263](https://github.com/kubeovn/kube-ovn/commit/164b74263ae89f38fe613d349ff3047f5b0c72b9) fix(deps): update golang (#6157)
+ * [a6ce50f3e](https://github.com/kubeovn/kube-ovn/commit/a6ce50f3eb1a7ac3deda18f7cb7614c959a2775e) fix(deps): update golang (#6151)
+ * [5a2624924](https://github.com/kubeovn/kube-ovn/commit/5a26249240d935086d1657afb2f5393045648401) some left crd add description (#6147)
+ * [b47447e4e](https://github.com/kubeovn/kube-ovn/commit/b47447e4e0c30423ef901c8f58fd0ac127222676) add kube-ovn cr description (#6133)
+ * [5b4f9de97](https://github.com/kubeovn/kube-ovn/commit/5b4f9de973cdcbafd8039243df10b983ebef41f3) feat(chart): introduce extraEnv variable for all components (#6142)
+ * [5b44ff477](https://github.com/kubeovn/kube-ovn/commit/5b44ff4774ca63062bb7e5088743ecdc639933cd) fix(deps): update module golang.org/x/sys to v0.40.0 (#6139)
+ * [cdd8dedef](https://github.com/kubeovn/kube-ovn/commit/cdd8dedef1150410bd545f75bd1b818bafdaa4c2) feat(chart): make DaemonSet update strategy configurable in values.yaml (#6136)
+ * [dea20c45a](https://github.com/kubeovn/kube-ovn/commit/dea20c45a0ca90deaafc3b8a3ed7c05154b764a7) Add open flow sync refer to ovn-k8s (#6117)
+ * [544889392](https://github.com/kubeovn/kube-ovn/commit/5448893926c41b2cb27ea50d8263cbb430c3709f) prepare for next release
+
+### Contributors
+
+ * Johann Schley
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * renovate[bot]
+
 ## v1.14.25 (2025-12-29)
 
  * [cf5da16a7](https://github.com/kubeovn/kube-ovn/commit/cf5da16a78c6d9ebc321977e61c1ca101d2d349e) release v1.14.25
