@@ -376,7 +376,11 @@ func getIPPortMappingBackend(endpointSlices []*discoveryv1.EndpointSlice, servic
 			if isGenIPPortMapping && endpoint.TargetRef.Name != "" {
 				lspName := getEndpointTargetLSP(endpoint.TargetRef.Name, endpoint.TargetRef.Namespace, util.OvnProvider)
 				for _, address := range endpoint.Addresses {
-					ipPortMapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
+					key := address
+					if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+						key = fmt.Sprintf("[%s]", address)
+					}
+					ipPortMapping[key] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
 				}
 			}
 		}

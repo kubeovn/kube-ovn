@@ -131,7 +131,7 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/b5e2975eb65f37315545300254fc0f58a9df52b1.patch && \
     # skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-    # select local backend first
+    # loadbalancer select local backend first
     git apply $SRC_DIR/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch && \
     # set dl_src for packets redirected by router port
     git apply $SRC_DIR/fb0108d8fc29c1bd29666f1eb2a27bf34628fa11.patch
