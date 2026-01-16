@@ -3244,6 +3244,13 @@ jobs:
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -3325,57 +3332,58 @@ jobs:
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-init
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
-        run: make kind-install-metallb-pool-from-underlay
+        run: make kind-install-metallb-pool-from-underlay-${{ matrix.ip-family }}
 
       - name: Run Ovn Metallb and Kube-OVN Combine E2E
         id: kube-ovn-underlay-metallb-e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kube-ovn-underlay-metallb-e2e
 
       - name: Collect k8s events
-        if: failure() && ( steps.ovn-metallb-e2e.conclusion == 'failure')
+        if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         run: |
-          kubectl get events -A -o yaml > kube-ovn-underlay-metallb-e2e-events.yaml
-          tar zcf kube-ovn-underlay-metallb-e2e-events.tar.gz kube-ovn-underlay-metallb-e2e-events.yaml
+          kubectl get events -A -o yaml > kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-events.yaml
+          tar zcf kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-events.tar.gz kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
-          name: kube-ovn-underlay-metallb-e2e-events
-          path: kube-ovn-underlay-metallb-e2e-events.tar.gz
+          name: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-events
+          path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf kube-ovn-underlay-metallb-e2e-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
-          name: kube-ovn-underlay-metallb-e2e-audit-log
-          path: kube-ovn-underlay-metallb-e2e-audit-log.tar.gz
+          name: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-audit-log
+          path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-audit-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v5
         if: failure() && (steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')
         with:
-          name: kube-ovn-underlay-metallb-e2e-ko-log
-          path: kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
+          name: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log
+          path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')) }}

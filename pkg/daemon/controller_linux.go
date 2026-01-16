@@ -220,6 +220,46 @@ func (c *Controller) handleEnableExternalLBAddressChange(oldSubnet, newSubnet *k
 	return nil
 }
 
+// handleU2OInterconnectionMACChange handles U2O interconnection MAC address changes.
+// When U2O (Underlay to Overlay) interconnection is enabled, the svc local flow's destination
+// MAC must point to the LRP (Logical Router Port) MAC. Otherwise, without U2O enabled (no LRP exists),
+// the flow would hit the rules created by build_lswitch_dnat_mod_dl_dst_rules instead.
+func (c *Controller) handleU2OInterconnectionMACChange(oldSubnet, newSubnet *kubeovnv1.Subnet) error {
+	if oldSubnet == nil || newSubnet == nil {
+		return nil
+	}
+
+	oldMAC := oldSubnet.Status.U2OInterconnectionMAC
+	newMAC := newSubnet.Status.U2OInterconnectionMAC
+
+	if oldMAC == newMAC {
+		return nil
+	}
+
+	if newMAC == "" && oldMAC == "" {
+		return nil
+	}
+
+	klog.Infof("U2OInterconnectionMAC changed for subnet %s: %s -> %s",
+		oldSubnet.Name, oldMAC, newMAC)
+
+	// Find all services using this subnet and re-sync them
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services: %v", err)
+		return err
+	}
+
+	for _, svc := range services {
+		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] == oldSubnet.Name {
+			klog.Infof("Re-syncing service %s/%s due to U2OInterconnectionMAC change in subnet %s",
+				svc.Namespace, svc.Name, oldSubnet.Name)
+			c.serviceQueue.Add(&serviceEvent{newObj: svc})
+		}
+	}
+	return nil
+}
+
 func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -245,6 +285,11 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 
 		if err = c.handleEnableExternalLBAddressChange(oldSubnet, newSubnet); err != nil {
 			klog.Errorf("failed to handle enable external lb address change: %v", err)
+			return err
+		}
+
+		if err = c.handleU2OInterconnectionMACChange(oldSubnet, newSubnet); err != nil {
+			klog.Errorf("failed to handle u2o interconnection mac change: %v", err)
 			return err
 		}
 		// handle policy routing
@@ -366,7 +411,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	return nil
 }
 
-func genLBServiceRules(service *v1.Service, bridgeName, underlayNic string) []LbServiceRules {
+func genLBServiceRules(service *v1.Service, bridgeName, underlayNic, dstMac string) []LbServiceRules {
 	var lbServiceRules []LbServiceRules
 	for _, ingress := range service.Status.LoadBalancer.Ingress {
 		for _, port := range service.Spec.Ports {
@@ -374,7 +419,7 @@ func genLBServiceRules(service *v1.Service, bridgeName, underlayNic string) []Lb
 				IP:          ingress.IP,
 				Port:        uint16(port.Port), // #nosec G115
 				Protocol:    string(port.Protocol),
-				DstMac:      util.MasqueradeExternalLBAccessMac,
+				DstMac:      dstMac,
 				UnderlayNic: underlayNic,
 				BridgeName:  bridgeName,
 			})
@@ -387,22 +432,22 @@ func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Servi
 	var oldlbServiceRules, newlbServiceRules []LbServiceRules
 
 	if oldService != nil && oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		oldBridgeName, underlayNic, err := c.getExtInfoBySubnet(oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		oldBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
 		if err != nil {
 			klog.Errorf("failed to get provider network by subnet %s: %v", oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
 			return nil, nil, err
 		}
 
-		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic)
+		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic, dstMac)
 	}
 
 	if isSubnetExternalLBEnabled && newService != nil && newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		newBridgeName, underlayNic, err := c.getExtInfoBySubnet(newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		newBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
 		if err != nil {
 			klog.Errorf("failed to get provider network by subnet %s: %v", newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
 			return nil, nil, err
 		}
-		newlbServiceRules = genLBServiceRules(newService, newBridgeName, underlayNic)
+		newlbServiceRules = genLBServiceRules(newService, newBridgeName, underlayNic, dstMac)
 	}
 
 	for _, oldRule := range oldlbServiceRules {
@@ -422,33 +467,41 @@ func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Servi
 	return lbServiceRulesToAdd, lbServiceRulesToDel, nil
 }
 
-func (c *Controller) getExtInfoBySubnet(subnetName string) (string, string, error) {
+func (c *Controller) getExtInfoBySubnet(subnetName string) (string, string, string, error) {
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
-		return "", "", err
+		return "", "", "", err
+	}
+
+	dstMac := subnet.Status.U2OInterconnectionMAC
+	if dstMac == "" {
+		dstMac = util.MasqueradeExternalLBAccessMac
+		klog.Infof("Subnet %s has no U2OInterconnectionMAC, using default MAC %s", subnetName, dstMac)
+	} else {
+		klog.Infof("Using U2OInterconnectionMAC %s for subnet %s", dstMac, subnetName)
 	}
 
 	vlanName := subnet.Spec.Vlan
 	if vlanName == "" {
-		return "", "", errors.New("vlan not specified in subnet")
+		return "", "", "", errors.New("vlan not specified in subnet")
 	}
 
 	vlan, err := c.vlansLister.Get(vlanName)
 	if err != nil {
 		klog.Errorf("failed to get vlan %s: %v", vlanName, err)
-		return "", "", err
+		return "", "", "", err
 	}
 
 	providerNetworkName := vlan.Spec.Provider
 	if providerNetworkName == "" {
-		return "", "", errors.New("provider network not specified in vlan")
+		return "", "", "", errors.New("provider network not specified in vlan")
 	}
 
 	pn, err := c.providerNetworksLister.Get(providerNetworkName)
 	if err != nil {
 		klog.Errorf("failed to get provider network %s: %v", providerNetworkName, err)
-		return "", "", err
+		return "", "", "", err
 	}
 
 	underlayNic := pn.Spec.DefaultInterface
@@ -458,8 +511,9 @@ func (c *Controller) getExtInfoBySubnet(subnetName string) (string, string, erro
 			break
 		}
 	}
-	klog.Infof("Provider network: %s, Underlay NIC: %s", providerNetworkName, underlayNic)
-	return util.ExternalBridgeName(providerNetworkName), underlayNic, nil
+	bridgeName := util.ExternalBridgeName(providerNetworkName)
+	klog.Infof("Provider network: %s, Underlay NIC: %s, DstMac: %s", providerNetworkName, underlayNic, dstMac)
+	return bridgeName, underlayNic, dstMac, nil
 }
 
 func (c *Controller) reconcileServices(event *serviceEvent) error {
