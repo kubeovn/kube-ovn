@@ -68,9 +68,9 @@ func TestGenNatGwNameWithCustomPrefix(t *testing.T) {
 	}
 
 	// It is possible to override the default prefix appended to NAT GW statefulsets
-	VpcNatGwNamePrefix = "custom-prefix"
+	SetVpcNatGwNamePrefix("custom-prefix")
 	t.Cleanup(func() {
-		VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
+		SetVpcNatGwNamePrefix(VpcNatGwNameDefaultPrefix)
 	})
 
 	for _, tc := range testCases {
@@ -140,9 +140,9 @@ func TestGenNatGwPodNameWithCustomPrefix(t *testing.T) {
 	}
 
 	// It is possible to override the default prefix appended to NAT GW pods
-	VpcNatGwNamePrefix = "another-prefix"
+	SetVpcNatGwNamePrefix("another-prefix")
 	t.Cleanup(func() {
-		VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
+		SetVpcNatGwNamePrefix(VpcNatGwNameDefaultPrefix)
 	})
 
 	for _, tc := range testCases {

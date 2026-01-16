@@ -107,6 +107,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 		util.LogicalSwitchAnnotation: defaultSubnet.Name,
 		nadv1.NetworkAttachmentAnnot: fmt.Sprintf(`[{"name": "%s", "default-route": ["%s"]}]`, util.VpcLbNetworkAttachment, strings.ReplaceAll(gateway, ",", `" ,"`)),
 	}
+	cfg := currentVpcNatRuntimeConfig()
 
 	deployment := &v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -131,7 +132,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 					Containers: []corev1.Container{
 						{
 							Name:            "vpc-lb",
-							Image:           vpcNatImage,
+							Image:           cfg.image,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "sleep infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
@@ -155,7 +156,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	if v4Gw != "" && v4Svc != "" {
 		deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
 			Name:            "init-ipv4-route",
-			Image:           vpcNatImage,
+			Image:           cfg.image,
 			Command:         []string{"ip"},
 			Args:            strings.Fields(fmt.Sprintf("-4 route replace %s via %s", v4Svc, v4Gw)),
 			ImagePullPolicy: corev1.PullIfNotPresent,
@@ -165,7 +166,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 			},
 		}, corev1.Container{
 			Name:            "init-ipv4-iptables",
-			Image:           vpcNatImage,
+			Image:           cfg.image,
 			Command:         []string{"iptables"},
 			Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v4Svc)),
 			ImagePullPolicy: corev1.PullIfNotPresent,
@@ -178,7 +179,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	if v6Gw != "" && v6Svc != "" {
 		deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
 			Name:            "init-ipv6-route",
-			Image:           vpcNatImage,
+			Image:           cfg.image,
 			Command:         []string{"ip"},
 			Args:            strings.Fields(fmt.Sprintf("-6 route replace %s via %s", v6Svc, v6Gw)),
 			ImagePullPolicy: corev1.PullIfNotPresent,
@@ -188,7 +189,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 			},
 		}, corev1.Container{
 			Name:            "init-ipv6-iptables",
-			Image:           vpcNatImage,
+			Image:           cfg.image,
 			Command:         []string{"ip6tables"},
 			Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v6Svc)),
 			ImagePullPolicy: corev1.PullIfNotPresent,

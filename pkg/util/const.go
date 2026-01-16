@@ -430,3 +430,13 @@ var (
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()
 	KindVirtualMachineInstanceMigration = ObjectKind[*kubevirtv1.VirtualMachineInstanceMigration]()
 )
+
+// VPC NAT Gateway resource names and paths.
+const (
+	VpcNatGwContainerName      = "vpc-nat-gw"
+	VpcNatGwServiceAccountName = "vpc-nat-gw"
+	VpcNatGwScriptMountPath    = "/kube-ovn"
+	VpcNatGwScriptVolumeName   = "nat-gw-script"
+	VpcNatGwScriptName         = "nat-gateway.sh"
+	VpcNatGwScriptPath         = VpcNatGwScriptMountPath + "/" + VpcNatGwScriptName
+)

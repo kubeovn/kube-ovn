@@ -104,6 +104,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 	if nodeSelector != nil {
 		klog.Infof("node selector for lb-svc deploy %s: %v", name, nodeSelector)
 	}
+	cfg := currentVpcNatRuntimeConfig()
 
 	dp = &v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -123,7 +124,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 					Containers: []corev1.Container{
 						{
 							Name:            "lb-svc",
-							Image:           vpcNatImage,
+							Image:           cfg.image,
 							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{

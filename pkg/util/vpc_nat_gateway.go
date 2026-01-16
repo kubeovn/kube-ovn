@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync/atomic"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -16,17 +17,28 @@ import (
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
 const VpcNatGwNameDefaultPrefix = "vpc-nat-gw"
 
-// VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
-var VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
+var vpcNatGwNamePrefix atomic.Value
+
+func init() {
+	vpcNatGwNamePrefix.Store(VpcNatGwNameDefaultPrefix)
+}
+
+func GetVpcNatGwNamePrefix() string {
+	return vpcNatGwNamePrefix.Load().(string)
+}
+
+func SetVpcNatGwNamePrefix(prefix string) {
+	vpcNatGwNamePrefix.Store(prefix)
+}
 
 // GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
 func GenNatGwName(name string) string {
-	return fmt.Sprintf("%s-%s", VpcNatGwNamePrefix, name)
+	return fmt.Sprintf("%s-%s", GetVpcNatGwNamePrefix(), name)
 }
 
 // GenNatGwPodName returns the full name of the NAT gateway pod within a StatefulSet
 func GenNatGwPodName(name string) string {
-	return fmt.Sprintf("%s-%s-0", VpcNatGwNamePrefix, name)
+	return fmt.Sprintf("%s-%s-0", GetVpcNatGwNamePrefix(), name)
 }
 
 // GetNatGwExternalNetwork returns the external network attached to a NAT gateway

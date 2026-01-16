@@ -1,20 +1,41 @@
 package docker
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
+	"sync"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
 
+var (
+	dockerClient     *client.Client
+	dockerClientOnce sync.Once
+	dockerClientErr  error
+)
+
+// getDockerClient returns a shared Docker client instance.
+// The client is initialized once and reused across all calls.
+// Note: The client is not explicitly closed as it's intended for E2E tests
+// where the process exits after tests complete.
+func getDockerClient() (*client.Client, error) {
+	dockerClientOnce.Do(func() {
+		dockerClient, dockerClientErr = client.New(client.FromEnv)
+	})
+	return dockerClient, dockerClientErr
+}
+
 func ContainerList(filters map[string][]string) ([]container.Summary, error) {
-	cli, err := client.New(client.FromEnv)
+	cli, err := getDockerClient()
 	if err != nil {
 		return nil, err
 	}
-	defer cli.Close()
 
 	f := make(client.Filters, len(filters))
 	for k, v := range filters {
@@ -29,11 +50,10 @@ func ContainerList(filters map[string][]string) ([]container.Summary, error) {
 }
 
 func ContainerCreate(name, image, networkName string, cmd []string) (*container.InspectResponse, error) {
-	cli, err := client.New(client.FromEnv)
+	cli, err := getDockerClient()
 	if err != nil {
 		return nil, err
 	}
-	defer cli.Close()
 
 	options := client.ContainerCreateOptions{
 		Name: name,
@@ -70,11 +90,10 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*container.
 }
 
 func ContainerInspect(id string) (*container.InspectResponse, error) {
-	cli, err := client.New(client.FromEnv)
+	cli, err := getDockerClient()
 	if err != nil {
 		return nil, err
 	}
-	defer cli.Close()
 
 	result, err := cli.ContainerInspect(context.Background(), id, client.ContainerInspectOptions{})
 	if err != nil {
@@ -85,12 +104,66 @@ func ContainerInspect(id string) (*container.InspectResponse, error) {
 }
 
 func ContainerRemove(id string) error {
-	cli, err := client.New(client.FromEnv)
+	cli, err := getDockerClient()
 	if err != nil {
 		return err
 	}
-	defer cli.Close()
 
 	_, err = cli.ContainerRemove(context.Background(), id, client.ContainerRemoveOptions{Force: true})
 	return err
+}
+
+// CopyToContainer copies content to a container at the specified path.
+// The content is provided as a byte slice and will be written to dstPath inside the container.
+func CopyToContainer(containerID, dstPath string, content []byte, filename string) error {
+	cli, err := getDockerClient()
+	if err != nil {
+		return err
+	}
+
+	// Create a tar archive containing the file
+	tarContent, err := createTarArchive(filename, content)
+	if err != nil {
+		return err
+	}
+
+	_, err = cli.CopyToContainer(context.Background(), containerID, client.CopyToContainerOptions{
+		DestinationPath: dstPath,
+		Content:         tarContent,
+	})
+	return err
+}
+
+// CopyFileToContainer copies a file from the local filesystem to a container.
+func CopyFileToContainer(containerID, srcPath, dstPath string) error {
+	content, err := os.ReadFile(srcPath)
+	if err != nil {
+		return err
+	}
+
+	filename := filepath.Base(srcPath)
+	return CopyToContainer(containerID, dstPath, content, filename)
+}
+
+// createTarArchive creates a tar archive containing a single file with the given content.
+func createTarArchive(filename string, content []byte) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+
+	hdr := &tar.Header{
+		Name: filename,
+		Mode: 0o755,
+		Size: int64(len(content)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write(content); err != nil {
+		return nil, err
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }
