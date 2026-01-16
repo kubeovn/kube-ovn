@@ -63,9 +63,24 @@ type VpcNatGatewayStatus struct {
 	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 }
 
+// Route interface constants for VPC NAT Gateway
+const (
+	// Net1InGW represents the external network interface in NAT Gateway
+	Net1InGW = "net1"
+)
+
 type Route struct {
-	CIDR      string `json:"cidr"`
-	NextHopIP string `json:"nextHopIP"`
+	CIDR string `json:"cidr"`
+	// NextHopIP specifies the next hop IP address or gateway for the route.
+	// Supported values:
+	//   - Empty ("")     : use the interface's default gateway
+	//   - "0.0.0.0"/"::" : on-link route (direct route without gateway)
+	//   - Valid IP       : use the specified IP as gateway
+	NextHopIP string `json:"nextHopIP,omitempty"`
+	// Interface specifies which interface to apply the route.
+	// Valid values are "eth0" (internal OVN network) and "net1" (external network).
+	// If not specified, defaults to "eth0" for backward compatibility.
+	Interface string `json:"interface,omitempty"`
 }
 
 func (s *VpcNatGatewayStatus) Bytes() ([]byte, error) {

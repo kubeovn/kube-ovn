@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"os"
 	"reflect"
 	"regexp"
@@ -941,21 +942,65 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
-	// Users can specify custom routes to inject in the NAT GW
-	for _, route := range gw.Spec.Routes {
-		nexthop := route.NextHopIP
+	// Get external network subnet info first (needed for net1 routes)
+	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
-		// Users can specify "gateway" instead of an actual IP as the next hop, and
-		// we will auto-determine the address of the gateway based on the protocol
-		if nexthop == "gateway" {
-			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
-				nexthop = eth0V4Gateway
-			} else {
-				nexthop = eth0V6Gateway
-			}
+	// Collect net1 routes separately
+	net1Routes := make([]request.Route, 0)
+
+	// Users can specify custom routes to inject in the NAT GW
+	// Routes can target either eth0 (internal OVN network) or net1 (external network)
+	// by setting the Interface field. If not specified, defaults to eth0.
+	for _, route := range gw.Spec.Routes {
+		// Validate CIDR format
+		if err := util.CheckCidrs(route.CIDR); err != nil {
+			klog.Warningf("invalid CIDR %q for route in NAT gateway %s, skipping", route.CIDR, gw.Name)
+			continue
 		}
 
-		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
+		// Determine which interface this route belongs to
+		// If interface is specified as "net1", use net1 gateways; otherwise use eth0 (default)
+		isNet1Route := route.Interface == kubeovnv1.Net1InGW
+
+		// Determine the gateway based on NextHopIP value:
+		// - Empty ("")     : use the interface's default gateway
+		// - "0.0.0.0"/"::" : on-link route (direct route without gateway)
+		// - Valid IP       : use the specified IP as gateway
+		var gateway string
+		switch route.NextHopIP {
+		case "":
+			// Use interface's default gateway based on CIDR protocol
+			v4gw, v6gw := eth0V4Gateway, eth0V6Gateway
+			if isNet1Route {
+				v4gw, v6gw = net1V4Gateway, net1V6Gateway
+			}
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
+				gateway = v4gw
+			} else {
+				gateway = v6gw
+			}
+		case "0.0.0.0", "::":
+			// On-link route: no gateway, route directly to interface
+			gateway = ""
+		default:
+			// Validate and use the specified IP as gateway
+			if net.ParseIP(route.NextHopIP) == nil {
+				klog.Warningf("invalid NextHopIP %q for route %s in NAT gateway %s, skipping", route.NextHopIP, route.CIDR, gw.Name)
+				continue
+			}
+			gateway = route.NextHopIP
+		}
+
+		if isNet1Route {
+			net1Routes = append(net1Routes, request.Route{Destination: route.CIDR, Gateway: gateway})
+		} else {
+			routes = append(routes, request.Route{Destination: route.CIDR, Gateway: gateway})
+		}
 	}
 
 	if err = setPodRoutesAnnotation(annotations, eth0SubnetProvider, routes); err != nil {
@@ -964,14 +1009,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	// Set the default routes to the external network
-	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	routes = routes[0:0]
-	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
+	routes = net1Routes
 	if net1V4Gateway != "" {
 		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
 	}

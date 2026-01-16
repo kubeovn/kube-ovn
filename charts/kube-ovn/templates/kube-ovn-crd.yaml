@@ -606,7 +606,13 @@ spec:
                         description: Destination CIDR for the route
                       nextHopIP:
                         type: string
-                        description: Next hop IP address
+                        description: "Next hop IP or gateway. Empty: use default gateway; 0.0.0.0/:: : on-link route; valid IP: use as gateway"
+                      interface:
+                        type: string
+                        description: Interface to apply the route (eth0 or net1). Defaults to eth0.
+                        enum:
+                          - eth0
+                          - net1
                 tolerations:
                   type: array
                   items:

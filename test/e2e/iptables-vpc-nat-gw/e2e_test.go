@@ -163,6 +163,35 @@ func setupVpcNatGwTestEnvironment(
 	provider string,
 	skipNADSetup bool,
 ) {
+	setupVpcNatGwTestEnvironmentWithRoutes(f, dockerExtNetNetwork, attachNetClient,
+		subnetClient, vpcClient, vpcNatGwClient,
+		vpcName, overlaySubnetName, vpcNatGwName, natGwQosPolicy,
+		overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+		dockerExtNetName, externalNetworkName, nicName, provider,
+		skipNADSetup, nil)
+}
+
+func setupVpcNatGwTestEnvironmentWithRoutes(
+	f *framework.Framework,
+	dockerExtNetNetwork *dockernetwork.Inspect,
+	attachNetClient *framework.NetworkAttachmentDefinitionClient,
+	subnetClient *framework.SubnetClient,
+	vpcClient *framework.VpcClient,
+	vpcNatGwClient *framework.VpcNatGatewayClient,
+	vpcName string,
+	overlaySubnetName string,
+	vpcNatGwName string,
+	natGwQosPolicy string,
+	overlaySubnetV4Cidr string,
+	overlaySubnetV4Gw string,
+	lanIP string,
+	dockerExtNetName string,
+	externalNetworkName string,
+	nicName string,
+	provider string,
+	skipNADSetup bool,
+	routes []apiv1.Route,
+) {
 	ginkgo.GinkgoHelper()
 
 	if !skipNADSetup {
@@ -193,6 +222,9 @@ func setupVpcNatGwTestEnvironment(
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
+	if len(routes) > 0 {
+		vpcNatGw.Spec.Routes = routes
+	}
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -1077,6 +1109,77 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// All cleanup is handled by DeferCleanup above
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
+	})
+
+	framework.ConformanceIt("[6] VPC NAT Gateway custom routes with interface field", func() {
+		f.SkipVersionPriorTo(1, 15, "Custom routes with interface field is only supported in version 1.15+")
+
+		overlaySubnetV4Cidr := "10.0.6.0/24"
+		overlaySubnetV4Gw := "10.0.6.1"
+		lanIP := "10.0.6.254"
+		natgwQoS := ""
+
+		// Define custom routes for both eth0 and net1
+		customRoutes := []apiv1.Route{
+			{
+				// Route for eth0 (default interface) using default gateway
+				CIDR:      "192.168.100.0/24",
+				NextHopIP: "", // Empty means use interface's default gateway
+			},
+			{
+				// Direct route for net1 interface (on-link route, no gateway)
+				CIDR:      "169.254.25.0/24",
+				NextHopIP: "0.0.0.0", // 0.0.0.0 means on-link route
+				Interface: "net1",
+			},
+			{
+				// Gateway route for net1 interface using default gateway
+				CIDR:      "10.100.0.0/16",
+				NextHopIP: "", // Empty means use interface's default gateway
+				Interface: "net1",
+			},
+		}
+
+		setupVpcNatGwTestEnvironmentWithRoutes(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider, true, customRoutes)
+
+		ginkgo.By("Verifying routes are configured correctly in NAT Gateway pod")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		// Verify eth0 route (192.168.100.0/24)
+		ginkgo.By("Checking eth0 custom route (192.168.100.0/24)")
+		stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, metav1.NamespaceSystem, vpcNatGwPodName, "ip route show 192.168.100.0/24")
+		framework.ExpectNoError(err, "failed to get route: stdout=%s, stderr=%s", stdout, stderr)
+		framework.ExpectContainSubstring(stdout, "192.168.100.0/24", "eth0 route 192.168.100.0/24 should exist")
+		framework.ExpectContainSubstring(stdout, "eth0", "route 192.168.100.0/24 should be via eth0")
+
+		// Verify net1 direct route (169.254.25.0/24)
+		ginkgo.By("Checking net1 direct route (169.254.25.0/24)")
+		stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, metav1.NamespaceSystem, vpcNatGwPodName, "ip route show 169.254.25.0/24")
+		framework.ExpectNoError(err, "failed to get route: stdout=%s, stderr=%s", stdout, stderr)
+		framework.ExpectContainSubstring(stdout, "169.254.25.0/24", "net1 direct route 169.254.25.0/24 should exist")
+		framework.ExpectContainSubstring(stdout, "net1", "route 169.254.25.0/24 should be via net1")
+
+		// Verify net1 gateway route (10.100.0.0/16)
+		ginkgo.By("Checking net1 gateway route (10.100.0.0/16)")
+		stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, metav1.NamespaceSystem, vpcNatGwPodName, "ip route show 10.100.0.0/16")
+		framework.ExpectNoError(err, "failed to get route: stdout=%s, stderr=%s", stdout, stderr)
+		framework.ExpectContainSubstring(stdout, "10.100.0.0/16", "net1 route 10.100.0.0/16 should exist")
+		framework.ExpectContainSubstring(stdout, "net1", "route 10.100.0.0/16 should be via net1")
+
+		// Verify default route is still via net1
+		ginkgo.By("Checking default route is via net1")
+		stdout, stderr, err = framework.ExecShellInPod(context.Background(), f, metav1.NamespaceSystem, vpcNatGwPodName, "ip route show default")
+		framework.ExpectNoError(err, "failed to get default route: stdout=%s, stderr=%s", stdout, stderr)
+		framework.ExpectContainSubstring(stdout, "default", "default route should exist")
+		framework.ExpectContainSubstring(stdout, "net1", "default route should be via net1")
+
+		ginkgo.By("Test completed: VPC NAT Gateway custom routes with interface field works correctly")
 	})
 })
 
