@@ -515,10 +515,23 @@ kind-configure-metallb:
 		jinjanate yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
 	kubectl apply -f metallb-cr.yaml
 
-.PHONY: kind-install-metallb-pool-from-underlay
-kind-install-metallb-pool-from-underlay: kind-load-image
+.PHONY: kind-install-metallb-pool-from-underlay-ipv4
+kind-install-metallb-pool-from-underlay-ipv4: kind-load-image
 	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false kind-install
 	@$(MAKE) kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay-ipv6
+kind-install-metallb-pool-from-underlay-ipv6: kind-load-image
+	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false IPV6=true kind-install
+	@$(MAKE) IPV6=true kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay-dual
+kind-install-metallb-pool-from-underlay-dual: kind-load-image
+	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false DUAL_STACK=true kind-install
+	@$(MAKE) DUAL_STACK=true kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay
+kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay-ipv4
 
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:

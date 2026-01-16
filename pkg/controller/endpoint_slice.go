@@ -685,7 +685,11 @@ func (c *Controller) addIPPortMappingEntry(pod *v1.Pod, addresses []string, chec
 	}
 
 	for _, address := range addresses {
-		mapping[address] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
+		key := address
+		if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+			key = fmt.Sprintf("[%s]", address)
+		}
+		mapping[key] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
 	}
 
 	return nil

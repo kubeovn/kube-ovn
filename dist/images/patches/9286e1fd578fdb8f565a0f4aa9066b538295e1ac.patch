@@ -1,18 +1,18 @@
-From 9286e1fd578fdb8f565a0f4aa9066b538295e1ac Mon Sep 17 00:00:00 2001
+From 9d26772725a18ac5fb5f7a6e22cb80d53383e4c9 Mon Sep 17 00:00:00 2001
 From: clyi <clyi@alauda.io>
-Date: Tue, 11 Feb 2025 10:17:52 +0800
+Date: Thu, 15 Jan 2026 10:30:05 +0800
 Subject: [PATCH] add select local lb backend
 
 Signed-off-by: clyi <clyi@alauda.io>
 ---
  northd/lb.c     |  34 ++++++++++++
  northd/lb.h     |   1 +
- northd/northd.c | 139 +++++++++++++++++++++++++++++++++++++++++++++---
+ northd/northd.c | 144 +++++++++++++++++++++++++++++++++++++++++++++---
  northd/northd.h |  10 ++++
- 4 files changed, 177 insertions(+), 7 deletions(-)
+ 4 files changed, 182 insertions(+), 7 deletions(-)
 
 diff --git a/northd/lb.c b/northd/lb.c
-index af0c92954c..71633ae788 100644
+index af0c92954..f0771b88e 100644
 --- a/northd/lb.c
 +++ b/northd/lb.c
 @@ -150,6 +150,36 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
@@ -71,7 +71,7 @@ index af0c92954c..71633ae788 100644
      }
  
 diff --git a/northd/lb.h b/northd/lb.h
-index aa6616af41..c7a9ba90b5 100644
+index aa6616af4..c7a9ba90b 100644
 --- a/northd/lb.h
 +++ b/northd/lb.h
 @@ -65,6 +65,7 @@ struct ovn_northd_lb {
@@ -83,10 +83,10 @@ index aa6616af41..c7a9ba90b5 100644
  
      struct sset ips_v4;
 diff --git a/northd/northd.c b/northd/northd.c
-index d3b4fed086..c75f2e51de 100644
+index f6559c240..918016123 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -3764,7 +3764,9 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
+@@ -3747,7 +3747,9 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
                       struct ds *skip_snat_action,
                       struct ds *force_snat_action,
                       bool ls_dp,
@@ -97,7 +97,7 @@ index d3b4fed086..c75f2e51de 100644
  {
      bool reject = !lb_vip->n_backends && lb_vip->empty_backend_rej;
      bool drop = !lb_vip->n_backends && !lb_vip->empty_backend_rej;
-@@ -3788,6 +3790,12 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
+@@ -3771,6 +3773,12 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
              struct ovn_northd_lb_backend *backend_nb =
                  &lb_vip_nb->backends_nb[i];
  
@@ -110,7 +110,7 @@ index d3b4fed086..c75f2e51de 100644
              if (!backend_nb->health_check) {
                  continue;
              }
-@@ -3821,8 +3829,11 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
+@@ -3804,8 +3812,11 @@ build_lb_vip_actions(const struct ovn_northd_lb *lb,
          drop = !n_active_backends && !lb_vip->empty_backend_rej;
          reject = !n_active_backends && lb_vip->empty_backend_rej;
      } else {
@@ -124,7 +124,7 @@ index d3b4fed086..c75f2e51de 100644
      }
  
      if (reject) {
-@@ -8329,7 +8340,8 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+@@ -8233,7 +8244,8 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                 const struct ovn_datapaths *ls_datapaths,
                 struct ds *match, struct ds *action,
                 const struct shash *meter_groups,
@@ -134,7 +134,7 @@ index d3b4fed086..c75f2e51de 100644
  {
      const struct ovn_northd_lb *lb = lb_dps->lb;
      for (size_t i = 0; i < lb->n_vips; i++) {
-@@ -8340,13 +8352,122 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+@@ -8244,13 +8256,127 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
  
          ds_clear(action);
          ds_clear(match);
@@ -167,7 +167,12 @@ index d3b4fed086..c75f2e51de 100644
 +                entry->lp_array[entry->n_lps] = op;
 +                entry->n_lps++;
 +
-+                char *new_backend_ips = xasprintf("%s%s%s:%s", entry->backend_ips, entry->n_lps > 1 ? "," : "", backend->ip_str, backend->port_str);
++                char *new_backend_ips;
++                if (IN6_IS_ADDR_V4MAPPED(&backend->ip)) {
++                    new_backend_ips = xasprintf("%s%s%s:%s", entry->backend_ips, entry->n_lps > 1 ? "," : "", backend->ip_str, backend->port_str);
++                } else {
++                    new_backend_ips = xasprintf("%s%s[%s]:%s", entry->backend_ips, entry->n_lps > 1 ? "," : "", backend->ip_str, backend->port_str);
++                }
 +                free(entry->backend_ips);
 +                entry->backend_ips = new_backend_ips;
 +                sset_add(&entry->logical_ports, backend_nb->logical_port);
@@ -258,7 +263,7 @@ index d3b4fed086..c75f2e51de 100644
  
          ds_put_format(match, "ct.new && %s.dst == %s", ip_match,
                        lb_vip->vip_str);
-@@ -12423,7 +12544,7 @@ build_lrouter_nat_flows_for_lb(
+@@ -12252,7 +12378,7 @@ build_lrouter_nat_flows_for_lb(
      bool reject = build_lb_vip_actions(lb, lb_vip, vips_nb, action,
                                         lb->selection_fields, &skip_snat_act,
                                         &force_snat_act, false,
@@ -267,7 +272,7 @@ index d3b4fed086..c75f2e51de 100644
  
      /* Higher priority rules are added for load-balancing in DNAT
       * table.  For every match (on a VIP[:port]), we add two flows.
-@@ -12581,6 +12702,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
+@@ -12410,6 +12536,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                             const struct shash *meter_groups,
                             const struct ovn_datapaths *ls_datapaths,
                             const struct hmap *svc_monitor_map,
@@ -275,7 +280,7 @@ index d3b4fed086..c75f2e51de 100644
                             struct ds *match, struct ds *action)
  {
      if (!lb_dps->n_nb_ls) {
-@@ -12624,7 +12746,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
+@@ -12453,7 +12580,7 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
       * REGBIT_CONNTRACK_COMMIT. */
      build_lb_rules_pre_stateful(lflows, lb_dps, ls_datapaths, match, action);
      build_lb_rules(lflows, lb_dps, ls_datapaths, match, action,
@@ -284,7 +289,7 @@ index d3b4fed086..c75f2e51de 100644
  }
  
  /* If there are any load balancing rules, we should send the packet to
-@@ -18033,6 +18155,7 @@ build_lflows_thread(void *arg)
+@@ -17924,6 +18051,7 @@ build_lflows_thread(void *arg)
                                                 lsi->meter_groups,
                                                 lsi->ls_datapaths,
                                                 lsi->svc_monitor_map,
@@ -292,7 +297,7 @@ index d3b4fed086..c75f2e51de 100644
                                                 &lsi->match, &lsi->actions);
                  }
              }
-@@ -18267,6 +18390,7 @@ build_lswitch_and_lrouter_flows(
+@@ -18158,6 +18286,7 @@ build_lswitch_and_lrouter_flows(
              build_lswitch_flows_for_lb(lb_dps, lsi.lflows, lsi.meter_groups,
                                         lsi.ls_datapaths,
                                         lsi.svc_monitor_map,
@@ -300,7 +305,7 @@ index d3b4fed086..c75f2e51de 100644
                                         &lsi.match, &lsi.actions);
          }
          stopwatch_stop(LFLOWS_LBS_STOPWATCH_NAME, time_msec());
-@@ -18636,6 +18760,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
+@@ -18527,6 +18656,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                     lflow_input->meter_groups,
                                     lflow_input->ls_datapaths,
                                     lflow_input->svc_monitor_map,
@@ -309,7 +314,7 @@ index d3b4fed086..c75f2e51de 100644
  
          ds_destroy(&match);
 diff --git a/northd/northd.h b/northd/northd.h
-index 388bac6df5..d9f7eb12c0 100644
+index ba86ac5c9..0d53cfac6 100644
 --- a/northd/northd.h
 +++ b/northd/northd.h
 @@ -813,6 +813,16 @@ find_route_outport(const struct hmap *lr_ports, const char *output_port,
@@ -329,3 +334,6 @@ index 388bac6df5..d9f7eb12c0 100644
  void ovnnb_db_run(struct northd_input *input_data,
                    struct northd_data *data,
                    struct ovsdb_idl_txn *ovnnb_txn,
+-- 
+2.34.1
+
