@@ -149,11 +149,13 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 		lbhc *ovnnb.LoadBalancerHealthCheck
 		err  error
 	)
-
 	lb, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vipEndpoint, true)
 	if err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return err
+	}
+	if len(lb.IPPortMappings) != 0 {
+		ignoreHealthCheck = false
 	}
 	if !ignoreHealthCheck && lbhc != nil {
 		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
