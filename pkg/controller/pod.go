@@ -415,16 +415,10 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
 	}
 
-	// do not delete statefulset pod unless ownerReferences is deleted
-	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID) {
-		go func() {
-			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
-			c.deletingPodObjMap.Store(key, newPod)
-			c.deletePodQueue.AddAfter(key, delay)
-		}()
-		return
-	}
-	if isVMPod && c.isVMToDel(newPod, vmName) {
+	// do not delete statefulset/vm pod unless ownerReferences is deleted
+	shouldDelete := (isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID)) ||
+		(isVMPod && c.isVMToDel(newPod, vmName))
+	if shouldDelete {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
