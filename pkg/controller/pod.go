@@ -2042,15 +2042,21 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
 	subnetStr := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+
+	// Prepare nsNets based on subnet annotation
+	var err error
+	if subnetStr != "" {
+		nsNets = []*kubeovnNet{podNet}
+	} else if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+		klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+		return "", "", "", podNet.Subnet, err
+	}
+
 	if ippoolStr == "" && podNet.IsDefault {
 		// no ippool specified by pod annotation, use namespace ippools or ippools in the subnet specified by pod annotation
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
-			return "", "", "", podNet.Subnet, err
-		}
-		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
 			return "", "", "", podNet.Subnet, err
 		}
 		subnetNames := make([]string, 0, len(nsNets))
@@ -2151,14 +2157,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet, portName string, macPointer *string, ippoolStr string, nsNets []*kubeovnNet, isStsPod bool, key string) (string, string, string, *kubeovnv1.Subnet, error) {
 	var v4IP, v6IP, mac string
 	var err error
-
-	// The static ip can be assigned from any subnet after ns supports multi subnets
-	if nsNets == nil {
-		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-			return "", "", "", podNet.Subnet, err
-		}
-	}
 
 	// Static allocate
 	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {

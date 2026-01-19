@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -328,4 +329,203 @@ func TestGetPodKubeovnNetsNonPrimaryCNI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
+	tests := []struct {
+		name           string
+		pod            *corev1.Pod
+		namespaces     []*corev1.Namespace
+		subnets        []*kubeovnv1.Subnet
+		setupIPAM      func(*Controller)
+		expectError    bool
+		expectedSubnet string
+		description    string
+	}{
+		{
+			name: "User specifies subnet - should succeed",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.LogicalSwitchAnnotation: "subnet1",
+						util.IPAddressAnnotation:     "10.0.1.10",
+					},
+				},
+			},
+			namespaces: []*corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "default",
+						Annotations: map[string]string{
+							util.LogicalSwitchAnnotation: "subnet1,subnet2",
+						},
+					},
+				},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet1"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+			},
+			expectError:    false,
+			expectedSubnet: "subnet1",
+			description:    "Should allocate from specified subnet",
+		},
+		{
+			name: "User specifies subnet but IP occupied - should NOT fallback",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.LogicalSwitchAnnotation: "subnet1",
+						util.IPAddressAnnotation:     "10.0.1.10",
+					},
+				},
+			},
+			namespaces: []*corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "default",
+						Annotations: map[string]string{
+							util.LogicalSwitchAnnotation: "subnet1,subnet2",
+						},
+					},
+				},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet1"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+			},
+			setupIPAM: func(c *Controller) {
+				_, _, _, _ = c.ipam.GetStaticAddress("other-pod.default", "other-pod.default", "10.0.1.10", nil, "subnet1", true)
+			},
+			expectError: true,
+			description: "Should NOT fallback to subnet2 when IP is occupied in specified subnet1",
+		},
+		{
+			name: "No subnet specified - should try all namespace subnets",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.IPAddressAnnotation: "10.0.2.10",
+					},
+				},
+			},
+			namespaces: []*corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "default",
+						Annotations: map[string]string{
+							util.LogicalSwitchAnnotation: "subnet1,subnet2",
+						},
+					},
+				},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet1"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.2.0/24",
+						Protocol:  kubeovnv1.ProtocolIPv4,
+						Provider:  util.OvnProvider,
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+				},
+			},
+			expectError:    false,
+			expectedSubnet: "subnet2",
+			description:    "Should try all subnets and find matching one when no subnet specified",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Namespaces: tt.namespaces,
+				Subnets:    tt.subnets,
+				Pods:       []*corev1.Pod{tt.pod},
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+			controller.ipam = newIPAMForTest(tt.subnets)
+
+			if tt.setupIPAM != nil {
+				tt.setupIPAM(controller)
+			}
+
+			podNets, err := controller.getPodKubeovnNets(tt.pod)
+			require.NoError(t, err)
+			require.Greater(t, len(podNets), 0)
+
+			_, _, _, subnet, err := controller.acquireAddress(tt.pod, podNets[0])
+
+			if tt.expectError {
+				assert.Error(t, err, tt.description)
+			} else {
+				require.NoError(t, err, tt.description)
+				assert.Equal(t, tt.expectedSubnet, subnet.Name, tt.description)
+			}
+		})
+	}
+}
+
+func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
+	ipamInstance := ipam.NewIPAM()
+	for _, subnet := range subnets {
+		excludeIPs := subnet.Spec.ExcludeIps
+		if len(excludeIPs) == 0 {
+			excludeIPs = []string{}
+		}
+		s, err := ipam.NewSubnet(subnet.Name, subnet.Spec.CIDRBlock, excludeIPs)
+		if err != nil {
+			panic(err)
+		}
+		ipamInstance.Subnets[subnet.Name] = s
+	}
+	return ipamInstance
 }
