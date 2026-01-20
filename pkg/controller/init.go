@@ -4,12 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"maps"
-	"strings"
-	"time"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -20,10 +16,14 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
+	klog "k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"maps"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strings"
+	"time"
 )
 
 func (c *Controller) InitOVN() error {
