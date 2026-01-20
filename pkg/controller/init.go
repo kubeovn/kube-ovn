@@ -482,7 +482,7 @@ func (c *Controller) InitIPAM() error {
 		if _, _, _, err = c.ipam.GetStaticAddress(vip.Name, portName, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
-		if err := c.initIpamVipIp(vip.Spec.Subnet, vip.Name, vip.Status.V4ip, vip.Status.V6ip); err != nil {
+		if err := c.initIpamVipIP(vip.Spec.Subnet, vip.Name, vip.Status.V4ip, vip.Status.V6ip); err != nil {
 			klog.Errorf("failed to new ipam from vip %s  ip %s: %v", vip.Name, vip.Status.V4ip, err)
 		}
 	}
@@ -538,7 +538,7 @@ func (c *Controller) InitIPAM() error {
 	return nil
 }
 
-func (c *Controller) initIpamVipIp(subnet, vipname, v4ip, v6ip string) error {
+func (c *Controller) initIpamVipIP(subnet, vipname, v4ip, v6ip string) error {
 	klog.Infof("new ipam ip from subnet %s  vip %s  ipv4 %s ipv6 %s", subnet, vipname, v4ip, v6ip)
 	pool, ok := c.ipam.Subnets[subnet]
 	if !ok {
