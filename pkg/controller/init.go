@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"k8s.io/klog/v2"
 	"maps"
 	"strings"
 	"time"
@@ -540,7 +539,7 @@ func (c *Controller) InitIPAM() error {
 }
 
 func (c *Controller) initIpamVipIp(subnet, vipname, v4ip, v6ip string) error {
-	klog.Infof("new ipam ip from subnet  vip %s  ipv4 %s ipv6 %s", subnet, vipname, v4ip, v6ip)
+	klog.Infof("new ipam ip from subnet %s  vip %s  ipv4 %s ipv6 %s", subnet, vipname, v4ip, v6ip)
 	pool, ok := c.ipam.Subnets[subnet]
 	if !ok {
 		return nil
