@@ -67,4 +67,3 @@ talos/controlplane.yaml
 talos/worker.yaml
 talos/cluster-config.yaml
 talos/machine-config.yaml
-vendor
