@@ -942,3 +942,6 @@ extraObjects: []
 #           }
 #         ]
 #       }
+
+# TODO: remove only temorary
+trigger: true
