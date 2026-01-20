@@ -541,7 +541,10 @@ func (c *Controller) InitIPAM() error {
 
 func (c *Controller) initIpamVipIp(subnet, vipname, v4ip, v6ip string) error {
 	klog.Infof("new ipam ip from subnet  vip %s  ipv4 %s ipv6 %s", subnet, vipname, v4ip, v6ip)
-	pool := c.ipam.Subnets[subnet]
+	pool, ok := c.ipam.Subnets[subnet]
+	if !ok {
+		return nil
+	}
 	if v4ip != "" {
 		vipipv4, err := ipam.NewIP(v4ip)
 		if err != nil {
