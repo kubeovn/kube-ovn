@@ -28,13 +28,13 @@ import (
 
 const (
 	DefaultBGPGrpcPort                 = 50051
-	DefaultBGPClusterAs                = 65000
-	DefaultBGPNeighborAs               = 65001
 	DefaultBGPHoldtime                 = 90 * time.Second
 	DefaultPprofPort                   = 10667
 	DefaultGracefulRestartDeferralTime = 360 * time.Second
 	DefaultGracefulRestartTime         = 90 * time.Second
 	DefaultEbgpMultiHop                = 1
+	addPeerMaxRetries                  = 12
+	addPeerRetryInterval               = 5 * time.Second
 )
 
 type Configuration struct {
@@ -77,12 +77,12 @@ func ParseFlags() (*Configuration, error) {
 		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to announce to the BGP peers.")
 		argGrpcHost                    = pflag.IP("grpc-host", net.IP{127, 0, 0, 1}, "The host address for grpc to listen, default: 127.0.0.1")
 		argGrpcPort                    = pflag.Int32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
-		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The AS number of container network, default 65000")
+		argClusterAs                   = pflag.Uint32("cluster-as", 0, "The AS number of the local BGP speaker (required)")
 		argRouterID                    = pflag.IP("router-id", nil, "The address for the speaker to use as router id, default the node ip")
 		argNodeIPs                     = pflag.IPSlice("node-ips", nil, "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
 		argNeighborAddress             = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
 		argNeighborIPv6Address         = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
-		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
+		argNeighborAs                  = pflag.Uint32("neighbor-as", 0, "The AS number of the BGP neighbor/peer (required)")
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
 		argPprofPort                   = pflag.Int32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
@@ -169,6 +169,10 @@ func ParseFlags() (*Configuration, error) {
 		LogPerm:                     *argLogPerm,
 	}
 
+	if err := config.validateRequiredFlags(); err != nil {
+		return nil, err
+	}
+
 	for _, addr := range config.NeighborAddresses {
 		if addr.To4() == nil {
 			return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
@@ -200,6 +204,27 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	return config, nil
+}
+
+// validateRequiredFlags checks that all required BGP configuration flags are provided.
+// It collects all missing flags and returns them in a single error message.
+func (config *Configuration) validateRequiredFlags() error {
+	var missingFlags []string
+
+	if len(config.NeighborAddresses) == 0 && len(config.NeighborIPv6Addresses) == 0 {
+		missingFlags = append(missingFlags, "at least one of --neighbor-address or --neighbor-ipv6-address must be specified")
+	}
+	if config.ClusterAs == 0 {
+		missingFlags = append(missingFlags, "--cluster-as must be specified")
+	}
+	if config.NeighborAs == 0 {
+		missingFlags = append(missingFlags, "--neighbor-as must be specified")
+	}
+
+	if len(missingFlags) > 0 {
+		return fmt.Errorf("missing required flags: %s", strings.Join(missingFlags, "; "))
+	}
+	return nil
 }
 
 func (config *Configuration) initKubeClient() error {
@@ -293,6 +318,8 @@ func (config *Configuration) initBgpServer() error {
 			UseMultiplePaths: true,
 		},
 	}); err != nil {
+		err = fmt.Errorf("failed to start bgp server: %w", err)
+		klog.Error(err)
 		return err
 	}
 	for ipFamily, addresses := range peersMap {
@@ -318,6 +345,8 @@ func (config *Configuration) initBgpServer() error {
 			}
 			if config.GracefulRestart {
 				if err := config.checkGracefulRestartOptions(); err != nil {
+					err = fmt.Errorf("failed to check graceful restart options: %w", err)
+					klog.Error(err)
 					return err
 				}
 				peer.GracefulRestart = &api.GracefulRestart{
@@ -354,9 +383,10 @@ func (config *Configuration) initBgpServer() error {
 				})
 			}
 
-			if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
-				Peer: peer,
-			}); err != nil {
+			logBgpPeer(peer)
+			if err := addPeerWithRetry(s, peer); err != nil {
+				err = fmt.Errorf("failed to add peer %s: %w", addr.String(), err)
+				klog.Error(err)
 				return err
 			}
 		}
@@ -364,4 +394,36 @@ func (config *Configuration) initBgpServer() error {
 
 	config.BgpServer = s
 	return nil
+}
+
+// addPeerWithRetry attempts to add a BGP peer with retry logic.
+// It retries up to addPeerMaxRetries times with addPeerRetryInterval between attempts.
+func addPeerWithRetry(s *gobgp.BgpServer, peer *api.Peer) error {
+	var err error
+	for i := 0; i < addPeerMaxRetries; i++ {
+		if err = s.AddPeer(context.Background(), &api.AddPeerRequest{
+			Peer: peer,
+		}); err == nil {
+			return nil
+		}
+		klog.Errorf("failed to add peer %s (attempt %d/%d): %v", peer.Conf.NeighborAddress, i+1, addPeerMaxRetries, err)
+		if i < addPeerMaxRetries-1 {
+			time.Sleep(addPeerRetryInterval)
+		}
+	}
+	err = fmt.Errorf("failed to add peer %s after %d attempts: %w", peer.Conf.NeighborAddress, addPeerMaxRetries, err)
+	klog.Error(err)
+	return err
+}
+
+// logBgpPeer logs the BGP peer configuration for debugging purposes.
+func logBgpPeer(peer *api.Peer) {
+	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, PeerAsn=%d, HoldTime=%d, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v",
+		peer.Conf.NeighborAddress,
+		peer.Conf.PeerAsn,
+		peer.Timers.Config.HoldTime,
+		peer.Transport.PassiveMode,
+		peer.EbgpMultihop,
+		peer.GracefulRestart,
+		peer.AfiSafis)
 }
