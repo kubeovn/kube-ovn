@@ -299,9 +299,12 @@ func (c *Controller) reconcileMacvlanSubnet(event *subnetEvent) error {
 // should be deleted. Returns true only if no other subnet uses the same master.
 // excludeSubnet is the subnet being deleted/changed, which should be excluded from the check.
 func (c *Controller) shouldDeleteMacvlanForMaster(master, excludeSubnet string) bool {
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	// Use label selector to only list macvlan-type subnets for efficiency
+	subnets, err := c.subnetsLister.List(labels.SelectorFromSet(labels.Set{
+		util.NadMacvlanTypeLabel: "true",
+	}))
 	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
+		klog.Errorf("failed to list macvlan subnets: %v", err)
 		return false // Don't delete if we can't check
 	}
 

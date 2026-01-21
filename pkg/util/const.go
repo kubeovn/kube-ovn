@@ -131,6 +131,8 @@ const (
 
 	// NadMacvlanMasterAnnotation value indicates the macvlan master interface
 	NadMacvlanMasterAnnotation = "ovn.kubernetes.io/nad-macvlan-master"
+	// NadMacvlanTypeLabel is set to "true" when subnet uses macvlan NAD, used for efficient label selector filtering
+	NadMacvlanTypeLabel = "ovn.kubernetes.io/nad-macvlan-type"
 
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"

@@ -595,9 +595,11 @@ type serviceEvent struct {
 	oldObj, newObj any
 }
 
-// subnetHasMacvlanMaster checks if a subnet has NadMacvlanMasterAnnotation set
+// subnetHasMacvlanMaster checks if a subnet has NadMacvlanTypeLabel set
 func subnetHasMacvlanMaster(obj any) bool {
 	if subnet, ok := obj.(*kubeovnv1.Subnet); ok {
+		// Use annotation (the source of truth) for internal logic judgment,
+		// while label is used for efficient List/Watch filtering via label selector
 		return subnet.Annotations[util.NadMacvlanMasterAnnotation] != ""
 	}
 	return false

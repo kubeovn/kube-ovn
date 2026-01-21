@@ -1151,6 +1151,16 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			return s.Annotations[util.NadMacvlanMasterAnnotation]
 		}, 30*time.Second, 2*time.Second).ShouldNot(gomega.BeEmpty(), "Subnet should have NadMacvlanMasterAnnotation")
 
+		// Wait for the NadMacvlanTypeLabel to be set on the subnet
+		// This label is set together with the annotation for efficient filtering
+		gomega.Eventually(func() string {
+			s := subnetClient.Get(networkAttachDefName)
+			if s == nil {
+				return ""
+			}
+			return s.Labels[util.NadMacvlanTypeLabel]
+		}, 30*time.Second, 2*time.Second).Should(gomega.Equal("true"), "Subnet should have NadMacvlanTypeLabel=true")
+
 		// Re-get subnet to get the annotation value
 		externalSubnet = subnetClient.Get(networkAttachDefName)
 		macvlanMaster := externalSubnet.Annotations[util.NadMacvlanMasterAnnotation]

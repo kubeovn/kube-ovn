@@ -2946,7 +2946,7 @@ func (c *Controller) syncNadMacvlanMasterAnnotation(subnet *kubeovnv1.Subnet) er
 	}
 
 	if netConf.Type != "macvlan" {
-		// If NAD is not macvlan type, remove the annotation if it exists
+		// If NAD is not macvlan type, remove the annotation and label if they exist
 		if _, ok := subnet.Annotations[util.NadMacvlanMasterAnnotation]; ok {
 			patch := util.KVPatch{util.NadMacvlanMasterAnnotation: nil}
 			if err := util.PatchAnnotations(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
@@ -2955,6 +2955,15 @@ func (c *Controller) syncNadMacvlanMasterAnnotation(subnet *kubeovnv1.Subnet) er
 				return err
 			}
 			klog.Infof("removed subnet %s annotation %s", subnet.Name, util.NadMacvlanMasterAnnotation)
+		}
+		if subnet.Labels[util.NadMacvlanTypeLabel] != "" {
+			patch := util.KVPatch{util.NadMacvlanTypeLabel: nil}
+			if err := util.PatchLabels(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+				err = fmt.Errorf("failed to remove label from subnet %s: %w", subnet.Name, err)
+				klog.Error(err)
+				return err
+			}
+			klog.Infof("removed subnet %s label %s", subnet.Name, util.NadMacvlanTypeLabel)
 		}
 		return nil
 	}
@@ -2968,6 +2977,16 @@ func (c *Controller) syncNadMacvlanMasterAnnotation(subnet *kubeovnv1.Subnet) er
 			return err
 		}
 		klog.Infof("set subnet %s annotation %s=%s", subnet.Name, util.NadMacvlanMasterAnnotation, netConf.Master)
+	}
+	// Ensure label is set for efficient filtering
+	if subnet.Labels[util.NadMacvlanTypeLabel] != "true" {
+		patch := util.KVPatch{util.NadMacvlanTypeLabel: "true"}
+		if err := util.PatchLabels(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch subnet %s label: %w", subnet.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("set subnet %s label %s=true", subnet.Name, util.NadMacvlanTypeLabel)
 	}
 	return nil
 }
