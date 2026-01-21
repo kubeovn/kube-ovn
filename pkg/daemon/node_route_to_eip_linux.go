@@ -40,7 +40,6 @@ package daemon
 import (
 	"fmt"
 	"net"
-	"sync"
 	"syscall"
 
 	"github.com/pkg/errors"
@@ -53,10 +52,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-// deletedEIPs tracks EIPs that have been deleted to prevent race conditions
-// between delete events and queued add events
-var deletedEIPs sync.Map
 
 // eipRouteInfo holds information needed to add or delete an EIP route.
 // We store the macvlan interface name directly (computed at enqueue time) because:
@@ -391,7 +386,7 @@ func (c *Controller) enqueueAddIptablesEip(obj any) {
 	eip := obj.(*kubeovnv1.IptablesEIP)
 
 	// Clear deleted mark if EIP exists (handles edge case of stale mark)
-	deletedEIPs.Delete(eip.Name)
+	c.deletedEIPs.Delete(eip.Name)
 
 	if !shouldEnqueueIptablesEip(eip) {
 		return
@@ -418,7 +413,7 @@ func (c *Controller) enqueueUpdateIptablesEip(_, newObj any) {
 	}
 
 	// Clear deleted mark if EIP was recreated with the same name
-	deletedEIPs.Delete(eip.Name)
+	c.deletedEIPs.Delete(eip.Name)
 
 	if !shouldEnqueueIptablesEip(eip) {
 		return
@@ -454,7 +449,7 @@ func (c *Controller) enqueueDeleteIptablesEip(obj any) {
 	}
 
 	// Mark EIP as deleted to prevent race conditions with queued add events
-	deletedEIPs.Store(eip.Name, true)
+	c.deletedEIPs.Store(eip.Name, true)
 
 	// Build route info - subnet must exist (protected by finalizer)
 	info := c.buildEipRouteInfo(eip)
@@ -486,6 +481,11 @@ func (c *Controller) processNextIptablesEipDeleteItem() bool {
 			return fmt.Errorf("error deleting EIP route for %q: %w, requeuing", info.v4ip, err)
 		}
 		c.iptablesEipDeleteQueue.Forget(info)
+		// Clean up the deleted mark after successful route deletion to prevent memory leak.
+		// This is safe because:
+		// 1. The route has been deleted successfully
+		// 2. Any new EIP with the same name will trigger Add/Update events which clear the mark
+		c.deletedEIPs.Delete(info.eipName)
 		return nil
 	}(item)
 	if err != nil {
@@ -536,7 +536,7 @@ func (c *Controller) syncIptablesEipRoute(info eipRouteInfo) error {
 	klog.Infof("syncing iptables-eip route for %s", info.eipName)
 
 	// Check if EIP was deleted - skip if it was to prevent race conditions
-	if _, deleted := deletedEIPs.Load(info.eipName); deleted {
+	if _, deleted := c.deletedEIPs.Load(info.eipName); deleted {
 		klog.V(3).Infof("iptables-eip %s was deleted, skipping add", info.eipName)
 		return nil
 	}

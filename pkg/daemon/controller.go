@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -77,6 +78,11 @@ type Controller struct {
 	iptablesEipsSynced     cache.InformerSynced
 	iptablesEipQueue       workqueue.TypedRateLimitingInterface[eipRouteInfo]
 	iptablesEipDeleteQueue workqueue.TypedRateLimitingInterface[eipRouteInfo]
+
+	// deletedEIPs tracks EIPs that have been deleted to prevent race conditions
+	// between delete events and queued add events. Entries are cleaned up after
+	// successful route deletion to prevent memory leaks.
+	deletedEIPs sync.Map
 
 	recorder record.EventRecorder
 

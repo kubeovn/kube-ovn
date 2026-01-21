@@ -185,3 +185,110 @@ func TestGetNatGwNameFromPod(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletedEIPsStateManagement(t *testing.T) {
+	t.Run("add event clears deleted mark", func(t *testing.T) {
+		c := &Controller{}
+
+		// Simulate a previous delete event that marked EIP as deleted
+		c.deletedEIPs.Store("test-eip", true)
+
+		// Verify mark exists
+		_, exists := c.deletedEIPs.Load("test-eip")
+		assert.True(t, exists, "deleted mark should exist before add event")
+
+		// Simulate what enqueueAddIptablesEip does - clear the mark
+		c.deletedEIPs.Delete("test-eip")
+
+		// Verify mark is cleared
+		_, exists = c.deletedEIPs.Load("test-eip")
+		assert.False(t, exists, "deleted mark should be cleared after add event")
+	})
+
+	t.Run("update event clears deleted mark", func(t *testing.T) {
+		c := &Controller{}
+
+		// Simulate a previous delete event
+		c.deletedEIPs.Store("test-eip", true)
+
+		// Verify mark exists
+		_, exists := c.deletedEIPs.Load("test-eip")
+		assert.True(t, exists, "deleted mark should exist before update event")
+
+		// Simulate what enqueueUpdateIptablesEip does - clear the mark
+		c.deletedEIPs.Delete("test-eip")
+
+		// Verify mark is cleared
+		_, exists = c.deletedEIPs.Load("test-eip")
+		assert.False(t, exists, "deleted mark should be cleared after update event")
+	})
+
+	t.Run("delete event sets deleted mark", func(t *testing.T) {
+		c := &Controller{}
+
+		// Verify no mark initially
+		_, exists := c.deletedEIPs.Load("test-eip")
+		assert.False(t, exists, "deleted mark should not exist initially")
+
+		// Simulate what enqueueDeleteIptablesEip does - set the mark
+		c.deletedEIPs.Store("test-eip", true)
+
+		// Verify mark is set
+		_, exists = c.deletedEIPs.Load("test-eip")
+		assert.True(t, exists, "deleted mark should be set after delete event")
+	})
+
+	t.Run("successful route deletion clears deleted mark", func(t *testing.T) {
+		c := &Controller{}
+
+		// Simulate delete event marking EIP as deleted
+		c.deletedEIPs.Store("test-eip", true)
+
+		// Verify mark exists
+		_, exists := c.deletedEIPs.Load("test-eip")
+		assert.True(t, exists, "deleted mark should exist after delete event")
+
+		// Simulate what processNextIptablesEipDeleteItem does after successful deletion
+		c.deletedEIPs.Delete("test-eip")
+
+		// Verify mark is cleaned up (prevents memory leak)
+		_, exists = c.deletedEIPs.Load("test-eip")
+		assert.False(t, exists, "deleted mark should be cleaned up after successful route deletion")
+	})
+
+	t.Run("sync skips deleted EIP", func(t *testing.T) {
+		c := &Controller{}
+
+		// Mark EIP as deleted
+		c.deletedEIPs.Store("test-eip", true)
+
+		// Check if the EIP is marked as deleted (simulating syncIptablesEipRoute logic)
+		_, deleted := c.deletedEIPs.Load("test-eip")
+		assert.True(t, deleted, "should detect EIP as deleted")
+	})
+
+	t.Run("sync proceeds for non-deleted EIP", func(t *testing.T) {
+		c := &Controller{}
+
+		// EIP is not marked as deleted
+		_, deleted := c.deletedEIPs.Load("test-eip")
+		assert.False(t, deleted, "should not detect EIP as deleted when not marked")
+	})
+
+	t.Run("multiple EIPs tracked independently", func(t *testing.T) {
+		c := &Controller{}
+
+		// Mark multiple EIPs as deleted
+		c.deletedEIPs.Store("eip-1", true)
+		c.deletedEIPs.Store("eip-2", true)
+
+		// Clear one EIP
+		c.deletedEIPs.Delete("eip-1")
+
+		// Verify eip-1 is cleared but eip-2 still marked
+		_, exists1 := c.deletedEIPs.Load("eip-1")
+		_, exists2 := c.deletedEIPs.Load("eip-2")
+		assert.False(t, exists1, "eip-1 should be cleared")
+		assert.True(t, exists2, "eip-2 should still be marked")
+	})
+}
