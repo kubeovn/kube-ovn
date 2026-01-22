@@ -421,7 +421,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Name, dnat.Spec.ExternalPort, dnat.Spec.Protocol); dup || err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -497,7 +497,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol); dup || err != nil {
 		klog.Errorf("failed to update dnat, %v", err)
 		return err
 	}
@@ -1531,8 +1531,8 @@ func (c *Controller) snatChangeEip(snat *kubeovnv1.IptablesSnatRule, eip *kubeov
 	return false
 }
 
-func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort string) (bool, error) {
-	// check if eip:external port already used
+func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, protocol string) (bool, error) {
+	// Check if the tuple "eip:external port:protocol" is already used by another DNAT rule
 	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
 		util.VpcNatGatewayNameLabel: gwName,
 		util.VpcDnatEPortLabel:      externalPort,
@@ -1544,8 +1544,8 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort st
 	}
 	if len(dnats) != 0 {
 		for _, d := range dnats {
-			if d.Name != dnatName && d.Spec.EIP == eipName {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
+			if d.Name != dnatName && d.Spec.EIP == eipName && d.Spec.Protocol == protocol {
+				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s', same protocol'%s' is using by dnat %s", dnatName, eipName, externalPort, protocol, d.Name)
 				return true, err
 			}
 		}
