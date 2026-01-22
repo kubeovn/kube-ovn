@@ -141,10 +141,6 @@ func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toD
 	return
 }
 
-func (c *Controller) handleDeletePod(event *podEvent) error {
-	return nil
-}
-
 func (c *Controller) handleUpdatePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -232,4 +228,8 @@ func (c *Controller) ovnMetricsUpdate() {
 }
 
 func (c *Controller) operateMod() {
+}
+
+func (c *Controller) runFlowSync(stopCh <-chan struct{}) {
+	// Flow sync is only supported on Linux
 }
