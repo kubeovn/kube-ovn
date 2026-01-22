@@ -449,6 +449,11 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		klog.Infof("Auto-detected %d additional VLAN interfaces for %s", len(vlanIDs), nic)
 	}
 
+	if err := c.cleanupAutoCreatedVlanInterfaces(pn.Name, nic, vlanInterfaceMap); err != nil {
+		klog.Errorf("Failed to cleanup auto-created VLAN interfaces for provider %s: %v", pn.Name, err)
+		return err
+	}
+
 	var mtu int
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
@@ -518,7 +523,7 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		return err
 	}
 
-	if err := c.cleanupAutoCreatedVlanInterfaces(pn.Name); err != nil {
+	if err := c.cleanupAutoCreatedVlanInterfaces(pn.Name, "", nil); err != nil {
 		klog.Errorf("Failed to cleanup auto-created VLAN interfaces for provider %s: %v", pn.Name, err)
 		return err
 	}
