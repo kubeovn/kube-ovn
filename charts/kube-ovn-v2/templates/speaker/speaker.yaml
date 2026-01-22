@@ -72,9 +72,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /kube-ovn/kube-ovn-speaker
-          {{- with .Values.bgpSpeaker.args }}
           args:
-            {{- toYaml . | trim | nindent 14 }}
+            - --logtostderr=false
+            - --alsologtostderr=true
+            - --log_file=/var/log/kube-ovn/kube-ovn-speaker.log
+            - --log_file_max_size=200
+          {{- with .Values.bgpSpeaker.args }}
+            {{- toYaml . | trim | nindent 12 }}
           {{- end }}
           env:
             - name: POD_IP
