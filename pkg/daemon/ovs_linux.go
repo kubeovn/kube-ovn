@@ -2015,20 +2015,41 @@ func (c *Controller) createVlanSubinterfaces(vlanInterfaces []string, baseInterf
 	return nil
 }
 
-func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName string) error {
-	createdInterfaces, err := util.FindKubeOVNAutoCreatedInterfaces(providerName)
+func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName, nic string, preservedIfaces map[string]int) error {
+	gcVlanIfaces, err := util.FindKubeOVNAutoCreatedInterfaces(providerName)
 	if err != nil {
 		return fmt.Errorf("failed to find auto-created interfaces for provider %s: %w", providerName, err)
 	}
 
-	if len(createdInterfaces) == 0 {
+	inUseVlanIface := ""
+	if strings.Contains(nic, ".") {
+		inUseVlanIface = nic
+	}
+
+	filteredIfaces := make([]string, 0, len(gcVlanIfaces))
+	for _, iface := range gcVlanIfaces {
+		if iface == inUseVlanIface {
+			continue
+		}
+		if preservedIfaces != nil {
+			if _, skip := preservedIfaces[iface]; skip {
+				continue
+			}
+		}
+		if iface == "" {
+			continue
+		}
+		filteredIfaces = append(filteredIfaces, iface)
+	}
+	gcVlanIfaces = filteredIfaces
+	if len(gcVlanIfaces) == 0 {
 		klog.V(3).Infof("No auto-created VLAN interfaces found for provider %s", providerName)
 		return nil
 	}
 
-	klog.Infof("Found %d auto-created VLAN interfaces to clean up for provider %s: %v", len(createdInterfaces), providerName, createdInterfaces)
+	klog.Infof("Cleaning %d auto-created VLAN interfaces for provider %s: %v", len(gcVlanIfaces), providerName, gcVlanIfaces)
 
-	for _, ifaceName := range createdInterfaces {
+	for _, ifaceName := range gcVlanIfaces {
 		klog.Infof("Cleaning up auto-created VLAN interface %s", ifaceName)
 		output, err := exec.Command("ip", "link", "delete", ifaceName).CombinedOutput()
 		if err != nil {
