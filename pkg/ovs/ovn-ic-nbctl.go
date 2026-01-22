@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c LegacyClient) ovnIcNbCommand(cmdArgs ...string) (string, error) {
@@ -47,7 +49,11 @@ func (c LegacyClient) GetTsSubnet(ts string) (string, error) {
 }
 
 func (c LegacyClient) GetTs() ([]string, error) {
-	cmd := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "list", "Transit_Switch"}
+	cmd := []string{
+		"--format=csv", "--data=bare", "--no-heading", "--columns=name",
+		"find", "Transit_Switch",
+		fmt.Sprintf("external-ids:%s=%s", ExternalIDVendor, util.CniTypeName),
+	}
 	output, err := c.ovnIcNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("failed to list transit switch: %v", err)
