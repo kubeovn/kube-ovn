@@ -532,19 +532,22 @@ func updateTS() error {
 			if err != nil {
 				return err
 			}
-			// #nosec G204
-			cmd := exec.Command("ovn-ic-nbctl",
-				ovs.MayExist, "ts-add", tsName,
-				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+			args := []string{}
 			if os.Getenv(util.EnvSSLEnabled) == "true" {
-				// #nosec G204
-				cmd = exec.Command("ovn-ic-nbctl",
+				args = append(args,
 					"--private-key=/var/run/tls/key",
 					"--certificate=/var/run/tls/cert",
 					"--ca-cert=/var/run/tls/cacert",
-					ovs.MayExist, "ts-add", tsName,
-					"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
+				)
 			}
+			args = append(args,
+				ovs.MayExist, "ts-add", tsName,
+				"--", "set", "Transit_Switch", tsName,
+				fmt.Sprintf(`external_ids:subnet="%s"`, subnet),
+				fmt.Sprintf(`external_ids:vendor="%s"`, util.CniTypeName),
+			)
+			// #nosec G204
+			cmd = exec.Command("ovn-ic-nbctl", args...)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("output: %s, err: %w", output, err)
