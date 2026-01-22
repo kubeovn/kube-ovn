@@ -118,7 +118,7 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
 	# skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-	# loadbalancer select local backend first
+	# loadbalancer select local backend first tmp
     git apply $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch && \
     # fix lr-lb dnat with multiple distributed gateway ports
     git apply $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
