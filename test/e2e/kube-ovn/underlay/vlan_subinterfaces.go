@@ -120,7 +120,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should create vlan subinterface when autoCreateVlanSubinterfaces is true`, func() {
-		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
 		providerNetworkName := allocProviderNetworkName()
 		pnDefaultInterface := pnDefaultParentInterface + ".100" // VLAN interface we expect to manage (physical interface + VLAN ID)
 		vlanID := extractVlanID(pnDefaultInterface)
@@ -142,7 +142,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should isolate subinterfaces across multiple provider networks`, func() {
-		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
 		pn1Name := allocProviderNetworkName()
 		pn1Interface := pnDefaultParentInterface + ".100"
 		pn1VlanID := extractVlanID(pn1Interface)
@@ -197,7 +197,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should cleanup auto-created subinterfaces when provider network is deleted`, func() {
-		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
 		providerNetworkName := allocProviderNetworkName()
 		pnDefaultInterface := pnDefaultParentInterface + ".100"
 		vlanID := extractVlanID(pnDefaultInterface)
@@ -258,7 +258,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should preserve auto-created subinterfaces when preserveVlanInterfaces is true`, func() {
-		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 15, "preserveVlanInterfaces is not supported before 1.15.0")
 		providerNetworkName := allocProviderNetworkName()
 		pnDefaultInterface := pnDefaultParentInterface
 		vlanID := "200"
@@ -293,7 +293,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should not cleanup existing subinterfaces when autoCreateVlanSubinterfaces set to false`, func() {
-		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
 		providerNetworkName := allocProviderNetworkName()
 		pnDefaultInterface := pnDefaultParentInterface + ".100"
 		vlanID := extractVlanID(pnDefaultInterface)
@@ -326,7 +326,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should handle subinterfaces edge cases properly`, func() {
-		f.SkipVersionPriorTo(1, 15, "vlan subinterfaces are not supported before 1.15.0")
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
 		ginkgo.By("should not create subinterface for non-VLAN interface name")
 		{
 			providerNetworkName := allocProviderNetworkName()
