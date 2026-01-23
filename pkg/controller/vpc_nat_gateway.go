@@ -849,7 +849,14 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
-	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName)
+
+	eth0SubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get gw eth0 valid subnet provider: %v", err)
+		return nil, err
+	}
+
+	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider)
 
 	// Restart logic to fix #5072
 	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
@@ -858,11 +865,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
-	eth0SubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
-	if err != nil {
-		klog.Errorf("failed to get gw eth0 valid subnet provider: %v", err)
-		return nil, err
-	}
 	if c.config.EnableNonPrimaryCNI {
 		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
 		var attachedNetworks string
@@ -872,17 +874,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 		// Attach the external network to attachedNetworks
 		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
-		// Check if we have a subnet provider, if so, use it to set the routes annotation
-		// This is useful when running in secondary CNI mode, as the subnet provider will be the
-		// one that has the routes to the subnet
-		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, eth0SubnetProvider)
-		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, eth0SubnetProvider)
-		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, eth0SubnetProvider)
-		// Merge new annotations with existing ones
 		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
-		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
-		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
-		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
 	}
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 

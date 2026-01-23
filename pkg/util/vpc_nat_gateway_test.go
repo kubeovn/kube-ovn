@@ -265,10 +265,11 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 		gw                   v1.VpcNatGateway
 		externalNadNamespace string
 		externalNadName      string
+		provider             string
 		expected             map[string]string
 	}{
 		{
-			name: "All fields provided",
+			name: "All fields provided with ovn provider",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
@@ -280,11 +281,33 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			},
 			externalNadName:      "external-subnet",
 			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             OvnProvider,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
 				LogicalSwitchAnnotation:      "internal-subnet",
 				IPAddressAnnotation:          "10.20.30.40",
+			},
+		},
+		{
+			name: "All fields provided with NAD provider",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "subnet.namespace.ovn",
+			expected: map[string]string{
+				"subnet.namespace.ovn.kubernetes.io/vpc_nat_gw":     "test-gateway",
+				nadv1.NetworkAttachmentAnnot:                        "kube-system/external-subnet",
+				"subnet.namespace.ovn.kubernetes.io/logical_switch": "internal-subnet",
+				"subnet.namespace.ovn.kubernetes.io/ip_address":     "10.20.30.40",
 			},
 		},
 		{
@@ -300,6 +323,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			},
 			externalNadName:      "external-subnet",
 			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             OvnProvider,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
@@ -311,7 +335,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName)
+			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider)
 			if !reflect.DeepEqual(tc.expected, result) {
 				t.Errorf("got %v, but want %v", result, tc.expected)
 			}
