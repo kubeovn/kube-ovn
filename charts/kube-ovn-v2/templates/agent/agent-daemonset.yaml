@@ -143,6 +143,7 @@ spec:
           - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
+          - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
         securityContext:
           runAsGroup: 0
           runAsUser: 0

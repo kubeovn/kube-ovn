@@ -87,7 +87,7 @@ func InitNodeGateway(config *Configuration) error {
 		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
 	}
-	return configureNodeNic(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU)
+	return configureNodeNic(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
 }
 
 func InitMirror(config *Configuration) error {
