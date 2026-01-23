@@ -15,6 +15,8 @@ DEBUG_TAG = $(shell cat VERSION)-debug
 LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 
+GINKGO = go tool github.com/onsi/ginkgo/v2/ginkgo
+
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
 FRR_VERSION = 9.1.3
