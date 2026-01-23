@@ -59,10 +59,15 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 }
 
 // GenNatGwPodAnnotations returns the Pod annotations for a NAT gateway
-func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider string) map[string]string {
+// additionalNetworks is optional, used when user specifies extra NADs in gw.Annotations
+func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) map[string]string {
+	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+	if additionalNetworks != "" {
+		attachedNetworks = additionalNetworks + ", " + attachedNetworks
+	}
 	return map[string]string{
 		fmt.Sprintf(VpcNatGatewayAnnotationTemplate, provider): gw.Name,
-		nadv1.NetworkAttachmentAnnot:                           fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName),
+		nadv1.NetworkAttachmentAnnot:                           attachedNetworks,
 		fmt.Sprintf(LogicalSwitchAnnotationTemplate, provider): gw.Spec.Subnet,
 		fmt.Sprintf(IPAddressAnnotationTemplate, provider):     gw.Spec.LanIP,
 	}

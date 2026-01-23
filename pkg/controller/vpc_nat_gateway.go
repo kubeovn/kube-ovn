@@ -856,25 +856,21 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider)
+	// Get additional networks specified by user in gw.Annotations (for secondary CNI mode)
+	// TODO: the EnableNonPrimaryCNI check may not be necessary, as additional NADs could also
+	// be useful in primary CNI mode. Consider removing this condition in the future.
+	var additionalNetworks string
+	if c.config.EnableNonPrimaryCNI && gw.Annotations != nil {
+		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
+	}
+
+	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
 
 	// Restart logic to fix #5072
 	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
 		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
 			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
 		}
-	}
-
-	if c.config.EnableNonPrimaryCNI {
-		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
-		var attachedNetworks string
-		// Get NetworkAttachmentDefinition if specified by user from pod annotations
-		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
-			attachedNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot] + ", "
-		}
-		// Attach the external network to attachedNetworks
-		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
-		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	}
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
