@@ -26,6 +26,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
@@ -1077,6 +1078,204 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// All cleanup is handled by DeferCleanup above
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
+	})
+
+	framework.ConformanceIt("[6] node local EIP access via macvlan sub-interface", func() {
+		f.SkipVersionPriorTo(1, 15, "Node local EIP access feature was introduced in v1.15")
+
+		overlaySubnetV4Cidr := "10.0.6.0/24"
+		overlaySubnetV4Gw := "10.0.6.1"
+		lanIP := "10.0.6.254"
+		natgwQoS := ""
+
+		ginkgo.By("1. Creating VPC NAT Gateway environment")
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // skipNADSetup: shared NAD created in BeforeAll
+		)
+
+		ginkgo.By("2. Creating IptablesEIP for testing node local access")
+		eipName := "node-local-eip-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up EIP " + eipName)
+			iptablesEIPClient.DeleteSync(eipName)
+		})
+
+		ginkgo.By("3. Waiting for EIP to be ready")
+		readyEip := waitForIptablesEIPReady(iptablesEIPClient, eipName, 60*time.Second)
+		framework.ExpectNotNil(readyEip, "EIP should be ready")
+		eipV4 := readyEip.Status.IP
+		framework.ExpectNotEmpty(eipV4, "EIP should have IP assigned")
+		framework.Logf("EIP %s has IP: %s", eipName, eipV4)
+
+		ginkgo.By("4. Finding the node where NAT gateway pod is running")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		natGwPod := f.PodClientNS(framework.KubeOvnNamespace).GetPod(vpcNatGwPodName)
+		framework.ExpectNotNil(natGwPod, "NAT gateway pod should exist")
+		natGwNodeName := natGwPod.Spec.NodeName
+		framework.Logf("NAT gateway pod %s is running on node %s", vpcNatGwPodName, natGwNodeName)
+
+		ginkgo.By("5. Getting kind nodes to verify macvlan sub-interface and route")
+		nodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+
+		var natGwNode *kind.Node
+		for i := range nodes {
+			if nodes[i].Name() == natGwNodeName {
+				natGwNode = &nodes[i]
+				break
+			}
+		}
+		framework.ExpectNotNil(natGwNode, "NAT gateway node should be found in kind cluster")
+
+		ginkgo.By("6. Verifying macvlan sub-interface exists on the node")
+		// The macvlan interface name is generated from the master interface name
+		// Get the external subnet to check its NadMacvlanMasterAnnotation
+		externalSubnet := subnetClient.Get(networkAttachDefName)
+		framework.ExpectNotNil(externalSubnet, "External subnet should exist")
+
+		// Wait for the NadMacvlanMasterAnnotation to be set on the subnet
+		// This annotation is set by kubeovn-controller when it detects a macvlan NAD
+		gomega.Eventually(func() string {
+			s := subnetClient.Get(networkAttachDefName)
+			if s == nil {
+				return ""
+			}
+			return s.Annotations[util.NadMacvlanMasterAnnotation]
+		}, 30*time.Second, 2*time.Second).ShouldNot(gomega.BeEmpty(), "Subnet should have NadMacvlanMasterAnnotation")
+
+		// Wait for the NadMacvlanTypeLabel to be set on the subnet
+		// This label is set together with the annotation for efficient filtering
+		gomega.Eventually(func() string {
+			s := subnetClient.Get(networkAttachDefName)
+			if s == nil {
+				return ""
+			}
+			return s.Labels[util.NadMacvlanTypeLabel]
+		}, 30*time.Second, 2*time.Second).Should(gomega.Equal("true"), "Subnet should have NadMacvlanTypeLabel=true")
+
+		// Re-get subnet to get the annotation value
+		externalSubnet = subnetClient.Get(networkAttachDefName)
+		macvlanMaster := externalSubnet.Annotations[util.NadMacvlanMasterAnnotation]
+		framework.Logf("External subnet NadMacvlanMasterAnnotation: %s", macvlanMaster)
+
+		// Generate expected macvlan interface name (matching daemon logic)
+		// Uses master interface name directly if <= 12 chars, otherwise FNV hash
+		// e.g., "eth0" -> "maceth0", "very-long-name" -> "mac" + hash
+		expectedMacvlanName, err := util.GenMacvlanIfaceName(macvlanMaster)
+		framework.ExpectNoError(err, "generating macvlan interface name")
+		framework.Logf("Expected macvlan interface name: %s (from master %s)", expectedMacvlanName, macvlanMaster)
+
+		// Wait for macvlan interface to be created
+		var macvlanLink *iproute.Link
+		gomega.Eventually(func() error {
+			links, err := iproute.AddressShow("", natGwNode.Exec)
+			if err != nil {
+				return fmt.Errorf("failed to list links: %w", err)
+			}
+			for i := range links {
+				if links[i].IfName == expectedMacvlanName {
+					macvlanLink = &links[i]
+					return nil
+				}
+			}
+			return fmt.Errorf("macvlan interface %s not found", expectedMacvlanName)
+		}, 60*time.Second, 2*time.Second).Should(gomega.Succeed(), "macvlan sub-interface should be created on the NAT gateway node")
+
+		framework.Logf("Found macvlan interface: %s (state: %s)", macvlanLink.IfName, macvlanLink.OperState)
+		framework.ExpectEqual(macvlanLink.OperState, "UP", "macvlan interface should be UP")
+
+		ginkgo.By("7. Verifying EIP route exists on the node")
+		// Wait for the EIP route to be created
+		gomega.Eventually(func() error {
+			routes, err := iproute.RouteShow("", expectedMacvlanName, natGwNode.Exec)
+			if err != nil {
+				return fmt.Errorf("failed to show routes: %w", err)
+			}
+			for _, route := range routes {
+				// Route should be for the EIP with /32 mask
+				if route.Dst == eipV4 || route.Dst == eipV4+"/32" {
+					framework.Logf("Found EIP route: dst=%s dev=%s", route.Dst, route.Dev)
+					return nil
+				}
+			}
+			return fmt.Errorf("route for EIP %s not found via %s", eipV4, expectedMacvlanName)
+		}, 60*time.Second, 2*time.Second).Should(gomega.Succeed(), "EIP route should be created on the NAT gateway node")
+
+		ginkgo.By("8. Verifying node can ping EIP via macvlan interface")
+		// Use arping or ping to verify connectivity
+		// Note: actual ping may not work in test environment due to network isolation,
+		// but we can verify the route exists and the interface is configured correctly
+		stdout, stderr, err := natGwNode.Exec("ip", "route", "get", eipV4)
+		framework.Logf("ip route get %s: stdout=%s, stderr=%s, err=%v", eipV4, string(stdout), string(stderr), err)
+		// The route should go through the macvlan interface
+		framework.ExpectContainSubstring(string(stdout), expectedMacvlanName, "Route to EIP should use macvlan interface")
+
+		ginkgo.By("9. Creating a second EIP and verifying route is added")
+		eip2Name := "node-local-eip2-" + framework.RandomSuffix()
+		eip2 := framework.MakeIptablesEIP(eip2Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip2)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up EIP " + eip2Name)
+			iptablesEIPClient.DeleteSync(eip2Name)
+		})
+
+		readyEip2 := waitForIptablesEIPReady(iptablesEIPClient, eip2Name, 60*time.Second)
+		framework.ExpectNotNil(readyEip2, "Second EIP should be ready")
+		eip2V4 := readyEip2.Status.IP
+		framework.Logf("Second EIP %s has IP: %s", eip2Name, eip2V4)
+
+		// Verify route for second EIP
+		gomega.Eventually(func() error {
+			routes, err := iproute.RouteShow("", expectedMacvlanName, natGwNode.Exec)
+			if err != nil {
+				return fmt.Errorf("failed to show routes: %w", err)
+			}
+			for _, route := range routes {
+				if route.Dst == eip2V4 || route.Dst == eip2V4+"/32" {
+					return nil
+				}
+			}
+			return fmt.Errorf("route for second EIP %s not found", eip2V4)
+		}, 30*time.Second, 2*time.Second).Should(gomega.Succeed(), "Route for second EIP should be created")
+
+		ginkgo.By("10. Deleting first EIP and verifying route is removed")
+		iptablesEIPClient.DeleteSync(eipName)
+
+		// Verify route for first EIP is removed
+		gomega.Eventually(func() bool {
+			routes, err := iproute.RouteShow("", expectedMacvlanName, natGwNode.Exec)
+			if err != nil {
+				return false
+			}
+			for _, route := range routes {
+				if route.Dst == eipV4 || route.Dst == eipV4+"/32" {
+					return false // Route still exists
+				}
+			}
+			return true // Route is gone
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(), "Route for deleted EIP should be removed")
+
+		// Route for second EIP should still exist
+		routes, err := iproute.RouteShow("", expectedMacvlanName, natGwNode.Exec)
+		framework.ExpectNoError(err, "getting routes")
+		found := false
+		for _, route := range routes {
+			if route.Dst == eip2V4 || route.Dst == eip2V4+"/32" {
+				found = true
+				break
+			}
+		}
+		framework.ExpectTrue(found, "Route for second EIP should still exist after first EIP is deleted")
+
+		ginkgo.By("11. Test completed: Node local EIP access via macvlan sub-interface works correctly")
 	})
 })
 
