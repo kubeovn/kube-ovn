@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -224,29 +225,29 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 	return added, deleted, updated
 }
 
-func (c *Controller) reconcileEIPBandtithLimitRules(
+func (c *Controller) reconcileEIPBandwidthLimitRules(
 	eip *kubeovnv1.IptablesEIP,
 	added kubeovnv1.QoSPolicyBandwidthLimitRules,
 	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
 	updated kubeovnv1.QoSPolicyBandwidthLimitRules,
 ) error {
-	var err error
-	// in this case, we must delete rules first, then add or update rules
+	klog.Infof("reconcile eip %s bandwidth limit rules, added: %d, deleted: %d, updated: %d",
+		eip.Name, len(added), len(deleted), len(updated))
+
+	// EIP QoS rules are applied differently from generic NAT GW rules.
+	// We must use the EIP-specific functions which require the EIP's IP address.
+	// Delete rules first, then add or update.
 	if len(deleted) > 0 {
-		if err = c.delEIPBandtithLimitRules(eip, eip.Status.IP, deleted); err != nil {
-			klog.Errorf("failed to delete eip %s bandwidth limit rules, %v", eip.Name, err)
+		if err := c.delEIPBandwidthLimitRules(eip, eip.Status.IP, deleted); err != nil {
+			klog.Errorf("failed to delete eip %s bandwidth limit rules: %v", eip.Name, err)
 			return err
 		}
 	}
-	if len(added) > 0 {
-		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, added); err != nil {
-			klog.Errorf("failed to add eip %s bandwidth limit rules, %v", eip.Name, err)
-			return err
-		}
-	}
-	if len(updated) > 0 {
-		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, updated); err != nil {
-			klog.Errorf("failed to update eip %s bandwidth limit rules, %v", eip.Name, err)
+
+	toAdd := append(added, updated...)
+	if len(toAdd) > 0 {
+		if err := c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, toAdd); err != nil {
+			klog.Errorf("failed to add/update eip %s bandwidth limit rules: %v", eip.Name, err)
 			return err
 		}
 	}
@@ -254,10 +255,10 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	return nil
 }
 
-func validateIPMatchValue(matachValue string) bool {
-	parts := strings.Split(matachValue, " ")
+func validateIPMatchValue(matchValue string) bool {
+	parts := strings.Split(matchValue, " ")
 	if len(parts) != 2 {
-		klog.Errorf("invalid ip MatchValue %s", matachValue)
+		klog.Errorf("invalid ip MatchValue %s", matchValue)
 		return false
 	}
 
@@ -373,13 +374,14 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		klog.V(3).Infof(
 			"bandwidth limit rules is changed for qos %s, added: %s, deleted: %s, updated: %s",
 			key, added.Strings(), deleted.Strings(), updated.Strings())
-		if cachedQos.Status.Shared {
-			err := fmt.Errorf("not support shared qos %s change rule", key)
-			klog.Error(err)
-			return err
-		}
 
-		if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
+		switch cachedQos.Status.BindingType {
+		case kubeovnv1.QoSBindingTypeEIP:
+			if cachedQos.Status.Shared {
+				err := fmt.Errorf("not support shared qos %s change rule for EIP binding type", key)
+				klog.Error(err)
+				return err
+			}
 			// filter to eip
 			eips, err := c.iptablesEipsLister.List(
 				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
@@ -389,10 +391,10 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 			}
 			switch {
 			case len(eips) == 0:
-				// not thing to do
+				// nothing to do
 			case len(eips) == 1:
 				eip := eips[0]
-				if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
+				if err = c.reconcileEIPBandwidthLimitRules(eip, added, deleted, updated); err != nil {
 					klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
 					return err
 				}
@@ -400,6 +402,26 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
 				klog.Error(err)
 				return err
+			}
+		case kubeovnv1.QoSBindingTypeNatGw:
+			// filter to nat gw
+			gws, err := c.vpcNatGatewayLister.List(
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+			if err != nil {
+				klog.Errorf("failed to get nat gw list, %v", err)
+				return err
+			}
+			var errs []error
+			for _, gw := range gws {
+				klog.Infof("reconcile nat gw %s bandwidth limit rules, added: %d, deleted: %d, updated: %d",
+					gw.Name, len(added), len(deleted), len(updated))
+				if err = c.reconcileNatGwBandwidthLimitRules(gw, added, deleted, updated); err != nil {
+					klog.Errorf("failed to reconcile nat gw %s bandwidth limit rules, %v", gw.Name, err)
+					errs = append(errs, err)
+				}
+			}
+			if len(errs) > 0 {
+				return utilerrors.NewAggregate(errs)
 			}
 		}
 

@@ -1270,10 +1270,10 @@ func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation st
 		klog.Error(err)
 		return err
 	}
-	return c.execNatGwBandtithLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
+	return c.execNatGwBandwidthLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
 }
 
-func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
+func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
 	var err error
 	for _, rule := range rules {
 		if err = c.execNatGwQoSInPod(gw.Name, &rule, operation); err != nil {
@@ -1324,6 +1324,29 @@ func (c *Controller) execNatGwQoSInPod(
 		klog.Error(err)
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) reconcileNatGwBandwidthLimitRules(
+	gw *kubeovnv1.VpcNatGateway,
+	added kubeovnv1.QoSPolicyBandwidthLimitRules,
+	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
+	updated kubeovnv1.QoSPolicyBandwidthLimitRules,
+) error {
+	// in this case, we must delete rules first, then add or update rules
+	if len(deleted) > 0 {
+		if err := c.execNatGwBandwidthLimitRules(gw, deleted, QoSDel); err != nil {
+			return fmt.Errorf("failed to delete nat gw %s bandwidth limit rules: %w", gw.Name, err)
+		}
+	}
+	// for tc qdisc, update is same as add (replace semantics)
+	toAdd := append(added, updated...)
+	if len(toAdd) > 0 {
+		if err := c.execNatGwBandwidthLimitRules(gw, toAdd, QoSAdd); err != nil {
+			return fmt.Errorf("failed to add/update nat gw %s bandwidth limit rules: %w", gw.Name, err)
+		}
+	}
+
 	return nil
 }
 

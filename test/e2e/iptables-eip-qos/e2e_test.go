@@ -51,6 +51,7 @@ const (
 	newEIPLimit
 	specificIPLimit
 	defaultNicLimit
+	updatedNatGwLimit
 )
 
 func setupNetworkAttachmentDefinition(
@@ -519,6 +520,54 @@ func specifyingIPQoSCases(f *framework.Framework,
 	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
 	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, specificIPLimit, false)
 	// Cleanup is now handled by DeferCleanup
+}
+
+// natgwQoSUpdateCases test updating QoS policy rules for VPC NAT Gateway
+func natgwQoSUpdateCases(f *framework.Framework,
+	vpc1Pod, vpc2Pod *corev1.Pod,
+	vpc1EIP, vpc2EIP *apiv1.IptablesEIP,
+	natgwName string,
+) {
+	ginkgo.GinkgoHelper()
+
+	// Derive clients from framework
+	vpcNatGwClient := f.VpcNatGatewayClient()
+	qosPolicyClient := f.QoSPolicyClient()
+
+	// create nic qos policy with initial rate limit
+	qosPolicyName := "natgw-update-qos-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating qos policy " + qosPolicyName)
+	rules := getNicDefaultQoSPolicy(defaultNicLimit)
+
+	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
+	qosPolicy = qosPolicyClient.CreateSync(qosPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
+		qosPolicyClient.DeleteSync(qosPolicyName)
+	})
+
+	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
+
+	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
+	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, defaultNicLimit, true)
+
+	// Update the QoS policy rules with new rate limit
+	ginkgo.By("Update qos policy " + qosPolicyName + " with new rate limit " + strconv.Itoa(updatedNatGwLimit) + "Mbps")
+	newRules := getNicDefaultQoSPolicy(updatedNatGwLimit)
+	modifiedQosPolicy := qosPolicy.DeepCopy()
+	modifiedQosPolicy.Spec.BandwidthLimitRules = newRules
+	qosPolicyClient.Patch(qosPolicy, modifiedQosPolicy)
+	qosPolicyClient.WaitToQoSReady(qosPolicyName)
+
+	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + strconv.Itoa(updatedNatGwLimit) + "Mbps")
+	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedNatGwLimit, true)
+
+	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+
+	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(updatedNatGwLimit) + "Mbps")
+	checkQos(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, updatedNatGwLimit, false)
 }
 
 // priorityQoSCases test qos match priority
@@ -1032,6 +1081,17 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 
 		// Run test
 		specifyingIPQoSCases(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
+		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
+	})
+
+	framework.ConformanceIt("natgw qos update", func() {
+		// Setup resources
+		vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP := setupQosTestResources(
+			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
+		)
+
+		// Run test
+		natgwQoSUpdateCases(f, vpc1Pod, vpc2Pod, vpc1EIP, vpc2EIP, vpcQosParams.vpcNat1GwName)
 		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
 	})
 
