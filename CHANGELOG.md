@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.15.1 (2026-01-25)
+
+ * [02d360b90](https://github.com/kubeovn/kube-ovn/commit/02d360b9096cd6d1acdf24106b0bec7d3e1683b6) release v1.15.1
+ * [b29a0ab9a](https://github.com/kubeovn/kube-ovn/commit/b29a0ab9ac457ae89fbfc937b54a3b94e680ad98) fix(vpc-nat-gw): use consistent provider for all pod annotations (#6204)
+ * [b3d96f7cd](https://github.com/kubeovn/kube-ovn/commit/b3d96f7cdfd0d15e3d2f293d3735f9b180965931) fix(vpcnatgw): cannot DNAT same EIP and same external port on two different protocols (#6201)
+ * [e22295bb1](https://github.com/kubeovn/kube-ovn/commit/e22295bb16b6bda49ef0fe88e323094db2c2b788) fix: cleanup auto-created vlan subinterfaces on interface switch (#6193)
+ * [a8be30f83](https://github.com/kubeovn/kube-ovn/commit/a8be30f83f07d390b998995cae24a9da9e923f17) fix 1.15 base image build
+ * [f6f0b9848](https://github.com/kubeovn/kube-ovn/commit/f6f0b9848081a635ec72c8f45ed31d8aafcb3bfb) fix: enforce neighbor address validation in configuration (#6134)
+ * [0f605b825](https://github.com/kubeovn/kube-ovn/commit/0f605b82500d9c371ce7708390d01490128aff3d) fix: acquire specified subnet from annotation (#6180)
+ * [508d9e816](https://github.com/kubeovn/kube-ovn/commit/508d9e81645a2bd27fff17da65a35c2ed64e6664) chore(deps): update dependency go to v1.25.6 (#6170)
+ * [21aaa869b](https://github.com/kubeovn/kube-ovn/commit/21aaa869bee07b8429e0f79cd0e85c976d42462f) add metallb underlay v6 dualcase (#6159)
+ * [7ff5bd3c4](https://github.com/kubeovn/kube-ovn/commit/7ff5bd3c4cb1ab855bb417dd8f59529f65e3d0d0) fix(helm): rolling upgrade strategy for ovs is wrong (#6160)
+ * [2a1e6f570](https://github.com/kubeovn/kube-ovn/commit/2a1e6f570490370dcf55666a5b154fb2a690bbaa) fix(deps): update golang (#6155)
+ * [05424e620](https://github.com/kubeovn/kube-ovn/commit/05424e6208fedbb6ac4efd5ed27b4092f9ed00d3) fix(deps): update golang (#6152)
+ * [2c40054c5](https://github.com/kubeovn/kube-ovn/commit/2c40054c5baf3f688fa61037c9d3983141794897) fix(deps): update golang (#6149)
+ * [d906cccb3](https://github.com/kubeovn/kube-ovn/commit/d906cccb3e37cca8ff87dc1ac5b44f41fdecd436) some left crd add description (#6147)
+ * [4135e1f12](https://github.com/kubeovn/kube-ovn/commit/4135e1f121f77d67fa3353ec2fff4a54a15712a4) fix(deps): update module golang.org/x/sys to v0.40.0 (#6145)
+ * [1cef6f91b](https://github.com/kubeovn/kube-ovn/commit/1cef6f91b502a5b9dc70bc24755ed4ecdd6f0587) add kube-ovn cr description (#6133)
+ * [03efbe58f](https://github.com/kubeovn/kube-ovn/commit/03efbe58f8847a6a04f60dc78db2d1a870a457e2) feat(chart): introduce extraEnv variable for all components (#6142)
+ * [65df1a7f2](https://github.com/kubeovn/kube-ovn/commit/65df1a7f2a85b233304e9ce41ab6f363b7b414b0) feat(chart): make DaemonSet update strategy configurable in values.yaml (#6136)
+ * [d575fe803](https://github.com/kubeovn/kube-ovn/commit/d575fe803a10cda37662bdced918a3e7d9d68b15) bugfix kube-ovn image tag from v.1.14.0 to v1.15.0, add default labels (#6135)
+ * [b00cbe47f](https://github.com/kubeovn/kube-ovn/commit/b00cbe47f60ac439bcc60860dd5e9aec1a2a9e7d) chore(deps): update dependency talos to v1.12.1 (#6126)
+ * [59aa5cff3](https://github.com/kubeovn/kube-ovn/commit/59aa5cff32ab5d1e0e475898e1334eb674808475) ci: fix loading vpc-nat-gateway image into kind cluster (#6128)
+ * [4a4d94e69](https://github.com/kubeovn/kube-ovn/commit/4a4d94e69659bd5eac5b036d61f6c999188c3c9f) ci: fix non-primary cni e2e test (#6127)
+ * [26d9c0259](https://github.com/kubeovn/kube-ovn/commit/26d9c02590798248e35b0349bede7111e3208cf3) fix: add validation for iptables rules to prevent malformed commands in nat gateway pod (#6125)
+ * [a8b25e78f](https://github.com/kubeovn/kube-ovn/commit/a8b25e78f0fd80750ec143f7f5e9f13022df4738) cleanup e2e tests
+ * [78b6de652](https://github.com/kubeovn/kube-ovn/commit/78b6de652fcd4dec3ad330adbbacfe236661175a) Add open flow sync refer to ovn-k8s (#6117)
+ * [6035ee206](https://github.com/kubeovn/kube-ovn/commit/6035ee2067350d2d064b0c24bd626942e4f4bee7) prepare for next release
+
+### Contributors
+
+ * Diego Gsponer
+ * Johann Schley
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * clyi
+ * renovate[bot]
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.0 (2026-01-01)
 
  * [304cd067f](https://github.com/kubeovn/kube-ovn/commit/304cd067f3abb17c46ce63aea579e4130cbb9a29) docs: updated CHANGELOG.md (#6113)
