@@ -271,6 +271,28 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 		expected             map[string]string
 	}{
 		{
+			name: "Empty provider defaults to ovn",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "",
+			additionalNetworks:   "",
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
+				LogicalSwitchAnnotation:      "internal-subnet",
+				IPAddressAnnotation:          "10.20.30.40",
+			},
+		},
+		{
 			name: "All fields provided with ovn provider",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
