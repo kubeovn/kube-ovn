@@ -186,6 +186,23 @@ func TestGetExternalSubnetNad(t *testing.T) {
 			expectError:       false,
 		},
 		{
+			name: "empty provider (fallback to subnet name)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"my-external-subnet"}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-external-subnet"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: ""},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "kube-system",
+			expectedName:      "my-external-subnet",
+			expectError:       false,
+		},
+		{
 			name: "empty ExternalSubnets (use default)",
 			gw: &kubeovnv1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},

@@ -852,7 +852,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		annotations = maps.Clone(oldSts.Annotations)
 	}
 
-	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
+	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
+	if err != nil {
+		klog.Errorf("failed to get gw external subnet nad: %v", err)
+		return nil, err
+	}
 
 	eth0SubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
 	if err != nil {
