@@ -849,40 +849,28 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	externalNadNamespace, externalNadName := c.getExternalSubnetNad(gw)
-	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName)
-
-	// Restart logic to fix #5072
-	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
-		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
-			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
-		}
-	}
 
 	eth0SubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get gw eth0 valid subnet provider: %v", err)
 		return nil, err
 	}
-	if c.config.EnableNonPrimaryCNI {
-		// We specify NAD using annotations when Kube-OVN is running as a secondary CNI
-		var attachedNetworks string
-		// Get NetworkAttachmentDefinition if specified by user from pod annotations
-		if gw.Annotations != nil && gw.Annotations[nadv1.NetworkAttachmentAnnot] != "" {
-			attachedNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot] + ", "
+
+	// Get additional networks specified by user in gw.Annotations (for secondary CNI mode)
+	// TODO: the EnableNonPrimaryCNI check may not be necessary, as additional NADs could also
+	// be useful in primary CNI mode. Consider removing this condition in the future.
+	var additionalNetworks string
+	if c.config.EnableNonPrimaryCNI && gw.Annotations != nil {
+		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
+	}
+
+	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+
+	// Restart logic to fix #5072
+	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
+		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
+			podAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
 		}
-		// Attach the external network to attachedNetworks
-		attachedNetworks += fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
-		// Check if we have a subnet provider, if so, use it to set the routes annotation
-		// This is useful when running in secondary CNI mode, as the subnet provider will be the
-		// one that has the routes to the subnet
-		vpcNatGwNameAnnotation := fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, eth0SubnetProvider)
-		logicalSwitchAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, eth0SubnetProvider)
-		ipAddressAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, eth0SubnetProvider)
-		// Merge new annotations with existing ones
-		podAnnotations[nadv1.NetworkAttachmentAnnot] = attachedNetworks
-		podAnnotations[vpcNatGwNameAnnotation] = gw.Name
-		podAnnotations[logicalSwitchAnnotation] = gw.Spec.Subnet
-		podAnnotations[ipAddressAnnotation] = gw.Spec.LanIP
 	}
 	klog.V(3).Infof("%s podAnnotations:%v", gw.Name, podAnnotations)
 
