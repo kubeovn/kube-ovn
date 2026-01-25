@@ -39,7 +39,7 @@ require (
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/puzpuzpuz/xsync/v4 v4.3.0
+	github.com/puzpuzpuz/xsync/v4 v4.4.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/pflag v1.0.10
@@ -326,6 +326,7 @@ replace (
 
 tool (
 	github.com/kubeovn/kube-ovn/tools/modernize
+	github.com/onsi/ginkgo/v2/ginkgo
 	github.com/ovn-kubernetes/libovsdb/cmd/modelgen
 	go.uber.org/mock/mockgen
 	k8s.io/code-generator/cmd/applyconfiguration-gen

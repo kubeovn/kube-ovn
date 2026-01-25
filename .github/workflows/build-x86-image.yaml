@@ -26,11 +26,11 @@ env:
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.8.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.0.5
+  HELM_VERSION: v4.1.0
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.22.0
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.12.1
+  TALOS_VERSION: v1.12.2
 
 jobs:
   build-kube-ovn-base:
@@ -190,9 +190,7 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
       - name: Unit test
-        run: |
-          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-          make ut
+        run: make ut
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
@@ -436,11 +434,6 @@ jobs:
             ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
             ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
-      - name: Install ginkgo
-        if: steps.lookup-go-cache.outputs.cache-hit != 'true'
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - run: make e2e-build
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.E2E_DIR }}
@@ -561,10 +554,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -767,10 +756,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download image
         uses: actions/download-artifact@v7
         with:
@@ -938,10 +923,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -1130,10 +1111,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -1328,10 +1305,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download image
         uses: actions/download-artifact@v7
         with:
@@ -1489,10 +1462,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
         with:
@@ -1640,10 +1609,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -2008,10 +1973,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
         with:
@@ -2154,10 +2115,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
@@ -2416,10 +2373,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download image
         uses: actions/download-artifact@v7
         with:
@@ -2553,10 +2506,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -2708,10 +2657,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -2867,10 +2812,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v7
@@ -3094,10 +3035,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download image
         uses: actions/download-artifact@v7
         with:
@@ -3274,10 +3211,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
         with:
@@ -3420,10 +3353,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
@@ -3568,10 +3497,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
         with:
@@ -3709,10 +3634,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
@@ -3856,10 +3777,6 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7
         with:
@@ -3973,10 +3890,6 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
-
-      - name: Install ginkgo
-        working-directory: ${{ env.E2E_DIR }}
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v7

@@ -529,6 +529,19 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.27 (2026-01-23)
+
+ * [edad2a50f](https://github.com/kubeovn/kube-ovn/commit/edad2a50f3a2cdacd4cf6ed79c50bcc5d5b47c57) release v1.14.27
+ * [9ac4ac62e](https://github.com/kubeovn/kube-ovn/commit/9ac4ac62e67156f458ee7164756d5ea944a9a09c) fix(vpcnatgw): cannot DNAT same EIP and same external port on two different protocols (#6201)
+ * [2f7908a35](https://github.com/kubeovn/kube-ovn/commit/2f7908a35c7f0ec744e1b05b44840f99c006fc24) fix: cleanup auto-created vlan subinterfaces on interface switch (#6193) (#6197)
+ * [0f81ac2a3](https://github.com/kubeovn/kube-ovn/commit/0f81ac2a3e6ed4496a83be64c50293da10d3e53f) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+
 ## v1.14.26 (2026-01-16)
 
  * [42213f789](https://github.com/kubeovn/kube-ovn/commit/42213f7893e22352c2bb1dc3830e552c0c60cb93) release v1.14.26

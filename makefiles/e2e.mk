@@ -15,8 +15,6 @@ K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
 K8S_NETPOL_E2E_SKIP = "sig-network.*NetworkPolicyLegacy"
 K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 
-GINKGO_PARALLEL_MULTIPLIER = $(shell echo $${GINKGO_PARALLEL_MULTIPLIER:-2})
-
 VER_MAJOR = 999
 VER_MINOR = 999
 
@@ -65,10 +63,15 @@ endif
 
 GINKGO_OUTPUT_OPT =
 GINKGO_PARALLEL_OPT =
+GINKGO_PARALLEL_MULTIPLIER = $(shell echo $${GINKGO_PARALLEL_MULTIPLIER:-2})
 ifeq ($(or $(CI),false),true)
 GINKGO_OUTPUT_OPT = --github-output --silence-skips
 GINKGO_PARALLEL_OPT = --procs $$(($$(nproc) * $(GINKGO_PARALLEL_MULTIPLIER)))
 endif
+
+GINKGO_E2E_BUILD = $(GINKGO) build $(E2E_BUILD_FLAGS)
+GINKGO_E2E_RUN = $(GINKGO) run $(GINKGO_OUTPUT_OPT) --randomize-all -v
+GINKGO_E2E_RUN_PARALLEL = $(GINKGO_E2E_RUN) $(GINKGO_PARALLEL_OPT)
 
 define ginkgo_option
 --$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --$(1)="/g')
@@ -81,24 +84,25 @@ e2e: kube-ovn-conformance-e2e
 
 .PHONY: e2e-build
 e2e-build:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/multus
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/non-primary-cni
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vip
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vpc-egress-gateway
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-vpc-nat-gw
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-vpc-nat-gw
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ha
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/security
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kubevirt
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/connectivity
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/metallb
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) \
+		./test/e2e/k8s-network \
+		./test/e2e/kube-ovn \
+		./test/e2e/ovn-ic \
+		./test/e2e/multus \
+		./test/e2e/non-primary-cni \
+		./test/e2e/lb-svc \
+		./test/e2e/vip \
+		./test/e2e/vpc-egress-gateway \
+		./test/e2e/iptables-vpc-nat-gw \
+		./test/e2e/ovn-vpc-nat-gw \
+		./test/e2e/ha \
+		./test/e2e/security \
+		./test/e2e/kubevirt \
+		./test/e2e/webhook \
+		./test/e2e/connectivity \
+		./test/e2e/metallb \
+		./test/e2e/anp-domain \
+		./test/e2e/cnp-domain
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -107,16 +111,16 @@ k8s-conformance-e2e:
 		if [ $$version != "v1.29.0" -a "$(E2E_IP_FAMILY)" = "dual" ]; then \
 			echo '"sig-network.*should create pod, add ipv6 and ipv4 ip to host ips.*"'; \
 		fi))
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=1h \
+	$(GINKGO_E2E_BUILD) ./test/e2e/k8s-network
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test -- $(TEST_BIN_ARGS)
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
-	ginkgo $(GINKGO_OUTPUT_OPT) --randomize-all -v --timeout=2h \
+	$(GINKGO_E2E_BUILD) ./test/e2e/k8s-network
+	$(GINKGO_E2E_RUN) --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
 		./test/e2e/k8s-network/k8s-network.test -- $(TEST_BIN_ARGS)
@@ -137,21 +141,19 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
+	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=35m \
-		--focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=35m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
+	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-ic
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-submariner-conformance-e2e
 kube-ovn-submariner-conformance-e2e:
@@ -161,135 +163,124 @@ kube-ovn-submariner-conformance-e2e:
 
 .PHONY: kube-ovn-multus-conformance-e2e
 kube-ovn-multus-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/multus
+	$(GINKGO_E2E_BUILD) ./test/e2e/multus
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=10m \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=10m \
 		--focus=CNI:Kube-OVN ./test/e2e/multus/multus.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-non-primary-cni-e2e
 kube-ovn-non-primary-cni-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/non-primary-cni
+	$(GINKGO_E2E_BUILD) ./test/e2e/non-primary-cni
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	TEST_CONFIG_PATH=$(shell echo $${TEST_CONFIG_PATH:-$(CURDIR)/test/e2e/non-primary-cni/testconfigs}) \
 	KUBE_OVN_PRIMARY_CNI=$(shell echo $${KUBE_OVN_PRIMARY_CNI:-false}) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=15m \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=15m \
 		--focus="group:non-primary-cni" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
+	$(GINKGO_E2E_BUILD) ./test/e2e/lb-svc
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test -- $(TEST_BIN_ARGS)
 
 .PHONY: vip-conformance-e2e
 vip-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vip
+	$(GINKGO_E2E_BUILD) ./test/e2e/vip
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/vip/vip.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/vip/vip.test -- $(TEST_BIN_ARGS)
 
 .PHONY: vpc-egress-gateway-e2e
 vpc-egress-gateway-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/vpc-egress-gateway
+	$(GINKGO_E2E_BUILD) ./test/e2e/vpc-egress-gateway
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/vpc-egress-gateway/vpc-egress-gateway.test -- $(TEST_BIN_ARGS)
 
 .PHONY: iptables-eip-conformance-e2e
 iptables-eip-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-vpc-nat-gw
+	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-vpc-nat-gw
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/iptables-vpc-nat-gw/iptables-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
 
 .PHONY: iptables-eip-qos-conformance-e2e
 iptables-eip-qos-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/iptables-eip-qos
+	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-eip-qos
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/iptables-eip-qos/iptables-eip-qos.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/iptables-eip-qos/iptables-eip-qos.test -- $(TEST_BIN_ARGS)
 
 .PHONY: iptables-vpc-nat-gw-conformance-e2e
-iptables-vpc-nat-gw-conformance-e2e:
-	$(MAKE) iptables-eip-conformance-e2e
-	$(MAKE) iptables-eip-qos-conformance-e2e
+iptables-vpc-nat-gw-conformance-e2e: iptables-eip-conformance-e2e iptables-eip-qos-conformance-e2e
 
 .PHONY: ovn-vpc-nat-gw-conformance-e2e
 ovn-vpc-nat-gw-conformance-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-vpc-nat-gw
+	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-vpc-nat-gw
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
+	$(GINKGO_E2E_RUN_PARALLEL) \
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ha-e2e
 kube-ovn-ha-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ha
+	$(GINKGO_E2E_BUILD) ./test/e2e/ha
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ha/ha.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/ha/ha.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/security
+	$(GINKGO_E2E_BUILD) ./test/e2e/security
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/security/security.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/security/security.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-kubevirt-e2e
 kube-ovn-kubevirt-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kubevirt
+	$(GINKGO_E2E_BUILD) ./test/e2e/kubevirt
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-webhook-e2e
 kube-ovn-webhook-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
+	$(GINKGO_E2E_BUILD) ./test/e2e/webhook
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ipsec-e2e
 kube-ovn-ipsec-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec
+	$(GINKGO_E2E_BUILD) ./test/e2e/ipsec
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN --label-filter="!cert-manager" ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN --label-filter="!cert-manager" \
+		./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ipsec-cert-mgr-e2e
 kube-ovn-ipsec-cert-mgr-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ipsec
+	$(GINKGO_E2E_BUILD) ./test/e2e/ipsec
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/ipsec/ipsec.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-anp-e2e
 kube-ovn-anp-e2e:
@@ -301,35 +292,35 @@ kube-ovn-cnp-e2e:
 
 .PHONY: kube-ovn-anp-domain-e2e
 kube-ovn-anp-domain-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/anp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/anp-domain
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/anp-domain/anp-domain.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-cnp-domain-e2e
 kube-ovn-cnp-domain-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/cnp-domain
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v --timeout=30m \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/cnp-domain/cnp-domain.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-connectivity-e2e
 kube-ovn-connectivity-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/connectivity
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) --procs 2 --randomize-all -v \
+	$(GINKGO_E2E_RUN) --procs 2 --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/connectivity -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-underlay-metallb-e2e
 kube-ovn-underlay-metallb-e2e:
-	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/metallb
+	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	ginkgo $(GINKGO_OUTPUT_OPT) $(GINKGO_PARALLEL_OPT) --randomize-all -v \
-		--focus=CNI:Kube-OVN ./test/e2e/metallb/metallb.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/metallb/metallb.test -- $(TEST_BIN_ARGS)
