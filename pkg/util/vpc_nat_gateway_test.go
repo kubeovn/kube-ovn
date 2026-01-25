@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -307,10 +308,10 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			provider:             "subnet.namespace.ovn",
 			additionalNetworks:   "",
 			expected: map[string]string{
-				"subnet.namespace.ovn.kubernetes.io/vpc_nat_gw":     "test-gateway",
-				nadv1.NetworkAttachmentAnnot:                        "kube-system/external-subnet",
-				"subnet.namespace.ovn.kubernetes.io/logical_switch": "internal-subnet",
-				"subnet.namespace.ovn.kubernetes.io/ip_address":     "10.20.30.40",
+				fmt.Sprintf(VpcNatGatewayAnnotationTemplate, "subnet.namespace.ovn"): "test-gateway",
+				nadv1.NetworkAttachmentAnnot:                                         "kube-system/external-subnet",
+				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
+				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 			},
 		},
 		{
@@ -329,10 +330,10 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			provider:             "subnet.namespace.ovn",
 			additionalNetworks:   "default/extra-net1, default/extra-net2",
 			expected: map[string]string{
-				"subnet.namespace.ovn.kubernetes.io/vpc_nat_gw":     "test-gateway",
-				nadv1.NetworkAttachmentAnnot:                        "default/extra-net1, default/extra-net2, kube-system/external-subnet",
-				"subnet.namespace.ovn.kubernetes.io/logical_switch": "internal-subnet",
-				"subnet.namespace.ovn.kubernetes.io/ip_address":     "10.20.30.40",
+				fmt.Sprintf(VpcNatGatewayAnnotationTemplate, "subnet.namespace.ovn"): "test-gateway",
+				nadv1.NetworkAttachmentAnnot:                                         "default/extra-net1, default/extra-net2, kube-system/external-subnet",
+				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
+				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 			},
 		},
 		{
