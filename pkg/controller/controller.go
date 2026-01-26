@@ -695,6 +695,10 @@ func Run(ctx context.Context, config *Configuration) {
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
+	// Start and sync NAD informer first, as many resources depend on NAD cache
+	// NAD CRD is optional, so we check if it exists before starting the informer
+	controller.StartNetAttachInformerFactory(ctx)
+
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
@@ -702,7 +706,6 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
-	controller.StartNetAttachInformerFactory(ctx)
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
