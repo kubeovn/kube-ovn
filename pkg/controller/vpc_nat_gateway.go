@@ -276,6 +276,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
+	// Always trigger route update check - handleUpdateNatGwRoutes will
+	// calculate the diff between spec.routes and status.routes to determine
+	// if any changes are needed. This handles spec.routes changes.
+	c.updateNatGwRoutesQueue.Add(key)
+
 	return nil
 }
 
@@ -387,7 +392,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	c.updateVpcFloatingIPQueue.Add(key)
 	c.updateVpcDnatQueue.Add(key)
 	c.updateVpcSnatQueue.Add(key)
-	c.updateVpcSubnetQueue.Add(key)
+	c.updateNatGwRoutesQueue.Add(key)
 	c.updateVpcEipQueue.Add(key)
 
 	patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
@@ -569,7 +574,63 @@ func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err er
 	return match[1], nil
 }
 
-func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
+// resolveNatGwRoutes resolves the NAT gateway routes by replacing "gateway" nextHopIP with
+// the actual subnet gateway IP based on the CIDR protocol. Returns a map of CIDR -> resolved nextHopIP.
+func (c *Controller) resolveNatGwRoutes(gw *kubeovnv1.VpcNatGateway) (map[string]string, error) {
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subnet %s for nat gw %s: %w", gw.Spec.Subnet, gw.Name, err)
+	}
+	v4Gateway, v6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
+
+	resolvedRoutes := make(map[string]string, len(gw.Spec.Routes))
+	for _, route := range gw.Spec.Routes {
+		nextHopIP := route.NextHopIP
+		if nextHopIP == "gateway" {
+			// Resolve "gateway" to the actual subnet gateway IP based on CIDR protocol
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv6 {
+				nextHopIP = v6Gateway
+			} else {
+				nextHopIP = v4Gateway
+			}
+		}
+		if nextHopIP == "" {
+			klog.Warningf("skipping route %s with empty nextHopIP for nat gw %s", route.CIDR, gw.Name)
+			continue
+		}
+		resolvedRoutes[route.CIDR] = nextHopIP
+	}
+	return resolvedRoutes, nil
+}
+
+// diffNatGwRoutes calculates routes to add and delete based on desired and current routes.
+// Used for eth0 (VPC internal interface) custom routes defined in spec.routes.
+// Returns routesToDel, routesToAdd as formatted strings "cidr,nextHopIP" for nat-gateway.sh
+// and resolvedRoutes for updating status.
+func diffNatGwRoutes(desiredRoutes, currentRoutes map[string]string) (routesToDel, routesToAdd []string, resolvedRoutes []kubeovnv1.Route) {
+	routesToDel = make([]string, 0, len(currentRoutes))
+	routesToAdd = make([]string, 0, len(desiredRoutes))
+	resolvedRoutes = make([]kubeovnv1.Route, 0, len(desiredRoutes))
+
+	// Calculate routes to delete: routes that no longer exist in desired config or have changed nextHopIP
+	for cidr, currentNextHop := range currentRoutes {
+		if desiredNextHop, exists := desiredRoutes[cidr]; !exists || currentNextHop != desiredNextHop {
+			routesToDel = append(routesToDel, fmt.Sprintf("%s,%s", cidr, currentNextHop))
+		}
+	}
+
+	// Calculate routes to add: new or changed
+	for cidr, nextHop := range desiredRoutes {
+		if currentNextHop, exists := currentRoutes[cidr]; !exists || currentNextHop != nextHop {
+			routesToAdd = append(routesToAdd, fmt.Sprintf("%s,%s", cidr, nextHop))
+		}
+		resolvedRoutes = append(resolvedRoutes, kubeovnv1.Route{CIDR: cidr, NextHopIP: nextHop})
+	}
+
+	return routesToDel, routesToAdd, resolvedRoutes
+}
+
+func (c *Controller) handleUpdateNatGwRoutes(natGwKey string) error {
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -585,139 +646,69 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(natGwKey)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
-	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
 
+	// Get the NAT GW pod
 	pod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
-		err = fmt.Errorf("failed to get nat gw '%s' pod, %w", natGwKey, err)
-		klog.Error(err)
+		if k8serrors.IsNotFound(err) {
+			// Pod not ready yet, routes will be injected via CNI annotation at creation time
+			klog.V(3).Infof("nat gw pod for %s not found, routes will be injected at creation time", natGwKey)
+			return nil
+		}
+		klog.Errorf("failed to get nat gw pod for %s: %v", natGwKey, err)
 		return err
 	}
 
-	v4InternalGw, _, err := c.GetGwBySubnet(gw.Spec.Subnet)
+	// Check if pod is running and initialized
+	if pod.Status.Phase != corev1.PodRunning {
+		klog.V(3).Infof("nat gw pod %s is not running (phase: %s), skipping hot update", pod.Name, pod.Status.Phase)
+		return nil
+	}
+	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; !hasInit {
+		klog.V(3).Infof("nat gw pod %s not initialized yet, skipping hot update", pod.Name)
+		return nil
+	}
+
+	// Build desired routes map using the shared helper function
+	desiredRoutes, err := c.resolveNatGwRoutes(gw)
 	if err != nil {
-		err = fmt.Errorf("failed to get gw, err: %w", err)
-		klog.Error(err)
-		return err
-	}
-	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
-	if err != nil {
-		err = fmt.Errorf("failed to get vpc, err: %w", err)
-		klog.Error(err)
+		klog.Errorf("failed to resolve routes for nat gw %s: %v", natGwKey, err)
 		return err
 	}
 
-	// update route table
-	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
-	// Store the subnet providers to get CIDRs from pod annotations
-	newProviderCIDRMap := make(map[string][]string)
-
-	if len(vpc.Status.Subnets) > 0 {
-		for _, s := range vpc.Status.Subnets {
-			subnet, err := c.subnetsLister.Get(s)
-			if err != nil {
-				err = fmt.Errorf("failed to get subnet, err: %w", err)
-				klog.Error(err)
-				return err
-			}
-			if subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection {
-				continue
-			}
-			if !isOvnSubnet(subnet) || !subnet.Status.IsValidated() {
-				continue
-			}
-			if v4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock); v4Cidr != "" {
-				newCIDRS = append(newCIDRS, v4Cidr)
-				// Store the provider and CIDR for later use to generate annotations
-				newProviderCIDRMap[subnet.Spec.Provider] = append(newProviderCIDRMap[subnet.Spec.Provider], v4Cidr)
-			}
-		}
-	}
-	// Get all the CIDRs that are already in the annotation using subnet providers
-	for annotation, value := range pod.Annotations {
-		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
-			var existingCIDR []string
-			if err = json.Unmarshal([]byte(value), &existingCIDR); err != nil {
-				klog.Error(err)
-				return err
-			}
-			oldCIDRs = append(oldCIDRs, existingCIDR...)
-		}
-	}
-	for _, old := range oldCIDRs {
-		if !slices.Contains(newCIDRS, old) {
-			toBeDelCIDRs = append(toBeDelCIDRs, old)
-		}
+	// Build current routes map from status
+	currentRoutes := make(map[string]string)
+	for _, route := range gw.Status.Routes {
+		currentRoutes[route.CIDR] = route.NextHopIP
 	}
 
-	if len(newCIDRS) > 0 {
-		var rules []string
-		for _, cidr := range newCIDRS {
-			if !util.CIDRContainIP(cidr, v4InternalGw) {
-				rules = append(rules, fmt.Sprintf("%s,%s", cidr, v4InternalGw))
-			}
-		}
-		if len(rules) > 0 {
-			if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
-				err = fmt.Errorf("failed to exec nat gateway rule, err: %w", err)
-				klog.Error(err)
-				return err
-			}
-		}
-	}
+	// Calculate routes diff: delete first, then add
+	routesToDel, routesToAdd, resolvedRoutes := diffNatGwRoutes(desiredRoutes, currentRoutes)
 
-	if len(toBeDelCIDRs) > 0 {
-		for _, cidr := range toBeDelCIDRs {
-			if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidr}); err != nil {
-				err = fmt.Errorf("failed to exec nat gateway rule, err: %w", err)
-				klog.Error(err)
-				return err
-			}
-		}
-	}
-
-	// For each subnet provider, generate vpc cidr annotation
-	patch := util.KVPatch{}
-
-	// Track existing vpc_cidrs annotations to identify stale ones
-	existingProviders := make(map[string]bool)
-	for annotation := range pod.Annotations {
-		if strings.Contains(annotation, ".kubernetes.io/vpc_cidrs") {
-			// Extract provider name from annotation key: <provider>.kubernetes.io/vpc_cidrs
-			parts := strings.Split(annotation, ".kubernetes.io/vpc_cidrs")
-			if len(parts) == 2 && parts[1] == "" {
-				provider := parts[0]
-				existingProviders[provider] = true
-			}
-		}
-	}
-
-	// Add/update annotations for current providers
-	for provider, cidrs := range newProviderCIDRMap {
-		cidrBytes, err := json.Marshal(cidrs)
-		if err != nil {
-			klog.Errorf("marshal eip annotation failed %v", err)
+	// Execute route deletions first
+	if len(routesToDel) > 0 {
+		klog.Infof("deleting routes for vpc nat gw %s: %v", natGwKey, routesToDel)
+		if err := c.execNatGwRules(pod, natGwSubnetRouteDel, routesToDel); err != nil {
+			klog.Errorf("failed to delete routes for nat gw %s: %v", natGwKey, err)
 			return err
 		}
-		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = string(cidrBytes)
-		// Mark this provider as still active
-		delete(existingProviders, provider)
 	}
 
-	// Remove annotations for providers that are no longer associated with the VPC
-	for provider := range existingProviders {
-		patch[fmt.Sprintf(util.VpcCIDRsAnnotationTemplate, provider)] = nil
-		klog.V(3).Infof("Removing stale vpc_cidrs annotation for provider %s from pod %s/%s", provider, pod.Namespace, pod.Name)
-	}
-
-	// Only patch if there are changes to make
-	if len(patch) > 0 {
-		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
-			err = fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
-			klog.Error(err)
+	// Execute route additions
+	if len(routesToAdd) > 0 {
+		klog.Infof("adding routes for vpc nat gw %s: %v", natGwKey, routesToAdd)
+		if err := c.execNatGwRules(pod, natGwSubnetRouteAdd, routesToAdd); err != nil {
+			klog.Errorf("failed to add routes for nat gw %s: %v", natGwKey, err)
 			return err
 		}
-		klog.V(3).Infof("Successfully patched %d vpc_cidrs annotations on pod %s/%s", len(patch), pod.Namespace, pod.Name)
+	}
+
+	// Update status with current routes
+	if len(routesToAdd) > 0 || len(routesToDel) > 0 {
+		if err := c.patchNatGwRoutesStatus(natGwKey, resolvedRoutes); err != nil {
+			klog.Errorf("failed to patch routes status for nat gw %s: %v", natGwKey, err)
+			return err
+		}
 	}
 
 	return nil
@@ -884,71 +875,25 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	maps.Copy(annotations, podAnnotations)
 
-	// Retrieve all subnets in existence
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
-	}
-
 	// Configure eth0 (OVN internal network) routes
-	// Retrieve the gateways of the subnet sitting behind the NAT gateway
-	eth0V4Gateway, eth0V6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
-	if err != nil {
-		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
-		return nil, err
-	}
-
-	// Add routes to join the services (is this still needed?)
-	// It seems like the script inside the NAT GW already does that
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes := make([]request.Route, 0, 2)
-	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
-	}
-	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
-	}
-
-	// Add gateway to join every subnet in the same VPC? (is this still needed?)
-	// Are we trying to give the NAT gateway access to every subnet in the VPC?
-	// I suspect this is to solve a problem where a static route is inserted to redirect all the traffic
-	// from a VPC into the NAT GW. When that happens, the GW has no return path to the other subnets.
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
-			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
-			continue
-		}
-		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if cidrV4 != "" && eth0V4Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV4, Gateway: eth0V4Gateway})
-		}
-		if cidrV6 != "" && eth0V6Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV6, Gateway: eth0V6Gateway})
-		}
-	}
-
-	// Users can specify custom routes to inject in the NAT GW
-	for _, route := range gw.Spec.Routes {
-		nexthop := route.NextHopIP
-
-		// Users can specify "gateway" instead of an actual IP as the next hop, and
-		// we will auto-determine the address of the gateway based on the protocol
-		if nexthop == "gateway" {
-			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
-				nexthop = eth0V4Gateway
-			} else {
-				nexthop = eth0V6Gateway
-			}
+	// Only user-specified custom routes are injected; no default routes are added.
+	// Users can specify routes via gw.Spec.Routes to customize the NAT gateway routing table.
+	if len(gw.Spec.Routes) > 0 {
+		resolvedRoutes, err := c.resolveNatGwRoutes(gw)
+		if err != nil {
+			klog.Errorf("failed to resolve routes for nat gw %s: %v", gw.Name, err)
+			return nil, err
 		}
 
-		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
-	}
+		routes := make([]request.Route, 0, len(resolvedRoutes))
+		for cidr, nexthop := range resolvedRoutes {
+			routes = append(routes, request.Route{Destination: cidr, Gateway: nexthop})
+		}
 
-	if err = setPodRoutesAnnotation(annotations, eth0SubnetProvider, routes); err != nil {
-		klog.Error(err)
-		return nil, err
+		if err = setPodRoutesAnnotation(annotations, eth0SubnetProvider, routes); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
 	}
 
 	// Set the default routes to the external network
@@ -958,17 +903,17 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	routes = routes[0:0]
+	net1Routes := make([]request.Route, 0, 2)
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 	if net1V4Gateway != "" {
-		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
+		net1Routes = append(net1Routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
 	}
 	if net1V6Gateway != "" {
-		routes = append(routes, request.Route{Destination: "::/0", Gateway: net1V6Gateway})
+		net1Routes = append(net1Routes, request.Route{Destination: "::/0", Gateway: net1V6Gateway})
 	}
 	// TODO:// check NAD if has ipam to disable ipam
 	if !gw.Spec.NoDefaultEIP {
-		if err = setPodRoutesAnnotation(annotations, net1Subnet.Spec.Provider, routes); err != nil {
+		if err = setPodRoutesAnnotation(annotations, net1Subnet.Spec.Provider, net1Routes); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -1166,6 +1111,34 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 			klog.Errorf("failed to patch vpc nat gw %s: %v", gw.Name, err)
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *Controller) patchNatGwRoutesStatus(key string, routes []kubeovnv1.Route) error {
+	oriGw, err := c.vpcNatGatewayLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc nat gw %s, %v", key, err)
+		return err
+	}
+	gw := oriGw.DeepCopy()
+	gw.Status.Routes = routes
+
+	bytes, err := gw.Status.Bytes()
+	if err != nil {
+		klog.Errorf("failed to marshal vpc nat gw %s status, %v", gw.Name, err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.MergePatchType,
+		bytes, metav1.PatchOptions{}, "status"); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to patch gw %s routes status, %v", gw.Name, err)
+		return err
 	}
 	return nil
 }
