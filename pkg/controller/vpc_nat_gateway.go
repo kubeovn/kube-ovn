@@ -1376,11 +1376,12 @@ func (c *Controller) initVpcNatGw() error {
 			klog.Error(err)
 			continue
 		}
-		if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+
+		if isNatGateway, natGateway := c.checkIsPodVpcNatGw(pod); isNatGateway {
 			if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 				return nil
 			}
-			c.initVpcNatGatewayQueue.Add(vpcGwName)
+			c.initVpcNatGatewayQueue.Add(natGateway)
 		}
 	}
 	return nil

@@ -73,7 +73,7 @@ func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, e
 
 	result := map[string]string{
 		nadv1.NetworkAttachmentAnnot:                    attachedNetworks,
-		fmt.Sprintf(VpcNatGatewayAnnotationTemplate, p): gw.Name,
+		VpcNatGatewayAnnotation:                         gw.Name,
 		fmt.Sprintf(LogicalSwitchAnnotationTemplate, p): gw.Spec.Subnet,
 		fmt.Sprintf(IPAddressAnnotationTemplate, p):     gw.Spec.LanIP,
 	}

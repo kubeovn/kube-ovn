@@ -54,7 +54,7 @@ func TestCheckIsPodVpcNatGw(t *testing.T) {
 						// Network attachment annotation to indicate this pod uses net1
 						nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
 						// Custom provider VPC NAT gateway annotation
-						fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, "net1.default.ovn"): "test-nat-gw",
+						util.VpcNatGatewayAnnotation: "test-nat-gw",
 						// Kube-OVN annotations for net1 provider
 						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
 						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
