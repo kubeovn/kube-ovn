@@ -75,4 +75,5 @@ cmd/controller/controller
 cmd/daemon/daemon
 
 .context/*
-frr/*
+# FRR build artifacts (exclude root-level frr directory, not cmd/frr)
+/frr/
