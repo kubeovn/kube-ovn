@@ -65,6 +65,9 @@ type VpcEgressGatewaySpec struct {
 	// optional BGP configuration name
 	// it references a cluster-scoped BgpConf resource
 	BgpConf string `json:"bgpConf,omitempty"`
+	// optional EVPN configuration name
+	// it references a cluster-scoped EvpnConf resource
+	EvpnConf string `json:"evpnConf,omitempty"`
 	// workload replicas
 	Replicas int32 `json:"replicas,omitempty"`
 	// optional name prefix used to generate the workload

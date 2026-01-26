@@ -36,6 +36,10 @@ func (c *FakeKubeovnV1) DNSNameResolvers() v1.DNSNameResolverInterface {
 	return newFakeDNSNameResolvers(c)
 }
 
+func (c *FakeKubeovnV1) EvpnConves() v1.EvpnConfInterface {
+	return newFakeEvpnConves(c)
+}
+
 func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return newFakeIPs(c)
 }
