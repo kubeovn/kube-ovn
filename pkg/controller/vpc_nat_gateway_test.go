@@ -123,3 +123,133 @@ func TestGetSubnetProvider(t *testing.T) {
 		assert.Error(t, err, "Should error for missing subnet")
 	})
 }
+
+func TestGetExternalSubnetNad(t *testing.T) {
+	tests := []struct {
+		name              string
+		gw                *kubeovnv1.VpcNatGateway
+		subnets           []*kubeovnv1.Subnet
+		podNamespace      string
+		expectedNamespace string
+		expectedName      string
+		expectError       bool
+	}{
+		{
+			name: "provider with 3 parts (name.namespace.ovn)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "external-subnet"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: "real-eip.kube-system.ovn"},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "kube-system",
+			expectedName:      "real-eip",
+			expectError:       false,
+		},
+		{
+			name: "provider with 2 parts (name.namespace)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "external-subnet"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: "my-nad.default"},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "default",
+			expectedName:      "my-nad",
+			expectError:       false,
+		},
+		{
+			name: "provider is ovn (fallback to subnet name)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"ovn-vpc-external-network"}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "ovn-vpc-external-network"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "kube-system",
+			expectedName:      "ovn-vpc-external-network",
+			expectError:       false,
+		},
+		{
+			name: "empty provider (fallback to subnet name)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"my-external-subnet"}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-external-subnet"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: ""},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "kube-system",
+			expectedName:      "my-external-subnet",
+			expectError:       false,
+		},
+		{
+			name: "empty ExternalSubnets (use default)",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{}},
+			},
+			subnets: []*kubeovnv1.Subnet{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "ovn-vpc-external-network"},
+					Spec:       kubeovnv1.SubnetSpec{Provider: "external.default.ovn"},
+				},
+			},
+			podNamespace:      "kube-system",
+			expectedNamespace: "default",
+			expectedName:      "external",
+			expectError:       false,
+		},
+		{
+			name: "subnet not found",
+			gw: &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"non-existent-subnet"}},
+			},
+			subnets:      []*kubeovnv1.Subnet{},
+			podNamespace: "kube-system",
+			expectError:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: tt.subnets,
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+			controller.config.PodNamespace = tt.podNamespace
+
+			namespace, name, err := controller.getExternalSubnetNad(tt.gw)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedNamespace, namespace, "namespace mismatch")
+			assert.Equal(t, tt.expectedName, name, "name mismatch")
+		})
+	}
+}
