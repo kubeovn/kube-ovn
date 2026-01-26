@@ -35,6 +35,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&BgpConfList{},
 		&DNSNameResolver{},
 		&DNSNameResolverList{},
+		&EvpnConf{},
+		&EvpnConfList{},
 		&IP{},
 		&IPList{},
 		&IPPool{},

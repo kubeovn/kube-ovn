@@ -28,6 +28,8 @@ type Interface interface {
 	BgpConves() BgpConfInformer
 	// DNSNameResolvers returns a DNSNameResolverInformer.
 	DNSNameResolvers() DNSNameResolverInformer
+	// EvpnConves returns a EvpnConfInformer.
+	EvpnConves() EvpnConfInformer
 	// IPs returns a IPInformer.
 	IPs() IPInformer
 	// IPPools returns a IPPoolInformer.
@@ -91,6 +93,11 @@ func (v *version) BgpConves() BgpConfInformer {
 // DNSNameResolvers returns a DNSNameResolverInformer.
 func (v *version) DNSNameResolvers() DNSNameResolverInformer {
 	return &dNSNameResolverInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// EvpnConves returns a EvpnConfInformer.
+func (v *version) EvpnConves() EvpnConfInformer {
+	return &evpnConfInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // IPs returns a IPInformer.

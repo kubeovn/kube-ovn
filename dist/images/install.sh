@@ -426,6 +426,58 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: evpn-confs.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: evpn-confs
+    singular: evpn-conf
+    shortNames:
+      - evpnc
+    kind: EvpnConf
+    listKind: EvpnConfList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - jsonPath: .spec.vni
+          name: VNI
+          type: integer
+        - jsonPath: .spec.routeTargets
+          name: ROUTE-TARGETS
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: age
+          type: date
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              description: EvpnConfSpec defines the desired state of EvpnConf.
+              type: object
+              required:
+                - vni
+                - routeTargets
+              properties:
+                vni:
+                  description: EVPN VXLAN Network Identifier (VNI).
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 16777215
+                routeTargets:
+                  description: Route target list used by EVPN (for example, 65000:100).
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: bgp-confs.kubeovn.io
 spec:
   group: kubeovn.io
@@ -1444,6 +1496,9 @@ spec:
                 bgpConf:
                   type: string
                   description: BGP configuration name referenced by the egress gateway
+                evpnConf:
+                  type: string
+                  description: EVPN configuration name referenced by the egress gateway
                 internalSubnet:
                   type: string
                   description: Internal subnet name for the egress gateway. This field is immutable after creation.
