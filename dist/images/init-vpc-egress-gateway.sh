@@ -8,6 +8,7 @@ EXTERNAL_GATEWAY_IPV4=${EXTERNAL_GATEWAY_IPV4:-}
 EXTERNAL_GATEWAY_IPV6=${EXTERNAL_GATEWAY_IPV6:-}
 NO_SNAT_SOURCES_IPV4=($(echo "${NO_SNAT_SOURCES_IPV4:-}" | tr ',' ' '))
 NO_SNAT_SOURCES_IPV6=($(echo "${NO_SNAT_SOURCES_IPV6:-}" | tr ',' ' '))
+ENABLE_BGP=${ENABLE_BGP:-}
 
 sysctl -w net.ipv4.ip_forward=1
 sysctl -w net.ipv6.conf.all.forwarding=1
@@ -39,22 +40,24 @@ if [ -n "${INTERNAL_GATEWAY_IPV4}" ]; then
   # response packets to external networks
   ip -4 rule add priority 1004 iif lo from "${external_ipv4}" lookup default
 
-  # iptables rules for IPv4
-  if ! iptables -t nat -S ${masquerade_chain} 1 &>/dev/null; then
-    iptables -t nat -N ${masquerade_chain}
+  if [ "${ENABLE_BGP}" != "true" ]; then
+    # iptables rules for IPv4
+    if ! iptables -t nat -S ${masquerade_chain} 1 &>/dev/null; then
+      iptables -t nat -N ${masquerade_chain}
+    fi
+    iptables -t raw -F PREROUTING
+    iptables -t nat -F PREROUTING
+    iptables -t nat -F POSTROUTING
+    iptables -t nat -F ${masquerade_chain}
+    iptables -t nat -A PREROUTING -i ${internal_iface} -j MARK --set-xmark 0x4000/0x4000
+    iptables -t nat -A POSTROUTING -j ${masquerade_chain}
+    iptables -t nat -A ${masquerade_chain} -j MARK --set-xmark 0x0/0xffffffff
+    iptables -t nat -A ${masquerade_chain} -j MASQUERADE --random-fully
+    for src in ${NO_SNAT_SOURCES_IPV4[*]}; do
+      iptables -t nat -I POSTROUTING -s "${src}" -j RETURN
+      iptables -t nat -I POSTROUTING -d "${src}" -j RETURN
+    done
   fi
-  iptables -t raw -F PREROUTING
-  iptables -t nat -F PREROUTING
-  iptables -t nat -F POSTROUTING
-  iptables -t nat -F ${masquerade_chain}
-  iptables -t nat -A PREROUTING -i ${internal_iface} -j MARK --set-xmark 0x4000/0x4000
-  iptables -t nat -A POSTROUTING -j ${masquerade_chain}
-  iptables -t nat -A ${masquerade_chain} -j MARK --set-xmark 0x0/0xffffffff
-  iptables -t nat -A ${masquerade_chain} -j MASQUERADE --random-fully
-  for src in ${NO_SNAT_SOURCES_IPV4[*]}; do
-    iptables -t nat -I POSTROUTING -s "${src}" -j RETURN
-    iptables -t nat -I POSTROUTING -d "${src}" -j RETURN
-  done
 fi
 
 if [ -n "${INTERNAL_GATEWAY_IPV6}" ]; then
@@ -78,22 +81,24 @@ if [ -n "${INTERNAL_GATEWAY_IPV6}" ]; then
   # response packets to external networks
   ip -6 rule add priority 1004 iif lo from "${external_ipv6}" lookup default
 
-  # iptables rules for IPv6
-  if ! ip6tables -t nat -S ${masquerade_chain} 1 &>/dev/null; then
-    ip6tables -t nat -N ${masquerade_chain}
+  if [ "${ENABLE_BGP}" != "true" ]; then
+    # iptables rules for IPv6
+    if ! ip6tables -t nat -S ${masquerade_chain} 1 &>/dev/null; then
+      ip6tables -t nat -N ${masquerade_chain}
+    fi
+    ip6tables -t raw -F PREROUTING
+    ip6tables -t nat -F PREROUTING
+    ip6tables -t nat -F POSTROUTING
+    ip6tables -t nat -F ${masquerade_chain}
+    ip6tables -t nat -A PREROUTING -i ${internal_iface} -j MARK --set-xmark 0x4000/0x4000
+    ip6tables -t nat -A POSTROUTING -j ${masquerade_chain}
+    ip6tables -t nat -A ${masquerade_chain} -j MARK --set-xmark 0x0/0xffffffff
+    ip6tables -t nat -A ${masquerade_chain} -j MASQUERADE --random-fully
+    for src in ${NO_SNAT_SOURCES_IPV6[*]}; do
+      ip6tables -t nat -I POSTROUTING -s "${src}" -j RETURN
+      ip6tables -t nat -I POSTROUTING -d "${src}" -j RETURN
+    done
   fi
-  ip6tables -t raw -F PREROUTING
-  ip6tables -t nat -F PREROUTING
-  ip6tables -t nat -F POSTROUTING
-  ip6tables -t nat -F ${masquerade_chain}
-  ip6tables -t nat -A PREROUTING -i ${internal_iface} -j MARK --set-xmark 0x4000/0x4000
-  ip6tables -t nat -A POSTROUTING -j ${masquerade_chain}
-  ip6tables -t nat -A ${masquerade_chain} -j MARK --set-xmark 0x0/0xffffffff
-  ip6tables -t nat -A ${masquerade_chain} -j MASQUERADE --random-fully
-  for src in ${NO_SNAT_SOURCES_IPV6[*]}; do
-    ip6tables -t nat -I POSTROUTING -s "${src}" -j RETURN
-    ip6tables -t nat -I POSTROUTING -d "${src}" -j RETURN
-  done
 fi
 
 sysctl net/ipv4/conf/${internal_iface}/rp_filter=0
