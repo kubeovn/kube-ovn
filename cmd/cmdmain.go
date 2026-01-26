@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/cmd/frr"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -85,6 +86,11 @@ func dumpProfile() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "frr-render" {
+		frr.CmdMain()
+		return
+	}
+
 	cmd := filepath.Base(os.Args[0])
 	switch cmd {
 	case CmdMonitor:

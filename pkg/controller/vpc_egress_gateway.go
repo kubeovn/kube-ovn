@@ -526,6 +526,40 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		deploy.Spec.Template.Spec.Containers[0] = container
 	}
 
+	// add FRR container if bgpConf is specified
+	if gw.Spec.BgpConf != "" {
+		bgpConf, err := c.bgpConfLister.Get(gw.Spec.BgpConf)
+		if err != nil {
+			err = fmt.Errorf("failed to get BgpConf %s: %w", gw.Spec.BgpConf, err)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+
+		var evpnConf *kubeovnv1.EvpnConf
+		if gw.Spec.EvpnConf != "" {
+			evpnConf, err = c.evpnConfLister.Get(gw.Spec.EvpnConf)
+			if err != nil {
+				err = fmt.Errorf("failed to get EvpnConf %s: %w", gw.Spec.EvpnConf, err)
+				klog.Error(err)
+				return attachmentNetworkName, nil, nil, nil, err
+			}
+		}
+
+		frrInitContainer := vpcEgressGatewayInitContainerFRRConfig(c.config.Image, bgpConf, evpnConf)
+		deploy.Spec.Template.Spec.InitContainers = append(deploy.Spec.Template.Spec.InitContainers, frrInitContainer)
+
+		frrContainer := vpcEgressGatewayContainerFRR(c.config.FRRImage)
+		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, frrContainer)
+
+		frrVolume := corev1.Volume{
+			Name: "frr-config",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
+		deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, frrVolume)
+	}
+
 	// generate hash for the workload to determine whether to update the existing workload or not
 	hash, err := util.Sha256HashObject(deploy)
 	if err != nil {
@@ -953,6 +987,81 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			Name:      "usr-local-sbin",
 			MountPath: "/usr/local/sbin",
 		}},
+	}
+}
+
+func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
+	env := []corev1.EnvVar{
+		{
+			Name:  "LOCAL_ASN",
+			Value: strconv.FormatUint(uint64(bgpConf.Spec.LocalASN), 10),
+		},
+		{
+			Name:  "PEER_ASN",
+			Value: strconv.FormatUint(uint64(bgpConf.Spec.PeerASN), 10),
+		},
+		{
+			Name:  "ROUTER_ID",
+			Value: bgpConf.Spec.RouterID,
+		},
+		{
+			Name:  "NEIGHBOURS",
+			Value: strings.Join(bgpConf.Spec.Neighbours, ","),
+		},
+	}
+
+	if evpnConf != nil {
+		env = append(env,
+			corev1.EnvVar{
+				Name:  "VNI",
+				Value: strconv.FormatUint(uint64(evpnConf.Spec.VNI), 10),
+			},
+			corev1.EnvVar{
+				Name:  "ROUTE_TARGETS",
+				Value: strings.Join(evpnConf.Spec.RouteTargets, ","),
+			},
+		)
+	}
+
+	return corev1.Container{
+		Name:            "frr-config",
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"/kube-ovn/kube-ovn-cmd",
+			"frr-render",
+		},
+		Env: env,
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "frr-config",
+				MountPath: "/etc/frr",
+			},
+		},
+	}
+}
+
+func vpcEgressGatewayContainerFRR(image string) corev1.Container {
+	return corev1.Container{
+		Name:            "frr",
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"bash",
+			"-c",
+			"/usr/lib/frr/docker-start & until [[ -f /etc/frr/frr.log ]]; do sleep 1; done; tail -f /etc/frr/frr.log",
+		},
+		SecurityContext: &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{"NET_ADMIN", "NET_RAW", "SYS_ADMIN"},
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "frr-config",
+				MountPath: "/etc/frr",
+			},
+		},
 	}
 }
 
