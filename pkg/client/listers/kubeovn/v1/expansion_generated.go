@@ -18,6 +18,10 @@ limitations under the License.
 
 package v1
 
+// BgpConfListerExpansion allows custom methods to be added to
+// BgpConfLister.
+type BgpConfListerExpansion interface{}
+
 // DNSNameResolverListerExpansion allows custom methods to be added to
 // DNSNameResolverLister.
 type DNSNameResolverListerExpansion interface{}

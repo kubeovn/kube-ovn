@@ -73,3 +73,5 @@ cmd/cmd
 cmd/cni/cni
 cmd/controller/controller
 cmd/daemon/daemon
+
+frr/*

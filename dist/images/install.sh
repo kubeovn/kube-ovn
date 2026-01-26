@@ -426,6 +426,89 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: bgp-confs.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: bgp-confs
+    singular: bgp-conf
+    shortNames:
+      - bgpc
+    kind: BgpConf
+    listKind: BgpConfList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - jsonPath: .spec.localASN
+          name: LOCAL-ASN
+          type: integer
+        - jsonPath: .spec.peerASN
+          name: REMOTE-ASN
+          type: integer
+        - jsonPath: .spec.neighbours
+          name: NEIGHBORS
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: age
+          type: date
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              description: BgpConfSpec defines the desired state of BgpConf.
+              type: object
+              required:
+                - localASN
+                - peerASN
+                - neighbours
+              properties:
+                localASN:
+                  description: AS number to use for the local end of the BGP session.
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 4294967295
+                peerASN:
+                  description: AS number to expect from the remote end of the BGP session.
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 4294967295
+                routerId:
+                  description: BGP router ID to advertise to the peer. If not set, the speaker will pick a default router ID.
+                  type: string
+                neighbours:
+                  description: Addresses to dial when establishing the BGP session.
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                password:
+                  description: Authentication password for routers enforcing TCP MD5 authenticated sessions.
+                  type: string
+                holdTime:
+                  description: Requested BGP hold time, per RFC4271.
+                  type: string
+                keepaliveTime:
+                  description: Requested BGP keepalive time, per RFC4271.
+                  type: string
+                connectTime:
+                  description: Requested BGP connect time, controls how long BGP waits between connection attempts to a neighbor.
+                  type: string
+                ebgpMultiHop:
+                  description: To set if the eBGP peer is multi-hops away.
+                  type: boolean
+                gracefulRestart:
+                  description: Enable BGP graceful restart so routes can be preserved on unexpected restarts.
+                  type: boolean
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: vpc-nat-gateways.kubeovn.io
 spec:
   group: kubeovn.io
@@ -1358,6 +1441,9 @@ spec:
                   description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the egress gateway. This field is immutable after creation.
+                bgpConf:
+                  type: string
+                  description: BGP configuration name referenced by the egress gateway
                 internalSubnet:
                   type: string
                   description: Internal subnet name for the egress gateway. This field is immutable after creation.
