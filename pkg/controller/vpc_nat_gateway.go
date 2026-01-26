@@ -872,7 +872,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
 	}
 
-	podAnnotations := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	podAnnotations, err := util.GenNatGwPodAnnotations(gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	if err != nil {
+		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
+		return nil, err
+	}
 
 	// Restart logic to fix #5072
 	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
