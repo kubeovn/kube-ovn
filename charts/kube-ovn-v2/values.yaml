@@ -152,6 +152,10 @@ networking:
   # -- Enable EIP and SNAT.
   # @section -- Network parameters of the CNI
   enableEipSnat: true
+  # -- Namespace where ovn-external-gw-config ConfigMap is located.
+  # Empty means it will use the same namespace as the controller (PodNamespace).
+  # @section -- Network parameters of the CNI
+  externalGatewayConfigNs: ""
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
