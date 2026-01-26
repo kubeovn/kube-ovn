@@ -423,6 +423,13 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 	initEnv = append(initEnv, ipv6Env...)
 
+	if gw.Spec.BgpConf != "" {
+		initEnv = append(initEnv, corev1.EnvVar{
+			Name:  "ENABLE_BGP",
+			Value: "true",
+		})
+	}
+
 	// generate workload
 	labels := vegWorkloadLabels(gw.Name)
 	deploy := &appsv1.Deployment{
