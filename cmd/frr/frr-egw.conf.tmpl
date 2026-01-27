@@ -16,8 +16,28 @@ router bgp {{ .LocalASN }}
   no bgp default ipv4-unicast
 {{- end }}
   bgp router-id {{ .RouterID }}
+{{- if or .Password .KeepaliveTime .HoldTime .ConnectTime .EbgpMultiHop }}
+  neighbor NEIGHBORS peer-group
+  neighbor NEIGHBORS remote-as {{ .PeerASN }}
+{{- if .Password }}
+  neighbor NEIGHBORS password {{ .Password }}
+{{- end }}
+{{- if or .KeepaliveTime .HoldTime }}
+  neighbor NEIGHBORS timers {{ if .KeepaliveTime }}{{ .KeepaliveTime }}{{ else }}0{{ end }} {{ if .HoldTime }}{{ .HoldTime }}{{ else }}0{{ end }}
+{{- end }}
+{{- if .ConnectTime }}
+  neighbor NEIGHBORS timers connect {{ .ConnectTime }}
+{{- end }}
+{{- if .EbgpMultiHop }}
+  neighbor NEIGHBORS ebgp-multihop
+{{- end }}
+{{- range .Neighbours }}
+  neighbor {{ . }} peer-group NEIGHBORS
+{{- end }}
+{{- else }}
 {{- range .Neighbours }}
   neighbor {{ . }} remote-as {{ $.PeerASN }}
+{{- end }}
 {{- end }}
 {{- if .EnableEVPN }}
 

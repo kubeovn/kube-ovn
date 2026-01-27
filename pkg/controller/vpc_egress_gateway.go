@@ -1024,6 +1024,41 @@ func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.Bgp
 		},
 	}
 
+	if bgpConf.Spec.Password != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "BGP_PASSWORD",
+			Value: bgpConf.Spec.Password,
+		})
+	}
+
+	if bgpConf.Spec.HoldTime != (metav1.Duration{}) {
+		env = append(env, corev1.EnvVar{
+			Name:  "BGP_HOLD_TIME",
+			Value: formatDurationToSeconds(bgpConf.Spec.HoldTime),
+		})
+	}
+
+	if bgpConf.Spec.KeepaliveTime != (metav1.Duration{}) {
+		env = append(env, corev1.EnvVar{
+			Name:  "BGP_KEEPALIVE_TIME",
+			Value: formatDurationToSeconds(bgpConf.Spec.KeepaliveTime),
+		})
+	}
+
+	if bgpConf.Spec.ConnectTime != (metav1.Duration{}) {
+		env = append(env, corev1.EnvVar{
+			Name:  "BGP_CONNECT_TIME",
+			Value: formatDurationToSeconds(bgpConf.Spec.ConnectTime),
+		})
+	}
+
+	if bgpConf.Spec.EbgpMultiHop {
+		env = append(env, corev1.EnvVar{
+			Name:  "BGP_EBGP_MULTIHOP",
+			Value: "true",
+		})
+	}
+
 	if evpnConf != nil {
 		env = append(env,
 			corev1.EnvVar{
@@ -1053,6 +1088,17 @@ func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.Bgp
 			},
 		},
 	}
+}
+
+func formatDurationToSeconds(d metav1.Duration) string {
+	seconds := int64(d.Seconds())
+	if seconds < 0 {
+		seconds = 0
+	}
+	if seconds > 65535 {
+		seconds = 65535
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
 
 func vpcEgressGatewayContainerFRR(image string) corev1.Container {

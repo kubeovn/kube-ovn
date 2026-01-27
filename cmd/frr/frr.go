@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"k8s.io/klog/v2"
 )
@@ -20,13 +21,18 @@ var frrConfigTemplate string
 var frrDaemonsConfig string
 
 type Config struct {
-	LocalASN     string
-	PeerASN      string
-	RouterID     string
-	Neighbours   []string
-	VNI          string
-	RouteTargets []string
-	EnableEVPN   bool
+	LocalASN      string
+	PeerASN       string
+	RouterID      string
+	Neighbours    []string
+	VNI           string
+	RouteTargets  []string
+	EnableEVPN    bool
+	Password      string
+	HoldTime      string
+	KeepaliveTime string
+	ConnectTime   string
+	EbgpMultiHop  bool
 }
 
 func CmdMain() {
@@ -59,6 +65,26 @@ func renderFRRConfig() error {
 	}
 
 	config.EnableEVPN = config.VNI != ""
+
+	config.Password = os.Getenv("BGP_PASSWORD")
+	if holdTime := os.Getenv("BGP_HOLD_TIME"); holdTime != "" {
+		if seconds, err := parseDurationToSeconds(holdTime); err == nil {
+			config.HoldTime = seconds
+		}
+	}
+	if keepaliveTime := os.Getenv("BGP_KEEPALIVE_TIME"); keepaliveTime != "" {
+		if seconds, err := parseDurationToSeconds(keepaliveTime); err == nil {
+			config.KeepaliveTime = seconds
+		}
+	}
+	if connectTime := os.Getenv("BGP_CONNECT_TIME"); connectTime != "" {
+		if seconds, err := parseDurationToSeconds(connectTime); err == nil {
+			config.ConnectTime = seconds
+		}
+	}
+	if ebgpMultiHop := os.Getenv("BGP_EBGP_MULTIHOP"); ebgpMultiHop != "" {
+		config.EbgpMultiHop = ebgpMultiHop == "true"
+	}
 
 	if config.RouterID == "" {
 		podIP := getFirstPodIP()
@@ -166,4 +192,18 @@ func getFirstPodIP() string {
 	}
 
 	return ""
+}
+
+func parseDurationToSeconds(durationStr string) (string, error) {
+	duration, err := time.ParseDuration(durationStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid duration format %s: %w", durationStr, err)
+	}
+
+	seconds := int64(duration.Seconds())
+	if seconds < 0 || seconds > 65535 {
+		return "", fmt.Errorf("duration %s is out of valid range [0, 65535] seconds", durationStr)
+	}
+
+	return strconv.FormatInt(seconds, 10), nil
 }
