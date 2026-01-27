@@ -310,6 +310,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	internalCIDRv4, internalCIDRv6 := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
 
 	// collect egress policies
+	ipv4Src, ipv6Src := set.New[string](), set.New[string]()
 	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
 	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
 	fnFilter := func(internalCIDR string, ipBlocks []string) set.Set[string] {
@@ -328,6 +329,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	for _, policy := range gw.Spec.Policies {
 		ipv4, ipv6 := util.SplitIpsByProtocol(policy.IPBlocks)
+		ipv4Src = ipv4Src.Insert(ipv4...)
+		ipv6Src = ipv6Src.Insert(ipv6...)
 		filteredV4 := fnFilter(internalCIDRv4, ipv4)
 		filteredV6 := fnFilter(internalCIDRv6, ipv6)
 		if policy.SNAT {
@@ -338,11 +341,6 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			ipv6ForwardSrc = ipv6ForwardSrc.Union(filteredV6)
 		}
 		for _, subnetName := range policy.Subnets {
-			if subnetName == internalSubnet {
-				// skip the internal subnet
-				continue
-			}
-
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
 				klog.Error(err)
@@ -355,6 +353,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			}
 			// TODO: check subnet's vpc and vlan
 			ipv4, ipv6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+			ipv4Src = ipv4Src.Insert(ipv4)
+			ipv6Src = ipv6Src.Insert(ipv6)
 			if policy.SNAT {
 				ipv4SNATSrc.Insert(ipv4)
 				ipv6SNATSrc.Insert(ipv6)
@@ -366,6 +366,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 
 	// calculate internal route destinations and forward source CIDR blocks
+	ipv4Src.Delete("")
+	ipv6Src.Delete("")
 	ipv4ForwardSrc.Delete("")
 	ipv6ForwardSrc.Delete("")
 	ipv4SNATSrc.Delete("")
@@ -564,7 +566,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	// return the source CIDR blocks for later OVN resources reconciliation
 	deploy.APIVersion, deploy.Kind = appsv1.SchemeGroupVersion.String(), util.KindDeployment
-	return attachmentNetworkName, intRouteDstIPv4, intRouteDstIPv6, deploy, nil
+	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {
