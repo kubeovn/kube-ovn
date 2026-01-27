@@ -84,25 +84,24 @@ e2e: kube-ovn-conformance-e2e
 
 .PHONY: e2e-build
 e2e-build:
-	$(GINKGO_E2E_BUILD) \
-		./test/e2e/k8s-network \
-		./test/e2e/kube-ovn \
-		./test/e2e/ovn-ic \
-		./test/e2e/multus \
-		./test/e2e/non-primary-cni \
-		./test/e2e/lb-svc \
-		./test/e2e/vip \
-		./test/e2e/vpc-egress-gateway \
-		./test/e2e/iptables-vpc-nat-gw \
-		./test/e2e/ovn-vpc-nat-gw \
-		./test/e2e/ha \
-		./test/e2e/security \
-		./test/e2e/kubevirt \
-		./test/e2e/webhook \
-		./test/e2e/connectivity \
-		./test/e2e/metallb \
-		./test/e2e/anp-domain \
-		./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/k8s-network
+	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
+	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-ic
+	$(GINKGO_E2E_BUILD) ./test/e2e/multus
+	$(GINKGO_E2E_BUILD) ./test/e2e/non-primary-cni
+	$(GINKGO_E2E_BUILD) ./test/e2e/lb-svc
+	$(GINKGO_E2E_BUILD) ./test/e2e/vip
+	$(GINKGO_E2E_BUILD) ./test/e2e/vpc-egress-gateway
+	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-vpc-nat-gw
+	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-vpc-nat-gw
+	$(GINKGO_E2E_BUILD) ./test/e2e/ha
+	$(GINKGO_E2E_BUILD) ./test/e2e/security
+	$(GINKGO_E2E_BUILD) ./test/e2e/kubevirt
+	$(GINKGO_E2E_BUILD) ./test/e2e/webhook
+	$(GINKGO_E2E_BUILD) ./test/e2e/connectivity
+	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
+	$(GINKGO_E2E_BUILD) ./test/e2e/anp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/cnp-domain
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
