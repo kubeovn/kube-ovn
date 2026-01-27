@@ -57,6 +57,14 @@ function gen_conn_str {
     echo "$x"
 }
 
+function gen_conn_addr {
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+        echo "tcp:[$1]:$2"
+    else
+        echo "ssl:[$1]:$2"
+    fi
+}
+
 function ovn_db_pre_start() {
     local db=""
     local port=""
