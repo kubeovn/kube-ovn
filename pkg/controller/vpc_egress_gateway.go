@@ -430,6 +430,23 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		})
 	}
 
+	var evpnConf *kubeovnv1.EvpnConf
+	if gw.Spec.EvpnConf != "" {
+		evpnConf, err = c.evpnConfLister.Get(gw.Spec.EvpnConf)
+		if err != nil {
+			err = fmt.Errorf("failed to get EvpnConf %s: %w", gw.Spec.EvpnConf, err)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		initEnv = append(initEnv, corev1.EnvVar{
+			Name:  "ENABLE_EVPN",
+			Value: "true",
+		}, corev1.EnvVar{
+			Name:  "VNI",
+			Value: strconv.FormatUint(uint64(evpnConf.Spec.VNI), 10),
+		})
+	}
+
 	// generate workload
 	labels := vegWorkloadLabels(gw.Name)
 	deploy := &appsv1.Deployment{
@@ -540,16 +557,6 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			err = fmt.Errorf("failed to get BgpConf %s: %w", gw.Spec.BgpConf, err)
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
-		}
-
-		var evpnConf *kubeovnv1.EvpnConf
-		if gw.Spec.EvpnConf != "" {
-			evpnConf, err = c.evpnConfLister.Get(gw.Spec.EvpnConf)
-			if err != nil {
-				err = fmt.Errorf("failed to get EvpnConf %s: %w", gw.Spec.EvpnConf, err)
-				klog.Error(err)
-				return attachmentNetworkName, nil, nil, nil, err
-			}
 		}
 
 		frrInitContainer := vpcEgressGatewayInitContainerFRRConfig(c.config.Image, bgpConf, evpnConf)
