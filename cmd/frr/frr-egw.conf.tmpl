@@ -52,6 +52,7 @@ router bgp {{ .LocalASN }}
 
   address-family ipv4 unicast
     redistribute connected
+    redistribute kernel
 {{- range .Neighbours }}
     neighbor {{ . }} activate
 {{- end }}
@@ -67,6 +68,7 @@ router bgp {{ .LocalASN }} vrf vrf-vpn
   
   address-family ipv4 unicast
     redistribute connected
+    redistribute kernel
   exit-address-family
 
   address-family l2vpn evpn
