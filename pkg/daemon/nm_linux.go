@@ -111,7 +111,7 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 						klog.Errorf("failed to get ipv4 config of device %s: %v", dev.GetPath(), err)
 						break
 					}
-					if config != nil && config.Path() == event.Path {
+					if config != nil && config.GetPath() == event.Path {
 						device = dev
 						break
 					}
@@ -121,7 +121,7 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 						klog.Errorf("failed to get ipv6 config of device %s: %v", dev.GetPath(), err)
 						break
 					}
-					if config != nil && config.Path() == event.Path {
+					if config != nil && config.GetPath() == event.Path {
 						device = dev
 						break
 					}
