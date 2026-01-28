@@ -125,6 +125,7 @@ const (
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
+	NetworkPolicyForAnnotation         = "ovn.kubernetes.io/network_policy_for"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
 	ACLLogMeterAnnotation              = "ovn.kubernetes.io/acl_log_meter_rate"
 
