@@ -1,0 +1,8 @@
+apiVersion: kubeovn.io/v1
+kind: EvpnConf
+metadata:
+  name: evpn-conf-1016
+spec:
+  vni: 1016
+  routeTargets:
+    - "65000:1016"
