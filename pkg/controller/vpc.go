@@ -498,9 +498,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	// handle policy route
 	var (
-		policyRouteExisted                    []*kubeovnv1.PolicyRoute
-		policyRouteNeedDel, policyRouteNeedAdd []*kubeovnv1.PolicyRoute
-		policyRouteLogical                    []*ovnnb.LogicalRouterPolicy
+		policyRouteExisted, policyRouteNeedDel, policyRouteNeedAdd []*kubeovnv1.PolicyRoute
+		policyRouteLogical                                         []*ovnnb.LogicalRouterPolicy
 	)
 
 	if vpc.Name == c.config.ClusterRouter {
@@ -1030,14 +1029,20 @@ func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*
 	return nil
 }
 
-func diffPolicyRouteWithExisted(exists, target []*kubeovnv1.PolicyRoute) (dels, adds []*kubeovnv1.PolicyRoute) {
-	existsMap := make(map[string]*kubeovnv1.PolicyRoute, len(exists))
+func diffPolicyRouteWithExisted(exists, target []*kubeovnv1.PolicyRoute) ([]*kubeovnv1.PolicyRoute, []*kubeovnv1.PolicyRoute) {
+	var (
+		dels, adds []*kubeovnv1.PolicyRoute
+		existsMap  map[string]*kubeovnv1.PolicyRoute
+		key        string
+	)
+
+	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 	for _, item := range exists {
 		existsMap[getPolicyRouteItemKey(item)] = item
 	}
 	// load policies to add or update
 	for _, item := range target {
-		key := getPolicyRouteItemKey(item)
+		key = getPolicyRouteItemKey(item)
 
 		if existing, ok := existsMap[key]; ok {
 			delete(existsMap, key)
@@ -1062,8 +1067,13 @@ type policyRouteLogicalInfo struct {
 	externalIDs map[string]string
 }
 
-func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*kubeovnv1.PolicyRoute) (dels, adds []*kubeovnv1.PolicyRoute) {
-	existsMap := make(map[string]*policyRouteLogicalInfo, len(exists))
+func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*kubeovnv1.PolicyRoute) ([]*kubeovnv1.PolicyRoute, []*kubeovnv1.PolicyRoute) {
+	var (
+		dels, adds []*kubeovnv1.PolicyRoute
+		existsMap  map[string]*policyRouteLogicalInfo
+		key        string
+	)
+	existsMap = make(map[string]*policyRouteLogicalInfo, len(exists))
 
 	for _, item := range exists {
 		policy := &kubeovnv1.PolicyRoute{
@@ -1078,7 +1088,7 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 	}
 
 	for _, item := range target {
-		key := getPolicyRouteItemKey(item)
+		key = getPolicyRouteItemKey(item)
 
 		if existing, ok := existsMap[key]; ok {
 			delete(existsMap, key)
