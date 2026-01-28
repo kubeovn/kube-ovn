@@ -99,6 +99,10 @@ type PolicyRoute struct {
 	// NextHopIP is an optional parameter. It needs to be provided only when 'action' is 'reroute'.
 	// +optional
 	NextHopIP string `json:"nextHopIP,omitempty"`
+	// ExternalIDs is an optional parameter for custom metadata.
+	// The "vendor" key is reserved and will always be set to "kube-ovn".
+	// +optional
+	ExternalIDs map[string]string `json:"externalIDs,omitempty"`
 }
 
 type BFDPortStatus struct {
