@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGISTRY="docker.io/kubeovn"
-VERSION="v1.14.27"
+VERSION="v1.14.28"
 
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}

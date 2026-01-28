@@ -2,6 +2,6 @@ apiVersion: v2
 name: kube-ovn-v2
 description: Helm chart for Kube-OVN
 type: application
-version: v1.14.27
-appVersion: "1.14.27"
+version: v1.14.28
+appVersion: "1.14.28"
 kubeVersion: ">= 1.29.0-0"
