@@ -571,6 +571,18 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.28 (2026-01-28)
+
+ * [816fa70b6](https://github.com/kubeovn/kube-ovn/commit/816fa70b6ff5d9f05c81ec241145f9c79a2830c2) release v1.14.28
+ * [949ea6ec5](https://github.com/kubeovn/kube-ovn/commit/949ea6ec5122809390f377cee2ee8a1b607ca0db) controller: fix vpc egress gateway forward policy not working for targets within the internal subnet's cidr (#6222)
+ * [0527b9bf6](https://github.com/kubeovn/kube-ovn/commit/0527b9bf660321880755bb8c28662419faf957cd) controller: fix vpc egress gateway not working for targets within the internal subnet's cidr (#6218)
+ * [9c0e2723e](https://github.com/kubeovn/kube-ovn/commit/9c0e2723e287caa0c2decc02f086cf250b20f6f0) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.27 (2026-01-23)
 
  * [edad2a50f](https://github.com/kubeovn/kube-ovn/commit/edad2a50f3a2cdacd4cf6ed79c50bcc5d5b47c57) release v1.14.27
