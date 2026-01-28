@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -28,6 +29,7 @@ import (
 const (
 	NetworkPolicyEnforcementStandard = "standard"
 	NetworkPolicyEnforcementLax      = "lax"
+	policyForAnnotation              = "ovn.kubernetes.io/policy-for"
 )
 
 func (c *Controller) enqueueAddNp(obj any) {
@@ -121,6 +123,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 	logRate := parseACLLogRate(np.Annotations)
 
+	providers, includeSvc, err := parsePolicyFor(np)
+	if err != nil {
+		return err
+	}
+
 	npName := np.Name
 	nameArray := []rune(np.Name)
 	if !unicode.IsLetter(nameArray[0]) {
@@ -142,7 +149,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	namedPortMap := c.namedPort.GetNamedPortByNs(np.Namespace)
-	ports, subnetNames, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
+	ports, subnetNames, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector, providers)
 	if err != nil {
 		klog.Errorf("fetch ports belongs to np %s: %v", key, err)
 		return err
@@ -212,7 +219,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				} else {
 					var allow, except []string
 					for _, npp := range npr.From {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers, includeSvc); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -359,7 +366,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				} else {
 					var allow, except []string
 					for _, npp := range npr.To {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers, includeSvc); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -531,7 +538,50 @@ func (c *Controller) handleDeleteNp(key string) error {
 	return nil
 }
 
-func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector) ([]string, []string, error) {
+func parsePolicyFor(np *netv1.NetworkPolicy) (map[string]struct{}, bool, error) {
+	raw := strings.TrimSpace(np.Annotations[policyForAnnotation])
+	if raw == "" {
+		return nil, true, nil
+	}
+
+	providers := map[string]struct{}{}
+	includeSvc := false
+
+	for _, token := range strings.Split(raw, ",") {
+		t := strings.TrimSpace(token)
+		if t == "" {
+			continue
+		}
+
+		switch strings.ToLower(t) {
+		case "primary":
+			providers[util.OvnProvider] = struct{}{}
+			includeSvc = true
+			continue
+		case "default":
+			return nil, false, fmt.Errorf("invalid policy-for entry %q (use 'primary')", t)
+		case "all":
+			return nil, false, fmt.Errorf("invalid policy-for entry %q (omit annotation for all)", t)
+		}
+		if strings.Contains(t, "/") {
+			parts := strings.SplitN(t, "/", 2)
+			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				return nil, false, fmt.Errorf("invalid policy-for entry %q", t)
+			}
+			provider := fmt.Sprintf("%s.%s.%s", parts[1], parts[0], util.OvnProvider)
+			providers[provider] = struct{}{}
+			continue
+		}
+		return nil, false, fmt.Errorf("invalid policy-for entry %q", t)
+	}
+
+	if len(providers) == 0 {
+		return nil, false, errors.New("policy-for annotation has no valid entries")
+	}
+	return providers, includeSvc, nil
+}
+
+func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector, providers map[string]struct{}) ([]string, []string, error) {
 	var subnets []string
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
@@ -556,6 +606,12 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 		for _, podNet := range podNets {
 			if !isOvnSubnet(podNet.Subnet) {
 				continue
+			}
+			provider := podNet.ProviderName
+			if providers != nil {
+				if _, ok := providers[provider]; !ok {
+					continue
+				}
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
@@ -587,7 +643,7 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
-func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer) ([]string, []string, error) {
+func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers map[string]struct{}, includeSvc bool) ([]string, []string, error) {
 	selectedAddresses := []string{}
 	exceptAddresses := []string{}
 
@@ -644,6 +700,13 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 				return nil, nil, err
 			}
 			for _, podNet := range podNets {
+				provider := podNet.ProviderName
+				if providers != nil {
+					if _, ok := providers[provider]; !ok {
+						continue
+					}
+				}
+
 				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				podIPs := strings.SplitSeq(podIPAnnotation, ",")
 				for podIP := range podIPs {
@@ -651,7 +714,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 						selectedAddresses = append(selectedAddresses, podIP)
 					}
 				}
-				if len(svcs) == 0 {
+				if !includeSvc || len(svcs) == 0 {
 					continue
 				}
 
