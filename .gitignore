@@ -73,6 +73,3 @@ cmd/cmd
 cmd/cni/cni
 cmd/controller/controller
 cmd/daemon/daemon
-
-# FRR build artifacts (exclude root-level frr directory, not cmd/frr)
-/frr/
