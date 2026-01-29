@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.15.2 (2026-01-29)
+
+ * [a4ecdaac8](https://github.com/kubeovn/kube-ovn/commit/a4ecdaac82c45396bb34d3c67569bb44c06cdc22) release v1.15.2
+ * [0622723d3](https://github.com/kubeovn/kube-ovn/commit/0622723d30efca44dea6e8dfd7e7182f5ac7a017) fix: skip NetworkUnavailable condition in non-primary CNI mode (#6195)
+ * [25acdabb4](https://github.com/kubeovn/kube-ovn/commit/25acdabb45397da11e4d59a3863d8713af067eef) fix(vpcnatgw): nat gateway uses faulty default network (#6212)
+ * [b64138b90](https://github.com/kubeovn/kube-ovn/commit/b64138b9040bd901e5d62075f7d0d9b13f0dd810) controller: fix vpc egress gateway forward policy not working for targets within the internal subnet's cidr (#6222)
+ * [c608e4841](https://github.com/kubeovn/kube-ovn/commit/c608e4841bec4d8eb6a03bf9e667fc1ddd755e2e) controller: fix vpc egress gateway not working for targets within the internal subnet's cidr (#6218)
+ * [90eea0ed3](https://github.com/kubeovn/kube-ovn/commit/90eea0ed3b8511f88b224085597febda89d96ba3) Update start-ic-db.sh to have gen_conn_addr function defined (#6216)
+ * [c0e9ec780](https://github.com/kubeovn/kube-ovn/commit/c0e9ec780a7dff9af773f01f9dd72553c9fd1b6c) fix: caching NAD CRD should before all kubeovn crds and pod (#6198)
+ * [e3296ba1f](https://github.com/kubeovn/kube-ovn/commit/e3296ba1fd73f36f678674dcee2e981804bd52ff) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * andrewlee1089
+ * dnugmanov
+ * zbb88888
+ * 张祖建
+
 ## v1.15.1 (2026-01-25)
 
  * [02d360b90](https://github.com/kubeovn/kube-ovn/commit/02d360b9096cd6d1acdf24106b0bec7d3e1683b6) release v1.15.1
