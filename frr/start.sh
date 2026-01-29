@@ -9,4 +9,9 @@ kubectl apply -f bgp-conf.yaml
 kubectl apply -f evpn-conf.yaml
 kubectl wait --for=condition=Ready pod -n kube-system -l app=multus
 sleep 5
+
 kubectl apply -f egw.yaml
+kubectl wait --for=condition=Ready pod -l app=vpc-egress-gateway
+sleep 5
+
+docker exec clab-bgp-router vtysh -c "show ip route vrf vrf-vpn"

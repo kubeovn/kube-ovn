@@ -545,12 +545,15 @@ spec:
                 holdTime:
                   description: Requested BGP hold time, per RFC4271.
                   type: string
+                  format: duration
                 keepaliveTime:
                   description: Requested BGP keepalive time, per RFC4271.
                   type: string
+                  format: duration
                 connectTime:
                   description: Requested BGP connect time, controls how long BGP waits between connection attempts to a neighbor.
                   type: string
+                  format: duration
                 ebgpMultiHop:
                   description: To set if the eBGP peer is multi-hops away.
                   type: boolean
@@ -964,6 +967,7 @@ spec:
                       description: BGP neighbor IP addresses
                     holdTime:
                       type: string
+                      format: duration
                       description: BGP hold time
                     routerId:
                       type: string

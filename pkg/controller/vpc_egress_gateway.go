@@ -1113,7 +1113,7 @@ func vpcEgressGatewayContainerFRR(image string) corev1.Container {
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"NET_ADMIN", "NET_RAW", "SYS_ADMIN"},
+				Add: []corev1.Capability{"NET_ADMIN", "NET_RAW", "NET_BIND_SERVICE", "SYS_ADMIN"},
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{

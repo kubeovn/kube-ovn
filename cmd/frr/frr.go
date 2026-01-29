@@ -110,6 +110,12 @@ func renderFRRConfig() error {
 		return fmt.Errorf("failed to write daemons config: %w", err)
 	}
 
+	f, err := os.OpenFile("/etc/frr/vtysh.conf", os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to touch vtysh.conf: %w", err)
+	}
+	f.Close()
+
 	return nil
 }
 
