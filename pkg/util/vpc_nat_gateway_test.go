@@ -269,6 +269,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 		provider             string
 		additionalNetworks   string
 		expected             map[string]string
+		expectError          bool
 	}{
 		{
 			name: "Empty provider defaults to ovn",
@@ -291,6 +292,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				LogicalSwitchAnnotation:      "internal-subnet",
 				IPAddressAnnotation:          "10.20.30.40",
 			},
+			expectError: false,
 		},
 		{
 			name: "All fields provided with ovn provider",
@@ -313,6 +315,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				LogicalSwitchAnnotation:      "internal-subnet",
 				IPAddressAnnotation:          "10.20.30.40",
 			},
+			expectError: false,
 		},
 		{
 			name: "All fields provided with NAD provider",
@@ -330,11 +333,13 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			provider:             "subnet.namespace.ovn",
 			additionalNetworks:   "",
 			expected: map[string]string{
-				fmt.Sprintf(VpcNatGatewayAnnotationTemplate, "subnet.namespace.ovn"): "test-gateway",
-				nadv1.NetworkAttachmentAnnot:                                         "kube-system/external-subnet",
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
+				DefaultNetworkAnnotation: "namespace/subnet",
 			},
+			expectError: false,
 		},
 		{
 			name: "With additional networks for secondary CNI",
@@ -352,11 +357,13 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			provider:             "subnet.namespace.ovn",
 			additionalNetworks:   "default/extra-net1, default/extra-net2",
 			expected: map[string]string{
-				fmt.Sprintf(VpcNatGatewayAnnotationTemplate, "subnet.namespace.ovn"): "test-gateway",
-				nadv1.NetworkAttachmentAnnot:                                         "default/extra-net1, default/extra-net2, kube-system/external-subnet",
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "default/extra-net1, default/extra-net2, kube-system/external-subnet",
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
+				DefaultNetworkAnnotation: "namespace/subnet",
 			},
+			expectError: false,
 		},
 		{
 			name: "No static LAN IP",
@@ -379,12 +386,34 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				LogicalSwitchAnnotation:      "internal-subnet",
 				IPAddressAnnotation:          "",
 			},
+			expectError: false,
+		},
+		{
+			name: "Invalid provider syntax",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "invalid-provider",
+			additionalNetworks:   "",
+			expected:             nil,
+			expectError:          true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks)
+			result, err := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks)
+			if (err != nil) != tc.expectError {
+				t.Errorf("expected error: %v, but got: %v", tc.expectError, err)
+			}
 			if !reflect.DeepEqual(tc.expected, result) {
 				t.Errorf("got %v, but want %v", result, tc.expected)
 			}

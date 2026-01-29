@@ -33,7 +33,6 @@ const (
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
 	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayAnnotationTemplate         = "%s.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
