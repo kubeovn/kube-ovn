@@ -59,22 +59,39 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 }
 
 // GenNatGwPodAnnotations returns the Pod annotations for a NAT gateway
-// additionalNetworks is optional, used when user specifies extra NADs in gw.Annotations
-func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) map[string]string {
+// additionalNetworks is optional, used when users specify extra NADs in gw.Annotations
+func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
 	}
+
 	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
 	if additionalNetworks != "" {
 		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
-	return map[string]string{
-		fmt.Sprintf(VpcNatGatewayAnnotationTemplate, p): gw.Name,
+
+	result := map[string]string{
 		nadv1.NetworkAttachmentAnnot:                    attachedNetworks,
+		VpcNatGatewayAnnotation:                         gw.Name,
 		fmt.Sprintf(LogicalSwitchAnnotationTemplate, p): gw.Spec.Subnet,
 		fmt.Sprintf(IPAddressAnnotationTemplate, p):     gw.Spec.LanIP,
 	}
+
+	// We're using a custom provider, we need to override the default network of the pod so that the
+	// default VPC/Subnet of the cluster isn't accidentally injected.
+	if p != OvnProvider {
+		// Subdivide the provider so we can infer the namespace/name of the NetworkAttachmentDefinition
+		providerSplit := strings.Split(provider, ".")
+		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {
+			return nil, fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", provider)
+		}
+
+		name, namespace := providerSplit[0], providerSplit[1]
+		result[DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", namespace, name)
+	}
+
+	return result, nil
 }
 
 // GenNatGwBgpSpeakerContainer crafts a BGP speaker container for a VPC gateway
@@ -85,7 +102,7 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	args := []string{
-		"--nat-gw-mode", // Force speaker to run in  NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
+		"--nat-gw-mode", // Force speaker to run in NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
 	}
 
 	if speakerParams.RouterID != "" { // Override default auto-selected RouterID
