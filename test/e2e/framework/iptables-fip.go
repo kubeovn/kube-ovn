@@ -99,7 +99,7 @@ func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule,
 	return c.Get(fip.Name).DeepCopy()
 }
 
-// Delete deletes a iptables fip if the iptables fip exists
+// Delete deletes an iptables FIP rule if it exists
 func (c *IptablesFIPClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesFIPRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})

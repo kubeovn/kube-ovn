@@ -646,7 +646,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 		}
 
 		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-			nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
+			nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
 			if err != nil {
 				klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
 				continue
@@ -954,7 +954,7 @@ func (c *Controller) addNodeGatewayStaticRoute() error {
 	return nil
 }
 
-func (c *Controller) getPolicyRouteParas(cidr string, priority int) (*strset.Set, map[string]string, error) {
+func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Set, map[string]string, error) {
 	ipSuffix := "ip4"
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
@@ -1012,7 +1012,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			if subnet.Spec.EnableEcmp {
 				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
+					nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
@@ -1078,7 +1078,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(node *v1.Node, nod
 						continue
 					}
 
-					nextHops, nameIPMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
+					nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue

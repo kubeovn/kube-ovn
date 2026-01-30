@@ -463,7 +463,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
-		// virtual parents should be set correctlly
+		// virtual parents should be set correctly
 		pairs := strings.Split(string(output), " ")
 		options := make(map[string]string)
 		for _, pair := range pairs {

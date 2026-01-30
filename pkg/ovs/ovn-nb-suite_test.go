@@ -629,8 +629,8 @@ func (suite *OvnClientTestSuite) Test_DeletePortGroup() {
 	suite.testDeletePortGroup()
 }
 
-func (suite *OvnClientTestSuite) Test_GetGetPortGroup() {
-	suite.testGetGetPortGroup()
+func (suite *OvnClientTestSuite) Test_GetPortGroup() {
+	suite.testGetPortGroup()
 }
 
 func (suite *OvnClientTestSuite) Test_ListPortGroups() {
@@ -1106,8 +1106,8 @@ func (suite *OvnClientTestSuite) Test_UpdateChassisTag() {
 	suite.testUpdateChassisTag()
 }
 
-func (suite *OvnClientTestSuite) Test_GetKubeOvnChassisses() {
-	suite.testGetKubeOvnChassisses()
+func (suite *OvnClientTestSuite) Test_GetKubeOvnChassises() {
+	suite.testGetKubeOvnChassises()
 }
 
 // ovn ic

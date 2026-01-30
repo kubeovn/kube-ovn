@@ -40,7 +40,7 @@ EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
-# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr, otherwise the route will be a problem.
+# Note that the dpdk tunnel iface and tunnel ip cidr should be different with Kubernetes api cidr, otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}

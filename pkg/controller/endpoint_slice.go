@@ -517,7 +517,7 @@ func (c *Controller) findVpcAndSubnetWithTargets(endpointSlices []*discoveryv1.E
 
 			vpc, subnet, err := c.getEndpointVpcAndSubnet(pod, endpoint.Addresses)
 			if err != nil {
-				err := fmt.Errorf("couldn't retrieve get subnet/vpc for pod %s/%s: %w", namespace, name, err)
+				err := fmt.Errorf("couldn't retrieve subnet/vpc for pod %s/%s: %w", namespace, name, err)
 				klog.Error(err)
 				continue
 			}

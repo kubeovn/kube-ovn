@@ -80,7 +80,7 @@ kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-server
 
-# wait for provier-networks to be deleted before deleting kube-ovn-cni
+# wait for provider-networks to be deleted before deleting kube-ovn-cni
 sleep 5
 kubectl delete --ignore-not-found -n kube-system ds kube-ovn-cni
 

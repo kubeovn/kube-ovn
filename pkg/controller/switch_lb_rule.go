@@ -245,7 +245,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		for _, lb := range lbs {
 			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
 			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health checks health checks %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
 				return err
 			}
 

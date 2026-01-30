@@ -526,7 +526,7 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newVip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -562,7 +562,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newVip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -586,7 +586,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 }
 
 func (c *Controller) syncVipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	vips := &kubeovnv1.VipList{}
 	return migrateFinalizers(cl, vips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(vips.Items) {

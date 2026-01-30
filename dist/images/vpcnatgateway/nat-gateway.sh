@@ -12,7 +12,7 @@ EXTERNAL_INTERFACE=${EXTERNAL_INTERFACE:-"net1"}
 
 iptables_cmd=$(which iptables)
 iptables_save_cmd=$(which iptables-save)
-if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then
+if iptables-legacy -t nat -S INPUT 1 2>/dev/nulll; then
     # use iptables-legacy for centos 7
     iptables_cmd=$(which iptables-legacy)
     iptables_save_cmd=$(which iptables-legacy-save)
@@ -255,7 +255,7 @@ function del_floating_ip() {
         if [ "$?" -eq 0 ];then
             exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
             exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
-            conntrack -D -d $eip 2>/dev/nul || true
+            conntrack -D -d $eip 2>/dev/null || true
         fi
     done
 }
@@ -379,7 +379,7 @@ function eip_ingress_qos_add() {
         burst=${arr[3]}
         dev="$EXTERNAL_INTERFACE"
         matchDirection="dst"
-        tc qdisc add dev $dev ingress 2>/dev/nul || true
+        tc qdisc add dev $dev ingress 2>/dev/null || true
         # get qdisc id
         qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         # del old filter
@@ -405,7 +405,7 @@ function eip_egress_qos_add() {
         qdisc_id="1:0"
         matchDirection="src"
         dev="$EXTERNAL_INTERFACE"
-        tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/nul || true
+        tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/null || true
         # del old filter
         tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $v4ip
         if [ "$?" -eq 0 ];then
@@ -430,12 +430,12 @@ function qos_add() {
         local burst=${arr[8]}
 
         if [ "$qdiscType" == "ingress" ];then
-            tc qdisc add dev $dev ingress 2>/dev/null || true
+            tc qdisc add dev $dev ingress 2>/dev/nulll || true
             # get qdisc id
             qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         elif [ "$qdiscType" == "egress" ];then
             qdisc_id="1:0"
-            tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/null || true
+            tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/nulll || true
         fi
 
         if [ "$classifierType" == "u32" ];then

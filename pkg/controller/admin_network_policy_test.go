@@ -146,7 +146,7 @@ func TestGetAnpName(t *testing.T) {
 			"foo",
 		},
 		{
-			"start with digital",
+			"start with digit",
 			"123",
 			"anp123",
 		},

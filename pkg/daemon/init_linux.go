@@ -48,7 +48,7 @@ func waitNetworkdConfiguration(linkIndex int) {
 	}
 }
 
-func (c *Controller) changeProvideNicName(current, target string) (bool, error) {
+func (c *Controller) changeProviderNicName(current, target string) (bool, error) {
 	link, err := netlink.LinkByName(current)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {

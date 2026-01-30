@@ -31,7 +31,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./cmd/controller/controller.go
 
-- [ ] **Maintainability**: Fix typo `listerner` → `listener` (lines 74, 86, 107, 125).
+- [x] **Maintainability**: Fix typo `listerner` → `listener` (lines 74, 86, 107, 125).
 - [ ] **Structure**: The pprof server setup and the metrics-vs-health server branch are duplicated with `cmd/daemon/cniserver.go`. Extract shared helpers (e.g. in `pkg/metrics` or `pkg/util`) for "start pprof on 127.0.0.1:port" and "start metrics server or health-only server" to avoid divergence.
 - [ ] **Readability**: Leader election durations (20s, 30s, 6s) could be named constants for easier tuning and documentation.
 - [ ] **Readability**: In `checkPermission`, the variable `ssar` is reused for both the request and the Create response; use distinct names (e.g. `req` and `resp`) to avoid confusion.
@@ -40,11 +40,11 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./cmd/daemon/cniserver.go
 
-- [ ] **Naming**: Fix typo `chassesName` → `chassisName` in `initChassisAnno`.
+- [x] **Naming**: Fix typo `chassesName` → `chassisName` in `initChassisAnno`.
 - [ ] **Naming**: Retry parameter `ctrl` is misleading (suggests controller); use `cfg` or `config` for `*daemon.Configuration`. Align with `util.Retry`-style naming if shared later.
 - [ ] **Readability**: In `Retry`, `return err` when successful is confusing; use `return nil` on success.
 - [ ] **Structure**: Pprof + metrics/health server block duplicated from `cmd/controller/controller.go`; extract shared server startup helpers (see controller.go refactor).
-- [ ] **Maintainability**: `util.MirrosRetryMaxTimes` / `util.MirrosRetryInterval` are typo’d (should be "Mirrors"); fix in `pkg/util/const.go` and update call sites.
+- [x] **Maintainability**: `util.MirrosRetryMaxTimes` / `util.MirrosRetryInterval` are typo’d (should be "Mirrors"); fix in `pkg/util/const.go` and update call sites.
 
 ---
 
@@ -68,7 +68,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovn_leader_checker/ovn.go
 
-- [ ] **Readability**: Fix struct comment "Configuration is the controller conf" → "Configuration is the controller config".
+- [x] **Readability**: Fix struct comment "Configuration is the controller conf" → "Configuration is the controller config".
 - [ ] **Readability**: In `checkOvnIsAlive`, the result of `getCmdExitCode(cmd)` is an exit code, not an error; use `exitCode := getCmdExitCode(cmd); if exitCode != 0` instead of `err` to avoid confusion.
 - [ ] **Readability**: In `getCmdExitCode`, when `cmd.ProcessState == nil` the code logs `err` which may be nil; use a distinct message e.g. "process state not available" for clarity.
 - [ ] **Maintainability**: Either implement or remove the TODO "validate configuration" in `ParseFlags`.
@@ -107,9 +107,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovnmonitor/metric.go
 
-- [ ] **Readability**: Fix Help text typo: "the really status report" → "the actual status report" (or "real").
+- [x] **Readability**: Fix Help text typo: "the really status report" → "the actual status report" (or "real").
 - [ ] **Structure**: `registerOvnMetrics()` has many repetitive `metrics.Registry.MustRegister(...)` calls; consider a slice of collectors and register in a loop.
-- [ ] **Maintainability**: Fix or remove TODO comment "The metrics downside are to be implemented" (grammar: "below" not "downside").
+- [x] **Maintainability**: Fix or remove TODO comment "The metrics downside are to be implemented" (grammar: "below" not "downside").
 
 ---
 
@@ -125,7 +125,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./cmd/ovn_monitor/ovn_monitor.go
 
-- [ ] **Naming**: Fix typo `listerner` → `listener` (lines 59, 76).
+- [x] **Naming**: Fix typo `listerner` → `listener` (lines 59, 76).
 - [ ] **Readability**: Use a descriptive variable name for the parsed permission (e.g. `logFilePerm` instead of `perm`).
 - [ ] **Structure**: The health-only server block (TCP listen, mux with healthz/livez/readyz, manager.Server, Start) is duplicated with cmd/controller/controller.go and cmd/daemon/cniserver.go; consider reusing a shared helper (e.g. in pkg/metrics) for "metrics server vs health-only server" startup.
 - [ ] **Readability**: Consider named constants for server timeouts (IdleTimeout 90s, ReadHeaderTimeout 32s) and MaxHeaderBytes (1<<20) to avoid magic numbers.
@@ -162,8 +162,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/pinger/metrics.go
 
 - [ ] **Structure / DRY**: `InitPingerMetrics()` has many repetitive `metrics.Registry.MustRegister(...)` calls; use a slice of collectors and register in a loop (similar to pkg/ovnmonitor/metric.go).
-- [ ] **Readability**: Fix Help text typo: "ration" → "ratio" in `metricOvsDpMasksHitRatio` (dp_masks_hit_ratio).
-- [ ] **Readability**: Fix grammar in Help strings: "This metrics is always 1" → "This metric is always 1" (metricOvsDp, metricOvsDpIf, interfaceMain).
+- [x] **Readability**: Fix Help text typo: "ration" → "ratio" in `metricOvsDpMasksHitRatio` (dp_masks_hit_ratio).
+- [x] **Readability**: Fix grammar in Help strings: "This metrics is always 1" → "This metric is always 1" (metricOvsDp, metricOvsDpIf, interfaceMain).
 - [ ] **Maintainability**: Histogram buckets `[]float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50}` are duplicated for apiserver, internal DNS, and external DNS latency; consider a shared constant (e.g. `latencyBucketsMs`) for consistency and easier tuning.
 
 ---
@@ -176,7 +176,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/pinger/ping.go
 
-- [ ] **Naming / Bug**: Fix typo `internval` → `interval` (line 26).
+- [x] **Naming / Bug**: Fix typo `internval` → `interval` (line 26).
 - [ ] **DRY**: Pinger setup/run/statistics logic is duplicated in `pingNodes`, `pingPods`, and `pingExternal` (NewPinger, SetPrivileged, Timeout/Count/Interval, Run, Statistics, loss check, metrics). Extract a helper e.g. `runPing(config *Configuration, targetIP string, timeout time.Duration, setMetrics bool, recordMetrics func(stats *goping.Statistics)) error` to reduce duplication.
 - [ ] **DRY**: The verbose TCP/UDP connectivity check block is duplicated in `pingNodes` and `pingPods`. Extract e.g. `runVerboseConnCheck(config *Configuration, targetAddr, targetName string) error`.
 - [ ] **DRY**: `internalNslookup` and `externalNslookup` are nearly identical; extract e.g. `nslookupWithMetrics(ctx context.Context, host string, setMetrics bool, setHealthy func(ms float64), setUnhealthy func()) ([]string, error)`.
@@ -192,13 +192,13 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Performance / Consistency**: `IncrementErrorCounter` uses both mutex Lock and `atomic.AddInt64`; for a single increment the mutex is redundant. Use atomic only or document why both are needed (e.g. if other state is updated under the same lock).
 - [ ] **Error handling**: In `setOvsDpIfMetric`, `value, _ := strconv.ParseFloat(flowFields[1], 64)` ignores error; guard with `len(flowFields) >= 2` and handle ParseFloat error to avoid wrong metrics.
 - [ ] **Structure**: `resetOvsDatapathMetrics` and `resetOvsInterfaceMetrics` have many repetitive `Reset()` calls; consider a slice of collectors and loop (similar to pkg/ovnmonitor/metric.go).
-- [ ] **Readability**: Fix comment typo "There is two line" → "There are two lines" (line 50).
+- [x] **Readability**: Fix comment typo "There is two line" → "There are two lines" (line 50).
 
 ---
 
 ## ./pkg/request/client.go
 
-- [ ] **Readability**: Fix function comment "return" → "returns" (NewCniServerClient). Optionally document that `socketAddress` is the Unix socket path.
+- [x] **Readability**: Fix function comment "return" → "returns" (NewCniServerClient). Optionally document that `socketAddress` is the Unix socket path.
 
 ---
 
@@ -217,7 +217,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Error handling**: In the `fn` callback, `route, _ := netlink.RouteGet(nextHop)` discards the error; consider logging on error in debug mode for diagnostics.
 - [ ] **DRY**: `addRoute` and `delRoute` share the same pattern (getPathRequest, then loop over paths with AddPath/DeletePath). Consider extracting a helper e.g. `applyPathRequest(route string, add bool) error` to reduce duplication.
 - [ ] **Readability**: In `getPathRequest`, the path construction block is long; consider extracting e.g. `buildPath(prefix, family, nextHopStr string) (*api.Path, error)` to shorten the function.
-- [ ] **Maintainability**: Fix comment typo "NRLIs" → "NLRIs" (line 137).
+- [x] **Maintainability**: Fix comment typo "NRLIs" → "NLRIs" (line 137).
 - [ ] **Maintainability**: In `announceAndWithdraw`, errors from `addRoute`/`delRoute` are only logged; consider collecting and returning an aggregated error or at least counting failures for observability.
 
 ---
@@ -269,7 +269,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/speaker/utils.go
 
-- [ ] **Readability**: Fix comment typo on line 17: "associating an BGP" → "associating a BGP".
+- [x] **Readability**: Fix comment typo on line 17: "associating an BGP" → "associating a BGP".
 - [ ] **Consistency**: Replace magic string `"Evicted"` in `isPodAlive` (line 46) with a named constant or `corev1.PodReasonEvicted` if available in the k8s.io/api version in use; same pattern exists in pkg/controller/pod.go.
 - [ ] **Error handling (optional)**: `addExpectedPrefix` logs parse failures and returns without surfacing an error; callers cannot aggregate or react. Consider returning error so callers can count failures or retry (low priority).
 
@@ -278,7 +278,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/tproxy/tproxy_tcp_linux.go
 
 - [ ] **Correctness**: In `tcpAddrFamily`, line 148: `(raddr == nil || laddr.IP.To4() != nil)` uses `laddr.IP` for the raddr branch; should be `raddr.IP` so address family is derived from both local and remote addresses correctly.
-- [ ] **Naming**: Fix comment typo line 109: "tcpAddToSockerAddr" → "tcpAddrToSocketAddr" and "Socker" → "Socket".
+- [x] **Naming**: Fix comment typo line 109: "tcpAddToSockerAddr" → "tcpAddrToSocketAddr" and "Socker" → "Socket".
 - [ ] **DRY**: In `dialTCP`, the pattern "on error: close fd (with klog), klog.Error(err), return nil, &net.OpError{...}" is repeated 5+ times; extract a helper e.g. `closeFdAndReturnDialErr(fd int, err error, op string, wrapErr error)` to reduce duplication.
 - [ ] **Readability**: The string `"operation now in progress"` (line 217) is the EINPROGRESS errno message; use `errors.Is(err, syscall.EINPROGRESS)` if available, or a named constant for the string to make intent clear.
 - [ ] **Structure**: `dialTCP` is long (~90 lines) with many sequential steps; consider extracting helpers e.g. `createTransparentSocket(family, device string, laddr, raddr *net.TCPAddr) (fd int, err error)` and socket-option setup to improve readability.
@@ -322,7 +322,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/apis/kubeovn/v1/condition_test.go
 
-- [ ] **Naming**: Fix typo `expctedLen` → `expectedLen` and `expcted` → `expected` in test table fields throughout the file.
+- [x] **Naming**: Fix typo `expctedLen` → `expectedLen` and `expcted` → `expected` in test table fields throughout the file.
 - [ ] **Correctness**: In `TestSetCondition`, the call uses literal `1` for generation: `tt.conditions.SetCondition(tt.ctype, tt.status, tt.reason, tt.message, 1)`; should use `tt.generation` so cases that expect generation 2 are actually tested.
 
 ---
@@ -402,7 +402,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/apis/kubeovn/v1/qos-policy.go
 
 - [ ] **DRY**: `Bytes()` is identical to other status types; see ippool.go refactor — use shared `StatusPatchBytes` helper.
-- [ ] **Readability**: Fix comment typo "an bandwidth" → "a bandwidth" in `QoSPolicyBandwidthLimitRule` doc (line 55).
+- [x] **Readability**: Fix comment typo "an bandwidth" → "a bandwidth" in `QoSPolicyBandwidthLimitRule` doc (line 55).
 - [ ] **Readability**: Add blank line between `QoSPolicy` and `QoSPolicySpec` type definitions for consistency with other API files.
 
 ---
@@ -433,7 +433,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **DRY**: `Bytes()` is identical to other status types; see ippool.go refactor — use shared `StatusPatchBytes` helper.
 - [ ] **Readability**: Remove or complete the incomplete comment `// check message ?` in `setConditionValue` (line 168).
 - [ ] **Correctness**: Fix doc comments: `IsNotReady` says "returns true if ready condition is set" — should say "returns true when not ready" (or "if ready condition is not true"). Same for `IsNotValidated`: should say "returns true when not validated".
-- [ ] **Naming**: Fix typo `NatOutGoingPolicyMatch` → `NatOutgoingPolicyMatch` (line 107) for consistent Go naming (Outgoing, not OutGoing). Update struct name and all references.
+- [x] **Naming**: Fix typo `NatOutGoingPolicyMatch` → `NatOutgoingPolicyMatch` (line 107) for consistent Go naming (Outgoing, not OutGoing). Update struct name and all references.
 - [ ] **Consistency/Safety**: `GetCondition` returns `&s.Conditions[i]`; consider returning a copy for consistency with condition.go and to avoid mutation.
 - [ ] **Maintainability**: Document or change `RemoveCondition` swap-with-last behavior if stable condition order is required.
 
@@ -472,7 +472,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Structure/Dependency**: API package `pkg/apis/kubeovn/v1` imports `pkg/ovsdb/ovnnb` only for `PolicyRouteAction` values (Allow, Drop, Reroute). Consider defining these as string constants in this package and document alignment with ovnnb when used in controllers, to keep API layer independent of ovsdb (same pattern as security-group.go refactor).
 - [ ] **DRY**: `Bytes()` (Marshal status, wrap in `{"status": ...}`, klog.V(5), return) is identical to other status types; use shared `StatusPatchBytes` helper (see ippool.go refactor).
-- [ ] **Readability**: Fix comment grammar "EnableExternal only handle" → "EnableExternal only handles" (or "handles only the default external subnet"); "ExtraExternalSubnets only handle" → "ExtraExternalSubnets only handle" similarly.
+- [x] **Readability**: Fix comment grammar "EnableExternal only handle" → "EnableExternal only handles" (or "handles only the default external subnet"); "ExtraExternalSubnets only handle" → "ExtraExternalSubnets only handle" similarly.
 - [ ] **Readability**: Add one-line doc comments for `RoutePolicy`, `PolicyRouteAction`, `Vpc`, `VpcSpec`, `VpcStatus`, `BFDPort`, `VpcPeering`, `StaticRoute`, `PolicyRoute`, `BFDPortStatus` for discoverability.
 
 ---
@@ -493,7 +493,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/controller/admin_network_policy.go
 
-- [ ] **Naming**: Fix typo "releated" → "related" in comment (line ~371, "ACLs releated to port_group").
+- [x] **Naming**: Fix typo "releated" → "related" in comment (line ~371, "ACLs releated to port_group").
 - [ ] **Error handling**: In `handleUpdateAnp` when `!ok || err != nil` for PortGroupExists, returning `err` can be nil when `!ok`; return a descriptive error e.g. `fmt.Errorf("port-group for anp %s does not exist", desiredAnp.Name)` when !ok.
 - [ ] **DRY**: Ingress and egress ACL creation in `handleAddAnp` (lines ~218–268 and ~305–356) are very similar; extract a helper e.g. `createACLsForAnpDirection(anpName, pgName, rules, direction string, ...)` to reduce duplication.
 - [ ] **DRY**: In `enqueueUpdateAnp`, the ingress vs egress rule comparison blocks are nearly identical; extract a small helper that compares two rule slices (action, ports) and returns whether to re-add, to avoid duplication.
@@ -514,7 +514,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/controller/baseline_admin_network_policy.go
 
-- [ ] **Naming**: Fix typo "releated" → "related" in comment (line 325, "ACLs releated to port_group").
+- [x] **Naming**: Fix typo "releated" → "related" in comment (line 325, "ACLs releated to port_group").
 - [ ] **Error handling**: In `handleUpdateBanp` when `!ok || err != nil` for PortGroupExists (lines 369–372), return a descriptive error when !ok (e.g. `fmt.Errorf("port-group for banp %s does not exist", desiredBanp.Name)`) instead of returning err which may be nil.
 - [ ] **DRY**: In `handleAddBanp`, ingress ACL creation (lines 186–241) and egress ACL creation (254–305) are nearly identical; extract a helper e.g. `createACLsForBanpDirection(banp, pgName, banpName, direction string, ...)` to reduce duplication.
 - [ ] **DRY**: In `enqueueUpdateBanp`, the ingress vs egress rule comparison blocks (56–63 and 65–71) and the changed rule names blocks (89–101 and 105–117) are nearly identical; extract small helpers to avoid duplication.
@@ -542,7 +542,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/controller/config.go
 
-- [ ] **Naming**: Fix typo "extentsion" → "extension" in log message "init extentsion client failed" (line 317).
+- [x] **Naming**: Fix typo "extentsion" → "extension" in log message "init extentsion client failed" (line 317).
 - [ ] **DRY**: `initKubeClient()` and `initKubeFactoryClient()` both build rest.Config from KubeConfigFile (empty → InClusterConfig, else BuildConfigFromFlags) and set QPS/Burst. Extract a helper e.g. `buildRestConfig(config *Configuration) (*rest.Config, error)` and reuse so config building and QPS/Burst are in one place.
 - [ ] **Readability**: Replace magic numbers with named constants: API server dial timeout (3*time.Second), retry count (10), rest config timeout (30*time.Second), QPS (1000), Burst (2000) for easier tuning and documentation.
 - [ ] **Structure**: `ParseFlags()` is long (~200 lines). Consider splitting: e.g. `parseFlagsIntoConfig()` for flag declarations and config struct literal, and `validateAndCompleteConfig(config *Configuration)` for validation and default gateway computation, so the flow is clearer.
@@ -568,7 +568,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Naming**: fakeController struct has field `fakeController *Controller` (same name as outer type). Rename the field to `ctrl` or `controller` to avoid confusion and improve readability.
 - [ ] **DRY**: kubeInformerFactory, nadInformerFactory, and kubeovnInformerFactory all use the same TweakListOptions (Watch: true, AllowWatchBookmarks: true). Extract a shared list-options helper or constant to reduce duplication.
-- [ ] **Readability**: Fix subtest name "some subnet are not ready" → "some subnets are not ready" (plural and subject-verb agreement).
+- [x] **Readability**: Fix subtest name "some subnet are not ready" → "some subnets are not ready" (plural and subject-verb agreement).
 - [ ] **Structure**: newFakeControllerWithOptions is long (~130 lines). Consider extracting buildKubeObjects(opts), buildInformerFactories(...), and buildController(...) to shorten the function and clarify the setup flow.
 
 ---
@@ -583,8 +583,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/controller/cluster_network_policy_test.go
 
 - [ ] **Readability/Consistency**: Use named fields in test table structs for `TestGetCnpName`, `TestGetCnpACLAction`, `TestGetCnpACLTier`, `TestGetCnpDomainsNames`, `TestHasCnpDomainNames`, and `TestGetCnpAclPriority` (e.g. `name`, `arg`, `ret` or `name`, `cnp`, `result`) instead of positional struct literals, to match other tests in the file (e.g. `TestGetCnpPortGroupName`) and avoid confusion.
-- [ ] **Readability**: Fix test case name "no ingress or egressrule" → "no ingress or egress rule" (line 558).
-- [ ] **Readability**: Fix test case name "start with digital" → "start with digit" (line 817).
+- [x] **Readability**: Fix test case name "no ingress or egressrule" → "no ingress or egress rule" (line 558).
+- [x] **Readability**: Fix test case name "start with digital" → "start with digit" (line 817).
 - [ ] **Readability**: Rename table field `error` to `wantErr` or `expectError` in `TestValidateCnpConfig`, `TestCheckNetworkAndDomainRules`, and `TestCheckCnpPriorities` to avoid shadowing the built-in `error` type and clarify intent.
 - [ ] **Test isolation**: In `TestDeleteCnpPriorityMapEntries`, the "unknown tier" subtest repopulates `ctrl` maps after "admin tier" and "base tier" have cleared them; tests share the same controller and are order-dependent. Consider creating a fresh `newFakeController(t)` for the "unknown tier" subtest so state is isolated and order-independent.
 
@@ -610,7 +610,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Maintainability**: In `getHealthCheckVip`, the `time.Sleep(1 * time.Second)` after Create with TODO "WATCH VIP" is fragile. Replace with a wait/poll loop with timeout and max retries, or document why a single sleep is acceptable.
 - [ ] **DRY**: `findVpcAndSubnetWithTargets` and `findVpcAndSubnetWithNoTargets` share the same pattern (iterate slices/endpoints, resolve vpc/subnet, set if empty, return when both set). Extract a common helper parameterized by how to resolve (vpc, subnet) for an endpoint to reduce duplication.
 - [ ] **Readability**: The assignment `if svcVpc = svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName` combines assignment and condition; consider assigning on a separate line then `if svcVpc != vpcName` for clarity.
-- [ ] **Naming**: Fix typo in error message in `findVpcAndSubnetWithTargets` (line ~382): "couldn't retrieve get subnet/vpc" → "couldn't retrieve subnet/vpc".
+- [x] **Naming**: Fix typo in error message in `findVpcAndSubnetWithTargets` (line ~382): "couldn't retrieve get subnet/vpc" → "couldn't retrieve subnet/vpc".
 - [ ] **Robustness**: In `getEndpointBackend`, when matching port by name, `port.Port` can be nil; dereferencing `*port.Port` may panic. Add nil check or use a safe default.
 - [ ] **Consistency**: Consider named constants for magic values (e.g. health check VIP wait duration 1s) to align with other controller files.
 
@@ -686,16 +686,16 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/controller/init.go
 
-- [ ] **Naming**: Fix typo "extrenalID" → "externalID" in klog at line 634 (`batchMigrateNodeRoute`).
+- [x] **Naming**: Fix typo "extrenalID" → "externalID" in klog at line 634 (`batchMigrateNodeRoute`).
 - [ ] **Readability**: In `initDefaultLogicalSwitch` (line 128), when `err == nil` the condition `subnet != nil` is redundant (Get returns non-nil when err is nil). Remove for clarity.
 - [ ] **Structure**: `InitIPAM` is very long (~250 lines). Consider extracting helpers e.g. `initIPAMFromSubnets`, `initIPAMFromIPCRs`, `initIPAMFromPods`, `initIPAMFromVips`, `initIPAMFromEips`, `initIPAMFromNodes` to improve readability and testability.
 - [ ] **DRY**: In `initLoadBalancer`, the six `initLB` calls follow the same pattern. Use a slice of `struct{ name, protocol string; sessionAffinity bool }` and loop to reduce repetition.
 - [ ] **DRY**: In `syncFinalizers`, the 14 `syncXFinalizer(cl)` calls are repetitive. Use a table-driven approach e.g. `[]struct{ name string; fn func(client.Client) error }` and loop so adding new resource types is a single entry.
-- [ ] **Dead code**: In `initNodeChassis`, `chassisNodes` is built from `chassises` but never used; only `nodes` are iterated and `UpdateChassisTag` is called. Remove the unused map and possibly the `GetKubeOvnChassisses()` call if not needed, or use `chassisNodes` for filtering/skipping.
+- [ ] **Dead code**: In `initNodeChassis`, `chassisNodes` is built from `chassises` but never used; only `nodes` are iterated and `UpdateChassisTag` is called. Remove the unused map and possibly the `GetKubeOvnChassises()` call if not needed, or use `chassisNodes` for filtering/skipping.
 - [ ] **Readability**: In `initDefaultProviderNetwork`, the defer that patches nodes closes over `err`; the logic (skip patching only when Create failed) could be clearer with a named result or explicit variable e.g. `createErr := ...; defer func() { if createErr != nil { return }; ... }()`.
 - [ ] **Correctness**: In `InitIPAM` node annotation block (lines 404–407), the condition `v4IP != "" && v6IP != ""` updates the node annotation only for dual-stack. For single-stack (only v4IP or only v6IP) the annotation is not updated. Clarify intent or fix for single-stack.
 - [ ] **Readability**: In `syncSubnetCR` (line 471), the condition `!subnet.Spec.EnableEcmp && subnet.Spec.EnableEcmp != c.config.EnableEcmp` can be simplified to `!subnet.Spec.EnableEcmp && c.config.EnableEcmp`.
-- [ ] **Maintainability**: Fix "Depreciated" → "Deprecated" in finalizer name if the constant lives in this package or document the typo in util for a global fix.
+- [x] **Maintainability**: Fix "Depreciated" → "Deprecated" in finalizer name if the constant lives in this package or document the typo in util for a global fix.
 
 ---
 
@@ -715,7 +715,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Robustness**: In `enqueueAddIPPool`, use safe type assertion: `ippool, ok := obj.(*kubeovnv1.IPPool); if !ok { klog.Warningf("unexpected type: %T", obj); return }` to avoid panic if informer passes wrong type; align with `enqueueDeleteIPPool` which uses switch and type check.
 - [ ] **Robustness**: In `enqueueUpdateIPPool`, use safe type assertion for `oldObj` and `newObj` (e.g. `oldIPPool, ok := oldObj.(*kubeovnv1.IPPool); if !ok { return }`) instead of direct cast to avoid panic.
-- [ ] **Naming**: Fix typo `DepreciatedFinalizerName` → `DeprecatedFinalizerName` in util and update call site in `handleDelIPPoolFinalizer`; align with other controller files.
+- [x] **Naming**: Fix typo `DepreciatedFinalizerName` → `DeprecatedFinalizerName` in util and update call site in `handleDelIPPoolFinalizer`; align with other controller files.
 - [ ] **DRY** (optional): In `handleAddOrUpdateIPPool`, the pattern "on error, patch status condition then return err" repeats twice (reconcileIPPoolAddressSet and AddOrUpdateIPPool); extract a small helper e.g. `reportIPPoolError(c *Controller, ippool *kubeovnv1.IPPool, reason, errMsg string) error` to reduce duplication.
 - [ ] **Readability**: In `syncIPPoolFinalizer`, the callback returns `ippools.Items[i].DeepCopy(), ippools.Items[i].DeepCopy()`; assign to a variable e.g. `item := ippools.Items[i].DeepCopy()` and return `(item, item)` for clarity.
 
@@ -733,7 +733,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueAddVMIMigration`, use safe type assertion: `migration, ok := obj.(*kubevirtv1.VirtualMachineInstanceMigration); if !ok { klog.Warningf("unexpected type: %T", obj); return }` to avoid panic; align with `enqueueDeleteVM` which uses switch.
 - [ ] **Robustness**: In `enqueueUpdateVMIMigration`, use safe type assertion for `oldObj` and `newObj` instead of direct cast.
 - [ ] **Naming**: In `enqueueDeleteVM`, log message says "enqueue add VM" (line 56); change to "enqueue delete VM" for consistency with function and queue name.
-- [ ] **Readability**: Fix log message typos "migrated succeed" → "migration succeeded" (line 190) and "migrated fail" → "migration failed" (line 198).
+- [x] **Readability**: Fix log message typos "migrated succeed" → "migration succeeded" (line 190) and "migrated fail" → "migration failed" (line 198).
 - [ ] **Readability**: Replace magic number `10 * time.Second` in `StartKubevirtInformerFactory` with a named constant (e.g. `kubevirtCRDCheckInterval`) for tuning and documentation.
 - [ ] **Maintainability**: In `handleAddOrUpdateVMIMigration`, when `vmiMigration.Status.Phase` is not one of MigrationScheduling, MigrationSucceeded, or MigrationFailed, the function returns nil without logging. Add a default case that logs "unknown migration phase %s" for observability.
 - [ ] **Structure**: `handleAddOrUpdateVMIMigration` is long (~110 lines). Consider extracting phase handlers e.g. `handleMigrationSchedulingPhase(c, vmiMigration, vmi, portName, srcNodeName, targetNodeName) error`, `handleMigrationSucceededPhase(...)`, `handleMigrationFailedPhase(...)` so the switch is a thin dispatcher and each phase is testable.
@@ -760,7 +760,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueUpdateNamespace`, use safe type assertions for `oldObj` and `newObj` (e.g. `oldNs, ok := oldObj.(*v1.Namespace); if !ok { return }`) instead of direct casts to avoid panic if informer passes wrong type.
 - [ ] **DRY**: Subnet-matching logic (subnets that bind namespace via Namespaces or NamespaceSelectors) is duplicated between `handleAddNamespace` (lines 126–172) and `getNsExpectSubnets` (lines 245–264). Extract a shared helper e.g. `subnetsForNamespace(c *Controller, ns *v1.Namespace) ([]string, error)` or a struct that returns names + cidrs + excludeIps, and use it in both to avoid divergence.
 - [ ] **Readability**: Rename `lss` to `subnetNames` or `logicalSwitchNames` and `ls` to `defaultLogicalSwitch` for clarity.
-- [ ] **Naming**: Fix typo "namespaceLabelSeletcor" → "namespaceLabelSelector" in comment (line 134).
+- [x] **Naming**: Fix typo "namespaceLabelSeletcor" → "namespaceLabelSelector" in comment (line 134).
 - [ ] **Performance**: In `getNsExpectSubnets`, `slices.Contains(expectSubnets, subnet.Name)` is O(n) per subnet; use a set (e.g. `strset.Set`) to deduplicate in O(1) per add and avoid O(subnets²) total.
 - [ ] **Readability**: The condition at lines 213–217 (compare annotations with expected) is long; extract to a helper e.g. `namespaceAnnotationsMatchExpected(ns *v1.Namespace, subnetNames, cidrs, excludeIps, ipPools []string) bool`.
 - [ ] **Structure**: `handleAddNamespace` is long (~130 lines). Consider extracting: (1) `getMatchedSubnetsForNamespace(c, namespace) (subnetNames, cidrs, excludeIps []string, err error)` for the subnet-binding and VPC default-subnet logic, (2) `getMatchedIPPoolsForNamespace(c, key) ([]string, error)` for the IPPool loop, so the main function is a short sequence of steps.
@@ -786,7 +786,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueUpdateNode`, use safe type assertions for `oldObj` and `newObj` (e.g. `oldNode, ok := oldObj.(*v1.Node); if !ok { return }`) instead of direct casts.
 - [ ] **Readability**: In `retryDelDupChassis`, when `err == nil` the code does `return err`; use `return nil` on success for clarity.
 - [ ] **Correctness**: In `addNodeGatewayStaticRoute`, when `c.vpcsLister.Get` returns an error, `vpc` may be nil and `vpc.Spec.StaticRoutes` can panic. Check `err != nil` first and skip the block or return; only access `vpc.Spec` when `vpc != nil`.
-- [ ] **Naming**: Fix typo `getPolicyRouteParas` → `getPolicyRouteParams` (or keep name but fix doc: "Paras" → "Params").
+- [x] **Naming**: Fix typo `getPolicyRouteParas` → `getPolicyRouteParams` (or keep name but fix doc: "Paras" → "Params").
 - [ ] **Structure**: `handleAddNode` is very long (~270 lines). Consider extracting: node IP allocation (static/random + LSP cleanup), policy route per-IP loop, annotation patch + IP CR creation, distributed subnet port groups, and chassis update into helpers (e.g. `allocateNodeIP`, `addPolicyRoutesForNodeIPs`, `patchNodeAnnotationsAndIPCR`, `ensureDistributedSubnetPortGroupsForNode`) so the main flow is a short sequence of steps.
 - [ ] **DRY**: The distributed-subnet filter `(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType` appears in `handleAddNode`, `syncDistributedSubnetRoutes`, `deletePolicyRouteForNode`, and `addPolicyRouteForCentralizedSubnetOnNode`. Extract a helper e.g. `isDistributedSubnetInDefaultVpc(subnet *kubeovnv1.Subnet, nodeSwitch, clusterRouter string) bool` to avoid duplication and drift.
 - [ ] **DRY**: The centralized-subnet filter (Vlan, Vpc, NodeSwitch, GatewayType == GWCentralizedType) is repeated in `handleUpdateNode`, `deletePolicyRouteForNode`, `addPolicyRouteForCentralizedSubnetOnNode`. Extract a helper e.g. `isCentralizedSubnetInDefaultVpc(subnet *kubeovnv1.Subnet, config) bool` for consistency.
@@ -860,9 +860,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Error handling**: In `patchOvnFipStatus` (lines 386, 396), `raw, _ := json.Marshal(fip.Labels)` ignores error; check and return err on Marshal failure.
 - [ ] **Naming**: In `patchOvnFipAnnotations` and `patchOvnFipStatus`, variable `oriFip` is cryptic; use `cachedFip` or `currentFip` for consistency with other handlers.
 - [ ] **Naming**: In `patchOvnFipStatus`, parameter `podIP` is used for V4Ip; consider renaming to `v4IP` for clarity.
-- [ ] **Naming**: Fix typo `staleless` → `stateless` for the variable (lines 198, 204) if the intent is "stateless"; if OVN API uses "staleless", add a one-line comment.
+- [x] **Naming**: Fix typo `staleless` → `stateless` for the variable (lines 198, 204) if the intent is "stateless"; if OVN API uses "staleless", add a one-line comment.
 - [ ] **Correctness**: In `handleUpdateOvnFip` line 384, error message uses `cachedEip.Name` but should use `cachedFip.Name` for the FIP resource name.
-- [ ] **Readability**: In `isOvnFipDuplicated`, fix grammar in error message: "%s is using by" → "%s is used by".
+- [x] **Readability**: In `isOvnFipDuplicated`, fix grammar in error message: "%s is using by" → "%s is used by".
 - [ ] **Naming**: Comment "migrate depreciated finalizer" (line 422) → "deprecated"; align with util constant (consider renaming `DepreciatedFinalizerName` to `DeprecatedFinalizerName` in util).
 - [ ] **Structure**: `handleAddOvnFip` is long (~160 lines). Consider extracting: (1) `resolveOvnFipInternalIPs` and `validateOvnFipEip`; (2) the four AddNat branches (v4:v4, v6:v6, v4:v6, v6:v4) into a helper e.g. `addOvnFipNatsToOVN(c *Controller, vpcName, v4Eip, v6Eip, v4IP, v6IP, mac, ipName string, options map[string]string) error` so the main flow is a clear sequence of steps.
 - [ ] **Maintainability**: `GetOvnEip` is defined in ovn_fip.go but used across FIP/EIP/DNAT handlers; consider moving to ovn_eip.go or a shared helper file for discoverability.
@@ -882,7 +882,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Error handling**: In `patchOvnSnatStatus` (line 398) and `patchOvnSnatAnnotation` (line 358), `raw, _ := json.Marshal(...)` ignores error; check and return err on Marshal failure.
 - [ ] **Naming**: In `patchOvnSnatAnnotation`, variable `oriFip` is wrong (this is SNAT); use `cachedSnat` or `currentSnat`. In `patchOvnSnatStatus`, `oriSnat` could be renamed to `cachedSnat` for consistency.
 - [ ] **Naming**: Comment "migrate depreciated finalizer" (line 369) → "deprecated"; align with util constant.
-- [ ] **Readability**: In EIP type check comments, fix grammar "eip is using by" → "eip is used by" (lines 104, 259).
+- [x] **Readability**: In EIP type check comments, fix grammar "eip is using by" → "eip is used by" (lines 104, 259).
 - [ ] **Readability**: In `enqueueUpdateOvnSnatRule`, the condition `oldSnat.Spec.OvnEip != newSnat.Spec.OvnEip` is checked twice (lines 41 and 46); the first block only adds to reset queue. Consider a single branch: if eip changed, add to reset queue and to update queue, then return; else check other spec changes.
 - [ ] **Structure**: `handleAddOvnSnatRule` is long (~120 lines). Consider extracting `resolveOvnSnatVpcAndCidrs`, `validateOvnSnatEip`, and the AddNat v4/v6 block into helpers so the main flow is a short sequence of steps.
 
@@ -906,7 +906,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Structure**: `reconcileRouteSubnets` is very long (~200 lines) with repeated patterns (RemovePortFromPortGroups + PortGroupAddPorts, EIP/SNAT per-IP loops). Extract helpers e.g. `reconcilePodPortGroups(c, pod, podNet, portName, nodePortGroup, subnetPortGroups)`, `reconcileEipSnatForPod(c, pod, podIP, podName)` to shorten and clarify the main flow.
 - [ ] **Structure**: `handleDeletePod` has duplicated keepIPCR logic for StatefulSet and VM (check isOwnerRefToDel, set keepIPCR, appendCheckPodNetToDel, clear keepIPCR). Extract e.g. `resolveKeepIPForPodDeletion(c *Controller, pod *v1.Pod) (keepIP bool, ipcrToDelete []string, err error)` to unify STS/VM handling.
 - [ ] **Readability**: In `GetNamedPortByNs`, the loop logs for every port in the namespace; consider klog.V(4) or reduce verbosity to avoid log flood in large namespaces.
-- [ ] **Naming**: Fix comment typo “named port %s has already be defined” → “has already been defined” (line 87).
+- [x] **Naming**: Fix comment typo “named port %s has already be defined” → “has already been defined” (line 87).
 - [ ] **Error handling**: In `getNodeTunlIP`, `net.ParseIP(ip)` can return nil; the code appends without checking, so nil can be appended to the slice. Filter out invalid IPs or return an error when ParseIP returns nil.
 
 ---
@@ -938,9 +938,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueAddQoSPolicy` (line 25), use safe type assertion: `qos, ok := obj.(*kubeovnv1.QoSPolicy); if !ok { klog.Warningf("unexpected type: %T", obj); return }` to avoid panic if informer passes wrong type; align with `enqueueDelQoSPolicy` which uses type switch.
 - [ ] **Robustness**: In `enqueueUpdateQoSPolicy` (lines 42–43), use safe type assertions for `oldObj` and `newObj` (e.g. `oldQos, ok := oldObj.(*kubeovnv1.QoSPolicy); if !ok { return }`) instead of direct casts to avoid panic.
 - [ ] **Correctness/Naming**: In `compareQoSPolicyBandwidthLimitRules` (line 30), the function mutates `newObj` by sorting it (line 35), but the function name suggests it only compares. Either copy `newObj` before sorting (e.g. `sortedNew := make(kubeovnv1.QoSPolicyBandwidthLimitRules, len(newObj)); copy(sortedNew, newObj); sort.Slice(sortedNew, ...)`) or rename the function to `compareAndSortQoSPolicyBandwidthLimitRules` to indicate mutation.
-- [ ] **Naming**: Fix typo `reconcileEIPBandtithLimitRules` → `reconcileEIPBandwidthLimitRules` (line 227) and `delEIPBandtithLimitRules` → `delEIPBandwidthLimitRules` (line 236). Update all call sites.
-- [ ] **Naming**: Fix typo `matachValue` → `matchValue` in `validateIPMatchValue` function parameter (line 257) and update all references within the function.
-- [ ] **Naming**: Fix typo "depreciated" → "deprecated" in comment (line 185) to align with standard spelling.
+- [x] **Naming**: Fix typo `reconcileEIPBandtithLimitRules` → `reconcileEIPBandwidthLimitRules` (line 227) and `delEIPBandtithLimitRules` → `delEIPBandwidthLimitRules` (line 236). Update all call sites.
+- [x] **Naming**: Fix typo `matachValue` → `matchValue` in `validateIPMatchValue` function parameter (line 257) and update all references within the function.
+- [x] **Naming**: Fix typo "depreciated" → "deprecated" in comment (line 185) to align with standard spelling.
 - [ ] **Naming**: In `patchQoSStatus`, variable `oriQoS` (line 126) is cryptic; use `cachedQoS` for consistency with other handlers (e.g. `handleAddQoSPolicy`, `handleUpdateQoSPolicy`).
 - [ ] **DRY**: In `handleUpdateQoSPolicy`, the blocks that check if QoS policy is in use by EIPs (lines 316–328) and by NatGws (lines 331–343) are nearly identical. Extract a helper e.g. `isQoSPolicyInUse(c *Controller, key string, bindingType kubeovnv1.QoSPolicyBindingType) (bool, error)` to reduce duplication.
 - [ ] **DRY**: The pattern of sorting bandwidth limit rules by name (lines 96–99 in `handleAddQoSPolicy` and 406–409 in `handleUpdateQoSPolicy`) is duplicated. Extract a helper e.g. `sortQoSPolicyBandwidthLimitRules(rules kubeovnv1.QoSPolicyBandwidthLimitRules) kubeovnv1.QoSPolicyBandwidthLimitRules` to avoid duplication.
@@ -972,9 +972,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/controller/security_group_test.go
 
-- [ ] **Naming**: Fix typo in subtest name (line 59): "does't" → "don't" (or "do not").
+- [x] **Naming**: Fix typo in subtest name (line 59): "does't" → "don't" (or "do not").
 - [ ] **Naming**: Rename test `Test_securityGroupALLNotExist` → `Test_securityGroupAllNotExist` to match the method name and Go camelCase (ALL → All).
-- [ ] **Readability**: Fix subtest name "when some port group exist" → "when some port group exists" (subject-verb agreement).
+- [x] **Readability**: Fix subtest name "when some port group exist" → "when some port group exists" (subject-verb agreement).
 - [ ] **Consistency**: Add `t.Parallel()` inside each subtest in `Test_getPortSg` so subtests run in parallel, aligning with `Test_securityGroupALLNotExist` and other controller tests (e.g. baseline_admin_network_policy_test.go).
 
 ---
@@ -996,7 +996,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/controller/service_lb.go
 
 - [ ] **Naming**: In `parseAttachNetworkProvider` (lines 47-59), return variables `attachmentName` and `attachmentNs` shadow package-level constants of the same names. Rename to `parsedName, parsedNs` or `name, ns` to avoid confusion and improve readability.
-- [ ] **Readability**: Fix grammar in error message (line 64): "should be consisted of" → "should consist of".
+- [x] **Readability**: Fix grammar in error message (line 64): "should be consisted of" → "should consist of".
 - [ ] **DRY**: The protocol switch (TCP→util.ProtocolTCP, UDP→util.ProtocolUDP, SCTP→util.ProtocolSCTP) is duplicated in `updatePodAttachNets` (lines 332-340) and `delDnatRules` (lines 341-349). Extract a helper e.g. `protocolToString(p corev1.Protocol) string` to avoid duplication.
 - [ ] **DRY**: The pattern "targetPort := port.TargetPort.IntValue(); if targetPort == 0 { targetPort = int(port.Port) }; build rules string" appears in both `updatePodAttachNets` and `delDnatRules`. Extract a small helper e.g. `formatDnatRule(port corev1.ServicePort, loadBalancerIP, clusterIP, defaultGateway string) (rules []string, targetPort int)` (or two helpers for add vs del format) to reduce duplication.
 - [ ] **Readability**: In `updatePodAttachNets` (lines 321-322), `var addRules []string` then `addRules = append(addRules, ...)` can be simplified to `addRules := []string{fmt.Sprintf(...)}`.
@@ -1021,7 +1021,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Readability**: Secret data keys `"cacert"` and `"cakey"` (lines 143, 151) are magic strings; define named constants (e.g. in pki.go or util) for consistency with pki.go refactor.
 - [ ] **Readability**: Replace magic numbers with named constants: certificate validity `10 * 365 * 24 * time.Hour` (line 248), e.g. `certValidityPeriod`; `NotBefore: time.Now().Add(-1 * time.Second)` (line 247) for clock skew.
 - [ ] **Naming**: Import alias `c` for `crypto` can be confused with receiver `c *Controller`; consider renaming to `cr` or `cryptopkg` for clarity.
-- [ ] **Comment**: Fix typo "We dont" → "We don't" (line 134); "From this, point" → "From this point" (line 123).
+- [x] **Comment**: Fix typo "We dont" → "We don't" (line 134); "From this, point" → "From this point" (line 123).
 - [ ] **DRY**: PEM decode pattern (Decode, check block nil/type, return error) is repeated in `decodeCertificateRequest`, `decodeCertificate`, `decodePrivateKey`. Extract a helper e.g. `decodePEMBlock(pemBytes []byte, expectedType string) (*pem.Block, error)` to reduce duplication.
 - [ ] **Readability**: In `getCertApprovalCondition`, rename loop variable `c` to `cond` to avoid confusion with controller receiver and clarify intent.
 
@@ -1032,7 +1032,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueAddSubnet` (line 32), use safe type assertion: `subnet, ok := obj.(*kubeovnv1.Subnet); if !ok { return }` then use `subnet` for key, to avoid panic if informer passes wrong type; align with `enqueueDeleteSubnet`.
 - [ ] **Robustness**: In `enqueueUpdateSubnet` (lines 75–76), use safe type assertions for `oldObj` and `newObj` instead of direct casts.
 - [ ] **Correctness**: In `handleDeleteSubnet` (line 822), when `vpcsLister.Get` returns a non-NotFound error, `vpc` may be nil; logging `vpc.Name` can panic. Use `subnet.Spec.Vpc` in the error message (e.g. `"get vpc %s: %v", subnet.Spec.Vpc, err`).
-- [ ] **Naming**: Fix typo "depreciated" → "deprecated" in comment (line 262) and align with util constant `DepreciatedFinalizerName` (consider renaming to `DeprecatedFinalizerName` in util); same at lines 275, 299.
+- [x] **Naming**: Fix typo "depreciated" → "deprecated" in comment (line 262) and align with util constant `DepreciatedFinalizerName` (consider renaming to `DeprecatedFinalizerName` in util); same at lines 275, 299.
 - [ ] **Structure / Readability**: `handleAddOrUpdateSubnet` is very long (~280 lines). Consider extracting helpers e.g. `validateAndFormatSubnet`, `ensureLogicalSwitchAndDHCP`, `reconcileSubnetLoadBalancers`, `reconcileSubnetACLAndPrivate` so the main flow is a short sequence of steps and each step is testable.
 - [ ] **DRY**: The pattern "if err = c.patchSubnetStatus(subnet, reason, msg); err != nil { klog.Error(err); return err }" repeats many times in handleAddOrUpdateSubnet and elsewhere; consider a helper e.g. `patchSubnetStatusAndReturn(c, subnet, reason, msg) error` to reduce repetition.
 - [ ] **Performance**: In `reconcileNamespaces` and similar, `slices.Contains(expectNss, ns.Name)` is O(n) per check; build a set (e.g. map[string]struct{}) from expectNss for O(1) lookup when lists are large.
@@ -1066,14 +1066,14 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Robustness**: In `enqueueAddSwitchLBRule`, use safe type assertion: `slr, ok := obj.(*kubeovnv1.SwitchLBRule); if !ok { return }` then use slr for key, to avoid panic if informer passes wrong type; align with enqueueDeleteSwitchLBRule.
 - [ ] **Robustness**: In `enqueueUpdateSwitchLBRule`, use safe type assertions for oldObj and newObj instead of direct casts.
 - [ ] **Readability**: In `handleAddOrUpdateSwitchLBRule`, building formatPorts via repeated `fmt.Sprintf("%s,%d/%s", formatPorts, ...)` is fragile; consider building a slice of "port/protocol" strings and using strings.Join.
-- [ ] **Readability**: In `handleDelSwitchLBRule` error messages, fix redundant "health checks health checks" (line 247) to "health check".
+- [x] **Readability**: In `handleDelSwitchLBRule` error messages, fix redundant "health checks health checks" (line 247) to "health check".
 - [ ] **Maintainability**: In `generateHeadlessService`, `make(map[string]string, 0)` — the 0 is redundant; use make(map[string]string).
 
 ---
 
 ## ./pkg/controller/switch_lb_rule_test.go
 
-- [ ] **Readability**: Fix typo in error message: `familiyPolicy` → `familyPolicy` (line 79).
+- [x] **Readability**: Fix typo in error message: `familiyPolicy` → `familyPolicy` (line 79).
 - [ ] **Readability**: In `Test_setUserDefinedNetwork`, the table field `result` holds the expected service state after mutation; consider renaming to `expected` or `expectedService` for clarity.
 
 ---
@@ -1081,7 +1081,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/controller/vpc_dns.go
 
 - [ ] **Naming**: Inconsistent naming: `enqueueAddVpcDNS` / `enqueueUpdateVpcDNS` use `VpcDNS` vs `enqueueDeleteVPCDNS` uses `VPCDNS`. Use consistent casing (e.g. all `VpcDNS`).
-- [ ] **Naming**: Fix typo "no found" → "not found" in `getDefaultCoreDNSImage` error message (line 411).
+- [x] **Naming**: Fix typo "no found" → "not found" in `getDefaultCoreDNSImage` error message (line 411).
 - [ ] **Dead code**: In `checkVpcDNSDuplicated`, `if k8serrors.IsNotFound(err)` after `List()` is redundant — List does not return NotFound. Remove the branch.
 - [ ] **Readability**: ConfigMap keys ("coredns-image", "nad-name", "nad-provider", "coredns-vip", "k8s-service-host", "k8s-service-port", "enable-vpc-dns") are magic strings in `resyncVpcDNSConfig`. Consider package-level constants for maintainability and discoverability.
 - [ ] **Structure / Testability**: Global variables (`corednsImage`, `corednsVip`, `nadName`, etc.) are mutable and set in `resyncVpcDNSConfig`. This makes unit testing hard and is not obviously thread-safe. Consider holding VPC-DNS config in a struct (e.g. on Controller or a dedicated config holder) protected by mutex or updated in a single goroutine.
@@ -1137,7 +1137,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Error message**: In `handleAddOrUpdateVpcNatGw` default branch (lines 255–262), when updating QoS the log for "add" says "failed to del qos" and the log for "del" says "failed to add qos"; swap messages so they match the operation.
 - [ ] **Structure**: `handleAddOrUpdateVpcNatGw` is long; consider extracting `createNatGwStatefulSet`, `updateNatGwStatefulSet`, and `reconcileNatGwQoSChange` so the main function is a short sequence of conditionals and calls.
 - [ ] **Maintainability**: The string "iptables nat gw not enable" is repeated in many handlers; use a named constant or package-level `errVpcNatGwNotEnabled` for consistency and easier change.
-- [ ] **Naming**: Fix typo `execNatGwBandtithLimitRules` → `execNatGwBandwidthLimitRules` (and same typo in callers / other files e.g. vpc_nat_gw_eip.go, qos_policy.go).
+- [x] **Naming**: Fix typo `execNatGwBandtithLimitRules` → `execNatGwBandwidthLimitRules` (and same typo in callers / other files e.g. vpc_nat_gw_eip.go, qos_policy.go).
 - [ ] **Readability / Robustness**: `handleInitVpcNatGw` uses `time.Sleep(10 * time.Second)` when pod is not running; `getNatGwPod` uses `time.Sleep(5 * time.Second)` on "too many pod" or "pod is not active". Replace with a wait/poll loop with configurable timeout and max retries, or document why a single sleep is acceptable.
 - [ ] **Error handling**: In `updateCrdNatGwLabels`, `raw, _ := json.Marshal(gw.Labels)` ignores the error; validate and return error on Marshal failure so invalid patch is not sent.
 - [ ] **Maintainability**: Complete or remove the incomplete comment `// TODO:// check NAD if has ipam to disable ipam` at line 984 in `genNatGwStatefulSet`.
@@ -1163,8 +1163,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/controller/vpc_nat_gw_eip.go
 
 - [ ] **Robustness**: In `enqueueAddIptablesEip` and `enqueueUpdateIptablesEip`, direct type assertions `obj.(*kubeovnv1.IptablesEIP)` and `oldObj.(*kubeovnv1.IptablesEIP)` can panic. Use safe type assertions (check `ok`) as in `enqueueDelIptablesEip`.
-- [ ] **Naming**: Fix typo `delEIPBandtithLimitRules` → `delEIPBandwidthLimitRules`; align with vpc_nat_gateway.go and qos_policy.go.
-- [ ] **Naming**: In `GetGwBySubnet` error message, fix "faile" → "failed".
+- [x] **Naming**: Fix typo `delEIPBandtithLimitRules` → `delEIPBandwidthLimitRules`; align with vpc_nat_gateway.go and qos_policy.go.
+- [x] **Naming**: In `GetGwBySubnet` error message, fix "faile" → "failed".
 - [ ] **Maintainability**: The string "iptables nat gw not enable" is repeated (handleAddIptablesEip, handleUpdateIptablesEip). Use a shared constant (e.g. with vpc_nat_gateway.go) for consistency.
 - [ ] **Readability / Robustness**: In handleUpdateIptablesEip redo block (line 318), `eipRedo, _ := time.ParseInLocation(...)` ignores parse error; validate and handle so incorrect redo time does not affect comparison. Also the inner condition `cachedEip.Status.Ready && cachedEip.Status.IP != "" && ...` is inside a block where `!cachedEip.Status.Ready` is required—so it is always false; remove dead code or fix logic.
 - [ ] **Error handling**: `eipV4Cidr, _ := util.SplitStringIP(subnet.Spec.CIDRBlock)` (and similar v4Cidr, _ in handleUpdateIptablesEip) ignores second return; document or handle if needed for dual-stack.
@@ -1261,7 +1261,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/daemon/controller.go
 
-- [ ] **Naming**: Fix typo `runAddOrUpdateServicekWorker` → `runAddOrUpdateServiceWorker` (line 416); update call site in `Run()` (line 569).
+- [x] **Naming**: Fix typo `runAddOrUpdateServicekWorker` → `runAddOrUpdateServiceWorker` (line 416); update call site in `Run()` (line 569).
 - [ ] **DRY**: The work-item processing pattern (Get, shutdown check, defer Done, call handler, Forget/AddRateLimited, HandleError) is repeated in 7 methods. Consider a generic helper or small interface to reduce duplication while keeping type safety for different queue payload types.
 - [ ] **Readability**: In `enqueueUpdatePod`, extract the long annotation comparison lists (default network and multi-net) into helpers e.g. `podDefaultNetworkAnnotationsChanged(oldPod, newPod *v1.Pod) bool` and `multiNetPodAnnotationsChanged(oldPod, newObj *v1.Pod, provider string) bool` to shorten the method and clarify intent.
 - [ ] **Structure**: `initProviderNetwork` is long (~150 lines). Consider extracting: building `vlans` set and `vlanInterfaceMap` into a helper; and/or patch construction into a separate function to improve readability and testability.
@@ -1274,7 +1274,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/daemon/controller_linux.go
 
-- [ ] **Naming**: In `evalCommandSymlinks`, fix error message typo "failed to read evaluate symbolic links" → "failed to resolve symbolic links" or "failed to evaluate symbolic links".
+- [x] **Naming**: In `evalCommandSymlinks`, fix error message typo "failed to read evaluate symbolic links" → "failed to resolve symbolic links" or "failed to evaluate symbolic links".
 - [ ] **Readability**: In `handleU2OInterconnectionMACChange`, remove redundant condition `if newMAC == "" && oldMAC == "" { return nil }` (already covered by `if oldMAC == newMAC { return nil }`).
 - [ ] **Structure**: `reconcileRouters` is long (~200 lines). Consider extracting: building cidrs and joinCIDR from subnets into a helper; route diff and apply into a helper to improve readability and testability.
 - [ ] **DRY**: In `initRuntime`, the IPv4 and IPv6 blocks (lines 114–136 and 137–159) are nearly identical; extract a helper e.g. `initProtocolRuntime(c *Controller, protocol string) error` to reduce duplication.
@@ -1338,7 +1338,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/daemon/gateway_test.go
 
-- [ ] **Naming**: Fix typo `expetced` → `expected` in the test table struct and all case fields (consistent with condition_test.go and other test files).
+- [x] **Naming**: Fix typo `expetced` → `expected` in the test table struct and all case fields (consistent with condition_test.go and other test files).
 - [ ] **Readability**: For cases "get ipv4 from ipv6" and "get ipv6 from ipv4", explicitly set `expected: ""` so the expected empty result is self-documenting instead of relying on zero value.
 
 ---
@@ -1349,7 +1349,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **DRY**: The error-response pattern (WriteHeaderAndEntity with CniResponse{Err: ...}, then klog.Errorf on write failure) is repeated many times in handleAdd and handleDel. Extract a helper e.g. `writeCniError(resp *restful.Response, status int, errMsg error)` to reduce duplication and ensure consistent logging.
 - [ ] **Readability**: Replace magic numbers: `for range 20` (handleAdd wait loop, UpdateIPCR) and `time.Sleep(1 * time.Second)` with named constants (e.g. `podAnnotationWaitRetries = 20`, `podWaitInterval = 1 * time.Second`) for tuning and documentation.
 - [ ] **Readability**: Gateway check mode resolution (subnetHasVlan, DisableGatewayCheck, MigrationJobNameAnnotation, ActivationStrategyTemplate) is nested and dense. Extract e.g. `resolveGatewayCheckMode(pod *v1.Pod, podSubnet *kubeovnv1.Subnet) int` to name the concept and simplify handleAdd.
-- [ ] **Comment**: Fix typo "For Support kubevirt" → "To support KubeVirt" or "For KubeVirt hotplug" (line 157 and similar).
+- [x] **Comment**: Fix typo "For Support kubevirt" → "To support KubeVirt" or "For KubeVirt hotplug" (line 157 and similar).
 - [ ] **Maintainability**: In UpdateIPCR, when Get succeeds but Update fails, the code overwrites `err` and retries; after 20 retries it returns nil without returning the last error. Consider returning the last error after max retries or adding a short comment that ignoring update failure is intentional.
 - [ ] **Performance**: `providerExists(provider)` calls `csh.Controller.subnetsLister.List(labels.Everything())` and iterates; if handleAdd/handleDel are called frequently, consider caching subnets-by-provider or passing the already-fetched podSubnet to avoid repeated list when the same provider is used.
 
@@ -1357,7 +1357,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/daemon/handler_linux.go
 
-- [ ] **Readability**: Fix error message typos: "can not found" → "cannot find" (line 36); "volume name %s is exists" → "volume %s already exists" (line 67).
+- [x] **Readability**: Fix error message typos: "can not found" → "cannot find" (line 36); "volume name %s is exists" → "volume %s already exists" (line 67).
 - [ ] **Structure**: In `createShortSharedDir`, extracting the volume lookup (loop over `pod.Spec.Volumes` by name) into a helper e.g. `findVolumeByName(pod *v1.Pod, name string) *v1.Volume` would shorten the function and clarify intent.
 - [ ] **Error handling**: In `removeShortSharedDir`, when `os.Stat(sharedDir)` returns an error that is not `os.IsNotExist(err)`, the code falls through and `err` is later overwritten by `os.ReadDir`; the Stat error (e.g. permission denied) is never returned. Add `if err != nil { return err }` after the first `if os.IsNotExist(err)` block so non-IsNotExist errors are surfaced.
 - [ ] **Readability**: The condition `strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir)` controls whether to bind-mount; consider a named variable e.g. `needsBindMount` or a short comment to clarify intent.
@@ -1367,14 +1367,14 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/daemon/init.go
 
 - [ ] **Correctness**: Line 82: error message uses `mac` but at that point only `macAddr` (string) is defined; `mac` is assigned on the next line. Use `macAddr` in the format string: `fmt.Errorf("failed to parse mac %s %w", macAddr, err)`.
-- [ ] **Naming**: Fix typo `changeProvideNicName` → `changeProviderNicName` (Provide → Provider); update call sites in init.go and init_linux.go.
+- [x] **Naming**: Fix typo `changeProvideNicName` → `changeProviderNicName` (Provide → Provider); update call sites in init.go and init_linux.go.
 - [ ] **Readability**: Replace magic numbers `3 * time.Second` (retry interval in InitNodeGateway) with a named constant for easier tuning.
 
 ---
 
 ## ./pkg/daemon/init_linux.go
 
-- [ ] **Naming**: Fix typo `changeProvideNicName` → `changeProviderNicName` (Provide → Provider).
+- [x] **Naming**: Fix typo `changeProvideNicName` → `changeProviderNicName` (Provide → Provider).
 - [ ] **Readability**: In `waitNetworkdConfiguration`, replace magic numbers (100ms, 50ms) with named constants for timeout and wait duration.
 - [ ] **Readability**: The string literal `"openvswitch"` (line 59) could be a package-level constant for consistency and to avoid typos.
 
@@ -1414,7 +1414,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/daemon/nm_linux.go
 
-- [ ] **Naming**: Fix typo "mannaged" → "managed" in log message (line 249).
+- [x] **Naming**: Fix typo "mannaged" → "managed" in log message (line 249).
 - [ ] **DRY**: The two branches in the event loop (IP4Config vs IP6Config, lines 106–127) are nearly identical; extract a helper that returns the device for the given event path to reduce duplication.
 - [ ] **Readability**: Replace magic number `200*time.Millisecond` with a named constant (e.g. `dbusConnectionTimeout`).
 - [ ] **Structure**: `SetManaged` is long (~110 lines); consider extracting the "should skip when setting managed=false" logic (vlan check, version check, DNS config check) into a helper to improve readability.
@@ -1440,7 +1440,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: In `removeNodeGwNic`, the error format expects (port, bridge, err) but arguments are passed as ("br-int", util.NodeGwNic, err). Swap to (util.NodeGwNic, "br-int", err) so the message is correct.
 - [ ] **Error message**: In `configureNic` (line 174), `fmt.Errorf("failed to parse mac %s %w", macAddr, err)` uses `macAddr` before it is set (ParseMAC failed). Use the input string `mac` instead of `macAddr`.
 - [ ] **Error message**: In `setVfMac` (line 1189), same issue: use input `mac` in the error message instead of `macAddr` when ParseMAC fails.
-- [ ] **Naming**: Fix typo "faild" → "failed" in error message in `checkNodeGwNicInNs` (line 559).
+- [x] **Naming**: Fix typo "faild" → "failed" in error message in `checkNodeGwNicInNs` (line 559).
 - [ ] **Readability**: Replace magic numbers with named constants (e.g. ovs interface ready timeout 30s, wait interval 500ms, TxQLen 1000, gateway check retries 3/5, waitNetworkReady 10×500ms in waitIPv6AddressPreferred).
 - [ ] **Structure**: `configureContainerNic` is long (~170 lines); consider extracting "configure default gateway", "add extra routes", and "gateway readiness check" into helpers to improve readability and testability.
 - [ ] **Structure**: `configureNodeGwNic` switch (ProtocolIPv4/ProtocolIPv6/ProtocolDual) repeats RouteReplace logic; extract a helper e.g. `addDefaultRoute(linkIndex, gw string, dst *net.IPNet) error` to reduce duplication.
@@ -1583,7 +1583,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **DRY**: `TestNewIPRangeList` and others repeat nearly identical v4 and v6 blocks (Contains, Add, Remove, Separate, Merge). Extract helpers (e.g. `mustNewIP(t, s string) IP`, `mustNewIPRangeList(t, pairs ...string) *IPRangeList`) or use table-driven tests with address family as a dimension to cut duplication.
 - [ ] **Consistency**: Use `require.Equal(t, expected, actual)` throughout. Fix calls like `require.Equal(t, v4MergedRangeList.Len(), 1)` to `require.Equal(t, 1, v4MergedRangeList.Len())` (and similar) so the expected value is first.
 - [ ] **Maintainability**: In `TestRemove`, tests access unexported fields (`v4IPRange.start`, `removed[0].start`, etc.). Use `.Start()` and `.End()` methods instead so tests stay valid if internal representation changes.
-- [ ] **Naming**: Fix typo `v4SplitedExpect` / `v6SplitedExpect` → `v4SplitExpect` / `v6SplitExpect` (line 255 and similar).
+- [x] **Naming**: Fix typo `v4SplitedExpect` / `v6SplitedExpect` → `v4SplitExpect` / `v6SplitExpect` (line 255 and similar).
 
 ---
 
@@ -1602,7 +1602,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Consistency**: Tests for IP type (TestNewIP, TestIPClone, etc.) use t.Errorf; TestAddOrUpdateSubnet uses require. Use require.* throughout (require.NoError, require.Equal, require.False) for consistency with the rest of the file and project.
 - [ ] **Consistency**: Fix require.Equal argument order to (expected, actual), e.g. require.Equal(t, ip, "10.17.0.2") → require.Equal(t, "10.17.0.2", ip) (and similar throughout TestAddOrUpdateSubnet).
 - [ ] **Maintainability**: Remove commented-out code at line 447: `// require.Equal(t, nil, ipam.Subnets[subnetName].V6Reserved.ranges)`.
-- [ ] **Naming**: Fix comment typo at line 396: `// release pod with single nic")` → `// release pod with single nic` (remove stray quote and parenthesis).
+- [x] **Naming**: Fix comment typo at line 396: `// release pod with single nic")` → `// release pod with single nic` (remove stray quote and parenthesis).
 - [ ] **Reproducibility**: TestAddOrUpdateSubnet uses rand.Int()+32 and rand.Int()+128 for invalid mask length; prefer fixed values (e.g. 33, 129) so the test is deterministic.
 - [ ] **Correctness**: TestIPTo16 "nil IP" case calls tt.ip.To16() which may panic if To16() does not handle nil receiver; add a nil check or skip the case with t.Skip, or use require.Panics if nil is documented as invalid.
 
@@ -1624,8 +1624,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/ipam/subnet_test.go
 
 - [ ] **Correctness**: Lines 187, 201, 291, 305, 372, 384, 389: `require.NotNil(nil, err)` and `require.Nil(nil, ip)` pass `nil` as the first argument instead of `t`. Use `require.Error(t, err)` and `require.Nil(t, ip)` so assertions run correctly.
-- [ ] **Naming**: Fix test name typos: `TestGetGetV4RandomAddress`, `TestGetGetV4RandomAddressPTP`, `TestGetGetV6RandomAddress` — remove duplicate "Get" (e.g. `TestGetV4RandomAddress`).
-- [ ] **Naming**: Fix subnet name typos in tests: "testV4RleasedSubnet" → "testV4ReleasedSubnet" (line 413), "testV6RleasedSubnet" → "testV6ReleasedSubnet" (line 424), "testDualRleasedSubnet" → "testDualReleasedSubnet" (line 437).
+- [x] **Naming**: Fix test name typos: `TestGetGetV4RandomAddress`, `TestGetGetV4RandomAddressPTP`, `TestGetGetV6RandomAddress` — remove duplicate "Get" (e.g. `TestGetV4RandomAddress`).
+- [x] **Naming**: Fix subnet name typos in tests: "testV4RleasedSubnet" → "testV4ReleasedSubnet" (line 413), "testV6RleasedSubnet" → "testV6ReleasedSubnet" (line 424), "testDualRleasedSubnet" → "testDualReleasedSubnet" (line 437).
 - [ ] **Readability**: Replace `// TODO://` with `// TODO:` in comments (lines 37, 77, 46, 86).
 - [ ] **Consistency**: Use `require.Equal(t, expected, actual)` throughout; e.g. `require.Equal(t, subnet.V4Using.Len(), 0)` → `require.Equal(t, 0, subnet.V4Using.Len())` so expected is first.
 - [ ] **DRY**: TestNewSubnetIPv4, TestNewSubnetIPv6, TestNewSubnetDualStack repeat similar field checks (CIDR, Free, Reserved, Available, Using, NicToIP, IPToPod). Extract helpers e.g. `assertSubnetV4Fields(t, subnet, name, cidr, expectedFree, expectedReserved)` to reduce duplication.
@@ -1658,7 +1658,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovn_ic_controller/config.go
 
-- [ ] **Readability**: Fix struct comment "Configuration is the controller conf" → "Configuration is the controller config" for consistency.
+- [x] **Readability**: Fix struct comment "Configuration is the controller conf" → "Configuration is the controller config" for consistency.
 - [ ] **Readability**: Replace or clarify the vague comment "change the behavior of cmdline // not exit. not good" (lines 68-69) with a clear explanation e.g. "Init with ContinueOnError so parse errors do not exit the process", or remove if redundant.
 
 ---
@@ -1718,7 +1718,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/ovs/ovn-nb-bfd.go
 
 - [ ] **Correctness**: `ListDownBFDs` (line 42) and `ListUpBFDs` (line 61) dereference `bfd.Status` without nil check; if Status is nil this will panic. Add nil check before `*bfd.Status`.
-- [ ] **Naming / Typo**: Line 136 and 163: error message "failed to delete BFD with with UUID" has double "with"; fix to "failed to delete BFD with UUID".
+- [x] **Naming / Typo**: Line 136 and 163: error message "failed to delete BFD with with UUID" has double "with"; fix to "failed to delete BFD with UUID".
 - [ ] **DRY**: `bfdAddL3HAHandler` and `bfdUpdateL3HAHandler` both use the same retry loop (try 1..3/4, sleep 5s, call `isLrpBfdUp`). Extract a helper e.g. `recheckBfdStatusUntilUp(lrpName, dstIP string, maxTries int)` to reduce duplication.
 - [ ] **Readability**: Magic numbers (5 * time.Second, "15 seconds" in comment, 3/4 tries) should be named package-level constants (e.g. `bfdStatusCheckInterval`, `bfdRecheckMaxTries`) for documentation and tuning.
 - [ ] **Structure**: `bfdUpdateL3HAHandler` is long (~150 lines) with nested branches. Extract handlers: e.g. `handleBfdAdminDownToDown`, `handleBfdDownToUp` (raise chassis priority), `handleBfdUpToDown` (lower chassis, recheck loop) for readability and testability.
@@ -1762,7 +1762,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb.go
 
-- [ ] **Maintainability**: Fix typo "transcation" → "transaction" in comment (line 151: "ovsdb ACID transcation").
+- [x] **Maintainability**: Fix typo "transcation" → "transaction" in comment (line 151: "ovsdb ACID transcation").
 
 ---
 
@@ -1835,8 +1835,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/interface.go
 
-- [ ] **Naming**: Chassis interface method `GetKubeOvnChassisses()` has a typo: "Chassisses" (three s's). Use `GetKubeOvnChassises()` to match `CreateGatewayChassises` and fix all call sites (pkg/controller/init.go, pkg/ovs/ovn-sb-chassis.go, tests, mocks).
-- [ ] **API / Idiom**: `GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)` returns a pointer to slice, which is uncommon in Go. Consider returning `([]ovnsb.Chassis, error)` and updating call sites for consistency and simpler usage.
+- [x] **Naming**: Chassis interface method `GetKubeOvnChassisses()` has a typo: "Chassisses" (three s's). Use `GetKubeOvnChassises()` to match `CreateGatewayChassises` and fix all call sites (pkg/controller/init.go, pkg/ovs/ovn-sb-chassis.go, tests, mocks).
+- [ ] **API / Idiom**: `GetKubeOvnChassises() (*[]ovnsb.Chassis, error)` returns a pointer to slice, which is uncommon in Go. Consider returning `([]ovnsb.Chassis, error)` and updating call sites for consistency and simpler usage.
 
 ---
 
@@ -1871,7 +1871,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Maintainability**: Doc comment for `SetLoadBalancerPreferLocalBackend` says "sets the LB's affinity timeout" but the function sets prefer_local_backend; fix the comment.
 - [ ] **DRY**: `SetLoadBalancerAffinityTimeout` and `SetLoadBalancerPreferLocalBackend` share the same pattern (GetLoadBalancer, compare option value and return if unchanged, copy options and set value, UpdateLoadBalancer). Extract e.g. `setLoadBalancerOption(lbName string, optionKey string, value string) error` to reduce duplication.
 - [ ] **Readability**: In `LoadBalancerAddVip`, when GetLoadBalancer fails the error message says "failed to get lb health check"; the call is for adding a VIP, not health check. Use a more accurate message e.g. "failed to get load balancer".
-- [ ] **Readability**: In `GetLoadBalancer`, the comment "it is because of lack name index that does't use" has a typo ("does't" → "doesn't") and could be clarified.
+- [x] **Readability**: In `GetLoadBalancer`, the comment "it is because of lack name index that does't use" has a typo ("does't" → "doesn't") and could be clarified.
 - [ ] **Performance / Readability**: `getMapKeys(m map[string]bool)` can be replaced with `maps.Keys(m)` (Go 1.21+) to avoid a custom helper; remove getMapKeys if no other callers need a []string from map[string]bool with different semantics.
 - [ ] **Correctness / Verify**: In `deleteUnusedIPPortMappings`, `c.Transact("lb-del", ops)` is used for mutating IPPortMappings; other mutations in this file use "lb-add". Confirm with OVN semantics whether delete of IPPortMappings should use "lb-del" or "lb-add".
 
@@ -1890,14 +1890,14 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-load_balancer_health_check_test.go
 
-- [ ] **Maintainability**: Fix typo in subtest name: "fliter by vip" → "filter by vip".
+- [x] **Maintainability**: Fix typo in subtest name: "fliter by vip" → "filter by vip".
 - [ ] **Readability**: In `testDeleteLoadBalancerHealthChecks`, after the loop `lbName` is the last iteration value; `GetLoadBalancerHealthCheck(lbName, ip, true)` uses it for all vips. Consider pairing lbName with vip (e.g. slice of struct) and iterating so the test intent is clearer.
 
 ---
 
 ## ./pkg/ovs/ovn-nb-load_balancer_test.go
 
-- [ ] **Maintainability**: Fix typos in subtest names: "load balancerand" → "load balancer and" (line 155); "fliter" → "filter" (lines 202, 224).
+- [x] **Maintainability**: Fix typos in subtest names: "load balancerand" → "load balancer and" (line 155); "fliter" → "filter" (lines 202, 224).
 - [ ] **Naming**: In `testGetLoadBalancer`, variable `lr` holds the result of `GetLoadBalancer`; rename to `lb` for consistency. Subtest uses "test-get-lr-non-existent" — use "test-get-lb-non-existent" to match load balancer naming.
 - [ ] **DRY**: The pattern of creating two duplicate load balancers (lb1, lb2 with same name via Create+Transact) appears in testDeleteLoadBalancerOp, testSetLoadBalancerAffinityTimeout, testLoadBalancerAddHealthCheck, testLoadBalancerDeleteVip. Extract a helper e.g. `createDuplicateLoadBalancers(t, nbClient, lbName string)` to reduce duplication.
 - [ ] **DRY**: Building backend host→host mappings from "ip:port,ip:port" (Split backends, SplitHostPort, mappings[host]=host) is repeated in testLoadBalancerAddHealthCheck, testLoadBalancerAddIPPortMapping, testLoadBalancerDeleteIPPortMapping, testLoadBalancerWithHealthCheck. Extract e.g. `backendHostMappingsFromBackends(backends string) (map[string]string, error)`.
@@ -1909,7 +1909,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_router.go
 
-- [ ] **Readability**: Fix comment typo "does't" → "doesn't" in GetLogicalRouter (line 93).
+- [x] **Readability**: Fix comment typo "does't" → "doesn't" in GetLogicalRouter (line 93).
 - [ ] **Naming**: In `LogicalRouterExists`, variable `lrp` suggests Logical Router Port; use `lr` for the logical router return value.
 - [ ] **Readability**: In mutation helpers (LogicalRouterUpdateLoadBalancers, LogicalRouterUpdatePortOp, LogicalRouterUpdatePolicyOp, LogicalRouterUpdateNatOp, LogicalRouterUpdateStaticRouteOp), inner variable `mutation` shadows the outer func name; rename inner to e.g. `m` or `mut` to avoid confusion.
 - [ ] **Performance**: In `LogicalRouterUpdateLoadBalancers`, GetLoadBalancer is called once per lbName; for many LBs consider batching with ListLoadBalancers and filtering by name to reduce round-trips.
@@ -1924,7 +1924,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_router_policy.go
 
-- [ ] **Naming**: Fix typo `batchUpdatetLogicalRouterPolicies` → `batchUpdateLogicalRouterPolicies` (lines 125, 428).
+- [x] **Naming**: Fix typo `batchUpdatetLogicalRouterPolicies` → `batchUpdateLogicalRouterPolicies` (lines 125, 428).
 - [ ] **Maintainability**: Fix duplicate doc comments: "DeleteLogicalRouterPolicy" appears for DeleteLogicalRouterPolicy, BatchDeleteLogicalRouterPolicy, and DeleteLogicalRouterPolicies; use distinct descriptions (e.g. "BatchDeleteLogicalRouterPolicy batch remove...", "DeleteLogicalRouterPolicies delete some policies...").
 - [ ] **Readability**: In AddLogicalRouterPolicy (lines 66–75), inner `err := fmt.Errorf(...)` shadows outer err; use a distinct name (e.g. `updateErr`) or return the wrapped error directly to avoid confusion.
 - [ ] **Readability**: Comment "// not found,skip" (line 214) → "// not found, skip".
@@ -1944,9 +1944,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_router_port_test.go
 
-- [ ] **Naming**: Line 291: typo "test-create-lrp-fail-clenit" → "test-create-lrp-fail-client".
+- [x] **Naming**: Line 291: typo "test-create-lrp-fail-clenit" → "test-create-lrp-fail-client".
 - [ ] **Naming**: Line 351: subtest "update nil lsp" → "update nil lrp" (lsp is logical switch port).
-- [ ] **Naming**: Line 541: typo "upadate" → "update" in subtest "upadate gateway chassis op with nil uuids".
+- [x] **Naming**: Line 541: typo "upadate" → "update" in subtest "upadate gateway chassis op with nil uuids".
 - [ ] **Naming**: Line 428: "when does't exist ExternalIDs" → "when ExternalIDs don't exist".
 - [ ] **Maintainability**: Lines 354, 424: use require.ErrorContains(t, err, "logical_router_port is nil") to assert error message instead of require.Error(t, err, "logical_router_port is nil").
 - [ ] **DRY**: testLogicalRouterPortFilter repeats the pattern filterFunc := ...; count := 0; for ...; require.Equal(t, count, N). Extract e.g. countFiltered(lrps []*ovnnb.LogicalRouterPort, filter func(*ovnnb.LogicalRouterPort) bool) int and assert on return value.
@@ -1962,10 +1962,10 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: In AddLogicalRouterStaticRoute, only run delete block (LogicalRouterUpdateStaticRouteOp + Transact) when len(toDel) > 0; when toDel is empty skip to avoid unnecessary or empty transact.
 - [ ] **Correctness**: In BatchDeleteLogicalRouterStaticRoute, when GetLogicalRouter returns (nil, err) we fall through and use lr.StaticRoutes; add "if err != nil { return err }" and "if lr == nil { return nil }" before using lr.
 - [ ] **Maintainability**: Line 192: duplicate comment "DeleteLogicalRouterStaticRoute" for DeleteLogicalRouterStaticRouteByUUID; use "DeleteLogicalRouterStaticRouteByUUID delete ... by UUID".
-- [ ] **Naming**: Line 281: typo "exits" → "exists" (variable nexthop, exits := staticRoutesMap[key]).
-- [ ] **Readability**: Line 314: "generate operations for clear" → "generate operations for clearing".
+- [x] **Naming**: Line 281: typo "exits" → "exists" (variable nexthop, exits := staticRoutesMap[key]).
+- [x] **Readability**: Line 314: "generate operations for clear" → "generate operations for clearing".
 - [ ] **Readability**: Line 341: comment "this is necessary because may exist same" → "this is necessary because the same static route may exist".
-- [ ] **Readability**: Line 402: error message "batch list logical staric router" — typo "staric" → "static"; "lr staric route" → "lr static routes".
+- [x] **Readability**: Line 402: error message "batch list logical staric router" — typo "staric" → "static"; "lr staric route" → "lr static routes".
 - [ ] **Readability**: Line 413/416: comment "create several ... route once" → "create several ... routes at once".
 - [ ] **Readability**: Line 377: "list route which match" → "list routes that match".
 - [ ] **API**: ListLogicalRouterStaticRoutesByOption(lrName, _, key, value string) has unused second parameter; remove or document (e.g. routeTable).
@@ -1983,9 +1983,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_switch.go
 
-- [ ] **Maintainability**: Fix typo "ingnore" → "ignore" in CreateBareLogicalSwitch comment (line 89).
-- [ ] **Readability**: Fix typo "list switch switch" → "list logical switch" in GetLogicalSwitch error message (line 246).
-- [ ] **Readability**: Fix comment in GetLogicalSwitch (line 231): "does't" → "doesn't", "lack name index" → "lack of name index".
+- [x] **Maintainability**: Fix typo "ingnore" → "ignore" in CreateBareLogicalSwitch comment (line 89).
+- [x] **Readability**: Fix typo "list switch switch" → "list logical switch" in GetLogicalSwitch error message (line 246).
+- [x] **Readability**: Fix comment in GetLogicalSwitch (line 231): "does't" → "doesn't", "lack name index" → "lack of name index".
 - [ ] **Structure**: In LogicalSwitchUpdatePortOp, when lsName == "" and op == Delete, the resolution of logical switch by LSP UUID is a non-trivial block. Consider extracting e.g. `resolveLogicalSwitchNameByPort(lspUUID string) (string, error)` for readability and unit testing.
 - [ ] **Readability**: CreateLogicalSwitch has multiple nested branches (exist vs !exist, needRouter vs !needRouter). Consider extracting helpers e.g. `updateRouterPortIfExists(...)` and `ensurePatchPort(...)` to reduce nesting and improve readability.
 - [ ] **DRY**: LogicalSwitchUpdateOtherConfigOp, LogicalSwitchUpdateLoadBalancerOp, and logicalSwitchUpdateACLOp share the same structure (empty check, mutation closure, LogicalSwitchOp). Consider a small generic helper if more such mutation ops are added.
@@ -1994,7 +1994,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_switch_port.go
 
-- [ ] **Maintainability**: Fix comment typos: line 308 "CreateVirtualLogicalSwitchPorts update..." refers to SetLogicalSwitchPortVirtualParents; line 347 "CreateVirtualLogicalSwitchPort update..." refers to SetVirtualLogicalSwitchPortVirtualParents. Use the correct function name in the comment.
+- [x] **Maintainability**: Fix comment typos: line 308 "CreateVirtualLogicalSwitchPorts update..." refers to SetLogicalSwitchPortVirtualParents; line 347 "CreateVirtualLogicalSwitchPort update..." refers to SetVirtualLogicalSwitchPortVirtualParents. Use the correct function name in the comment.
 - [ ] **Naming**: In DeleteLogicalSwitchPorts (line 680), the filter parameter is named `lrp` (suggests logical router port) but the type is *ovnnb.LogicalSwitchPort; rename to `lsp` for consistency.
 - [ ] **DRY**: buildLogicalSwitchPort sets `lsp.ExternalIDs["vendor"] = util.CniTypeName` twice (lines 37 and 76); remove the redundant assignment.
 - [ ] **DRY**: SetLogicalSwitchPortVirtualParents and SetVirtualLogicalSwitchPortVirtualParents share the same logic for setting/clearing virtual-parents (Options["virtual-parents"] = parents; delete if empty). Consider extracting a small helper or having the single-port path call the batch logic with one IP to reduce duplication.
@@ -2004,7 +2004,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-logical_router_policy_test.go
 
-- [ ] **Maintainability**: Fix typos "create three polices" / "create two polices" → "policies" (lines 429, 435).
+- [x] **Maintainability**: Fix typos "create three polices" / "create two polices" → "policies" (lines 429, 435).
 - [ ] **Maintainability**: In testDeleteLogicalRouterPolicy, subtest name "no err when delete existent logical switch port" (line 177) refers to switch port; change to "logical router policy".
 - [ ] **Readability**: In testDeleteLogicalRouterPolicies, subtest "delete some policies with nil priority" uses priority -1; rename to e.g. "with priority -1 (any)" or "with ignore priority" for clarity.
 - [ ] **DRY**: testPolicyFilter repeats the pattern `filterFunc := ...; count := 0; for _, policy := range policies { if filterFunc(policy) { count++ } }; require.Equal(t, N, count)` five times; extract e.g. `countFiltered(policies []*ovnnb.LogicalRouterPolicy, filter func(*ovnnb.LogicalRouterPolicy) bool) int` and assert on the return value.
@@ -2057,7 +2057,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Readability**: Magic strings for test names (e.g. `"test-create-ls-ls"`, `"test-add-port-ls"`, `"test-del-port-ls"`) are scattered throughout. Consider extracting common prefixes as constants (e.g. `testLSPrefix = "test-"`) or using a test name generator helper.
 - [ ] **Maintainability**: In `testLogicalSwitchDelPort`, the last subtest (lines 216-231) tests multiple failure scenarios in one test case. Split into separate subtests (e.g. "failed client create switch", "failed client create port", "failed client get port", "failed client add port", "failed client del port") for better isolation and clearer failure messages.
 - [ ] **DRY**: The pattern of creating a logical switch, creating a port, adding the port to the switch, then testing operations appears in multiple tests. Consider a setup helper that returns a configured LS and LSP for reuse.
-- [ ] **Readability**: In `testCreateLogicalSwitch`, test names contain typos: "does't" should be "doesn't" (lines 45, 88, 93). Fix for better readability.
+- [x] **Readability**: In `testCreateLogicalSwitch`, test names contain typos: "does't" should be "doesn't" (lines 45, 88, 93). Fix for better readability.
 
 ---
 
@@ -2091,7 +2091,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/ovs/ovn-nb-nat.go
 
 - [ ] **DRY**: `GetNat` and `newNat` share nearly identical validation (lrName required, natType not DNAT, natType in [SNAT, DNATAndSNAT], SNAT requires logicalIP, DNATAndSNAT requires externalIP). Extract a shared helper e.g. `validateNatParams(lrName, natType, externalIP, logicalIP string) error` to avoid duplication and drift.
-- [ ] **Readability**: Fix grammar in error messages: "nat type must one of" → "nat type must be one of" (in GetNat line 284 and newNat line 361).
+- [x] **Readability**: Fix grammar in error messages: "nat type must one of" → "nat type must be one of" (in GetNat line 284 and newNat line 361).
 - [ ] **Maintainability**: In `UpdateNat`, Transact uses method name "net-update"; consider renaming to "nat-update" for consistency with other resources (e.g. lb-update, lrp-update) and clarity in logs.
 - [ ] **Performance**: `listLogicalRouterNatByFilter` fetches each NAT by UUID in a loop (N+1). If the OVSDB client supports batch get by UUIDs, consider batching to reduce round-trips for routers with many NATs.
 - [ ] **Robustness**: In `CreateNats`, when all input nats are nil (e.g. nats = [nil, nil]), models and natUUIDs are empty and the code still proceeds; add a check after the loop and return an error when len(models) == 0.
@@ -2101,7 +2101,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-nat_test.go
 
-- [ ] **Naming**: Fix typo in comment line 262: "filed update" → "field update".
+- [x] **Naming**: Fix typo in comment line 262: "filed update" → "field update".
 - [ ] **DRY**: Two identical subtests "fail to new snat rule" in testNewNat (lines 447–468 and 470–491); remove the duplicate.
 - [ ] **Consistency**: Use require.NoError(t, err) instead of require.Nil(t, err) for error assertions (e.g. lines 265, 455, 458) to align with testify conventions and clearer failure messages.
 - [ ] **Structure**: In testUpdateNat, the subtest "failed to update nat" contains a nested subtest "empty lrName" that calls UpdateDnatAndSnat; move "empty lrName" to testUpdateDnatAndSnat or a dedicated validation test so each test focuses on one API.
@@ -2123,7 +2123,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-port_group_test.go
 
-- [ ] **Naming**: Fix test name typo `testGetGetPortGroup` → `testGetPortGroup` (line 236).
+- [x] **Naming**: Fix test name typo `testGetGetPortGroup` → `testGetPortGroup` (line 236).
 - [ ] **Naming**: In `testDeletePortGroup`, subtest "no err when delete non-existent logical router" (line 230) refers to logical router but the test deletes a port group; rename to "no err when delete non-existent port group".
 - [ ] **Naming**: In `testListPortGroups`, subtest "result should include lsp when key exists in pg column" (line 287) should say "pg" not "lsp" (we are listing port groups).
 - [ ] **Consistency**: In `testListPortGroups` (lines 315, 324), use testify convention `require.Equal(t, expected, actual)` i.e. `require.Equal(t, 4, count)` instead of `require.Equal(t, count, 4)`.
@@ -2134,7 +2134,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-nb-suite_test.go
 
-- [ ] **Naming**: Fix test method name `Test_GetGetPortGroup` → `Test_GetPortGroup` (double "Get" is a typo).
+- [x] **Naming**: Fix test method name `Test_GetGetPortGroup` → `Test_GetPortGroup` (double "Get" is a typo).
 - [ ] **Naming**: Fix test method name `Test_testCleanLogicalSwitchPortMigrateOptions` → `Test_CleanLogicalSwitchPortMigrateOptions`; the "test" prefix is redundant and inconsistent with other Test_* methods.
 - [ ] **Readability**: In `newOVSDBServer`, the return variable `server` shadows the imported package `server` (libovsdb/server). Rename the return value to e.g. `ovsdbServer` or `srv` to avoid confusion.
 - [ ] **Structure**: `SetupSuite` is long and does four distinct setups (failed NB client, NB client, SB client, legacy client, ovs socket). Extract helpers e.g. `setupFailedOvnNBClient()`, `setupOvnNBClient()`, `setupOvnSBClient()` to improve readability and testability.
@@ -2159,10 +2159,10 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/ovs/ovn-sb-chassis.go
 
-- [ ] **Naming**: Fix typo `GetKubeOvnChassisses` → `GetKubeOvnChassis` (or keep plural as `Chassis`; "Chassisses" is incorrect). Update call sites (e.g. suite test name) accordingly.
+- [x] **Naming**: Fix typo `GetKubeOvnChassisses` → `GetKubeOvnChassis` (or keep plural as `Chassis`; "Chassisses" is incorrect). Update call sites (e.g. suite test name) accordingly.
 - [ ] **Error message**: In `UpdateChassisTag` (line 151), use "failed to get" instead of "fail to get" for consistency with other error messages in the file.
-- [ ] **API / Idiom**: `ListChassis` and `GetKubeOvnChassisses` return `*[]ovnsb.Chassis`. In Go, returning a slice directly (`[]ovnsb.Chassis`) is more idiomatic and avoids nil vs empty-slice confusion; consider changing return type and updating callers.
-- [ ] **Readability**: In `GetKubeOvnChassisses`, the WhereCache predicate can be simplified to `return chassis.ExternalIDs != nil && chassis.ExternalIDs["vendor"] == util.CniTypeName` (single return) instead of if/return false.
+- [ ] **API / Idiom**: `ListChassis` and `GetKubeOvnChassises` return `*[]ovnsb.Chassis`. In Go, returning a slice directly (`[]ovnsb.Chassis`) is more idiomatic and avoids nil vs empty-slice confusion; consider changing return type and updating callers.
+- [ ] **Readability**: In `GetKubeOvnChassises`, the WhereCache predicate can be simplified to `return chassis.ExternalIDs != nil && chassis.ExternalIDs["vendor"] == util.CniTypeName` (single return) instead of if/return false.
 
 ---
 
@@ -2223,7 +2223,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/ovs/ovs-vsctl_linux.go
 
 - [ ] **Error handling**: `SetInterfaceBandwidth` and `SetNetemQos` ignore `strconv.Atoi`/`ParseFloat` errors for ingress, egress, latency, jitter, limit, loss; invalid input becomes 0. Consider validating and returning an error for invalid numeric input.
-- [ ] **Maintainability**: Fix typo in `deleteNetemQosByID` log: "bingding" → "binding".
+- [x] **Maintainability**: Fix typo in `deleteNetemQosByID` log: "bingding" → "binding".
 - [ ] **Error handling**: `deleteNetemQosByID` ignores `Get("qos", qosID, "type", ...)` error; `CheckAndUpdateHtbQos` ignores `IsHtbQos` error. Consider handling errors so failures are visible.
 - [ ] **DRY**: `ClearHtbQosQueue` has the same if/else (iface vs pod condition) as `GetQosList`; consider a shared helper e.g. `findQueueOrQosByIfaceOrPod(iface, podName, podNamespace string, table string) ([]string, error)`.
 - [ ] **Readability**: `SetNetemQos` is long (~100 lines) with deep nesting; extract helpers e.g. `applyNetemQosToInterface`, `deleteAllNetemQosForInterface` to reduce complexity.
@@ -2235,7 +2235,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Robustness**: In `getIpv6Prefix`, `strings.Split(network, "/")[1]` panics if `network` has no "/"; use `strings.Cut(network, "/")` or validate format before indexing.
 - [ ] **Readability**: In `AndACLMatch.Match` and `OrACLMatch.Match`, on error the message uses `match` which may be from a previous iteration or empty; use the failing sub-match (e.g. `r.String()`) in the error for clearer context.
-- [ ] **Maintainability**: Fix comment typo in `OrACLMatch.Match`: "has more then one" → "has more than one".
+- [x] **Maintainability**: Fix comment typo in `OrACLMatch.Match`: "has more then one" → "has more than one".
 - [ ] **Maintainability**: In `parseDHCPOptions`, comment says "return default Ipv6RaConfigs" but the function returns nil when raw is empty; fix comment to "return nil when raw is empty".
 - [ ] **Performance**: `Limiter.Wait` uses a busy loop with `time.Sleep(10*time.Millisecond)` when at limit; consider sync.Cond or a channel to avoid spinning and reduce latency when a slot frees.
 
@@ -2283,9 +2283,9 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/util/const.go
 
-- [ ] **Naming**: Fix typo `DepreciatedFinalizerName` → `DeprecatedFinalizerName` (deprecated, not depreciated).
-- [ ] **Naming**: Fix typo `MirrosRetryMaxTimes` / `MirrosRetryInterval` → `MirrorsRetryMaxTimes` / `MirrorsRetryInterval`; update all call sites (e.g. cmd/daemon/cniserver.go, pkg/daemon).
-- [ ] **Naming**: Verify `GeneveNic = "genev_sys_6081"` — if the interface name follows OVS convention, add a short comment; if typo, use "geneve_sys_6081".
+- [x] **Naming**: Fix typo `DepreciatedFinalizerName` → `DeprecatedFinalizerName` (deprecated, not depreciated).
+- [x] **Naming**: Fix typo `MirrosRetryMaxTimes` / `MirrosRetryInterval` → `MirrorsRetryMaxTimes` / `MirrorsRetryInterval`; update all call sites (e.g. cmd/daemon/cniserver.go, pkg/daemon).
+- [x] **Naming**: Verify `GeneveNic = "genev_sys_6081"` — if the interface name follows OVS convention, add a short comment; if typo, use "geneve_sys_6081".
 - [ ] **Maintainability**: The main const block is long (~280 lines); add section comments (e.g. "// OVN annotations", "// Labels", "// Priorities") to group related constants and improve navigation.
 
 ---
@@ -2293,7 +2293,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/util/arp.go
 
 - [ ] **Correctness**: ArpResolve creates `time.NewTimer(timeout)` but never calls `timer.Stop()` when returning early (success or done). This can leak the timer. Use `defer timer.Stop()` after creating the timer.
-- [ ] **Readability**: Fix typos `probeMinmum` and `probeMaxmum` → `probeMinimum` and `probeMaximum`.
+- [x] **Readability**: Fix typos `probeMinmum` and `probeMaxmum` → `probeMinimum` and `probeMaximum`.
 - [ ] **Readability**: Extract broadcast MAC `net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}` to a package-level constant (e.g. `broadcastMAC`) — used in ArpDetectIPConflict and AnnounceArpAddress.
 - [ ] **Structure**: ArpResolve has three consecutive retry loops sharing `count` and `timer`; the meaning of `count` is unclear (attempt index vs retries). Consider extracting each phase into helpers (e.g. `getInterfaceWithRetry`, `dialArpWithRetry`, `resolveWithRetry`) and use a single total-attempts counter for the return value.
 - [ ] **Readability**: In ArpDetectIPConflict, the goroutine shadows outer `pkt` with `pkt, _, err := client.Read()`; rename to `replyPkt` or `recvPkt` to avoid confusion with the probe packet.
@@ -2307,7 +2307,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **DRY**: The pattern "get default route, nic index, link by index, and optionally first IPv4 addr" is duplicated in TestArpResolve, TestDetectIPConflict, and TestAnnounceArpAddress. Extract a test helper (e.g. `getDefaultRouteNicAndGW(t)` or `getDefaultNicAndIP(t)`) to reduce duplication and simplify tests.
 - [ ] **Readability**: Remove redundant `return` after `t.Fatalf(...)` — Fatal already exits the test.
-- [ ] **Naming**: Fix comment typo "invalid mc" → "invalid mac" in TestAnnounceArpAddress (line 289).
+- [x] **Naming**: Fix comment typo "invalid mc" → "invalid mac" in TestAnnounceArpAddress (line 289).
 - [ ] **Consistency**: TestMacEqual uses raw `t.Errorf`; other tests in the file use `require`. Consider using `require.Equal(t, test.expected, result)` in TestMacEqual for consistency.
 
 ---
@@ -2329,7 +2329,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/util/iptables.go
 
-- [ ] **Naming**: GwIPtableCounters uses "IPtable" (one word); consider GwIptablesCounters for consistency with common "iptables" spelling (update call sites in pkg/daemon/gateway_linux.go and pkg/daemon/controller_linux.go).
+- [x] **Naming**: GwIPtableCounters uses "IPtable" (one word); consider GwIptablesCounters for consistency with common "iptables" spelling (update call sites in pkg/daemon/gateway_linux.go and pkg/daemon/controller_linux.go).
 - [ ] **Readability**: Add brief godoc for GwIPtableCounters describing its purpose (e.g. packet and byte counters for gateway iptables).
 - [ ] **Readability**: IPTableRule.Pos is opaque; add godoc or rename to Position to clarify it denotes the rule position in the chain.
 
@@ -2370,7 +2370,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/util/link_test.go
 
-- [ ] **Readability**: Fix comment typos "should failed" → "should fail", "should ok" → "should succeed".
+- [x] **Readability**: Fix comment typos "should failed" → "should fail", "should ok" → "should succeed".
 - [ ] **Maintainability**: When SetLinkUp fails (non-skip case), the test does t.Errorf and then require.NoError(t, err), causing double failure reporting. Use a single path: if err != nil { if strings.Contains(...) { t.Skip(...); return }; t.Fatalf("Error setting link up: %v", err) } and remove the trailing require.NoError(t, err).
 - [ ] **Correctness**: Error message "Error resolving ARP" is incorrect (operation is setting link up). Change to "Error setting link up" or similar.
 
@@ -2553,7 +2553,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/util/validator.go
 
 - [ ] **DRY**: The pattern "if ContainsUppercase(field) { err := fmt.Errorf(...); klog.Error(err); return err }" repeats many times in `ValidateSubnet` (gateway, excludeIps, CIDRBlock, allowSubnets, externalEgressGateway, vips, U2OInterconnectionIP). Extract a helper e.g. `validateNoUppercase(fieldName, value string) error` to reduce duplication.
-- [ ] **Naming**: Fix typo `validateNatOutGoingPolicyRuleIPs` → `validateNatOutgoingPolicyRuleIPs` (and "OutGoing" in error messages) for consistent Go naming.
+- [x] **Naming**: Fix typo `validateNatOutGoingPolicyRuleIPs` → `validateNatOutgoingPolicyRuleIPs` (and "OutGoing" in error messages) for consistent Go naming.
 - [ ] **Readability / Shadowing**: In `ValidatePodNetwork`, variable `errors` shadows the imported package `errors`; rename to `errs` or `errList` to avoid confusion and allow use of `errors.New` etc. if needed.
 - [ ] **Structure / Readability**: `ValidateSubnet` is long (~195 lines) and mixes gateway, CIDR, excludeIps, allowSubnets, gatewayType, protocol, VPC, externalEgressGateway, vips, nat rules, U2O checks. Consider extracting helpers e.g. `validateSubnetGateway`, `validateSubnetExcludeIps`, `validateSubnetCIDRBlocks` to shorten and improve testability.
 - [ ] **Error handling**: In `ValidateNetworkBroadcast`, `_, network, _ := net.ParseCIDR(cidrBlock)` ignores the error; if CIDR is invalid, `network` may be nil and `AddressCount(network)` could panic. Check error and return or skip invalid CIDR.
@@ -2562,7 +2562,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/util/validator_test.go
 
-- [ ] **Naming / Readability**: Fix typos in test case names: `CICDblockFormalErr` → `CIDRBlockFormatErr` (CICD → CIDR, Formal → Format); `ExgressGWErr1` etc. → `EgressGWErr1` (Exgress → Egress); `CIDRformErr` → `CIDRFormatErr`; `corretV4` / `corretDual` → `correctV4` / `correctDual`; `EgRatErr` → `EgressRateErr`; `ingRaErr` → `IngressRateErr`; `LogicalGatewayU2OInterconnectionSametimeTrueErr` → `SameTime` (Sametime → SameTime) for consistency and discoverability.
+- [x] **Naming / Readability**: Fix typos in test case names: `CICDblockFormalErr` → `CIDRBlockFormatErr` (CICD → CIDR, Formal → Format); `ExgressGWErr1` etc. → `EgressGWErr1` (Exgress → Egress); `CIDRformErr` → `CIDRFormatErr`; `corretV4` / `corretDual` → `correctV4` / `correctDual`; `EgRatErr` → `EgressRateErr`; `ingRaErr` → `IngressRateErr`; `LogicalGatewayU2OInterconnectionSametimeTrueErr` → `SameTime` (Sametime → SameTime) for consistency and discoverability.
 - [ ] **Structure**: `ErrorContains` is shared with net_test.go; consider moving to a shared test helper (see net.go refactor) so it is defined once.
 
 ---
@@ -2619,7 +2619,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./pkg/webhook/ip.go
 
 - [ ] **DRY / Structure**: `IPUpdateHook` has 7 nearly identical blocks checking immutable fields (Subnet, Namespace, PodName, PodType, V4IPAddress, V6IPAddress, MacAddress). Extract a table-driven check or helper e.g. `validateImmutableIPFields(old, new *ovnv1.IP) error` to reduce duplication.
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" (lines 29, 76).
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" (lines 29, 76).
 - [ ] **Logic / Redundancy**: In `ValidateIP`, the check `if ip.Spec.Subnet == ""` appears twice (lines 80–82 and 123–125); the second is unreachable after the first return. Remove the redundant second check.
 - [ ] **Readability**: Simplify `err := fmt.Errorf(...); return err` to `return fmt.Errorf(...)` in multiple places (e.g. lines 48–49, 52–53, 92–93, 106–107).
 - [ ] **DRY**: V4 and V6 validation in `ValidateIP` share the same pattern (parse IP, check CIDR); consider a small helper e.g. `validateIPInSubnet(ipStr, subnetName string, cidrBlock string, version string) error` (V6 has extra uppercase check, so either two helpers or one with an option).
@@ -2628,11 +2628,11 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/ovn_nat_gateway.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" (multiple hooks). Consider a package-level constant e.g. `webhookAllowedReason = "bypass"` for consistency across webhook files.
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" (multiple hooks). Consider a package-level constant e.g. `webhookAllowedReason = "bypass"` for consistency across webhook files.
 - [ ] **DRY**: Eip/Dnat/Snat/Fip Update hooks share the same pattern (decode new/old, if spec changed and old.Status.Ready then error else if spec changed validate new). Extract a generic helper or small closure factory to reduce duplication.
 - [ ] **DRY**: `ValidateOvnEip` V4/V6 validation duplicates the pattern in `pkg/webhook/ip.go` (parse IP, check CIDR, V6 uppercase). Share a validation helper in the webhook package.
 - [ ] **DRY**: In `ValidateOvnDnat`, port validation (Atoi + range 0–65535) is duplicated for ExternalPort and InternalPort. Extract e.g. `validatePort(portStr, fieldName string) error`.
-- [ ] **Maintainability**: Fix error message typo: "failed to parse spec internalIP" (line 304) → "internalPort" to match the field name.
+- [x] **Maintainability**: Fix error message typo: "failed to parse spec internalIP" (line 304) → "internalPort" to match the field name.
 - [ ] **Readability**: Simplify `err := errors.New(...); return err` to `return errors.New(...)` in ValidateOvnDnat, ValidateOvnFip and elsewhere.
 - [ ] **Consistency**: `ValidateOvnSnat` and `ValidateOvnFip` return `v.cache.Get(ctx, key, eip)` directly; other validators use `if err := v.cache.Get(...); err != nil { return err }`. Use the same pattern for consistency and easier logging.
 - [ ] **DRY / Readability**: `isOvnEipInUse` has three identical list+check blocks (dnat, fip, snat). Consider a loop over (list ptr, usageKind string) or a helper to reduce repetition.
@@ -2641,7 +2641,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/static_ip.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" (multiple hooks).
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" (multiple hooks).
 - [ ] **DRY**: DeploymentCreateHook, StatefulSetCreateHook, DaemonSetCreateHook, JobCreateHook are nearly identical (decode, get static IPS from template annotations, log, if empty allowed else validateIP). Extract a helper e.g. `validateWorkloadStaticIP(ctx, req, getAnnotations func() map[string]string, kind, name, namespace string)` or pass template annotations + kind/name/namespace to reduce duplication. CronJob differs only in path (JobTemplate.Spec.Template).
 - [ ] **Readability**: `allowLiveMigration` can be simplified to `return annotations[kubevirtv1.MigrationJobNameAnnotation] != ""`.
 
@@ -2649,7 +2649,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/subnet.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" in all three hooks (lines 55, 90, 101). Prefer a package-level constant e.g. `webhookAllowedReason = "bypass"` for consistency with other webhook files.
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" in all three hooks (lines 55, 90, 101). Prefer a package-level constant e.g. `webhookAllowedReason = "bypass"` for consistency with other webhook files.
 - [ ] **DRY**: SubnetCreateHook and SubnetUpdateHook both list subnets and call `util.ValidateCidrConflict(o, subnetList.Items)`. Extract a helper e.g. `validateSubnetCidrNoConflict(ctx context.Context, cache ClientReader, subnet *ovnv1.Subnet) error` to avoid duplication and centralize cache.List + validation.
 - [ ] **Consistency**: SubnetCreateHook and SubnetUpdateHook use `ctrlwebhook.Errored` for decode/cache errors but `admission.Errored(http.StatusConflict, err)` for ValidateCidrConflict. Use a single package (e.g. ctrlwebhook) for all admission responses for consistency.
 - [ ] **Readability**: In SubnetCreateHook, the VPC loop combines name-collision check and namespace-in-VPC validation. Extract namespace validation into e.g. `validateSubnetNamespacesInVpc(subnet *ovnv1.Subnet, vpc *ovnv1.Vpc) error` to clarify intent and simplify the loop.
@@ -2659,16 +2659,16 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/vip.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" (lines 30, 54). Use package-level constant for consistency with other webhook files.
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" (lines 30, 54). Use package-level constant for consistency with other webhook files.
 - [ ] **DRY**: ValidateVip V4 and V6 blocks share the same pattern (parse IP, check CIDR; V6 adds uppercase check). Extract a helper e.g. `validateVipIPInSubnet(ipStr, subnetName string, cidrBlock string, isV6 bool) error` to reduce duplication; aligns with suggestions in ip.go and ovn_nat_gateway.go.
 - [ ] **Readability**: Simplify `err := fmt.Errorf(...); return err` to `return fmt.Errorf(...)` in ValidateVip (lines 70-71, 75-77, 84-85, 88-89, 93-95).
-- [ ] **Maintainability**: Fix error message grammar "not support change" → "does not support change" or "changes are not supported" (line 50).
+- [x] **Maintainability**: Fix error message grammar "not support change" → "does not support change" or "changes are not supported" (line 50).
 
 ---
 
 ## ./pkg/webhook/vpc.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" (lines 37, 50, 61). Use package-level constant for consistency.
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" (lines 37, 50, 61). Use package-level constant for consistency.
 - [ ] **DRY**: Error message "vpc and subnet cannot have the same name" is duplicated in subnet.go (VPC vs subnet name collision). Extract to a shared constant in the webhook package (e.g. `errVpcSubnetSameName`) for consistency and i18n.
 - [ ] **Readability**: In VpcCreateHook, simplify `err := errors.New(...); return ctrlwebhook.Errored(..., err)` to `return ctrlwebhook.Errored(..., errors.New(...))` (lines 28-29).
 - [ ] **Structure / Performance**: In VpcCreateHook, consider calling `util.ValidateVpc(&vpc)` before listing subnets so invalid VPC spec fails fast without a cache.List.
@@ -2677,8 +2677,8 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/vpc_nat_gateway.go
 
-- [ ] **Readability**: Fix success message typo "by pass" → "bypass" in all hooks (lines 48, 61, 83, 114, 160, 181, 214, 234, 267, 287, 317). Use package-level constant for consistency.
-- [ ] **Maintainability**: Fix error message grammar "not support change" → "does not support change" or "changes are not supported" (lines 99, 197, 250, 303). Add space after comma in "in use,you need" (line 155).
+- [x] **Readability**: Fix success message typo "by pass" → "bypass" in all hooks (lines 48, 61, 83, 114, 160, 181, 214, 234, 267, 287, 317). Use package-level constant for consistency.
+- [x] **Maintainability**: Fix error message grammar "not support change" → "does not support change" or "changes are not supported" (lines 99, 197, 250, 303). Add space after comma in "in use,you need" (line 155).
 - [ ] **DRY**: Create hooks (VpcNatGwCreateOrUpdateHook, iptablesEIPCreateHook, iptablesDnatCreateHook, iptablesSnatCreateHook, iptablesFipCreateHook) share the same pattern: decode → ValidateVpcNatConfig → ValidateVpcNatGatewayConfig → resource-specific Validate → Allowed. Update hooks (iptablesEIP/Dnat/Snat/FipUpdateHook) share: decode new/old → if spec changed and old ready then error else if spec changed then same three validations + resource Validate → Allowed. Extract helpers e.g. `validateVpcNatContext(ctx) error` and a small closure or table for "create vs update" flow to reduce duplication.
 - [ ] **DRY**: ValidateIptablesEIP V4/V6 validation duplicates the pattern in vip.go and ip.go (parse IP, check CIDR, V6 uppercase). Share a validation helper in the webhook package (e.g. validateIPInSubnet).
 - [ ] **DRY**: ValidateIptablesDnat: ExternalPort and InternalPort validation duplicate Atoi + range 0–65535. Extract e.g. `validatePort(portStr, fieldName string) error` to reduce duplication.
@@ -2697,7 +2697,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./pkg/webhook/webhook.go
 
-- [ ] **Readability / Consistency**: Fix typo "by pass" → "bypass" (line 119) and use a package-level constant for the allowed reason string (e.g. `webhookAllowedReason = "bypass"`) to align with suggestions in static_ip.go, subnet.go, vip.go, vpc.go, vpc_nat_gateway.go.
+- [x] **Readability / Consistency**: Fix typo "by pass" → "bypass" (line 119) and use a package-level constant for the allowed reason string (e.g. `webhookAllowedReason = "bypass"`) to align with suggestions in static_ip.go, subnet.go, vip.go, vpc.go, vpc_nat_gateway.go.
 - [ ] **Structure / DRY**: The switch in Handle() has three symmetric branches (nil check, log, call hook, return). Extract a helper e.g. `dispatch(ctx, req, hooks map[schema.GroupVersionKind]admission.HandlerFunc, op string) (admission.Response, bool)` returning (resp, found) to reduce duplication.
 - [ ] **Maintainability / Testability**: Package-level createHooks/updateHooks/deleteHooks are mutated in NewValidatingHook; creating two ValidatingHook instances overwrites the first's handlers. Consider attaching hook maps to ValidatingHook (e.g. v.createHooks) so each instance owns its registry, or document that NewValidatingHook must be called once per process.
 - [ ] **Readability**: When no hook is found for the GVK, consider logging at V(4) or V(5) that the request was allowed because no hook was registered, to aid debugging.
@@ -2762,12 +2762,12 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/connectivity/e2e_test.go
 
-- [ ] **Correctness / Naming**: Fix typo in ginkgo.By message (line 96): "Creating deplpyment" → "Creating deployment".
+- [x] **Correctness / Naming**: Fix typo in ginkgo.By message (line 96): "Creating deplpyment" → "Creating deployment".
 - [ ] **DRY**: The pattern of getting DaemonSet ovs-ovn, GetPods, then finding the pod on suiteCtx.Node is repeated in "Recreating ovs-ovn pod", "Stop ovn-controller process", and "Stop ovs-vswitchd process". Extract a helper e.g. `getOvsOvnPodOnNode(cs clientset.Interface, nodeName string) (*corev1.Pod, error)` to reduce duplication.
 - [ ] **DRY**: The pattern "get deployment ovn-central" + Get + GetPods is repeated in "Recreating ovn-central pod" and "Stop ovn sb process". Consider a helper e.g. `getOvnCentralPods(cs clientset.Interface) ([]corev1.Pod, error)`.
 - [ ] **DRY**: STOP signal → wait 60s → CONT signal is repeated in "Stop ovn sb process", "Stop ovn-controller process", and "Stop ovs-vswitchd process". Extract a helper e.g. `stopAndResumeProcessInPod(pod *corev1.Pod, getPidCmd []string, waitDuration time.Duration)` to centralize pid read, kill -STOP, sleep, kill -CONT and error handling.
 - [ ] **Readability**: Replace magic numbers with named constants: `3 * time.Second` (BeforeAll/AfterAll) and `60 * time.Second` (disaster test waits), e.g. `disasterSuiteWait` and `processStopWaitDuration`.
-- [ ] **Naming**: Fix log message (line 258): "new created ovs-ovs pod" → "newly created ovs-ovn pod" (typo ovs-ovs and grammar).
+- [x] **Naming**: Fix log message (line 258): "new created ovs-ovs pod" → "newly created ovs-ovn pod" (typo ovs-ovs and grammar).
 - [ ] **Readability**: In the disaster describe block, `var err error` at top level is shadowed in multiple places. Prefer local `err :=` in each block to avoid confusion.
 - [ ] **DRY**: In "Stop ovn sb process", the loop that gets pid (cat /run/ovn/ovnsb_db.pid) and sends a signal is duplicated for STOP and CONT. Extract e.g. `getPidFromPod(pod *corev1.Pod, cmd []string) (string, error)` and `sendSignalInPod(pod *corev1.Pod, pid string, sig string) error` for reuse.
 
@@ -2778,7 +2778,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: In `NewFrameworkWithContext`, `ginkgo.BeforeEach(f.BeforeEach)` is registered twice (lines 152 and 154), so BeforeEach runs twice per test. Remove the duplicate registration.
 - [ ] **DRY / Structure**: In `BeforeEach`, the pattern of calling `framework.LoadConfig()`, setting QPS/Burst, then creating a client is repeated six times (KubeOVN, KubeVirt, Ext, AttachNet, Metallb, Anp). Extract a helper (e.g. `withRestConfig(fn func(*rest.Config) error) error` or cache config once and create all clients from it) to reduce duplication.
 - [ ] **Performance**: `framework.LoadConfig()` is invoked up to six times per test in BeforeEach. Load config once, cache on the Framework or in a local variable, and reuse for all client creation to avoid repeated kubeconfig loading.
-- [ ] **Readability**: Comment typo "// .e.g. Image" and "// .e.g." (lines 295, 302) should be "// e.g." (no leading dot).
+- [x] **Readability**: Comment typo "// .e.g. Image" and "// .e.g." (lines 295, 302) should be "// e.g." (no leading dot).
 - [ ] **Naming / Maintainability**: `parseEnv()` can call `ginkgo.Fail` on parse error; consider renaming to `parseEnvOrFail` or documenting that it may abort the suite, and/or return error for consistency with other init helpers.
 - [ ] **Extensibility**: Adding a new client (e.g. another CRD clientset) requires a new field on Framework and another if-block in BeforeEach. Consider a small registry or slice of client initializers so new clients can be plugged in without editing BeforeEach each time.
 
@@ -2862,7 +2862,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Readability**: `WaitUntil` and `WaitToDisappear` take an unused `_` parameter (poll interval / duration); the implementation hardcodes `2*time.Second`. Either use the parameter or remove it from the signature to avoid confusion.
 - [ ] **DRY / Readability**: Magic number `2*time.Second` appears in CreateSync, Patch, PatchSync, WaitUntil, DeleteSync, WaitToDisappear. Extract a package-level constant (e.g. `defaultEndpointsPollInterval`) for consistency and tuning.
 - [ ] **Maintainability**: In `WaitUntil` and `Patch`, the two `Failf` branches (timeout vs other error) repeat the same pattern; consider a small helper e.g. `failWaitError(resource, name string, err error)` to reduce duplication.
-- [ ] **Readability**: Comment "deletes a endpoints" in `Delete` has grammar error; use "deletes the endpoints" or "deletes an Endpoints resource".
+- [x] **Readability**: Comment "deletes a endpoints" in `Delete` has grammar error; use "deletes the endpoints" or "deletes an Endpoints resource".
 - [ ] **Naming**: In `MakeEndpoints`, parameter `subset` is a slice (`[]corev1.EndpointSubset`); consider renaming to `subsets` to match the struct field name and plural type.
 
 ---
@@ -2887,7 +2887,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: In `buildDescription`, when `len(explain)==1` and the value is not `func() string`, execution falls through to `fmt.Sprintf(explain[0].(string), ...)` which panics if `explain[0]` is not a string. Add an explicit case or safe type check to avoid panic.
 - [ ] **Readability**: In `ExpectEqual` and `ExpectNotEqual`, the parameter name `extra` denotes the expected value; renaming to `expected` would clarify intent.
 - [ ] **Maintainability**: In `ExpectNoErrorWithOffset`, the comment uses a fullwidth comma ("Instead，we take"); use ASCII comma for consistency.
-- [ ] **Readability**: Fix typo in `ExpectIPInCIDR` comment: "in within" → "is within".
+- [x] **Readability**: Fix typo in `ExpectIPInCIDR` comment: "in within" → "is within".
 - [ ] **Readability**: In `buildExplainWithOffset`, magic numbers `3` and `2` (code location depth, caller skip) could get a brief comment explaining stack offset semantics.
 
 ---
@@ -2896,17 +2896,17 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Naming**: Parameter/variable name `iP` (capital P) is unconventional; use `ip` for the resource in Create, CreateSync, Patch and Get return variable to align with idiomatic Go.
 - [ ] **Readability**: In `Get`, the variable `IP` shadows the type name; use `ip` or `obj` for the local variable to avoid confusion.
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a IP" → "Delete deletes an IP".
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a IP" → "Delete deletes an IP".
 - [ ] **Readability**: In `WaitToBeReady`, the loop logs "IP %s is not ready" on every poll; consider logging only on final failure or at intervals to reduce log noise.
 - [ ] **API design**: `WaitToDisappear(name string, _, timeout time.Duration)` has an unused middle parameter (interval); consider simplifying to `WaitToDisappear(name string, timeout time.Duration)` or document why the signature is shared with other clients.
-- [ ] **Readability**: In `MakeIP`, fix comment grammar "pod ip name should including" → "pod ip name should include"; clarify "node ip name: only node name" for consistency.
+- [x] **Readability**: In `MakeIP`, fix comment grammar "pod ip name should including" → "pod ip name should include"; clarify "node ip name: only node name" for consistency.
 
 ---
 
 ## ./test/e2e/framework/ippool.go
 
 - [ ] **Consistency**: `Get` returns the object without `.DeepCopy()` while Create/Update/Patch return `.DeepCopy()`. Return `ippool.DeepCopy()` from Get so callers cannot mutate cached objects and API is consistent.
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a ippool" → "Delete deletes an ippool".
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a ippool" → "Delete deletes an ippool".
 - [ ] **Readability**: In `WaitConditionToBe` and `WaitToBeUpdated`, the loop logs on every poll; consider logging only on final failure or at intervals to reduce log noise.
 - [ ] **Readability**: In `WaitUntil`, "Waiting for ippool %s to meet condition %q" is logged every poll; consider logging once or at intervals.
 - [ ] **Correctness**: `WaitToBeUpdated` uses `big.Int` for ResourceVersion comparison; K8s ResourceVersion can be non-numeric. Document the assumption or use string comparison if RV format is guaranteed.
@@ -2953,7 +2953,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/log.go
 
-- [ ] **Maintainability**: Fix comment typo in PrunedStack: "caller of PruneStack" → "caller of PrunedStack".
+- [x] **Maintainability**: Fix comment typo in PrunedStack: "caller of PruneStack" → "caller of PrunedStack".
 - [ ] **DRY**: Failf and Fail share the same pattern (log "FAIL" with PrunedStack, then ginkgo.Fail). Extract a helper e.g. `failWithStack(msg string, skip int)` to reduce duplication.
 - [ ] **Readability**: Consider renaming the unexported `log` to e.g. `writeLog` or `logToGinkgo` to avoid confusion with the standard log package.
 - [ ] **Robustness**: PrunedStack assumes stack has an even number of entries after trimming; the loop accesses `stack[i*2+1]`. If len(stack) is odd, the last iteration could panic. Add a guard or document the assumption that debug.Stack() returns paired lines.
@@ -2971,7 +2971,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/namespace.go
 
-- [ ] **Maintainability**: Fix comment double space "namespace  client" → "namespace client"; consider "a client for Namespace operations".
+- [x] **Maintainability**: Fix comment double space "namespace  client" → "namespace client"; consider "a client for Namespace operations".
 - [ ] **Consistency**: Get returns the object without .DeepCopy(); return np.DeepCopy() from Get so callers cannot mutate cached objects, consistent with Create and Patch.
 - [ ] **Readability**: In WaitToDisappear, the variable is named `policy` but holds *corev1.Namespace; rename to `ns` or `namespace`.
 - [ ] **DRY / Readability**: Magic number 2*time.Second in Patch and DeleteSync; extract a package-level constant (e.g. defaultNamespacePollInterval) for consistency with other framework clients.
@@ -2990,7 +2990,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/iptables-dnat.go
 
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a iptables dnat" → "Delete deletes an iptables DNAT rule" (or "the iptables dnat").
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a iptables dnat" → "Delete deletes an iptables DNAT rule" (or "the iptables dnat").
 - [ ] **DRY**: Magic number `2*time.Second` in Patch (poll interval) and DeleteSync; extract a package-level constant (e.g. `defaultPollInterval`) for consistency with other framework clients.
 - [ ] **Readability**: In `WaitToBeReady`, the loop logs "dnat %s is not ready" on every poll; consider logging only on final failure or at intervals to reduce log noise.
 - [ ] **Correctness**: In `WaitToBeUpdated`, `rv, _ := big.NewInt(0).SetString(dnat.ResourceVersion, 10)` ignores the second return value; if ResourceVersion is non-numeric (K8s can use opaque strings), SetString returns false and rv stays 0. Document the numeric-RV assumption or use string comparison for ResourceVersion.
@@ -3002,7 +3002,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/iptables-eip.go
 
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a iptables eip" → "Delete deletes an iptables EIP".
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a iptables eip" → "Delete deletes an iptables EIP".
 - [ ] **DRY**: Magic number `2*time.Second` in Patch and DeleteSync; extract package-level constant for consistency with iptables-dnat and other framework clients.
 - [ ] **Readability**: In `WaitToBeReady` and `WaitToQoSReady`, the loop logs "not ready" on every poll; consider logging only on final failure or at intervals to reduce log noise.
 - [ ] **Correctness**: In `WaitToBeUpdated`, `rv, _ := big.NewInt(0).SetString(eip.ResourceVersion, 10)` ignores the second return value; document the numeric ResourceVersion assumption or use string comparison (same as iptables-dnat refactor).
@@ -3015,7 +3015,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/iptables-fip.go
 
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a iptables fip" → "Delete deletes an iptables FIP rule".
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a iptables fip" → "Delete deletes an iptables FIP rule".
 - [ ] **DRY**: Magic number `2*time.Second` in Patch and DeleteSync; extract package-level constant for consistency with iptables-dnat, iptables-eip and other framework clients.
 - [ ] **Readability**: In `WaitToBeReady`, the loop logs "fip %s is not ready" on every poll; consider logging only on final failure or at intervals.
 - [ ] **Correctness**: In `WaitToBeUpdated`, `rv, _ := big.NewInt(0).SetString(fip.ResourceVersion, 10)` ignores the second return value; document the numeric ResourceVersion assumption or use string comparison (same as iptables-dnat refactor).
@@ -3027,7 +3027,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/iptables-snat.go
 
-- [ ] **Maintainability**: Fix comment grammar "Delete deletes a iptables snat" → "Delete deletes an iptables SNAT rule".
+- [x] **Maintainability**: Fix comment grammar "Delete deletes a iptables snat" → "Delete deletes an iptables SNAT rule".
 - [ ] **DRY**: Magic number `2*time.Second` in Patch (poll interval) and DeleteSync; extract package-level constant (e.g. `defaultPollInterval`) for consistency with iptables-dnat, iptables-eip, iptables-fip.
 - [ ] **Readability**: In `WaitToBeReady`, the loop logs "snat %s is not ready" on every poll; consider logging only on final failure or at intervals to reduce log noise.
 - [ ] **Correctness**: In `WaitToBeUpdated`, `rv, _ := big.NewInt(0).SetString(snat.ResourceVersion, 10)` ignores the second return value; document the numeric ResourceVersion assumption or use string comparison (same as iptables-dnat refactor).
@@ -3047,7 +3047,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/network-policy.go
 
-- [ ] **Maintainability**: Fix double space in comment "network policy  client" → "network policy client".
+- [x] **Maintainability**: Fix double space in comment "network policy  client" → "network policy client".
 - [ ] **Consistency**: `Get` returns the object without `.DeepCopy()` while `Create` returns `.DeepCopy()`; return `np.DeepCopy()` from Get for consistency and to avoid callers mutating the returned object.
 - [ ] **Readability**: In `Create`, include resource name in error message (e.g. "Error creating network policy %s", netpol.Name) for easier debugging.
 - [ ] **API design**: `WaitToDisappear(name string, _ time.Duration, timeout time.Duration)` accepts a second parameter (poll interval) but ignores it; either use it for Eventually polling or remove from signature.
@@ -3066,7 +3066,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/ovn-dnat.go
 
-- [ ] **Maintainability**: Fix comment grammar "a ovn dnat" → "an OVN DNAT rule" in Delete and related comments.
+- [x] **Maintainability**: Fix comment grammar "a ovn dnat" → "an OVN DNAT rule" in Delete and related comments.
 - [ ] **Consistency**: `Get` returns the object without `.DeepCopy()` while Create/Patch return `.DeepCopy()`; return `dnat.DeepCopy()` from Get for consistency.
 - [ ] **Readability**: Include resource name in Create error message (e.g. "Error creating ovn dnat %s", dnat.Name).
 - [ ] **API design**: `PatchSync(original, modified, _ []string, timeout time.Duration)` has an unused `_ []string` parameter; remove or document.
@@ -3274,7 +3274,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/framework/vpc-egress-gateway.go
 
-- [ ] **Naming**: Fix typo `namespapce` → `namespace` in `NewVpcEgressGatewayClient(cs clientset.Interface, namespapce string)` and `VpcEgressGatewayClientNS(namespapce string)` (lines 31, 45); also fix the parameter name in both function signatures.
+- [x] **Naming**: Fix typo `namespapce` → `namespace` in `NewVpcEgressGatewayClient(cs clientset.Interface, namespapce string)` and `VpcEgressGatewayClientNS(namespapce string)` (lines 31, 45); also fix the parameter name in both function signatures.
 - [ ] **Readability**: Comments "Create creates a new vpc-egress-gateway according to the framework specifications" and "CreateSync creates a new vpc-egress-gateway according to the framework specifications, and waits for it to be ready." — simplify to "Create creates a new vpc-egress-gateway" and "CreateSync creates a new vpc-egress-gateway and waits for it to be ready."
 - [ ] **Maintainability**: In `Patch`, the final `return nil` (line 105) after the two `Failf` calls is unreachable; remove dead code.
 - [ ] **Consistency**: `Get` returns the gateway without `.DeepCopy()`; return `gateway.DeepCopy()` for consistency with other framework clients and to avoid callers mutating cached objects.
@@ -3323,7 +3323,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **DRY**: The block that builds `nodeIPs` from `nodeList` (get nodes, loop to collect InternalIP per node, ExpectHaveLen) is duplicated in both ConformanceIt blocks. Extract a helper e.g. `getNodeInternalIPs(nodeList *corev1.NodeList) []string` and reuse.
 - [ ] **Readability**: Magic timeouts `time.Second*120` (xfrm check) and `time.Second*30` (CA sync) should be named constants (e.g. `xfrmCheckTimeout`, `caSyncTimeout`) for tuning and documentation.
 - [ ] **Maintainability**: At line 341 the secret name is hardcoded as `"ovn-ipsec-ca"` while elsewhere `util.DefaultOVNIPSecCA` is used. Use the constant consistently to avoid drift.
-- [ ] **Maintainability**: Comment typo at lines 289–290: "stroke up" / "stroke down" should be "spin up" / "spin down".
+- [x] **Maintainability**: Comment typo at lines 289–290: "stroke up" / "stroke down" should be "spin up" / "spin down".
 - [ ] **Structure**: Helper functions `splitCerts`, `getValueFromSecret`, `getPodCert`, `checkPodCACert`, `checkXfrmState` are mixed (some above, some below the test block). Consider grouping all helpers in one place (e.g. above the Describe block) for consistent readability.
 
 ---
@@ -3481,13 +3481,13 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/kube-ovn/subnet/subnet.go
 
-- [ ] **Naming**: Fix typo `expectetIPsets` → `expectedIPsets` (lines 64, 71) in `checkIPSetOnNode`.
+- [x] **Naming**: Fix typo `expectetIPsets` → `expectedIPsets` (lines 64, 71) in `checkIPSetOnNode`.
 - [ ] **DRY**: The "Validating subnet spec fields" and "Validating subnet status fields" blocks (ExpectFalse/ExpectEqual/ExpectEmpty for Default, Protocol, ExcludeIps, Gateway, etc.) are repeated in many ConformanceIt cases. Extract helpers e.g. `validateSubnetSpecFields(subnet, cidr, gateways, ...)` and `validateSubnetStatusFields(subnet, cidrV4, cidrV6, ...)` or a single `validateSubnetAfterCreate(subnet, ...)` to reduce duplication.
 - [ ] **DRY**: The dual-stack block "if cidrV4 == \"\" { ... firstIPv4/lastIPv4 } else { ... }" and same for cidrV6 is repeated in BeforeEach and conceptually in smallCIDR setup. Consider a small struct or helper that holds parsed subnet bounds (firstV4, lastV4, firstV6, lastV6, gateways) for reuse.
 - [ ] **DRY**: In "should support distributed external egress gateway" and "should support centralized external egress gateway", the logic to get docker network and determine gatewayV4/gatewayV6 from `network.IPAM.Config` is duplicated. Extract e.g. `getKindEgressGateways(network, cidrV4, cidrV6) ([]string, error)`.
 - [ ] **Readability**: Magic numbers `2*time.Second`, `10*time.Second`, `3*time.Second`, `time.Minute`, `5*time.Second`, `30*time.Second` appear throughout. Consider named constants at the top of the describe block (e.g. `subnetWaitInterval`, `subnetWaitTimeout`) for tuning and documentation.
 - [ ] **Structure**: The describe block is very long with many ConformanceIt cases. Consider splitting by feature (e.g. subnet_basic_test.go, subnet_gateway_test.go, subnet_nat_test.go) or grouping related tests with nested Describe for maintainability.
-- [ ] **Naming**: Fix typo `calcuIPRangeListStr` → `calcIPRangeListStr` or `calculateIPRangeListStr` (line 1040).
+- [x] **Naming**: Fix typo `calcuIPRangeListStr` → `calcIPRangeListStr` or `calculateIPRangeListStr` (line 1040).
 - [ ] **Error handling**: In `checkAccessExternal`, `exec.Command("bash", "-c", cmd).CombinedOutput()` ignores error; consider checking err and failing with a clear message when exec fails.
 - [ ] **DRY**: The pattern "if cidrV4 != \"\" { framework.ExpectEqual(subnet.Status.V4AvailableIPs, ...) } else { framework.ExpectZero(...) }" (and same for V6) is repeated in many tests. Extract e.g. `expectSubnetAvailableIPs(subnet, cidrV4, cidrV6)`.
 - [ ] **Maintainability**: In "should fail to create pod with static MAC that conflicts with gateway MAC", the test uses `exec.Command("kubectl", "ko", "nbctl", ...)` directly instead of a framework helper (e.g. `framework.NBExec`). Align with other tests for consistency and to avoid dependency on host kubectl.
@@ -3497,7 +3497,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./test/e2e/kube-ovn/subnet/subnet-selectors.go
 
 - [ ] **Correctness**: In `BeforeEach`, `namespaceSelectors = append(namespaceSelectors, ns1Selector)` reuses the package-level slice; it is never reinitialized, so across multiple `It()` runs the slice grows (e.g. second test gets `[ns1Selector, ns1Selector]`). Initialize at start of BeforeEach: `namespaceSelectors = []metav1.LabelSelector{ns1Selector}` (or `namespaceSelectors = nil` then append).
-- [ ] **Naming**: Fix typo "matched witch" → "matched with" in ginkgo.By messages (lines 123, 140).
+- [x] **Naming**: Fix typo "matched witch" → "matched with" in ginkgo.By messages (lines 123, 140).
 - [ ] **DRY**: The `framework.WaitUntil(time.Second, 30*time.Second, func(...) { ns = nsClient.Get(nsName); if ns.Annotations[util.LogicalSwitchAnnotation] ==/!= subnet.Name return true, nil; return false, nil }, "failed to update annotation...")` pattern repeats many times. Extract a helper e.g. `waitForNamespaceSubnetAnnotation(nsClient, nsName, subnetName string, expectPresent bool)` to reduce duplication.
 - [ ] **Readability**: Magic number `30*time.Second` appears repeatedly; use a named constant (e.g. `subnetAnnotationWaitTimeout`) at the top of the describe block.
 - [ ] **Readability**: Third ConformanceIt title "update namespace with labelSelector, and set subnet spec namespaces with selected namespace" is misleading — the test mainly updates subnet spec (Namespaces and NamespaceSelectors), not namespace labels. Consider a clearer title e.g. "subnet spec namespaces and namespaceSelector interaction".
@@ -3506,7 +3506,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/kube-ovn/switch_lb_rule/switch_lb_rule.go
 
-- [ ] **Naming**: Fix typo `slrSlector` → `slrSelector` (lines 221, 234).
+- [x] **Naming**: Fix typo `slrSlector` → `slrSelector` (lines 221, 234).
 - [ ] **Comment**: Line 70 `// TODO:// slr support dual-stack` has double slash and grammar; use `// TODO: SLR supports dual-stack` or similar.
 - [ ] **DRY**: The pattern `framework.WaitUntil(2*time.Second, time.Minute, func(...) { _, err = X.Get(...); if err == nil return true,nil; if k8serrors.IsNotFound(err) return false,nil; return false,err }, fmt.Sprintf("..."))` is repeated many times for service/switch-lb-rule/endpoints. Extract a helper e.g. `waitForResource(getter func() (interface{}, error), resourceDesc string)` to reduce duplication.
 - [ ] **DRY**: The endpoint validation loop (build ips/tps/protocols from subset, ExpectContainElement for pod IP and for ports) is duplicated for selector SLR and endpoint SLR (lines 278–301 and 358–378). Extract e.g. `validateSlrEndpoints(eps *corev1.Endpoints, pods []corev1.Pod, expectedPorts []kubeovnv1.SwitchLBRulePort)`.
@@ -3593,7 +3593,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/non-primary-cni/e2e_test.go
 
-- [ ] **Readability / Typo**: Fix "at lease" → "at least" in framework.ExpectNotEmpty messages (lines 371, 434, 437).
+- [x] **Readability / Typo**: Fix "at lease" → "at least" in framework.ExpectNotEmpty messages (lines 371, 434, 437).
 - [ ] **Readability**: Fix comment on line 341: "Get the EIP associated with this SNAT rule" should say "DNAT rule" in the DNAT verification block.
 - [ ] **DRY**: The apply-stages pattern (BeforeEach: for stage 0..N, kubectl apply -f yamlFile --prune -l config-stage=N, optional sleep) is repeated in VPC Simple, VPC NAT Gateway, and Logical Network Simple with different stage counts and sleep durations. Extract a helper e.g. `applyConfigStages(yamlFile string, stages []struct{ Stage int; Sleep time.Duration })` to reduce duplication.
 - [ ] **DRY**: The cleanup pattern (AfterEach: for stage N down to 0, removeFinalizers(strconv.Itoa(stage)), kubectl delete -f yamlFile -l config-stage=stage) is repeated in all three contexts. Extract e.g. `cleanupConfigStages(yamlFile string, maxStage int)`.
@@ -3605,7 +3605,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/ovn-ic/e2e_test.go
 
-- [ ] **Correctness / Naming**: Line 51: Fix typo "no enough" → "not enough".
+- [x] **Correctness / Naming**: Line 51: Fix typo "no enough" → "not enough".
 - [ ] **DRY**: The pattern of getting ConfigMap `util.InterconnectionConfig` and reading `az-name` or `gw-nodes` is repeated in multiple tests (e.g. "should create logical switch ts", "should be able to update az name", ECMP test). Extract helpers e.g. `getAZNames(clientSets []clientset.Interface) []string` and `getGwNodes(clientSets []clientset.Interface) []string` to reduce duplication.
 - [ ] **DRY**: Switching kubectl context via `exec.Command("bash", "-c", "kubectl config use-context "+context).CombinedOutput()` and `framework.ExpectNoError(err)` is repeated many times in the ECMP test and in `checkECMPCount`. Extract a helper e.g. `switchKubeContextOrDie(context string)` (or use `execOrDie` with "config use-context" for consistency) to avoid repetition and shell injection.
 - [ ] **Error handling**: Lines 245–246, 261–262, 279–280: `json.Marshal` and `Patch` return values are ignored with `_`. Use `framework.ExpectNoError(err, ...)` for Marshal and Patch to fail tests on error.
@@ -3625,7 +3625,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Correctness / Naming**: Package is `ovn_eip` but the file lives in `ovn-vpc-nat-gw`; package name should match directory (e.g. `ovn_vpc_nat_gw`) for consistency and to avoid confusion.
 - [ ] **Correctness / Bug**: In AfterEach, line 372: `ovnFipClient.DeleteSync(ipFipEipName)` — `ipFipEipName` is an EIP, not a FIP; use `ovnEipClient.DeleteSync(ipFipEipName)`. Also `ipFipEipName` is deleted twice (lines 371–372 and 375–376); remove the duplicate.
-- [ ] **Naming**: Fix typos: `sharedEipFipShoudOkName` / `sharedEipFipShoudFailName` / `shareFipShouldOk` → "Should" (not "Shoud"). Fix comment "traditonal" → "traditional" (line 509).
+- [x] **Naming**: Fix typos: `sharedEipFipShoudOkName` / `sharedEipFipShoudFailName` / `shareFipShouldOk` → "Should" (not "Shoud"). Fix comment "traditonal" → "traditional" (line 509).
 - [ ] **Structure / Readability**: The single ConformanceIt is ~500 lines with many sequential steps. Split into smaller ConformanceIt specs (e.g. "centralized external gw", "extra external subnet", "bfd route", "distributed case") or extract step helpers (e.g. `setupUnderlaySubnet`, `createPodsOnNodes`, `testPingConnectivity`) to improve readability and maintainability.
 - [ ] **Structure**: BeforeEach is ~230 lines and mixes "once per suite" setup (cluster, docker networks, kind nodes) with "per test" setup. Consider using ginkgo.BeforeSuite for cluster/network setup and keeping BeforeEach minimal so test order and reuse are clearer.
 - [ ] **DRY**: Docker network CIDR/gateway/excludeIPs extraction is duplicated for main and extra network (lines 358–384 and 458–483). Extract e.g. `extractSubnetFromDockerNetwork(network *dockernetwork.Inspect, hasV4, hasV6 bool) (cidr, gateway []string, excludeIPs []string)`.
@@ -3641,7 +3641,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/security/e2e_test.go
 
-- [ ] **Readability / Typo**: Line 49: "failed to to get deployment" → "failed to get deployment" (double "to").
+- [x] **Readability / Typo**: Line 49: "failed to to get deployment" → "failed to get deployment" (double "to").
 - [ ] **Readability**: The condition in checkPods (lines 77-83) is complex with multiple AND/OR and version checks. Extract to a helper e.g. `shouldListenOnPodIP(pods []corev1.Pod, process string, f *framework.Framework) bool` for clarity and testability.
 - [ ] **DRY / Structure**: The kube-ovn-cni test (lines 146-165) manually gets nodes, daemonset, and pods then calls checkPods; this duplicates the pattern of checkDeployment (get resource → get pods → checkPods). Consider a helper e.g. `checkDaemonSet(f, name, process string, ports ...string)` to align with checkDeployment and reduce duplication.
 - [ ] **Readability**: Port numbers "10660", "10661", "10665" are magic numbers. Consider named constants (e.g. `controllerMetricsPort`, `monitorMetricsPort`, `cniDaemonPort`) at package or test level for consistency and documentation.
@@ -3653,7 +3653,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./test/e2e/vip/e2e_test.go
 
-- [ ] **Readability / Typo**: Line 410: comment "virtual parents should be set correctlly" → "correctly".
+- [x] **Readability / Typo**: Line 410: comment "virtual parents should be set correctlly" → "correctly".
 - [ ] **DRY**: The first ConformanceIt has three nearly identical switch blocks (IPv4, IPv6, dual stack) for "verify subnet status after VIP creation" and again for "after VIP deletion". Extract helpers e.g. `verifySubnetStatusAfterVipCreate(initial, afterCreate *apiv1.Subnet, testVip *apiv1.Vip)` and `verifySubnetStatusAfterVipDelete(afterCreate, afterDelete, initial *apiv1.Subnet)` to reduce duplication.
 - [ ] **DRY**: In "Test vip", the subnet status wait/assert blocks after VIP create and after VIP delete (lines 334-348, 354-368) repeat the same pattern. Extract e.g. `expectSubnetStatusChangedAfterVipOp(oldSubnet, newSubnet *apiv1.Subnet, afterCreate bool)`.
 - [ ] **Readability**: Replace magic numbers with named constants: `5*time.Second` (subnet status wait), `10*time.Second` (upper case VIP wait), `for range 10` (finalizer poll attempts), e.g. `subnetStatusUpdateWait`, `vipFinalizerPollAttempts`.
@@ -3789,7 +3789,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./test/unittest/ipam_bench/ipam_test.go
 
 - [ ] **Correctness**: delIPAMSubnet uses subnetName := fmt.Sprintf("test%d", index) but addIPAMSubnet uses fmt.Sprintf("subnet%d", index). So Add benchmarks create "subnet0", "subnet1", ... while Del benchmarks delete "test0", "test1", ... — subnets are never actually deleted. Fix delIPAMSubnet to use "subnet%d" so it deletes the same subnets that were added.
-- [ ] **Naming / Typo**: addSerailAddrCapacity should be addSerialAddrCapacity (and all call sites).
+- [x] **Naming / Typo**: addSerailAddrCapacity should be addSerialAddrCapacity (and all call sites).
 - [ ] **Readability**: Replace magic numbers with named constants: 10000 (time trace step), 1000 (subnet count in parallel bench), 3000 (pod count in parallel bench), e.g. timeTraceStep, parallelSubnetCount, parallelPodCount.
 - [ ] **DRY**: BenchmarkIPAMSerial* and BenchmarkIPAMRandom* follow the same pattern (im := ipam.NewIPAM(), add*Capacity, optionally ResetTimer(), del*Capacity). Consider a generator or shared setup helper to reduce repetition; lower priority for benchmark code.
 
@@ -3838,7 +3838,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./dist/images/cleanup.sh
 
-- [ ] **Typo**: Line 80 comment "provier-networks" → "provider-networks".
+- [x] **Typo**: Line 80 comment "provier-networks" → "provider-networks".
 - [ ] **DRY**: Many loops follow the same pattern (`for x in $(kubectl get <resource> -o name); do kubectl delete --ignore-not-found $x; done`). Consider a list of resource types (e.g. `vpc-nat-gw vpc-dns vip snat dnat ...`) and a single loop or helper function to reduce duplication and ease adding new resources.
 - [ ] **DRY**: The two wait loops (pinger pods, cni pods) are similar; extract e.g. `wait_until_pods_gone namespace label` to avoid duplication.
 - [ ] **Structure**: The long list of CRD names (lines 115–136) could be a single array and iterated; same for node/ns annotation removals to keep the script maintainable when new annotations are added.
@@ -3859,7 +3859,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./dist/images/del-redundant-ips.sh
 
-- [ ] **Typo**: Line 78 "exist" → "exit".
+- [x] **Typo**: Line 78 "exist" → "exit".
 - [ ] **Correctness**: Line 63 `grep $ip` can misbehave if `$ip` contains regex metacharacters (e.g. dots). Use `grep -F "$ip"` or anchor the pattern.
 - [ ] **Readability**: Variable names `DIP`, `IN` are terse; consider `redundant_ips` and `found` (or `ip_in_use`) for clarity. Add a short comment block describing the algorithm (collect IP CRs, collect pod IPs, find IPs not in use, prompt, delete).
 - [ ] **Error handling**: `read -p` requires a TTY; when run non-interactively (e.g. cron or CI) the script may hang or read from stdin. Consider a `--yes` or `-y` flag for non-interactive mode.
@@ -3910,7 +3910,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: `for file in $(ls "/etc/cni/net.d")` (line 9) is fragile with filenames containing spaces; use `for file in /etc/cni/net.d/*` or iterate with `find`.
 - [ ] **Correctness**: Unquoted variables in tests (e.g. `[ $probe_mtu == 0 ]`, `[ $recycle == 1 ]`) can fail when empty; use `[ "$probe_mtu" = 0 ]` and quote variables; prefer `=` for POSIX.
 - [ ] **Correctness**: `[[ $result > 1 ]]` (lines 46, 51, etc.) does string comparison; for numeric use `[ "$result" -gt 1 ]` or `(( result > 1 ))`.
-- [ ] **Naming**: Fix typo "mannully" → "manually" (lines 30, 75).
+- [x] **Naming**: Fix typo "mannully" → "manually" (lines 30, 75).
 - [ ] **DRY**: Sections 5 (firewall/security checks) repeat the same pattern (ps + grep + wc, then if > 1); extract a helper e.g. `warn_if_running "pattern" "message"` to reduce duplication.
 - [ ] **Structure**: Consider extracting each numbered check into a function (e.g. check_cni_config, check_ipv4_config) for readability and easier testing.
 
@@ -3941,7 +3941,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./dist/images/go-deps/rebuild-go-deps.sh
 
-- [ ] **Correctness**: Line 59 references `$f` but the loop variable is `$t`; use `$name` or `$t` in the error message (typo).
+- [x] **Correctness**: Line 59 references `$f` but the loop variable is `$t`; use `$name` or `$t` in the error message (typo).
 - [ ] **Correctness**: Line 65 `for f in $(ls "$TRIVY_DIR")` is fragile (spaces in filenames); use `for f in "$TRIVY_DIR"/*`; quote in `f=$(basename "$f")` (line 66).
 - [ ] **Correctness**: Quote variables in tests: `[ "$type" = "commit" ]` (line 41), and in echo/cut (lines 49-50) use `"$KUBE_GIT_VERSION"`.
 - [ ] **Readability**: Variable `type` shadows bash builtin; rename to e.g. `obj_type` to avoid confusion.
@@ -3986,7 +3986,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./dist/images/install.sh
 
-- [ ] **Naming**: Fix typo "diffierent" → "different" in comment (line 42, DPDK_TUNNEL_IFACE).
+- [x] **Naming**: Fix typo "diffierent" → "different" in comment (line 42, DPDK_TUNNEL_IFACE).
 - [ ] **Structure**: The script is ~6200+ lines and monolithic; consider splitting into sourced modules (e.g. config.sh, step-ssl.sh, step-labels.sh, step-ovn.sh, step-cni.sh, step-controller.sh, step-pinger.sh) or at least extracting each "[Step N/6]" block into a function for readability and testability.
 - [ ] **DRY**: The pattern for getting master node addresses and count (kubectl get no -lkube-ovn/role=master ...) appears in install.sh and install-ic-server.sh; consider a shared helper or small script.
 - [ ] **Readability**: Large embedded YAML heredocs (cat <<EOF) for each component; consider moving to separate template files and using envsubst/sed for variable substitution to improve maintainability and reuse.
@@ -4015,7 +4015,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 ## ./dist/images/kubectl-ko
 
 - [ ] **Structure / Maintainability**: Script is monolithic (~1100 lines). Consider splitting into sourced modules (e.g. helpers.sh for ipv4_to_hex, expand_ipv6, ipIsInCidr; trace.sh; diagnose.sh; perf.sh; dbtool.sh; log.sh) for readability and testability.
-- [ ] **Naming**: Fix typo "Prepareing" → "Preparing" in addHeaderDecoration argument (line 908).
+- [x] **Naming**: Fix typo "Prepareing" → "Preparing" in addHeaderDecoration argument (line 908).
 - [ ] **Consistency**: getOvnCentralPod and reload() use hardcoded `kube-system` in several places (e.g. NORTHD_POD, image lookup, reload delete/rollout); use KUBE_OVN_NS throughout so the script respects the namespace variable.
 - [ ] **DRY**: The pattern to get a pod on a specific node (`kubectl get pod -n $KUBE_OVN_NS -l app=... -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].metadata.name}'`) is repeated many times; extract a helper e.g. get_pod_on_node(namespace, label_selector, node_name).
 - [ ] **Readability / Structure**: trace() is ~250 lines with deep nesting; extract sub-functions (e.g. resolve_lsp_and_namespace, get_dst_mac, build_ovn_trace_cmd) to shorten and clarify.
@@ -4023,7 +4023,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: quitPerfTest uses `if [ ! $? -eq 0 ]` to decide whether to print failure log; $? at that point is from the previous command in the script, not the perf test result. Capture exit status when the test fails (e.g. via a trap that saves $?) and use it in quitPerfTest.
 - [ ] **Portability**: In ipIsInCidr (IPv4), replace deprecated `[ ... -a ... ]` with separate tests and `&&`: `[ $ip_dec -gt $network_dec ] && [ $ip_dec -lt $broadcast_dec ]`.
 - [ ] **Readability**: Magic numbers (PERF_TIMES=5, 30s rollout timeout, 29 retries in checkDeployment, 300 in perf wait loop, 10256 kube-proxy port, 8100/8101 conn-check ports) could be named constants at the top for tuning and documentation.
-- [ ] **Naming**: Fix typo "availabelNum" → "availableNum" in dbtool restore (lines 663–666).
+- [x] **Naming**: Fix typo "availabelNum" → "availableNum" in dbtool restore (lines 663–666).
 - [ ] **Readability**: In trace(), prefer `[ -z "$namespace" ]` over `[ ! -n "$namespace" ]` for idiomatic shell.
 
 ---
@@ -4082,7 +4082,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./dist/images/ovsdb-inspect.sh
 
-- [ ] **Naming**: Fix typo "chould" → "could" in comment (line 28).
+- [x] **Naming**: Fix typo "chould" → "could" in comment (line 28).
 - [ ] **DRY**: The pattern `$(kubectl -n kube-system get pods -o wide | grep ovs-ovn | awk '{print $1}')` appears in init-ovs-ctr and in the main loop. Extract e.g. `get_ovs_ovn_pod_names` to output pod names and reuse.
 - [ ] **Robustness**: In `ovs-exec`, use quoted `"$1"` (and `"$2"` if appropriate) so pod names or commands with spaces do not break.
 - [ ] **Consistency**: Hardcoded `kube-system` in multiple places; consider a variable at the top (e.g. `KUBE_OVN_NS`) for consistency with other scripts.
@@ -4147,7 +4147,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 - [ ] **Correctness**: Line 13 echoes `OVN_LEADER_PROBE_INTERVAL` but it is not set in this script; ensure it is set before use or default it (e.g. `OVN_LEADER_PROBE_INTERVAL=${OVN_LEADER_PROBE_INTERVAL:-...}`).
 - [ ] **Naming / Correctness**: `get_leader_ip` ignores its argument (nb/sb) and always returns the first entry of `NODE_IPS`. Call sites pass `nb` and `sb`; either implement per-database leader resolution in `get_leader_ip` or rename to e.g. `get_first_node_ip` and drop the unused argument.
-- [ ] **Maintainability**: Fix typo in comment: "corrputed" → "corrupted" (line 155).
+- [x] **Maintainability**: Fix typo in comment: "corrputed" → "corrupted" (line 155).
 - [ ] **DRY**: `ovn_ctl_args` is built in four large blocks (non-SSL leader/follower, SSL leader/follower) with repeated options. Consider a function e.g. `build_ovn_ctl_args { is_leader, use_ssl }` to reduce duplication.
 - [ ] **Readability**: Replace magic numbers with named variables at the top (e.g. 120s join timeout, 10s ovsdb-client timeout, 6641/6642 ports).
 - [ ] **Portability**: In `ovn_db_pre_start`, prefer `[ ... ] && [ ... ]` over `[ ... -a ... ]` for test conditions (e.g. line 201).
@@ -4223,14 +4223,14 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 - [ ] **Correctness**: `grep "\-d $eip"` and similar use unquoted variables; if `$eip` contains regex metacharacters matching can be wrong. Use `grep -F "$eip"` for literal match where appropriate.
 - [ ] **Correctness**: Line 81 — `iptables -t nat -C PREROUTING $checkRule` splits `checkRule` by spaces; for rules with multiple words (e.g. `--to-destination ip:port`) this can fail. Pass rule components as separate arguments or build the -C invocation from parts.
 - [ ] **Maintainability**: `add_eip` uses `ipcalc -n` and `ipcalc -p`; the vpcnatgateway Dockerfile does not install ipcalc. Ensure ipcalc is added to the image or replace with another method (e.g. awk/sed or ip route parsing) so the script runs in the built image.
-- [ ] **Typo**: Line 105 echo "dnat-del rules" should be "dnat-del $rules" for consistency with other commands.
+- [x] **Typo**: Line 105 echo "dnat-del rules" should be "dnat-del $rules" for consistency with other commands.
 - [ ] **DRY**: `exec_cmd` is duplicated with nat-gateway.sh; consider sourcing a common snippet or document duplication.
 
 ---
 
 ## ./dist/images/vpcnatgateway/nat-gateway.sh
 
-- [ ] **Typo**: Line 257 "2>/dev/nul" → "2>/dev/null".
+- [x] **Typo**: Line 257 "2>/dev/nul" → "2>/dev/null".
 - [ ] **Correctness**: In `exec_cmd`, `cmd=${@:1:${#}}` then `$cmd` does not preserve quoting; use `"$@"` and run the command directly so arguments with spaces are preserved.
 - [ ] **Robustness**: Quote variables in command substitution: e.g. line 140 `ip -4 addr show dev "$EXTERNAL_INTERFACE"`, and line 222 use `grep -F "$eip"` and `$(...)` instead of backticks.
 - [ ] **Correctness**: Line 284–289 — `ruleMatch=$(...); if [ "$?" -eq 0 ]` checks the exit code of the assignment, not grep. Use `if ruleMatch=$(...); [ -n "$ruleMatch" ]` or test grep exit code before assignment.
@@ -4359,7 +4359,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./hack/release.sh
 
-- [ ] **Naming**: Fix typo "successed" → "succeeded" in echo messages (lines 11 and 13).
+- [x] **Naming**: Fix typo "successed" → "succeeded" in echo messages (lines 11 and 13).
 - [ ] **Correctness**: Comment says "run from project root" but `DOCS_DIR="../docs"` is relative to current directory; if run from project root, `../docs` leaves the repo. Use script-relative path e.g. `DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs"` so docs path is correct regardless of cwd.
 - [ ] **DRY**: `NEXT_VERSION=$(cat VERSION | awk -F '.' ...)` appears multiple times with two variants (patch: `$3+1` vs minor: `$2+1"."$3`). Extract e.g. `next_version() { local kind=$1; ... }` to avoid duplication and mistakes.
 - [ ] **Structure**: Docker manifest create/push and pull sequences are repeated for kube-ovn, vpc-nat-gateway, kube-ovn-base; consider arrays of image names and a loop to reduce repetition and ease adding new images.
@@ -4369,7 +4369,7 @@ Refactoring directions: code structure, readability, extensibility, maintainabil
 
 ## ./hack/update-codegen-docker.sh
 
-- [ ] **Naming**: Fix typo "useage" → "usage" in comment (line 2).
+- [x] **Naming**: Fix typo "useage" → "usage" in comment (line 2).
 - [ ] **Robustness**: Script uses `-v ${PWD}:/app`; if run from a subdirectory, generated code and `go mod tidy` run in the wrong tree. Add `cd "$(dirname "${BASH_SOURCE[0]}")/.."` at start so it always runs in project root.
 
 ---

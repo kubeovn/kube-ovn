@@ -21,7 +21,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// NamespaceClient is a struct for namespace  client.
+// NamespaceClient is a struct for namespace client.
 type NamespaceClient struct {
 	v1core.NamespaceInterface
 }

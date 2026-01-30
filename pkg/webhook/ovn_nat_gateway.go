@@ -35,7 +35,7 @@ func (v *ValidatingHook) ovnEipCreateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -58,7 +58,7 @@ func (v *ValidatingHook) ovnEipUpdateHook(ctx context.Context, req admission.Req
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) isOvnEipInUse(ctx context.Context, eipV4IP, eipV6IP string) (string, error) {
@@ -104,7 +104,7 @@ func (v *ValidatingHook) ovnEipDeleteHook(ctx context.Context, req admission.Req
 		var err error
 		nat, err := v.isOvnEipInUse(ctx, eip.Spec.V4Ip, eip.Spec.V6Ip)
 		if nat != "" {
-			err = fmt.Errorf("OvnEip %s is still using by ovn nat", eip.Name)
+			err = fmt.Errorf("OvnEip %s is still used by ovn nat", eip.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err != nil {
@@ -112,7 +112,7 @@ func (v *ValidatingHook) ovnEipDeleteHook(ctx context.Context, req admission.Req
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnDnatCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -125,7 +125,7 @@ func (v *ValidatingHook) ovnDnatCreateHook(ctx context.Context, req admission.Re
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnDnatUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -149,7 +149,7 @@ func (v *ValidatingHook) ovnDnatUpdateHook(ctx context.Context, req admission.Re
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnSnatCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -162,7 +162,7 @@ func (v *ValidatingHook) ovnSnatCreateHook(ctx context.Context, req admission.Re
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnSnatUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -186,7 +186,7 @@ func (v *ValidatingHook) ovnSnatUpdateHook(ctx context.Context, req admission.Re
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnFipCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -199,7 +199,7 @@ func (v *ValidatingHook) ovnFipCreateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -222,7 +222,7 @@ func (v *ValidatingHook) ovnFipUpdateHook(ctx context.Context, req admission.Req
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ValidateOvnEip(ctx context.Context, eip *ovnv1.OvnEip) error {
@@ -302,10 +302,10 @@ func (v *ValidatingHook) ValidateOvnDnat(ctx context.Context, dnat *ovnv1.OvnDna
 	}
 
 	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse spec internalIP %s: %w", dnat.Spec.InternalPort, err)
+		errMsg := fmt.Errorf("failed to parse spec internalPort %s: %w", dnat.Spec.InternalPort, err)
 		return errMsg
 	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("spec internalIP %s is not a valid port", dnat.Spec.InternalPort)
+		err := fmt.Errorf("spec internalPort %s is not a valid port", dnat.Spec.InternalPort)
 		return err
 	}
 

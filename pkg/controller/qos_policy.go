@@ -182,7 +182,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 }
 
 func (c *Controller) syncQoSPolicyFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	polices := &kubeovnv1.QoSPolicyList{}
 	return migrateFinalizers(cl, polices, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(polices.Items) {
@@ -224,7 +224,7 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 	return added, deleted, updated
 }
 
-func (c *Controller) reconcileEIPBandtithLimitRules(
+func (c *Controller) reconcileEIPBandwidthLimitRules(
 	eip *kubeovnv1.IptablesEIP,
 	added kubeovnv1.QoSPolicyBandwidthLimitRules,
 	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
@@ -233,7 +233,7 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	var err error
 	// in this case, we must delete rules first, then add or update rules
 	if len(deleted) > 0 {
-		if err = c.delEIPBandtithLimitRules(eip, eip.Status.IP, deleted); err != nil {
+		if err = c.delEIPBandwidthLimitRules(eip, eip.Status.IP, deleted); err != nil {
 			klog.Errorf("failed to delete eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
@@ -254,10 +254,10 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	return nil
 }
 
-func validateIPMatchValue(matachValue string) bool {
-	parts := strings.Split(matachValue, " ")
+func validateIPMatchValue(matchValue string) bool {
+	parts := strings.Split(matchValue, " ")
 	if len(parts) != 2 {
-		klog.Errorf("invalid ip MatchValue %s", matachValue)
+		klog.Errorf("invalid ip MatchValue %s", matchValue)
 		return false
 	}
 
@@ -392,7 +392,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				// not thing to do
 			case len(eips) == 1:
 				eip := eips[0]
-				if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
+				if err = c.reconcileEIPBandwidthLimitRules(eip, added, deleted, updated); err != nil {
 					klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
 					return err
 				}

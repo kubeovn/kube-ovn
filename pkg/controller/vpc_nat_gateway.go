@@ -1293,10 +1293,10 @@ func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation st
 		klog.Error(err)
 		return err
 	}
-	return c.execNatGwBandtithLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
+	return c.execNatGwBandwidthLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
 }
 
-func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
+func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
 	var err error
 	for _, rule := range rules {
 		if err = c.execNatGwQoSInPod(gw.Name, &rule, operation); err != nil {

@@ -99,7 +99,7 @@ func (c *OvnDnatRuleClient) PatchSync(original, modified *apiv1.OvnDnatRule, _ [
 	return c.Get(dnat.Name).DeepCopy()
 }
 
-// Delete deletes a ovn dnat if the ovn dnat exists
+// Delete deletes an OVN DNAT rule if it exists
 func (c *OvnDnatRuleClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.OvnDnatRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -108,15 +108,15 @@ func (c *OvnDnatRuleClient) Delete(name string) {
 	}
 }
 
-// DeleteSync deletes the ovn dnat and waits for the ovn dnat to disappear for `timeout`.
-// If the ovn dnat doesn't disappear before the timeout, it will fail the test.
+// DeleteSync deletes the OVN DNAT rule and waits for it to disappear for `timeout`.
+// If the OVN DNAT rule doesn't disappear before the timeout, it will fail the test.
 func (c *OvnDnatRuleClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn dnat %q to disappear", name)
 }
 
-// WaitToBeReady returns whether the ovn dnat is ready within timeout.
+// WaitToBeReady returns whether the OVN DNAT rule is ready within timeout.
 func (c *OvnDnatRuleClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn dnat %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {

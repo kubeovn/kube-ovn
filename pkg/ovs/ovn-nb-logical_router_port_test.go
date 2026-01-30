@@ -293,7 +293,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 	t.Run("fail nb client should log err", func(t *testing.T) {
 		t.Parallel()
 
-		lrpName := "test-create-lrp-fail-clenit"
+		lrpName := "test-create-lrp-fail-client"
 		err := failedNbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"192.168.123.1/24"})
 		require.Error(t, err)
 	})
@@ -837,7 +837,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterPortUpdateGatewayChassisOp() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	t.Run("upadate gateway chassis op with nil uuids", func(t *testing.T) {
+	t.Run("update gateway chassis op with nil uuids", func(t *testing.T) {
 		_, err := nbClient.LogicalRouterPortUpdateGatewayChassisOp(lrpName, nil, "op")
 		require.NoError(t, err)
 	})

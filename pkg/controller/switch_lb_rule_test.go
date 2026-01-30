@@ -77,7 +77,7 @@ func Test_getIPFamilies(t *testing.T) {
 			}
 
 			if policy != tt.expectedFamilyPolicy {
-				t.Errorf("Expected familiyPolicy %s, but got %s", tt.expectedFamilyPolicy, policy)
+				t.Errorf("Expected familyPolicy %s, but got %s", tt.expectedFamilyPolicy, policy)
 			}
 		})
 	}

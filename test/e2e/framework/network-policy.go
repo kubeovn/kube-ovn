@@ -15,7 +15,7 @@ import (
 	"github.com/onsi/gomega"
 )
 
-// NetworkPolicyClient is a struct for network policy  client.
+// NetworkPolicyClient is a struct for network policy client.
 type NetworkPolicyClient struct {
 	f *Framework
 	v1net.NetworkPolicyInterface

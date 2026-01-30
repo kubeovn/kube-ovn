@@ -85,7 +85,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
 		return err
 	}
 
-	// ingnore
+	// ignore
 	if exist {
 		return nil
 	}
@@ -229,7 +229,7 @@ func (c *OVNNbClient) DeleteLogicalSwitch(lsName string) error {
 }
 
 // GetLogicalSwitch get logical switch by name,
-// it is because of lack name index that does't use OVNNbClient.Get
+// it is because of lack of name index that doesn't use OVNNbClient.Get
 func (c *OVNNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
 	if lsName == "" {
 		err := errors.New("empty logical switch name")
@@ -244,7 +244,7 @@ func (c *OVNNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovn
 		return ls.Name == lsName
 	}).List(ctx, &lsList); err != nil {
 		klog.Error(err)
-		return nil, fmt.Errorf("list switch switch %q: %w", lsName, err)
+		return nil, fmt.Errorf("list logical switch %q: %w", lsName, err)
 	}
 
 	// not found

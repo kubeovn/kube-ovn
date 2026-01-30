@@ -219,7 +219,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		ginkgo.By("Creating selector SwitchLBRule " + epSlrName)
 		var (
 			selRule           *kubeovnv1.SwitchLBRule
-			slrSlector        []string
+			slrSelector       []string
 			slrPorts, epPorts []kubeovnv1.SwitchLBRulePort
 			sessionAffinity   corev1.ServiceAffinity
 		)
@@ -232,8 +232,8 @@ var _ = framework.Describe("[group:slr]", func() {
 				Protocol:   "TCP",
 			},
 		}
-		slrSlector = []string{"app:" + label}
-		selRule = framework.MakeSwitchLBRule(selSlrName, namespaceName, vip, sessionAffinity, nil, slrSlector, nil, slrPorts)
+		slrSelector = []string{"app:" + label}
+		selRule = framework.MakeSwitchLBRule(selSlrName, namespaceName, vip, sessionAffinity, nil, slrSelector, nil, slrPorts)
 		_ = switchLBRuleClient.Create(selRule)
 
 		ginkgo.By("Waiting for switch-lb-rule " + selSlrName + " to be ready")

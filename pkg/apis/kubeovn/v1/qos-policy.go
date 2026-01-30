@@ -52,7 +52,7 @@ type QoSPolicySpec struct {
 	BindingType         QoSPolicyBindingType         `json:"bindingType"`
 }
 
-// BandwidthLimitRule describes the rule of an bandwidth limit.
+// BandwidthLimitRule describes the rule of a bandwidth limit.
 type QoSPolicyBandwidthLimitRule struct {
 	Name       string                 `json:"name"`
 	Interface  string                 `json:"interface,omitempty"`

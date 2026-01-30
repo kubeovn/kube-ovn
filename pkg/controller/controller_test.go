@@ -227,7 +227,7 @@ func Test_allSubnetReady(t *testing.T) {
 		require.True(t, ready)
 	})
 
-	t.Run("some subnet are not ready", func(t *testing.T) {
+	t.Run("some subnets are not ready", func(t *testing.T) {
 		mockOvnClient.EXPECT().LogicalSwitchExists(subnets[0]).Return(true, nil)
 		mockOvnClient.EXPECT().LogicalSwitchExists(subnets[1]).Return(false, nil)
 

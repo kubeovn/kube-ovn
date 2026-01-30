@@ -290,7 +290,7 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 }
 
 func (c *Controller) syncIPFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	ips := &kubeovnv1.IPList{}
 	return migrateFinalizers(cl, ips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(ips.Items) {
@@ -305,7 +305,7 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 		return nil
 	}
 	newIP := cachedIP.DeepCopy()
-	controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIP, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIP, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
 	if err != nil {

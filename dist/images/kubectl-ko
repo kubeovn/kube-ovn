@@ -1000,11 +1000,11 @@ dbtool(){
           kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
 
           # wait ovn-central pods running
-          availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
-          while [ $availabelNum != $replicas ]
+          availableNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+          while [ $availableNum != $replicas ]
           do
-            availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
-            echo "wait all ovn-central pods running, availabel $availabelNum"
+            availableNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+            echo "wait all ovn-central pods running, available $availableNum"
             sleep 1
           done
           echo "finish restore nb db file and ovn-central replicas"
@@ -1440,7 +1440,7 @@ quitPerfTest() {
 }
 
 perf(){
-  addHeaderDecoration "Prepareing Performance Test Resources"
+  addHeaderDecoration "Preparing Performance Test Resources"
   imageID=${1:-"docker.io/kubeovn/test:v1.13.0"}
 
   nodes=($(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name))

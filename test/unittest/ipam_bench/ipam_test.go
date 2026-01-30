@@ -36,12 +36,12 @@ func BenchmarkIPAMSerialIPv4DelSubnet(b *testing.B) {
 
 func BenchmarkIPAMSerialIPv4AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
 }
 
 func BenchmarkIPAMSerialIPv4FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
 	b.ResetTimer()
 	delPodAddressCapacity(b, im, false)
 }
@@ -60,12 +60,12 @@ func BenchmarkIPAMSerialIPv6DelSubnet(b *testing.B) {
 
 func BenchmarkIPAMSerialIPv6AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
 }
 
 func BenchmarkIPAMSerialIPv6FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
 	b.ResetTimer()
 	delPodAddressCapacity(b, im, false)
 }
@@ -84,12 +84,12 @@ func BenchmarkIPAMSerialDualDelSubnet(b *testing.B) {
 
 func BenchmarkIPAMSerialDualAllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolDual)
 }
 
 func BenchmarkIPAMSerialDualFreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+	addSerialAddrCapacity(b, im, kubeovnv1.ProtocolDual)
 	b.ResetTimer()
 	delPodAddressCapacity(b, im, false)
 }
@@ -176,7 +176,7 @@ func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
 	}
 }
 
-func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
+func addSerialAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
 		b.Errorf("ERROR: add subnet with %s cidr %s err %v", protocol, cidr, err)

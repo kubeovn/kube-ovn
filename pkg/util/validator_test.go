@@ -54,7 +54,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "subnet gateway 2001:Db8::1 v6 ip address can not contain upper case",
 		},
 		{
-			name: "CICDblockFormalErr",
+			name: "CIDRBlockFormatErr",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "ut-cicd-block-format-err",
@@ -241,7 +241,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "subnet ut-vips-uppercase-err vips 2001:dB8::2 v6 ip address can not contain upper case",
 		},
 		{
-			name: "LogicalGatewayU2OInterconnectionSametimeTrueErr",
+			name: "LogicalGatewayU2OInterconnectionSameTimeTrueErr",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "ut-logical-gateway-u2o-interconnection-sametime-true-err",
@@ -557,7 +557,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "subnet utest-apisvcerr cidr 10.20.0.0/16 conflicts with k8s apiserver svc ip 10.20.0.1",
 		},
 		{
-			name: "ExgressGWErr1",
+			name: "EgressGWErr1",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-exgatewayerr",
@@ -578,7 +578,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "conflict configuration: natOutgoing and externalEgressGateway",
 		},
 		{
-			name: "ExgressGWErr2",
+			name: "EgressGWErr2",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-exgatewayerr",
@@ -598,7 +598,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "invalid external egress gateway configuration",
 		},
 		{
-			name: "ExgressGWErr3",
+			name: "EgressGWErr3",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-exgatewayerr",
@@ -618,7 +618,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "IP 192.178..2 in externalEgressGateway is not a valid address",
 		},
 		{
-			name: "ExgressGWErr4",
+			name: "EgressGWErr4",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-exgatewayerr",
@@ -638,7 +638,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "invalid external egress gateway configuration: address family is conflict with CIDR",
 		},
 		{
-			name: "ExgressGWErr5",
+			name: "EgressGWErr5",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-exgatewayerr",
@@ -658,7 +658,7 @@ func TestValidateSubnet(t *testing.T) {
 			err: "vip 10.17.2.1 conflicts with subnet utest-exgatewayerr cidr 10.16.0.0/16",
 		},
 		{
-			name: "CIDRformErr",
+			name: "CIDRFormatErr",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest",
@@ -844,7 +844,7 @@ func TestValidatePodNetwork(t *testing.T) {
 			err: "10.16.1111.15 in " + IPPoolAnnotation + " is not a valid address",
 		},
 		{
-			name: "ingRaErr",
+			name: "IngressRateErr",
 			annotations: map[string]string{
 				IPAddressAnnotation:   "10.16.0.15",
 				MacAddressAnnotation:  "00:00:00:54:17:2A",
@@ -856,7 +856,7 @@ func TestValidatePodNetwork(t *testing.T) {
 			err: "a3 is not a valid " + IngressRateAnnotation,
 		},
 		{
-			name: "EgRatErr",
+			name: "EgressRateErr",
 			annotations: map[string]string{
 				IPAddressAnnotation:   "10.16.0.15",
 				MacAddressAnnotation:  "00:00:00:54:17:2A",
@@ -887,13 +887,13 @@ func TestValidateNetworkBroadcast(t *testing.T) {
 		err  string
 	}{
 		{
-			name: "corretV4",
+			name: "correctV4",
 			cidr: "10.16.0.0/16",
 			ip:   "10.16.0.3",
 			err:  "",
 		},
 		{
-			name: "corretDual",
+			name: "correctDual",
 			cidr: "10.244.0.0/16,fd00:10:244:0:2::/80",
 			ip:   "10.244.0.6,fd00:10:244:0:2:2",
 			err:  "",
@@ -1265,7 +1265,7 @@ func TestValidateVpc(t *testing.T) {
 	}
 }
 
-func TestValidateNatOutGoingPolicyRuleIPs(t *testing.T) {
+func TestValidateNatOutgoingPolicyRuleIPs(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
@@ -1355,13 +1355,13 @@ func TestValidateNatOutGoingPolicyRuleIPs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := validateNatOutGoingPolicyRuleIPs(tt.input)
+			got, err := validateNatOutgoingPolicyRuleIPs(tt.input)
 			if (err != nil) != tt.expectErr {
-				t.Errorf("validateNatOutGoingPolicyRuleIPs() error = %v, wantErr %v", err, tt.expectErr)
+				t.Errorf("validateNatOutgoingPolicyRuleIPs() error = %v, wantErr %v", err, tt.expectErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("validateNatOutGoingPolicyRuleIPs() = %v, want %v", got, tt.want)
+				t.Errorf("validateNatOutgoingPolicyRuleIPs() = %v, want %v", got, tt.want)
 			}
 		})
 	}

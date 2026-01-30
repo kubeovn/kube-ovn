@@ -5841,19 +5841,19 @@ func (mr *MockSbClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockSbClient)(nil).GetEntityInfo), entity)
 }
 
-// GetKubeOvnChassisses mocks base method.
-func (m *MockSbClient) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
+// GetKubeOvnChassises mocks base method.
+func (m *MockSbClient) GetKubeOvnChassises() (*[]ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKubeOvnChassisses")
+	ret := m.ctrl.Call(m, "GetKubeOvnChassises")
 	ret0, _ := ret[0].(*[]ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetKubeOvnChassisses indicates an expected call of GetKubeOvnChassisses.
-func (mr *MockSbClientMockRecorder) GetKubeOvnChassisses() *gomock.Call {
+// GetKubeOvnChassises indicates an expected call of GetKubeOvnChassises.
+func (mr *MockSbClientMockRecorder) GetKubeOvnChassises() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassisses", reflect.TypeOf((*MockSbClient)(nil).GetKubeOvnChassisses))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassises", reflect.TypeOf((*MockSbClient)(nil).GetKubeOvnChassises))
 }
 
 // ListChassis mocks base method.
@@ -6066,19 +6066,19 @@ func (mr *MockChassisMockRecorder) GetChassisByHost(nodeName any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByHost", reflect.TypeOf((*MockChassis)(nil).GetChassisByHost), nodeName)
 }
 
-// GetKubeOvnChassisses mocks base method.
-func (m *MockChassis) GetKubeOvnChassisses() (*[]ovnsb.Chassis, error) {
+// GetKubeOvnChassises mocks base method.
+func (m *MockChassis) GetKubeOvnChassises() (*[]ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKubeOvnChassisses")
+	ret := m.ctrl.Call(m, "GetKubeOvnChassises")
 	ret0, _ := ret[0].(*[]ovnsb.Chassis)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetKubeOvnChassisses indicates an expected call of GetKubeOvnChassisses.
-func (mr *MockChassisMockRecorder) GetKubeOvnChassisses() *gomock.Call {
+// GetKubeOvnChassises indicates an expected call of GetKubeOvnChassises.
+func (mr *MockChassisMockRecorder) GetKubeOvnChassises() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassisses", reflect.TypeOf((*MockChassis)(nil).GetKubeOvnChassisses))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassises", reflect.TypeOf((*MockChassis)(nil).GetKubeOvnChassises))
 }
 
 // ListChassis mocks base method.
