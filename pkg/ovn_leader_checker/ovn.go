@@ -219,20 +219,9 @@ func isDBLeader(address, database string) bool {
 }
 
 func checkNorthdActive() bool {
-	pid, err := os.ReadFile(OvnNorthdPid)
+	output, err := ovs.Appctl("ovn-northd", "status")
 	if err != nil {
-		klog.Errorf("failed to read file %q: %v", OvnNorthdPid, err)
-		return false
-	}
-
-	command := []string{
-		"-t",
-		fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.TrimSpace(string(pid))),
-		"status",
-	}
-	output, err := exec.Command("ovn-appctl", command...).CombinedOutput() // #nosec G204
-	if err != nil {
-		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, string(output))
+		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, output)
 		return false
 	}
 
@@ -241,8 +230,8 @@ func checkNorthdActive() bool {
 		return false
 	}
 
-	klog.V(5).Infof("checkNorthdActive: output %s", string(output))
-	result := strings.TrimSpace(string(output))
+	klog.V(5).Infof("checkNorthdActive: output %s", output)
+	result := strings.TrimSpace(output)
 	return strings.Contains(result, "active")
 }
 
@@ -317,21 +306,16 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 }
 
 func compactOvnDatabase(db string) {
-	args := []string{
-		"-t",
-		fmt.Sprintf("/var/run/ovn/ovn%s_db.ctl", db),
-		"ovsdb-server/compact",
-	}
-	output, err := exec.Command("ovn-appctl", args...).CombinedOutput() // #nosec G204
+	output, err := ovs.OvnDatabaseControl(db, "ovsdb-server/compact")
 	if err != nil {
-		if !strings.Contains(string(output), "not storing a duplicate snapshot") {
-			klog.Errorf("failed to compact ovn%s database: %s", db, string(output))
+		if !strings.Contains(output, "not storing a duplicate snapshot") {
+			klog.Errorf("failed to compact ovn%s database: %s", db, output)
 		}
 		return
 	}
 
 	if len(output) != 0 {
-		klog.V(5).Infof("compact ovn%s database: %s", db, string(output))
+		klog.V(5).Infof("compact ovn%s database: %s", db, output)
 	}
 }
 
