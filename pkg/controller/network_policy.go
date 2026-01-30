@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -29,7 +28,6 @@ import (
 const (
 	NetworkPolicyEnforcementStandard = "standard"
 	NetworkPolicyEnforcementLax      = "lax"
-	policyForAnnotation              = "ovn.kubernetes.io/policy-for"
 )
 
 func (c *Controller) enqueueAddNp(obj any) {
@@ -123,7 +121,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 	logRate := parseACLLogRate(np.Annotations)
 
-	providers, includeSvc, err := parsePolicyFor(np)
+	providers, err := parsePolicyFor(np)
 	if err != nil {
 		return err
 	}
@@ -219,7 +217,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				} else {
 					var allow, except []string
 					for _, npp := range npr.From {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers, includeSvc); err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -366,7 +364,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				} else {
 					var allow, except []string
 					for _, npp := range npr.To {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers, includeSvc); err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -538,14 +536,14 @@ func (c *Controller) handleDeleteNp(key string) error {
 	return nil
 }
 
-func parsePolicyFor(np *netv1.NetworkPolicy) (map[string]struct{}, bool, error) {
-	raw := strings.TrimSpace(np.Annotations[policyForAnnotation])
+func parsePolicyFor(np *netv1.NetworkPolicy) (set.Set[string], error) {
+	raw := strings.TrimSpace(np.Annotations[util.NetworkPolicyForAnnotation])
 	if raw == "" {
-		return nil, true, nil
+		return nil, nil
 	}
 
-	providers := map[string]struct{}{}
-	includeSvc := false
+	providers := set.New[string]()
+	invalidMsg := `ignore invalid network_policy_for entry %q, expect "ovn" or "<namespace>/<net-attach-def>"`
 
 	for _, token := range strings.Split(raw, ",") {
 		t := strings.TrimSpace(token)
@@ -553,35 +551,38 @@ func parsePolicyFor(np *netv1.NetworkPolicy) (map[string]struct{}, bool, error) 
 			continue
 		}
 
-		switch strings.ToLower(t) {
-		case "primary":
-			providers[util.OvnProvider] = struct{}{}
-			includeSvc = true
+		if strings.EqualFold(t, "ovn") {
+			providers.Insert(util.OvnProvider)
 			continue
-		case "default":
-			return nil, false, fmt.Errorf("invalid policy-for entry %q (use 'primary')", t)
-		case "all":
-			return nil, false, fmt.Errorf("invalid policy-for entry %q (omit annotation for all)", t)
 		}
 		if strings.Contains(t, "/") {
 			parts := strings.SplitN(t, "/", 2)
 			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				return nil, false, fmt.Errorf("invalid policy-for entry %q", t)
+				klog.Warningf(invalidMsg, t)
+				continue
 			}
 			provider := fmt.Sprintf("%s.%s.%s", parts[1], parts[0], util.OvnProvider)
-			providers[provider] = struct{}{}
+			providers.Insert(provider)
 			continue
 		}
-		return nil, false, fmt.Errorf("invalid policy-for entry %q", t)
+		klog.Warningf(invalidMsg, t)
 	}
 
 	if len(providers) == 0 {
-		return nil, false, errors.New("policy-for annotation has no valid entries")
+		klog.Warning("network_policy_for annotation has no valid entries; policy selects no pods")
+		return providers, nil
 	}
-	return providers, includeSvc, nil
+	return providers, nil
 }
 
-func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector, providers map[string]struct{}) ([]string, []string, error) {
+func netpolAppliesToProvider(provider string, providers set.Set[string]) bool {
+	if providers == nil {
+		return true
+	}
+	return providers.Has(provider)
+}
+
+func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector, providers set.Set[string]) ([]string, []string, error) {
 	var subnets []string
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
@@ -603,22 +604,25 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 			return nil, nil, fmt.Errorf("failed to get pod networks, %w", err)
 		}
 
+		matchedProvider := false
 		for _, podNet := range podNets {
 			if !isOvnSubnet(podNet.Subnet) {
 				continue
 			}
 			provider := podNet.ProviderName
-			if providers != nil {
-				if _, ok := providers[provider]; !ok {
-					continue
-				}
+			if !netpolAppliesToProvider(provider, providers) {
+				continue
 			}
+			matchedProvider = true
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 				// Pod selected by networkpolicy has its own subnet which is not the default subnet
 				subnets = append(subnets, podNet.Subnet.Name)
 			}
+		}
+		if providers != nil && !matchedProvider {
+			klog.V(4).Infof("skip pod %s/%s: no network attachment matches network_policy_for", pod.Namespace, pod.Name)
 		}
 	}
 	subnets = slices.Compact(subnets)
@@ -643,7 +647,7 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
-func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers map[string]struct{}, includeSvc bool) ([]string, []string, error) {
+func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
 	selectedAddresses := []string{}
 	exceptAddresses := []string{}
 
@@ -699,13 +703,13 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 				klog.Errorf("failed to get pod nets %v", err)
 				return nil, nil, err
 			}
+			matchedProvider := false
 			for _, podNet := range podNets {
 				provider := podNet.ProviderName
-				if providers != nil {
-					if _, ok := providers[provider]; !ok {
-						continue
-					}
+				if !netpolAppliesToProvider(provider, providers) {
+					continue
 				}
+				matchedProvider = true
 
 				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				podIPs := strings.SplitSeq(podIPAnnotation, ",")
@@ -714,7 +718,10 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 						selectedAddresses = append(selectedAddresses, podIP)
 					}
 				}
-				if !includeSvc || len(svcs) == 0 {
+				if len(svcs) == 0 {
+					continue
+				}
+				if !shouldIncludeServiceIPs(podNet) {
 					continue
 				}
 
@@ -724,9 +731,16 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 				}
 				selectedAddresses = append(selectedAddresses, svcIPs...)
 			}
+			if providers != nil && !matchedProvider {
+				klog.V(4).Infof("skip pod %s/%s: no network attachment matches network_policy_for", pod.Namespace, pod.Name)
+			}
 		}
 	}
 	return selectedAddresses, exceptAddresses, nil
+}
+
+func shouldIncludeServiceIPs(podNet *kubeovnNet) bool {
+	return podNet != nil && podNet.Subnet != nil && podNet.Subnet.Spec.Vpc == util.DefaultVpc
 }
 
 func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]string, error) {

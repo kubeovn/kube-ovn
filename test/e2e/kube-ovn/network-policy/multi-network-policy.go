@@ -21,8 +21,6 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const policyForAnnotation = "ovn.kubernetes.io/policy-for"
-
 func isMultusInstalled(f *framework.Framework) bool {
 	_, err := f.ExtClientSet.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "network-attachment-definitions.k8s.cni.cncf.io", metav1.GetOptions{})
 	return err == nil
@@ -36,9 +34,10 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	var netpolClient *framework.NetworkPolicyClient
 	var serviceClient *framework.ServiceClient
 	var nadClient *framework.NetworkAttachmentDefinitionClient
-	var namespaceName, netpolName, subnetName, nadName string
+	var vpcClient *framework.VpcClient
+	var namespaceName, netpolName, subnetName, nadName, vpcName, customSubnetName string
 	var serverPodName, clientPodName, serviceName string
-	var cidr string
+	var cidr, ipFamily string
 
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
@@ -46,6 +45,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		netpolClient = f.NetworkPolicyClient()
 		serviceClient = f.ServiceClient()
 		nadClient = f.NetworkAttachmentDefinitionClient()
+		vpcClient = f.VpcClient()
 
 		if !isMultusInstalled(f) {
 			ginkgo.Skip("Multus CRD not installed")
@@ -55,14 +55,16 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		netpolName = "netpol-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		nadName = "nad-" + framework.RandomSuffix()
+		vpcName = "vpc-" + framework.RandomSuffix()
+		customSubnetName = "subnet-" + framework.RandomSuffix()
 		serverPodName = "server-" + framework.RandomSuffix()
 		clientPodName = "client-" + framework.RandomSuffix()
 		serviceName = "svc-" + framework.RandomSuffix()
-		family := f.ClusterIPFamily
-		if family == "" {
-			family = framework.IPv4
+		ipFamily = f.ClusterIPFamily
+		if ipFamily == "" {
+			ipFamily = framework.IPv4
 		}
-		cidr = framework.RandomCIDR(family)
+		cidr = framework.RandomCIDR(ipFamily)
 	})
 
 	ginkgo.AfterEach(func() {
@@ -81,17 +83,31 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Deleting network attachment definition")
 		nadClient.Delete(nadName)
+
+		ginkgo.By("Deleting custom subnet")
+		if customSubnetName != "" {
+			subnetClient.DeleteSync(customSubnetName)
+		}
+
+		ginkgo.By("Deleting VPC")
+		if vpcName != "" {
+			vpcClient.DeleteSync(vpcName)
+		}
 	})
 
 	framework.ConformanceIt("should scope network policy to selected provider", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating VPC " + vpcName)
+		vpc := framework.MakeVpc(vpcName, "", false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
 		_ = nadClient.Create(nad)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", provider, nil, nil, nil)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", vpcName, provider, nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating server pod " + serverPodName)
@@ -113,7 +129,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: netpolName,
 				Annotations: map[string]string{
-					policyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
+					util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
 				},
 			},
 			Spec: netv1.NetworkPolicySpec{
@@ -126,44 +142,132 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		secondaryIPs := splitIPsByProtocol(serverPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)])
 		primaryIPs := podIPsByProtocol(serverPod)
+		clientPrimaryIPs := podIPsByProtocol(clientPod)
+		clientSecondaryIPs := splitIPsByProtocol(clientPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)])
 
-		checked := false
-		for protocol, primaryIP := range primaryIPs {
-			secondaryIP := secondaryIPs[protocol]
-			if secondaryIP == "" {
-				continue
-			}
-			checked = true
-
-			cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(primaryIP, port)
-			ginkgo.By(fmt.Sprintf("Checking primary IP connectivity from client pod via %s", protocol))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-				_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
-				return err == nil, nil
-			}, "")
-
-			cmd = "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(secondaryIP, port)
-			ginkgo.By(fmt.Sprintf("Checking secondary IP connectivity from client pod via %s", protocol))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
-				_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
-				return err != nil, nil
-			}, "")
+		primaryIP, primaryProtocol := pickIPForClient(primaryIPs, clientPrimaryIPs, ipFamily)
+		if primaryIP == "" {
+			ginkgo.Skip("no primary IP matching client protocol")
+		}
+		secondaryIP, secondaryProtocol := pickIPForClient(secondaryIPs, clientSecondaryIPs, ipFamily)
+		if secondaryIP == "" {
+			ginkgo.Skip("no secondary IP matching client provider protocol")
 		}
 
-		if !checked {
-			ginkgo.Skip("no matching secondary IPs found")
+		cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(primaryIP, port)
+		ginkgo.By(fmt.Sprintf("Checking primary IP connectivity from client pod via %s", primaryProtocol))
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
+			return err == nil, nil
+		}, "")
+
+		cmd = "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(secondaryIP, port)
+		ginkgo.By(fmt.Sprintf("Checking secondary IP connectivity from client pod via %s", secondaryProtocol))
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
+			return err != nil, nil
+		}, "")
+	})
+
+	framework.ConformanceIt("should not include Service ClusterIP for custom VPC default provider", func() {
+		ginkgo.By("Creating VPC " + vpcName)
+		vpc := framework.MakeVpc(vpcName, "", false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("Creating subnet " + customSubnetName)
+		subnet := framework.MakeSubnet(customSubnetName, "", cidr, "", vpcName, util.OvnProvider, nil, nil, nil)
+		_ = subnetClient.CreateSync(subnet)
+
+		annotations := map[string]string{util.LogicalSwitchAnnotation: customSubnetName}
+
+		ginkgo.By("Creating server pod " + serverPodName)
+		serverLabels := map[string]string{"app": "server"}
+		port := 8080
+		serverArgs := []string{"netexec", "--http-port", strconv.Itoa(port)}
+		serverPod := framework.MakePod(namespaceName, serverPodName, serverLabels, annotations, framework.AgnhostImage, nil, serverArgs)
+		serverPod = podClient.CreateSync(serverPod)
+
+		ginkgo.By("Creating client pod " + clientPodName)
+		clientLabels := map[string]string{"app": "client"}
+		clientCmd := []string{"sleep", "infinity"}
+		clientPod := framework.MakePod(namespaceName, clientPodName, clientLabels, annotations, f.KubeOVNImage, clientCmd, nil)
+		_ = podClient.CreateSync(clientPod)
+
+		ginkgo.By("Creating service " + serviceName)
+		ports := []corev1.ServicePort{{Name: "http", Port: int32(port), TargetPort: intstr.FromInt(port)}}
+		svc := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, serverLabels, ports, corev1.ServiceAffinityNone)
+		svc = serviceClient.Create(svc)
+
+		ginkgo.By("Creating network policy " + netpolName)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+				Annotations: map[string]string{
+					util.NetworkPolicyForAnnotation: "ovn",
+				},
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{MatchLabels: clientLabels},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
+				Egress: []netv1.NetworkPolicyEgressRule{
+					{
+						To: []netv1.NetworkPolicyPeer{
+							{PodSelector: &metav1.LabelSelector{MatchLabels: serverLabels}},
+						},
+					},
+				},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		serverIPs := podIPsByProtocol(serverPod)
+		if len(serverIPs) == 0 {
+			ginkgo.Skip("no server IPs found")
+		}
+
+		for protocol, serverIP := range serverIPs {
+			if serverIP == "" {
+				continue
+			}
+			clusterIP := serviceClusterIPByProtocol(svc, protocol)
+			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
+
+			ginkgo.By(fmt.Sprintf("Checking address set %s for protocol %s", asName, protocol))
+			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				addresses, err := getAddressSetAddresses(asName)
+				if err != nil {
+					return false, err
+				}
+				for _, addr := range addresses {
+					if addr == serverIP {
+						return true, nil
+					}
+				}
+				return false, nil
+			}, "")
+
+			addresses, err := getAddressSetAddresses(asName)
+			framework.ExpectNoError(err)
+			framework.ExpectContainElement(addresses, serverIP)
+			if clusterIP != "" {
+				framework.ExpectNotContainElement(addresses, clusterIP)
+			}
 		}
 	})
 
-	framework.ConformanceIt("should not include Service ClusterIP for secondary-only policy", func() {
+	framework.ConformanceIt("should include Service ClusterIP for default VPC provider", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating VPC " + vpcName)
+		vpc := framework.MakeVpc(vpcName, "", false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
 		_ = nadClient.Create(nad)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", provider, nil, nil, nil)
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", util.DefaultVpc, provider, nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating server pod " + serverPodName)
@@ -190,7 +294,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: netpolName,
 				Annotations: map[string]string{
-					policyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
+					util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
 				},
 			},
 			Spec: netv1.NetworkPolicySpec{
@@ -234,7 +338,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(addresses, secondaryIP)
 			if clusterIP != "" {
-				framework.ExpectNotContainElement(addresses, clusterIP)
+				framework.ExpectContainElement(addresses, clusterIP)
 			}
 		}
 	})
@@ -250,6 +354,20 @@ func splitIPsByProtocol(ipStr string) map[string]string {
 		ips[util.CheckProtocol(v6)] = v6
 	}
 	return ips
+}
+
+func pickIPForClient(ips, clientIPs map[string]string, preferred string) (string, string) {
+	if preferred != "" {
+		if ip := ips[preferred]; ip != "" && clientIPs[preferred] != "" {
+			return ip, preferred
+		}
+	}
+	for protocol, ip := range ips {
+		if ip != "" && clientIPs[protocol] != "" {
+			return ip, protocol
+		}
+	}
+	return "", ""
 }
 
 func podIPsByProtocol(pod *corev1.Pod) map[string]string {

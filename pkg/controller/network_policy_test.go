@@ -6,6 +6,8 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"k8s.io/utils/set"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -15,66 +17,81 @@ func TestParsePolicyFor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		annotation     *string
-		wantProviders  map[string]struct{}
-		wantIncludeSvc bool
-		wantErr        bool
+		name          string
+		annotation    *string
+		wantProviders set.Set[string]
+		wantErr       bool
 	}{
 		{
-			name:           "annotation omitted",
-			annotation:     nil,
-			wantProviders:  nil,
-			wantIncludeSvc: true,
-			wantErr:        false,
+			name:          "annotation omitted",
+			annotation:    nil,
+			wantProviders: nil,
+			wantErr:       false,
 		},
 		{
-			name:       "primary only",
-			annotation: ptrString("primary"),
-			wantProviders: map[string]struct{}{
-				util.OvnProvider: {},
-			},
-			wantIncludeSvc: true,
-			wantErr:        false,
+			name:       "ovn only",
+			annotation: ptrString("ovn"),
+			wantProviders: set.New(
+				util.OvnProvider,
+			),
+			wantErr: false,
+		},
+		{
+			name:       "duplicate ovn",
+			annotation: ptrString("ovn, ovn"),
+			wantProviders: set.New(
+				util.OvnProvider,
+			),
+			wantErr: false,
 		},
 		{
 			name:       "secondary only",
 			annotation: ptrString("ns1/net1"),
-			wantProviders: map[string]struct{}{
-				"net1.ns1." + util.OvnProvider: {},
-			},
-			wantIncludeSvc: false,
-			wantErr:        false,
+			wantProviders: set.New(
+				"net1.ns1." + util.OvnProvider,
+			),
+			wantErr: false,
 		},
 		{
-			name:       "primary and secondary",
-			annotation: ptrString(" primary , ns1/net1 "),
-			wantProviders: map[string]struct{}{
-				util.OvnProvider:               {},
-				"net1.ns1." + util.OvnProvider: {},
-			},
-			wantIncludeSvc: true,
-			wantErr:        false,
+			name:       "ovn and secondary",
+			annotation: ptrString(" ovn , ns1/net1 "),
+			wantProviders: set.New(
+				util.OvnProvider,
+				"net1.ns1."+util.OvnProvider,
+			),
+			wantErr: false,
 		},
 		{
-			name:       "invalid all",
-			annotation: ptrString("all"),
-			wantErr:    true,
+			name:       "ovn and invalid",
+			annotation: ptrString("ovn, foo"),
+			wantProviders: set.New(
+				util.OvnProvider,
+			),
+			wantErr: false,
 		},
 		{
-			name:       "invalid default",
-			annotation: ptrString("default"),
-			wantErr:    true,
+			name:          "invalid all",
+			annotation:    ptrString("all"),
+			wantProviders: set.New[string](),
+			wantErr:       false,
 		},
 		{
-			name:       "invalid no entries",
-			annotation: ptrString(","),
-			wantErr:    true,
+			name:          "invalid default",
+			annotation:    ptrString("default"),
+			wantProviders: set.New[string](),
+			wantErr:       false,
 		},
 		{
-			name:       "invalid token",
-			annotation: ptrString("foo"),
-			wantErr:    true,
+			name:          "invalid no entries",
+			annotation:    ptrString(","),
+			wantProviders: set.New[string](),
+			wantErr:       false,
+		},
+		{
+			name:          "invalid token",
+			annotation:    ptrString("foo"),
+			wantProviders: set.New[string](),
+			wantErr:       false,
 		},
 	}
 
@@ -88,18 +105,17 @@ func TestParsePolicyFor(t *testing.T) {
 			}
 			if tt.annotation != nil {
 				np.Annotations = map[string]string{
-					policyForAnnotation: *tt.annotation,
+					util.NetworkPolicyForAnnotation: *tt.annotation,
 				}
 			}
 
-			providers, includeSvc, err := parsePolicyFor(np)
+			providers, err := parsePolicyFor(np)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tt.wantIncludeSvc, includeSvc)
 			if tt.wantProviders == nil {
 				require.Nil(t, providers)
 				return
@@ -107,6 +123,15 @@ func TestParsePolicyFor(t *testing.T) {
 			require.Equal(t, tt.wantProviders, providers)
 		})
 	}
+}
+
+func TestNetpolAppliesToProvider(t *testing.T) {
+	t.Parallel()
+	providers := set.New("ovn", "net1.ns1.ovn")
+	require.True(t, netpolAppliesToProvider("ovn", providers))
+	require.False(t, netpolAppliesToProvider("net2.ns2.ovn", providers))
+	require.True(t, netpolAppliesToProvider("ovn", nil))
+	require.False(t, netpolAppliesToProvider("ovn", set.New[string]()))
 }
 
 func ptrString(s string) *string {
