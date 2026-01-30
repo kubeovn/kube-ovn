@@ -279,7 +279,6 @@ spec:
               type: object
               properties:
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the DNS service. This field is immutable after creation.
                 subnet:
@@ -763,7 +762,6 @@ spec:
                   type: array
                   description: External subnets accessible through the NAT gateway
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the NAT gateway. This field is immutable after creation.
                 selector:
@@ -1290,7 +1288,6 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name for the egress gateway. This field is immutable after creation.
                 internalSubnet:
@@ -1816,7 +1813,6 @@ spec:
                   type: string
                   description: Redo operation status
                 protocol:
-                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type of the DNAT rule
                 internalIp:
@@ -1862,7 +1858,6 @@ spec:
                   type: string
                   description: External port number
                 protocol:
-                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 internalIp:
@@ -2151,7 +2146,6 @@ spec:
                   type: string
                   description: IPv6 address mapped to the FIP
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the FIP is configured
                 conditions:
@@ -2194,7 +2188,6 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
@@ -2266,7 +2259,6 @@ spec:
                   type: string
                   description: IPv6 CIDR configured in the SNAT rule
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the SNAT rule is configured
                 conditions:
@@ -2306,7 +2298,6 @@ spec:
                   type: string
                   description: IP resource name
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4IpCidr:
@@ -2393,7 +2384,6 @@ spec:
                   type: string
                   description: IPv6 address configured in the DNAT rule
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name where the DNAT rule is configured
                 externalPort:
@@ -2403,7 +2393,6 @@ spec:
                   type: string
                   description: Internal port configured in the DNAT rule
                 protocol:
-                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type configured in the DNAT rule
                 ipName:
@@ -2452,11 +2441,9 @@ spec:
                   type: string
                   description: Internal port number to forward traffic to
                 protocol:
-                  description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
                   type: string
                   description: Protocol type (TCP or UDP)
                 vpc:
-                  description: VPC name for the subnet. Immutable after creation.
                   type: string
                   description: VPC name. This field is immutable after creation.
                 v4Ip:
