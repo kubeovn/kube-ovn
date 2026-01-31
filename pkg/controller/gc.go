@@ -325,7 +325,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	}
 
 	// Check if Node exists
-	if ip.Spec.Namespace == "" && ip.Spec.NodeName == ip.Spec.PodName {
+	if ip.Spec.Namespace == metav1.NamespaceNone && ip.Spec.NodeName == ip.Spec.PodName {
 		_, err := c.nodesLister.Get(ip.Spec.NodeName)
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, nil
@@ -356,6 +356,32 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 			return false, nil
 		}
 		return true, err
+	}
+
+	// check whether the ip belongs to a subnet's u2o ip or mcast query ip
+	if owners := ip.GetOwnerReferences(); len(owners) != 0 {
+		var err error
+		var ownerExists bool
+		for owner := range slices.Values(owners) {
+			switch owner.Kind {
+			case util.KindNode:
+				_, err = c.nodesLister.Get(owner.Name)
+			case util.KindSubnet:
+				_, err = c.subnetsLister.Get(owner.Name)
+			default:
+				klog.Errorf("unsupported owner kind %s for ip %s", owner.Kind, ip.Name)
+				continue
+			}
+			if err == nil {
+				// currently we do not check owner's UID
+				ownerExists = true
+				break
+			}
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get owner %s %s for ip %s: %v", owner.Kind, owner.Name, ip.Name, err)
+			}
+		}
+		return ownerExists, nil
 	}
 
 	// Check if Normal Pod exists
