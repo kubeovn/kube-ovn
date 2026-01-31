@@ -214,6 +214,7 @@ iptables-eip-conformance-e2e:
 
 .PHONY: iptables-eip-qos-conformance-e2e
 iptables-eip-qos-conformance-e2e:
+	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-eip-qos
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
