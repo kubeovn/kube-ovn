@@ -2612,6 +2612,11 @@ spec:
                         type: string
                       nextHopIP:
                         type: string
+                      externalIDs:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: Custom metadata key-value pairs. The "vendor" key is reserved.
                     type: object
                   type: array
                 vpcPeerings:
