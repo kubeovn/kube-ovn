@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -32,14 +33,23 @@ func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandw
 		return false
 	}
 
-	sort.Slice(newObj, func(i, j int) bool {
-		return newObj[i].Name < newObj[j].Name
+	// Sort both slices by Name for order-independent comparison
+	// We need to sort copies to avoid mutating the original slices
+	sortedOld := make(kubeovnv1.QoSPolicyBandwidthLimitRules, len(oldObj))
+	sortedNew := make(kubeovnv1.QoSPolicyBandwidthLimitRules, len(newObj))
+	copy(sortedOld, oldObj)
+	copy(sortedNew, newObj)
+
+	sort.Slice(sortedOld, func(i, j int) bool {
+		return sortedOld[i].Name < sortedOld[j].Name
 	})
-	return reflect.DeepEqual(oldObj, newObj)
+	sort.Slice(sortedNew, func(i, j int) bool {
+		return sortedNew[i].Name < sortedNew[j].Name
+	})
+	return reflect.DeepEqual(sortedOld, sortedNew)
 }
 
-func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj any) {
-	oldQos := oldObj.(*kubeovnv1.QoSPolicy)
+func (c *Controller) enqueueUpdateQoSPolicy(_, newObj any) {
 	newQos := newObj.(*kubeovnv1.QoSPolicy)
 	key := cache.MetaObjectToName(newQos).String()
 	if !newQos.DeletionTimestamp.IsZero() {
@@ -47,9 +57,11 @@ func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj any) {
 		c.updateQoSPolicyQueue.Add(key)
 		return
 	}
-	if oldQos.Status.Shared != newQos.Spec.Shared ||
-		oldQos.Status.BindingType != newQos.Spec.BindingType ||
-		!compareQoSPolicyBandwidthLimitRules(oldQos.Status.BandwidthLimitRules,
+	// Compare newQos.Status with newQos.Spec to check if reconciliation is needed
+	// Using oldQos.Status would cause false positives when handleAddQoSPolicy patches status
+	if newQos.Status.Shared != newQos.Spec.Shared ||
+		newQos.Status.BindingType != newQos.Spec.BindingType ||
+		!compareQoSPolicyBandwidthLimitRules(newQos.Status.BandwidthLimitRules,
 			newQos.Spec.BandwidthLimitRules) {
 		klog.V(3).Infof("enqueue update qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
@@ -198,9 +210,10 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 	updated = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 
 	// Create a map of old rules indexed by name for efficient lookup
-	oldMap := make(map[string]*kubeovnv1.QoSPolicyBandwidthLimitRule)
+	// Store values (not pointers) to ensure correct reflect.DeepEqual comparison
+	oldMap := make(map[string]kubeovnv1.QoSPolicyBandwidthLimitRule)
 	for _, s := range oldList {
-		oldMap[s.Name] = s.DeepCopy()
+		oldMap[s.Name] = s
 	}
 
 	// Loop through new rules and compare with old rules
@@ -218,13 +231,13 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 
 	// Remaining rules in oldMap are deleted
 	for _, s := range oldMap {
-		deleted = append(deleted, *s)
+		deleted = append(deleted, s)
 	}
 
 	return added, deleted, updated
 }
 
-func (c *Controller) reconcileEIPBandtithLimitRules(
+func (c *Controller) reconcileEIPBandwidthLimitRules(
 	eip *kubeovnv1.IptablesEIP,
 	added kubeovnv1.QoSPolicyBandwidthLimitRules,
 	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
@@ -233,7 +246,7 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	var err error
 	// in this case, we must delete rules first, then add or update rules
 	if len(deleted) > 0 {
-		if err = c.delEIPBandtithLimitRules(eip, eip.Status.IP, deleted); err != nil {
+		if err = c.delEIPBandwidthLimitRules(eip, eip.Status.IP, deleted); err != nil {
 			klog.Errorf("failed to delete eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
@@ -254,10 +267,10 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	return nil
 }
 
-func validateIPMatchValue(matachValue string) bool {
-	parts := strings.Split(matachValue, " ")
+func validateIPMatchValue(matchValue string) bool {
+	parts := strings.Split(matchValue, " ")
 	if len(parts) != 2 {
-		klog.Errorf("invalid ip MatchValue %s", matachValue)
+		klog.Errorf("invalid ip MatchValue %s", matchValue)
 		return false
 	}
 
@@ -272,14 +285,78 @@ func validateIPMatchValue(matachValue string) bool {
 		klog.Errorf("invalid cidr %s", cidr)
 		return false
 	}
-	// invalid cidr
 	return true
+}
+
+// numericRatePattern validates that rate/burst values are numeric (integer or decimal)
+// Supports decimal values like "0.5" for sub-Mbps rates (0.5 Mbps = 500 Kbps)
+// This prevents command injection when values are passed to shell scripts
+// Defense in depth: CRD schema validation may be bypassed by direct API access
+var numericRatePattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
+
+// interfaceNamePattern validates network interface names
+// Linux interface names: alphanumeric, underscore, hyphen, max 15 chars (IFNAMSIZ-1)
+// Examples: eth0, net1, veth-abc, bond_0
+// This prevents command injection when interface names are passed to shell scripts
+var interfaceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,15}$`)
+
+func validateRateValue(value, fieldName string) error {
+	if value == "" {
+		return nil // empty is allowed (omitempty in CRD)
+	}
+	if !numericRatePattern.MatchString(value) {
+		return fmt.Errorf("invalid %s value %q: must be a positive number (e.g., 100 or 0.5)", fieldName, value)
+	}
+	return nil
+}
+
+// validateInterfaceName validates network interface name to prevent command injection
+// Linux interface names must be 1-15 characters, alphanumeric with underscore/hyphen
+func validateInterfaceName(iface string) error {
+	if iface == "" {
+		return nil // empty is allowed (omitempty in CRD)
+	}
+	if !interfaceNamePattern.MatchString(iface) {
+		return fmt.Errorf("invalid interface name %q: must be 1-15 alphanumeric characters, underscores, or hyphens", iface)
+	}
+	return nil
+}
+
+// validateDirection validates QoS rule direction to prevent command injection
+// Only "ingress" and "egress" are valid values
+func validateDirection(direction kubeovnv1.QoSPolicyRuleDirection) error {
+	if direction == "" {
+		return nil // empty is allowed (omitempty in CRD)
+	}
+	if direction != kubeovnv1.QoSDirectionIngress && direction != kubeovnv1.QoSDirectionEgress {
+		return fmt.Errorf("invalid direction %q: must be 'ingress' or 'egress'", direction)
+	}
+	return nil
 }
 
 func (c *Controller) validateQosPolicy(qosPolicy *kubeovnv1.QoSPolicy) error {
 	var err error
 	if qosPolicy.Spec.BandwidthLimitRules != nil {
 		for _, rule := range qosPolicy.Spec.BandwidthLimitRules {
+			// Validate RateMax and BurstMax are numeric only (prevents command injection)
+			if err = validateRateValue(rule.RateMax, "rateMax"); err != nil {
+				klog.Error(err)
+				return err
+			}
+			if err = validateRateValue(rule.BurstMax, "burstMax"); err != nil {
+				klog.Error(err)
+				return err
+			}
+			// Validate Interface name (prevents command injection)
+			if err = validateInterfaceName(rule.Interface); err != nil {
+				klog.Error(err)
+				return err
+			}
+			// Validate Direction (prevents command injection)
+			if err = validateDirection(rule.Direction); err != nil {
+				klog.Error(err)
+				return err
+			}
 			if rule.MatchType == "ip" {
 				if !validateIPMatchValue(rule.MatchValue) {
 					err = fmt.Errorf("invalid ip MatchValue %s", rule.MatchValue)
@@ -313,6 +390,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
+		// Check if the QoS policy is still being used before allowing deletion
+		var inUse bool
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
 			eips, err := c.iptablesEipsLister.List(
 				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
@@ -321,11 +400,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				klog.Errorf("failed to get eip list, %v", err)
 				return err
 			}
-			if len(eips) != 0 {
-				err = fmt.Errorf("qos policy %s is being used", key)
-				klog.Error(err)
-				return err
-			}
+			inUse = len(eips) != 0
 		}
 
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
@@ -336,11 +411,16 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				klog.Errorf("failed to get gw list, %v", err)
 				return err
 			}
-			if len(gws) != 0 {
-				err = fmt.Errorf("qos policy %s is being used", key)
-				klog.Error(err)
-				return err
-			}
+			inUse = len(gws) != 0
+		}
+
+		if inUse {
+			// QoS policy is being deleted but still in use.
+			// Return nil instead of error to avoid infinite retry loop.
+			// The EIP/NatGw controller will remove the reference, which triggers
+			// another reconciliation that will eventually delete the finalizer.
+			klog.V(3).Infof("qos policy %s is marked for deletion but still in use, waiting for references to be removed", key)
+			return nil
 		}
 
 		if err = c.handleDelQoSPoliciesFinalizer(key); err != nil {
@@ -392,7 +472,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				// not thing to do
 			case len(eips) == 1:
 				eip := eips[0]
-				if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
+				if err = c.reconcileEIPBandwidthLimitRules(eip, added, deleted, updated); err != nil {
 					klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
 					return err
 				}

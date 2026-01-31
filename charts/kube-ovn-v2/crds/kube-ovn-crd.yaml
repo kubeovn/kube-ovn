@@ -3583,10 +3583,12 @@ spec:
                         description: Interface name
                       rateMax:
                         type: string
-                        description: Maximum rate (e.g., 100Mbps)
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum rate in Mbps (e.g., 100 or 0.5 for 500Kbps)
                       burstMax:
                         type: string
-                        description: Maximum burst rate
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum burst in MB (e.g., 10 or 0.5 for 500KB)
                       priority:
                         type: integer
                         description: Rule priority
@@ -3646,10 +3648,12 @@ spec:
                         description: Network interface to apply the rule
                       rateMax:
                         type: string
-                        description: Maximum rate (e.g., 100Mbps, 1Gbps)
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum rate in Mbps (e.g., 100 or 0.5 for 500Kbps)
                       burstMax:
                         type: string
-                        description: Maximum burst rate
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum burst in MB (e.g., 10 or 0.5 for 500KB)
                       priority:
                         type: integer
                         description: Rule priority for ordering
