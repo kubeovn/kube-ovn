@@ -1,0 +1,83 @@
+frr version 9.1
+frr defaults traditional
+hostname egress-gateway
+log file /etc/frr/frr.log informational
+{{- if .EnableEVPN }}
+
+vrf vrf-vpn
+  vni {{ .VNI }}
+exit-vrf
+{{- end }}
+
+router bgp {{ .LocalASN }}
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+{{- if .EnableEVPN }}
+  no bgp default ipv4-unicast
+{{- end }}
+  bgp router-id {{ .RouterID }}
+{{- if or .Password .KeepaliveTime .HoldTime .ConnectTime .EbgpMultiHop }}
+  neighbor NEIGHBORS peer-group
+  neighbor NEIGHBORS remote-as {{ .PeerASN }}
+{{- if .Password }}
+  neighbor NEIGHBORS password {{ .Password }}
+{{- end }}
+{{- if or .KeepaliveTime .HoldTime }}
+  neighbor NEIGHBORS timers {{ if .KeepaliveTime }}{{ .KeepaliveTime }}{{ else }}0{{ end }} {{ if .HoldTime }}{{ .HoldTime }}{{ else }}0{{ end }}
+{{- end }}
+{{- if .ConnectTime }}
+  neighbor NEIGHBORS timers connect {{ .ConnectTime }}
+{{- end }}
+{{- if .EbgpMultiHop }}
+  neighbor NEIGHBORS ebgp-multihop
+{{- end }}
+{{- range .Neighbours }}
+  neighbor {{ . }} peer-group NEIGHBORS
+{{- end }}
+{{- else }}
+{{- range .Neighbours }}
+  neighbor {{ . }} remote-as {{ $.PeerASN }}
+{{- end }}
+{{- end }}
+{{- if .EnableEVPN }}
+
+  address-family l2vpn evpn
+{{- range .Neighbours }}
+    neighbor {{ . }} activate
+{{- end }}
+    advertise-all-vni
+    advertise-svi-ip
+  exit-address-family
+{{- else }}
+
+  address-family ipv4 unicast
+    redistribute connected
+    redistribute kernel
+{{- range .Neighbours }}
+    neighbor {{ . }} activate
+{{- end }}
+  exit-address-family
+{{- end }}
+exit
+{{- if .EnableEVPN }}
+
+router bgp {{ .LocalASN }} vrf vrf-vpn
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  
+  address-family ipv4 unicast
+    redistribute connected
+    redistribute kernel
+  exit-address-family
+
+  address-family l2vpn evpn
+    advertise ipv4 unicast
+    rd {{ .LocalASN }}:{{ .VNI }}
+{{- range .RouteTargets }}
+    route-target import {{ . }}
+    route-target export {{ . }}
+{{- end }}
+  exit-address-family
+exit
+{{- end }}
