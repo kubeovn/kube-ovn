@@ -13,12 +13,7 @@ import (
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"github.com/scylladb/go-set/strset"
-
 	"github.com/kubeovn/kube-ovn/pkg/informer"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -141,65 +136,17 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 	}
 
-	// collect all port names related to the VMI (pod network/multus annotations/attached networks)
-	portNamesSet := strset.New()
-	// only consider ports which kube-ovn created (it may be that non kube-ovn NAD attachements are being used)
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
+	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
 	if err != nil {
-		klog.Errorf("failed to list logical switch port, %v", err)
+		klog.Errorf("failed to list logical switch ports for vmi %s/%s, %v", vmi.Namespace, vmi.Name, err)
 		return err
 	}
 
-	allPortNames := strset.NewWithSize(len(lsps))
+	portNames := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
-		allPortNames.Add(lsp.Name)
+		portNames = append(portNames, lsp.Name)
 	}
 
-	defaultMultus := false
-	for _, network := range vmi.Spec.Networks {
-		if network.Multus != nil && network.Multus.Default {
-			defaultMultus = true
-			break
-		}
-	}
-	if !defaultMultus {
-		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
-		if allPortNames.Has(portName) {
-			portNamesSet.Add(portName)
-		}
-	}
-
-	nadAnnotation := vmi.Annotations[nadv1.NetworkAttachmentAnnot]
-	if nadAnnotation != "" {
-		attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vmi.Namespace)
-		if err != nil {
-			klog.Errorf("failed to get attachment subnet of vmi %s, %v", vmi.Name, err)
-		} else {
-			for _, multiNet := range attachNets {
-				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
-				portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
-				if allPortNames.Has(portName) {
-					portNamesSet.Add(portName)
-				}
-			}
-		}
-	}
-
-	for _, network := range vmi.Spec.Networks {
-		if network.Multus != nil && network.Multus.NetworkName != "" {
-			items := strings.Split(network.Multus.NetworkName, "/")
-			if len(items) != 2 {
-				items = []string{vmi.Namespace, items[0]}
-			}
-			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
-			portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
-			if allPortNames.Has(portName) {
-				portNamesSet.Add(portName)
-			}
-		}
-	}
-
-	portNames := portNamesSet.List()
 	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
 
 	switch vmiMigration.Status.Phase {
