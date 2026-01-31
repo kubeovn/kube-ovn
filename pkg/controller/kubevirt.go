@@ -142,7 +142,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	}
 
 	// collect all port names related to the VMI (pod network/multus annotations/attached networks)
-	portNames := []string{}
+	portNamesSet := strset.New()
 	// only consider ports which kube-ovn created (it may be that non kube-ovn NAD attachements are being used)
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
@@ -165,7 +165,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	if !defaultMultus {
 		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
 		if allPortNames.Has(portName) {
-			portNames = append(portNames, portName)
+			portNamesSet.Add(portName)
 		}
 	}
 
@@ -179,7 +179,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
 				portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
 				if allPortNames.Has(portName) {
-					portNames = append(portNames, portName)
+					portNamesSet.Add(portName)
 				}
 			}
 		}
@@ -194,10 +194,12 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
 			portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
 			if allPortNames.Has(portName) {
-				portNames = append(portNames, portName)
+				portNamesSet.Add(portName)
 			}
 		}
 	}
+
+	portNames := portNamesSet.List()
 	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
 
 	switch vmiMigration.Status.Phase {
