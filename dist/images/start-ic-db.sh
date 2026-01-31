@@ -20,25 +20,24 @@ function quit {
     exit 0
 }
 
-function ovndb_query_leader {
+function ovndb_ic_query_leader {
     local db=""
-    local db_eval=""
+    local port=""
     case $1 in
     nb)
-        db=OVN_Northbound
-        db_eval="NB"
+        db=OVN_IC_Northbound
+        port=6645
         ;;
     sb)
-        db=OVN_Southbound
-        db_eval="SB"
+        db=OVN_IC_Southbound
+        port=6646
         ;;
     *)
         echo "invalid database: $1"
         exit 1
         ;;
     esac
-
-    eval port="\$${db_eval}_PORT"
+    
     query='["_Server",{"table":"Database","where":[["name","==","'$db'"]],"columns":["leader"],"op":"select"}]'
     if [[ "$ENABLE_SSL" == "false" ]]; then
         timeout 10 ovsdb-client query $(gen_conn_addr $i $port) "$query"
@@ -128,29 +127,29 @@ function ovn_db_pre_start() {
 
 
 function is_clustered {
-  t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
-  if [[ "$ENABLE_SSL" == "false" ]]; then
+    t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+    if [[ "$ENABLE_SSL" == "false" ]]; then
     x=$(for i in ${t}; do echo -n "tcp:[${i}]:6645,"; done | sed 's/,/ /g')
     for i in ${x};
     do
-      nb_leader=$(timeout 10 ovsdb-client query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_IC_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
-      if [[ $nb_leader =~ "true" ]]
-      then
+        nb_leader=$(timeout 10 ovsdb-client query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_IC_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+        if [[ $nb_leader =~ "true" ]]
+        then
         return 0
-      fi
+        fi
     done
-  else
+    else
     x=$(for i in ${t}; do echo -n "ssl:[${i}]:6645,"; done| sed 's/,/ /g')
     for i in ${x};
     do
-      nb_leader=$(timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_IC_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
-      if [[ $nb_leader =~ "true" ]]
-      then
+        nb_leader=$(timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_IC_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+        if [[ $nb_leader =~ "true" ]]
+        then
         return 0
-      fi
+        fi
     done
-  fi
-  return 1
+    fi
+    return 1
 }
 
 trap quit EXIT
@@ -182,25 +181,25 @@ else
         start_ic_ovsdb
         /usr/share/ovn/scripts/ovn-ctl status_ic_ovsdb
     else
-         # known leader always first
+        # known leader always first
         set +eo pipefail
         if [ ${result} -eq 0 ]; then
             t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
             for i in ${t};
             do
-                nb_leader=$(ovndb_query_leader nb $i)
-                if [[ $nb_leader =~ "true" ]]
+                ic_nb_leader=$(ovndb_ic_query_leader nb $i)
+                if [[ $ic_nb_leader =~ "true" ]]
                 then
-                    nb_leader_ip=${i}
+                    ic_nb_leader_ip=${i}
                     break
                 fi
             done
             for i in ${t};
             do
-                sb_leader=$(ovndb_query_leader sb $i)
-                if [[ $sb_leader =~ "true" ]]
+                ic_sb_leader=$(ovndb_ic_query_leader sb $i)
+                if [[ $ic_sb_leader =~ "true" ]]
                 then
-                    sb_leader_ip=${i}
+                    ic_sb_leader_ip=${i}
                     break
                 fi
             done
@@ -232,11 +231,11 @@ else
     TS_NAME=${TS_NAME:-ts}
     PROTOCOL=${PROTOCOL:-ipv4}
     if [ "$PROTOCOL" = "ipv4" ]; then
-      TS_CIDR=${TS_CIDR:-169.254.100.0/24}
+        TS_CIDR=${TS_CIDR:-169.254.100.0/24}
     elif [ "$PROTOCOL" = "ipv6" ]; then
-      TS_CIDR=${TS_CIDR:-fe80:a9fe:64::/112}
+        TS_CIDR=${TS_CIDR:-fe80:a9fe:64::/112}
     elif [ "$PROTOCOL" = "dual" ]; then
-      TS_CIDR=${TS_CIDR:-"169.254.100.0/24,fe80:a9fe:64::/112"}
+        TS_CIDR=${TS_CIDR:-"169.254.100.0/24,fe80:a9fe:64::/112"}
     fi
     ovn-ic-nbctl \
         --may-exist ts-add "$TS_NAME" -- \
