@@ -135,6 +135,9 @@ spec:
           - --enable-lb={{- .Values.features.enableLoadbalancer }}
           - --enable-np={{- .Values.features.enableNetworkPolicies }}
           - --enable-eip-snat={{- .Values.networking.enableEipSnat }}
+          {{- if .Values.networking.externalGatewayConfigNs }}
+          - --external-gateway-config-ns={{- .Values.networking.externalGatewayConfigNs }}
+          {{- end }}
           - --enable-external-vpc={{- .Values.features.enableExternalVpcs }}
           - --enable-ecmp={{- .Values.networking.enableEcmp }}
           - --logtostderr=false

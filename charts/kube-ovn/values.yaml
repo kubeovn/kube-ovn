@@ -40,6 +40,9 @@ networking:
     VLAN_ID: "100"
   EXCHANGE_LINK_NAME: false
   ENABLE_EIP_SNAT: true
+  # Namespace where ovn-external-gw-config ConfigMap is located.
+  # Default is empty, which means it will use the same namespace as the controller (PodNamespace).
+  EXTERNAL_GATEWAY_CONFIG_NS: ""
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
   NODE_SUBNET: "join"
