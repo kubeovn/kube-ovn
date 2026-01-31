@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,6 +12,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	"github.com/scylladb/go-set/strset"
 
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -136,7 +141,65 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 	}
 
-	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
+	// collect all port names related to the VMI (pod network/multus annotations/attached networks)
+	portNames := []string{}
+	// only consider ports which kube-ovn created (it may be that non kube-ovn NAD attachements are being used)
+	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
+	if err != nil {
+		klog.Errorf("failed to list logical switch port, %v", err)
+		return err
+	}
+
+	allPortNames := strset.NewWithSize(len(lsps))
+	for _, lsp := range lsps {
+		allPortNames.Add(lsp.Name)
+	}
+
+	defaultMultus := false
+	for _, network := range vmi.Spec.Networks {
+		if network.Multus != nil && network.Multus.Default {
+			defaultMultus = true
+			break
+		}
+	}
+	if !defaultMultus {
+		portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
+		if allPortNames.Has(portName) {
+			portNames = append(portNames, portName)
+		}
+	}
+
+	nadAnnotation := vmi.Annotations[nadv1.NetworkAttachmentAnnot]
+	if nadAnnotation != "" {
+		attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vmi.Namespace)
+		if err != nil {
+			klog.Errorf("failed to get attachment subnet of vmi %s, %v", vmi.Name, err)
+		} else {
+			for _, multiNet := range attachNets {
+				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
+				portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
+				if allPortNames.Has(portName) {
+					portNames = append(portNames, portName)
+				}
+			}
+		}
+	}
+
+	for _, network := range vmi.Spec.Networks {
+		if network.Multus != nil && network.Multus.NetworkName != "" {
+			items := strings.Split(network.Multus.NetworkName, "/")
+			if len(items) != 2 {
+				items = []string{vmi.Namespace, items[0]}
+			}
+			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
+			portName := ovs.PodNameToPortName(vmi.Name, vmi.Namespace, provider)
+			if allPortNames.Has(portName) {
+				portNames = append(portNames, portName)
+			}
+		}
+	}
+	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
+
 	switch vmiMigration.Status.Phase {
 	case kubevirtv1.MigrationScheduling:
 		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
@@ -175,30 +238,36 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 			klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
 				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
 
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
-				klog.Error(err)
-				return err
+			for _, portName := range portNames {
+				if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+					err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
+					klog.Error(err)
+					return err
+				}
+				klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
 			}
-			klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
 		} else {
 			klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
 				vmiMigration.UID, vmiMigration.Status.Phase)
 			return nil
 		}
 	case kubevirtv1.MigrationSucceeded:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
-			return err
+		for _, portName := range portNames {
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
+			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	case kubevirtv1.MigrationFailed:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
-			return err
+		for _, portName := range portNames {
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
+			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 	return nil
