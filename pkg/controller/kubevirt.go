@@ -110,10 +110,10 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return nil
 	}
 
-	if vmiMigration.Status.MigrationState.Completed {
-		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is completed, skipping", key)
-		return nil
-	}
+	// NOTE: Remove the early return on Completed check here because:
+	// 1. MigrationSucceeded/MigrationFailed phases need to execute Reset logic
+	// 2. The Completed flag may be set before we process the final phase
+	// 3. This was causing cleanup to be skipped in some timing scenarios
 
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
@@ -122,8 +122,10 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	}
 
 	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
+	// IMPORTANT: Only use vmi.Status.MigrationState if its MigrationUID matches the current vmiMigration.UID
+	// Otherwise we may be using stale state from a previous migration, which causes incorrect node info
 	var srcNodeName, targetNodeName string
-	if vmi.Status.MigrationState != nil {
+	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.MigrationUID == vmiMigration.UID {
 		klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
 			vmiMigration.Status.Phase,
 			vmi.Status.MigrationState.TargetNode,
@@ -133,7 +135,19 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName = vmi.Status.MigrationState.SourceNode
 		targetNodeName = vmi.Status.MigrationState.TargetNode
 	} else {
-		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
+		if vmi.Status.MigrationState != nil {
+			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is stale (MigrationUID mismatch: %s != %s)",
+				key, vmiMigration.Status.Phase, vmi.Status.MigrationState.MigrationUID, vmiMigration.UID)
+		} else {
+			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
+		}
+		// If we're at a final state and the vmi migration state is stale or nil, we can't proceed
+		// since we don't have the correct source and target nodes for resetting the migrate options
+		if vmiMigration.IsFinal() {
+			klog.V(3).Infof("VirtualMachineInstanceMigration %s is in final phase %s but VMI migration state is stale or nil, skipping",
+				key, vmiMigration.Status.Phase)
+			return nil
+		}
 	}
 
 	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
