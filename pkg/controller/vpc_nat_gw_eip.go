@@ -411,7 +411,7 @@ func (c *Controller) addOrUpdateEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEI
 	var err error
 	for _, rule := range rules {
 		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
-			klog.Errorf("failed to set ingress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to set %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -447,12 +447,11 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	return c.addOrUpdateEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
-func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+func (c *Controller) delEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
-		// del qos
 		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction); err != nil {
-			klog.Errorf("failed to del egress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to del %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -471,7 +470,7 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 		return err
 	}
 
-	return c.delEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+	return c.delEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
 func (c *Controller) addEipQoSInPod(
