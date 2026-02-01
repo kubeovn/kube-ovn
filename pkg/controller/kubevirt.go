@@ -18,19 +18,21 @@ import (
 )
 
 func (c *Controller) enqueueAddVMIMigration(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubevirtv1.VirtualMachineInstanceMigration)).String()
+	vmiMigration := obj.(*kubevirtv1.VirtualMachineInstanceMigration)
+	key := cache.MetaObjectToName(vmiMigration).String()
 	klog.Infof("enqueue add VMI migration %s", key)
 	c.addOrUpdateVMIMigrationQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
-	oldVmi := oldObj.(*kubevirtv1.VirtualMachineInstanceMigration)
-	newVmi := newObj.(*kubevirtv1.VirtualMachineInstanceMigration)
+	oldVmiMigration := oldObj.(*kubevirtv1.VirtualMachineInstanceMigration)
+	newVmiMigration := newObj.(*kubevirtv1.VirtualMachineInstanceMigration)
 
-	if !newVmi.DeletionTimestamp.IsZero() ||
-		oldVmi.Status.Phase != newVmi.Status.Phase {
-		key := cache.MetaObjectToName(newVmi).String()
-		klog.Infof("enqueue update VMI migration %s", key)
+	if !newVmiMigration.DeletionTimestamp.IsZero() ||
+		oldVmiMigration.Status.Phase != newVmiMigration.Status.Phase {
+		key := cache.MetaObjectToName(newVmiMigration).String()
+		klog.Infof("enqueue update VMI migration %s (phase: %s -> %s)",
+			key, oldVmiMigration.Status.Phase, newVmiMigration.Status.Phase)
 		c.addOrUpdateVMIMigrationQueue.Add(key)
 	}
 }
@@ -93,6 +95,26 @@ func (c *Controller) handleDeleteVM(key string) error {
 	return nil
 }
 
+// handleAddOrUpdateVMIMigration handles VirtualMachineInstanceMigration events.
+//
+// Design Decision: This handler uses VMIMigration as both trigger and data source.
+// - Trigger: VMIMigration.Status.Phase changes
+// - Data: VMIMigration.Status.MigrationState (source/target node info)
+//
+// Why VMIMigration instead of VMI?
+//   - Consistency: trigger and data come from the same resource, avoiding sync issues
+//   - Snapshot: VMIMigration.Status.MigrationState is a snapshot of the migration,
+//     won't be overwritten when a new migration starts (unlike VMI.Status.MigrationState)
+//   - Simpler: no need for UID validation to check if VMI state matches current migration
+//
+// Trade-off: VMIMigration.Status.MigrationState is synced from VMI with slight delay.
+// In MigrationScheduling phase, it may not be populated yet, requiring retry.
+//
+// Future improvement: If real-time responsiveness is critical, consider refactoring
+// to watch VMI directly (like the release-1.12-mc branch does with Pod events).
+// This would eliminate the sync delay but require more complex state management.
+//
+// KubeVirt ensures only ONE active migration per VMI at any time.
 func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -105,102 +127,112 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI migration by key %s: %w", key, err))
 		return err
 	}
-	if vmiMigration.Status.MigrationState == nil {
-		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
+
+	migrationUID := vmiMigration.UID
+	vmiName := vmiMigration.Spec.VMIName
+	phase := vmiMigration.Status.Phase
+
+	// Log migration lifecycle events for debugging
+	switch phase {
+	case kubevirtv1.MigrationPending:
+		klog.Infof(">>> [MIGRATION START] Migration %s (UID: %s) for VMI %s/%s - Phase: Pending",
+			key, migrationUID, namespace, vmiName)
+	case kubevirtv1.MigrationSucceeded:
+		klog.Infof("<<< [MIGRATION END] Migration %s (UID: %s) for VMI %s/%s - SUCCEEDED",
+			key, migrationUID, namespace, vmiName)
+	case kubevirtv1.MigrationFailed:
+		klog.Infof("<<< [MIGRATION END] Migration %s (UID: %s) for VMI %s/%s - FAILED",
+			key, migrationUID, namespace, vmiName)
+	default:
+		klog.V(3).Infof("--- [MIGRATION PROGRESS] Migration %s (UID: %s) for VMI %s/%s - Phase: %s",
+			key, migrationUID, namespace, vmiName, phase)
+	}
+
+	// Use VMIMigration.Status.MigrationState as the data source
+	// This is populated by KubeVirt controller, may have slight delay in early phases
+	migrationState := vmiMigration.Status.MigrationState
+	if migrationState == nil {
+		klog.V(3).Infof("Migration %s (UID: %s) - MigrationState not yet populated, waiting for KubeVirt",
+			key, migrationUID)
 		return nil
 	}
 
-	if vmiMigration.Status.MigrationState.Completed {
-		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is completed, skipping", key)
+	srcNodeName := migrationState.SourceNode
+	targetNodeName := migrationState.TargetNode
+	if srcNodeName == "" || targetNodeName == "" {
+		klog.V(3).Infof("Migration %s (UID: %s) - MigrationState incomplete (source: %q, target: %q), waiting",
+			key, migrationUID, srcNodeName, targetNodeName)
 		return nil
 	}
 
-	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
-		return err
-	}
+	portName := ovs.PodNameToPortName(vmiName, namespace, util.OvnProvider)
+	klog.Infof("Migration %s (UID: %s) - source: %s, target: %s, port: %s",
+		key, migrationUID, srcNodeName, targetNodeName, portName)
 
-	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
-	var srcNodeName, targetNodeName string
-	if vmi.Status.MigrationState != nil {
-		klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
-			vmiMigration.Status.Phase,
-			vmi.Status.MigrationState.TargetNode,
-			vmi.Status.MigrationState.SourceNode,
-			vmi.Status.MigrationState.TargetPod,
-			vmi.Status.MigrationState.SourcePod)
-		srcNodeName = vmi.Status.MigrationState.SourceNode
-		targetNodeName = vmi.Status.MigrationState.TargetNode
-	} else {
-		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
-	}
-
-	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
-	switch vmiMigration.Status.Phase {
+	switch phase {
 	case kubevirtv1.MigrationScheduling:
-		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				kubevirtv1.MigrationJobLabel: string(vmiMigration.UID),
-			},
-		})
-		if err != nil {
-			err = fmt.Errorf("failed to create label selector for migration job UID %s: %w", vmiMigration.UID, err)
-			klog.Error(err)
-			return err
-		}
-
-		pods, err := c.podsLister.Pods(vmiMigration.Namespace).List(selector)
-		if err != nil {
-			err = fmt.Errorf("failed to list pods with migration job UID %s: %w", vmiMigration.UID, err)
-			klog.Error(err)
-			return err
-		}
-
-		if len(pods) > 0 {
-			targetPod := pods[0]
-			// During MigrationScheduling phase, use vmi.Status.NodeName if SourceNode is empty
-			// because vmi.Status.MigrationState may not be fully synchronized yet
-			sourceNode := srcNodeName
-			if sourceNode == "" {
-				sourceNode = vmi.Status.NodeName
-			}
-
-			if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
-				klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
-					targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
-				return nil
-			}
-
-			klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
-				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
-
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
-				klog.Error(err)
-				return err
-			}
-			klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
-		} else {
-			klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
-				vmiMigration.UID, vmiMigration.Status.Phase)
+		if srcNodeName == targetNodeName {
+			klog.Warningf("Migration %s (UID: %s) - Source and target are same node %s, skipping",
+				key, migrationUID, srcNodeName)
 			return nil
 		}
+
+		// Check for residual migration options on LSP. If activation-strategy exists,
+		// it means a previous migration's cleanup was not completed. Possible causes:
+		// 1. Controller restarted and missed the MigrationSucceeded/Failed event
+		// 2. Previous ResetLogicalSwitchPortMigrateOptions call failed
+		// Clean the residual options before setting new ones.
+		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+		if err != nil {
+			klog.Errorf("Migration %s (UID: %s) - Failed to get LSP %s: %v",
+				key, migrationUID, portName, err)
+			return err
+		}
+		if lsp != nil && lsp.Options != nil {
+			if _, hasActivationStrategy := lsp.Options["activation-strategy"]; hasActivationStrategy {
+				klog.Warningf("Migration %s (UID: %s) - LSP %s has residual activation-strategy from incomplete cleanup, cleaning before setting new options",
+					key, migrationUID, portName)
+				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
+					klog.Errorf("Migration %s (UID: %s) - Failed to clean residual LSP %s options: %v",
+						key, migrationUID, portName, err)
+					return err
+				}
+				klog.Infof("Migration %s (UID: %s) - Cleaned residual LSP %s options, proceeding with new migration",
+					key, migrationUID, portName)
+				// Continue to set new options instead of returning error to avoid unnecessary retry
+			}
+		}
+
+		klog.Infof(">>> [LSP SET] Migration %s (UID: %s) - Setting LSP %s: %s -> %s",
+			key, migrationUID, portName, srcNodeName, targetNodeName)
+		if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName); err != nil {
+			klog.Errorf("Migration %s (UID: %s) - Failed to set LSP %s migrate options: %v",
+				key, migrationUID, portName, err)
+			return err
+		}
+		klog.Infof(">>> [LSP SET OK] Migration %s (UID: %s) - LSP %s configured", key, migrationUID, portName)
+
 	case kubevirtv1.MigrationSucceeded:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
+		klog.Infof("<<< [LSP RESET] Migration %s (UID: %s) - Resetting LSP %s to target %s",
+			key, migrationUID, portName, targetNodeName)
 		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
+			klog.Errorf("Migration %s (UID: %s) - Failed to reset LSP %s: %v",
+				key, migrationUID, portName, err)
 			return err
 		}
+		klog.Infof("<<< [LSP RESET OK] Migration %s (UID: %s) - LSP %s reset to target", key, migrationUID, portName)
+
 	case kubevirtv1.MigrationFailed:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
+		klog.Infof("<<< [LSP RESET] Migration %s (UID: %s) - Resetting LSP %s to source %s (rollback)",
+			key, migrationUID, portName, srcNodeName)
 		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
+			klog.Errorf("Migration %s (UID: %s) - Failed to reset LSP %s: %v",
+				key, migrationUID, portName, err)
 			return err
 		}
+		klog.Infof("<<< [LSP RESET OK] Migration %s (UID: %s) - LSP %s rolled back to source", key, migrationUID, portName)
 	}
+
 	return nil
 }
 

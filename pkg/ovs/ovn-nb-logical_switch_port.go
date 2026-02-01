@@ -957,8 +957,37 @@ func (c *OVNNbClient) SetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, t
 	}
 
 	if src == srcNodeName && target == targetNodeName {
-		// already set
+		// already set with same values (idempotent)
 		return nil
+	}
+
+	// Detect conflicting migration options: if requested-chassis is already set with DIFFERENT dual-node values.
+	// Since KubeVirt guarantees only one active migration per VMI at a time,
+	// having different dual-node values indicates the previous migration's cleanup was incomplete.
+	// This should have been cleaned by the caller (kubevirt.go checks activation-strategy).
+	// Return error to signal this unexpected state.
+	if src != "" && target != "" {
+		err := fmt.Errorf("conflicting migrate options on port %s: current requested-chassis=%s,%s but trying to set %s,%s. "+
+			"Previous migration cleanup may have failed",
+			lspName, src, target, srcNodeName, targetNodeName)
+		klog.Error(err)
+		return err
+	}
+
+	// Validate single-node requested-chassis consistency.
+	// After a successful migration, requested-chassis is set to the target node (single value).
+	// When a new migration starts, its source node must match the current chassis.
+	// e.g., if requested-chassis="node2", new migration source must be node2.
+	if src == "" && target == "" && lsp.Options != nil {
+		if currentChassis, ok := lsp.Options["requested-chassis"]; ok && currentChassis != "" {
+			if currentChassis != srcNodeName {
+				err := fmt.Errorf("chassis mismatch on port %s: current requested-chassis=%s "+
+					"but new migration source=%s. VM location may be inconsistent",
+					lspName, currentChassis, srcNodeName)
+				klog.Error(err)
+				return err
+			}
+		}
 	}
 
 	requestedChassis := fmt.Sprintf("%s,%s", srcNodeName, targetNodeName)
