@@ -63,6 +63,7 @@ type LbServiceRules struct {
 	BridgeName  string
 	DstMac      string
 	UnderlayNic string
+	SubnetName  string
 }
 
 func evalCommandSymlinks(cmd string) (string, error) {
@@ -412,7 +413,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	return nil
 }
 
-func genLBServiceRules(service *v1.Service, bridgeName, underlayNic, dstMac string) []LbServiceRules {
+func genLBServiceRules(service *v1.Service, bridgeName, underlayNic, dstMac, subnetName string) []LbServiceRules {
 	var lbServiceRules []LbServiceRules
 	for _, ingress := range service.Status.LoadBalancer.Ingress {
 		for _, port := range service.Spec.Ports {
@@ -423,6 +424,7 @@ func genLBServiceRules(service *v1.Service, bridgeName, underlayNic, dstMac stri
 				DstMac:      dstMac,
 				UnderlayNic: underlayNic,
 				BridgeName:  bridgeName,
+				SubnetName:  subnetName,
 			})
 		}
 	}
@@ -433,22 +435,24 @@ func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Servi
 	var oldlbServiceRules, newlbServiceRules []LbServiceRules
 
 	if oldService != nil && oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		oldBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		oldSubnetName := oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation]
+		oldBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(oldSubnetName)
 		if err != nil {
-			klog.Errorf("failed to get provider network by subnet %s: %v", oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
+			klog.Errorf("failed to get provider network by subnet %s: %v", oldSubnetName, err)
 			return nil, nil, err
 		}
 
-		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic, dstMac)
+		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic, dstMac, oldSubnetName)
 	}
 
 	if isSubnetExternalLBEnabled && newService != nil && newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		newBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+		newSubnetName := newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation]
+		newBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(newSubnetName)
 		if err != nil {
-			klog.Errorf("failed to get provider network by subnet %s: %v", newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
+			klog.Errorf("failed to get provider network by subnet %s: %v", newSubnetName, err)
 			return nil, nil, err
 		}
-		newlbServiceRules = genLBServiceRules(newService, newBridgeName, underlayNic, dstMac)
+		newlbServiceRules = genLBServiceRules(newService, newBridgeName, underlayNic, dstMac, newSubnetName)
 	}
 
 	for _, oldRule := range oldlbServiceRules {
@@ -557,7 +561,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 	if len(lbServiceRulesToAdd) > 0 {
 		for _, rule := range lbServiceRulesToAdd {
 			klog.Infof("Adding LB service rule: %+v", rule)
-			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName); err != nil {
+			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName, rule.SubnetName); err != nil {
 				klog.Errorf("failed to update underlay subnet svc local openflow cache: %v", err)
 				return err
 			}
