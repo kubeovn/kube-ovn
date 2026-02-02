@@ -133,7 +133,6 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
-	expectedServerCount := len(pods.Items)
 	dbServers := make(map[string]map[string]string)
 
 	// Wait for cluster to converge with retry logic
@@ -161,9 +160,9 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 				status := parseClusterStatus(stdout)
 
 				// Check if cluster has converged (all servers are visible)
-				if len(status.Servers) != expectedServerCount {
+				if len(status.Servers) != int(*deploy.Spec.Replicas) {
 					framework.Logf("Cluster %s not converged yet in pod %s: expected %d servers, got %d, will retry",
-						db, pod.Name, expectedServerCount, len(status.Servers))
+						db, pod.Name, int(*deploy.Spec.Replicas), len(status.Servers))
 					return false, nil // Retry until cluster converges
 				}
 
