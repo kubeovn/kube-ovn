@@ -591,6 +591,21 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.29 (2026-02-02)
+
+ * [2eb89ba0b](https://github.com/kubeovn/kube-ovn/commit/2eb89ba0bfd9cde9cfd0b4f8dbcf1e65e75d4350) release v1.14.29
+ * [26385a6fb](https://github.com/kubeovn/kube-ovn/commit/26385a6fbbc2f66a840b7dab89f7ef79da950300) fix patch err not Get API (#6245)
+ * [4309d76c0](https://github.com/kubeovn/kube-ovn/commit/4309d76c028a980eb97ebebd79b871480d10dffb) fix localnet port should not be static "patch-localnet." (#6244)
+ * [0a9ac8653](https://github.com/kubeovn/kube-ovn/commit/0a9ac8653146a3741c2ecf9a2d9d0c8e818b3655) rbac: replace wildcard with a clear list of allowed verbs (#6233)
+ * [ede6f5cab](https://github.com/kubeovn/kube-ovn/commit/ede6f5cab97a8cc8c9a7f32516007c02548f4f66) remove duplicate description (#6234)
+ * [b192811d5](https://github.com/kubeovn/kube-ovn/commit/b192811d5885c113d73d15459ebd11a33e3b3ca6) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * 张祖建
+
 ## v1.14.28 (2026-01-28)
 
  * [816fa70b6](https://github.com/kubeovn/kube-ovn/commit/816fa70b6ff5d9f05c81ec241145f9c79a2830c2) release v1.14.28
