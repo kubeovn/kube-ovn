@@ -110,11 +110,6 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return nil
 	}
 
-	if vmiMigration.Status.MigrationState.Completed {
-		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is completed, skipping", key)
-		return nil
-	}
-
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
@@ -123,7 +118,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
 	var srcNodeName, targetNodeName string
-	if vmi.Status.MigrationState != nil {
+	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.MigrationUID == vmiMigration.UID {
 		klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
 			vmiMigration.Status.Phase,
 			vmi.Status.MigrationState.TargetNode,
@@ -133,7 +128,17 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		srcNodeName = vmi.Status.MigrationState.SourceNode
 		targetNodeName = vmi.Status.MigrationState.TargetNode
 	} else {
-		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
+		if vmi.Status.MigrationState != nil {
+			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is stale", key, vmiMigration.Status.Phase)
+		} else {
+			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
+		}
+		// If we're at an end state and the vmi migration state is stale or nil, we're probably looking at an old migration
+		// either way, we can't proceed since we don't have the source and target nodes for resetting the migrate options
+		if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded || vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded/Failed but VMI migration state is stale or nil, skipping", key)
+			return nil
+		}
 	}
 
 	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
