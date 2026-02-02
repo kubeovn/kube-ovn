@@ -158,6 +158,20 @@ func ovsClear(table, record string, columns ...string) error {
 	return err
 }
 
+func Get(table, record, column, key string, ifExists bool) (string, error) {
+	var columnVal string
+	if key == "" {
+		columnVal = column
+	} else {
+		columnVal = column + ":" + key
+	}
+	args := []string{"get", table, record, columnVal}
+	if ifExists {
+		args = append([]string{"--if-exists"}, args...)
+	}
+	return Exec(args...)
+}
+
 func ovsGet(table, record, column, key string) (string, error) {
 	var columnVal string
 	if key == "" {
