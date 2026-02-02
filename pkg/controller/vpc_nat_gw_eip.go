@@ -243,7 +243,9 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		if cachedEip.Status.QoSPolicy != "" {
+		// Save qosPolicy before deleting, we need to trigger QoS Policy reconcile after EIP is deleted
+		qosPolicyName := cachedEip.Status.QoSPolicy
+		if qosPolicyName != "" {
 			if err = c.delEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
 				klog.Errorf("failed to del qos '%s' in pod, %v", key, err)
 				return err
@@ -256,6 +258,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
+		}
+
+		// Trigger QoS Policy reconcile after EIP is deleted
+		// This allows the QoS Policy to remove its finalizer if no other EIPs are using it
+		if qosPolicyName != "" {
+			c.updateQoSPolicyQueue.Add(qosPolicyName)
 		}
 
 		return nil

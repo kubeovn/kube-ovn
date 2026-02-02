@@ -126,6 +126,12 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
+
+	// Trigger QoS Policy reconcile after NatGw is deleted
+	// This allows the QoS Policy to remove its finalizer if no other NatGws are using it
+	if gw.Status.QoSPolicy != "" {
+		c.updateQoSPolicyQueue.Add(gw.Status.QoSPolicy)
+	}
 }
 
 func (c *Controller) handleDelVpcNatGw(key string) error {
