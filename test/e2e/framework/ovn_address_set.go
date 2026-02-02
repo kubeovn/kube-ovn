@@ -204,21 +204,6 @@ func getOVNNbAddr() string {
 	return ovnnbAddr
 }
 
-func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model) {
-	ginkgo.GinkgoHelper()
-
-	client, models, err := ovs.NewDynamicOvnNbClient(
-		getOVNNbAddr(),
-		ovnNbTimeoutSeconds,
-		ovsdbConnTimeout,
-		ovsdbInactivityTimeout,
-		tables...,
-	)
-	ExpectNoError(err)
-
-	return client, models
-}
-
 func resolveOVNNbConnection() (string, error) {
 	config, err := k8sframework.LoadConfig()
 	if err != nil {
