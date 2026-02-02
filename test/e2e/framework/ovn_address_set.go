@@ -60,27 +60,53 @@ func validateModelStructure(model model.Model, table string, expectedFields map[
 func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 	ginkgo.GinkgoHelper()
 
-	client, models := getOVNNbClient(ovnnb.AddressSetTable)
-	defer client.Close()
-
-	model := models[ovnnb.AddressSetTable]
-	validateModelStructure(model, ovnnb.AddressSetTable, map[string]reflect.Type{
-		"Name":        reflect.TypeFor[string](),
-		"Addresses":   reflect.SliceOf(reflect.TypeFor[string]()),
-		"ExternalIDs": reflect.MapOf(reflect.TypeFor[string](), reflect.TypeFor[string]()),
-	})
+	var client *ovs.OVNNbClient
+	var tableModel model.Model
+	var connectErr error
 
 	err := wait.PollUntilContextTimeout(context.Background(), addressSetPollInterval, addressSetTimeout, true, func(_ context.Context) (bool, error) {
+		// Reconnect if client is nil or disconnected
+		if client == nil || !client.Connected() {
+			if client != nil {
+				client.Close()
+			}
+			var models map[string]model.Model
+			client, models, connectErr = ovs.NewDynamicOvnNbClient(
+				getOVNNbAddr(),
+				ovnNbTimeoutSeconds,
+				ovsdbConnTimeout,
+				ovsdbInactivityTimeout,
+				ovnnb.AddressSetTable,
+			)
+			if connectErr != nil {
+				Logf("Failed to connect to OVN NB, will retry: %v", connectErr)
+				return false, nil // Return nil to continue polling
+			}
+			tableModel = models[ovnnb.AddressSetTable]
+			validateModelStructure(tableModel, ovnnb.AddressSetTable, map[string]reflect.Type{
+				"Name":        reflect.TypeFor[string](),
+				"Addresses":   reflect.SliceOf(reflect.TypeFor[string]()),
+				"ExternalIDs": reflect.MapOf(reflect.TypeFor[string](), reflect.TypeFor[string]()),
+			})
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 		defer cancel()
 
-		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
+		result := reflect.New(reflect.SliceOf(reflect.TypeOf(tableModel).Elem())).Interface()
 		if err := client.List(ctx, result); err != nil {
-			return false, err
+			Logf("Failed to list address sets, will retry: %v", err)
+			// Close the client so it reconnects on next iteration
+			client.Close()
+			client = nil
+			return false, nil // Return nil to continue polling
 		}
 
 		return condition(result)
 	})
+	if client != nil {
+		client.Close()
+	}
 	ExpectNoError(err)
 }
 
@@ -168,16 +194,21 @@ func WaitForAddressSetDeletion(ippoolName string) {
 	})
 }
 
-func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model) {
+func getOVNNbAddr() string {
 	ginkgo.GinkgoHelper()
 
 	ovnnbAddrOnce.Do(func() {
 		ovnnbAddr, ovnnbAddrErr = resolveOVNNbConnection()
 	})
 	ExpectNoError(ovnnbAddrErr)
+	return ovnnbAddr
+}
+
+func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model) {
+	ginkgo.GinkgoHelper()
 
 	client, models, err := ovs.NewDynamicOvnNbClient(
-		ovnnbAddr,
+		getOVNNbAddr(),
 		ovnNbTimeoutSeconds,
 		ovsdbConnTimeout,
 		ovsdbInactivityTimeout,
