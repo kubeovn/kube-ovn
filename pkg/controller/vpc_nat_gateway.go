@@ -126,6 +126,12 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
+
+	// Trigger QoS Policy reconcile after NatGw is deleted
+	// This allows the QoS Policy to remove its finalizer if no other NatGws are using it
+	if gw.Status.QoSPolicy != "" {
+		c.updateQoSPolicyQueue.Add(gw.Status.QoSPolicy)
+	}
 }
 
 func (c *Controller) handleDelVpcNatGw(key string) error {
@@ -253,13 +259,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
 			if gw.Status.QoSPolicy != "" {
 				if err = c.execNatGwQoS(gw, gw.Status.QoSPolicy, QoSDel); err != nil {
-					klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
+					klog.Errorf("failed to del qos for nat gw %s, %v", key, err)
 					return err
 				}
 			}
 			if gw.Spec.QoSPolicy != "" {
 				if err = c.execNatGwQoS(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
-					klog.Errorf("failed to del qos for nat gw %s, %v", key, err)
+					klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
 					return err
 				}
 			}
@@ -754,8 +760,28 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	}
 
 	if len(errOutput) > 0 {
-		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
-		return errors.New(errOutput)
+		// tc commands may output warnings to stderr (e.g., "Warning: sch_htb: quantum of class is big")
+		// Filter out lines that are only warnings, but preserve actual errors
+		lines := strings.Split(errOutput, "\n")
+		var errorLines []string
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine == "" {
+				continue
+			}
+			// Skip lines that are just warnings
+			if strings.HasPrefix(trimmedLine, "Warning:") {
+				klog.Warningf("NAT gateway command warning: %v", trimmedLine)
+				continue
+			}
+			errorLines = append(errorLines, trimmedLine)
+		}
+		// If there are actual error lines (not just warnings), return error
+		if len(errorLines) > 0 {
+			errMsg := strings.Join(errorLines, "; ")
+			klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errMsg)
+			return errors.New(errMsg)
+		}
 	}
 	return nil
 }
@@ -1293,14 +1319,14 @@ func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation st
 		klog.Error(err)
 		return err
 	}
-	return c.execNatGwBandtithLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
+	return c.execNatGwBandwidthLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
 }
 
-func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
+func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
 	var err error
 	for _, rule := range rules {
 		if err = c.execNatGwQoSInPod(gw.Name, &rule, operation); err != nil {
-			klog.Errorf("failed to %s ingress gw '%s' qos in pod, %v", operation, gw.Name, err)
+			klog.Errorf("failed to %s %s gw '%s' qos in pod, %v", operation, rule.Direction, gw.Name, err)
 			return err
 		}
 	}
