@@ -1077,9 +1077,10 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 
 	for _, item := range exists {
 		policy := &kubeovnv1.PolicyRoute{
-			Priority: item.Priority,
-			Match:    item.Match,
-			Action:   kubeovnv1.PolicyRouteAction(item.Action),
+			Priority:  item.Priority,
+			Match:     item.Match,
+			Action:    kubeovnv1.PolicyRouteAction(item.Action),
+			NextHopIP: strings.Join(item.Nexthops, ","),
 		}
 		existsMap[getPolicyRouteItemKey(policy)] = &policyRouteLogicalInfo{
 			route:       policy,
