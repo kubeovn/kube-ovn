@@ -50,7 +50,7 @@ CILIUM_VERSION = v1.18.6
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
-CERT_MANAGER_VERSION = v1.19.2
+CERT_MANAGER_VERSION = v1.19.3
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
