@@ -1,27 +1,29 @@
 package daemon
 
 import (
-	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const flowKindUnderlayService = "usvc"
 
-func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName string) error {
-	inPort, err := c.getPortID(bridgeName, underlayNic)
+func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName, subnetName string) error {
+	inPort, err := c.getPortID(underlayNic)
 	if err != nil {
 		return err
 	}
 
-	outPort, err := c.getPortID(bridgeName, "patch-localnet.")
+	patchPortName := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
+	outPort, err := c.getPortID(patchPortName)
 	if err != nil {
-		klog.V(5).Infof("patch-localnet port not found on bridge %s, skipping underlay service flow for %s:%d (no pods on this node yet)", bridgeName, serviceIP, port)
+		klog.V(5).Infof("patch-localnet port %s not found on bridge %s, skipping underlay service flow for %s:%d (subnet %s may not have pods on this node yet)", patchPortName, bridgeName, serviceIP, port, subnetName)
 		return nil
 	}
 
@@ -77,14 +79,16 @@ func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
 	return fmt.Sprintf("%s-%s-%s-%d-%s", kind, ip, protocol, port, extra)
 }
 
-func (c *Controller) getPortID(bridgeName, portName string) (int, error) {
-	if c.ovsClient == nil {
-		return 0, errors.New("ovs client not initialized")
+func (c *Controller) getPortID(portName string) (int, error) {
+	ofportStr, err := ovs.Get("Interface", portName, "ofport", "", true)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get ofport for interface %s: %w", portName, err)
 	}
 
-	portInfo, err := c.ovsClient.OpenFlow.DumpPort(bridgeName, portName)
+	portID, err := strconv.Atoi(strings.TrimSpace(ofportStr))
 	if err != nil {
-		return 0, fmt.Errorf("failed to dump port %s on bridge %s: %w", portName, bridgeName, err)
+		return 0, fmt.Errorf("failed to parse ofport %q: %w", ofportStr, err)
 	}
-	return portInfo.PortID, nil
+
+	return portID, nil
 }
