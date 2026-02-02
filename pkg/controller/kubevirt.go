@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,7 +14,6 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/informer"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -136,7 +136,19 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 	}
 
-	portName := ovs.PodNameToPortName(vmiMigration.Spec.VMIName, vmiMigration.Namespace, util.OvnProvider)
+	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
+	if err != nil {
+		klog.Errorf("failed to list logical switch ports for vmi %s/%s, %v", vmi.Namespace, vmi.Name, err)
+		return err
+	}
+
+	portNames := make([]string, 0, len(lsps))
+	for _, lsp := range lsps {
+		portNames = append(portNames, lsp.Name)
+	}
+
+	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
+
 	switch vmiMigration.Status.Phase {
 	case kubevirtv1.MigrationScheduling:
 		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
@@ -175,30 +187,36 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 			klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
 				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
 
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
-				klog.Error(err)
-				return err
+			for _, portName := range portNames {
+				if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+					err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
+					klog.Error(err)
+					return err
+				}
+				klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
 			}
-			klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
 		} else {
 			klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
 				vmiMigration.UID, vmiMigration.Status.Phase)
 			return nil
 		}
 	case kubevirtv1.MigrationSucceeded:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
-			return err
+		for _, portName := range portNames {
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated succeed", portName, srcNodeName, targetNodeName)
+			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	case kubevirtv1.MigrationFailed:
-		klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
-			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-			klog.Error(err)
-			return err
+		for _, portName := range portNames {
+			klog.Infof("migrate end reset options for lsp %s from %s to %s, migrated fail", portName, srcNodeName, targetNodeName)
+			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
+				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 	return nil
