@@ -4077,7 +4077,13 @@ rules:
       - qos-policies
       - qos-policies/status
     verbs:
-      - "*"
+      - create
+      - get
+      - list
+      - update
+      - patch
+      - watch
+      - delete
   - apiGroups:
       - ""
     resources:
@@ -4194,7 +4200,11 @@ rules:
     resources:
       - leases
     verbs:
-      - "*"
+      - create
+      - update
+      - patch
+      - get
+      - watch
   - apiGroups:
       - "kubevirt.io"
     resources:
