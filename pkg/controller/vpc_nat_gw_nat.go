@@ -261,7 +261,7 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 	}
 	for _, uf := range usingFips {
 		if uf.Name != fipName {
-			err = fmt.Errorf("%s is using by the other fip %s", eipV4IP, uf.Name)
+			err = fmt.Errorf("%s is used by the other fip %s", eipV4IP, uf.Name)
 			klog.Error(err)
 			return err
 		}
@@ -754,7 +754,7 @@ func (c *Controller) handleDelIptablesSnatRule(key string) error {
 }
 
 func (c *Controller) syncIptablesFipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	rules := &kubeovnv1.IptablesFIPRuleList{}
 	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
@@ -777,7 +777,7 @@ func (c *Controller) handleAddIptablesFipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesFip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
@@ -808,7 +808,7 @@ func (c *Controller) handleDelIptablesFipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesFip := cachedIptablesFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesFip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesFip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesFip, newIptablesFip)
 	if err != nil {
@@ -827,7 +827,7 @@ func (c *Controller) handleDelIptablesFipFinalizer(key string) error {
 }
 
 func (c *Controller) syncIptablesDnatFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	rules := &kubeovnv1.IptablesDnatRuleList{}
 	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
@@ -850,7 +850,7 @@ func (c *Controller) handleAddIptablesDnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
@@ -881,7 +881,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesDnat := cachedIptablesDnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesDnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesDnat, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesDnat, newIptablesDnat)
 	if err != nil {
@@ -975,7 +975,7 @@ func (c *Controller) handleAddIptablesSnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesSnat, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
@@ -1006,7 +1006,7 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 		return nil
 	}
 	newIptablesSnat := cachedIptablesSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesSnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesSnat, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesSnat, newIptablesSnat)
 	if err != nil {
@@ -1545,7 +1545,7 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, p
 	if len(dnats) != 0 {
 		for _, d := range dnats {
 			if d.Name != dnatName && d.Spec.EIP == eipName && d.Spec.Protocol == protocol {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s', same protocol'%s' is using by dnat %s", dnatName, eipName, externalPort, protocol, d.Name)
+				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s', same protocol'%s' is used by dnat %s", dnatName, eipName, externalPort, protocol, d.Name)
 				return true, err
 			}
 		}

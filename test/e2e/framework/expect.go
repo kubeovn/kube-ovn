@@ -215,7 +215,7 @@ func ExpectMAC(s string) {
 	expectTrueWithOffset(1, macRegex.MatchString(s))
 }
 
-// ExpectIPInCIDR expects that the given IP address in within the CIDR.
+// ExpectIPInCIDR expects that the given IP address is within the CIDR.
 func ExpectIPInCIDR(ip, cidr string) {
 	ginkgo.GinkgoHelper()
 	ginkgo.By(fmt.Sprintf("verifying IP address %q is within the CIDR %q", ip, cidr))

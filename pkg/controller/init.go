@@ -852,7 +852,7 @@ func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
 		klog.Errorf("failed to batch delete obsolete address set for asNames %v nodes %d: %v", delAsNames, len(nodes), err)
 		return err
 	}
-	klog.V(3).Infof("take to %v batch migrate node route for router: %s priority: %d add policy len: %d extrenalID len: %d del policy len: %d del address set len: %d",
+	klog.V(3).Infof("take to %v batch migrate node route for router: %s priority: %d add policy len: %d externalID len: %d del policy len: %d del address set len: %d",
 		time.Since(start), c.config.ClusterRouter, util.NodeRouterPolicyPriority, len(addPolicies), len(externalIDsMap), len(delPolicies), len(delAsNames))
 
 	return nil
@@ -914,7 +914,7 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.OVNSbClient.GetKubeOvnChassisses()
+	chassises, err := c.OVNSbClient.GetKubeOvnChassises()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err
@@ -946,11 +946,11 @@ func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem fu
 		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
 			break
 		}
-		if !controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
+		if !controllerutil.ContainsFinalizer(cachedObj, util.DeprecatedFinalizerName) {
 			i++
 			continue
 		}
-		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(patchedObj, util.DeprecatedFinalizerName)
 		if cachedObj.GetDeletionTimestamp() == nil {
 			// if the object is not being deleted, add the new finalizer
 			controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
@@ -974,7 +974,7 @@ func (c *Controller) syncFinalizers() error {
 		return err
 	}
 
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	klog.Info("start to sync finalizers")
 	if err := c.syncIPFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ip finalizer: %v", err)

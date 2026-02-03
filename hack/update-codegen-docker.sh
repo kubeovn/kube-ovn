@@ -1,5 +1,5 @@
 # use docker to generate code
-# useage: bash ./hack/update-codegen-docker.sh
+# usage: bash ./hack/update-codegen-docker.sh
 
 # set GOPROXY you like
 GOPROXY=${GOPROXY:-"https://goproxy.cn"}

@@ -256,7 +256,7 @@ func (m OrACLMatch) Match() (string, error) {
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 
-		// has more then one rule
+		// has more than one rule
 		if strings.Contains(match, "&&") {
 			match = "(" + match + ")"
 		}

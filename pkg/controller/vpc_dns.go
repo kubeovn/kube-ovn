@@ -522,7 +522,7 @@ func (c *Controller) getDefaultCoreDNSImage() (string, error) {
 		}
 	}
 
-	return "", errors.New("coredns container no found")
+	return "", errors.New("coredns container not found")
 }
 
 func (c *Controller) initVpcDNSConfig() error {

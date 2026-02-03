@@ -31,7 +31,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 		}
 	}
 	if volume == nil {
-		return fmt.Errorf("can not found volume %s in pod %s", volumeName, pod.Name)
+		return fmt.Errorf("cannot find volume %s in pod %s", volumeName, pod.Name)
 	}
 	if volume.EmptyDir == nil {
 		return fmt.Errorf("volume %s is not empty dir", volume.Name)
@@ -63,7 +63,7 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 	}
 
 	if socketConsumption != util.ConsumptionKubevirt {
-		return fmt.Errorf("createShortSharedDir: volume name %s is exists", volumeName)
+		return fmt.Errorf("createShortSharedDir: volume %s already exists", volumeName)
 	}
 
 	return nil

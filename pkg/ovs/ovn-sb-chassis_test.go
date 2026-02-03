@@ -424,7 +424,7 @@ func (suite *OvnClientTestSuite) testUpdateChassisTag() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
+func (suite *OvnClientTestSuite) testGetKubeOvnChassises() {
 	t := suite.T()
 	t.Parallel()
 
@@ -439,7 +439,7 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 		require.NoError(t, err)
 		err = sbClient.DeleteChassis("mixed-chassis")
 		require.NoError(t, err)
-		chassisList, err := sbClient.GetKubeOvnChassisses()
+		chassisList, err := sbClient.GetKubeOvnChassises()
 		require.NoError(t, err)
 		names := make(map[string]bool)
 		for _, chassis := range *chassisList {
@@ -477,7 +477,7 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassisses() {
 	require.NoError(t, err)
 
 	// make sure the chassis created
-	chassisList, err := sbClient.GetKubeOvnChassisses()
+	chassisList, err := sbClient.GetKubeOvnChassises()
 	require.NoError(t, err)
 	require.NotNil(t, *chassisList)
 

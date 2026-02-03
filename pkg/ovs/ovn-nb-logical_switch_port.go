@@ -306,7 +306,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitchPort(lsName, lspName, ip, mac strin
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPorts update several virtual type logical switch port virtual-parents once
+// SetLogicalSwitchPortVirtualParents updates several virtual type logical switch port virtual-parents at once
 func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
 	for _, ip := range ips {
@@ -345,7 +345,7 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPort update one virtual type logical switch port virtual-parents for allowed-address-pair
+// SetVirtualLogicalSwitchPortVirtualParents updates one virtual type logical switch port virtual-parents for allowed-address-pair
 func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {

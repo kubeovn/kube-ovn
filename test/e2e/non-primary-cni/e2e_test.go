@@ -496,8 +496,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				pod1IPs := getPodIPs(pod1)
 				pod2IPs := getPodIPs(pod2)
 
-				framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at lease one IP address")
-				framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at lease one IP address")
+				framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at least one IP address")
+				framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at least one IP address")
 
 				pod1IP := strings.Join(pod1IPs, ",")
 				pod2IP := strings.Join(pod2IPs, ",")
@@ -581,8 +581,8 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 			// Get pod IPs
 			pod1IPs := getPodIPs(pod1)
 			pod2IPs := getPodIPs(pod2)
-			framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at lease one IP address")
-			framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at lease one IP address")
+			framework.ExpectNotEmpty(pod1IPs, "Pod1 should have at least one IP address")
+			framework.ExpectNotEmpty(pod2IPs, "Pod2 should have at least one IP address")
 
 			pod1IP := strings.Join(pod1IPs, ",")
 			for _, pod2IP := range pod2IPs {

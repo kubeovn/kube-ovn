@@ -870,7 +870,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 								}
 							}
 						} else {
-							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
+							err := fmt.Errorf("failed to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
 							klog.Error(err)
 							return err
 						}

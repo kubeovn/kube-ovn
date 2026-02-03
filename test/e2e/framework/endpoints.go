@@ -96,7 +96,7 @@ func (c *EndpointsClient) PatchSync(original, modified *corev1.Endpoints, cond f
 	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
-// Delete deletes a endpoints if the endpoints exists
+// Delete deletes an Endpoints resource if it exists
 func (c *EndpointsClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.EndpointsInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})

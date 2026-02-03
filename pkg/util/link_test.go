@@ -11,12 +11,12 @@ import (
 )
 
 func TestSetLinkUp(t *testing.T) {
-	// 1. should failed
+	// 1. should fail
 	linkName := "abc"
 	err := SetLinkUp(linkName)
 	require.Error(t, err)
 
-	// 2. should ok
+	// 2. should succeed
 	// get the default route gw and nic
 	routes, err := netlink.RouteList(nil, unix.AF_UNSPEC)
 	if errors.Is(err, netlink.ErrNotImplemented) {

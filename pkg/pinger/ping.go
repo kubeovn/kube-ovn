@@ -24,8 +24,8 @@ func StartPinger(config *Configuration, stopCh <-chan struct{}) {
 	errHappens := false
 	var exporter *Exporter
 	withMetrics := config.Mode == "server" && config.EnableMetrics
-	internval := time.Duration(config.Interval) * time.Second
-	timer := time.NewTimer(internval)
+	interval := time.Duration(config.Interval) * time.Second
+	timer := time.NewTimer(interval)
 	timer.Stop()
 LOOP:
 	for {
@@ -53,7 +53,7 @@ LOOP:
 			break
 		}
 
-		timer.Reset(internval)
+		timer.Reset(interval)
 		select {
 		case <-stopCh:
 			break LOOP

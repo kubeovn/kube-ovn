@@ -90,7 +90,7 @@ func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string)
 	if len(dnats) != 0 {
 		for _, d := range dnats {
 			if d.Name != dnatName && d.Spec.OvnEip == eipName {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
+				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is used by dnat %s", dnatName, eipName, externalPort, d.Name)
 				klog.Error(err)
 				return err
 			}
@@ -127,7 +127,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -359,7 +359,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -639,7 +639,7 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 }
 
 func (c *Controller) syncOvnDnatFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	rules := &kubeovnv1.OvnDnatRuleList{}
 	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
@@ -660,7 +660,7 @@ func (c *Controller) handleAddOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 		err     error
 	)
 
-	controllerutil.RemoveFinalizer(newDnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newDnat, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newDnat, util.KubeOVNControllerFinalizer)
 	if patch, err = util.GenerateMergePatchPayload(cachedDnat, newDnat); err != nil {
 		klog.Errorf("failed to generate patch payload for ovn dnat '%s', %v", cachedDnat.Name, err)
@@ -683,7 +683,7 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 		return nil
 	}
 	newDnat := cachedDnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newDnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newDnat, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newDnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedDnat, newDnat)
 	if err != nil {

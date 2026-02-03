@@ -101,7 +101,7 @@ func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRul
 	return c.Get(dnat.Name).DeepCopy()
 }
 
-// Delete deletes a iptables dnat if the iptables dnat exists
+// Delete deletes an iptables DNAT rule if it exists
 func (c *IptablesDnatClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 

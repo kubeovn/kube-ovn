@@ -121,7 +121,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 
 		return nil
 	}
-	// From this, point we are dealing with an approved CSR
+	// From this point we are dealing with an approved CSR
 	// Get CA in from ovn-ipsec-ca
 	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv(util.EnvPodNamespace)).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 	if err != nil {
@@ -133,7 +133,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 	// Decode the certificate request from PEM format.
 	certReq, err := decodeCertificateRequest(csr.Spec.Request)
 	if err != nil {
-		// We dont degrade the status of the controller as this is due to a
+		// We don't degrade the status of the controller as this is due to a
 		// malformed CSR rather than an issue with the controller.
 		if err := c.updateCSRStatusConditions(csr, "CSRDecodeFailure", fmt.Sprintf("Could not decode Certificate Request: %v", err)); err != nil {
 			klog.Error(err)

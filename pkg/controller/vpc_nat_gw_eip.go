@@ -586,7 +586,7 @@ func (c *Controller) eipChangeIP(eip *kubeovnv1.IptablesEIP) bool {
 func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	subnet, err := c.subnetsLister.Get(name)
 	if err != nil {
-		err = fmt.Errorf("faile to get subnet %q: %w", name, err)
+		err = fmt.Errorf("failed to get subnet %q: %w", name, err)
 		klog.Error(err)
 		return "", "", err
 	}
@@ -697,7 +697,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 }
 
 func (c *Controller) syncIptablesEipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	eips := &kubeovnv1.IptablesEIPList{}
 	return migrateFinalizers(cl, eips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(eips.Items) {
@@ -720,7 +720,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
@@ -757,7 +757,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {

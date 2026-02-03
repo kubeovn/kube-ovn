@@ -369,7 +369,7 @@ func deleteNetemQosByID(qosID, iface, podName, podNamespace string) error {
 	}
 
 	if err := ClearPortQosBinding(iface); err != nil {
-		klog.Errorf("failed to delete qos bingding info for interface %s: %v", iface, err)
+		klog.Errorf("failed to delete qos binding info for interface %s: %v", iface, err)
 		return err
 	}
 

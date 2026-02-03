@@ -13,7 +13,7 @@ import (
 const (
 	CniTypeName = "kube-ovn"
 
-	DepreciatedFinalizerName   = "kube-ovn-controller"
+	DeprecatedFinalizerName    = "kube-ovn-controller"
 	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
 	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
@@ -250,8 +250,8 @@ const (
 	DpdkType    = "dpdk-port"
 	VethType    = "veth-pair"
 
-	MirrosRetryMaxTimes = 5
-	MirrosRetryInterval = 1
+	MirrorsRetryMaxTimes = 5
+	MirrorsRetryInterval = 1
 
 	ChassisRetryMaxTimes           = 5
 	ChassisCniDaemonRetryInterval  = 1

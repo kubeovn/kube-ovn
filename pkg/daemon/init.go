@@ -100,7 +100,7 @@ func InitMirror(config *Configuration) error {
 func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) (int, error) { // create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
-		exchanged, err := c.changeProvideNicName(nic, brName)
+		exchanged, err := c.changeProviderNicName(nic, brName)
 		if err != nil {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", nic, brName, err)
 			return 0, err
@@ -218,7 +218,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 		klog.Infof("ovs bridge %s has been deleted", brName)
 
 		if br := util.ExternalBridgeName(provider); br != brName {
-			if _, err = c.changeProvideNicName(br, brName); err != nil {
+			if _, err = c.changeProviderNicName(br, brName); err != nil {
 				klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
 				return err
 			}

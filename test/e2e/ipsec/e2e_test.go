@@ -289,8 +289,8 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 			}, "Verifying new trust bundle distributed")
 		}
 
-		// changing the CA cert will cause ovs-ipsec-monitor to stroke up new
-		// tunnels and stroke down the old ones so wait for that processing to
+		// changing the CA cert will cause ovs-ipsec-monitor to spin up new
+		// tunnels and spin down the old ones so wait for that processing to
 		// complete before checking xfrm state.
 		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
 

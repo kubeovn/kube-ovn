@@ -60,7 +60,7 @@ func main() {
 		util.LogFatalAndExit(err, "failed to initialize ovn chassis annotation")
 	}
 
-	if err := Retry(util.MirrosRetryMaxTimes, util.MirrosRetryInterval, daemon.InitMirror, config); err != nil {
+	if err := Retry(util.MirrorsRetryMaxTimes, util.MirrorsRetryInterval, daemon.InitMirror, config); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ovs mirror")
 	}
 
@@ -244,14 +244,14 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		return err
 	}
 
-	chassesName := strings.TrimSpace(string(chassisID))
-	if chassesName == "" {
+	chassisName := strings.TrimSpace(string(chassisID))
+	if chassisName == "" {
 		// not ready yet
 		err = errors.New("chassis id is empty")
 		klog.Error(err)
 		return err
 	}
-	patch := util.KVPatch{util.ChassisAnnotation: chassesName}
+	patch := util.KVPatch{util.ChassisAnnotation: chassisName}
 	if err = util.PatchAnnotations(cfg.KubeClient.CoreV1().Nodes(), cfg.NodeName, patch); err != nil {
 		klog.Errorf("failed to patch chassis annotation of node %s: %v", cfg.NodeName, err)
 		return err

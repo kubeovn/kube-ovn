@@ -46,7 +46,7 @@ func checkDeployment(f *framework.Framework, name, process string, ports ...stri
 
 	ginkgo.By("Getting deployment " + name)
 	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
-	framework.ExpectNoError(err, "failed to to get deployment")
+	framework.ExpectNoError(err, "failed to get deployment")
 	err = deployment.WaitForDeploymentComplete(f.ClientSet, deploy)
 	framework.ExpectNoError(err, "deployment failed to complete")
 

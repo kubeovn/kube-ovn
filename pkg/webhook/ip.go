@@ -26,7 +26,7 @@ func (v *ValidatingHook) IPCreateHook(ctx context.Context, req admission.Request
 	if err := v.ValidateIP(ctx, &ip); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -74,7 +74,7 @@ func (v *ValidatingHook) IPUpdateHook(ctx context.Context, req admission.Request
 		err := fmt.Errorf("ip %s macAddress can not change", ipNew.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {

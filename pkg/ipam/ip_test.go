@@ -517,7 +517,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	require.True(t, ipam.Subnets[subnetName].IPPools[""].V4Released.Contains(ip2))
 	require.True(t, ipam.Subnets[subnetName].IPPools[""].V4Released.Contains(ip3))
 
-	// release pod with single nic")
+	// release pod with single nic
 	ipam.ReleaseAddressByPod(pod1, "")
 	ip1, err := NewIP(freeIP1)
 	require.NoError(t, err)

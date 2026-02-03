@@ -49,7 +49,7 @@ func TestE2E(t *testing.T) {
 		t.Fatalf("failed to list kind clusters: %v", err)
 	}
 	if len(clusters) < 2 {
-		t.Fatal("no enough kind clusters to run ovn-ic e2e testing")
+		t.Fatal("not enough kind clusters to run ovn-ic e2e testing")
 	}
 
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)

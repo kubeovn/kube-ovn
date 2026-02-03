@@ -61,7 +61,7 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 func (c *Controller) getAttachNetworkForService(svc *corev1.Service) (*nadv1.NetworkAttachmentDefinition, error) {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
-		return nil, errors.New("the provider name should be consisted of name and namespace")
+		return nil, errors.New("the provider name should consist of name and namespace")
 	}
 
 	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(attachmentNs).Get(attachmentName)

@@ -46,7 +46,7 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.Request) admission.Response {
@@ -59,7 +59,7 @@ func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.R
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesEIPCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -80,7 +80,7 @@ func (v *ValidatingHook) iptablesEIPCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -96,7 +96,7 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 
 	if eipOld.Spec != eipNew.Spec {
 		if eipOld.Status.Ready && eipNew.Status.Redo == eipOld.Status.Redo {
-			err := fmt.Errorf("IptablesEIP \"%s\" is ready,not support change", eipNew.Name)
+			err := fmt.Errorf("IptablesEIP \"%s\" is ready, does not support change", eipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
@@ -111,7 +111,7 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admission.Request) admission.Response {
@@ -152,12 +152,12 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		}
 
 		if len(fipList.Items) != 0 || len(snatList.Items) != 0 || len(dnatList.Items) != 0 {
-			err = fmt.Errorf("eip \"%s\" is still in use,you need to delete the %s of eip first", eip.Name, eip.Status.Nat)
+			err = fmt.Errorf("eip \"%s\" is still in use, you need to delete the %s of eip first", eip.Name, eip.Status.Nat)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesDnatCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -178,7 +178,7 @@ func (v *ValidatingHook) iptablesDnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -194,7 +194,7 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 
 	if dnatOld.Spec != dnatNew.Spec {
 		if dnatOld.Status.Ready && dnatOld.Status.Redo == dnatNew.Status.Redo {
-			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready,not support change", dnatNew.Name)
+			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready, does not support change", dnatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
@@ -210,7 +210,7 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesSnatCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -231,7 +231,7 @@ func (v *ValidatingHook) iptablesSnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -247,7 +247,7 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 
 	if snatOld.Spec != snatNew.Spec {
 		if snatOld.Status.Ready && snatOld.Status.Redo == snatNew.Status.Redo {
-			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready,not support change", snatNew.Name)
+			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready, does not support change", snatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
@@ -263,7 +263,7 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesFipCreateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -284,7 +284,7 @@ func (v *ValidatingHook) iptablesFipCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -300,7 +300,7 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 
 	if fipNew.Spec != fipOld.Spec {
 		if fipOld.Status.Ready && fipNew.Status.Redo == fipOld.Status.Redo {
-			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready,not support change", fipNew.Name)
+			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready, does not support change", fipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
@@ -315,7 +315,7 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatGateway) error {

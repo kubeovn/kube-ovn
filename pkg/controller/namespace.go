@@ -132,7 +132,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 			excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
 		}
 
-		// bind subnet with namespaceLabelSeletcor which select the namespace
+		// bind subnet with namespaceLabelSelector which select the namespace
 		for _, nsSelector := range s.Spec.NamespaceSelectors {
 			matchSelector, err := metav1.LabelSelectorAsSelector(&nsSelector)
 			if err != nil {

@@ -49,7 +49,7 @@ func Test_securityGroupALLNotExist(t *testing.T) {
 	sgName := "sg"
 	pgName := ovs.GetSgPortGroupName(sgName)
 
-	t.Run("should return false when some port group exist", func(t *testing.T) {
+	t.Run("should return false when some port group exists", func(t *testing.T) {
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Eq(pgName)).Return(true, nil)
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Not(pgName)).Return(false, nil).Times(3)
 
@@ -58,7 +58,7 @@ func Test_securityGroupALLNotExist(t *testing.T) {
 		require.False(t, exist)
 	})
 
-	t.Run("should return true when all port group does't exist", func(t *testing.T) {
+	t.Run("should return true when all port group don't exist", func(t *testing.T) {
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Any()).Return(false, nil).Times(3)
 
 		exist, err := ctrl.securityGroupAllNotExist([]string{"sg1", "sg2", "sg3"})

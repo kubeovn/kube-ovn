@@ -106,9 +106,7 @@ type Conn struct {
 	*net.TCPConn
 }
 
-// tcpAddToSockerAddr will convert a TCPAddr
-// into a Sockaddr that may be used when
-// connecting and binding sockets
+// tcpAddrToSocketAddr converts a TCPAddr into a Sockaddr for connecting and binding sockets.
 func tcpAddrToSocketAddr(addr *net.TCPAddr) (syscall.Sockaddr, error) {
 	switch {
 	case addr.IP.To4() != nil:

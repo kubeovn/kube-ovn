@@ -144,7 +144,7 @@ func (c *IPPoolClient) PatchSync(original, modified *apiv1.IPPool) *apiv1.IPPool
 	return c.Get(s.Name).DeepCopy()
 }
 
-// Delete deletes a ippool if the ippool exists
+// Delete deletes an ippool if the ippool exists
 func (c *IPPoolClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IPPoolInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})

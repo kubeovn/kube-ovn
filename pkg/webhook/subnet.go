@@ -52,7 +52,7 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 		}
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -87,7 +87,7 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return admission.Errored(http.StatusConflict, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) SubnetDeleteHook(_ context.Context, req admission.Request) admission.Response {
@@ -98,5 +98,5 @@ func (v *ValidatingHook) SubnetDeleteHook(_ context.Context, req admission.Reque
 	if subnet.Status.V4UsingIPs != 0 || subnet.Status.V6UsingIPs != 0 {
 		return ctrlwebhook.Denied("can't delete subnet when any IPs in Using")
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }

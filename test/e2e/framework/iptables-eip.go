@@ -112,7 +112,7 @@ func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *a
 	return c.Get(eipName).DeepCopy()
 }
 
-// Delete deletes a iptables eip if the iptables eip exists
+// Delete deletes an iptables EIP if it exists
 func (c *IptablesEIPClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesEIPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})

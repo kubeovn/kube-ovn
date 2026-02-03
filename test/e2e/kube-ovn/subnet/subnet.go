@@ -62,7 +62,7 @@ func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient
 	return subnet
 }
 
-func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []string, shouldExist bool) {
+func checkIPSetOnNode(f *framework.Framework, node string, expectedIPsets []string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
 
 	ovsPod := getOvsPodOnNode(f, node)
@@ -70,7 +70,7 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectetIPsets []stri
 	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		exitIPsets := strings.Split(output, "\n")
-		for _, r := range expectetIPsets {
+		for _, r := range expectedIPsets {
 			framework.Logf("checking ipset %s: %v", r, shouldExist)
 			ok, err := gomega.ContainElement(r).Match(exitIPsets)
 			if err != nil || ok != shouldExist {
@@ -929,13 +929,13 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.Get(subnetName)
 
 		if podIPv4s != nil {
-			usingIPv4Str, availableIPv4Str = calcuIPRangeListStr(podIPv4s, startIPv4, lastIPv4)
+			usingIPv4Str, availableIPv4Str = calcIPRangeListStr(podIPv4s, startIPv4, lastIPv4)
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, usingIPv4Str)
 			framework.ExpectEqual(subnet.Status.V4AvailableIPRange, availableIPv4Str)
 		}
 
 		if podIPv6s != nil {
-			usingIPv6Str, availableIPv6Str = calcuIPRangeListStr(podIPv6s, startIPv6, lastIPv6)
+			usingIPv6Str, availableIPv6Str = calcIPRangeListStr(podIPv6s, startIPv6, lastIPv6)
 			framework.ExpectEqual(subnet.Status.V6UsingIPRange, usingIPv6Str)
 			framework.ExpectEqual(subnet.Status.V6AvailableIPRange, availableIPv6Str)
 		}
@@ -1699,7 +1699,7 @@ func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framewo
 	return podIPv4s, podIPv6s
 }
 
-func calcuIPRangeListStr(podIPs []string, startIP, lastIP string) (string, string) {
+func calcIPRangeListStr(podIPs []string, startIP, lastIP string) (string, string) {
 	var usingIPs, availableIPs []string
 	var usingIPStr, availableIPStr, prePodIP string
 
