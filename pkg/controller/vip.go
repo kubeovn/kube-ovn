@@ -162,6 +162,14 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	if vip.Spec.Type == util.KubeHostVMVip {
 		// vm use the vip as its real ip
 		klog.Infof("created host network pod vm ip %s", key)
+		// Ensure finalizer is added for KubeHostVMVip type as well
+		klog.V(3).Infof("adding finalizer for KubeHostVMVip %s", key)
+		if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
+			klog.Errorf("failed to add finalizer for vip %s: %v", key, err)
+			return err
+		}
+		klog.V(3).Infof("successfully added finalizer for KubeHostVMVip %s", key)
+		c.updateSubnetStatusQueue.Add(subnetName)
 		return nil
 	}
 	if err := c.handleUpdateVirtualParents(key); err != nil {
@@ -169,6 +177,16 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Ensure finalizer is added after VIP is fully processed
+	// This is needed when VIP already exists (created by user) and createOrUpdateVipCR
+	// only updates labels/status without adding finalizer
+	klog.V(3).Infof("adding finalizer for vip %s (type=%s)", key, vip.Spec.Type)
+	if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
+		klog.Errorf("failed to add finalizer for vip %s: %v", key, err)
+		return err
+	}
+	klog.V(3).Infof("successfully added finalizer for vip %s", key)
 
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, VIP CR created with labels+status+finalizer
@@ -517,30 +535,47 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("vip %s not found when adding finalizer, skip", key)
 			return nil
 		}
 		klog.Error(err)
 		return err
 	}
 	if !cachedVip.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("vip %s is being deleted, skip adding finalizer", key)
 		return nil
 	}
+
+	// Check if finalizer already exists
+	existingFinalizers := cachedVip.GetFinalizers()
+	klog.V(3).Infof("vip %s current finalizers: %v", key, existingFinalizers)
+
 	newVip := cachedVip.DeepCopy()
 	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
 	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
-		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedVip.Name, err)
+		klog.Errorf("failed to generate patch payload for vip '%s', %v", cachedVip.Name, err)
 		return err
 	}
+
+	// Skip patch if no changes needed
+	if string(patch) == "{}" {
+		klog.V(3).Infof("vip %s finalizer already up to date, skip patch", key)
+		return nil
+	}
+
+	klog.V(3).Infof("patching vip %s to add finalizer %s", key, util.KubeOVNControllerFinalizer)
 	if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), cachedVip.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("vip %s not found when patching finalizer, skip", key)
 			return nil
 		}
 		klog.Errorf("failed to add finalizer for vip '%s', %v", cachedVip.Name, err)
 		return err
 	}
+	klog.V(3).Infof("successfully patched vip %s with finalizer", key)
 
 	// Trigger subnet status update after finalizer is processed as a fallback
 	// This handles cases where finalizer was not added during creation
