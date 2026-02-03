@@ -162,6 +162,7 @@ func setupVpcNatGwTestEnvironment(
 	nicName string,
 	provider string,
 	skipNADSetup bool,
+	annotations map[string]string,
 ) {
 	ginkgo.GinkgoHelper()
 
@@ -192,7 +193,7 @@ func setupVpcNatGwTestEnvironment(
 	})
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
-	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
+	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -422,7 +423,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		overlaySubnetName = "overlay-subnet-" + randomSuffix
 	})
 
-	framework.ConformanceIt("[1] change gateway image", func() {
+	framework.ConformanceIt("[1] change gateway image and custom annotations", func() {
 		overlaySubnetV4Cidr := "10.0.2.0/24"
 		overlaySubnetV4Gw := "10.0.2.1"
 		lanIP := "10.0.2.254"
@@ -434,6 +435,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
+
+		// Test custom annotations on VpcNatGateway
+		customAnnotations := map[string]string{
+			"e2e-test.kubeovn.io/custom-annotation": "test-value",
+		}
 		setupVpcNatGwTestEnvironment(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, vpcClient, vpcNatGwClient,
@@ -442,11 +448,18 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
+			customAnnotations,
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 		pod := f.PodClientNS(metav1.NamespaceSystem).GetPod(vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
+
+		// Verify custom annotations are present on the pod
+		ginkgo.By("Verifying custom annotations on NAT gateway pod")
+		for k, v := range customAnnotations {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, k, v)
+		}
 
 		// recover the image
 		cm.Data["image"] = oldImage
@@ -486,6 +499,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
 		)
 
 		ginkgo.By("Creating iptables vip for fip")
@@ -646,6 +660,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
 		)
 
 		ginkgo.By("1. Get initial external subnet status")
@@ -849,6 +864,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
 		)
 
 		ginkgo.By("1. Create a VIP for FIP")

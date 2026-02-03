@@ -605,6 +605,11 @@ spec:
                       nextHopIP:
                         type: string
                         description: Next hop IP address
+                annotations:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: User-defined annotations for the StatefulSet NAT gateway Pod template. Only effective at creation time.
                 tolerations:
                   type: array
                   items:
