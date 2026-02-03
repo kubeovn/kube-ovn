@@ -123,7 +123,7 @@ func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ov
 		}
 	}
 	if len(needUpdatePolicy) > 0 {
-		if err := c.batchUpdatetLogicalRouterPolicies(needUpdatePolicy); err != nil {
+		if err := c.batchUpdateLogicalRouterPolicies(needUpdatePolicy); err != nil {
 			return err
 		}
 	}
@@ -321,7 +321,7 @@ func (c *OVNNbClient) ClearLogicalRouterPolicy(lrName string) error {
 	ops, err := c.UpdateLogicalRouterOp(lr, &lr.Policies)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for clear logical router %s policy: %w", lrName, err)
+		return fmt.Errorf("generate operations for clearing logical router %s policy: %w", lrName, err)
 	}
 	if err = c.Transact("lr-policy-clear", ops); err != nil {
 		klog.Error(err)
@@ -576,7 +576,7 @@ func (c *OVNNbClient) batchCreateLogicalRouterPolicies(lrName string, policies [
 	return nil
 }
 
-func (c *OVNNbClient) batchUpdatetLogicalRouterPolicies(updateMap map[*ovnnb.LogicalRouterPolicy]*ovnnb.LogicalRouterPolicy) error {
+func (c *OVNNbClient) batchUpdateLogicalRouterPolicies(updateMap map[*ovnnb.LogicalRouterPolicy]*ovnnb.LogicalRouterPolicy) error {
 	updateOps := make([]ovsdb.Operation, 0, len(updateMap))
 	for policyNew, policyFound := range updateMap {
 		policy := ptr.To(*policyFound)

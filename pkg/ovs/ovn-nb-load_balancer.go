@@ -315,7 +315,7 @@ func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
 }
 
 // GetLoadBalancer get load balancer by name,
-// it is because of lack name index that does't use OVNNbClient.Get
+// it is because of lack name index that doesn't use OVNNbClient.Get
 func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()

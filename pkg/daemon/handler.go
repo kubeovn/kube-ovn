@@ -155,7 +155,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			ifName = "eth0"
 		}
 
-		// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
+		// To support KubeVirt hotplug dpdk nic, forbidden set the volume name
 		if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
 			podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
 		}
@@ -522,7 +522,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	// For Support kubevirt hotplug dpdk nic, forbidden set the volume name
+	// To support KubeVirt hotplug dpdk nic, forbidden set the volume name
 	if podRequest.VhostUserSocketConsumption == util.ConsumptionKubevirt {
 		podRequest.VhostUserSocketVolumeName = util.VhostUserSocketVolumeName
 	}

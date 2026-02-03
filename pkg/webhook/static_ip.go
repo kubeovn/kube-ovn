@@ -40,7 +40,7 @@ func (v *ValidatingHook) DeploymentCreateHook(ctx context.Context, req admission
 	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
@@ -54,7 +54,7 @@ func (v *ValidatingHook) StatefulSetCreateHook(ctx context.Context, req admissio
 	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
@@ -68,7 +68,7 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
@@ -82,7 +82,7 @@ func (v *ValidatingHook) JobCreateHook(ctx context.Context, req admission.Reques
 	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	return v.validateIP(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
@@ -96,7 +96,7 @@ func (v *ValidatingHook) CronJobCreateHook(ctx context.Context, req admission.Re
 	staticIPSAnno := o.Spec.JobTemplate.Spec.Template.GetAnnotations()[util.IPPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
 	if staticIPSAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	return v.validateIP(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
@@ -112,10 +112,10 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	staticIP := o.GetAnnotations()[util.IPAddressAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_address: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIP)
 	if staticIP == "" && poolAnno == "" {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	if v.allowLiveMigration(o.GetAnnotations()) {
-		return ctrlwebhook.Allowed("by pass")
+		return ctrlwebhook.Allowed("bypass")
 	}
 	name := o.GetName()
 	// If the pod is created by a VM, we need to get the VM name from owner references
@@ -151,7 +151,7 @@ func (v *ValidatingHook) validateIP(ctx context.Context, annotations map[string]
 		return ctrlwebhook.Denied(err.Error())
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map[string]string, name string, ipList []ovnv1.IP) error {

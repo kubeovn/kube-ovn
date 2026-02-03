@@ -101,7 +101,7 @@ func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 	return nil
 }
 
-// Delete deletes a IP if the IP exists
+// Delete deletes an IP if the IP exists
 func (c *IPClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -134,7 +134,7 @@ func (c *IPClient) WaitToDisappear(name string, _, timeout time.Duration) error 
 }
 
 func MakeIP(name, ns, subnet string) *apiv1.IP {
-	// pod ip name should including: pod name and namespace
+	// pod ip name should include: pod name and namespace
 	// node ip name: only node name
 	IP := &apiv1.IP{
 		ObjectMeta: metav1.ObjectMeta{

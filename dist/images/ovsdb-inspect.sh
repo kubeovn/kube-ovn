@@ -25,7 +25,7 @@ function restore-interface() {
   if [[ $RUNTIME == "containerd" ]]; then
     PID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.pid}} $CID")
     # for convenience, the label here is added as the net ns for the PID
-    # in CNI request of recent version, it should be the cni-XXXX-XXXX, which chould be identified by the ip netns as:
+    # in CNI request of recent version, it should be the cni-XXXX-XXXX, which could be identified by the ip netns as:
     # $ ip netns identify PID
     PIDFILE="proc/$PID/net"
     SANDBOXID=$(ovs-exec "$2" "crictl inspect  --output go-template --template {{.info.sandboxID}} $CID")

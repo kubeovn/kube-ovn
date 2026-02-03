@@ -598,7 +598,7 @@ func (c *Controller) enqueueDeleteService(obj any) {
 	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
 }
 
-func (c *Controller) runAddOrUpdateServicekWorker() {
+func (c *Controller) runAddOrUpdateServiceWorker() {
 	for c.processNextServiceWorkItem() {
 	}
 }
@@ -861,7 +861,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
-	go wait.Until(c.runAddOrUpdateServicekWorker, time.Second, stopCh)
+	go wait.Until(c.runAddOrUpdateServiceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)

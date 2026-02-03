@@ -95,7 +95,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	ginkgo.By("Creating namespace " + namespaceName)
 	_ = namespaceClient.Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}})
 
-	ginkgo.By("Creating deplpyment " + deploymentName)
+	ginkgo.By("Creating deployment " + deploymentName)
 	podLabels := map[string]string{"app": deploymentName}
 	port := 8000 + rand.Int32N(1000)
 	portStr := strconv.Itoa(int(port))
@@ -257,7 +257,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		pods, err = dsClient.GetPods(ds)
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Getting new created ovs-ovs pod running on node " + suiteCtx.Node)
+		ginkgo.By("Getting newly created ovs-ovn pod running on node " + suiteCtx.Node)
 		for i := range pods.Items {
 			if pods.Items[i].Spec.NodeName == suiteCtx.Node {
 				pod = &pods.Items[i]
@@ -268,7 +268,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning)
 		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
 		pod.ManagedFields = nil
-		framework.Logf("new created ovs-ovn pod %s:\n%s", pod.Name, format.Object(pod, 2))
+		framework.Logf("newly created ovs-ovn pod %s:\n%s", pod.Name, format.Object(pod, 2))
 	})
 
 	framework.DisruptiveIt("Recreating ovn-central pod", func() {

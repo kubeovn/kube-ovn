@@ -33,7 +33,7 @@ func (v *ValidatingHook) VpcCreateHook(ctx context.Context, req admission.Reques
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) VpcUpdateHook(_ context.Context, req admission.Request) admission.Response {
@@ -46,7 +46,7 @@ func (v *ValidatingHook) VpcUpdateHook(_ context.Context, req admission.Request)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request) admission.Response {
@@ -57,5 +57,5 @@ func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request)
 	if len(vpc.Status.Subnets) != 0 {
 		return ctrlwebhook.Denied("can't delete vpc when any subnet in the vpc")
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }

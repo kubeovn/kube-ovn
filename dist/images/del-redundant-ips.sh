@@ -76,6 +76,6 @@ case $yn in
 	  ;;
 	no )
 		exit;;
-	* ) echo invalid response, exist;
+	* ) echo invalid response, exit;
 		exit 1;;
 esac

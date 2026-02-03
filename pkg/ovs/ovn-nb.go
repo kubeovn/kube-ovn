@@ -148,7 +148,7 @@ func (c *OVNNbClient) CreateRouterPortOp(lsName, lrName, lspName, lrpName, ip, m
 		return nil, err
 	}
 
-	// lsp or lrp must all exist or not because of ovsdb ACID transcation
+	// lsp or lrp must all exist or not because of ovsdb ACID transaction
 	if lspExist {
 		return nil, nil
 	}

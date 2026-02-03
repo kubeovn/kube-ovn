@@ -72,7 +72,7 @@ func CmdMain() {
 			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-			listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
 			if err != nil {
 				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
 			}
@@ -84,7 +84,7 @@ func CmdMain() {
 					IdleTimeout:       90 * time.Second,
 					ReadHeaderTimeout: 32 * time.Second,
 				},
-				Listener: listerner,
+				Listener: listener,
 			}
 			go func() {
 				if err = svr.Start(ctx); err != nil {
@@ -106,7 +106,7 @@ func CmdMain() {
 			}
 		} else {
 			klog.Info("metrics server is disabled")
-			listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.PprofPort)})
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.PprofPort)})
 			if err != nil {
 				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddrs[0], config.PprofPort))
 			}
@@ -122,7 +122,7 @@ func CmdMain() {
 					IdleTimeout:       90 * time.Second,
 					ReadHeaderTimeout: 32 * time.Second,
 				},
-				Listener: listerner,
+				Listener: listener,
 			}
 			go func() {
 				if err = svr.Start(ctx); err != nil {

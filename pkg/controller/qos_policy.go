@@ -194,7 +194,7 @@ func (c *Controller) handleDelQoSPoliciesFinalizer(key string) error {
 }
 
 func (c *Controller) syncQoSPolicyFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	polices := &kubeovnv1.QoSPolicyList{}
 	return migrateFinalizers(cl, polices, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(polices.Items) {

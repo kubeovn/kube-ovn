@@ -28,10 +28,10 @@ type VpcEgressGatewayClient struct {
 	v1.VpcEgressGatewayInterface
 }
 
-func NewVpcEgressGatewayClient(cs clientset.Interface, namespapce string) *VpcEgressGatewayClient {
+func NewVpcEgressGatewayClient(cs clientset.Interface, namespace string) *VpcEgressGatewayClient {
 	return &VpcEgressGatewayClient{
-		namespace:                 namespapce,
-		VpcEgressGatewayInterface: cs.KubeovnV1().VpcEgressGateways(namespapce),
+		namespace:                 namespace,
+		VpcEgressGatewayInterface: cs.KubeovnV1().VpcEgressGateways(namespace),
 	}
 }
 
@@ -43,11 +43,11 @@ func (f *Framework) VpcEgressGatewayClient() *VpcEgressGatewayClient {
 	}
 }
 
-func (f *Framework) VpcEgressGatewayClientNS(namespapce string) *VpcEgressGatewayClient {
+func (f *Framework) VpcEgressGatewayClientNS(namespace string) *VpcEgressGatewayClient {
 	return &VpcEgressGatewayClient{
 		f:                         f,
-		namespace:                 namespapce,
-		VpcEgressGatewayInterface: f.KubeOVNClientSet.KubeovnV1().VpcEgressGateways(namespapce),
+		namespace:                 namespace,
+		VpcEgressGatewayInterface: f.KubeOVNClientSet.KubeovnV1().VpcEgressGateways(namespace),
 	}
 }
 

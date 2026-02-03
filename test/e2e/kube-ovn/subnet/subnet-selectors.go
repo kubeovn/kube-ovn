@@ -120,7 +120,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		lsAnnotation := checkNs3.Annotations[util.LogicalSwitchAnnotation]
 		framework.ExpectNotEqual(lsAnnotation, subnet.Name)
 
-		// 2. add labels matched witch subnet namespaceSelector
+		// 2. add labels matched with subnet namespaceSelector
 		ginkgo.By("Add labels for namespace " + ns3Name + ", should annotate with subnet " + subnet.Name)
 		originLabels := checkNs3.Labels
 		modifiedNs3 := checkNs3.DeepCopy()
@@ -138,7 +138,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			return false, nil
 		}, "failed to update annotation for ns "+checkNs3.Name)
 
-		// 3. delete labels matched witch subnet namespaceSelector
+		// 3. delete labels matched with subnet namespaceSelector
 		ginkgo.By("Delete labels for namespace " + ns3Name + ", should not annotate with subnet " + subnet.Name)
 		modifiedNs3 = checkNs3.DeepCopy()
 		modifiedNs3.Labels = originLabels

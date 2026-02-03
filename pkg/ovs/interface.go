@@ -288,7 +288,7 @@ type Chassis interface {
 	DeleteChassisByHost(node string) error
 	GetChassisByHost(nodeName string) (*ovnsb.Chassis, error)
 	GetChassis(chassisName string, ignoreNotFound bool) (*ovnsb.Chassis, error)
-	GetKubeOvnChassisses() (*[]ovnsb.Chassis, error)
+	GetKubeOvnChassises() (*[]ovnsb.Chassis, error)
 	UpdateChassisTag(chassisName, nodeName string) error
 	UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error
 	ListChassis() (*[]ovnsb.Chassis, error)

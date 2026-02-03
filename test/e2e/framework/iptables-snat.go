@@ -99,7 +99,7 @@ func (c *IptablesSnatClient) PatchSync(original, modified *apiv1.IptablesSnatRul
 	return c.Get(snat.Name).DeepCopy()
 }
 
-// Delete deletes a iptables snat if the iptables snat exists
+// Delete deletes an iptables SNAT rule if it exists
 func (c *IptablesSnatClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesSnatRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})

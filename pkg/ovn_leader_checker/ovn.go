@@ -46,7 +46,7 @@ var failCount int
 
 var labelSelector = labels.Set{discoveryv1.LabelServiceName: OvnNorthdServiceName}.AsSelector().String()
 
-// Configuration is the controller conf
+// Configuration is the controller config
 type Configuration struct {
 	KubeConfigFile  string
 	KubeClient      kubernetes.Interface

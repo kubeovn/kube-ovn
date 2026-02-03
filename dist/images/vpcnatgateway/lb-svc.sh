@@ -96,7 +96,7 @@ case $opt in
         add_dnat $rules
         ;;
     dnat-del)
-        echo "dnat-del rules"
+        echo "dnat-del $rules"
         del_dnat $rules
         ;;
     *)

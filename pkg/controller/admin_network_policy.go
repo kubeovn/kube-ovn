@@ -383,7 +383,7 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 
 	anpName := getAnpName(anp.Name)
 
-	// ACLs releated to port_group will be deleted automatically when port_group is deleted
+	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := strings.ReplaceAll(anpName, "-", ".")
 	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete port group for anp %s: %v", anpName, err)

@@ -262,7 +262,7 @@ func formatExcludeIPs(subnet *kubeovnv1.Subnet) {
 }
 
 func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	subnets := &kubeovnv1.SubnetList{}
 	return migrateFinalizers(cl, subnets, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(subnets.Items) {
@@ -275,7 +275,7 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 		newSubnet := subnet.DeepCopy()
-		controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.AddFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
@@ -299,7 +299,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
-		controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {

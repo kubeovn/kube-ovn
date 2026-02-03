@@ -22,7 +22,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// Configuration is the controller conf
+// Configuration is the controller config
 type Configuration struct {
 	OvnNbAddr              string
 	OvnSbAddr              string
@@ -437,7 +437,7 @@ func (config *Configuration) initKubeClient() error {
 
 	ExtClient, err := extClientSet.NewForConfig(cfg)
 	if err != nil {
-		klog.Errorf("init extentsion client failed %v", err)
+		klog.Errorf("init extension client failed %v", err)
 		return err
 	}
 	config.ExtClient = ExtClient

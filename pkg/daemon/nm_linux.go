@@ -249,7 +249,7 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 			}
 			if vlanManaged {
 				// After setting device managed=no, the vlan interface will be set down by NetworkManager.
-				klog.Infof(`device %q has a vlan interface %q mannaged by NetworkManager, will not set the NetworkManager property "managed" to %v`, name, l.Attrs().Name, managed)
+				klog.Infof(`device %q has a vlan interface %q managed by NetworkManager, will not set the NetworkManager property "managed" to %v`, name, l.Attrs().Name, managed)
 				return nil
 			}
 		}

@@ -102,7 +102,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 	var namespaceName string
 
-	var sharedVipName, sharedEipDnatName, sharedEipFipShoudOkName, sharedEipFipShoudFailName string
+	var sharedVipName, sharedEipDnatName, sharedEipFipShouldOkName, sharedEipFipShouldFailName string
 	var fipPodName, podEipName, podFipName string
 	var fipExtraPodName, podExtraEipName, podExtraFipName string
 
@@ -149,8 +149,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// sharing case
 		sharedVipName = "shared-vip-" + framework.RandomSuffix()
 		sharedEipDnatName = "shared-eip-dnat-" + framework.RandomSuffix()
-		sharedEipFipShoudOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
-		sharedEipFipShoudFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
+		sharedEipFipShouldOkName = "shared-eip-fip-should-ok-" + framework.RandomSuffix()
+		sharedEipFipShouldFailName = "shared-eip-fip-should-fail-" + framework.RandomSuffix()
 
 		// pod with fip
 		fipPodName = "fip-pod-" + framework.RandomSuffix()
@@ -351,10 +351,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// clean up share eip case resource
 		ginkgo.By("Deleting share ovn dnat " + sharedEipDnatName)
 		ovnDnatRuleClient.DeleteSync(sharedEipDnatName)
-		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudOkName)
-		ovnFipClient.DeleteSync(sharedEipFipShoudOkName)
-		ginkgo.By("Deleting share ovn fip " + sharedEipFipShoudFailName)
-		ovnFipClient.DeleteSync(sharedEipFipShoudFailName)
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShouldOkName)
+		ovnFipClient.DeleteSync(sharedEipFipShouldOkName)
+		ginkgo.By("Deleting share ovn fip " + sharedEipFipShouldFailName)
+		ovnFipClient.DeleteSync(sharedEipFipShouldFailName)
 		ginkgo.By("Deleting share ovn snat " + lrpEipSnatName)
 		ovnSnatRuleClient.DeleteSync(lrpEipSnatName)
 		ginkgo.By("Deleting share ovn snat " + lrpExtraEipSnatName)
@@ -617,10 +617,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "")
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
-		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShoudOkName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
+		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShouldOkName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
 		_ = ovnFipClient.CreateSync(shareFipShouldOk)
 		ginkgo.By("Creating the second ovn fip with share eip vip should be failed")
-		shareFipShouldFail := framework.MakeOvnFip(sharedEipFipShoudFailName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
+		shareFipShouldFail := framework.MakeOvnFip(sharedEipFipShouldFailName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
 		_ = ovnFipClient.Create(shareFipShouldFail)
 		ginkgo.By("Creating ovn dnat for dnat with share eip vip")
 		shareDnat := framework.MakeOvnDnatRule(sharedEipDnatName, noBfdlrpEipName, util.Vip, sharedVipName, "", "", "80", "8080", "tcp")
@@ -632,9 +632,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		shareDnat = ovnDnatRuleClient.Get(sharedEipDnatName)
 
 		ginkgo.By("Get share fip should ok")
-		shareFipShouldOk = ovnFipClient.Get(sharedEipFipShoudOkName)
+		shareFipShouldOk = ovnFipClient.Get(sharedEipFipShouldOkName)
 		ginkgo.By("Get share fip should fail")
-		shareFipShouldFail = ovnFipClient.Get(sharedEipFipShoudFailName)
+		shareFipShouldFail = ovnFipClient.Get(sharedEipFipShouldFailName)
 		// check
 		ginkgo.By("Check share eip should has the external ip label")
 		framework.ExpectHaveKeyWithValue(noBfdLrpEip.Labels, util.EipV4IpLabel, noBfdLrpEip.Spec.V4Ip)
@@ -833,7 +833,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		// nat with ip crd name and share the same external eip tests all passed
 		ginkgo.By("2. Test custom vpc with bfd route")
-		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditonal way")
+		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditional way")
 		ginkgo.By("Create dnat, fip, snat with eip name and ip or ip cidr")
 
 		for _, nodeName := range nodeNames {

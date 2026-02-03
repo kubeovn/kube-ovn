@@ -402,7 +402,7 @@ func TestGetDualStaticAddress(t *testing.T) {
 	require.Equal(t, "pod1.default", usingPod)
 }
 
-func TestGetGetV4RandomAddress(t *testing.T) {
+func TestGetV4RandomAddress(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
@@ -433,7 +433,7 @@ func TestGetGetV4RandomAddress(t *testing.T) {
 	require.NotEqual(t, mac1, mac2)
 }
 
-func TestGetGetV4RandomAddressPTP(t *testing.T) {
+func TestGetV4RandomAddressPTP(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.0",
 	}
@@ -457,7 +457,7 @@ func TestGetGetV4RandomAddressPTP(t *testing.T) {
 	require.Equal(t, "pod1.default", usingPod)
 }
 
-func TestGetGetV6RandomAddress(t *testing.T) {
+func TestGetV6RandomAddress(t *testing.T) {
 	excludeIps := []string{
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
@@ -527,7 +527,7 @@ func TestReleaseAddrForV4Subnet(t *testing.T) {
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
 		"10.0.0.252", "10.0.0.253", "10.0.0.254",
 	}
-	subnet, err := NewSubnet("testV4RleasedSubnet", "10.0.0.0/24", excludeIps)
+	subnet, err := NewSubnet("testV4ReleasedSubnet", "10.0.0.0/24", excludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, subnet)
 	// 1. pod1 get random v4 address
@@ -557,7 +557,7 @@ func TestReleaseAddrForV4Subnet(t *testing.T) {
 
 func TestReleaseV6SubnetAddrForV6Subnet(t *testing.T) {
 	excludeIps := []string{"2001:db8::2", "2001:db8::4", "2001:db8::100", "2001:db8::252", "2001:db8::253", "2001:db8::254"}
-	subnet, err := NewSubnet("testV6RleasedSubnet", "2001:db8::/64", excludeIps)
+	subnet, err := NewSubnet("testV6ReleasedSubnet", "2001:db8::/64", excludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, subnet)
 	// 1. pod1 get random v6 address
@@ -592,7 +592,7 @@ func TestReleaseAddrForDualSubnet(t *testing.T) {
 		"2001:db8::2", "2001:db8::4", "2001:db8::100",
 		"2001:db8::252", "2001:db8::253", "2001:db8::254",
 	}
-	subnet, err := NewSubnet("testDualRleasedSubnet", "10.0.0.0/24,2001:db8::/64", excludeIps)
+	subnet, err := NewSubnet("testDualReleasedSubnet", "10.0.0.0/24,2001:db8::/64", excludeIps)
 	require.NoError(t, err)
 	require.NotNil(t, subnet)
 	// 1. pod1 get random v4, v6 address
