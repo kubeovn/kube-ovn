@@ -33,7 +33,13 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const ovnLeaderResource = "kube-ovn-controller"
+const (
+	ovnLeaderResource     = "kube-ovn-controller"
+	leaderLeaseDuration   = 30 * time.Second
+	leaderRenewDeadline   = 20 * time.Second
+	leaderRetryPeriod     = 6 * time.Second
+	leaderLockTimeout     = 20 * time.Second
+)
 
 func CmdMain() {
 	defer klog.Flush()
@@ -146,16 +152,16 @@ func CmdMain() {
 			EventRecorder: recorder,
 		},
 		config.KubeRestConfig,
-		20*time.Second)
+		leaderLockTimeout)
 	if err != nil {
 		klog.Fatalf("error creating lock: %v", err)
 	}
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: 30 * time.Second,
-		RenewDeadline: 20 * time.Second,
-		RetryPeriod:   6 * time.Second,
+		LeaseDuration: leaderLeaseDuration,
+		RenewDeadline: leaderRenewDeadline,
+		RetryPeriod:   leaderRetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				controller.Run(ctx, config)
@@ -180,7 +186,7 @@ func CmdMain() {
 func checkPermission(config *controller.Configuration) error {
 	resources := []string{"vpcs", "subnets", "ips", "vlans", "vpc-nat-gateways"}
 	for _, res := range resources {
-		ssar := &v1.SelfSubjectAccessReview{
+		req := &v1.SelfSubjectAccessReview{
 			Spec: v1.SelfSubjectAccessReviewSpec{
 				ResourceAttributes: &v1.ResourceAttributes{
 					Verb:     "watch",
@@ -189,13 +195,13 @@ func checkPermission(config *controller.Configuration) error {
 				},
 			},
 		}
-		ssar, err := config.KubeClient.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), ssar, metav1.CreateOptions{})
+		resp, err := config.KubeClient.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), req, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("failed to get permission for resource %s, %v", res, err)
 			return err
 		}
-		if !ssar.Status.Allowed {
-			return fmt.Errorf("no permission to watch resource %s, %s", res, ssar.Status.Reason)
+		if !resp.Status.Allowed {
+			return fmt.Errorf("no permission to watch resource %s, %s", res, resp.Status.Reason)
 		}
 	}
 	return nil

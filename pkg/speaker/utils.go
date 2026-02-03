@@ -14,6 +14,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const podReasonEvicted = "Evicted"
+
 // prefixMap is a map associating an BGP address family (IPv4 or IPv6) and an IP set
 type prefixMap map[api.Family_Afi]set.Set[string]
 
@@ -42,7 +44,7 @@ func isPodAlive(p *corev1.Pod) bool {
 		return false
 	}
 
-	if p.Status.Phase == corev1.PodFailed && p.Status.Reason == "Evicted" {
+	if p.Status.Phase == corev1.PodFailed && p.Status.Reason == podReasonEvicted {
 		return false
 	}
 	return true

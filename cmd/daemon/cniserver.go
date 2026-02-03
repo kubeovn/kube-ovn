@@ -38,11 +38,11 @@ func main() {
 		}
 		return
 	}
-	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	logFilePerm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse log-perm")
 	}
-	util.InitLogFilePerm("kube-ovn-cni", os.FileMode(perm))
+	util.InitLogFilePerm("kube-ovn-cni", os.FileMode(logFilePerm))
 	printCaps()
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
@@ -223,11 +223,11 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
 }
 
-func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
+func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, cfg *daemon.Configuration) (err error) {
 	for i := 0; ; i++ {
-		err = f(ctrl)
+		err = f(cfg)
 		if err == nil {
-			return err
+			return nil
 		}
 		if i >= (attempts - 1) {
 			break

@@ -137,7 +137,7 @@ func tcpAddrFamily(net string, laddr, raddr *net.TCPAddr) int {
 	}
 
 	if (laddr == nil || laddr.IP.To4() != nil) &&
-		(raddr == nil || laddr.IP.To4() != nil) {
+		(raddr == nil || raddr.IP.To4() != nil) {
 		return syscall.AF_INET
 	}
 	return syscall.AF_INET6
@@ -167,7 +167,7 @@ func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote, isnonbl
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("build local socket address: %w", err)}
 	}
 
-	fileDescriptor, err := syscall.Socket(tcpAddrFamily("tcp", raddr, laddr), syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
+	fileDescriptor, err := syscall.Socket(tcpAddrFamily("tcp", laddr, raddr), syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
 	if err != nil {
 		klog.Error(err)
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket open: %w", err)}

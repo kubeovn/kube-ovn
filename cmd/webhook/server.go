@@ -37,6 +37,7 @@ func init() {
 }
 
 func CmdMain() {
+	defer klog.Flush()
 	klog.Info(versions.String())
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
@@ -78,31 +79,29 @@ func CmdMain() {
 		HealthProbeBindAddress: util.JoinHostPort(os.Getenv(util.EnvPodIP), *healthProbePort),
 	})
 	if err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "failed to create manager")
 	}
 
 	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache())
 	if err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "failed to create validating hook")
 	}
 
 	klog.Infof("register path /validating")
-	// Register the webhooks in the server.
 	hookServer.Register("/validating", &ctrlwebhook.Admission{Handler: validatingHook})
 
 	if err := mgr.Add(hookServer); err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "failed to add webhook server to manager")
 	}
 
 	if err = mgr.AddHealthzCheck("liveness probe", healthz.Ping); err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "failed to add healthz check")
 	}
 	if err = mgr.AddReadyzCheck("readiness probe", healthz.Ping); err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "failed to add readyz check")
 	}
 
-	// Start the server by starting a previously-set-up manager
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		panic(err)
+		util.LogFatalAndExit(err, "manager exited with error")
 	}
 }

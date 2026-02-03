@@ -31,11 +31,11 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
-	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	logFilePerm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse log-perm")
 	}
-	util.InitLogFilePerm("kube-ovn-monitor", os.FileMode(perm))
+	util.InitLogFilePerm("kube-ovn-monitor", os.FileMode(logFilePerm))
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()

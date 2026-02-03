@@ -26,11 +26,11 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
-	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
+	logFilePerm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse log-perm")
 	}
-	util.InitLogFilePerm("kube-ovn-ic-controller", os.FileMode(perm))
+	util.InitLogFilePerm("kube-ovn-ic-controller", os.FileMode(logFilePerm))
 
 	stopCh := signals.SetupSignalHandler().Done()
 	ctl := ovn_ic_controller.NewController(config)
