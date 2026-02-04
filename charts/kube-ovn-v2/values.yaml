@@ -408,6 +408,7 @@ ovsOvn:
     limits:
       cpu: "2"
       memory: "1000Mi"
+      ephemeral-storage: 1Gi
 
   # -- ovs-ovn DaemonSet update strategy.
   # ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy
@@ -460,6 +461,7 @@ ovsOvn:
         hugepages-2Mi: 1Gi
         cpu: "2"
         memory: "1000Mi"
+        ephemeral-storage: 1Gi
 
 # -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world.
 # @section -- BGP speaker configuration
@@ -542,6 +544,7 @@ pinger:
     limits:
       cpu: "200m"
       memory: "400Mi"
+      ephemeral-storage: 1Gi
 
   # -- kube-ovn-pinger metrics configuration.
   # @section -- Ping daemon configuration
@@ -610,6 +613,7 @@ monitor:
     limits:
       cpu: "200m"
       memory: "200Mi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-monitor.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -675,6 +679,7 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-controller.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -740,6 +745,7 @@ central:
     limits:
       cpu: "3"
       memory: "4Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for ovn-central.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -841,6 +847,7 @@ agent:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Agent metrics configuration.
   # @section -- CNI agent configuration
