@@ -127,6 +127,9 @@ spec:
           - --enable-np={{- .Values.func.ENABLE_NP }}
           - --np-enforcement={{- .Values.func.NP_ENFORCEMENT }}
           - --enable-eip-snat={{- .Values.networking.ENABLE_EIP_SNAT }}
+          {{- if .Values.networking.EXTERNAL_GATEWAY_CONFIG_NS }}
+          - --external-gateway-config-ns={{- .Values.networking.EXTERNAL_GATEWAY_CONFIG_NS }}
+          {{- end }}
           - --enable-external-vpc={{- .Values.func.ENABLE_EXTERNAL_VPC }}
           - --enable-ecmp={{- .Values.networking.ENABLE_ECMP }}
           - --logtostderr=false
