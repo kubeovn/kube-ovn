@@ -2,9 +2,6 @@ package main
 
 import (
 	"errors"
-	"net"
-	"net/http"
-	"net/http/pprof"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +13,6 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -131,72 +127,11 @@ func main() {
 	}
 
 	servePprofInMetricsServer := config.EnableMetrics && slices.Contains(addrs, "0.0.0.0")
-	if config.EnablePprof && !servePprofInMetricsServer {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
-		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
-		}
-		svr := manager.Server{
-			Name: "pprof",
-			Server: &http.Server{
-				Handler:           mux,
-				MaxHeaderBytes:    1 << 20,
-				IdleTimeout:       90 * time.Second,
-				ReadHeaderTimeout: 32 * time.Second,
-			},
-			Listener: listerner,
-		}
-		go func() {
-			if err = svr.Start(ctx); err != nil {
-				util.LogFatalAndExit(err, "failed to run pprof server")
-			}
-		}()
-	}
-
+	metrics.StartPprofServerIfNeeded(ctx, config.EnablePprof, servePprofInMetricsServer, "127.0.0.1", int(config.PprofPort))
 	if config.EnableMetrics {
 		daemon.InitMetrics()
-		metrics.InitKlogMetrics()
-		for _, addr := range addrs {
-			listenAddr := util.JoinHostPort(addr, config.PprofPort)
-			go func() {
-				if err := metrics.Run(ctx, nil, listenAddr, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
-					util.LogFatalAndExit(err, "failed to run metrics server")
-				}
-			}()
-		}
-	} else {
-		klog.Info("metrics server is disabled")
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addrs[0]), Port: int(config.PprofPort)})
-		if err != nil {
-			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(addrs[0], config.PprofPort))
-		}
-		mux := http.NewServeMux()
-		mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
-		mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
-		mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
-		svr := manager.Server{
-			Name: "health-check",
-			Server: &http.Server{
-				Handler:           mux,
-				MaxHeaderBytes:    1 << 20,
-				IdleTimeout:       90 * time.Second,
-				ReadHeaderTimeout: 32 * time.Second,
-			},
-			Listener: listerner,
-		}
-		go func() {
-			if err = svr.Start(ctx); err != nil {
-				util.LogFatalAndExit(err, "failed to run health check server")
-			}
-		}()
 	}
+	metrics.StartMetricsOrHealthServer(ctx, config.EnableMetrics, addrs, int(config.PprofPort), nil, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites)
 
 	<-stopCh
 }
