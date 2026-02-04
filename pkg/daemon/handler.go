@@ -378,17 +378,32 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
+	v4IP, v6IP := util.SplitStringIP(ip)
+	v4CIDR, v6CIDR := util.SplitStringIP(cidr)
+	v4GW, v6GW := util.SplitStringIP(gw)
+
+	var ips []request.IPConfig
+	if v4IP != "" {
+		cfg := request.IPConfig{Protocol: kubeovnv1.ProtocolIPv4, IP: v4IP, CIDR: v4CIDR}
+		if isDefaultRoute {
+			cfg.Gateway = v4GW
+		}
+		ips = append(ips, cfg)
+	}
+	if v6IP != "" {
+		cfg := request.IPConfig{Protocol: kubeovnv1.ProtocolIPv6, IP: v6IP, CIDR: v6CIDR}
+		if isDefaultRoute {
+			cfg.Gateway = v6GW
+		}
+		ips = append(ips, cfg)
+	}
+
 	response := &request.CniResponse{
-		Protocol:   util.CheckProtocol(cidr),
-		IPAddress:  ip,
+		IPs:        ips,
 		MacAddress: macAddr,
-		CIDR:       cidr,
 		PodNicName: podNicName,
 		Routes:     routes,
 		Mtu:        mtu,
-	}
-	if isDefaultRoute {
-		response.Gateway = gw
 	}
 	if err := resp.WriteHeaderAndEntity(http.StatusOK, response); err != nil {
 		klog.Errorf("failed to write response, %v", err)

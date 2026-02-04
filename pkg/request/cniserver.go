@@ -19,6 +19,14 @@ type Route struct {
 	Gateway     string `json:"gw,omitempty"`
 }
 
+// IPConfig represents a single IP configuration (one per protocol)
+type IPConfig struct {
+	Protocol string `json:"protocol"`
+	IP       string `json:"ip"`
+	CIDR     string `json:"cidr"`
+	Gateway  string `json:"gateway,omitempty"`
+}
+
 // CniRequest is the cniserver request format
 type CniRequest struct {
 	CniType      string    `json:"cni_type"`
@@ -42,16 +50,13 @@ type CniRequest struct {
 
 // CniResponse is the cniserver response format
 type CniResponse struct {
-	Protocol   string    `json:"protocol"`
-	IPAddress  string    `json:"address"`
-	MacAddress string    `json:"mac_address"`
-	CIDR       string    `json:"cidr"`
-	Gateway    string    `json:"gateway"`
-	Routes     []Route   `json:"routes"`
-	Mtu        int       `json:"mtu"`
-	PodNicName string    `json:"nicname"`
-	DNS        types.DNS `json:"dns"`
-	Err        string    `json:"error"`
+	IPs        []IPConfig `json:"ips"`
+	MacAddress string     `json:"mac_address"`
+	Routes     []Route    `json:"routes"`
+	Mtu        int        `json:"mtu"`
+	PodNicName string     `json:"nicname"`
+	DNS        types.DNS  `json:"dns"`
+	Err        string     `json:"error"`
 }
 
 // Add pod request
