@@ -400,7 +400,7 @@ func (config *Configuration) initBgpServer() error {
 // It retries up to addPeerMaxRetries times with addPeerRetryInterval between attempts.
 func addPeerWithRetry(s *gobgp.BgpServer, peer *api.Peer) error {
 	var err error
-	for i := 0; i < addPeerMaxRetries; i++ {
+	for i := range addPeerMaxRetries {
 		if err = s.AddPeer(context.Background(), &api.AddPeerRequest{
 			Peer: peer,
 		}); err == nil {
