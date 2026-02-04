@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/http"
-	"net/http/pprof"
 	"os"
 	"slices"
 	"strconv"
@@ -22,7 +19,6 @@ import (
 	"k8s.io/klog/v2"
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
@@ -33,7 +29,12 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const ovnLeaderResource = "kube-ovn-controller"
+const (
+	ovnLeaderResource   = "kube-ovn-controller"
+	leaderLeaseDuration = 30 * time.Second
+	leaderRenewDeadline = 20 * time.Second
+	leaderRetryPeriod   = 6 * time.Second
+)
 
 func CmdMain() {
 	defer klog.Flush()
@@ -64,72 +65,8 @@ func CmdMain() {
 	go func() {
 		metricsAddrs := util.GetDefaultListenAddr()
 		servePprofInMetricsServer := config.EnableMetrics && slices.Contains(metricsAddrs, "0.0.0.0")
-		if config.EnablePprof && !servePprofInMetricsServer {
-			mux := http.NewServeMux()
-			mux.HandleFunc("/debug/pprof/", pprof.Index)
-			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: int(config.PprofPort)})
-			if err != nil {
-				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort("127.0.0.1", config.PprofPort))
-			}
-			svr := manager.Server{
-				Name: "pprof",
-				Server: &http.Server{
-					Handler:           mux,
-					MaxHeaderBytes:    1 << 20,
-					IdleTimeout:       90 * time.Second,
-					ReadHeaderTimeout: 32 * time.Second,
-				},
-				Listener: listener,
-			}
-			go func() {
-				if err = svr.Start(ctx); err != nil {
-					util.LogFatalAndExit(err, "failed to run pprof server")
-				}
-			}()
-		}
-
-		if config.EnableMetrics {
-			metrics.InitKlogMetrics()
-			metrics.InitClientGoMetrics()
-			for _, metricsAddr := range metricsAddrs {
-				addr := util.JoinHostPort(metricsAddr, config.PprofPort)
-				go func() {
-					if err := metrics.Run(ctx, config.KubeRestConfig, addr, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites); err != nil {
-						util.LogFatalAndExit(err, "failed to run metrics server")
-					}
-				}()
-			}
-		} else {
-			klog.Info("metrics server is disabled")
-			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.PprofPort)})
-			if err != nil {
-				util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddrs[0], config.PprofPort))
-			}
-			mux := http.NewServeMux()
-			mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
-			mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
-			mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
-			svr := manager.Server{
-				Name: "health-check",
-				Server: &http.Server{
-					Handler:           mux,
-					MaxHeaderBytes:    1 << 20,
-					IdleTimeout:       90 * time.Second,
-					ReadHeaderTimeout: 32 * time.Second,
-				},
-				Listener: listener,
-			}
-			go func() {
-				if err = svr.Start(ctx); err != nil {
-					util.LogFatalAndExit(err, "failed to run health check server")
-				}
-			}()
-		}
+		metrics.StartPprofServerIfNeeded(ctx, config.EnablePprof, servePprofInMetricsServer, "127.0.0.1", int(config.PprofPort))
+		metrics.StartMetricsOrHealthServer(ctx, config.EnableMetrics, metricsAddrs, int(config.PprofPort), config.KubeRestConfig, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites)
 
 		<-ctx.Done()
 	}()
@@ -146,16 +83,16 @@ func CmdMain() {
 			EventRecorder: recorder,
 		},
 		config.KubeRestConfig,
-		20*time.Second)
+		leaderRenewDeadline)
 	if err != nil {
 		klog.Fatalf("error creating lock: %v", err)
 	}
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: 30 * time.Second,
-		RenewDeadline: 20 * time.Second,
-		RetryPeriod:   6 * time.Second,
+		LeaseDuration: leaderLeaseDuration,
+		RenewDeadline: leaderRenewDeadline,
+		RetryPeriod:   leaderRetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				controller.Run(ctx, config)
@@ -180,7 +117,7 @@ func CmdMain() {
 func checkPermission(config *controller.Configuration) error {
 	resources := []string{"vpcs", "subnets", "ips", "vlans", "vpc-nat-gateways"}
 	for _, res := range resources {
-		ssar := &v1.SelfSubjectAccessReview{
+		req := &v1.SelfSubjectAccessReview{
 			Spec: v1.SelfSubjectAccessReviewSpec{
 				ResourceAttributes: &v1.ResourceAttributes{
 					Verb:     "watch",
@@ -189,13 +126,13 @@ func checkPermission(config *controller.Configuration) error {
 				},
 			},
 		}
-		ssar, err := config.KubeClient.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), ssar, metav1.CreateOptions{})
+		resp, err := config.KubeClient.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), req, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("failed to get permission for resource %s, %v", res, err)
 			return err
 		}
-		if !ssar.Status.Allowed {
-			return fmt.Errorf("no permission to watch resource %s, %s", res, ssar.Status.Reason)
+		if !resp.Status.Allowed {
+			return fmt.Errorf("no permission to watch resource %s, %s", res, resp.Status.Reason)
 		}
 	}
 	return nil

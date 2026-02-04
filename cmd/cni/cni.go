@@ -46,9 +46,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	if netConf.Provider == "" && netConf.Type == util.CniTypeName && args.IfName == "eth0" {
-		netConf.Provider = util.OvnProvider
-	}
+	applyDefaultProvider(netConf, args)
 
 	if err = sysctlEnableIPv6(args.Netns); err != nil {
 		return err
@@ -137,9 +135,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	if netConf.Provider == "" && netConf.Type == util.CniTypeName && args.IfName == "eth0" {
-		netConf.Provider = util.OvnProvider
-	}
+	applyDefaultProvider(netConf, args)
 
 	err = client.Del(request.CniRequest{
 		CniType:                    netConf.Type,
@@ -157,6 +153,12 @@ func cmdDel(args *skel.CmdArgs) error {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
 	}
 	return nil
+}
+
+func applyDefaultProvider(netConf *netconf.NetConf, args *skel.CmdArgs) {
+	if netConf.Provider == "" && netConf.Type == util.CniTypeName && args.IfName == "eth0" {
+		netConf.Provider = util.OvnProvider
+	}
 }
 
 func loadNetConf(bytes []byte) (*netconf.NetConf, string, error) {
