@@ -16,6 +16,7 @@ import (
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -1570,9 +1571,15 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
+		// Skip pods that are not running or are completed/failed
+		// This is important for KubeVirt migrations where the old pod
+		// transitions to Completed but isn't deleted immediately,
+		// which can block network access to the new pod with the same IP
 		if !pod.DeletionTimestamp.IsZero() ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
-			pod.Annotations[util.IPAddressAnnotation] == "" {
+			pod.Annotations[util.IPAddressAnnotation] == "" ||
+			pod.Status.Phase == v1.PodSucceeded ||
+			pod.Status.Phase == v1.PodFailed {
 			continue
 		}
 
