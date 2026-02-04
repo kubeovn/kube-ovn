@@ -11,6 +11,16 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestVpcNatGwScriptConstants(t *testing.T) {
+	// Verify the constants are set correctly for backward compatibility
+	assert.Equal(t, "/kube-ovn", vpcNatGwScriptMountPath, "Script mount path should be /kube-ovn")
+	assert.Equal(t, "nat-gw-script", vpcNatGwScriptVolumeName, "Volume name should be nat-gw-script")
+	assert.Equal(t, "nat-gateway.sh", vpcNatGwScriptName, "Script name should be nat-gateway.sh")
+	assert.Equal(t, "/kube-ovn/nat-gateway.sh", vpcNatGwScriptPath, "Script path should be /kube-ovn/nat-gateway.sh")
+	assert.Equal(t, "vpc-nat-gw", vpcNatGwContainerName, "Container name should be vpc-nat-gw")
+	assert.Equal(t, "vpc-nat-gw", vpcNatGwServiceAccountName, "ServiceAccount name should be vpc-nat-gw")
+}
+
 func TestGetSubnetProvider(t *testing.T) {
 	tests := []struct {
 		name             string

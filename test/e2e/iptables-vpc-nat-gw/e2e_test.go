@@ -3,8 +3,10 @@ package ovn_eip
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -198,6 +200,27 @@ func setupVpcNatGwTestEnvironment(
 		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
 		vpcNatGwClient.DeleteSync(vpcNatGwName)
 	})
+}
+
+// readNatGatewayScript returns the content of the nat-gateway.sh script.
+// This is used to copy the script to kind nodes for testing hostPath script mounting.
+func readNatGatewayScript() []byte {
+	// Try multiple paths to find the nat-gateway.sh script
+	paths := []string{
+		"../../../dist/images/vpcnatgateway/nat-gateway.sh", // relative to test/e2e/iptables-vpc-nat-gw
+		"dist/images/vpcnatgateway/nat-gateway.sh",          // from repository root
+	}
+
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			framework.Logf("Successfully read nat-gateway.sh from: %s", path)
+			return content
+		}
+	}
+
+	framework.Failf("Failed to read nat-gateway.sh from any of the expected paths: %v", paths)
+	return nil
 }
 
 // waitForIptablesEIPReady waits for an IptablesEIP to be ready
@@ -430,7 +453,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		oldImage := cm.Data["image"]
-		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.14.25"
+		cm.Data["image"] = "docker.io/kubeovn/vpc-nat-gateway:v1.16.0"
 		cm, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
@@ -1077,6 +1100,159 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// All cleanup is handled by DeferCleanup above
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
+	})
+
+	framework.ConformanceIt("[6] NAT Gateway scripts from host path", func() {
+		f.SkipVersionPriorTo(1, 16, "NAT gateway host path script mounting is only available in Kube-OVN 1.16+")
+
+		// Test-specific variables
+		overlaySubnetV4Cidr := "10.0.5.0/24"
+		overlaySubnetV4Gw := "10.0.5.1"
+		lanIP := "10.0.5.254"
+		natgwQoS := ""
+		hostScriptPath := "/opt/kube-ovn/nat-gateway"
+		scriptFileName := "nat-gateway.sh"
+
+		ginkgo.By("1. Getting kind nodes")
+		nodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+		framework.ExpectNotEmpty(nodes)
+
+		ginkgo.By("2. Creating script directory on all nodes")
+		err = kind.EnsureDirectoryOnNodes(hostScriptPath, nodes)
+		framework.ExpectNoError(err, "creating script directory on nodes")
+
+		ginkgo.By("3. Copying NAT gateway script to all nodes")
+		// Read the nat-gateway.sh script content (embedded in the test binary or from a known path)
+		scriptContent := readNatGatewayScript()
+		err = kind.CopyContentToNodes(scriptContent, scriptFileName, hostScriptPath, nodes)
+		framework.ExpectNoError(err, "copying script to nodes")
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up script directory on nodes")
+			if err := kind.ExecOnNodes(nodes, "rm", "-rf", hostScriptPath); err != nil {
+				framework.Logf("Failed to clean up script directory on nodes: %v", err)
+			}
+		})
+
+		ginkgo.By("4. Verifying script exists on nodes")
+		for _, node := range nodes {
+			stdout, _, err := node.Exec("cat", hostScriptPath+"/"+scriptFileName)
+			framework.ExpectNoError(err, "verifying script on node "+node.Name())
+			framework.ExpectNotEmpty(stdout, "script content should not be empty")
+		}
+
+		ginkgo.By("5. Updating ovn-vpc-nat-config ConfigMap with natGwScriptHostPath")
+		cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		oldScriptHostPath := cm.Data["natGwScriptHostPath"]
+		cm.Data["natGwScriptHostPath"] = hostScriptPath
+		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Restoring ovn-vpc-nat-config ConfigMap")
+			cm, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+			if err != nil {
+				if !k8serrors.IsNotFound(err) {
+					framework.Logf("Failed to get ConfigMap %s for cleanup: %v", vpcNatConfigName, err)
+				}
+				return
+			}
+			if oldScriptHostPath == "" {
+				delete(cm.Data, "natGwScriptHostPath")
+			} else {
+				cm.Data["natGwScriptHostPath"] = oldScriptHostPath
+			}
+			if _, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{}); err != nil {
+				framework.Logf("Failed to restore ovn-vpc-nat-config ConfigMap: %v", err)
+			}
+		})
+
+		ginkgo.By("6. Creating VPC and subnet")
+		vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc " + vpcName)
+			vpcClient.DeleteSync(vpcName)
+		})
+
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom overlay subnet " + overlaySubnetName)
+			subnetClient.DeleteSync(overlaySubnetName)
+		})
+
+		ginkgo.By("7. Creating VPC NAT Gateway")
+		vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, networkAttachDefName, natgwQoS)
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
+			vpcNatGwClient.DeleteSync(vpcNatGwName)
+		})
+
+		ginkgo.By("8. Verifying NAT Gateway pod has hostPath volume mount")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		// Check for hostPath volume
+		// Volume name "nat-gw-script" and mount path "/kube-ovn" are defined in pkg/controller/vpc_nat.go
+		const expectedVolumeName = "nat-gw-script"
+		const expectedMountPath = "/kube-ovn"
+
+		gomega.Eventually(func() error {
+			pod := f.PodClientNS(metav1.NamespaceSystem).GetPod(vpcNatGwPodName)
+			if pod == nil {
+				return fmt.Errorf("NAT Gateway pod %s not found", vpcNatGwPodName)
+			}
+
+			hasHostPathVolume := false
+			for _, vol := range pod.Spec.Volumes {
+				if vol.Name == expectedVolumeName && vol.HostPath != nil {
+					if vol.HostPath.Path != hostScriptPath {
+						return fmt.Errorf("hostPath volume path mismatch: expected %s, got %s", hostScriptPath, vol.HostPath.Path)
+					}
+					hasHostPathVolume = true
+					break
+				}
+			}
+			if !hasHostPathVolume {
+				return errors.New("NAT Gateway pod should have hostPath volume for scripts")
+			}
+
+			hasVolumeMount := false
+			for _, container := range pod.Spec.Containers {
+				if container.Name == "vpc-nat-gw" {
+					for _, mount := range container.VolumeMounts {
+						if mount.Name == expectedVolumeName && mount.MountPath == expectedMountPath {
+							hasVolumeMount = true
+							break
+						}
+					}
+				}
+			}
+			if !hasVolumeMount {
+				return errors.New("vpc-nat-gw container should have volume mount for scripts")
+			}
+
+			return nil
+		}, 30*time.Second, time.Second).Should(gomega.Succeed(), "NAT Gateway pod should have correct hostPath volume mount")
+
+		ginkgo.By("9. Verifying NAT Gateway is functional with host path scripts")
+		// Create an EIP to verify the NAT gateway script is working
+		eipName := "hostpath-eip-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up eip " + eipName)
+			iptablesEIPClient.DeleteSync(eipName)
+		})
+
+		// Wait for EIP to be ready
+		eipCR := waitForIptablesEIPReady(iptablesEIPClient, eipName, 60*time.Second)
+		framework.ExpectNotNil(eipCR, "EIP should be created successfully")
+		framework.ExpectNotEmpty(eipCR.Status.IP, "EIP should have IP assigned")
+		framework.ExpectTrue(eipCR.Status.Ready, "EIP should be ready")
+
+		ginkgo.By("10. Test completed: VPC NAT Gateway with host path scripts works correctly")
 	})
 })
 

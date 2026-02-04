@@ -3,10 +3,12 @@ package kind
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -176,4 +178,64 @@ func NetworkDisconnect(networkID string, nodes []Node) error {
 		}
 	}
 	return nil
+}
+
+// execOnNodesConcurrently runs a given operation on all nodes concurrently.
+func execOnNodesConcurrently(nodes []Node, op func(n Node) error) error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(nodes))
+
+	for _, node := range nodes {
+		wg.Add(1)
+		go func(n Node) {
+			defer wg.Done()
+			if err := op(n); err != nil {
+				errCh <- err
+			}
+		}(node)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	errs := make([]error, 0, len(errCh))
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// CopyFileToNodes copies a file from the local filesystem to all specified nodes concurrently.
+func CopyFileToNodes(srcPath, dstPath string, nodes []Node) error {
+	return execOnNodesConcurrently(nodes, func(n Node) error {
+		if err := docker.CopyFileToContainer(n.ID, srcPath, dstPath); err != nil {
+			return fmt.Errorf("failed to copy file to node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
+}
+
+// CopyContentToNodes copies content to all specified nodes at the given path concurrently.
+func CopyContentToNodes(content []byte, filename, dstPath string, nodes []Node) error {
+	return execOnNodesConcurrently(nodes, func(n Node) error {
+		if err := docker.CopyToContainer(n.ID, dstPath, content, filename); err != nil {
+			return fmt.Errorf("failed to copy content to node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
+}
+
+// EnsureDirectoryOnNodes ensures the specified directory exists on all nodes concurrently.
+func EnsureDirectoryOnNodes(dirPath string, nodes []Node) error {
+	return ExecOnNodes(nodes, "mkdir", "-p", dirPath)
+}
+
+// ExecOnNodes executes a command on all specified nodes concurrently.
+func ExecOnNodes(nodes []Node, cmd ...string) error {
+	return execOnNodesConcurrently(nodes, func(n Node) error {
+		if _, _, err := n.Exec(cmd...); err != nil {
+			return fmt.Errorf("failed to exec command on node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
 }
