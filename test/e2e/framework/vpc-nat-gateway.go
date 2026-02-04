@@ -228,3 +228,9 @@ func MakeVpcNatGatewayWithNoDefaultEIP(name, vpc, subnet, lanIP, externalSubnet,
 	vpcNatGw.Spec.NoDefaultEIP = noDefaultEIP
 	return vpcNatGw
 }
+
+func MakeVpcNatGatewayWithAnnotations(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName string, annotations map[string]string) *apiv1.VpcNatGateway {
+	vpcNatGw := MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName)
+	vpcNatGw.Spec.Annotations = annotations
+	return vpcNatGw
+}

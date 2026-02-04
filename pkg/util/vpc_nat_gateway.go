@@ -58,9 +58,11 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
-// GenNatGwPodAnnotations returns the Pod annotations for a NAT gateway
-// additionalNetworks is optional, used when users specify extra NADs in gw.Annotations
-func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
+// GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
+// userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
+// are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
+// users specify extra NADs in gw.Annotations.
+func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
@@ -71,12 +73,17 @@ func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, e
 		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
 
-	result := map[string]string{
-		nadv1.NetworkAttachmentAnnot:                    attachedNetworks,
-		VpcNatGatewayAnnotation:                         gw.Name,
-		fmt.Sprintf(LogicalSwitchAnnotationTemplate, p): gw.Spec.Subnet,
-		fmt.Sprintf(IPAddressAnnotationTemplate, p):     gw.Spec.LanIP,
+	// Create a new map to avoid modifying the input map (which may be from informer cache)
+	result := make(map[string]string, len(userAnnotations)+5)
+	for k, v := range userAnnotations {
+		result[k] = v
 	}
+
+	// Set system annotations (overwrites any conflicting user annotations)
+	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+	result[VpcNatGatewayAnnotation] = gw.Name
+	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
+	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
 	// We're using a custom provider, we need to override the default network of the pod so that the
 	// default VPC/Subnet of the cluster isn't accidentally injected.

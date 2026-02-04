@@ -410,7 +410,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := GenNatGwPodAnnotations(&tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks)
+			result, err := GenNatGwPodAnnotations(nil, &tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks)
 			if (err != nil) != tc.expectError {
 				t.Errorf("expected error: %v, but got: %v", tc.expectError, err)
 			}
