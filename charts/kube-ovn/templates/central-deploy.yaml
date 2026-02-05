@@ -122,6 +122,7 @@ spec:
             limits:
               cpu: {{ index .Values "ovn-central" "limits" "cpu" }}
               memory: {{ index .Values "ovn-central" "limits" "memory" }}
+              ephemeral-storage: {{ index .Values "ovn-central" "limits" "ephemeral-storage" }}
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn

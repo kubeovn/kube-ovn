@@ -156,6 +156,7 @@ ovn-central:
   limits:
     cpu: "3"
     memory: "4Gi"
+    ephemeral-storage: 1Gi
 ovs-ovn:
   requests:
     cpu: "200m"
@@ -163,6 +164,7 @@ ovs-ovn:
   limits:
     cpu: "2"
     memory: "1000Mi"
+    ephemeral-storage: 1Gi
 kube-ovn-controller:
   requests:
     cpu: "200m"
@@ -170,6 +172,7 @@ kube-ovn-controller:
   limits:
     cpu: "1000m"
     memory: "1Gi"
+    ephemeral-storage: 1Gi
 kube-ovn-cni:
   requests:
     cpu: "100m"
@@ -177,6 +180,7 @@ kube-ovn-cni:
   limits:
     cpu: "1000m"
     memory: "1Gi"
+    ephemeral-storage: 1Gi
 kube-ovn-pinger:
   requests:
     cpu: "100m"
@@ -184,6 +188,7 @@ kube-ovn-pinger:
   limits:
     cpu: "200m"
     memory: "400Mi"
+    ephemeral-storage: 1Gi
 kube-ovn-monitor:
   requests:
     cpu: "200m"
@@ -191,3 +196,4 @@ kube-ovn-monitor:
   limits:
     cpu: "200m"
     memory: "200Mi"
+    ephemeral-storage: 1Gi
