@@ -289,23 +289,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	learnFromARPRequest := vpc.Spec.EnableExternal
-	if !learnFromARPRequest {
-		for _, subnetName := range vpc.Status.Subnets {
-			subnet, err := c.subnetsLister.Get(subnetName)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					continue
-				}
-				klog.Errorf("failed to get subnet %s for vpc %s: %v", subnetName, key, err)
-				return err
-			}
-			if subnet.Spec.Vlan != "" && subnet.Spec.U2OInterconnection {
-				learnFromARPRequest = true
-				break
-			}
-		}
-	}
+	learnFromARPRequest := true
 
 	if err = c.createVpcRouter(key, learnFromARPRequest); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
@@ -594,7 +578,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	custVpcEnableExternalEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			// Accelerate subnet update when vpc config is updated.
+			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
+			if subnet.Status.IsNotReady() || subnet.Spec.U2OInterconnection {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 				custVpcEnableExternalEcmp = true
 			}
