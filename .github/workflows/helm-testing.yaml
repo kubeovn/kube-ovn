@@ -1,6 +1,11 @@
 name: Lint and Test Charts
 
-on: pull_request
+on:
+  pull_request:
+    paths:
+      - 'charts/kube-ovn-v2/**'
+      - '.github/workflows/helm-testing.yaml'
+
 
 permissions: {}
 
