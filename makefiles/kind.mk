@@ -3,6 +3,7 @@
 UNTAINT_CONTROL_PLANE ?= true
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
+VPC_NAT_GW_UBUNTU_IMG = $(REGISTRY)/vpc-nat-gateway-ubuntu:$(VERSION)
 
 # Cilium configuration variables (fallback if not defined in main Makefile)
 CILIUM_VERSION ?= v1.18.5
@@ -240,6 +241,10 @@ kind-load-image:
 .PHONY: kind-load-image-vpc-nat-gateway
 kind-load-image-vpc-nat-gateway:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+
+.PHONY: kind-load-image-vpc-nat-gateway-ubuntu
+kind-load-image-vpc-nat-gateway-ubuntu:
+	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_UBUNTU_IMG))
 
 .PHONY: kind-install-chart
 kind-install-chart: kind-load-image untaint-control-plane install-chart
@@ -539,6 +544,12 @@ kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	@$(MAKE) kind-load-image-vpc-nat-gateway
+	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
+
+.PHONY: kind-install-vpc-nat-gw-ubuntu
+kind-install-vpc-nat-gw-ubuntu:
+	@$(MAKE) kind-load-image-vpc-nat-gateway-ubuntu
 	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
 
