@@ -120,6 +120,14 @@ spec:
             - sh
             - -c
             - /kube-ovn/remove-finalizer.sh 2>&1 | tee -a /var/log/kube-ovn/remove-finalizer.log
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 1
+              memory: 500Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
