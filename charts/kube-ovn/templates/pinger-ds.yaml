@@ -133,6 +133,7 @@ spec:
             limits:
               cpu: {{ index .Values "kube-ovn-pinger" "limits" "cpu" }}
               memory: {{ index .Values "kube-ovn-pinger" "limits" "memory" }}
+              ephemeral-storage: {{ index .Values "kube-ovn-pinger" "limits" "ephemeral-storage" }}
           livenessProbe:
             httpGet:
               path: /metrics

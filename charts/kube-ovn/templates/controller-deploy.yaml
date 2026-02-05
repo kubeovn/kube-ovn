@@ -218,6 +218,7 @@ spec:
             limits:
               cpu: {{ index .Values "kube-ovn-controller" "limits" "cpu" }}
               memory: {{ index .Values "kube-ovn-controller" "limits" "memory" }}
+              ephemeral-storage: {{ index .Values "kube-ovn-controller" "limits" "ephemeral-storage" }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:

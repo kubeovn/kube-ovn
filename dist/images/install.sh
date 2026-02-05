@@ -4527,6 +4527,7 @@ spec:
             limits:
               cpu: 4
               memory: 4Gi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -4748,6 +4749,7 @@ spec:
             limits:
               cpu: "2"
               memory: 1000Mi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -4904,6 +4906,7 @@ spec:
               cpu: 1000m
               hugepages-2Mi: 1Gi
               memory: 800Mi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/ovs_dp_type: "userspace"
@@ -5166,6 +5169,7 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: master
@@ -5394,6 +5398,7 @@ spec:
           limits:
             cpu: 1000m
             memory: 1Gi
+            ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -5561,6 +5566,7 @@ spec:
             limits:
               cpu: 200m
               memory: 200Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -5754,6 +5760,7 @@ spec:
             limits:
               cpu: 3
               memory: 1Gi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -5954,6 +5961,7 @@ spec:
             limits:
               cpu: 200m
               memory: 400Mi
+              ephemeral-storage: 1Gi
           livenessProbe:
             httpGet:
               path: /metrics

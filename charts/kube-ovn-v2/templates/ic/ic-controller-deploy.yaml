@@ -103,6 +103,7 @@ spec:
             limits:
               cpu: 3
               memory: 1Gi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn

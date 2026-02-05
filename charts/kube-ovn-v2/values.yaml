@@ -375,6 +375,7 @@ ovsOvn:
     limits:
       cpu: "2"
       memory: "1000Mi"
+      ephemeral-storage: 1Gi
 
   # -- ovs-ovn DaemonSet update strategy.
   # ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy
@@ -427,6 +428,7 @@ ovsOvn:
         hugepages-2Mi: 1Gi
         cpu: "2"
         memory: "1000Mi"
+        ephemeral-storage: 1Gi
 
 # -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world.
 # @section -- BGP speaker configuration
@@ -509,6 +511,7 @@ pinger:
     limits:
       cpu: "200m"
       memory: "400Mi"
+      ephemeral-storage: 1Gi
 
   # -- kube-ovn-pinger metrics configuration.
   # @section -- Ping daemon configuration
@@ -577,6 +580,7 @@ monitor:
     limits:
       cpu: "200m"
       memory: "200Mi"
+      ephemeral-storage: 1Gi
 
   # -- kube-ovn-monitor metrics configuration.
   # @section -- OVN monitoring daemon configuration
@@ -619,6 +623,7 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Controller metrics configuration.
   # @section -- Kube-OVN controller configuration
@@ -661,6 +666,7 @@ central:
     limits:
       cpu: "3"
       memory: "4Gi"
+      ephemeral-storage: 1Gi
 
   # -- ""
   # @section -- OVN-central daemon configuration.
@@ -738,6 +744,7 @@ agent:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Agent metrics configuration.
   # @section -- CNI agent configuration
