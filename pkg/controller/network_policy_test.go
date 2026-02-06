@@ -20,13 +20,11 @@ func TestParsePolicyFor(t *testing.T) {
 		name          string
 		annotation    *string
 		wantProviders set.Set[string]
-		wantErr       bool
 	}{
 		{
 			name:          "annotation omitted",
 			annotation:    nil,
 			wantProviders: nil,
-			wantErr:       false,
 		},
 		{
 			name:       "ovn only",
@@ -34,7 +32,6 @@ func TestParsePolicyFor(t *testing.T) {
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
-			wantErr: false,
 		},
 		{
 			name:       "duplicate ovn",
@@ -42,7 +39,6 @@ func TestParsePolicyFor(t *testing.T) {
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
-			wantErr: false,
 		},
 		{
 			name:       "secondary only",
@@ -50,7 +46,6 @@ func TestParsePolicyFor(t *testing.T) {
 			wantProviders: set.New(
 				"net1.ns1." + util.OvnProvider,
 			),
-			wantErr: false,
 		},
 		{
 			name:       "ovn and secondary",
@@ -59,7 +54,6 @@ func TestParsePolicyFor(t *testing.T) {
 				util.OvnProvider,
 				"net1.ns1."+util.OvnProvider,
 			),
-			wantErr: false,
 		},
 		{
 			name:       "ovn and invalid",
@@ -67,31 +61,26 @@ func TestParsePolicyFor(t *testing.T) {
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
-			wantErr: false,
 		},
 		{
 			name:          "invalid all",
 			annotation:    ptrString("all"),
 			wantProviders: set.New[string](),
-			wantErr:       false,
 		},
 		{
 			name:          "invalid default",
 			annotation:    ptrString("default"),
 			wantProviders: set.New[string](),
-			wantErr:       false,
 		},
 		{
 			name:          "invalid no entries",
 			annotation:    ptrString(","),
 			wantProviders: set.New[string](),
-			wantErr:       false,
 		},
 		{
 			name:          "invalid token",
 			annotation:    ptrString("foo"),
 			wantProviders: set.New[string](),
-			wantErr:       false,
 		},
 	}
 
@@ -109,13 +98,7 @@ func TestParsePolicyFor(t *testing.T) {
 				}
 			}
 
-			providers, err := parsePolicyFor(np)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
+			providers := parsePolicyFor(np)
 			if tt.wantProviders == nil {
 				require.Nil(t, providers)
 				return

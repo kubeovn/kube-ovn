@@ -121,10 +121,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 	logRate := parseACLLogRate(np.Annotations)
 
-	providers, err := parsePolicyFor(np)
-	if err != nil {
-		return err
-	}
+	providers := parsePolicyFor(np)
 
 	npName := np.Name
 	nameArray := []rune(np.Name)
@@ -536,14 +533,14 @@ func (c *Controller) handleDeleteNp(key string) error {
 	return nil
 }
 
-func parsePolicyFor(np *netv1.NetworkPolicy) (set.Set[string], error) {
+func parsePolicyFor(np *netv1.NetworkPolicy) set.Set[string] {
 	raw := strings.TrimSpace(np.Annotations[util.NetworkPolicyForAnnotation])
 	if raw == "" {
-		return nil, nil
+		return nil
 	}
 
 	providers := set.New[string]()
-	invalidMsg := `ignore invalid network_policy_for entry %q, expect "ovn" or "<namespace>/<net-attach-def>"`
+	invalidMsg := `ignore invalid network_policy_for annotation %q for netpol %s/%s, expect "ovn" or "<namespace>/<net-attach-def>"`
 
 	for _, token := range strings.Split(raw, ",") {
 		t := strings.TrimSpace(token)
@@ -558,21 +555,21 @@ func parsePolicyFor(np *netv1.NetworkPolicy) (set.Set[string], error) {
 		if strings.Contains(t, "/") {
 			parts := strings.SplitN(t, "/", 2)
 			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				klog.Warningf(invalidMsg, t)
+				klog.Warningf(invalidMsg, t, np.Namespace, np.Name)
 				continue
 			}
 			provider := fmt.Sprintf("%s.%s.%s", parts[1], parts[0], util.OvnProvider)
 			providers.Insert(provider)
 			continue
 		}
-		klog.Warningf(invalidMsg, t)
+		klog.Warningf(invalidMsg, t, np.Namespace, np.Name)
 	}
 
 	if len(providers) == 0 {
-		klog.Warning("network_policy_for annotation has no valid entries; policy selects no pods")
-		return providers, nil
+		klog.Warningf("network_policy_for annotation has no valid entries; policy %s/%s selects no pods", np.Namespace, np.Name)
+		return providers
 	}
-	return providers, nil
+	return providers
 }
 
 func netpolAppliesToProvider(provider string, providers set.Set[string]) bool {
@@ -609,8 +606,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 			if !isOvnSubnet(podNet.Subnet) {
 				continue
 			}
-			provider := podNet.ProviderName
-			if !netpolAppliesToProvider(provider, providers) {
+			if !netpolAppliesToProvider(podNet.ProviderName, providers) {
 				continue
 			}
 			matchedProvider = true
