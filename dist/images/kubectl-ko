@@ -3,11 +3,11 @@ set -euo pipefail
 
 KUBE_OVN_NS=${KUBE_OVN_NS:-kube-system}
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
-OVN_NB_POD=
-OVN_SB_POD=
-OVN_IC_NB_POD=
-OVN_IC_SB_POD=
-OVN_NORTHD_POD=
+OVN_NB_LEADER_POD=
+OVN_SB_LEADER_POD=
+OVN_NORTHD_LEADER_POD=
+OVN_IC_NB_LEADER_POD=
+OVN_IC_SB_LEADER_POD=
 KUBE_OVN_VERSION=
 REGISTRY="docker.io/kubeovn"
 PERF_TIMES=5
@@ -303,9 +303,9 @@ trace(){
       if ipIsInCidr $dst $cidr; then
         set +o pipefail
         if [ $af -eq 4 ]; then
-          dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -w "$(echo $dst | tr . '\.')" | awk '{print $1}')
+          dstMac=$(kubectl exec $OVN_NB_LEADER_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -w "$(echo $dst | tr . '\.')" | awk '{print $1}')
         else
-          dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -i " $dst\$" | awk '{print $1}')
+          dstMac=$(kubectl exec $OVN_NB_LEADER_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -i " $dst\$" | awk '{print $1}')
         fi
         set -o pipefail
       fi
@@ -389,7 +389,7 @@ trace(){
       if [ -z "$lr" ]; then
         lr=$(kubectl get subnet "$ls" -o jsonpath={.spec.vpc})
       fi
-      dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr-$ls" | tr -d '\r')
+      dstMac=$(kubectl exec $OVN_NB_LEADER_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr-$ls" | tr -d '\r')
     fi
 
     if [ -z "$dstMac" ]; then
@@ -403,7 +403,7 @@ trace(){
     dstMac="ff:ff:ff:ff:ff:ff"
   fi
 
-  local lspUUID=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=_uuid find logical_switch_port name="$lsp")
+  local lspUUID=$(kubectl exec $OVN_NB_LEADER_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=_uuid find logical_switch_port name="$lsp")
   if [ -z "$lspUUID" ]; then
     echo "Notice: LSP $lsp does not exist"
   fi
@@ -425,7 +425,7 @@ trace(){
         icmp_type="6.type == 128"
       fi
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new --ct=new --ct=new --ct=new "$ls" \
+      kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new --ct=new --ct=new --ct=new "$ls" \
         "inport == \"$lsp\" && ip.ttl == 255 && icmp$icmp_type && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst"
       ;;
     tcp|udp)
@@ -435,19 +435,19 @@ trace(){
         tcp_flags=" && tcp.flags == 2"
       fi
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new --ct=new --ct=new --ct=new "$ls" \
+      kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new --ct=new --ct=new --ct=new "$ls" \
         "inport == \"$lsp\" && ip.ttl == 255 && eth.src == $mac && ip$af.src == $srcIP && eth.dst == $dstMac && ip$af.dst == $dst && $type.src == 30000 && $type.dst == $4 $tcp_flags"
       ;;
     arp)
       case "$4" in
         ""|request)
           set -x
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" \
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" \
             "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 1 && arp.sha == $mac && arp.tha == 00:00:00:00:00:00 && arp.spa == $srcIP && arp.tpa == $dst"
           ;;
         reply)
           set -x
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" \
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" \
             "inport == \"$lsp\" && eth.src == $mac && eth.dst == $dstMac && arp.op == 2 && arp.sha == $mac && arp.tha == $dstMac && arp.spa == $srcIP && arp.tpa == $dst"
           ;;
         *)
@@ -811,55 +811,53 @@ diagnose(){
     esac
 }
 
-getOvnCentralPod(){
+getNBLeaderPod(){
     NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-nb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
     if [ -z "$NB_POD" ]; then
       echo "nb leader not exists"
       exit 1
     fi
-    OVN_NB_POD=$NB_POD
+    OVN_NB_LEADER_POD=$NB_POD
+}
+
+getSBLeaderPod(){
     SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-sb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
     if [ -z "$SB_POD" ]; then
       echo "sb leader not exists"
       exit 1
     fi
-    OVN_SB_POD=$SB_POD
+    OVN_SB_LEADER_POD=$SB_POD
+}
+
+getNorthdLeaderPod(){
     NORTHD_POD=$(kubectl get pod -n kube-system -l ovn-northd-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
     if [ -z "$NORTHD_POD" ]; then
       echo "ovn northd not exists"
       exit 1
     fi
-    OVN_NORTHD_POD=$NORTHD_POD
-    image=$(kubectl  -n kube-system get pods -l app=kube-ovn-cni -o jsonpath='{.items[0].spec.containers[0].image}')
-    if [ -z "$image" ]; then
-          echo "cannot get kube-ovn image"
-          exit 1
-    fi
-    REGISTRY=$(dirname $image)
-    KUBE_OVN_VERSION=$(basename $image | awk -F ':' '{print $2}')
+    OVN_NORTHD_LEADER_POD=$NORTHD_POD
 }
 
-getOVNICNBPod(){
-    OVN_IC_NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-nb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
-    if [ -z "$OVN_IC_NB_POD" ]; then
+getICNBLeaderPod(){
+    OVN_IC_NB_LEADER_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-nb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
+    if [ -z "$OVN_IC_NB_LEADER_POD" ]; then
       echo "ic nb leader not exists"
       exit 1
     fi
 }
 
-getOVNICSBPod(){
-    OVN_IC_SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-sb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
-    if [ -z "$OVN_IC_SB_POD" ]; then
+getICSBLeaderPod(){
+    OVN_IC_SB_LEADER_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-ic-sb-leader=true | grep ovn-ic-server | head -n 1 | awk '{print $1}')
+    if [ -z "$OVN_IC_SB_LEADER_POD" ]; then
       echo "ic sb leader not exists"
       exit 1
     fi
 }
 
-getOvnCentralDbStatus(){
-  NB_PODS=$(kubectl get pod -n $KUBE_OVN_NS | grep ovn-central | awk '{print $1}')
-  for pod in $NB_PODS
-  do
-    echo "get dbstatus in pod $pod"
+getOvnDbStatus(){
+  PODS=$(kubectl get pod -n $KUBE_OVN_NS -l app=ovn-central -o name)
+  for pod in $PODS; do
+    echo "get dbstatus in $pod"
     nbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound`
     echo "nb db status $nbstatus"
     sbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound`
@@ -932,16 +930,16 @@ dbtool(){
     nb)
       case $action in
         status)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+          kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+          kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
           ;;
         kick)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
+          kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_NB_LEADER_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
           echo "backup ovn-$component db to $(pwd)/ovnnb_db.$suffix.backup"
           ;;
         dbstatus)
@@ -1019,16 +1017,16 @@ dbtool(){
     sb)
       case $action in
         status)
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
           ;;
         kick)
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_SB_LEADER_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
           echo "backup ovn-$component db to $(pwd)/ovnsb_db.$suffix.backup"
           ;;
         dbstatus)
@@ -1604,13 +1602,13 @@ genMulticastPerfResult() {
 }
 
 checkLeaderRecover() {
-  getOvnCentralPod
+  getNBLeaderPod
   getPodRecoverTime "nb"
   sleep 5
-  getOvnCentralPod
+  getSBLeaderPod
   getPodRecoverTime "sb"
   sleep 5
-  getOvnCentralPod
+  getNorthdLeaderPod
   getPodRecoverTime "northd"
 }
 
@@ -1619,11 +1617,11 @@ getPodRecoverTime(){
   start_time=$(date +%s.%N)
   echo "Delete ovn central $component_name pod"
   if [[ $component_name == "nb" ]]; then
-    kubectl delete pod $OVN_NB_POD -n kube-system
+    kubectl delete pod $OVN_NB_LEADER_POD -n kube-system
   elif [[ $component_name == "sb" ]]; then
-    kubectl delete pod $OVN_SB_POD -n kube-system
+    kubectl delete pod $OVN_SB_LEADER_POD -n kube-system
   elif [[ $component_name == "northd" ]]; then
-    kubectl delete pod $OVN_NORTHD_POD -n kube-system
+    kubectl delete pod $OVN_NORTHD_LEADER_POD -n kube-system
   fi
   echo "Waiting for ovn central $component_name pod running"
   replicas=$(kubectl get deployment -n kube-system ovn-central -o jsonpath={.spec.replicas})
@@ -1649,37 +1647,40 @@ subcommand="$1"; shift
 
 case $subcommand in
   nbctl)
-    getOvnCentralPod
-    kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl "$@"
+    getNBLeaderPod
+    kubectl exec "$OVN_NB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl "$@"
     ;;
   sbctl)
-    getOvnCentralPod
-    kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
+    getSBLeaderPod
+    kubectl exec "$OVN_SB_LEADER_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
   icnbctl)
-    getOVNICNBPod
-    kubectl exec "$OVN_IC_NB_POD" -n $KUBE_OVN_NS -- ovn-ic-nbctl "$@"
+    getICNBLeaderPod
+    kubectl exec "$OVN_IC_NB_LEADER_POD" -n $KUBE_OVN_NS -- ovn-ic-nbctl "$@"
     ;;
   icsbctl)
-    getOVNICSBPod
-    kubectl exec "$OVN_IC_SB_POD" -n $KUBE_OVN_NS -- ovn-ic-sbctl "$@"
+    getICSBLeaderPod
+    kubectl exec "$OVN_IC_SB_LEADER_POD" -n $KUBE_OVN_NS -- ovn-ic-sbctl "$@"
     ;;
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
     ;;
   nb|sb)
-    getOvnCentralPod
+    getNBLeaderPod
+    getSBLeaderPod
     dbtool "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"
     ;;
   trace)
-    getOvnCentralPod
+    getNBLeaderPod
+    getSBLeaderPod
     trace "$@"
     ;;
   ovn-trace)
-    getOvnCentralPod
+    getNBLeaderPod
+    getSBLeaderPod
     OVN_TRACE=1
     trace "$@"
     ;;
