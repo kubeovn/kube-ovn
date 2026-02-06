@@ -591,6 +591,21 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.30 (2026-02-06)
+
+ * [edd8727f5](https://github.com/kubeovn/kube-ovn/commit/edd8727f57ec9304f8958a0555bf2b2229178527) release v1.14.30
+ * [789cecb81](https://github.com/kubeovn/kube-ovn/commit/789cecb814839102cadda15fbba694c72cd78697) cni-server: add static fdb entry for subnets with u2o enabled (#6269)
+ * [970878091](https://github.com/kubeovn/kube-ovn/commit/970878091c3ee8231aaa2b6317a89336a183f572) controller: fix ips owned by subnet u2o ip and mcast querier ip deleted in gc (#6132)
+ * [ad122cfc1](https://github.com/kubeovn/kube-ovn/commit/ad122cfc13ffb70ee3724c8d5204dabd42873033) security: specify a storage limit for containers (#6259)
+ * [810fb8368](https://github.com/kubeovn/kube-ovn/commit/810fb8368298fd180d14aa6f09ffd37936eb137f) chore(deps): update dependency go to v1.25.7 (#6267)
+ * [5818b0ac8](https://github.com/kubeovn/kube-ovn/commit/5818b0ac8a936311aed28bb4c75b3600d124d6cb) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.29 (2026-02-02)
 
  * [2eb89ba0b](https://github.com/kubeovn/kube-ovn/commit/2eb89ba0bfd9cde9cfd0b4f8dbcf1e65e75d4350) release v1.14.29
