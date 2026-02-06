@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -78,6 +79,11 @@ type Controller struct {
 	ControllerRuntime
 
 	k8sExec k8sexec.Interface
+
+	// channel used for fdb sync
+	fdbSyncChan   chan struct{}
+	fdbSyncMutex  sync.Mutex
+	vswitchClient ovs.Vswitch
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -142,6 +148,8 @@ func NewController(config *Configuration,
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
+
+		fdbSyncChan: make(chan struct{}, 1),
 	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
@@ -207,6 +215,10 @@ func NewController(config *Configuration,
 		UpdateFunc: controller.enqueueUpdateNode,
 	}); err != nil {
 		return nil, err
+	}
+
+	if controller.vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
+		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
 	}
 
 	return controller, nil
@@ -611,6 +623,7 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 
 	err := func(obj *subnetEvent) error {
 		defer c.subnetQueue.Done(obj)
+		c.requestFdbSync()
 		if err := c.reconcileRouters(obj); err != nil {
 			c.subnetQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
@@ -848,6 +861,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
+	defer c.vswitchClient.Close()
+
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -895,6 +910,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// Start OpenFlow sync loop
 	go c.runFlowSync(stopCh)
+
+	// start fdb sync loop
+	go c.runFdbSync(stopCh)
 
 	<-stopCh
 	klog.Info("Shutting down workers")
