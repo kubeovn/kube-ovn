@@ -554,8 +554,8 @@ github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 h1:J
 github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54/go.mod h1:UgC0aTQ2KMDxlX3lU/stndk7DMUBJqzN40yFiILHgxc=
 github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 h1:YOg439Y4IiIFQrwaY3D6l/eB8fsXTBMtCE7TKCogROI=
 github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86/go.mod h1:0b/n/rPzNXjhn4ywFcEJuQdA/5olt9UxFIATz57xkbc=
-github.com/prometheus-community/pro-bing v0.7.0 h1:KFYFbxC2f2Fp6c+TyxbCOEarf7rbnzr9Gw8eIb0RfZA=
-github.com/prometheus-community/pro-bing v0.7.0/go.mod h1:Moob9dvlY50Bfq6i88xIwfyw7xLFHH69LUgx9n5zqCE=
+github.com/prometheus-community/pro-bing v0.8.0 h1:CEY/g1/AgERRDjxw5P32ikcOgmrSuXs7xon7ovx6mNc=
+github.com/prometheus-community/pro-bing v0.8.0/go.mod h1:Idyxz8raDO6TgkUN6ByiEGvWJNyQd40kN9ZUeho3lN0=
 github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.83.0 h1:j9Ce3W6X6Tzi0QnSap+YzGwpqJLJGP/7xV6P9f86jjM=
 github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.83.0/go.mod h1:sSxwdmprUfmRfTknPc4KIjUd2ZIc/kirw4UdXNhOauM=
 github.com/prometheus/client_golang v1.23.2 h1:Je96obch5RDVy3FDMndoUsjAhG5Edi49h0RJWRi/o0o=
