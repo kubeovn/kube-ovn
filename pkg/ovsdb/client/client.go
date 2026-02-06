@@ -64,30 +64,26 @@ func NewOvsDbClient(
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
 ) (client.Client, error) {
-	dbLogger := logger.WithValues("db", db)
-	options := []client.Option{
-		client.WithLeaderOnly(true),
-		client.WithLogger(&dbLogger),
-	}
-	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
-	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
-	if inactivityTimeout > 0 {
-		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
-		// take longer than a normal ovsdb operation. Give it a bit more time so
-		// we don't time out and enter a reconnect loop. In addition it also enables
-		// inactivity check on the ovsdb connection.
-		options = append(options, client.WithInactivityCheck(inactivityTimeout, connectTimeout, &backoff.ZeroBackOff{}))
-	} else {
-		options = append(options, client.WithReconnect(connectTimeout, &backoff.ZeroBackOff{}))
-	}
-	klog.Infof("connecting to OVN %s server %s", db, addr)
+	klog.Infof("creating ovsdb client for %s database at %s", db, addr)
+
 	var ssl bool
-	endpoints := strings.SplitSeq(addr, ",")
-	for ep := range endpoints {
+	var options []client.Option
+	for ep := range strings.SplitSeq(addr, ",") {
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
 		}
 		options = append(options, client.WithEndpoint(ep))
+	}
+	var backOff backoff.BackOff
+	if len(options) > 1 {
+		// multiple endpoints, use zero backoff to try next endpoint immediately
+		backOff = &backoff.ZeroBackOff{}
+	} else {
+		// single endpoint, use exponential backoff for reconnects
+		bo := backoff.NewExponentialBackOff()
+		bo.InitialInterval = 1 * time.Second
+		bo.MaxInterval = 10 * time.Second
+		backOff = bo
 	}
 	if ssl {
 		cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
@@ -109,24 +105,41 @@ func NewOvsDbClient(
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}
+
+	dbLogger := logger.WithValues("db", db)
+	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
+	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
+	options = append(options, client.WithLeaderOnly(true), client.WithLogger(&dbLogger))
+	if inactivityTimeout > 0 {
+		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
+		// take longer than a normal ovsdb operation. Give it a bit more time so
+		// we don't time out and enter a reconnect loop. In addition it also enables
+		// inactivity check on the ovsdb connection.
+		options = append(options, client.WithInactivityCheck(inactivityTimeout, connectTimeout, backOff))
+	} else {
+		options = append(options, client.WithReconnect(connectTimeout, backOff))
+	}
 	c, err := client.NewOVSDBClient(dbModel, options...)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
+
+	klog.Infof("connecting to %s database server %s", db, addr)
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
 	if err = c.Connect(ctx); err != nil {
-		klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)
+		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
 	}
 
 	if len(monitors) != 0 {
+		klog.Infof("setting up monitors for %s database on server %s", db, addr)
 		monitor := c.NewMonitor(monitors...)
 		monitor.Method = ovsdb.ConditionalMonitorRPC
 		if _, err = c.Monitor(context.TODO(), monitor); err != nil {
 			c.Close()
-			klog.Errorf("failed to monitor database on OVN %s server %s: %v", db, addr, err)
+			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err
 		}
 	}
