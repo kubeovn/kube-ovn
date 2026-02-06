@@ -10,8 +10,16 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+type Vswitch interface {
+	Common
+	ListBridge(needVendorFilter bool, filter func(sw *vswitch.Bridge) bool) ([]vswitch.Bridge, error)
+	ListPort(filter func(sp *vswitch.Port) bool) ([]vswitch.Port, error)
+	ListInterface(filter func(si *vswitch.Interface) bool) ([]vswitch.Interface, error)
+}
 
 type NBGlobal interface {
 	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) error
@@ -262,6 +270,7 @@ type SbClient interface {
 }
 
 type Common interface {
+	Close()
 	Echo(context.Context) error
 	Transact(method string, operations []ovsdb.Operation) error
 	GetEntityInfo(entity any) error

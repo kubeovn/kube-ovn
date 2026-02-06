@@ -7,6 +7,8 @@ import (
 
 	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 const metricNamespace = "kube_ovn"
@@ -139,8 +141,8 @@ func (e *Exporter) exportOvsInfoGauge() {
 func (e *Exporter) exportOvsLogFileSizeGauge() {
 	metricLogFileSize.Reset()
 	components := []string{
-		"ovsdb-server",
-		"ovs-vswitchd",
+		ovs.OvsdbServer,
+		ovs.OvsVswitchd,
 	}
 	for _, component := range components {
 		file, err := e.Client.GetLogFileInfo(component)
