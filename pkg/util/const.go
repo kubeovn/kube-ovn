@@ -2,6 +2,7 @@ package util
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -390,10 +391,14 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
+	KindNode = ObjectKind[*corev1.Node]()
+	KindPod  = ObjectKind[*corev1.Pod]()
+
 	KindDeployment  = ObjectKind[*appsv1.Deployment]()
 	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()
 	KindStatefulSet = ObjectKind[*appsv1.StatefulSet]()
 
+	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()

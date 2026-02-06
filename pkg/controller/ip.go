@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -374,22 +375,46 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
 	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
+	var owner *metav1.OwnerReference
 	if ipCRName != "" {
 		// pod IP
 		key = podName
 		ipName = ipCRName
 	} else {
-		// node IP or interconn IP
+		// node IP, u2o IP or mcast querier IP
 		switch {
 		case subnetName == c.config.NodeSwitch:
+			node, err := c.nodesLister.Get(nodeName)
+			if err != nil {
+				err = fmt.Errorf("failed to get node %s: %w", nodeName, err)
+				klog.Error(err)
+				return err
+			}
 			key = nodeName
 			ipName = util.NodeLspName(nodeName)
-		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
-			key = podName // interconn IP name
+			owner = &metav1.OwnerReference{
+				APIVersion: corev1.SchemeGroupVersion.String(),
+				Kind:       util.KindNode,
+				Name:       nodeName,
+				UID:        node.UID,
+			}
+		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]) || strings.HasPrefix(podName, util.McastQuerierName[0:13]):
+			// u2o IP or mcast querier IP
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+				klog.Error(err)
+				return err
+			}
+			key = podName
 			ipName = podName
-		case strings.HasPrefix(podName, util.McastQuerierName[0:13]):
-			key = podName // mcast querier IP name
-			ipName = podName
+			owner = &metav1.OwnerReference{
+				APIVersion:         kubeovnv1.SchemeGroupVersion.String(),
+				Kind:               util.KindSubnet,
+				Name:               subnetName,
+				UID:                subnet.UID,
+				BlockOwnerDeletion: ptr.To(true),
+			}
 		}
 	}
 
@@ -439,6 +464,9 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				PodType:       podType,
 			},
 		}
+		if owner != nil {
+			ipCR.OwnerReferences = []metav1.OwnerReference{*owner}
+		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
@@ -455,6 +483,11 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				util.NodeNameLabel:   nodeName,
 			}
 			// update not touch IP Reserved Label
+		}
+		if owner != nil {
+			// currently we only set owner for node IP, u2o IP and mcast querier ip,
+			// so it's ok to overwrite it here
+			newIPCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
 		newIPCR.Spec.PodName = key
 		newIPCR.Spec.Namespace = ns
