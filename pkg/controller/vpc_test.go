@@ -11,6 +11,7 @@ import (
 	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -24,11 +25,13 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 	srcIPPolicy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
 	dstIPPolicy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
 
-	// Internal static route created directly in OVN with kube-ovn vendor
+	// Internal static route created directly in OVN with fine-grained labels
 	internalStaticRoute := &ovnnb.LogicalRouterStaticRoute{
 		UUID: "internal-static-route-uuid",
 		ExternalIDs: map[string]string{
-			"vendor": util.CniTypeName,
+			"vendor":        util.CniTypeName,
+			"controller":    "vpc",
+			"resource-name": "test-vpc",
 		},
 		IPPrefix:   "10.0.0.0/24",
 		Nexthop:    "1.2.3.4",
@@ -40,7 +43,9 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 	managedStaticRoute := &ovnnb.LogicalRouterStaticRoute{
 		UUID: "managed-static-route-uuid",
 		ExternalIDs: map[string]string{
-			"vendor": util.CniTypeName,
+			"vendor":        util.CniTypeName,
+			"controller":    "vpc",
+			"resource-name": "test-vpc",
 		},
 		IPPrefix:   "192.168.0.0/24",
 		Nexthop:    "10.0.0.1",
@@ -89,11 +94,15 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 			internalStaticRoute,
 		}
 
-		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		staticRouteExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
 
 		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
 		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
-		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
+		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", staticRouteExternalIDs).Return(existingKubeOvnRoutes, nil)
 		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
 			Name: vpcName,
 			Nat:  []string{},
@@ -105,10 +114,15 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 			"dst-ip",
 			"192.168.0.0/24",
 			nil,
-			externalIDs,
+			staticRouteExternalIDs,
 			"10.0.0.1",
 		).Return(nil)
-		mockOvnClient.EXPECT().ClearLogicalRouterPolicy(vpcName).Return(nil)
+		policyExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(vpcName, -1, policyExternalIDs).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
@@ -158,17 +172,26 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 			managedStaticRoute,
 		}
 
-		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		staticRouteExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
 
 		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
 		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
-		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
+		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", staticRouteExternalIDs).Return(existingKubeOvnRoutes, nil)
 		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
 			Name: vpcName,
 			Nat:  []string{},
 		}, nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "10.0.0.0/24", "1.2.3.4").Return(nil)
-		mockOvnClient.EXPECT().ClearLogicalRouterPolicy(vpcName).Return(nil)
+		policyExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(vpcName, -1, policyExternalIDs).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
@@ -211,18 +234,27 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 			managedStaticRoute,
 		}
 
-		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		staticRouteExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
 
 		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
 		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
-		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
+		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", staticRouteExternalIDs).Return(existingKubeOvnRoutes, nil)
 		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
 			Name: vpcName,
 			Nat:  []string{},
 		}, nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "10.0.0.0/24", "1.2.3.4").Return(nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "192.168.0.0/24", "10.0.0.1").Return(nil)
-		mockOvnClient.EXPECT().ClearLogicalRouterPolicy(vpcName).Return(nil)
+		policyExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(vpcName, -1, policyExternalIDs).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
@@ -267,11 +299,15 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		err = fakeinformers.vpcInformer.Informer().GetStore().Add(vpc)
 		require.NoError(t, err)
 
-		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		staticRouteExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
 
 		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
 		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
-		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(nil, nil)
+		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", staticRouteExternalIDs).Return(nil, nil)
 		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
 			Name: vpcName,
 			Nat:  []string{},
@@ -282,10 +318,15 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 			"dst-ip",
 			"192.168.0.0/24",
 			nil,
-			externalIDs,
+			staticRouteExternalIDs,
 			"10.0.0.1",
 		).Return(nil)
-		mockOvnClient.EXPECT().ClearLogicalRouterPolicy(vpcName).Return(nil)
+		policyExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:       util.CniTypeName,
+			ovs.ExternalIDController:   "vpc",
+			ovs.ExternalIDResourceName: vpcName,
+		}
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(vpcName, -1, policyExternalIDs).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)

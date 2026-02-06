@@ -2051,8 +2051,9 @@ func getIPSuffix(protocol string) string {
 
 func buildPolicyRouteExternalIDs(subnetName string, extraIDs map[string]string) map[string]string {
 	externalIDs := map[string]string{
-		"vendor": util.CniTypeName,
-		"subnet": subnetName,
+		ovs.ExternalIDVendor:       util.CniTypeName,
+		ovs.ExternalIDController:   "subnet",
+		ovs.ExternalIDResourceName: subnetName,
 	}
 	maps.Copy(externalIDs, extraIDs)
 	return externalIDs
@@ -2498,6 +2499,8 @@ func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) 
 				CIDR:      v4Cidr,
 				NextHopIP: v4Gw,
 			},
+			"subnet",
+			subnet.Name,
 		); err != nil {
 			klog.Errorf("failed to add static route, %v", err)
 			return err
@@ -2512,6 +2515,8 @@ func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) 
 				CIDR:      v6Cidr,
 				NextHopIP: v6Gw,
 			},
+			"subnet",
+			subnet.Name,
 		); err != nil {
 			klog.Errorf("failed to add static route, %v", err)
 			return err

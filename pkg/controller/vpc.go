@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -289,7 +290,23 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	learnFromARPRequest := true
+	learnFromARPRequest := vpc.Spec.EnableExternal
+	if !learnFromARPRequest {
+		for _, subnetName := range vpc.Status.Subnets {
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				klog.Errorf("failed to get subnet %s for vpc %s: %v", subnetName, key, err)
+				return err
+			}
+			if subnet.Spec.Vlan != "" && subnet.Spec.U2OInterconnection {
+				learnFromARPRequest = true
+				break
+			}
+		}
+	}
 
 	if err = c.createVpcRouter(key, learnFromARPRequest); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
@@ -319,15 +336,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	// handle static route
+	staticRouteExternalIDs := map[string]string{
+		ovs.ExternalIDVendor:       util.CniTypeName,
+		ovs.ExternalIDController:   "vpc",
+		ovs.ExternalIDResourceName: vpc.Name,
+	}
+
 	var (
 		staticExistedRoutes []*ovnnb.LogicalRouterStaticRoute
 		staticTargetRoutes  []*kubeovnv1.StaticRoute
 		staticRouteMapping  map[string][]*kubeovnv1.StaticRoute
-		externalIDs         = map[string]string{"vendor": util.CniTypeName}
 	)
 
-	// only manage static routes which are kube-ovn managed, by filtering for vendor util.CniTypeName
-	staticExistedRoutes, err = c.OVNNbClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", externalIDs)
+	staticExistedRoutes, err = c.OVNNbClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", staticRouteExternalIDs)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 		return err
@@ -464,7 +485,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if item.BfdID != "" {
 			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, externalIDs, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, staticRouteExternalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -472,7 +493,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		} else {
 			klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
 			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
-				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, externalIDs, item.NextHopIP,
+				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, staticRouteExternalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
 				return err
@@ -481,6 +502,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	// handle policy route
+	policyExternalIDs := map[string]string{
+		ovs.ExternalIDVendor:       util.CniTypeName,
+		ovs.ExternalIDController:   "vpc",
+		ovs.ExternalIDResourceName: vpc.Name,
+	}
+
 	var (
 		policyRouteExisted, policyRouteNeedDel, policyRouteNeedAdd []*kubeovnv1.PolicyRoute
 		policyRouteLogical                                         []*ovnnb.LogicalRouterPolicy
@@ -493,22 +520,20 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
 		if vpc.Spec.PolicyRoutes == nil {
-			// do not clean default vpc policy routes
-			if err = c.OVNNbClient.ClearLogicalRouterPolicy(vpc.Name); err != nil {
-				klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
+			// only clean vpc spec managed policy routes, not those created by subnet or egress gateway controllers
+			if err = c.OVNNbClient.DeleteLogicalRouterPolicies(vpc.Name, -1, policyExternalIDs); err != nil {
+				klog.Errorf("clean vpc %s spec policy routes failed, %v", vpc.Name, err)
 				return err
 			}
 		} else {
-			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
+			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, policyExternalIDs, false)
 			if err != nil {
 				klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 				return err
 			}
-			// diff vpc policy route
 			policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithLogical(policyRouteLogical, vpc.Spec.PolicyRoutes)
 		}
 	}
-	// delete policies non-exist
 	for _, item := range policyRouteNeedDel {
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", vpc.Name, item.Priority, item.Match)
 		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpc.Name, item.Priority, item.Match); err != nil {
@@ -516,10 +541,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 	}
-	// add new policies
 	for _, item := range policyRouteNeedAdd {
-		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, externalIDs); err != nil {
+		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", vpc.Name, item.Match, string(item.Action), item.NextHopIP, policyExternalIDs)
+		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, policyExternalIDs); err != nil {
 			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 			return err
 		}
@@ -580,7 +604,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		if subnet.Spec.Vpc == key {
 			// Accelerate subnet update when vpc config is updated.
 			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
-			if subnet.Status.IsNotReady() || subnet.Spec.U2OInterconnection {
+			if subnet.Status.IsNotReady() {
 				c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			}
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
@@ -936,22 +960,26 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 	return nil
 }
 
-func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRoute) error {
-	externalIDs := map[string]string{"vendor": util.CniTypeName}
+func (c *Controller) addStaticRouteToVpc(vpcName string, route *kubeovnv1.StaticRoute, controller, resourceName string) error {
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:       util.CniTypeName,
+		ovs.ExternalIDController:   controller,
+		ovs.ExternalIDResourceName: resourceName,
+	}
 	if route.BfdID != "" {
-		klog.Infof("vpc %s add static ecmp route: %+v", name, route)
+		klog.Infof("vpc %s add static ecmp route: %+v", vpcName, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, externalIDs, route.NextHopIP,
+			vpcName, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, externalIDs, route.NextHopIP,
 		); err != nil {
-			klog.Errorf("failed to add bfd static route to vpc %s , %v", name, err)
+			klog.Errorf("failed to add bfd static route to vpc %s , %v", vpcName, err)
 			return err
 		}
 	} else {
-		klog.Infof("vpc %s add static route: %+v", name, route)
+		klog.Infof("vpc %s add static route: %+v", vpcName, route)
 		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, externalIDs, route.NextHopIP,
+			vpcName, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, externalIDs, route.NextHopIP,
 		); err != nil {
-			klog.Errorf("failed to add normal static route to vpc %s , %v", name, err)
+			klog.Errorf("failed to add normal static route to vpc %s , %v", vpcName, err)
 			return err
 		}
 	}
