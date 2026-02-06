@@ -1080,6 +1080,9 @@ func (c *Controller) Run(ctx context.Context) {
 	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
+
+	c.OVNNbClient.Close()
+	c.OVNSbClient.Close()
 }
 
 func (c *Controller) dbStatus() {
