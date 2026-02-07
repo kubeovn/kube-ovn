@@ -3,7 +3,7 @@ package network_policy
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -22,7 +22,7 @@ import (
 )
 
 func isMultusInstalled(f *framework.Framework) bool {
-	_, err := f.ExtClientSet.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "network-attachment-definitions.k8s.cni.cncf.io", metav1.GetOptions{})
+	_, err := f.ExtClientSet.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(), "network-attachment-definitions.k8s.cni.cncf.io", metav1.GetOptions{})
 	return err == nil
 }
 
@@ -113,7 +113,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		ginkgo.By("Creating server pod " + serverPodName)
 		serverLabels := map[string]string{"app": "server"}
 		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName)}
-		port := strconv.Itoa(8000 + rand.IntN(1000))
+		port := strconv.Itoa(8000 + rand.Intn(1000))
 		serverArgs := []string{"netexec", "--http-port", port}
 		serverPod := framework.MakePod(namespaceName, serverPodName, serverLabels, annotations, framework.AgnhostImage, nil, serverArgs)
 		serverPod = podClient.CreateSync(serverPod)
@@ -256,11 +256,79 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	})
 
 	framework.ConformanceIt("should include Service ClusterIP for default VPC provider", func() {
-		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+		ginkgo.By("Creating server pod " + serverPodName)
+		serverLabels := map[string]string{"app": "server"}
+		port := 8080
+		serverArgs := []string{"netexec", "--http-port", strconv.Itoa(port)}
+		serverPod := framework.MakePod(namespaceName, serverPodName, serverLabels, nil, framework.AgnhostImage, nil, serverArgs)
+		serverPod = podClient.CreateSync(serverPod)
 
-		ginkgo.By("Creating VPC " + vpcName)
-		vpc := framework.MakeVpc(vpcName, "", false, false, nil)
-		_ = vpcClient.CreateSync(vpc)
+		ginkgo.By("Creating client pod " + clientPodName)
+		clientLabels := map[string]string{"app": "client"}
+		clientCmd := []string{"sleep", "infinity"}
+		clientPod := framework.MakePod(namespaceName, clientPodName, clientLabels, nil, f.KubeOVNImage, clientCmd, nil)
+		_ = podClient.CreateSync(clientPod)
+
+		ginkgo.By("Creating service " + serviceName)
+		ports := []corev1.ServicePort{{Name: "http", Port: int32(port), TargetPort: intstr.FromInt(port)}}
+		svc := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, serverLabels, ports, corev1.ServiceAffinityNone)
+		svc = serviceClient.Create(svc)
+
+		ginkgo.By("Creating network policy " + netpolName)
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+				Annotations: map[string]string{
+					util.NetworkPolicyForAnnotation: "ovn",
+				},
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{MatchLabels: clientLabels},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
+				Egress: []netv1.NetworkPolicyEgressRule{
+					{
+						To: []netv1.NetworkPolicyPeer{
+							{PodSelector: &metav1.LabelSelector{MatchLabels: serverLabels}},
+						},
+					},
+				},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		serverIPs := podIPsByProtocol(serverPod)
+		if len(serverIPs) == 0 {
+			ginkgo.Skip("no server IPs found")
+		}
+
+		for protocol, serverIP := range serverIPs {
+			clusterIP := serviceClusterIPByProtocol(svc, protocol)
+			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
+
+			ginkgo.By(fmt.Sprintf("Checking address set %s for protocol %s", asName, protocol))
+			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				addresses, err := getAddressSetAddresses(asName)
+				if err != nil {
+					return false, err
+				}
+				for _, addr := range addresses {
+					if addr == serverIP {
+						return true, nil
+					}
+				}
+				return false, nil
+			}, "")
+
+			addresses, err := getAddressSetAddresses(asName)
+			framework.ExpectNoError(err)
+			framework.ExpectContainElement(addresses, serverIP)
+			if clusterIP != "" {
+				framework.ExpectContainElement(addresses, clusterIP)
+			}
+		}
+	})
+	framework.ConformanceIt("should include Service ClusterIP for default VPC provider with multus default network", func() {
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
 		ginkgo.By("Creating network attachment definition " + nadName)
 		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
@@ -270,9 +338,13 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", util.DefaultVpc, provider, nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
+		annotations := map[string]string{
+			util.DefaultNetworkAnnotation:                               fmt.Sprintf("%s/%s", namespaceName, nadName),
+			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
+		}
+
 		ginkgo.By("Creating server pod " + serverPodName)
 		serverLabels := map[string]string{"app": "server"}
-		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName)}
 		port := 8080
 		serverArgs := []string{"netexec", "--http-port", strconv.Itoa(port)}
 		serverPod := framework.MakePod(namespaceName, serverPodName, serverLabels, annotations, framework.AgnhostImage, nil, serverArgs)
@@ -311,12 +383,12 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		}
 		_ = netpolClient.Create(netpol)
 
-		secondaryIPs := splitIPsByProtocol(serverPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)])
-		if len(secondaryIPs) == 0 {
-			ginkgo.Skip("no secondary IPs found")
+		providerIPs := splitIPsByProtocol(serverPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)])
+		if len(providerIPs) == 0 {
+			ginkgo.Skip("no provider IPs found")
 		}
 
-		for protocol, secondaryIP := range secondaryIPs {
+		for protocol, providerIP := range providerIPs {
 			clusterIP := serviceClusterIPByProtocol(svc, protocol)
 			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
 
@@ -327,7 +399,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 					return false, err
 				}
 				for _, addr := range addresses {
-					if addr == secondaryIP {
+					if addr == providerIP {
 						return true, nil
 					}
 				}
@@ -336,12 +408,13 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 			addresses, err := getAddressSetAddresses(asName)
 			framework.ExpectNoError(err)
-			framework.ExpectContainElement(addresses, secondaryIP)
+			framework.ExpectContainElement(addresses, providerIP)
 			if clusterIP != "" {
 				framework.ExpectContainElement(addresses, clusterIP)
 			}
 		}
 	})
+
 })
 
 func splitIPsByProtocol(ipStr string) map[string]string {
@@ -410,10 +483,14 @@ func getAddressSetAddresses(asName string) ([]string, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	fields := strings.Fields(raw)
+	raw = strings.Trim(raw, "[]")
+	raw = strings.ReplaceAll(raw, "\"", "")
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t'
+	})
 	addresses := make([]string, 0, len(fields))
 	for _, field := range fields {
-		trimmed := strings.Trim(field, "[]{}\",")
+		trimmed := strings.TrimSpace(field)
 		if trimmed != "" {
 			addresses = append(addresses, trimmed)
 		}

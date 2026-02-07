@@ -565,7 +565,7 @@ func parsePolicyFor(np *netv1.NetworkPolicy) set.Set[string] {
 		klog.Warningf(invalidMsg, t, np.Namespace, np.Name)
 	}
 
-	if len(providers) == 0 {
+	if providers.Len() == 0 {
 		klog.Warningf("network_policy_for annotation has no valid entries; policy %s/%s selects no pods", np.Namespace, np.Name)
 		return providers
 	}
