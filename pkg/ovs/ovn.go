@@ -52,6 +52,10 @@ const (
 
 	ExternalIDVendor           = "vendor"
 	ExternalIDVpcEgressGateway = "vpc-egress-gateway"
+	ExternalIDVpcPolicyRoute   = "vpc-policy-route"
+	ExternalIDVpcStaticRoute   = "vpc-static-route"
+	ExternalIDController       = "controller"
+	ExternalIDResourceName     = "resource-name"
 )
 
 // NewLegacyClient init a legacy ovn client
