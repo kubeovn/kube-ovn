@@ -28,7 +28,8 @@ import (
 
 func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
+		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		return
 	}
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
@@ -115,7 +116,8 @@ func (c *Controller) enqueueDelIP(obj any) {
 		return
 	}
 
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
+		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		return
 	}
 
@@ -239,8 +241,21 @@ func (c *Controller) handleUpdateIP(key string) error {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
-			return err
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
+				return err
+			}
+			// subnet not found, but ip exists, check if the ip is u2o ip or mcast querier ip
+			// if yes, remove finalizer to let ip be deleted
+			klog.Warningf("subnet %s not found for deleting ip %s", cachedIP.Spec.Subnet, cachedIP.Name)
+			if strings.HasPrefix(cachedIP.Name, util.U2OInterconnName[0:20]) ||
+				strings.HasPrefix(cachedIP.Name, util.McastQuerierName[0:14]) {
+				if err = c.handleDelIPFinalizer(cachedIP); err != nil {
+					klog.Errorf("failed to remove finalizer for deleting ip %s: %v", cachedIP.Name, err)
+					return err
+				}
+				return nil
+			}
 		}
 		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
@@ -398,7 +413,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				Name:       nodeName,
 				UID:        node.UID,
 			}
-		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]) || strings.HasPrefix(podName, util.McastQuerierName[0:13]):
+		case strings.HasPrefix(podName, util.U2OInterconnName[0:20]) || strings.HasPrefix(podName, util.McastQuerierName[0:14]):
 			// u2o IP or mcast querier IP
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
