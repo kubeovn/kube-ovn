@@ -1005,8 +1005,8 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 // Returns slice of bandwidth values in bits per second
 func parseBandwidthFromIperfOutput(text string) []float64 {
 	var bandwidths []float64
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(text, "\n")
+	for line := range lines {
 		if line == "" {
 			continue
 		}

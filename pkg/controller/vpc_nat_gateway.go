@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
 	"regexp"
@@ -1200,9 +1201,7 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 
 	// Create a new labels map to avoid modifying the informer cache
 	labels := make(map[string]string, len(oriGw.Labels)+3)
-	for k, v := range oriGw.Labels {
-		labels[k] = v
-	}
+	maps.Copy(labels, oriGw.Labels)
 
 	// vpc nat gw label may lost
 	if len(oriGw.Labels) == 0 {

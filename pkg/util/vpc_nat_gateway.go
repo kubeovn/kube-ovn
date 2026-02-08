@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -75,9 +76,7 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 
 	// Create a new map to avoid modifying the input map (which may be from informer cache)
 	result := make(map[string]string, len(userAnnotations)+5)
-	for k, v := range userAnnotations {
-		result[k] = v
-	}
+	maps.Copy(result, userAnnotations)
 
 	// Set system annotations (overwrites any conflicting user annotations)
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks

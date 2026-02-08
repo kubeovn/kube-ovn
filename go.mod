@@ -326,7 +326,6 @@ replace (
 )
 
 tool (
-	github.com/kubeovn/kube-ovn/tools/modernize
 	github.com/onsi/ginkgo/v2/ginkgo
 	github.com/ovn-kubernetes/libovsdb/cmd/modelgen
 	go.uber.org/mock/mockgen
