@@ -1,0 +1,22 @@
+apiVersion: kubeovn.io/v1
+kind: VpcEgressGateway
+metadata:
+  name: gateway1
+  namespace: default
+spec:
+  vpc: ovn-cluster
+  replicas: 1
+  externalIPs:
+    - 10.0.1.13
+  internalIPs:
+    - 10.16.0.13
+  externalSubnet: macvlan1
+  bgpConf: bgp-conf-6502
+  evpnConf: evpn-conf-1016
+  policies:
+    - snat: false
+      subnets:
+        - ovn-default
+    - snat: false
+      ipBlocks:
+        - 10.17.0.0/16

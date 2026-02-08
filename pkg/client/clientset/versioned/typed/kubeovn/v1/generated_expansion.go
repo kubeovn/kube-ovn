@@ -18,7 +18,11 @@ limitations under the License.
 
 package v1
 
+type BgpConfExpansion interface{}
+
 type DNSNameResolverExpansion interface{}
+
+type EvpnConfExpansion interface{}
 
 type IPExpansion interface{}
 
