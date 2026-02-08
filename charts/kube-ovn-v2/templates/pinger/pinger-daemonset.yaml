@@ -166,6 +166,9 @@ spec:
             periodSeconds: 10
       nodeSelector:
         kubernetes.io/os: "linux"
+        {{- with .Values.ovsNodesLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       volumes:
         - name: host-run-ovs
           hostPath:
