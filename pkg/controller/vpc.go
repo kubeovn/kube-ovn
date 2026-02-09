@@ -459,6 +459,23 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 		}
+	} else {
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// Add static routes created by addCustomVPCStaticRouteForSubnet
+		for _, subnet := range subnets {
+			if subnet.Spec.Vpc == key {
+				staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
+					Policy:     kubeovnv1.PolicySrc,
+					CIDR:       subnet.Spec.CIDRBlock,
+					NextHopIP:  subnet.Spec.Gateway,
+					RouteTable: subnet.Spec.RouteTable,
+				})
+			}
+		}
 	}
 
 	routeNeedDel, routeNeedAdd, err := diffStaticRoute(staticExistedRoutes, staticTargetRoutes)
@@ -508,21 +525,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		// diff list
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
-		if vpc.Spec.PolicyRoutes == nil {
-			// do not clean default vpc policy routes
-			if err = c.OVNNbClient.ClearLogicalRouterPolicy(vpc.Name); err != nil {
-				klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
-				return err
-			}
-		} else {
-			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
-			if err != nil {
-				klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
-				return err
-			}
-			// diff vpc policy route
-			policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithLogical(policyRouteLogical, vpc.Spec.PolicyRoutes)
+		policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
+			return err
 		}
+		// diff vpc policy route
+		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithLogical(policyRouteLogical, vpc.Spec.PolicyRoutes)
 	}
 	// delete policies non-exist
 	for _, item := range policyRouteNeedDel {
@@ -594,6 +603,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	custVpcEnableExternalEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
+			// Accelerate subnet update when vpc config is updated.
+			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
+			if subnet.Status.IsNotReady() {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 				custVpcEnableExternalEcmp = true
@@ -1066,6 +1080,10 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
+		if item.ExternalIDs["vpc-egress-gateway"] != "" ||
+			item.ExternalIDs["isU2ORoutePolicy"] != "true" {
+			continue
+		}
 		policy := &kubeovnv1.PolicyRoute{
 			Priority: item.Priority,
 			Match:    item.Match,
