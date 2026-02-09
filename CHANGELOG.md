@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.15.3 (2026-02-09)
+
+ * [c5c83b57d](https://github.com/kubeovn/kube-ovn/commit/c5c83b57da2cf57b9f52d53e453e628843b65732) release v1.15.3
+ * [58aa0fd2e](https://github.com/kubeovn/kube-ovn/commit/58aa0fd2e149904f4f5116566dc75e031f2cbeda) update cert manager
+ * [9a0fa3cf8](https://github.com/kubeovn/kube-ovn/commit/9a0fa3cf8ccde9de51a398d18520598a04f680e3) perf: only enqueue subnet when not ready (#6268)
+ * [6ce9c3039](https://github.com/kubeovn/kube-ovn/commit/6ce9c30390e0354a0c31904f949ea5768b21774d) fix(deps): update module golang.org/x/sys to v0.41.0 (#6282)
+ * [f0075adf0](https://github.com/kubeovn/kube-ovn/commit/f0075adf0dbc0bfba780e8cfbbdaa9e8da28ee58) chore(deps): update module golang.org/x/oauth2 to v0.35.0 (#6279)
+ * [a3f04c743](https://github.com/kubeovn/kube-ovn/commit/a3f04c7435c5721715e39c879dc0b575ea4422dd) controller: fix stale ip cr after subnet deletion (#6275)
+ * [b0d9b4316](https://github.com/kubeovn/kube-ovn/commit/b0d9b431673729893589231a1ff04694af57c4c1) cni-server: add static fdb entry for subnets with u2o enabled (#6269)
+ * [3ab93d666](https://github.com/kubeovn/kube-ovn/commit/3ab93d666c82565a1dc08ba905d986a55ac033dd) controller: fix ips owned by subnet u2o ip and mcast querier ip deleted in gc (#6132)
+ * [ae142dbf9](https://github.com/kubeovn/kube-ovn/commit/ae142dbf9b7960d271860749948c793c6b5c0127) security: specify a storage limit for containers (#6259)
+ * [bf66a67bd](https://github.com/kubeovn/kube-ovn/commit/bf66a67bda190228c8e0c2793020a5977b177fb9) chore(deps): update dependency go to v1.25.7 (#6266)
+ * [f68017379](https://github.com/kubeovn/kube-ovn/commit/f6801737942725a9bdcc996f538b91dca7aa0102) fix: Ensure Kubevirt optimizations do not use old migration state (#6239)
+ * [ccf825412](https://github.com/kubeovn/kube-ovn/commit/ccf8254124dab659438e1f7c5902ebee8fc9da59) fix localnet port should not be static "patch-localnet." (#6244)
+ * [5f2252890](https://github.com/kubeovn/kube-ovn/commit/5f2252890c2b6e690ce3dbb1a1726467c3c8d63d) rbac: replace wildcard with a clear list of allowed verbs (#6233)
+ * [54001627e](https://github.com/kubeovn/kube-ovn/commit/54001627ef1c1126deb8abf2ecf9039d8f270cce) remove duplicate description (#6234)
+ * [1fade93b2](https://github.com/kubeovn/kube-ovn/commit/1fade93b2e68d5f652e05bc1e6851f581e87e713) Add vendor ID to transit switches (#6186)
+ * [8882096b9](https://github.com/kubeovn/kube-ovn/commit/8882096b939c9dd2634cfcc66045f7f008277851) prepare for next release
+
+### Contributors
+
+ * Eli Treuherz
+ * Mengxin Liu
+ * changluyi
+ * jskrill
+ * renovate[bot]
+ * 张祖建
+
 ## v1.15.2 (2026-01-29)
 
  * [a4ecdaac8](https://github.com/kubeovn/kube-ovn/commit/a4ecdaac82c45396bb34d3c67569bb44c06cdc22) release v1.15.2
