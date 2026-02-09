@@ -424,6 +424,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[1] change gateway image and custom annotations", func() {
+		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16")
 		overlaySubnetV4Cidr := "10.0.2.0/24"
 		overlaySubnetV4Gw := "10.0.2.1"
 		lanIP := "10.0.2.254"
