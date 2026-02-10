@@ -26,7 +26,7 @@ env:
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.8.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.1.0
+  HELM_VERSION: v4.1.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.22.0
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
