@@ -2566,7 +2566,6 @@ spec:
                   items:
                     type: string
                   type: array
-                  description: List of namespaces that can use this VPC
                 extraExternalSubnets:
                   description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
@@ -3378,7 +3377,6 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 namespaces:
-                  description: List of namespaces associated with this subnet.
                   type: array
                   x-kubernetes-list-type: set
                   description: Namespaces that can use this IP pool
