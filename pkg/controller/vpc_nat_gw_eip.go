@@ -85,16 +85,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return nil
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	subnetName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	nadName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, nadName, subnets)
-	if err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
 
@@ -194,16 +188,10 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update iptables eip %s", key)
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	subnetName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	nadName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, nadName, subnets)
-	if err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
 
