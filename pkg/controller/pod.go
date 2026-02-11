@@ -107,15 +107,7 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	ns := pod.Namespace
 	podName := pod.Name
 
-	if pod.Spec.Containers == nil {
-		return
-	}
-
 	for _, container := range pod.Spec.Containers {
-		if container.Ports == nil {
-			continue
-		}
-
 		for _, port := range container.Ports {
 			if port.Name == "" {
 				continue
@@ -340,6 +332,16 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	key := cache.MetaObjectToName(newPod).String()
+	allocatedChanged := false
+	for _, podNet := range podNets {
+		oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+		newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
+		if oldAllocated != newAllocated {
+			allocatedChanged = true
+			break
+		}
+	}
+
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(newPod)
 		newNp := c.podMatchNetworkPolicies(newPod)
@@ -350,15 +352,10 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			}
 		}
 
-		for _, podNet := range podNets {
-			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
-				for _, np := range newNp {
-					klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
-					c.updateNpQueue.Add(np)
-				}
-				break
+		if allocatedChanged {
+			for _, np := range newNp {
+				klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
+				c.updateNpQueue.Add(np)
 			}
 		}
 	}
@@ -370,14 +367,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 		}
 
-		for _, podNet := range podNets {
-			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
-				c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
-				break
-			}
+		if allocatedChanged {
+			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
+			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 		}
 	}
 
@@ -817,12 +809,6 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		}
 
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
-			node, err := c.nodesLister.Get(pod.Spec.NodeName)
-			if err != nil {
-				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
-				return err
-			}
-
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
 			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
@@ -2558,9 +2544,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 			if podNet.Subnet.Name == vip.Spec.Subnet {
 				key := fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)
 				vipsList := vipsListMap[key]
-				if vipsList == nil {
-					vipsList = []string{}
-				}
 				// ipam will ensure the uniqueness of VIP
 				if util.IsValidIP(vip.Status.V4ip) {
 					vipsList = append(vipsList, vip.Status.V4ip)
@@ -2581,9 +2564,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 		}
 		key := fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)
 		vipsList := vipsListMap[key]
-		if vipsList == nil {
-			vipsList = []string{}
-		}
 
 		for vip := range strings.SplitSeq(vipStr, ",") {
 			if util.IsValidIP(vip) && !slices.Contains(vipsList, vip) {
