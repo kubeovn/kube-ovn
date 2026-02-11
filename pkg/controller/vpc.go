@@ -541,11 +541,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 	}
-	// add new policies
+	// add new policies or update existing ones with changed externalIDs
 	for _, item := range policyRouteNeedAdd {
-		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, externalIDs); err != nil {
-			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
+		mergedExternalIDs := mergeExternalIDs(item.ExternalIDs)
+
+		klog.Infof("apply policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", vpc.Name, item.Match, string(item.Action), item.NextHopIP, mergedExternalIDs)
+		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, mergedExternalIDs); err != nil {
+			klog.Errorf("failed to apply policy route to vpc %s, %v", vpc.Name, err)
 			return err
 		}
 	}
@@ -1046,19 +1048,22 @@ func diffPolicyRouteWithExisted(exists, target []*kubeovnv1.PolicyRoute) ([]*kub
 		dels, adds []*kubeovnv1.PolicyRoute
 		existsMap  map[string]*kubeovnv1.PolicyRoute
 		key        string
-		ok         bool
 	)
 
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 	for _, item := range exists {
 		existsMap[getPolicyRouteItemKey(item)] = item
 	}
-	// load policies to add
+	// load policies to add or update
 	for _, item := range target {
 		key = getPolicyRouteItemKey(item)
 
-		if _, ok = existsMap[key]; ok {
+		if existing, ok := existsMap[key]; ok {
 			delete(existsMap, key)
+			// Check if externalIDs changed, if so, add to adds list for upsert
+			if !maps.Equal(mergeExternalIDs(existing.ExternalIDs), mergeExternalIDs(item.ExternalIDs)) {
+				adds = append(adds, item)
+			}
 		} else {
 			adds = append(adds, item)
 		}
@@ -1070,14 +1075,19 @@ func diffPolicyRouteWithExisted(exists, target []*kubeovnv1.PolicyRoute) ([]*kub
 	return dels, adds
 }
 
+// policyRouteLogicalInfo holds both the K8s PolicyRoute representation and the original OVN policy's ExternalIDs
+type policyRouteLogicalInfo struct {
+	route       *kubeovnv1.PolicyRoute
+	externalIDs map[string]string
+}
+
 func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*kubeovnv1.PolicyRoute) ([]*kubeovnv1.PolicyRoute, []*kubeovnv1.PolicyRoute) {
 	var (
 		dels, adds []*kubeovnv1.PolicyRoute
-		existsMap  map[string]*kubeovnv1.PolicyRoute
+		existsMap  map[string]*policyRouteLogicalInfo
 		key        string
-		ok         bool
 	)
-	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
+	existsMap = make(map[string]*policyRouteLogicalInfo, len(exists))
 
 	for _, item := range exists {
 		if item.ExternalIDs["vpc-egress-gateway"] != "" ||
@@ -1085,31 +1095,48 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 			continue
 		}
 		policy := &kubeovnv1.PolicyRoute{
-			Priority: item.Priority,
-			Match:    item.Match,
-			Action:   kubeovnv1.PolicyRouteAction(item.Action),
+			Priority:  item.Priority,
+			Match:     item.Match,
+			Action:    kubeovnv1.PolicyRouteAction(item.Action),
+			NextHopIP: strings.Join(item.Nexthops, ","),
 		}
-		existsMap[getPolicyRouteItemKey(policy)] = policy
+		existsMap[getPolicyRouteItemKey(policy)] = &policyRouteLogicalInfo{
+			route:       policy,
+			externalIDs: item.ExternalIDs,
+		}
 	}
 
 	for _, item := range target {
 		key = getPolicyRouteItemKey(item)
 
-		if _, ok = existsMap[key]; ok {
+		if existing, ok := existsMap[key]; ok {
 			delete(existsMap, key)
+			// Check if externalIDs changed, if so, add to adds list for upsert
+			if !maps.Equal(existing.externalIDs, mergeExternalIDs(item.ExternalIDs)) {
+				adds = append(adds, item)
+			}
 		} else {
 			adds = append(adds, item)
 		}
 	}
 
-	for _, item := range existsMap {
-		dels = append(dels, item)
+	for _, info := range existsMap {
+		dels = append(dels, info.route)
 	}
 	return dels, adds
 }
 
 func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
 	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
+}
+
+// mergeExternalIDs merges user-specified externalIDs with the default vendor key.
+// The vendor key is always set to util.CniTypeName to prevent user override.
+func mergeExternalIDs(externalIDs map[string]string) map[string]string {
+	merged := make(map[string]string, len(externalIDs)+1)
+	maps.Copy(merged, externalIDs)
+	merged["vendor"] = util.CniTypeName
+	return merged
 }
 
 func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {

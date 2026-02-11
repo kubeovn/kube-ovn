@@ -294,3 +294,289 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func Test_diffPolicyRouteWithLogical(t *testing.T) {
+	t.Parallel()
+
+	t.Run("detect externalIDs changes", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   string(kubeovnv1.PolicyRouteActionReroute),
+				ExternalIDs: map[string]string{
+					"vendor": util.CniTypeName,
+					"source": "old-source",
+				},
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "new-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Empty(t, dels)
+		// externalIDs changed, so it should be in adds for upsert
+		require.Len(t, adds, 1)
+		require.Equal(t, "ip4.src == 10.0.0.0/24", adds[0].Match)
+		require.Equal(t, "new-source", adds[0].ExternalIDs["source"])
+	})
+
+	t.Run("no change when externalIDs match", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   string(kubeovnv1.PolicyRouteActionReroute),
+				ExternalIDs: map[string]string{
+					"vendor": util.CniTypeName,
+					"source": "my-source",
+				},
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Empty(t, dels)
+		require.Empty(t, adds)
+	})
+
+	t.Run("add new policy route with externalIDs", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Empty(t, dels)
+		require.Len(t, adds, 1)
+		require.Equal(t, "my-source", adds[0].ExternalIDs["source"])
+	})
+
+	t.Run("delete policy route", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   string(kubeovnv1.PolicyRouteActionReroute),
+				ExternalIDs: map[string]string{
+					"vendor": util.CniTypeName,
+				},
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Len(t, dels, 1)
+		require.Empty(t, adds)
+	})
+
+	t.Run("policy route without externalIDs uses default", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   string(kubeovnv1.PolicyRouteActionReroute),
+				ExternalIDs: map[string]string{
+					"vendor": util.CniTypeName,
+				},
+			},
+		}
+		// Target has no externalIDs, should match existing (vendor: kube-ovn)
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Empty(t, dels)
+		require.Empty(t, adds) // No change because merged externalIDs match
+	})
+
+	t.Run("vendor key cannot be overwritten by user", func(t *testing.T) {
+		exists := []*ovnnb.LogicalRouterPolicy{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   string(kubeovnv1.PolicyRouteActionReroute),
+				ExternalIDs: map[string]string{
+					"vendor": util.CniTypeName,
+				},
+			},
+		}
+		// User tries to override vendor key - should be ignored
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"vendor": "custom-vendor", // This should be ignored
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithLogical(exists, target)
+
+		require.Empty(t, dels)
+		require.Empty(t, adds) // No change because vendor is always kube-ovn
+	})
+}
+
+func Test_diffPolicyRouteWithExisted(t *testing.T) {
+	t.Parallel()
+
+	t.Run("detect externalIDs changes", func(t *testing.T) {
+		exists := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "old-source",
+				},
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "new-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithExisted(exists, target)
+
+		require.Empty(t, dels)
+		// externalIDs changed, so it should be in adds for upsert
+		require.Len(t, adds, 1)
+		require.Equal(t, "new-source", adds[0].ExternalIDs["source"])
+	})
+
+	t.Run("no change when externalIDs match", func(t *testing.T) {
+		exists := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithExisted(exists, target)
+
+		require.Empty(t, dels)
+		require.Empty(t, adds)
+	})
+
+	t.Run("add new policy route", func(t *testing.T) {
+		exists := []*kubeovnv1.PolicyRoute{}
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithExisted(exists, target)
+
+		require.Empty(t, dels)
+		require.Len(t, adds, 1)
+	})
+
+	t.Run("delete policy route", func(t *testing.T) {
+		exists := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+			},
+		}
+		target := []*kubeovnv1.PolicyRoute{}
+
+		dels, adds := diffPolicyRouteWithExisted(exists, target)
+
+		require.Len(t, dels, 1)
+		require.Empty(t, adds)
+	})
+
+	t.Run("vendor key cannot be overwritten by user", func(t *testing.T) {
+		exists := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"source": "my-source",
+				},
+			},
+		}
+		// User tries to override vendor key - should be ignored
+		target := []*kubeovnv1.PolicyRoute{
+			{
+				Priority: 100,
+				Match:    "ip4.src == 10.0.0.0/24",
+				Action:   kubeovnv1.PolicyRouteActionReroute,
+				ExternalIDs: map[string]string{
+					"vendor": "custom-vendor", // This should be ignored
+					"source": "my-source",
+				},
+			},
+		}
+
+		dels, adds := diffPolicyRouteWithExisted(exists, target)
+
+		require.Empty(t, dels)
+		require.Empty(t, adds) // No change because vendor is always kube-ovn
+	})
+}
