@@ -149,6 +149,7 @@ spec:
           - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.func.ENABLE_LIVE_MIGRATION_OPTIMIZE }}
+          - --enable-security-group={{- .Values.func.ENABLE_SECURITY_GROUP }}
           - --enable-ovn-lb-prefer-local={{- .Values.func.ENABLE_OVN_LB_PREFER_LOCAL }}
           - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           - --skip-conntrack-dst-cidrs={{- .Values.networking.SKIP_CONNTRACK_DST_CIDRS }}

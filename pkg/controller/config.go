@@ -100,6 +100,7 @@ type Configuration struct {
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
+	EnableSecurityGroup         bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -203,6 +204,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
+		argEnableSecurityGroup         = pflag.Bool("enable-security-group", true, "Whether to enable the security group feature including the default deny-all security group")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -310,6 +312,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
 		CertManagerIPSecCert:           *argCertManagerIPSecCert,
 		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
+		EnableSecurityGroup:            *argEnableSecurityGroup,
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,

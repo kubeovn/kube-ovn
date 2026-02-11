@@ -226,6 +226,9 @@ features:
   # -- Enable optimized live migrations for VMs
   # @section -- Opt-in/out Features
   enableLiveMigrationOptimization: true
+  # -- Enable the security group feature including the default deny-all security group
+  # @section -- Opt-in/out Features
+  enableSecurityGroup: true
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true
