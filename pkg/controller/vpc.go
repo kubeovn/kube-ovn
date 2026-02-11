@@ -810,15 +810,15 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	nodeNames := make([]string, 0, len(nodes))
 	chassisCount = min(chassisCount, len(nodes))
 	chassisNames := make([]string, 0, chassisCount)
-	for _, nodes := range nodes[:chassisCount] {
-		chassis, err := c.OVNSbClient.GetChassisByHost(nodes.Name)
+	for _, node := range nodes[:chassisCount] {
+		chassis, err := c.OVNSbClient.GetChassisByHost(node.Name)
 		if err != nil {
-			err = fmt.Errorf("failed to get chassis of node %s: %w", nodes.Name, err)
+			err = fmt.Errorf("failed to get chassis of node %s: %w", node.Name, err)
 			klog.Error(err)
 			return portName, nil, err
 		}
 		chassisNames = append(chassisNames, chassis.Name)
-		nodeNames = append(nodeNames, nodes.Name)
+		nodeNames = append(nodeNames, node.Name)
 	}
 
 	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
@@ -896,28 +896,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 }
 
 func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, match string) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
-
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	cachedVpc, err = c.vpcsLister.Get(vpcName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
+	if err := c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -925,11 +904,6 @@ func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, matc
 }
 
 func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kubeovnv1.PolicyRoute) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
-
 	start := time.Now()
 	routerPolicies := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
 	for _, policy := range policies {
@@ -939,26 +913,10 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 		})
 	}
 
-	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
+	if err := c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))
-
-	cachedVpc, err = c.vpcsLister.Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
@@ -1000,10 +958,6 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 }
 
 func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*kubeovnv1.StaticRoute) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
 	start := time.Now()
 	routeCount := len(staticRoutes)
 	delRoutes := make([]*ovnnb.LogicalRouterStaticRoute, 0, routeCount)
@@ -1017,27 +971,11 @@ func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*
 		}
 		delRoutes = append(delRoutes, newRoute)
 	}
-	if err = c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
+	if err := c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
 		klog.Errorf("batch del vpc %s static route %d failed, %v", name, routeCount, err)
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete static route from vpc %s static routes %d", time.Since(start), name, len(delRoutes))
-
-	cachedVpc, err = c.vpcsLister.Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
