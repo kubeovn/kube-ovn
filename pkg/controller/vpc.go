@@ -468,21 +468,29 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		// Add static routes created by addCustomVPCStaticRouteForSubnet
 		for _, subnet := range subnets {
 			if subnet.Spec.Vpc == key {
-				staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
-					Policy:     kubeovnv1.PolicySrc,
-					CIDR:       subnet.Spec.CIDRBlock,
-					NextHopIP:  subnet.Spec.Gateway,
-					RouteTable: subnet.Spec.RouteTable,
-				})
+				v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
+				if v4Gw != "" && v4Cidr != "" {
+					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
+						Policy:     kubeovnv1.PolicySrc,
+						CIDR:       v4Cidr,
+						NextHopIP:  v4Gw,
+						RouteTable: subnet.Spec.RouteTable,
+					})
+				}
+				if v6Gw != "" && v6Cidr != "" {
+					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
+						Policy:     kubeovnv1.PolicySrc,
+						CIDR:       v6Cidr,
+						NextHopIP:  v6Gw,
+						RouteTable: subnet.Spec.RouteTable,
+					})
+				}
 			}
 		}
 	}
 
-	routeNeedDel, routeNeedAdd, err := diffStaticRoute(staticExistedRoutes, staticTargetRoutes)
-	if err != nil {
-		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
-		return err
-	}
+	routeNeedDel, routeNeedAdd := diffStaticRoute(staticExistedRoutes, staticTargetRoutes)
 
 	for _, item := range routeNeedDel {
 		klog.Infof("vpc %s del static route: %+v", vpc.Name, item)
@@ -608,7 +616,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			if subnet.Status.IsNotReady() {
 				c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			}
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 				custVpcEnableExternalEcmp = true
 			}
@@ -760,7 +767,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 		}
 	}
 
-	if err := c.updateVpcExternalStatus(vpc.Name, vpc.Spec.EnableExternal); err != nil {
+	if err := c.updateVpcExternalStatus(vpc.Name); err != nil {
 		klog.Errorf("failed to update vpc external subnets status, %v", err)
 		return err
 	}
@@ -1015,11 +1022,13 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		key        string
 		ok         bool
 	)
+	klog.Infof("diffPolicyRouteWithLogical exists: %v, target: %v", exists, target)
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
-		if item.ExternalIDs["vpc-egress-gateway"] != "" ||
-			item.ExternalIDs["isU2ORoutePolicy"] != "true" {
+		klog.Infof("diffPolicyRouteWithLogical item: %+v", item)
+		if item.ExternalIDs["vpc-egress-gateway"] != "" || item.ExternalIDs["subnet"] != "" ||
+			item.ExternalIDs["isU2ORoutePolicy"] == "true" {
 			continue
 		}
 		policy := &kubeovnv1.PolicyRoute{
@@ -1029,6 +1038,7 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		}
 		existsMap[getPolicyRouteItemKey(policy)] = policy
 	}
+	klog.Infof("diffPolicyRouteWithLogical existsMap: %v", existsMap)
 
 	for _, item := range target {
 		key = getPolicyRouteItemKey(item)
@@ -1040,9 +1050,12 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		}
 	}
 
+	klog.Infof("diffPolicyRouteWithLogical existsMap after delete: %v", existsMap)
+
 	for _, item := range existsMap {
 		dels = append(dels, item)
 	}
+	klog.Infof("diffPolicyRouteWithLogical dels: %v, adds: %v", dels, adds)
 	return dels, adds
 }
 
@@ -1050,7 +1063,7 @@ func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
 	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
 }
 
-func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute) {
 	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
 	for _, item := range exist {
 		policy := kubeovnv1.PolicyDst
@@ -1081,7 +1094,7 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 	for _, item := range existRouteMap {
 		routeNeedDel = append(routeNeedDel, item)
 	}
-	return routeNeedDel, routeNeedAdd, err
+	return routeNeedDel, routeNeedAdd
 }
 
 func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) string {
@@ -1361,14 +1374,15 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	needUpdate := false
 	newStaticRoutes := make([]*kubeovnv1.StaticRoute, 0, len(vpc.Spec.StaticRoutes))
 	for _, route := range vpc.Spec.StaticRoutes {
-		if route.ECMPMode != util.StaticRouteBfdEcmp {
-			newStaticRoutes = append(newStaticRoutes, route)
+		if route.ECMPMode == util.StaticRouteBfdEcmp {
 			needUpdate = true
+			continue
 		}
+		newStaticRoutes = append(newStaticRoutes, route)
 	}
-	// keep non ecmp bfd routes
-	vpc.Spec.StaticRoutes = newStaticRoutes
+	// keep routes except bfd ecmp routes
 	if needUpdate {
+		vpc.Spec.StaticRoutes = newStaticRoutes
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
@@ -1438,7 +1452,7 @@ func (c *Controller) getRouteTablesByVpc(vpc *kubeovnv1.Vpc) map[string][]*kubeo
 	return rtbs
 }
 
-func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) error {
+func (c *Controller) updateVpcExternalStatus(key string) error {
 	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s, %v", key, err)
@@ -1448,7 +1462,7 @@ func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) er
 	vpc.Status.EnableExternal = vpc.Spec.EnableExternal
 	vpc.Status.EnableBfd = vpc.Spec.EnableBfd
 
-	if enableExternal {
+	if vpc.Spec.EnableExternal {
 		sort.Strings(vpc.Spec.ExtraExternalSubnets)
 		vpc.Status.ExtraExternalSubnets = vpc.Spec.ExtraExternalSubnets
 	} else {
