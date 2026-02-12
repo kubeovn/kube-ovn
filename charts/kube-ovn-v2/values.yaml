@@ -44,6 +44,13 @@ masterNodesLabels:
   kube-ovn/role: master
   # node-role.kubernetes.io/control-plane: ""
 
+# -- Additional node selector labels for the OVS/OVN pods.
+# This allows scheduling pods like ovs-ovn, kube-ovn-cni, and kube-ovn-pinger on specific nodes.
+# See https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+# @section -- Global parameters
+ovsNodesLabels: {}
+  # kube-ovn/role: ovs
+
 # -- General configuration of the network created by Kube-OVN.
 # @section -- Network parameters of the CNI
 # @default -- "{}"

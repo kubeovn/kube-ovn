@@ -190,6 +190,9 @@ spec:
           {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
+        {{- with .Values.ovsNodesLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       volumes:
         - name: usr-local-sbin
           emptyDir: {}
