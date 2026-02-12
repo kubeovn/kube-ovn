@@ -1191,6 +1191,13 @@ func (c *Controller) gcLbSvcPods() error {
 	return nil
 }
 
+// gcOvnLb handles cleaning up loadbalancers created by SwitchLBRules/EndpointSlices
+// For every LB present in OVN, we make sure:
+// - the ip_port_mappings are not stale (they're used by a VIP)
+// - TODO: the VIPs are linked to an EndpointSlice and are not stale
+// - TODO: the healthchecks are linked to an EndpointSlice and are not stale
+// Right now, if the controller is down while EPs are getting deleted, the VIPs will not be cleaned
+// and the healthchecks will not be cleaned. This can lead to dangling resources in OVN.
 func (c *Controller) gcOvnLb() error {
 	klog.Infof("start to gc ovn load balancers")
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
@@ -1201,12 +1208,13 @@ func (c *Controller) gcOvnLb() error {
 		return err
 	}
 
+	// Run GC on every loadbalancer within OVN
 	for _, lb := range lbs {
 		backendIPs := set.New[string]()
 
 		// Collect every backend IP associated with every VIP in that loadbalancer
 		for _, backends := range lb.Vips {
-			for _, backend := range strings.Split(backends, ",") {
+			for backend := range strings.SplitSeq(backends, ",") {
 				if ip, _, err := net.SplitHostPort(backend); err == nil {
 					backendIPs.Insert(ip)
 				}

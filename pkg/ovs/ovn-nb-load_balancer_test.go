@@ -723,13 +723,13 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 	)
 }
 
-func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
+func (suite *OvnClientTestSuite) testLoadBalancerDeleteVipIPPortMapping() {
 	t := suite.T()
 	t.Parallel()
 
 	var (
 		nbClient       = suite.ovnNBClient
-		lbName         = "test-lb-del-ip-port-mapping"
+		lbName         = "test-lb-del-vip-ip-port-mapping"
 		vips, mappings map[string]string
 		lb             *ovnnb.LoadBalancer
 		err            error
@@ -781,7 +781,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 					require.Contains(t, lb.IPPortMappings, backend)
 				}
 
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
+				err = nbClient.LoadBalancerDeleteVipIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
@@ -829,7 +829,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 				err = nbClient.LoadBalancerAddIPPortMapping(lbName, vhost, mappings)
 				require.NoError(t, err)
 
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
+				err = nbClient.LoadBalancerDeleteVipIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
@@ -873,7 +873,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 				err = nbClient.LoadBalancerAddIPPortMapping(lbName, vhost, mappings)
 				require.NoError(t, err)
 
-				err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, vhost)
+				err = nbClient.LoadBalancerDeleteVipIPPortMapping(lbName, vhost)
 				require.NoError(t, err)
 
 				lb, err = nbClient.GetLoadBalancer(lbName, false)
@@ -888,6 +888,53 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 			}
 		},
 	)
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
+	t := suite.T()
+	t.Parallel()
+
+	var (
+		nbClient = suite.ovnNBClient
+		lbName   = "test-lb-del-ip-port-mapping"
+		lb       *ovnnb.LoadBalancer
+		err      error
+	)
+
+	err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+	require.NoError(t, err)
+
+	t.Run("delete a specific backend IP from ip_port_mappings", func(t *testing.T) {
+		mappings := map[string]string{
+			"192.168.20.3": "node1",
+			"192.168.20.4": "node2",
+		}
+		err = nbClient.LoadBalancerUpdateIPPortMapping(lbName, "10.96.0.5:443", mappings)
+		require.NoError(t, err)
+
+		lb, err = nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+		require.Contains(t, lb.IPPortMappings, "192.168.20.3")
+		require.Contains(t, lb.IPPortMappings, "192.168.20.4")
+
+		err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, "192.168.20.3")
+		require.NoError(t, err)
+
+		lb, err = nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lb.IPPortMappings, "192.168.20.3")
+		require.Contains(t, lb.IPPortMappings, "192.168.20.4")
+	})
+
+	t.Run("delete non-existent backend IP", func(t *testing.T) {
+		err = nbClient.LoadBalancerDeleteIPPortMapping(lbName, "1.1.1.1")
+		require.NoError(t, err)
+	})
+
+	t.Run("delete from non-existent load balancer", func(t *testing.T) {
+		err = nbClient.LoadBalancerDeleteIPPortMapping("non-existent-lb", "192.168.20.4")
+		require.ErrorContains(t, err, "not found load balancer")
+	})
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {

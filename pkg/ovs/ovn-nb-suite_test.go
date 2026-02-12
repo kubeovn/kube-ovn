@@ -563,6 +563,10 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerAddIPPortMapping() {
 	suite.testLoadBalancerAddIPPortMapping()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteVipIPPortMapping() {
+	suite.testLoadBalancerDeleteVipIPPortMapping()
+}
+
 func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteIPPortMapping() {
 	suite.testLoadBalancerDeleteIPPortMapping()
 }
