@@ -1467,12 +1467,11 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 }
 
 func getNextHopByTunnelIP(gw []net.IP) string {
-	// validation check by caller
-	nextHop := gw[0].String()
-	if len(gw) == 2 {
-		nextHop = gw[0].String() + "," + gw[1].String()
+	hops := make([]string, len(gw))
+	for i, ip := range gw {
+		hops[i] = ip.String()
 	}
-	return nextHop
+	return strings.Join(hops, ",")
 }
 
 func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
@@ -2546,12 +2545,6 @@ func setPodRoutesAnnotation(annotations map[string]string, provider string, rout
 
 // Check if pod is a VPC NAT gateway using pod annotations
 func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
-	if pod == nil {
-		return false, ""
-	}
-	if pod.Annotations == nil {
-		return false, ""
-	}
 	vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]
 	if isVpcNatGw {
 		if vpcGwName == "" {
