@@ -1052,7 +1052,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				return err
 			}
 		}
-		if pod.DeletionTimestamp != nil {
+		if !pod.DeletionTimestamp.IsZero() {
 			klog.Infof("handle deletion of vm pod %s", podKey)
 			isOwnerRefToDel = c.isVMToDel(pod, vmName)
 			if !isOwnerRefToDel {
@@ -1283,8 +1283,8 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	targetPortNameList := strset.NewWithSize(len(podNets))
-	portsNeedToDel := []string{}
-	annotationsNeedToDel := []string{}
+	var portsNeedToDel []string
+	var annotationsNeedToDel []string
 	annotationsNeedToAdd := make(map[string]string)
 	subnetUsedByPort := make(map[string]string)
 
