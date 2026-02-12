@@ -115,9 +115,9 @@ func Test_gcOvnLb(t *testing.T) {
 		fakeCtrl.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping("lb2", "192.168.2.2").Return(nil)
 		fakeCtrl.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping("lb3", "fd00::102").Return(nil)
 
-		err := fakeCtrl.fakeController.gcOvnLb()
+		err := fakeCtrl.fakeController.gcIpPortMapping()
 		if err != nil {
-			t.Errorf("gcOvnLb() error = %v", err)
+			t.Errorf("gcIpPortMapping() error = %v", err)
 		}
 	})
 
@@ -138,9 +138,9 @@ func Test_gcOvnLb(t *testing.T) {
 		fakeCtrl.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{*lb}, nil)
 		// No LoadBalancerDeleteIPPortMapping expected
 
-		err := fakeCtrl.fakeController.gcOvnLb()
+		err := fakeCtrl.fakeController.gcIpPortMapping()
 		if err != nil {
-			t.Errorf("gcOvnLb() error = %v", err)
+			t.Errorf("gcIpPortMapping() error = %v", err)
 		}
 	})
 }

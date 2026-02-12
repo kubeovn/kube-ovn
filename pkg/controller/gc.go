@@ -51,7 +51,7 @@ func (c *Controller) gc() error {
 		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
-		c.gcOvnLb,
+		c.gcIpPortMapping,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1191,15 +1191,10 @@ func (c *Controller) gcLbSvcPods() error {
 	return nil
 }
 
-// gcOvnLb handles cleaning up loadbalancers created by SwitchLBRules/EndpointSlices
-// For every LB present in OVN, we make sure:
-// - the ip_port_mappings are not stale (they're used by a VIP)
-// - TODO: the VIPs are linked to an EndpointSlice and are not stale
-// - TODO: the healthchecks are linked to an EndpointSlice and are not stale
-// Right now, if the controller is down while EPs are getting deleted, the VIPs will not be cleaned
-// and the healthchecks will not be cleaned. This can lead to dangling resources in OVN.
-func (c *Controller) gcOvnLb() error {
-	klog.Infof("start to gc ovn load balancers")
+// gcIpPortMapping handles cleaning up ip_port_mappings created by SwitchLBRules/EndpointSlices
+// For every LB present in OVN, we make sure the ip_port_mappings are not stale (they're used by a VIP)
+func (c *Controller) gcIpPortMapping() error {
+	klog.Infof("start to gc ovn load balancers ip_port_mappings")
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.ExternalIDs["vendor"] == util.CniTypeName
 	})
