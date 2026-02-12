@@ -721,6 +721,31 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
 			require.NoError(t, err)
 		},
 	)
+
+	t.Run("update ip port mappings should not overwrite existing data", func(t *testing.T) {
+		lbName := "test-lb-update-ip-port-mapping-no-overwrite"
+		err := nbClient.CreateLoadBalancer(lbName, "tcp", "")
+		require.NoError(t, err)
+
+		initialMappings := map[string]string{
+			"192.168.20.3": "node1",
+		}
+		err = nbClient.LoadBalancerUpdateIPPortMapping(lbName, "10.96.0.5:443", initialMappings)
+		require.NoError(t, err)
+
+		newMappings := map[string]string{
+			"192.168.20.4": "node2",
+		}
+		err = nbClient.LoadBalancerUpdateIPPortMapping(lbName, "10.96.0.6:443", newMappings)
+		require.NoError(t, err)
+
+		lb, err := nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Len(t, lb.IPPortMappings, 2)
+		require.Equal(t, "node1", lb.IPPortMappings["192.168.20.3"])
+		require.Equal(t, "node2", lb.IPPortMappings["192.168.20.4"])
+	})
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerDeleteVipIPPortMapping() {
