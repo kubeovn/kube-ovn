@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.15.4 (2026-02-12)
+
+ * [fe5412f18](https://github.com/kubeovn/kube-ovn/commit/fe5412f180adba797d6cdf6818fe53928e10f1a7) release v1.15.4
+ * [5b263ed93](https://github.com/kubeovn/kube-ovn/commit/5b263ed93d096b762450a09c26b1cde74efd139a) remove unnecessary logs
+ * [8291be7a9](https://github.com/kubeovn/kube-ovn/commit/8291be7a94b0f43e687a79b7b3c4591c07e340f3) refactor(controller): clean up redundant logic in vpc controller (#6295)
+ * [b60f10006](https://github.com/kubeovn/kube-ovn/commit/b60f10006130cc29357b7b70d09f8a4509835155) fix: skip IPAM init for empty IP annotation and handle nil IPRangeList (#6296)
+ * [673317212](https://github.com/kubeovn/kube-ovn/commit/6733172126d9db1874671eb16571a0838054a97f) fix duplicate description
+ * [c72287473](https://github.com/kubeovn/kube-ovn/commit/c72287473841c30cb0dd9ecd84f0d51e9e71de8b) refactor(ovn_leader_checker): improve readability and naming (#6263)
+ * [26dab970f](https://github.com/kubeovn/kube-ovn/commit/26dab970f58f447aa1814d7ea887ef8a9cd267e2) fix(iptables-eip): look up subnet directly by name instead of resolving through NAD (#6287)
+ * [25d473e73](https://github.com/kubeovn/kube-ovn/commit/25d473e73931892a8c71ab63537abc75e050c68e) fix(deps): update golang (#6289)
+ * [9a1db503b](https://github.com/kubeovn/kube-ovn/commit/9a1db503b4331e803e2571a52d62a086ac6dee5f) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * Zespre Chang
+ * renovate[bot]
+ * zbb88888
+
 ## v1.15.3 (2026-02-09)
 
  * [c5c83b57d](https://github.com/kubeovn/kube-ovn/commit/c5c83b57da2cf57b9f52d53e453e628843b65732) release v1.15.3
