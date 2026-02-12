@@ -625,24 +625,7 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			// Delete from the IPPortMappings any outdated mapping
-			mappingToDelete := make(map[string]string)
-			for portIP, portMapVip := range lb.IPPortMappings {
-				if _, ok := ipPortMappings[portIP]; !ok {
-					mappingToDelete[portIP] = portMapVip
-				}
-			}
-
-			if len(mappingToDelete) > 0 {
-				klog.Infof("deleting outdated entry from ipportmapping %v", mappingToDelete)
-			}
-
 			return []model.Mutation{
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   mappingToDelete,
-					Mutator: ovsdb.MutateOperationDelete,
-				},
 				{
 					Field:   &lb.IPPortMappings,
 					Value:   ipPortMappings,
