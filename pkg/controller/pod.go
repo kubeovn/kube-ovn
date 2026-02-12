@@ -200,18 +200,10 @@ func (c *Controller) enqueueAddPod(obj any) {
 	if !isPodAlive(p) {
 		isStateful, statefulSetName, statefulSetUID := isStatefulSetPod(p)
 		isVMPod, vmName := isVMPod(p)
-		if isStateful || (isVMPod && c.config.EnableKeepVMIP) {
-			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName, statefulSetUID) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
-				c.deletingPodObjMap.Store(key, p)
-				c.deletePodQueue.Add(key)
-			}
-			if isVMPod && c.isVMToDel(p, vmName) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
-				c.deletingPodObjMap.Store(key, p)
-				c.deletePodQueue.Add(key)
-			}
-		} else {
+		shouldDelete := (!isStateful && !(isVMPod && c.config.EnableKeepVMIP)) ||
+			(isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName, statefulSetUID)) ||
+			(isVMPod && c.isVMToDel(p, vmName))
+		if shouldDelete {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletingPodObjMap.Store(key, p)
 			c.deletePodQueue.Add(key)
@@ -361,13 +353,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	if c.config.EnableANP {
-		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
-		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
-		}
-
-		if allocatedChanged {
+		if !maps.Equal(oldPod.Labels, newPod.Labels) || allocatedChanged {
+			nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
 			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
 			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 		}
@@ -617,10 +604,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				patch[fmt.Sprintf(util.ProviderNetworkTemplate, podNet.ProviderName)] = vlan.Spec.Provider
 			}
 
-			portSecurity := false
-			if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
-				portSecurity = true
-			}
+			portSecurity := pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true"
 
 			vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 			for ip := range strings.SplitSeq(vips, ",") {
@@ -692,7 +676,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := strings.Join([]string{namespace, name}, "/")
+			key := fmt.Sprintf("%s/%s", namespace, name)
 			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
@@ -703,7 +687,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
-			key := strings.Join([]string{namespace, name}, "/")
+			key := fmt.Sprintf("%s/%s", namespace, name)
 			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
@@ -981,7 +965,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := strings.Join([]string{namespace, name}, "/")
+			key := fmt.Sprintf("%s/%s", namespace, name)
 			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
@@ -1265,10 +1249,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 			continue
 		}
 
-		portSecurity := false
-		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
-			portSecurity = true
-		}
+		portSecurity := pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true"
 
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
@@ -1408,47 +1389,53 @@ func isStatefulSetPod(pod *v1.Pod) (bool, string, types.UID) {
 	return false, "", ""
 }
 
-func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
-	// only delete statefulset pod lsp when statefulset deleted or down scaled
+// isStatefulSetPodOutOfScope checks whether a stateful set pod's logical slot
+// has been removed (the sts is gone, recreated, or down-scaled past this pod's ordinal).
+// gone is true when the sts is deleted, being deleted, or recreated.
+// downScaled is true when the pod's ordinal is beyond the current replicas.
+func isStatefulSetPodOutOfScope(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) (gone, downScaled bool) {
 	sts, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
 	if err != nil {
-		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
 			klog.Infof("statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
-			return true
+			return true, false
 		}
 		klog.Errorf("failed to get statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
+		return false, false
 	}
 
-	// statefulset is being deleted, or it's a newly created one
 	if !sts.DeletionTimestamp.IsZero() {
 		klog.Infof("statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
-		return true
+		return true, false
 	}
 	if sts.UID != statefulSetUID {
 		klog.Infof("statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
-		return true
+		return true, false
 	}
 
-	// down scale statefulset
 	tempStrs := strings.Split(pod.Name, "-")
 	numStr := tempStrs[len(tempStrs)-1]
 	index, err := strconv.ParseInt(numStr, 10, 0)
 	if err != nil {
 		klog.Errorf("failed to parse %s to int", numStr)
-		return false
+		return false, false
 	}
-	// down scaled
+
 	var startOrdinal int64
 	if sts.Spec.Ordinals != nil {
 		startOrdinal = int64(sts.Spec.Ordinals.Start)
 	}
 	if index >= startOrdinal+int64(*sts.Spec.Replicas) {
 		klog.Infof("statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
-		return true
+		return false, true
 	}
-	return false
+
+	return false, false
+}
+
+func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
+	gone, downScaled := isStatefulSetPodOutOfScope(c, pod, statefulSetName, statefulSetUID)
+	return gone || downScaled
 }
 
 // only gc statefulset pod lsp when:
@@ -1456,56 +1443,14 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 // 2. the statefulset has been deleted and recreated
 // 3. the statefulset is down scaled and the pod is not alive
 func isStatefulSetPodToGC(c kubernetes.Interface, pod *v1.Pod, statefulSetName string, statefulSetUID types.UID) bool {
-	sts, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
-	if err != nil {
-		// the statefulset has been deleted
-		if k8serrors.IsNotFound(err) {
-			klog.Infof("statefulset %s/%s has been deleted", pod.Namespace, statefulSetName)
-			return true
-		}
-		klog.Errorf("failed to get statefulset %s/%s: %v", pod.Namespace, statefulSetName, err)
-		return false
-	}
-
-	// statefulset is being deleted
-	if !sts.DeletionTimestamp.IsZero() {
-		klog.Infof("statefulset %s/%s is being deleted", pod.Namespace, statefulSetName)
-		return true
-	}
-	// the statefulset has been deleted and recreated
-	if sts.UID != statefulSetUID {
-		klog.Infof("statefulset %s/%s is a newly created one", pod.Namespace, statefulSetName)
-		return true
-	}
-
-	// the statefulset is down scaled and the pod is not alive
-
-	tempStrs := strings.Split(pod.Name, "-")
-	numStr := tempStrs[len(tempStrs)-1]
-	index, err := strconv.ParseInt(numStr, 10, 0)
-	if err != nil {
-		klog.Errorf("failed to parse %s to int", numStr)
-		return false
-	}
-	// down scaled
-	var startOrdinal int64
-	if sts.Spec.Ordinals != nil {
-		startOrdinal = int64(sts.Spec.Ordinals.Start)
-	}
-	if index >= startOrdinal+int64(*sts.Spec.Replicas) {
-		klog.Infof("statefulset %s/%s is down scaled", pod.Namespace, statefulSetName)
-		if !isPodAlive(pod) {
-			// we must check whether the pod is alive because we have to consider the following case:
-			// 1. the statefulset is down scaled to zero
-			// 2. the lsp gc is triggered
-			// 3. gc interval, e.g. 90s, is passed and the second gc is triggered
-			// 4. the sts is up scaled to the original replicas
-			// 5. the pod is still running and it will not be recreated
-			return true
-		}
-	}
-
-	return false
+	gone, downScaled := isStatefulSetPodOutOfScope(c, pod, statefulSetName, statefulSetUID)
+	// For the down-scaled case, we must check whether the pod is alive because:
+	// 1. the statefulset is down scaled to zero
+	// 2. the lsp gc is triggered
+	// 3. gc interval, e.g. 90s, is passed and the second gc is triggered
+	// 4. the sts is up scaled to the original replicas
+	// 5. the pod is still running and it will not be recreated
+	return gone || (downScaled && !isPodAlive(pod))
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
