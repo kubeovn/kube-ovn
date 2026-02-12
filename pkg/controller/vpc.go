@@ -1022,11 +1022,9 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		key        string
 		ok         bool
 	)
-	klog.Infof("diffPolicyRouteWithLogical exists: %v, target: %v", exists, target)
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
-		klog.Infof("diffPolicyRouteWithLogical item: %+v", item)
 		if item.ExternalIDs["vpc-egress-gateway"] != "" || item.ExternalIDs["subnet"] != "" ||
 			item.ExternalIDs["isU2ORoutePolicy"] == "true" {
 			continue
@@ -1038,7 +1036,6 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		}
 		existsMap[getPolicyRouteItemKey(policy)] = policy
 	}
-	klog.Infof("diffPolicyRouteWithLogical existsMap: %v", existsMap)
 
 	for _, item := range target {
 		key = getPolicyRouteItemKey(item)
@@ -1050,12 +1047,9 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		}
 	}
 
-	klog.Infof("diffPolicyRouteWithLogical existsMap after delete: %v", existsMap)
-
 	for _, item := range existsMap {
 		dels = append(dels, item)
 	}
-	klog.Infof("diffPolicyRouteWithLogical dels: %v, adds: %v", dels, adds)
 	return dels, adds
 }
 
