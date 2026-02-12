@@ -832,7 +832,9 @@ func (c *Controller) gcSecurityGroup() error {
 	denyAllPg := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 	defaultPg := ovs.GetSgPortGroupName(util.DefaultSecurityGroupName)
 	for _, pg := range pgs {
-		if pg.Name == denyAllPg || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
+		// denyAllPg is only preserved when security group feature is enabled;
+		// defaultPg is always preserved as it may be referenced by LSP creation regardless of the feature flag.
+		if (c.config.EnableSecurityGroup && pg.Name == denyAllPg) || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
 			continue
 		}
 		// if port group not exist in security group, delete it

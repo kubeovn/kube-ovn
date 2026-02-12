@@ -716,7 +716,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
-		controller.ovnDnatRuleSynced,
+		controller.ovnDnatRuleSynced, controller.sgSynced,
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
@@ -1512,11 +1512,13 @@ func (c *Controller) initResourceOnce() {
 		util.LogFatalAndExit(err, "failed to initialize node chassis")
 	}
 
-	if err := c.initDefaultDenyAllSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
-	}
-	if err := c.syncSecurityGroup(); err != nil {
-		util.LogFatalAndExit(err, "failed to sync security group")
+	if c.config.EnableSecurityGroup {
+		if err := c.initDefaultDenyAllSecurityGroup(); err != nil {
+			util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
+		}
+		if err := c.syncSecurityGroup(); err != nil {
+			util.LogFatalAndExit(err, "failed to sync security group")
+		}
 	}
 
 	if err := c.syncVpcNatGatewayCR(); err != nil {

@@ -141,6 +141,10 @@ func (c *Controller) updateDenyAllSgPorts() error {
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
+	if !c.config.EnableSecurityGroup {
+		return nil
+	}
+
 	c.sgKeyMutex.LockKey(key)
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add/update security group %s", key)
@@ -319,6 +323,10 @@ func (c *Controller) patchSgStatus(sg *kubeovnv1.SecurityGroup) {
 }
 
 func (c *Controller) handleDeleteSg(key string) error {
+	if !c.config.EnableSecurityGroup {
+		return nil
+	}
+
 	c.sgKeyMutex.LockKey(key)
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete security group %s", key)
@@ -332,6 +340,10 @@ func (c *Controller) handleDeleteSg(key string) error {
 }
 
 func (c *Controller) syncSgLogicalPort(key string) error {
+	if !c.config.EnableSecurityGroup {
+		return nil
+	}
+
 	c.sgKeyMutex.LockKey(key)
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
