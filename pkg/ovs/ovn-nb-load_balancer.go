@@ -160,7 +160,7 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 	if !ignoreHealthCheck && lbhc != nil {
 		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
 		// delete ip port mapping
-		if err = c.LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint); err != nil {
+		if err = c.LoadBalancerDeleteVipIPPortMapping(lbName, vipEndpoint); err != nil {
 			klog.Errorf("failed to delete lb ip port mapping: %v", err)
 			return err
 		}
@@ -473,9 +473,43 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 	return nil
 }
 
-// LoadBalancerDeleteIPPortMapping deletes IP port mappings for a specific VIP from a load balancer.
+// LoadBalancerDeleteIPPortMapping deletes IP port mappings for a specific backend IP from a load balancer.
+func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, backendIP string) error {
+	ops, err := c.LoadBalancerOp(
+		lbName,
+		func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			if _, ok := lb.IPPortMappings[backendIP]; !ok {
+				return nil
+			}
+			return []model.Mutation{
+				{
+					Field:   &lb.IPPortMappings,
+					Value:   map[string]string{backendIP: lb.IPPortMappings[backendIP]},
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			}
+		},
+	)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate operations when deleting IP port mapping for backend %s from load balancer %s: %w", backendIP, lbName, err)
+	}
+
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err = c.Transact("lb-del", ops); err != nil {
+		return fmt.Errorf("failed to delete IP port mapping for backend %s from load balancer %s: %w", backendIP, lbName, err)
+	}
+
+	klog.Infof("successfully deleted ip port mapping for backend %s from load balancer %s", backendIP, lbName)
+	return nil
+}
+
+// LoadBalancerDeleteVipIPPortMapping deletes IP port mappings for a specific VIP from a load balancer.
 // This function ensures that only backend IPs that are no longer referenced by any VIP are removed.
-func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string) error {
+func (c *OVNNbClient) LoadBalancerDeleteVipIPPortMapping(lbName, vipEndpoint string) error {
 	lb, err := c.getLoadBalancerForDeletion(lbName)
 	if err != nil {
 		klog.Errorf("failed to get load balancer for deletion: %v", err)
@@ -625,24 +659,7 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			// Delete from the IPPortMappings any outdated mapping
-			mappingToDelete := make(map[string]string)
-			for portIP, portMapVip := range lb.IPPortMappings {
-				if _, ok := ipPortMappings[portIP]; !ok {
-					mappingToDelete[portIP] = portMapVip
-				}
-			}
-
-			if len(mappingToDelete) > 0 {
-				klog.Infof("deleting outdated entry from ipportmapping %v", mappingToDelete)
-			}
-
 			return []model.Mutation{
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   mappingToDelete,
-					Mutator: ovsdb.MutateOperationDelete,
-				},
 				{
 					Field:   &lb.IPPortMappings,
 					Value:   ipPortMappings,

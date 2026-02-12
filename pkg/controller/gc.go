@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"slices"
 	"strings"
 	"unicode"
@@ -50,6 +51,7 @@ func (c *Controller) gc() error {
 		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
+		c.gcOvnLb,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1186,6 +1188,43 @@ func (c *Controller) gcLbSvcPods() error {
 			}
 		}
 	}
+	return nil
+}
+
+func (c *Controller) gcOvnLb() error {
+	klog.Infof("start to gc ovn load balancers")
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.ExternalIDs["vendor"] == util.CniTypeName
+	})
+	if err != nil {
+		klog.Errorf("failed to list load balancers: %v", err)
+		return err
+	}
+
+	for _, lb := range lbs {
+		backendIPs := set.New[string]()
+
+		// Collect every backend IP associated with every VIP in that loadbalancer
+		for _, backends := range lb.Vips {
+			for _, backend := range strings.Split(backends, ",") {
+				if ip, _, err := net.SplitHostPort(backend); err == nil {
+					backendIPs.Insert(ip)
+				}
+			}
+		}
+
+		// If a backend is present in the ip_port_mapping but not associated with any VIP, delete the entry
+		for ip := range lb.IPPortMappings {
+			if !backendIPs.Has(ip) {
+				klog.Infof("gc stale ip_port_mapping entry %s in load balancer %s", ip, lb.Name)
+				if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, ip); err != nil {
+					klog.Errorf("failed to delete stale ip_port_mapping entry %s from load balancer %s: %v", ip, lb.Name, err)
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
