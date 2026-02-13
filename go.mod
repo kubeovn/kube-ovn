@@ -54,7 +54,7 @@ require (
 	golang.org/x/sys v0.41.0
 	golang.org/x/time v0.14.0
 	golang.org/x/tools v0.42.0
-	google.golang.org/grpc v1.78.0
+	google.golang.org/grpc v1.79.1
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.3
 	k8s.io/api v0.34.3
 	k8s.io/apiextensions-apiserver v0.34.3
@@ -75,7 +75,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.24.0 // indirect
+	cel.dev/expr v0.25.1 // indirect
 	cyphar.com/go-pathrs v0.2.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
