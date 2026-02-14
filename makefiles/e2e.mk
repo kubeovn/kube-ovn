@@ -93,6 +93,7 @@ e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/vip
 	$(GINKGO_E2E_BUILD) ./test/e2e/vpc-egress-gateway
 	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-vpc-nat-gw
+	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-eip-qos
 	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-vpc-nat-gw
 	$(GINKGO_E2E_BUILD) ./test/e2e/ha
 	$(GINKGO_E2E_BUILD) ./test/e2e/security
