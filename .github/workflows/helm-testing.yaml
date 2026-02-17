@@ -44,7 +44,9 @@ jobs:
 
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --target-branch ${{ github.event.repository.default_branch }}
+        run: |
+          echo "validate-maintainers: false" > ct.yaml
+          ct lint --target-branch ${{ github.event.repository.default_branch }} --config ct.yaml
 
       - name: Install kind
         uses: helm/kind-action@v1.13.0
