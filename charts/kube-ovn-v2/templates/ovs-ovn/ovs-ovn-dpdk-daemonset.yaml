@@ -43,8 +43,10 @@ spec:
     spec:
       tolerations:
       - operator: Exists
+      {{- with .Values.ovsOvn.dpdkHybrid.affinity }}
       affinity:
-        {{- toYaml .Values.ovsOvn.dpdkHybrid.affinity | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -134,8 +136,10 @@ spec:
           resources:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
+      {{- with .Values.ovsOvn.dpdkHybrid.nodeSelector }}
       nodeSelector:
-        {{- toYaml .Values.ovsOvn.dpdkHybrid.nodeSelector | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: host-config-ovs
           hostPath:
