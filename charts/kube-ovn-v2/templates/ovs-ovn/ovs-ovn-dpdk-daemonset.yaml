@@ -43,6 +43,8 @@ spec:
     spec:
       tolerations:
       - operator: Exists
+      affinity:
+        {{- toYaml .Values.ovsOvn.dpdkHybrid.affinity | nindent 8 }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -133,8 +135,7 @@ spec:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
       nodeSelector:
-        kubernetes.io/os: "linux"
-        ovn.kubernetes.io/ovs_dp_type: "userspace"
+        {{- toYaml .Values.ovsOvn.dpdkHybrid.nodeSelector | nindent 8 }}
       volumes:
         - name: host-config-ovs
           hostPath:
