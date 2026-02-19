@@ -1,0 +1,4 @@
+validate-maintainers: false
+namespace: kube-system
+release-label: app.kubernetes.io/instance
+skip-clean-up: true

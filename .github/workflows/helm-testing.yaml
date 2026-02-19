@@ -45,8 +45,7 @@ jobs:
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
         run: |
-          echo "validate-maintainers: false" > ct.yaml
-          ct lint --target-branch ${{ github.event.repository.default_branch }} --config ct.yaml
+          ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
 
       - name: Install kind
         uses: helm/kind-action@v1.13.0
@@ -65,7 +64,7 @@ jobs:
         id: install
         run: |
           kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
-          ct install --target-branch ${{ github.event.repository.default_branch }}
+          ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
