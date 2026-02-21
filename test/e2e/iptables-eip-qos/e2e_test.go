@@ -1034,17 +1034,17 @@ type bandwidthValidationResult struct {
 func formatBandwidthSummary(result bandwidthValidationResult, testType, direction string) string {
 	var sb strings.Builder
 	sb.WriteString("\n╔═══════════════════════════════════════════════════════════════════════════════╗\n")
-	sb.WriteString(fmt.Sprintf("║  QoS Bandwidth Test Summary - %s (%s)\n", testType, direction))
+	fmt.Fprintf(&sb, "║  QoS Bandwidth Test Summary - %s (%s)\n", testType, direction)
 	sb.WriteString("╠═══════════════════════════════════════════════════════════════════════════════╣\n")
-	sb.WriteString(fmt.Sprintf("║  QoS Limit:         %.2f Mbps\n", result.LimitMbps))
+	fmt.Fprintf(&sb, "║  QoS Limit:         %.2f Mbps\n", result.LimitMbps)
 
 	if result.MaxExpected > 0 {
-		sb.WriteString(fmt.Sprintf("║  Expected Range:    %.2f ~ %.2f Mbps (%.0f%% ~ %.0f%% of limit)\n",
+		fmt.Fprintf(&sb, "║  Expected Range:    %.2f ~ %.2f Mbps (%.0f%% ~ %.0f%% of limit)\n",
 			result.MinExpected, result.MaxExpected,
-			bandwidthToleranceLow*100, bandwidthToleranceHigh*100))
+			bandwidthToleranceLow*100, bandwidthToleranceHigh*100)
 	} else {
-		sb.WriteString(fmt.Sprintf("║  Expected:          > %.2f Mbps (QoS disabled, should exceed %.0f%% of limit)\n",
-			result.MinExpected, bandwidthToleranceHigh*100))
+		fmt.Fprintf(&sb, "║  Expected:          > %.2f Mbps (QoS disabled, should exceed %.0f%% of limit)\n",
+			result.MinExpected, bandwidthToleranceHigh*100)
 	}
 
 	sb.WriteString("║  Measured Values:   ")
@@ -1052,14 +1052,14 @@ func formatBandwidthSummary(result bandwidthValidationResult, testType, directio
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(fmt.Sprintf("%.2f", bw))
+		fmt.Fprintf(&sb, "%.2f", bw)
 	}
 	sb.WriteString(" Mbps\n")
 
 	if result.Passed {
-		sb.WriteString(fmt.Sprintf("║  Best Match:        %.2f Mbps ✓ PASS\n", result.BestMatch))
+		fmt.Fprintf(&sb, "║  Best Match:        %.2f Mbps ✓ PASS\n", result.BestMatch)
 	} else {
-		sb.WriteString(fmt.Sprintf("║  Best Match:        %.2f Mbps ✗ FAIL\n", result.BestMatch))
+		fmt.Fprintf(&sb, "║  Best Match:        %.2f Mbps ✗ FAIL\n", result.BestMatch)
 	}
 
 	sb.WriteString("╚═══════════════════════════════════════════════════════════════════════════════╝\n")

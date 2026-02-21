@@ -1468,7 +1468,7 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	cidrs := [2]string{v4CIDR, v6CIDR}
 	for i, cidr := range cidrs {
-		if len(nodeIPs[i]) == 0 || cidr == "" {
+		if len(nodeIPs[i]) == 0 || cidr == "" { // #nosec G602
 			continue
 		}
 		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
@@ -1476,8 +1476,8 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 			return err
 		}
-		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeIPs[i])
-		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidr, nodeIPs[i], nameIPMaps[i]); err != nil {
+		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeIPs[i])                     // #nosec G602
+		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidr, nodeIPs[i], nameIPMaps[i]); err != nil { // #nosec G602
 			klog.Errorf("failed to add ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 			return err
 		}
