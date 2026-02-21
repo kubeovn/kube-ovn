@@ -2372,7 +2372,7 @@ func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	return util.IsOvnProvider(subnet.Spec.Provider)
+	return subnet != nil && util.IsOvnProvider(subnet.Spec.Provider)
 }
 
 func checkAndFormatsExcludeIPs(subnet *kubeovnv1.Subnet) bool {
