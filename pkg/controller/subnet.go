@@ -1882,7 +1882,7 @@ func (c *Controller) releaseMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	return util.IsOvnProvider(subnet.Spec.Provider)
+	return subnet != nil && util.IsOvnProvider(subnet.Spec.Provider)
 }
 
 func formatExcludeIPRanges(subnet *kubeovnv1.Subnet) {
