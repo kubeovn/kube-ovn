@@ -275,3 +275,46 @@ func Test_formatSubnet(t *testing.T) {
 		})
 	}
 }
+
+func Test_isOvnSubnet(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		subnet *kubeovnv1.Subnet
+		want   bool
+	}{
+		{
+			name:   "nil subnet returns false",
+			subnet: nil,
+			want:   false,
+		},
+		{
+			name: "empty provider defaults to OVN",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: ""},
+			},
+			want: true,
+		},
+		{
+			name: "explicit OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+			},
+			want: true,
+		},
+		{
+			name: "non-OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: "external.provider"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isOvnSubnet(tc.subnet))
+		})
+	}
+}
