@@ -25,7 +25,6 @@ import (
 	"k8s.io/client-go/util/keyutil"
 	"k8s.io/klog/v2"
 	netutil "k8s.io/utils/net"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -164,7 +163,7 @@ func GenerateSelfSignedCertKey(host string, caCert *x509.Certificate, caKey *rsa
 		return nil, nil, nil, err
 	}
 
-	return certBuffer.Bytes(), keyBuffer.Bytes(), ptr.To(template.NotAfter), nil
+	return certBuffer.Bytes(), keyBuffer.Bytes(), new(template.NotAfter), nil
 }
 
 type DynamicInMemoryCertKeyPairContent struct {

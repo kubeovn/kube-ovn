@@ -215,7 +215,7 @@ func assignAddress(cfg request.IPConfig) (*current.IPConfig, *types.Route) {
 	ip := &current.IPConfig{
 		Address:   net.IPNet{IP: ipAddr, Mask: cidr.Mask},
 		Gateway:   gwIP,
-		Interface: current.Int(0),
+		Interface: new(0),
 	}
 
 	var route *types.Route

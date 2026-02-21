@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -428,7 +427,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				Kind:               util.KindSubnet,
 				Name:               subnetName,
 				UID:                subnet.UID,
-				BlockOwnerDeletion: ptr.To(true),
+				BlockOwnerDeletion: new(true),
 			}
 		}
 	}
@@ -543,7 +542,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 			macPtr = &ip.Spec.MacAddress
 		}
 	} else {
-		macPtr = ptr.To("")
+		macPtr = new("")
 	}
 
 	if ipStr == "" {

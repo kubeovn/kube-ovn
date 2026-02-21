@@ -21,7 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -227,7 +226,7 @@ func (c *Controller) createOrUpdateVpcDNSDep(vpcDNS *kubeovnv1.VpcDns) error {
 	}
 
 	if vpcDNS.Spec.Replicas != 0 {
-		newDp.Spec.Replicas = ptr.To(vpcDNS.Spec.Replicas)
+		newDp.Spec.Replicas = new(vpcDNS.Spec.Replicas)
 	}
 
 	if deploy == nil {

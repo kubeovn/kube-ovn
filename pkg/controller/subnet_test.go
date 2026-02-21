@@ -9,7 +9,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -166,7 +165,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1"},
 					Provider:    util.OvnProvider,
 					GatewayType: kubeovnv1.GWDistributedType,
-					EnableLb:    ptr.To(ctrl.config.EnableLb),
+					EnableLb:    new(ctrl.config.EnableLb),
 				},
 			},
 		},
@@ -183,7 +182,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    ptr.To(false),
+					EnableLb:    new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -198,7 +197,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    ptr.To(false),
+					EnableLb:    new(false),
 				},
 			},
 		},
@@ -214,7 +213,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -228,7 +227,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 		},
@@ -243,7 +242,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -256,7 +255,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 		},

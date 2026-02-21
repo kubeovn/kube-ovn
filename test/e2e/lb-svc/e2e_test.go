@@ -23,7 +23,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -168,7 +167,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			util.AttachmentProvider: provider,
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, labels, ports, corev1.ServiceAffinityNone)
-		service.Spec.AllocateLoadBalancerNodePorts = ptr.To(false)
+		service.Spec.AllocateLoadBalancerNodePorts = new(false)
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
@@ -279,7 +278,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int64N(50))))
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, labels, ports, corev1.ServiceAffinityNone)
 		service.Spec.LoadBalancerIP = lbIP
-		service.Spec.AllocateLoadBalancerNodePorts = ptr.To(false)
+		service.Spec.AllocateLoadBalancerNodePorts = new(false)
 		_ = serviceClient.Create(service)
 
 		ginkgo.By("Waiting for LB deployment " + deploymentName + " to be ready")

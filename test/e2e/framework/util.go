@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	"github.com/onsi/ginkgo/v2"
@@ -43,7 +42,7 @@ func randomCIDR4(seed *byte) string {
 		randCIDRSeedLock4.Lock()
 		defer randCIDRSeedLock4.Unlock()
 		for usedRandCIDRSeeds4.Len() < 0xff+1 {
-			seed = ptr.To(byte(rand.IntN(0xff + 1)))
+			seed = new(byte(rand.IntN(0xff + 1)))
 			if !usedRandCIDRSeeds4.Has(*seed) {
 				usedRandCIDRSeeds4.Insert(*seed)
 				break
@@ -68,7 +67,7 @@ func randomCIDR6(seed *uint16) string {
 		randCIDRSeedLock6.Lock()
 		defer randCIDRSeedLock6.Unlock()
 		for usedRandCIDRSeeds6.Len() < 0xffff+1 {
-			seed = ptr.To(uint16(rand.IntN(0xffff + 1)))
+			seed = new(uint16(rand.IntN(0xffff + 1)))
 			if !usedRandCIDRSeeds6.Has(*seed) {
 				usedRandCIDRSeeds6.Insert(*seed)
 				break

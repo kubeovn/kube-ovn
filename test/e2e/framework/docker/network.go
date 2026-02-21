@@ -11,7 +11,6 @@ import (
 
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -94,7 +93,7 @@ func NetworkCreate(name string, ipv6, skipIfExists bool) (*network.Inspect, erro
 		},
 	}
 	if ipv6 {
-		options.EnableIPv6 = ptr.To(true)
+		options.EnableIPv6 = new(true)
 		subnet := generateULASubnetFromName(name, 0)
 		gateway, err := util.FirstIP(subnet)
 		if err != nil {

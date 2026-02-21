@@ -26,7 +26,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -2030,7 +2029,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			macPointer = &annoMAC
 		}
 	} else if macPointer == nil {
-		macPointer = ptr.To("")
+		macPointer = new("")
 	}
 
 	var nsNets []*kubeovnNet

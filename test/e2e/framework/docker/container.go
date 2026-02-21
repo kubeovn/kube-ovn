@@ -7,7 +7,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	"k8s.io/utils/ptr"
 )
 
 func ContainerList(filters map[string][]string) ([]container.Summary, error) {
@@ -67,7 +66,7 @@ func ContainerCreate(name, image, networkName string, cmd []string) (*container.
 		return nil, err
 	}
 
-	return ptr.To(info.Container), nil
+	return new(info.Container), nil
 }
 
 func ContainerInspect(id string) (*container.InspectResponse, error) {
@@ -82,7 +81,7 @@ func ContainerInspect(id string) (*container.InspectResponse, error) {
 		return nil, err
 	}
 
-	return ptr.To(result.Container), nil
+	return new(result.Container), nil
 }
 
 func ContainerRemove(id string) error {

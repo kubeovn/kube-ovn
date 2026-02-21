@@ -433,8 +433,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxUnavailable: ptr.To(intstr.FromInt(1)),
-					MaxSurge:       ptr.To(intstr.FromInt(0)),
+					MaxUnavailable: new(intstr.FromInt(1)),
+					MaxSurge:       new(intstr.FromInt(0)),
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -467,7 +467,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						},
 						Env: initEnv,
 						SecurityContext: &corev1.SecurityContext{
-							Privileged: ptr.To(true),
+							Privileged: new(true),
 						},
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "usr-local-sbin",
@@ -480,7 +480,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Command:         []string{"sleep", "infinity"},
 						SecurityContext: &corev1.SecurityContext{
-							Privileged: ptr.To(false),
+							Privileged: new(false),
 							RunAsUser:  ptr.To[int64](65534),
 							Capabilities: &corev1.Capabilities{
 								Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
@@ -531,7 +531,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	hash = hash[:12]
 	// replicas and the hash annotation should be excluded from hash calculation
-	deploy.Spec.Replicas = ptr.To(gw.Spec.Replicas)
+	deploy.Spec.Replicas = new(gw.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
 	if currentDeploy, err := c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -937,7 +937,7 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			FailureThreshold:    1,
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},

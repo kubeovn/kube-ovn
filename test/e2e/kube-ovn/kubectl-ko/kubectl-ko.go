@@ -280,10 +280,10 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 				Egress: []netv1.NetworkPolicyEgressRule{{
 					Ports: []netv1.NetworkPolicyPort{{
 						Protocol: ptr.To(corev1.ProtocolTCP),
-						Port:     ptr.To(intstr.FromInt32(tcpPort)),
+						Port:     new(intstr.FromInt32(tcpPort)),
 					}, {
 						Protocol: ptr.To(corev1.ProtocolUDP),
-						Port:     ptr.To(intstr.FromInt32(udpPort)),
+						Port:     new(intstr.FromInt32(udpPort)),
 					}},
 					To: []netv1.NetworkPolicyPeer{{
 						NamespaceSelector: &metav1.LabelSelector{},
