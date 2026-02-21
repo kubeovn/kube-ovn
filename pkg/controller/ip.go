@@ -238,8 +238,12 @@ func (c *Controller) handleUpdateIP(key string) error {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
-			return err
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
+				return err
+			}
+			// subnet already deleted; isOvnSubnet(nil) returns false, skip OVN port cleanup
+			subnet = nil
 		}
 		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
