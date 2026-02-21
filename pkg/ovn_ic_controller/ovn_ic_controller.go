@@ -486,10 +486,10 @@ func genHostAddress(host, port string) (hostAddress string) {
 		var builder strings.Builder
 		i := 0
 		for i < len(hostList)-1 {
-			builder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
+			fmt.Fprintf(&builder, "tcp:[%s]:%s,", hostList[i], port)
 			i++
 		}
-		builder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
+		fmt.Fprintf(&builder, "tcp:[%s]:%s", hostList[i], port)
 		hostAddress = builder.String()
 	}
 	return hostAddress

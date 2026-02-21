@@ -65,7 +65,7 @@ type VpcBgpSpeaker struct {
 	Neighbors             []string        `json:"neighbors"`
 	HoldTime              metav1.Duration `json:"holdTime"`
 	RouterID              string          `json:"routerId"`
-	Password              string          `json:"password"`
+	Password              string          `json:"password"` // #nosec G117
 	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
 	ExtraArgs             []string        `json:"extraArgs"`
 }
