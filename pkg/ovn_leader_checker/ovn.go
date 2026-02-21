@@ -256,7 +256,7 @@ func stealLock() {
 		args = slices.Insert(args, 0, ovs.CmdSSLArgs()...)
 	}
 
-	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204 G702
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -278,7 +278,7 @@ func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 
 func checkNorthdEpAvailable(ip string) bool {
 	address := util.JoinHostPort(ip, util.NBRaftPort)
-	conn, err := net.DialTimeout("tcp", address, northdDialTimeout)
+	conn, err := net.DialTimeout("tcp", address, northdDialTimeout) // #nosec G704
 	if err != nil {
 		klog.Errorf("failed to connect to northd leader %s, err: %v", ip, err)
 		failCount++
@@ -545,8 +545,7 @@ func updateTS() error {
 				fmt.Sprintf(`external_ids:subnet="%s"`, subnet),
 				fmt.Sprintf(`external_ids:vendor="%s"`, util.CniTypeName),
 			)
-			// #nosec G204
-			cmd = exec.Command("ovn-ic-nbctl", args...)
+			cmd = exec.Command("ovn-ic-nbctl", args...) // #nosec G204 G702
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("output: %s, err: %w", output, err)
