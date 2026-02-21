@@ -218,7 +218,7 @@ func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) erro
 	for i := 0; ; i++ {
 		err = f(ctrl)
 		if err == nil {
-			return
+			return err
 		}
 		if i >= (attempts - 1) {
 			break

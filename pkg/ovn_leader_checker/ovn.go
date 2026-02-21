@@ -286,7 +286,7 @@ func stealLock() {
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", command...).CombinedOutput() // #nosec G204 G702
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -308,7 +308,7 @@ func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 
 func checkNorthdEpAvailable(ip string) bool {
 	address := net.JoinHostPort(ip, OvnNorthdPort)
-	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second) // #nosec G704
 	if err != nil {
 		klog.Errorf("failed to connect to northd leader %s, err: %v", ip, err)
 		failCount++
@@ -562,13 +562,11 @@ func updateTS() error {
 			if err != nil {
 				return err
 			}
-			// #nosec G204
-			cmd := exec.Command("ovn-ic-nbctl",
+			cmd := exec.Command("ovn-ic-nbctl", // #nosec G204 G702
 				ovs.MayExist, "ts-add", tsName,
 				"--", "set", "Transit_Switch", tsName, fmt.Sprintf(`external_ids:subnet="%s"`, subnet))
 			if os.Getenv("ENABLE_SSL") == "true" {
-				// #nosec G204
-				cmd = exec.Command("ovn-ic-nbctl",
+				cmd = exec.Command("ovn-ic-nbctl", // #nosec G204 G702
 					"--private-key=/var/run/tls/key",
 					"--certificate=/var/run/tls/cert",
 					"--ca-cert=/var/run/tls/cacert",

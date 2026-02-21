@@ -689,7 +689,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 	if len(toAdd) > 0 {
 		klog.Infof("routes to add: %v", toAdd)
 	}
-	return
+	return toAdd, toDel
 }
 
 func getRulesToAdd(oldRules, newRules []netlink.Rule) []netlink.Rule {
@@ -734,12 +734,12 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 	oldRules, oldRoutes, err := c.getPolicyRouting(oldSubnet)
 	if err != nil {
 		klog.Error(err)
-		return
+		return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 	}
 	newRules, newRoutes, err := c.getPolicyRouting(newSubnet)
 	if err != nil {
 		klog.Error(err)
-		return
+		return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 	}
 
 	rulesToAdd = getRulesToAdd(oldRules, newRules)
@@ -747,7 +747,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 	routesToAdd = getRoutesToAdd(oldRoutes, newRoutes)
 	routesToDel = getRoutesToAdd(newRoutes, oldRoutes)
 
-	return
+	return rulesToAdd, rulesToDel, routesToAdd, routesToDel, err
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {

@@ -107,7 +107,7 @@ func (c *OVNNbClient) updateDHCPv4Options(lsName, cidr, gateway, options string,
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
 		klog.Error(err)
-		return
+		return uuid, err
 	}
 
 	/* update */
@@ -146,7 +146,7 @@ func (c *OVNNbClient) updateDHCPv6Options(lsName, cidr, options string) (uuid st
 	dhcpOpt, err := c.GetDHCPOptions(lsName, protocol, true)
 	if err != nil {
 		klog.Error(err)
-		return
+		return uuid, err
 	}
 
 	/* update */

@@ -222,7 +222,7 @@ func dialTCP(device string, laddr, raddr *net.TCPAddr, dontAssumeRemote, isnonbl
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket connect: %w", err)}
 	}
 
-	fdFile := os.NewFile(uintptr(fileDescriptor), "net-tcp-dial-"+raddr.String())
+	fdFile := os.NewFile(uintptr(fileDescriptor), "net-tcp-dial-"+raddr.String()) // #nosec G115
 	defer func() {
 		if err := fdFile.Close(); err != nil {
 			klog.Errorf("fdFile %v Close err: %v", fdFile, err)

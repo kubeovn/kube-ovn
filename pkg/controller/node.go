@@ -698,7 +698,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 	for ; ; i++ {
 		err = f(node)
 		if err == nil {
-			return
+			return err
 		}
 		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
 		if i >= (attempts - 1) {

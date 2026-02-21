@@ -142,7 +142,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 			},
 		},
 	}
-	return
+	return dp
 }
 
 func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deployment) *v1.Deployment {
