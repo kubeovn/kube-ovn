@@ -28,7 +28,7 @@ env:
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v4.1.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.22.0
+  SUBMARINER_VERSION: 0.22.1
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
   TALOS_VERSION: v1.12.3
 
