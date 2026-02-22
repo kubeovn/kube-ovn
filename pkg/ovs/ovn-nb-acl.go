@@ -768,6 +768,32 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 		}
 	}
 
+	// Add allow-stateless ACLs for IGMP/MLD when allowSubnets overlap with multicast ranges.
+	// OVN pre-ACL stage skips conntrack for multicast traffic (eth.mcast),
+	// so allow-related ACLs cannot match these packets.
+	multicastACLs := []struct {
+		multicastCIDR string
+		match         string
+	}{
+		{util.IPv4Multicast, "igmp"},
+		{util.IPv6Multicast, "mldv1 || mldv2"},
+	}
+	for _, mc := range multicastACLs {
+		overlaps := slices.ContainsFunc(allowSubnets, func(s string) bool {
+			return strings.TrimSpace(s) != "" && util.CIDROverlap(strings.TrimSpace(s), mc.multicastCIDR)
+		})
+		if !overlaps {
+			continue
+		}
+
+		acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, mc.match, ovnnb.ACLActionAllowStateless, util.NetpolACLTier)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("new %s allow-stateless ingress acl for logical switch %s: %w", mc.match, lsName, err)
+		}
+		acls = append(acls, acl)
+	}
+
 	if err := c.CreateAcls(lsName, LogicalSwitchKey, acls...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("add ingress acls to logical switch %s: %w", lsName, err)
