@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -111,7 +110,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 			Name: name,
 		},
 		Spec: v1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -128,14 +127,14 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(true),
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
 							},
 							Resources: resources,
 						},
 					},
 					NodeSelector:                  nodeSelector,
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
 			Strategy: v1.DeploymentStrategy{

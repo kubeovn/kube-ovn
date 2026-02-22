@@ -28,28 +28,28 @@ func TestParsePolicyFor(t *testing.T) {
 		},
 		{
 			name:       "ovn only",
-			annotation: ptrString("ovn"),
+			annotation: new("ovn"),
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
 		},
 		{
 			name:       "duplicate ovn",
-			annotation: ptrString("ovn, ovn"),
+			annotation: new("ovn, ovn"),
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
 		},
 		{
 			name:       "secondary only",
-			annotation: ptrString("ns1/net1"),
+			annotation: new("ns1/net1"),
 			wantProviders: set.New(
 				"net1.ns1." + util.OvnProvider,
 			),
 		},
 		{
 			name:       "ovn and secondary",
-			annotation: ptrString(" ovn , ns1/net1 "),
+			annotation: new(" ovn , ns1/net1 "),
 			wantProviders: set.New(
 				util.OvnProvider,
 				"net1.ns1."+util.OvnProvider,
@@ -57,29 +57,29 @@ func TestParsePolicyFor(t *testing.T) {
 		},
 		{
 			name:       "ovn and invalid",
-			annotation: ptrString("ovn, foo"),
+			annotation: new("ovn, foo"),
 			wantProviders: set.New(
 				util.OvnProvider,
 			),
 		},
 		{
 			name:          "invalid all",
-			annotation:    ptrString("all"),
+			annotation:    new("all"),
 			wantProviders: set.New[string](),
 		},
 		{
 			name:          "invalid default",
-			annotation:    ptrString("default"),
+			annotation:    new("default"),
 			wantProviders: set.New[string](),
 		},
 		{
 			name:          "invalid no entries",
-			annotation:    ptrString(","),
+			annotation:    new(","),
 			wantProviders: set.New[string](),
 		},
 		{
 			name:          "invalid token",
-			annotation:    ptrString("foo"),
+			annotation:    new("foo"),
 			wantProviders: set.New[string](),
 		},
 	}
@@ -115,8 +115,4 @@ func TestNetpolAppliesToProvider(t *testing.T) {
 	require.False(t, netpolAppliesToProvider("net2.ns2.ovn", providers))
 	require.True(t, netpolAppliesToProvider("ovn", nil))
 	require.False(t, netpolAppliesToProvider("ovn", set.New[string]()))
-}
-
-func ptrString(s string) *string {
-	return &s
 }

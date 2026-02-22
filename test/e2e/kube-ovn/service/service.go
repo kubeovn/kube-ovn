@@ -196,7 +196,7 @@ var _ = framework.Describe("[group:service]", func() {
 
 		ginkgo.By("recover service from single stack to dual stack")
 		recoverService := service.DeepCopy()
-		recoverService.Spec.IPFamilyPolicy = ptr.To(*originService.Spec.IPFamilyPolicy)
+		recoverService.Spec.IPFamilyPolicy = new(*originService.Spec.IPFamilyPolicy)
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies
 		recoverService.Spec.ClusterIPs = originService.Spec.ClusterIPs
 		_ = serviceClient.Patch(service, recoverService)

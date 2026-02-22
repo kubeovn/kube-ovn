@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -250,7 +249,7 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 							},
 						},
 					},
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
 		},

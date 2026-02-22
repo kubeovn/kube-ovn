@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -1046,7 +1045,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			Labels: labels,
 		},
 		Spec: v1.StatefulSetSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -1056,7 +1055,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					Annotations: templateAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
@@ -1081,8 +1080,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(true),
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
 							},
 						},
 					},
@@ -1101,7 +1100,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		sts.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
+		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
 
 		// Craft a BGP speaker container to add to our statefulset
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)

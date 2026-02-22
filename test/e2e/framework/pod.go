@@ -15,7 +15,6 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 	psaapi "k8s.io/pod-security-admission/api"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -60,7 +59,7 @@ func (c *PodClient) Delete(name string) error {
 
 func (c *PodClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
-	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: ptr.To(int64(1))}, timeout)
+	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(1))}, timeout)
 }
 
 func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
@@ -126,7 +125,7 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 				},
 			},
 			SecurityContext:               e2epod.GeneratePodSecurityContext(nil, nil),
-			TerminationGracePeriodSeconds: ptr.To(int64(3)),
+			TerminationGracePeriodSeconds: new(int64(3)),
 		},
 	}
 	if securityLevel == psaapi.LevelRestricted {

@@ -17,7 +17,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	"github.com/onsi/ginkgo/v2"
@@ -314,7 +313,7 @@ var _ = framework.Describe("[group:ha]", func() {
 			framework.ExpectNoError(err, "getting nodes in kind cluster")
 			framework.ExpectNotEmpty(nodes)
 			for node := range slices.Values(nodes) {
-				kindNodes[node.Name()] = ptr.To(node)
+				kindNodes[node.Name()] = new(node)
 			}
 		}
 	})
