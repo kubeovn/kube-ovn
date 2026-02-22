@@ -65,6 +65,7 @@ ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch $SRC_DIR
 ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
 ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
+ADD patches/sbrec-delete-null-check.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -131,7 +132,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # add skip conntrack ipcidrs support
     git apply $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch && \
     # set dl_src for packets redirected by router port
-    git apply $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch
+    git apply $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch && \
+    # add null check before sbrec delete calls
+    git apply $SRC_DIR/sbrec-delete-null-check.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
