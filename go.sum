@@ -1033,8 +1033,8 @@ gopkg.in/go-jose/go-jose.v2 v2.6.3 h1:nt80fvSDlhKWQgSWyHyy5CfmlQr+asih51R8PTWNKK
 gopkg.in/go-jose/go-jose.v2 v2.6.3/go.mod h1:zzZDPkNNw/c9IE7Z9jr11mBZQhKQTMzoEEIoEdZlFBI=
 gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=
 gopkg.in/inf.v0 v0.9.1/go.mod h1:cWUDdTG/fYaXco+Dcufb5Vnc6Gp2YChqWtbxRZE0mXw=
-gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.3 h1:bvYZ4IAOM7JXHZAUuMykB5pAxJZbqhqhecVbmSz8O3Y=
-gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.3/go.mod h1:5gCGKjZtvBTW8uzoaNumoumXIl1bdNFPGWuKFiwjKv0=
+gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.4 h1:g6NbzY8atlR1OvOTzOW43i7hCLiIZmg1I6UxJJ7/FVM=
+gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.4/go.mod h1:0zZL8OlrgJyLZUKfjltGLY3S4gItY27+jEZhi0C7cFE=
 gopkg.in/natefinch/lumberjack.v2 v2.2.1 h1:bBRl1b0OH9s/DuPhuXpNl+VtCaJXFZ5/uEFST95x9zc=
 gopkg.in/natefinch/lumberjack.v2 v2.2.1/go.mod h1:YD8tP3GAjkrDg1eZH7EGmyESg/lsYskCTPBJVb9jqSc=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 h1:uRGJdciOHaEIrze2W8Q3AKkepLTh2hOroT7a+7czfdQ=
