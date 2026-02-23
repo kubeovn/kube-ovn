@@ -631,8 +631,22 @@ jobs:
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: k8s-conformance-e2e-restarts-ko-log
+          path: k8s-conformance-e2e-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -828,8 +842,22 @@ jobs:
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-netpol-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: k8s-netpol-e2e-restarts-ko-log
+          path: k8s-netpol-e2e-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -998,8 +1026,22 @@ jobs:
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: cyclonus-netpol-e2e-restarts-ko-log
+          path: cyclonus-netpol-e2e-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -1191,8 +1233,22 @@ jobs:
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-conformance-e2e-restarts-ko-log
+          path: kube-ovn-conformance-e2e-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -1385,8 +1441,22 @@ jobs:
           path: kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-ic-conformance-e2e-restarts-ko-log
+          path: kube-ovn-ic-conformance-e2e-ko-log.tar.gz
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
@@ -1532,8 +1602,22 @@ jobs:
           path: multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz multus-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: multus-conformance-e2e-restarts-ko-log
+          path: multus-conformance-e2e-ko-log.tar.gz
 
   non-primary-cni-e2e:
     name: Non-Primary CNI E2E
@@ -1690,8 +1774,22 @@ jobs:
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz non-primary-cni-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: non-primary-cni-e2e-restarts-ko-log
+          path: non-primary-cni-e2e-ko-log.tar.gz
 
   chart-test:
     name: Chart Installation/Uninstallation Test
@@ -1745,8 +1843,22 @@ jobs:
         run: make kind-install-chart
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz chart-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: chart-test-restarts-ko-log
+          path: chart-test-ko-log.tar.gz
 
       - name: Uninstall Kube-OVN
         run: make uninstall-chart
@@ -1795,8 +1907,22 @@ jobs:
         run: make kind-install-underlay-logical-gateway-dual
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz underlay-logical-gateway-installation-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: underlay-logical-gateway-installation-test-restarts-ko-log
+          path: underlay-logical-gateway-installation-test-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -1847,8 +1973,22 @@ jobs:
         run: make kind-install
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz no-ovn-lb-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: no-ovn-lb-test-restarts-ko-log
+          path: no-ovn-lb-test-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -1899,8 +2039,22 @@ jobs:
         run: make kind-install
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz no-np-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: no-np-test-restarts-ko-log
+          path: no-np-test-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -2046,8 +2200,22 @@ jobs:
           path: lb-svc-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: lb-svc-e2e-restarts-ko-log
+          path: lb-svc-e2e-ko-log.tar.gz
 
   webhook-e2e:
     name: Webhook E2E
@@ -2157,8 +2325,22 @@ jobs:
           path: webhook-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: webhook-e2e-restarts-ko-log
+          path: webhook-e2e-ko-log.tar.gz
 
   installation-compatibility-test:
     name: Installation Compatibility Test
@@ -2210,8 +2392,22 @@ jobs:
         run: make kind-install
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: installation-compatibility-test-restarts-ko-log
+          path: installation-compatibility-test-ko-log.tar.gz
 
       - name: kubectl ko log
         if: failure() && steps.install.conclusion == 'failure'
@@ -2298,8 +2494,22 @@ jobs:
           fi
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts || make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz talos-installation-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: talos-installation-test-restarts-ko-log
+          path: talos-installation-test-ko-log.tar.gz
 
   kube-ovn-cnp-domain-e2e:
     name: Kube-OVN CNP Domain E2E
@@ -2432,8 +2642,22 @@ jobs:
           path: kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-cnp-domain-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-cnp-domain-e2e-restarts-ko-log
+          path: kube-ovn-cnp-domain-e2e-ko-log.tar.gz
 
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
@@ -2566,8 +2790,22 @@ jobs:
           path: kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-anp-domain-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-anp-domain-e2e-restarts-ko-log
+          path: kube-ovn-anp-domain-e2e-ko-log.tar.gz
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
@@ -2727,8 +2965,22 @@ jobs:
           path: cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz cilium-chaining-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: cilium-chaining-e2e-restarts-ko-log
+          path: cilium-chaining-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -2860,8 +3112,22 @@ jobs:
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-ha-e2e-restarts-ko-log
+          path: kube-ovn-ha-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -2955,8 +3221,22 @@ jobs:
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-submariner-conformance-e2e-restarts-ko-log
+          path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -3107,8 +3387,22 @@ jobs:
           path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: vpc-egress-gateway-e2e-restarts-ko-log
+          path: vpc-egress-gateway-e2e-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -3284,8 +3578,22 @@ jobs:
           path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: iptables-vpc-nat-gw-conformance-e2e-restarts-ko-log
+          path: iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
@@ -3427,8 +3735,22 @@ jobs:
           path: ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: ovn-vpc-nat-gw-conformance-e2e-restarts-ko-log
+          path: ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
   kube-ovn-ipsec-e2e:
     name: OVN IPSEC E2E
@@ -3563,10 +3885,24 @@ jobs:
           path: kube-ovn-ipsec-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure')) }}
         env:
           IGNORABLE_PODS: app=kube-ovn-pinger
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ipsec-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-ipsec-e2e-restarts-ko-log
+          path: kube-ovn-ipsec-e2e-ko-log.tar.gz
 
   kube-ovn-ipsec-cert-mgr-e2e:
     name: OVN IPSEC E2E CERT MANAGER
@@ -3701,8 +4037,22 @@ jobs:
           path: kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-ipsec-cert-mgr-e2e-restarts-ko-log
+          path: kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
 
   kube-ovn-connectivity-test:
     name: Kube-OVN Connectivity E2E
@@ -3966,8 +4316,22 @@ jobs:
           path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: Check kube ovn pod restarts
+        id: check-restarts
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.check-restarts.conclusion == 'failure'
+        with:
+          name: kube-ovn-underlay-metallb-e2e-restarts-ko-log
+          path: kube-ovn-underlay-metallb-e2e-ko-log.tar.gz
 
   push:
     name: Push Images
