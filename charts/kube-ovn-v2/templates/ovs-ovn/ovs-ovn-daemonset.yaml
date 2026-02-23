@@ -47,6 +47,10 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
+      {{- with .Values.ovsOvn.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -188,8 +192,10 @@ spec:
           resources:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
+      {{- with .Values.ovsOvn.nodeSelector }}
       nodeSelector:
-        kubernetes.io/os: "linux"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: usr-local-sbin
           emptyDir: {}

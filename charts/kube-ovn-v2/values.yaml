@@ -395,6 +395,13 @@ ovsOvn:
   # -- Labels to be added to ovs-ovn pods.
   # @section -- OVS/OVN daemons configuration
   podLabels: {}
+  # -- Affinity for ovs-ovn pods.
+  # @section -- OVS/OVN daemons configuration
+  affinity: {}
+  # -- Node selector to restrict the deployment of ovs-ovn to specific nodes.
+  # @section -- OVS/OVN daemons configuration
+  nodeSelector:
+    kubernetes.io/os: "linux"
 
   # -- Extra environment variables to be added to ovs-ovn pods.
   # @section -- OVS/OVN daemons configuration
@@ -454,6 +461,14 @@ ovsOvn:
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
     tag: v1.16.0
+    # -- Affinity for the ovs-ovn-dpdk DaemonSet.
+    # @section -- OVS/OVN daemons configuration
+    affinity: {}
+    # -- Node selector to restrict the deployment of DPDK-hybrid OVS to specific nodes.
+    # @section -- OVS/OVN daemons configuration
+    nodeSelector:
+      kubernetes.io/os: "linux"
+      ovn.kubernetes.io/ovs_dp_type: "userspace"
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
