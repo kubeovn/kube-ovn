@@ -34,19 +34,9 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.8.0
 
-      - name: Run chart-testing (list-changed)
-        id: list-changed
-        run: |
-          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
-          if [[ -n "$changed" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Run chart-testing (lint)
-        if: steps.list-changed.outputs.changed == 'true'
         run: |
-          echo "validate-maintainers: false" > ct.yaml
-          ct lint --target-branch ${{ github.event.repository.default_branch }} --config ct.yaml
+          ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -62,7 +52,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Run chart-testing (install)
-        if: steps.list-changed.outputs.changed == 'true'
+        id: install
         run: |
           kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
-          ct install --target-branch ${{ github.event.repository.default_branch }}
+          ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts
