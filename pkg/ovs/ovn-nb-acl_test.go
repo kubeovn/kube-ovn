@@ -1431,6 +1431,79 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
+
+	t.Run("create sg acl with local address", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.10.10.0/24",
+			LocalAddress:  "192.168.1.0/24",
+			Protocol:      "all",
+			Priority:      5,
+			Policy:        "allow",
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.SecurityGroupTierMinimum)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && ip4.dst == %s", pgName, sgRule.RemoteAddress, sgRule.LocalAddress)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
+
+	t.Run("create tcp sg acl with local address and source port", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:         "ipv4",
+			RemoteType:        kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress:     "10.10.10.0/24",
+			LocalAddress:      "192.168.1.100",
+			Protocol:          "tcp",
+			Priority:          8,
+			Policy:            "allow",
+			PortRangeMin:      80,
+			PortRangeMax:      443,
+			LocalPortRangeMin: 1024,
+			LocalPortRangeMax: 65535,
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.SecurityGroupTierMinimum)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && ip4.dst == %s && %d <= tcp.dst <= %d && %d <= tcp.src <= %d",
+			pgName, sgRule.RemoteAddress, sgRule.LocalAddress, sgRule.PortRangeMin, sgRule.PortRangeMax, sgRule.LocalPortRangeMin, sgRule.LocalPortRangeMax)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
+
+	t.Run("create pass policy sg acl", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.10.10.0/24",
+			Protocol:      "icmp",
+			Priority:      10,
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionPass),
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.SecurityGroupTierMinimum)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && icmp4", pgName, sgRule.RemoteAddress)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionPass, util.NetpolACLTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateAcls() {
