@@ -5,19 +5,13 @@ Subject: [PATCH] add support for conditionally skipping conntrack
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- controller/lflow.c          | 11 +++++++++++
- controller/ovn-controller.c | 26 +++++++++++++++++++++++++-
- controller/ovn-controller.h |  3 +++
- lib/ovn-util.h              |  2 ++
- northd/lflow-mgr.c          | 29 +++++++++++++++++++++--------
- northd/lflow-mgr.h          | 26 +++++++++++++++++---------
- 6 files changed, 79 insertions(+), 18 deletions(-)
+  6 files changed, 82 insertions(+), 15 deletions(-)
 
 diff --git a/controller/lflow.c b/controller/lflow.c
-index a782ec740c..6ef64fa897 100644
+index 14d61cfd1..0fe23af69 100644
 --- a/controller/lflow.c
 +++ b/controller/lflow.c
-@@ -33,6 +33,7 @@
+@@ -34,6 +34,7 @@
  #include "lib/lb.h"
  #include "lib/ovn-l7.h"
  #include "lib/ovn-sb-idl.h"
@@ -25,7 +19,7 @@ index a782ec740c..6ef64fa897 100644
  #include "lib/extend-table.h"
  #include "lib/uuidset.h"
  #include "packets.h"
-@@ -1056,6 +1057,16 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
+@@ -1074,6 +1075,16 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
          return;
      }
  
@@ -43,7 +37,7 @@ index a782ec740c..6ef64fa897 100644
      if (io_port) {
          objdep_mgr_add(l_ctx_out->lflow_deps_mgr, OBJDEP_TYPE_PORTBINDING,
 diff --git a/controller/ovn-controller.c b/controller/ovn-controller.c
-index 9a21069e7c..261d6772ad 100644
+index e7a00f6f3..201e48df0 100644
 --- a/controller/ovn-controller.c
 +++ b/controller/ovn-controller.c
 @@ -23,6 +23,7 @@
@@ -63,7 +57,7 @@ index 9a21069e7c..261d6772ad 100644
  static unixctl_cb_func ct_zone_list;
  static unixctl_cb_func extend_table_list;
  static unixctl_cb_func inject_pkt;
-@@ -5513,6 +5516,25 @@ main(int argc, char *argv[])
+@@ -5563,6 +5566,25 @@ main(int argc, char *argv[])
      char *ovs_remote = parse_options(argc, argv);
      fatal_ignore_sigpipe();
  
@@ -89,7 +83,7 @@ index 9a21069e7c..261d6772ad 100644
      daemonize_start(true, false);
  
      char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
-@@ -5526,6 +5548,9 @@ main(int argc, char *argv[])
+@@ -5576,6 +5598,9 @@ main(int argc, char *argv[])
  
      daemonize_complete();
  
@@ -99,7 +93,7 @@ index 9a21069e7c..261d6772ad 100644
      /* Register ofctrl seqno types. */
      ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
  
-@@ -5651,7 +5676,6 @@ main(int argc, char *argv[])
+@@ -5704,7 +5729,6 @@ main(int argc, char *argv[])
       * */
  
      ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
@@ -108,7 +102,7 @@ index 9a21069e7c..261d6772ad 100644
      ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
      ovsdb_idl_omit(ovnsb_idl_loop.idl,
 diff --git a/controller/ovn-controller.h b/controller/ovn-controller.h
-index fafd704df7..99e1c8b36f 100644
+index fafd704df..99e1c8b36 100644
 --- a/controller/ovn-controller.h
 +++ b/controller/ovn-controller.h
 @@ -18,6 +18,7 @@
@@ -127,7 +121,7 @@ index fafd704df7..99e1c8b36f 100644
 +
  #endif /* controller/ovn-controller.h */
 diff --git a/lib/ovn-util.h b/lib/ovn-util.h
-index 6e559118a0..50ab622410 100644
+index 1d4f853e0..f6f4d8ec5 100644
 --- a/lib/ovn-util.h
 +++ b/lib/ovn-util.h
 @@ -31,6 +31,8 @@
@@ -140,29 +134,28 @@ index 6e559118a0..50ab622410 100644
  #define ETHERNET_OVERHEAD (ETH_HEADER_LEN + ETH_CRC_LENGTH)
  
 diff --git a/northd/lflow-mgr.c b/northd/lflow-mgr.c
-index 88ce7ce56d..5de34f387c 100644
+index eb795180c..da66f6b70 100644
 --- a/northd/lflow-mgr.c
 +++ b/northd/lflow-mgr.c
-@@ -37,6 +37,7 @@ static void ovn_lflow_init(struct ovn_lflow *, struct ovn_datapath *od,
-                            uint16_t priority, char *match,
+@@ -38,6 +38,7 @@ static void ovn_lflow_init(struct ovn_lflow *, struct ovn_datapath *od,
                             char *actions, char *io_port,
                             char *ctrl_meter, char *stage_hint,
+                            bool acl_ct_translation,
 +                           const char *kube_ovn_hint,
                             const char *where, const char *flow_desc);
  static struct ovn_lflow *ovn_lflow_find(const struct hmap *lflows,
                                          enum ovn_stage stage,
-@@ -53,9 +54,9 @@ static struct ovn_lflow *do_ovn_lflow_add(
-     const char *actions, const char *io_port,
+@@ -57,7 +58,8 @@ static struct ovn_lflow *do_ovn_lflow_add(
      const char *ctrl_meter,
      const struct ovsdb_idl_row *stage_hint,
-+    const char* kube_ovn_hint,
-     const char *where, const char *flow_desc);
+     const char *where, const char *flow_desc,
+-    bool acl_ct_translation);
++    bool acl_ct_translation,
++    const char *kube_ovn_hint);
  
--
+ 
  static struct ovs_mutex *lflow_hash_lock(const struct hmap *lflow_table,
-                                          uint32_t hash);
- static void lflow_hash_unlock(struct ovs_mutex *hash_lock);
-@@ -169,6 +170,7 @@ struct ovn_lflow {
+@@ -173,6 +175,7 @@ struct ovn_lflow {
      char *actions;
      char *io_port;
      char *stage_hint;
@@ -170,44 +163,43 @@ index 88ce7ce56d..5de34f387c 100644
      char *ctrl_meter;
      size_t n_ods;                /* Number of datapaths referenced by 'od' and
                                    * 'dpg_bitmap'. */
-@@ -661,6 +663,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
-                       const char *match, const char *actions,
+@@ -669,6 +672,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
                        const char *io_port, const char *ctrl_meter,
+                       bool acl_ct_translation,
                        const struct ovsdb_idl_row *stage_hint,
 +                      const char *kube_ovn_hint,
                        const char *where, const char *flow_desc,
                        struct lflow_ref *lflow_ref)
      OVS_EXCLUDED(fake_hash_mutex)
-@@ -681,8 +684,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
-         do_ovn_lflow_add(lflow_table,
+@@ -690,7 +694,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
                           od ? ods_size(od->datapaths) : dp_bitmap_len,
                           hash, stage, priority, match, actions,
--                         io_port, ctrl_meter, stage_hint, where, flow_desc);
--
-+                         io_port, ctrl_meter, stage_hint, kube_ovn_hint, where, flow_desc);
+                          io_port, ctrl_meter, stage_hint, where, flow_desc,
+-                         acl_ct_translation);
++                         acl_ct_translation, kube_ovn_hint);
+ 
      if (lflow_ref) {
          struct lflow_ref_node *lrn =
-             lflow_ref_node_find(&lflow_ref->lflow_ref_nodes, lflow, hash);
-@@ -734,7 +736,7 @@ lflow_table_add_lflow_default_drop(struct lflow_table *lflow_table,
+@@ -743,7 +747,7 @@ lflow_table_add_lflow_default_drop(struct lflow_table *lflow_table,
                                     struct lflow_ref *lflow_ref)
  {
      lflow_table_add_lflow(lflow_table, od, NULL, 0, stage, 0, "1",
--                          debug_drop_action(), NULL, NULL, NULL,
-+                          debug_drop_action(), NULL, NULL, NULL, NULL,
+-                          debug_drop_action(), NULL, NULL, false, NULL,
++                          debug_drop_action(), NULL, NULL, false, NULL, NULL,
                            where, NULL, lflow_ref);
  }
  
-@@ -858,8 +860,7 @@ static void
+@@ -867,7 +871,8 @@ static void
  ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
                 size_t dp_bitmap_len, enum ovn_stage stage, uint16_t priority,
                 char *match, char *actions, char *io_port, char *ctrl_meter,
--               char *stage_hint, const char *where,
--               const char *flow_desc)
-+               char *stage_hint, const char *kube_ovn_hint, const char *where, const char *flow_desc)
+-               char *stage_hint, bool acl_ct_translation, const char *where,
++               char *stage_hint, bool acl_ct_translation,
++               const char *kube_ovn_hint, const char *where,
+                const char *flow_desc)
  {
      lflow->dpg_bitmap = bitmap_allocate(dp_bitmap_len);
-     lflow->od = od;
-@@ -869,6 +870,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
+@@ -878,6 +883,7 @@ ovn_lflow_init(struct ovn_lflow *lflow, struct ovn_datapath *od,
      lflow->actions = actions;
      lflow->io_port = io_port;
      lflow->stage_hint = stage_hint;
@@ -215,25 +207,26 @@ index 88ce7ce56d..5de34f387c 100644
      lflow->ctrl_meter = ctrl_meter;
      lflow->flow_desc = flow_desc;
      lflow->dpg = NULL;
-@@ -964,6 +966,7 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
-                  const char *match, const char *actions,
+@@ -978,7 +984,8 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
                   const char *io_port, const char *ctrl_meter,
                   const struct ovsdb_idl_row *stage_hint,
-+                 const char* kube_ovn_hint,
-                  const char *where, const char *flow_desc)
+                  const char *where, const char *flow_desc,
+-                 bool acl_ct_translation)
++                 bool acl_ct_translation,
++                 const char *kube_ovn_hint)
      OVS_REQUIRES(fake_hash_mutex)
  {
-@@ -986,8 +989,7 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
-                    xstrdup(match), xstrdup(actions),
+     struct ovn_lflow *old_lflow;
+@@ -1002,7 +1009,7 @@ do_ovn_lflow_add(struct lflow_table *lflow_table, size_t dp_bitmap_len,
                     io_port ? xstrdup(io_port) : NULL,
                     nullable_xstrdup(ctrl_meter),
--                   ovn_lflow_hint(stage_hint), where,
--                   flow_desc);
-+                   ovn_lflow_hint(stage_hint), kube_ovn_hint, where, flow_desc);
+                    ovn_lflow_hint(stage_hint), acl_ct_translation,
+-                   where, flow_desc);
++                   kube_ovn_hint, where, flow_desc);
  
      if (parallelization_state != STATE_USE_PARALLELIZATION) {
          hmap_insert(&lflow_table->entries, &lflow->hmap_node, hash);
-@@ -1082,6 +1084,9 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
+@@ -1107,6 +1114,9 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
          if (lflow->stage_hint) {
              smap_add(&ids, "stage-hint", lflow->stage_hint);
          }
@@ -243,7 +236,7 @@ index 88ce7ce56d..5de34f387c 100644
          sbrec_logical_flow_set_external_ids(sbflow, &ids);
          smap_destroy(&ids);
  
-@@ -1094,6 +1099,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
+@@ -1119,6 +1129,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                                                    "stage-name", "");
              const char *stage_hint = smap_get_def(&sbflow->external_ids,
                                                    "stage-hint", "");
@@ -252,7 +245,7 @@ index 88ce7ce56d..5de34f387c 100644
              const char *source = smap_get_def(&sbflow->external_ids,
                                                "source", "");
  
-@@ -1107,6 +1114,12 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
+@@ -1132,6 +1144,12 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                          sbflow, "stage-hint", lflow->stage_hint);
                  }
              }
@@ -266,82 +259,87 @@ index 88ce7ce56d..5de34f387c 100644
  
                  /* Trim the source locator lflow->where, which looks something
 diff --git a/northd/lflow-mgr.h b/northd/lflow-mgr.h
-index 2c05b352dc..3f3cb639d7 100644
+index 7efc61caf..702303703 100644
 --- a/northd/lflow-mgr.h
 +++ b/northd/lflow-mgr.h
-@@ -78,8 +78,8 @@ void lflow_table_add_lflow(struct lflow_table *, const struct ovn_datapath *,
+@@ -79,6 +79,7 @@ void lflow_table_add_lflow(struct lflow_table *, const struct ovn_datapath *,
                             const char *actions, const char *io_port,
-                            const char *ctrl_meter,
+                            const char *ctrl_meter, bool acl_ct_translation,
                             const struct ovsdb_idl_row *stage_hint,
--                           const char *where, const char *flow_desc,
--                           struct lflow_ref *);
 +                           const char *kube_ovn_hint,
-+                           const char *where, const char *flow_desc, struct lflow_ref *);
+                            const char *where, const char *flow_desc,
+                            struct lflow_ref *);
  void lflow_table_add_lflow_default_drop(struct lflow_table *,
-                                         const struct ovn_datapath *,
-                                         enum ovn_stage stage,
-@@ -91,13 +91,21 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
-                                   ACTIONS, IN_OUT_PORT, CTRL_METER, \
+@@ -93,12 +94,20 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                    STAGE_HINT, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          ACTIONS, IN_OUT_PORT, CTRL_METER, STAGE_HINT, \
-+                          ACTIONS, IN_OUT_PORT, CTRL_METER, STAGE_HINT, NULL, \
-                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
+                           ACTIONS, IN_OUT_PORT, CTRL_METER, false, \
+-                          STAGE_HINT, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
++                          STAGE_HINT, NULL, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
  
  #define ovn_lflow_add_with_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                  ACTIONS, STAGE_HINT, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          ACTIONS, NULL, NULL, STAGE_HINT,  \
-+                          ACTIONS, NULL, NULL, STAGE_HINT, NULL, \
+-                          ACTIONS, NULL, NULL, false, STAGE_HINT,  \
++                          ACTIONS, NULL, NULL, false, STAGE_HINT, NULL, \
 +                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
 +
 +#define ovn_lflow_add_with_kube_ovn_hint(LFLOW_TABLE, OD, STAGE, PRIORITY, \
 +                                         MATCH, ACTIONS, STAGE_HINT, \
 +                                         LFLOW_REF) \
 +    lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
-+                          ACTIONS, NULL, NULL, STAGE_HINT, \
++                          ACTIONS, NULL, NULL, false, STAGE_HINT, \
 +                          OVN_LFLOW_HINT_KUBE_OVN_SKIP_CT, \
                            OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
  
  #define ovn_lflow_add_with_dp_group(LFLOW_TABLE, DP_BITMAP, DP_BITMAP_LEN, \
-@@ -105,7 +113,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
+@@ -106,7 +115,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                      STAGE_HINT, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, NULL, DP_BITMAP, DP_BITMAP_LEN, STAGE, \
-                           PRIORITY, MATCH, ACTIONS, NULL, NULL, STAGE_HINT, \
--                          OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
-+                          NULL, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
+                           PRIORITY, MATCH, ACTIONS, NULL, NULL, false, \
+-                          STAGE_HINT, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
++                          STAGE_HINT, NULL, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
  
  #define ovn_lflow_add_default_drop(LFLOW_TABLE, OD, STAGE, LFLOW_REF)   \
      lflow_table_add_lflow_default_drop(LFLOW_TABLE, OD, STAGE, \
-@@ -126,19 +134,19 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
+@@ -118,7 +127,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
+                                                     STAGE_HINT, LFLOW_REF) \
+     lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
+                           ACTIONS, NULL, NULL, ACL_CT_TRANSLATION, \
+-                          STAGE_HINT, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
++                          STAGE_HINT, NULL, OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
+ 
+ /* This macro is similar to ovn_lflow_add_with_hint, except that it requires
+  * the IN_OUT_PORT argument, which tells the lport name that appears in the
+@@ -134,19 +143,19 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                            MATCH, ACTIONS, IN_OUT_PORT, \
                                            STAGE_HINT, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          ACTIONS, IN_OUT_PORT, NULL, STAGE_HINT, \
-+                          ACTIONS, IN_OUT_PORT, NULL, STAGE_HINT, NULL, \
+-                          ACTIONS, IN_OUT_PORT, NULL, false, STAGE_HINT, \
++                          ACTIONS, IN_OUT_PORT, NULL, false, STAGE_HINT, NULL, \
                            OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
  
  #define ovn_lflow_add(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
                        LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          ACTIONS, NULL, NULL, NULL, OVS_SOURCE_LOCATOR, \
-+                          ACTIONS, NULL, NULL, NULL, NULL,OVS_SOURCE_LOCATOR, \
-                           NULL, LFLOW_REF)
+-                          ACTIONS, NULL, NULL, false, NULL, \
++                          ACTIONS, NULL, NULL, false, NULL, NULL, \
+                           OVS_SOURCE_LOCATOR, NULL, LFLOW_REF)
  
  #define ovn_lflow_add_drop_with_desc(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, \
                                       DESCRIPTION, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          debug_drop_action(), NULL, NULL, NULL,  \
-+                          debug_drop_action(), NULL, NULL, NULL, NULL, \
+-                          debug_drop_action(), NULL, NULL, false, NULL,  \
++                          debug_drop_action(), NULL, NULL, false, NULL, NULL, \
                            OVS_SOURCE_LOCATOR, DESCRIPTION, LFLOW_REF)
  
  #define ovn_lflow_add_drop_with_lport_hint_and_desc(LFLOW_TABLE, OD, STAGE, \
-@@ -146,7 +154,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
-                                                     IN_OUT_PORT, STAGE_HINT, \
+@@ -155,7 +164,7 @@ void lflow_table_add_lflow_default_drop(struct lflow_table *,
                                                      DESCRIPTION, LFLOW_REF) \
      lflow_table_add_lflow(LFLOW_TABLE, OD, NULL, 0, STAGE, PRIORITY, MATCH, \
--                          debug_drop_action(), IN_OUT_PORT, NULL, STAGE_HINT, \
-+                          debug_drop_action(), IN_OUT_PORT, NULL, STAGE_HINT, NULL, \
-                           OVS_SOURCE_LOCATOR, DESCRIPTION, LFLOW_REF)
+                           debug_drop_action(), IN_OUT_PORT, NULL, false, \
+-                          STAGE_HINT, OVS_SOURCE_LOCATOR, DESCRIPTION, \
++                          STAGE_HINT, NULL, OVS_SOURCE_LOCATOR, DESCRIPTION, \
+                           LFLOW_REF)
  
  #define ovn_lflow_metered(LFLOW_TABLE, OD, STAGE, PRIORITY, MATCH, ACTIONS, \
