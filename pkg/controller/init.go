@@ -908,10 +908,6 @@ func (c *Controller) syncNodeRoutes() error {
 		return err
 	}
 
-	if err := c.addNodeGatewayStaticRoute(); err != nil {
-		klog.Errorf("failed to add static route for node gateway")
-		return err
-	}
 	return nil
 }
 

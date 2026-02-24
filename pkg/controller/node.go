@@ -241,11 +241,6 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	if err := c.addNodeGatewayStaticRoute(); err != nil {
-		klog.Errorf("failed to add static route for node gw: %v", err)
-		return err
-	}
-
 	patch := util.KVPatch{
 		util.IPAddressAnnotation:     ipStr,
 		util.MacAddressAnnotation:    mac,
@@ -913,42 +908,6 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 			err := fmt.Errorf("failed to init chassis tag, %w", err)
 			klog.Error(err)
 			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) addNodeGatewayStaticRoute() error {
-	// If user not manage static route for default vpc, just add route about ovn-default to join
-	if vpc, err := c.vpcsLister.Get(c.config.ClusterRouter); err != nil || vpc.Spec.StaticRoutes != nil {
-		existRoute, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
-		if err != nil {
-			klog.Errorf("failed to get vpc %s static route list, %v", c.config.ClusterRouter, err)
-		}
-		if len(existRoute) != 0 {
-			klog.Infof("skip add static route for node gw")
-			return nil
-		}
-	}
-	dstCidr := "0.0.0.0/0,::/0"
-	for cidrBlock := range strings.SplitSeq(dstCidr, ",") {
-		for nextHop := range strings.SplitSeq(c.config.NodeSwitchGateway, ",") {
-			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
-				continue
-			}
-
-			if err := c.addStaticRouteToVpc(
-				c.config.ClusterRouter,
-				&kubeovnv1.StaticRoute{
-					Policy:     kubeovnv1.PolicyDst,
-					CIDR:       cidrBlock,
-					NextHopIP:  nextHop,
-					RouteTable: util.MainRouteTable,
-				},
-			); err != nil {
-				klog.Errorf("failed to add static route for node gw: %v", err)
-				return err
-			}
 		}
 	}
 	return nil

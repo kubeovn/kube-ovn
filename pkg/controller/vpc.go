@@ -380,7 +380,18 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				klog.Errorf("failed to get node switch subnet %s: %v", c.config.NodeSwitch, err)
 				return err
 			}
-			c.addOrUpdateVpcQueue.Add(vpc.Name)
+			c.addOrUpdateVpcQueue.AddAfter(vpc.Name, 1*time.Second)
+			return nil
+		}
+
+		// Ensure the join subnet's OVN Logical Switch (and its LRP) has been created
+		// before adding default routes. Otherwise, OVN northd will warn about unreachable next hops.
+		if exist, err := c.OVNNbClient.LogicalSwitchExists(c.config.NodeSwitch); err != nil {
+			klog.Errorf("failed to check logical switch %s existence: %v", c.config.NodeSwitch, err)
+			return err
+		} else if !exist {
+			klog.Infof("logical switch %s not ready, requeue vpc %s", c.config.NodeSwitch, vpc.Name)
+			c.addOrUpdateVpcQueue.AddAfter(vpc.Name, 1*time.Second)
 			return nil
 		}
 		gatewayV4, gatewayV6 := util.SplitStringIP(joinSubnet.Spec.Gateway)
