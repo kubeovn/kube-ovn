@@ -437,6 +437,10 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 
+		if !hasAllocatedAnnotation(pod) {
+			continue
+		}
+
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IPAddressAnnotation], err)
@@ -1033,4 +1037,13 @@ func (c *Controller) syncFinalizers() error {
 	}
 	klog.Info("sync finalizers done")
 	return nil
+}
+
+func hasAllocatedAnnotation(pod *v1.Pod) bool {
+	for key, value := range pod.Annotations {
+		if value == "true" && strings.HasSuffix(key, util.AllocatedAnnotationSuffix) {
+			return true
+		}
+	}
+	return false
 }
