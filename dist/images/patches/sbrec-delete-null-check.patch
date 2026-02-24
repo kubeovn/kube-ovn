@@ -1,3 +1,15 @@
+diff --git a/northd/en-sync-sb.c b/northd/en-sync-sb.c
+index 13266908b..458248f4d 100644
+--- a/northd/en-sync-sb.c
++++ b/northd/en-sync-sb.c
+@@ -957,6 +957,7 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
+ 
+             hmap_remove(&sb_lbs->entries, &sb_lb->key_node);
+             free(sb_lb);
++            continue;
+         }
+ 
+         if (!sync_sb_lb_record(sb_lb, sb_lb->sbrec_lb, sb_dpgrp_table, sb_lbs,
 diff --git a/northd/northd.c b/northd/northd.c
 index 74c47972a..6b195d475 100644
 --- a/northd/northd.c
