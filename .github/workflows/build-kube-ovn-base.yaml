@@ -11,10 +11,6 @@ on:
           - release-1.15
           - release-1.14
           - release-1.13
-          - release-1.12
-          - release-1.11
-          - release-1.9
-          - release-1.12-mc
   schedule:
   - cron: "20 19 * * *"
 
@@ -31,10 +27,6 @@ jobs:
         - release-1.15
         - release-1.14
         - release-1.13
-        - release-1.12
-        - release-1.11
-        - release-1.9
-        - release-1.12-mc
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
