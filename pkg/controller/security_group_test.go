@@ -84,8 +84,8 @@ func Test_validateSgRule(t *testing.T) {
 		return &kubeovnv1.SecurityGroup{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sg"},
 			Spec: kubeovnv1.SecurityGroupSpec{
-				SecurityGroupTier: util.SecurityGroupTierMinimum,
-				IngressRules:      rules,
+				Tier:         util.SecurityGroupAPITierMinimum,
+				IngressRules: rules,
 			},
 		}
 	}
@@ -158,17 +158,17 @@ func Test_validateSgRule(t *testing.T) {
 		t.Parallel()
 
 		sg := baseSG(kubeovnv1.SecurityGroupRule{
-			IPVersion:         "ipv4",
-			Priority:          1,
-			RemoteType:        kubeovnv1.SgRemoteTypeAddress,
-			RemoteAddress:     "10.0.0.1",
-			LocalAddress:      "192.168.1.100",
-			Protocol:          "tcp",
-			Policy:            kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
-			PortRangeMin:      80,
-			PortRangeMax:      443,
-			LocalPortRangeMin: 1024,
-			LocalPortRangeMax: 65535,
+			IPVersion:          "ipv4",
+			Priority:           1,
+			RemoteType:         kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress:      "10.0.0.1",
+			LocalAddress:       "192.168.1.100",
+			Protocol:           "tcp",
+			Policy:             kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			PortRangeMin:       80,
+			PortRangeMax:       443,
+			SourcePortRangeMin: 1024,
+			SourcePortRangeMax: 65535,
 		})
 		err := ctrl.validateSgRule(sg)
 		require.NoError(t, err)
@@ -178,37 +178,37 @@ func Test_validateSgRule(t *testing.T) {
 		t.Parallel()
 
 		sg := baseSG(kubeovnv1.SecurityGroupRule{
-			IPVersion:         "ipv4",
-			Priority:          1,
-			RemoteType:        kubeovnv1.SgRemoteTypeAddress,
-			RemoteAddress:     "10.0.0.1",
-			LocalAddress:      "192.168.1.100",
-			Protocol:          "tcp",
-			Policy:            kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
-			PortRangeMin:      80,
-			PortRangeMax:      443,
-			LocalPortRangeMin: 0,
-			LocalPortRangeMax: 65535,
+			IPVersion:          "ipv4",
+			Priority:           1,
+			RemoteType:         kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress:      "10.0.0.1",
+			LocalAddress:       "192.168.1.100",
+			Protocol:           "tcp",
+			Policy:             kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			PortRangeMin:       80,
+			PortRangeMax:       443,
+			SourcePortRangeMin: 0,
+			SourcePortRangeMax: 65535,
 		})
 		err := ctrl.validateSgRule(sg)
-		require.ErrorContains(t, err, "portRange is out of range")
+		require.ErrorContains(t, err, "sourcePortRange is out of range")
 	})
 
 	t.Run("invalid local port range min greater than max", func(t *testing.T) {
 		t.Parallel()
 
 		sg := baseSG(kubeovnv1.SecurityGroupRule{
-			IPVersion:         "ipv4",
-			Priority:          1,
-			RemoteType:        kubeovnv1.SgRemoteTypeAddress,
-			RemoteAddress:     "10.0.0.1",
-			LocalAddress:      "192.168.1.100",
-			Protocol:          "udp",
-			Policy:            kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
-			PortRangeMin:      80,
-			PortRangeMax:      443,
-			LocalPortRangeMin: 9000,
-			LocalPortRangeMax: 8000,
+			IPVersion:          "ipv4",
+			Priority:           1,
+			RemoteType:         kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress:      "10.0.0.1",
+			LocalAddress:       "192.168.1.100",
+			Protocol:           "udp",
+			Policy:             kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			PortRangeMin:       80,
+			PortRangeMax:       443,
+			SourcePortRangeMin: 9000,
+			SourcePortRangeMax: 8000,
 		})
 		err := ctrl.validateSgRule(sg)
 		require.ErrorContains(t, err, "range Minimum value greater than maximum value")
