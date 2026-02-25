@@ -739,8 +739,8 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
 	suite.testUpdateLogicalSwitchACL()
 }
 
-func (suite *OvnClientTestSuite) Test_SetAclLog() {
-	suite.testSetACLLog()
+func (suite *OvnClientTestSuite) Test_SetNetPolACLLog() {
+	suite.testSetNetPolACLLog()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPrivate() {

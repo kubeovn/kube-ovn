@@ -367,12 +367,12 @@ func (c *OVNNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
-		if err := c.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, joinIP, ipSuffix, pgAs)); err != nil {
+		if err := c.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, joinIP, ipSuffix, pgAs), util.NetpolACLTier); err != nil {
 			klog.Errorf("delete ingress acl from port group %s: %v", pgName, err)
 			return err
 		}
 
-		if err := c.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, joinIP, ipSuffix, pgAs)); err != nil {
+		if err := c.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, joinIP, ipSuffix, pgAs), util.NetpolACLTier); err != nil {
 			klog.Errorf("delete egress acl from port group %s: %v", pgName, err)
 			return err
 		}
@@ -388,19 +388,29 @@ func (c *OVNNbClient) CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 func (c *OVNNbClient) CreateSgDenyAllACL(sgName string) error {
 	pgName := GetSgPortGroupName(sgName)
 
-	ingressACL, err := c.newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, fmt.Sprintf("outport == @%s && ip", pgName), ovnnb.ACLActionDrop, util.NetpolACLTier)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("new deny all ingress acl for security group %s: %w", sgName, err)
+	acls := make([]*ovnnb.ACL, 0)
+
+	// Add default deny rules for all the tiers. This is to ensure that if a packet
+	// is moved between tiers during acl evaluation, it is always dropped if no explicit
+	// allow or drop rule is not hit.
+	for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
+		ovnTier := util.ConvertSGTierToOvnTier(tier)
+		ingressACL, err := c.newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, fmt.Sprintf("outport == @%s && ip", pgName), ovnnb.ACLActionDrop, ovnTier)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("new deny all ingress acl for security group %s: %w", sgName, err)
+		}
+		acls = append(acls, ingressACL)
+
+		egressACL, err := c.newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, fmt.Sprintf("inport == @%s && ip", pgName), ovnnb.ACLActionDrop, ovnTier)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("new deny all egress acl for security group %s: %w", sgName, err)
+		}
+		acls = append(acls, egressACL)
 	}
 
-	egressACL, err := c.newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, fmt.Sprintf("inport == @%s && ip", pgName), ovnnb.ACLActionDrop, util.NetpolACLTier)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("new deny all egress acl for security group %s: %w", sgName, err)
-	}
-
-	err = c.CreateAcls(pgName, portGroupKey, ingressACL, egressACL)
+	err := c.CreateAcls(pgName, portGroupKey, acls...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("add deny all acl to port group %s: %w", pgName, err)
@@ -434,13 +444,17 @@ func (c *OVNNbClient) CreateSgBaseACL(sgName, direction string) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	newACL := func(match string) {
-		acl, err := c.newACL(pgName, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
-		if err != nil {
-			klog.Error(err)
-			klog.Errorf("failed to create new base ingress acl for security group %s: %v", sgName, err)
-			return
+		// Add baserules for all the tiers. This is to ensure that if a packet
+		// is moved between tiers during acl evaluation, the protocol packets are always allowed.
+		for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
+			acl, err := c.newACL(pgName, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, util.ConvertSGTierToOvnTier(tier))
+			if err != nil {
+				klog.Error(err)
+				klog.Errorf("failed to create new base ingress acl for security group %s: %v", sgName, err)
+				return
+			}
+			acls = append(acls, acl)
 		}
-		acls = append(acls, acl)
 	}
 
 	// allow arp
@@ -523,7 +537,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 				NewACLMatch(ipSuffix, "", "", ""),
 				NewACLMatch(ipSuffix+"."+srcOrDst, "==", "$"+asName, ""),
 			)
-			acl, err := c.newACL(pgName, direction, util.SecurityGroupAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+			acl, err := c.newACL(pgName, direction, util.SecurityGroupAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
 			if err != nil {
 				klog.Error(err)
 				return fmt.Errorf("new allow acl for security group %s: %w", sg.Name, err)
@@ -535,7 +549,7 @@ func (c *OVNNbClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string)
 
 	/* create rule acl */
 	for _, rule := range sgRules {
-		acl, err := c.newSgRuleACL(sg.Name, direction, rule)
+		acl, err := c.newSgRuleACL(sg.Name, direction, rule, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("new rule acl for security group %s: %w", sg.Name, err)
@@ -776,7 +790,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	return nil
 }
 
-func (c *OVNNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error {
+func (c *OVNNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
 	direction := ovnnb.ACLDirectionToLport
 	portDirection := "outport"
 	if !isIngress {
@@ -790,7 +804,7 @@ func (c *OVNNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error 
 		NewACLMatch("ip", "", "", ""),
 	)
 
-	acl, err := c.GetACL(pgName, direction, util.IngressDefaultDrop, allIPMatch.String(), true)
+	acl, err := c.GetACL(pgName, direction, util.IngressDefaultDrop, allIPMatch.String(), util.NetpolACLTier, true)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -869,8 +883,8 @@ func (c *OVNNbClient) DeleteAcls(parentName, parentType, direction string, exter
 	return nil
 }
 
-func (c *OVNNbClient) DeleteACL(parentName, parentType, direction, priority, match string) error {
-	acl, err := c.GetACL(parentName, direction, priority, match, true)
+func (c *OVNNbClient) DeleteACL(parentName, parentType, direction, priority, match string, tier int) error {
+	acl, err := c.GetACL(parentName, direction, priority, match, tier, true)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -906,7 +920,7 @@ func (c *OVNNbClient) DeleteACL(parentName, parentType, direction, priority, mat
 
 // GetACL get acl by direction, priority and match,
 // be consistent with ovn-nbctl which direction, priority and match determine one acl in port group or logical switch
-func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
+func (c *OVNNbClient) GetACL(parent, direction, priority, match string, tier int, ignoreNotFound bool) (*ovnnb.ACL, error) {
 	// this is necessary because may exist same direction, priority and match acl in different port group or logical switch
 	if len(parent) == 0 {
 		return nil, errors.New("the port group name or logical switch name is required")
@@ -919,10 +933,10 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNo
 
 	aclList := make([]ovnnb.ACL, 0)
 	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
-		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
+		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match && tier == acl.Tier
 	}).List(ctx, &aclList); err != nil {
 		klog.Error(err)
-		return nil, NewACLError(ACLErrorDatabase, fmt.Sprintf("get acl with 'parent %s direction %s priority %s match %s': %v", parent, direction, priority, match, err))
+		return nil, NewACLError(ACLErrorDatabase, fmt.Sprintf("get acl with 'parent %s direction %s priority %s match %s tier %d': %v", parent, direction, priority, match, tier, err))
 	}
 
 	// not found
@@ -930,11 +944,11 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, ignoreNo
 		if ignoreNotFound {
 			return nil, nil
 		}
-		return nil, NewACLError(ACLErrorNotFound, fmt.Sprintf("not found acl with 'parent %s direction %s priority %s match %s'", parent, direction, priority, match))
+		return nil, NewACLError(ACLErrorNotFound, fmt.Sprintf("not found acl with 'parent %s direction %s priority %s match %s tier %d '", parent, direction, priority, match, tier))
 	}
 
 	if len(aclList) > 1 {
-		return nil, NewACLError(ACLErrorDuplicated, fmt.Sprintf("more than one acl with same 'parent %s direction %s priority %s match %s'", parent, direction, priority, match))
+		return nil, NewACLError(ACLErrorDuplicated, fmt.Sprintf("more than one acl with same 'parent %s direction %s priority %s match %s tier %d '", parent, direction, priority, match, tier))
 	}
 
 	// #nosec G602
@@ -960,8 +974,8 @@ func (c *OVNNbClient) ListAcls(direction string, externalIDs map[string]string) 
 	return aclList, nil
 }
 
-func (c *OVNNbClient) ACLExists(parent, direction, priority, match string) (bool, error) {
-	acl, err := c.GetACL(parent, direction, priority, match, true)
+func (c *OVNNbClient) ACLExists(parent, direction, priority, match string, tier int) (bool, error) {
+	acl, err := c.GetACL(parent, direction, priority, match, tier, true)
 	if err != nil {
 		var aclErr *ACLError
 		if errors.As(err, &aclErr) && aclErr.Type == ACLErrorDuplicated {
@@ -982,7 +996,7 @@ func (c *OVNNbClient) newACL(parent, direction, priority, match, action string, 
 		return nil, fmt.Errorf("acl 'direction %s' and 'priority %s' and 'match %s' and 'action %s' is required", direction, priority, match, action)
 	}
 
-	exists, err := c.ACLExists(parent, direction, priority, match)
+	exists, err := c.ACLExists(parent, direction, priority, match, tier)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("get parent %s acl: %w", parent, err)
@@ -1050,7 +1064,7 @@ func (c *OVNNbClient) newACLWithoutCheck(parent, direction, priority, match, act
 }
 
 // createSgRuleACL create security group rule acl
-func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule) (*ovnnb.ACL, error) {
+func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"
@@ -1059,13 +1073,15 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 	pgName := GetSgPortGroupName(sgName)
 
 	// ingress rule
-	srcOrDst, portDirection := "src", "outport"
+	localSrcOrDst, remoteSrcOrDst, portDirection := "dst", "src", "outport"
 	if direction == ovnnb.ACLDirectionFromLport { // egress rule
-		srcOrDst = "dst"
+		remoteSrcOrDst = "dst"
+		localSrcOrDst = "src"
 		portDirection = "inport"
 	}
 
-	ipKey := ipSuffix + "." + srcOrDst
+	remoteipKey := ipSuffix + "." + remoteSrcOrDst
+	localipKey := ipSuffix + "." + localSrcOrDst
 
 	/* match all traffic to or from pgName */
 	allIPMatch := NewAndACLMatch(
@@ -1075,9 +1091,10 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 
 	/* allow allowed ip traffic */
 	// type address
+
 	allowedIPMatch := NewAndACLMatch(
 		allIPMatch,
-		NewACLMatch(ipKey, "==", rule.RemoteAddress, ""),
+		NewACLMatch(remoteipKey, "==", rule.RemoteAddress, ""),
 	)
 
 	// type securityGroup
@@ -1088,7 +1105,15 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
 		allowedIPMatch = NewAndACLMatch(
 			allIPMatch,
-			NewACLMatch(ipKey, "==", "$"+remotePgName, ""),
+			NewACLMatch(remoteipKey, "==", "$"+remotePgName, ""),
+		)
+	}
+
+	// Add a rule to match local address only if it is set
+	if rule.LocalAddress != "" {
+		allowedIPMatch = NewAndACLMatch(
+			allowedIPMatch,
+			NewACLMatch(localipKey, "==", rule.LocalAddress, ""),
 		)
 	}
 
@@ -1113,16 +1138,27 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 			allowedIPMatch,
 			NewACLMatch(string(rule.Protocol)+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)),
 		)
+
+		// Add a match on source port if a local address was provided.
+		if rule.LocalAddress != "" {
+			match = NewAndACLMatch(
+				match,
+				NewACLMatch(string(rule.Protocol)+".src", "<=", strconv.Itoa(rule.SourcePortRangeMin), strconv.Itoa(rule.SourcePortRangeMax)),
+			)
+		}
 	}
 
 	action := ovnnb.ACLActionDrop
 	if rule.Policy == kubeovnv1.SgPolicyAllow {
 		action = ovnnb.ACLActionAllowRelated
 	}
+	if rule.Policy == kubeovnv1.SgPolicyPass {
+		action = ovnnb.ACLActionPass
+	}
 
 	highestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
 
-	acl, err := c.newACL(pgName, direction, strconv.Itoa(highestPriority-rule.Priority), match.String(), action, util.NetpolACLTier)
+	acl, err := c.newACL(pgName, direction, strconv.Itoa(highestPriority-rule.Priority), match.String(), action, tier)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("new security group acl for port group %s: %w", pgName, err)
@@ -1347,8 +1383,8 @@ func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, ex
 	return removeACLOp, nil
 }
 
-// sgRuleNoACL check if security group rule has acl
-func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule) (bool, error) {
+// sgRuleNoACL check if security group rule has acl in a tier
+func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (bool, error) {
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"
@@ -1415,7 +1451,7 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.Secur
 
 	securityGroupHighestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
 	priority := securityGroupHighestPriority - rule.Priority
-	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(priority), match.String())
+	exists, err := c.ACLExists(pgName, direction, strconv.Itoa(priority), match.String(), tier)
 	if err != nil {
 		err = fmt.Errorf("failed to check acl rule for security group %s: %w", sgName, err)
 		klog.Error(err)
@@ -1433,7 +1469,7 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.Secur
 func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
 	ingressRules := sg.Spec.IngressRules
 	for _, rule := range ingressRules {
-		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionToLport, rule)
+		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionToLport, rule, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
 		if err != nil {
 			klog.Error(err)
 			return false, err
@@ -1445,7 +1481,7 @@ func (c *OVNNbClient) SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
 	}
 	egressRules := sg.Spec.EgressRules
 	for _, rule := range egressRules {
-		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionFromLport, rule)
+		no, err := c.sgRuleNoACL(sg.Name, ovnnb.ACLDirectionFromLport, rule, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
 		if err != nil {
 			klog.Error(err)
 			return false, err
