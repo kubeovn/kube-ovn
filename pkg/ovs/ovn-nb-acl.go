@@ -1147,11 +1147,14 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 		}
 	}
 
-	action := ovnnb.ACLActionDrop
-	if rule.Policy == kubeovnv1.SgPolicyAllow {
+	var action string
+	switch rule.Policy {
+	case kubeovnv1.SgPolicyAllow:
 		action = ovnnb.ACLActionAllowRelated
-	} else if rule.Policy == kubeovnv1.SgPolicyPass {
+	case kubeovnv1.SgPolicyPass:
 		action = ovnnb.ACLActionPass
+	default:
+		action = ovnnb.ACLActionDrop
 	}
 
 	highestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
