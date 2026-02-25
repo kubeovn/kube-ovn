@@ -32,6 +32,11 @@ endif
 
 define kind_create_cluster
 	kind create cluster --config $(1) --name $(2)
+	@for node in $$(kind get nodes --name $(2)); do \
+		docker exec $$node sed -i 's/LimitNOFILE=infinity/LimitNOFILE=4096/' /etc/systemd/system/containerd.service; \
+		docker exec $$node systemctl daemon-reload; \
+		docker exec $$node systemctl restart containerd; \
+	done
 	@if [ "x$(3)" = "x1" ]; then \
 		kubectl delete --ignore-not-found sc standard; \
 		kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner; \
