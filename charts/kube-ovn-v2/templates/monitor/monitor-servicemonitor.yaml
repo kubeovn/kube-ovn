@@ -1,0 +1,28 @@
+{{- if .Values.monitor.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-ovn-monitor
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.monitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with .Values.monitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+    - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      interval: 15s
+      port: metrics
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-monitor
+{{- end }}

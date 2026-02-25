@@ -7,10 +7,12 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.pinger.labels }}
   labels:
+    app.kubernetes.io/name: kube-ovn-pinger
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with .Values.pinger.labels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   selector:
     app.kubernetes.io/name: kube-ovn-pinger
