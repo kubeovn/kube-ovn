@@ -12,6 +12,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -132,20 +133,50 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
 	dbServers := make(map[string]map[string]string)
-	for _, db := range [...]string{"nb", "sb"} {
-		ginkgo.By("Getting ovn" + db + " db server ids on all ovn-central pods")
-		for pod := range slices.Values(pods.Items) {
-			stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
-			framework.ExpectNoError(err, fmt.Sprintf("failed to get ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr))
-			status := parseClusterStatus(stdout)
-			framework.ExpectHaveLen(status.Servers, len(pods.Items), "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
-			if len(dbServers[db]) == 0 {
-				dbServers[db] = maps.Clone(status.Servers)
-			} else {
-				framework.ExpectEqual(status.Servers, dbServers[db], "inconsistent servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
+
+	// Wait for cluster to converge with retry logic
+	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, 60*time.Second, true, func(_ context.Context) (bool, error) {
+		// Refresh pods list in case of changes
+		pods, err = deployClient.GetAllPods(deploy)
+		if err != nil {
+			return false, nil // Retry on error
+		}
+		if len(pods.Items) != int(*deploy.Spec.Replicas) {
+			return false, nil // Wait for pods to be ready
+		}
+
+		// Clear previous state for retry
+		dbServers = make(map[string]map[string]string)
+
+		for _, db := range [...]string{"nb", "sb"} {
+			ginkgo.By("Getting ovn" + db + " db server ids on all ovn-central pods")
+			for pod := range slices.Values(pods.Items) {
+				stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				if err != nil {
+					framework.Logf("Failed to get ovn%s db status in pod %s, will retry: stdout = %q, stderr = %q, err = %v", db, pod.Name, stdout, stderr, err)
+					return false, nil // Retry on error
+				}
+				status := parseClusterStatus(stdout)
+
+				// Check if cluster has converged (all servers are visible)
+				if len(status.Servers) != int(*deploy.Spec.Replicas) {
+					framework.Logf("Cluster %s not converged yet in pod %s: expected %d servers, got %d, will retry",
+						db, pod.Name, int(*deploy.Spec.Replicas), len(status.Servers))
+					return false, nil // Retry until cluster converges
+				}
+
+				if len(dbServers[db]) == 0 {
+					dbServers[db] = maps.Clone(status.Servers)
+				} else if !maps.Equal(status.Servers, dbServers[db]) {
+					framework.Logf("Inconsistent servers in ovn%s db status across pods, will retry", db)
+					return false, nil // Retry until consistent
+				}
 			}
 		}
-	}
+		return true, nil
+	})
+	framework.ExpectNoError(err, "timeout waiting for OVN cluster to converge")
+
 	framework.Logf("ovn db servers from cluster status:\n%s", format.Object(dbServers, 2))
 
 	dbSids := make(map[string]set.Set[string], len(dbServers))
