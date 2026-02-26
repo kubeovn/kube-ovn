@@ -242,7 +242,30 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	subnet.Status.V6UsingIPRange = v6UsingIPStr
 	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
-	bytes, err := subnet.Status.Bytes()
+
+	// Use a targeted patch with only IP-related fields to avoid overwriting
+	// non-IP status fields (e.g., U2OInterconnectionVPC) set by other handlers.
+	ipStatusPatch := struct {
+		Status struct {
+			V4AvailableIPs     float64 `json:"v4availableIPs"`
+			V4AvailableIPRange string  `json:"v4availableIPrange"`
+			V4UsingIPs         float64 `json:"v4usingIPs"`
+			V4UsingIPRange     string  `json:"v4usingIPrange"`
+			V6AvailableIPs     float64 `json:"v6availableIPs"`
+			V6AvailableIPRange string  `json:"v6availableIPrange"`
+			V6UsingIPs         float64 `json:"v6usingIPs"`
+			V6UsingIPRange     string  `json:"v6usingIPrange"`
+		} `json:"status"`
+	}{}
+	ipStatusPatch.Status.V4AvailableIPs = v4availableIPs
+	ipStatusPatch.Status.V4AvailableIPRange = v4AvailableIPStr
+	ipStatusPatch.Status.V4UsingIPs = v4UsingIPs
+	ipStatusPatch.Status.V4UsingIPRange = v4UsingIPStr
+	ipStatusPatch.Status.V6AvailableIPs = v6availableIPs
+	ipStatusPatch.Status.V6AvailableIPRange = v6AvailableIPStr
+	ipStatusPatch.Status.V6UsingIPs = v6UsingIPs
+	ipStatusPatch.Status.V6UsingIPRange = v6UsingIPStr
+	bytes, err := json.Marshal(ipStatusPatch)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
