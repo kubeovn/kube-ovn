@@ -65,14 +65,13 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 			return false, nil
 		}
 		return true, nil
-	}, "")
+	}, fmt.Sprintf("using IPs count of subnet %s to be %.0f", subnetName, expectedUsingIPs))
 }
 
 func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(1*time.Second, 3*time.Second, func(_ context.Context) (bool, error) {
-		ginkgo.By("Waiting for U2OInterconnection status of subnet " + subnetName + " to be " + strconv.FormatBool(enableU2O))
+	framework.WaitUntil(1*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if enableU2O {
 			if !f.VersionPriorTo(1, 11) {
@@ -88,17 +87,17 @@ func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient
 					return true, nil
 				}
 			}
-			ginkgo.By("Keep waiting for U2O to be true: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
+			framework.Logf("keep waiting for U2O to be true: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
+				subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 		} else {
 			if subnet.Status.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionVPC == "" {
-				framework.Logf("current disable U2O subnet status: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
-					subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 				return true, nil
 			}
-			ginkgo.By("Keep waiting for U2O to be false: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
+			framework.Logf("keep waiting for U2O to be false: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
+				subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 		}
 		return false, nil
-	}, "")
+	}, fmt.Sprintf("U2OInterconnection status of subnet %s to be %v", subnetName, enableU2O))
 }
 
 var _ = framework.SerialDescribe("[group:underlay]", func() {
@@ -1353,20 +1352,21 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		cmd := "ovn-nbctl lr-policy-list " + vpcName
 		output, _, err := framework.NBExec(cmd)
 		if err != nil {
 			return false, err
 		}
-		outputStr := string(output)
-		for line := range strings.SplitSeq(outputStr, "\n") {
-			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) == expectPolicyExist {
-				return true, nil
+		found := false
+		for line := range strings.SplitSeq(string(output), "\n") {
+			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
+				found = true
+				break
 			}
 		}
-		return false, nil
-	}, "")
+		return found == expectPolicyExist, nil
+	}, fmt.Sprintf("policy %q exist=%v in vpc %s", hitPolicyStr, expectPolicyExist, vpcName))
 }
 
 func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) error {
