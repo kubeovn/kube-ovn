@@ -301,27 +301,48 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 					bridgeName = linkMap[node.ID].IfName
 				}
 
-				links, err := node.ListLinks()
-				framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
+				expectedAddrs := linkMap[node.ID].NonLinkLocalAddresses()
 
+				// Poll for bridge addresses to stabilize, as the daemon may
+				// re-process the provider network event (triggered by the
+				// controller status update) and briefly reconfigure the bridge.
 				var port, bridge *iproute.Link
-				for i, link := range links {
-					if link.IfIndex == linkMap[node.ID].IfIndex {
-						port = &links[i]
-					} else if link.IfName == bridgeName {
-						bridge = &links[i]
-						for _, addr := range bridge.NonLinkLocalAddresses() {
-							if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv4 {
-								ginkgo.By("get provider bridge v4 ip " + addr)
-								*bridgeIps = append(*bridgeIps, addr)
-							}
+				framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+					links, err := node.ListLinks()
+					if err != nil {
+						return false, err
+					}
+
+					port = nil
+					bridge = nil
+					for i, link := range links {
+						if link.IfIndex == linkMap[node.ID].IfIndex {
+							port = &links[i]
+						} else if link.IfName == bridgeName {
+							bridge = &links[i]
+						}
+						if port != nil && bridge != nil {
+							break
 						}
 					}
-					if port != nil && bridge != nil {
-						break
+					if port == nil || bridge == nil {
+						return false, nil
+					}
+
+					bridgeAddrs := bridge.NonLinkLocalAddresses()
+					if len(bridgeAddrs) != len(expectedAddrs) {
+						return false, nil
+					}
+					return true, nil
+				}, fmt.Sprintf("waiting for bridge %s addresses on node %s", bridgeName, node.Name()))
+
+				for _, addr := range bridge.NonLinkLocalAddresses() {
+					if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv4 {
+						ginkgo.By("get provider bridge v4 ip " + addr)
+						*bridgeIps = append(*bridgeIps, addr)
 					}
 				}
-				framework.ExpectNotNil(port)
+
 				framework.ExpectEqual(port.Address, linkMap[node.ID].Address)
 				framework.ExpectEqual(port.Mtu, linkMap[node.ID].Mtu)
 				framework.ExpectEqual(port.Master, "ovs-system")
@@ -330,7 +351,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 					framework.ExpectEqual(port.IfName, util.ExternalBridgeName(providerNetworkName))
 				}
 
-				framework.ExpectNotNil(bridge)
 				framework.ExpectEqual(bridge.LinkInfo.InfoKind, "openvswitch")
 				framework.ExpectEqual(bridge.Address, port.Address)
 				framework.ExpectEqual(bridge.Mtu, port.Mtu)
@@ -338,7 +358,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
-				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
+				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), expectedAddrs)
 
 				linkNameMap[node.ID] = port.IfName
 			}
