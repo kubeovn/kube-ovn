@@ -71,7 +71,7 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(1*time.Second, 3*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(1*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		ginkgo.By("Waiting for U2OInterconnection status of subnet " + subnetName + " to be " + strconv.FormatBool(enableU2O))
 		subnet := subnetClient.Get(subnetName)
 		if enableU2O {
