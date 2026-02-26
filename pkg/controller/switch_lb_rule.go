@@ -209,6 +209,13 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	)
 
 	name = generateSvcName(info.Name)
+	// Read the subnet annotation before deleting the service, so we can use it as a
+	// fallback to clean up the health-check VIP when no LBHC is found (e.g. the LBHC
+	// was already removed because the service was deleted before the SLR).
+	subnetForVip := ""
+	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
+		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
+	}
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete service %s, err: %v", name, err)
@@ -261,6 +268,14 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		}
 	}
 
+	// Fallback: if no VIP was discovered via LBHC (e.g. LBHC was already deleted
+	// because the backing service was removed before the SLR), use the subnet that
+	// was read from the service annotation before deletion.
+	if len(vips) == 0 && subnetForVip != "" {
+		klog.Infof("handleDelSwitchLBRule %s: no LBHC found for vips %v, falling back to subnet %s from service annotation", info.Name, info.Vips, subnetForVip)
+		vips[subnetForVip] = struct{}{}
+	}
+
 	if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(info.Vips, lbhc.Vip)
@@ -282,7 +297,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 		if len(lbhcs) == 0 {
 			err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{})
-			if err != nil {
+			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete vip %s for load balancer health check, err: %v", vip, err)
 				return err
 			}
