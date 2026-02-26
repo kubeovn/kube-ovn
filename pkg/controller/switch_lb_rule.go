@@ -297,7 +297,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 		if len(lbhcs) == 0 {
 			err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{})
-			if err != nil {
+			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete vip %s for load balancer health check, err: %v", vip, err)
 				return err
 			}
