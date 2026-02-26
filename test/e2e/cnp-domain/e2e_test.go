@@ -111,7 +111,32 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 	}
 
 	testNetworkConnectivity := func(target string, shouldSucceed bool, description string) {
-		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 20, 2*time.Second)
+		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 30, 3*time.Second)
+	}
+
+	// waitForDNSResolversCreated waits for DNSNameResolver CRs associated with a CNP
+	// to be created. This ensures the controller has processed the CNP and created the
+	// DNSNameResolver CRs, so the CoreDNS dnsnameresolver plugin can intercept DNS
+	// queries for the configured domains.
+	// Note: We intentionally do NOT check Status.ResolvedNames here because the
+	// dnsnameresolver CoreDNS plugin populates it reactively (only when actual DNS
+	// queries flow through CoreDNS), not proactively. The connectivity retry logic
+	// in testNetworkConnectivity handles the async chain:
+	//   DNS query → plugin intercepts → Status updated → address set updated → ACL applied.
+	waitForDNSResolversCreated := func(name string, expectedCount int) {
+		ginkgo.By(fmt.Sprintf("Waiting for %d DNSNameResolver(s) to be created for CNP %s", expectedCount, name))
+		dnsClient := f.DNSNameResolverClient()
+		labelSelector := fmt.Sprintf("anp=%s", name)
+
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			resolverList := dnsClient.ListByLabel(labelSelector)
+			if len(resolverList.Items) < expectedCount {
+				framework.Logf("Found %d/%d DNSNameResolver(s) for CNP %s", len(resolverList.Items), expectedCount, name)
+				return false, nil
+			}
+			framework.Logf("All %d DNSNameResolver(s) created for CNP %s", expectedCount, name)
+			return true, nil
+		}, fmt.Sprintf("DNSNameResolvers for CNP %s to be created", name))
 	}
 
 	framework.ConformanceIt("should create CNP with domainName deny rule and verify connectivity behavior", func() {
@@ -158,6 +183,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		framework.ExpectEqual(cnp.Spec.Priority, int32(55))
 		framework.ExpectEqual(cnp.Spec.Subject.Namespaces.MatchLabels["kubernetes.io/metadata.name"], namespaceName)
 
+		waitForDNSResolversCreated(cnpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying CNP (should be blocked)")
 
 		ginkgo.By("Deleting ClusterNetworkPolicy " + cnpName)
@@ -229,6 +255,8 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		framework.ExpectEqual(string(peer2.DomainNames[0]), "*.google.com.")
 		framework.ExpectEqual(cnp2.Spec.Priority, int32(45))
 
+		waitForDNSResolversCreated(cnpName, 1)
+		waitForDNSResolversCreated(cnpName2, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying both CNPs (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying both CNPs (should be allowed)")
 
@@ -288,6 +316,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		updatedCNP, _ := cnpClient.Update(context.TODO(), createdCNP, metav1.UpdateOptions{})
 		framework.Logf("Successfully updated ClusterNetworkPolicy with baidu.com deny rule: %s", updatedCNP.Name)
 
+		waitForDNSResolversCreated(cnpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding deny rule (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after adding baidu.com deny rule (should still succeed)")
 
@@ -298,6 +327,8 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		updatedCNP.Spec.Egress = append(updatedCNP.Spec.Egress, egressRule2)
 		updatedcnp2, _ := cnpClient.Update(context.TODO(), updatedCNP, metav1.UpdateOptions{})
 		framework.Logf("Successfully updated ClusterNetworkPolicy with both deny rules: %s", updatedcnp2.Name)
+
+		waitForDNSResolversCreated(cnpName, 2)
 
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding both deny rules (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", false, "Testing connectivity to google.com after adding both deny rules (should be blocked)")
@@ -373,6 +404,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		framework.ExpectEqual(len(cnp.Spec.Egress), 2)
 		framework.ExpectEqual(cnp.Spec.Priority, int32(80))
 
+		waitForDNSResolversCreated(cnpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying cnp (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying cnp (should be allowed)")
 		testNetworkConnectivity("https://8.8.8.8", false, "Testing connectivity to 8.8.8.8 after applying cnp (should be blocked by CIDR rule)")
@@ -421,6 +453,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		framework.ExpectEqual(len(cnp.Spec.Egress), 1)
 		framework.ExpectEqual(cnp.Spec.Priority, int32(85))
 
+		waitForDNSResolversCreated(cnpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to www.baidu.com after applying cnp (should be blocked by wildcard)")
 		testNetworkConnectivity("https://api.baidu.com", false, "Testing connectivity to api.baidu.com after applying cnp (should be blocked by wildcard)")
 		testNetworkConnectivity("https://news.baidu.com", false, "Testing connectivity to news.baidu.com after applying cnp (should be blocked by wildcard)")
