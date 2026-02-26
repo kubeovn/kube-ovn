@@ -811,26 +811,29 @@ diagnose(){
     esac
 }
 
+getLeaderPod(){
+    local label=$1
+    local role=$2
+    local result=
+    for i in $(seq 1 10); do
+      set +o pipefail
+      result=$(kubectl get pod -n $KUBE_OVN_NS -l "$label"=true 2>/dev/null | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1)
+      set -o pipefail
+      if [ -n "$result" ]; then
+        echo "$result"
+        return
+      fi
+      sleep 1
+    done
+    echo "$role leader not exists" >&2
+    exit 1
+}
+
 getOvnCentralPod(){
-    NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-nb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
-    if [ -z "$NB_POD" ]; then
-      echo "nb leader not exists"
-      exit 1
-    fi
-    OVN_NB_POD=$NB_POD
-    SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-sb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
-    if [ -z "$SB_POD" ]; then
-      echo "sb leader not exists"
-      exit 1
-    fi
-    OVN_SB_POD=$SB_POD
-    NORTHD_POD=$(kubectl get pod -n kube-system -l ovn-northd-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
-    if [ -z "$NORTHD_POD" ]; then
-      echo "ovn northd not exists"
-      exit 1
-    fi
-    OVN_NORTHD_POD=$NORTHD_POD
-    image=$(kubectl  -n kube-system get pods -l app=kube-ovn-cni -o jsonpath='{.items[0].spec.containers[0].image}')
+    OVN_NB_POD=$(getLeaderPod "ovn-nb-leader" "nb")
+    OVN_SB_POD=$(getLeaderPod "ovn-sb-leader" "sb")
+    OVN_NORTHD_POD=$(getLeaderPod "ovn-northd-leader" "northd")
+    image=$(kubectl -n $KUBE_OVN_NS get pods -l app=kube-ovn-cni -o jsonpath='{.items[0].spec.containers[0].image}')
     if [ -z "$image" ]; then
           echo "cannot get kube-ovn image"
           exit 1
