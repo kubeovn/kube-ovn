@@ -521,6 +521,15 @@ pinger:
     # @section -- Ping daemon configuration
     port: 8080
 
+  # -- Ping daemon serviceMonitor configuration.
+  # @section -- Ping daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the pinger.
+    # @section -- Ping daemon configuration
+    enabled: false
+
+  # @section -- OVN monitoring daemon configuration
   # -- Remote targets used by the pinger daemon to determine if the CNI works and has external connectivity.
   # @section -- Ping daemon configuration
   # @default -- "{}"
@@ -590,6 +599,14 @@ monitor:
     # @section -- OVN monitoring daemon configuration
     port: 10661
 
+  # -- kube-ovn-monitor serviceMonitor configuration.
+  # @section -- OVN monitoring daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.
+    # @section -- OVN monitoring daemon configuration
+    enabled: false
+
 # -- Configuration for kube-ovn-controller, the controller responsible for syncing K8s with OVN.
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
@@ -632,6 +649,14 @@ controller:
     # -- Configure the port on which the controller service will serve metrics.
     # @section -- Kube-OVN controller configuration
     port: 10660
+
+  # -- Controller serviceMonitor configuration.
+  # @section -- Kube-OVN controller configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the Kube-OVN controller.
+    # @section -- Kube-OVN controller configuration
+    enabled: false
 
 # -- Configuration for ovn-central, the daemon containing the northbound/southbound DBs and northd.
 # @section -- OVN-central daemon configuration
@@ -753,6 +778,14 @@ agent:
     # -- Configure the port on which the agent service will serve metrics.
     # @section -- CNI agent configuration
     port: 10665
+
+  # -- Agent serviceMonitor configuration.
+  # @section -- CNI agent configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the agent.
+    # @section -- CNI agent configuration
+    enabled: false
 
   # -- Mirroring of the traffic for debug or analysis.
   # https://kubeovn.github.io/docs/stable/en/guide/mirror/
