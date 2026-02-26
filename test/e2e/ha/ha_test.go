@@ -131,18 +131,33 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
+	expectedCount := len(pods.Items)
 	dbServers := make(map[string]map[string]string)
 	for _, db := range [...]string{"nb", "sb"} {
-		ginkgo.By("Getting ovn" + db + " db server ids on all ovn-central pods")
+		ginkgo.By("Waiting for ovn" + db + " db cluster to show all servers on every ovn-central pod")
 		for pod := range slices.Values(pods.Items) {
-			stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
-			framework.ExpectNoError(err, fmt.Sprintf("failed to get ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr))
-			status := parseClusterStatus(stdout)
-			framework.ExpectHaveLen(status.Servers, len(pods.Items), "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
+			var lastStdout, lastStderr string
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				if err != nil {
+					return false, nil
+				}
+				lastStdout, lastStderr = stdout, stderr
+				var count int
+				for line := range strings.SplitSeq(stdout, "\n") {
+					if slices.Contains(strings.Fields(line), "at") {
+						count++
+					}
+				}
+				return count == expectedCount, nil
+			}, fmt.Sprintf("ovn%s db on pod %s to show %d servers", db, pod.Name, expectedCount))
+
+			status := parseClusterStatus(lastStdout)
+			framework.ExpectHaveLen(status.Servers, expectedCount, "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, lastStdout, lastStderr)
 			if len(dbServers[db]) == 0 {
 				dbServers[db] = maps.Clone(status.Servers)
 			} else {
-				framework.ExpectEqual(status.Servers, dbServers[db], "inconsistent servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
+				framework.ExpectEqual(status.Servers, dbServers[db], "inconsistent servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, lastStdout, lastStderr)
 			}
 		}
 	}
