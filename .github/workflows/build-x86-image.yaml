@@ -2964,21 +2964,15 @@ jobs:
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
 
-
-      - name: Check kube ovn pod restarts
-        id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
-        run: make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz

@@ -305,6 +305,51 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 	return false
 }
 
+// checkDBClusterIntegrity verifies that a leader node has the expected number
+// of cluster members. After a split-brain recovery with an incomplete snapshot,
+// a leader may have fewer members than expected (e.g., some servers missing from
+// its cluster configuration). This causes the missing servers to be permanently
+// excluded from the cluster.
+//
+// When detected, the corrupted db file is removed so that on restart,
+// ovn_db_pre_start can rebuild it from the raft header file and rejoin the
+// cluster with a clean state.
+func checkDBClusterIntegrity(db string, expectedMembers int) {
+	if expectedMembers <= 1 {
+		return
+	}
+
+	dbName := ovnnb.DatabaseName
+	if db == "sb" {
+		dbName = ovnsb.DatabaseName
+	}
+
+	output, err := ovs.OvnDatabaseControl(db, "cluster/status", dbName)
+	if err != nil {
+		klog.Warningf("failed to get %s cluster status: %v", db, err)
+		return
+	}
+
+	serverCount := 0
+	for line := range strings.SplitSeq(output, "\n") {
+		if slices.Contains(strings.Fields(line), "at") {
+			serverCount++
+		}
+	}
+
+	if serverCount > 0 && serverCount < expectedMembers {
+		dbFile := fmt.Sprintf("/etc/ovn/ovn%s_db.db", db)
+		klog.Errorf("ovn-%s leader has only %d cluster members, expected %d; "+
+			"cluster may have incomplete membership from a split-brain recovery; "+
+			"removing db file %s to force clean rejoin on restart",
+			db, serverCount, expectedMembers, dbFile)
+		if err := os.Remove(dbFile); err != nil && !os.IsNotExist(err) {
+			klog.Errorf("failed to remove db file %s: %v", dbFile, err)
+		}
+		klog.Fatalf("exiting to trigger re-election with clean state")
+	}
+}
+
 func compactOvnDatabase(db string) {
 	output, err := ovs.OvnDatabaseControl(db, "ovsdb-server/compact")
 	if err != nil {
@@ -409,6 +454,14 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			if sbLeader && isDBLeader(addr, ovnsb.DatabaseName) {
 				klog.Fatalf("found another ovn-sb leader at %s, exiting process to restart", addr)
 			}
+		}
+
+		expectedMembers := len(cfg.remoteAddresses) + 1
+		if nbLeader {
+			checkDBClusterIntegrity("nb", expectedMembers)
+		}
+		if sbLeader {
+			checkDBClusterIntegrity("sb", expectedMembers)
 		}
 
 		if cfg.EnableCompact {
