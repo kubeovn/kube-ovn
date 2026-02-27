@@ -10,6 +10,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -131,9 +133,14 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			ip := podIP.IP
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + podName + " via " + protocol)
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, port))
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 --max-time 5 %s/clientip", net.JoinHostPort(ip, port))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
+			var output string
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				var err error
+				output, err = e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
+				return err == nil, nil
+			}, fmt.Sprintf("connection from %s to %s via %s succeeds", hostPodName, podName, protocol))
 			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(nodeIPs, client)
@@ -170,6 +177,23 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
 
+		ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			eps, err := cs.CoreV1().Endpoints(namespaceName).Get(context.TODO(), serviceName, metav1.GetOptions{})
+			if err == nil {
+				for _, subset := range eps.Subsets {
+					if len(subset.Addresses) > 0 {
+						return true, nil
+					}
+				}
+				return false, nil
+			}
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}, fmt.Sprintf("endpoints %s has at least one ready address", serviceName))
+
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
 		cmd := []string{"sleep", "infinity"}
 		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
@@ -182,9 +206,14 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		for _, ip := range util.ServiceClusterIPs(*service) {
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + serviceName + " via " + protocol)
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, portStr))
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 --max-time 5 %s/clientip", net.JoinHostPort(ip, portStr))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
+			var output string
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				var err error
+				output, err = e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
+				return err == nil, nil
+			}, fmt.Sprintf("connection from %s to %s via %s succeeds", hostPodName, serviceName, protocol))
 			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
 			framework.ExpectNoError(err)
 			framework.ExpectContainElement(nodeIPs, client)

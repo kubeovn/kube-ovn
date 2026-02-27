@@ -1481,24 +1481,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
 		_ = podClient.Create(pod)
 
-		time.Sleep(2 * time.Second)
-
-		events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
-			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
-		})
-		framework.ExpectNoError(err)
-
-		// Check if there are any events with conflict information
-		hasConflictError := false
-		for _, event := range events.Items {
-			if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
-				hasConflictError = true
-				framework.Logf("Found conflict event: %s", event.Message)
-				break
+		// poll for the AddressConflict warning event instead of using a fixed sleep
+		framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(_ context.Context) (bool, error) {
+			events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
+				FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
+			})
+			if err != nil {
+				return false, err
 			}
-		}
-
-		framework.ExpectTrue(hasConflictError, "Should have conflict error events")
+			for _, event := range events.Items {
+				if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
+					framework.Logf("Found conflict event: %s", event.Message)
+					return true, nil
+				}
+			}
+			return false, nil
+		}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
 	})
 })
 

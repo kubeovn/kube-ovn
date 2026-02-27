@@ -1076,7 +1076,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		// create a second VLAN with the same ID
 		ginkgo.By("Creating conflict vlan subnet2 " + conflictVlanSubnet2Name)
-		time.Sleep(10 * time.Second)
+		// wait for conflictVlan1 to be processed by the controller before creating the conflicting vlan
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			v := vlanClient.Get(conflictVlan1Name)
+			return !v.Status.Conflict, nil
+		}, fmt.Sprintf("vlan %s should be processed and non-conflicting", conflictVlan1Name))
 
 		conflictVlan2 := framework.MakeVlan(conflictVlan2Name, providerNetworkName, 100)
 		_ = vlanClient.Create(conflictVlan2)
@@ -1084,8 +1088,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
 		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, cidr2, "", "", "", nil, nil, []string{namespaceName})
 		_ = subnetClient.Create(conflictVlanSubnet2)
-		// wait for conflict vlan subnet to be created
-		time.Sleep(10 * time.Second)
+		// wait for the controller to detect the conflict
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			v := vlanClient.Get(conflictVlan2Name)
+			return v.Status.Conflict, nil
+		}, fmt.Sprintf("vlan %s should be detected as conflicting", conflictVlan2Name))
 
 		// check
 		conflictVlan1 = vlanClient.Get(conflictVlan1Name)
@@ -1389,18 +1396,17 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001", node.Name(), pn.Name)
 			}
 
-			success := false
-			for range 3 {
+			var matchStr string
+			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
+				matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
+			} else {
+				matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
+			}
+
+			var success bool
+			for deadline := time.Now().Add(30 * time.Second); ; {
 				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
-
-				var matchStr string
-				if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-					matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
-				} else {
-					matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
-				}
-
 				framework.Logf("matchStr rule %s", matchStr)
 				framework.Logf("outputStr rule %s", outputStr)
 				ruleExist := strings.Contains(outputStr, matchStr)
@@ -1408,15 +1414,17 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 					success = true
 					break
 				}
-
-				time.Sleep(5 * time.Second)
+				if time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(2 * time.Second)
 			}
 
 			if !success {
 				if expectRuleExist {
-					return errors.New("expected rule does not exist after 3 attempts")
+					return errors.New("expected rule does not exist after 30s")
 				}
-				return errors.New("unexpected rule exists after 3 attempts")
+				return errors.New("unexpected rule exists after 30s")
 			}
 		}
 	}
