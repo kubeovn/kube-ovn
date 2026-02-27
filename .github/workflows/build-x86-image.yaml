@@ -2428,7 +2428,7 @@ jobs:
   talos-installation-test:
     name: Talos Installation Test
     needs: build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: larger-runner
     timeout-minutes: 30
     strategy:
       fail-fast: false
