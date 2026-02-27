@@ -309,8 +309,11 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 // of cluster members. After a split-brain recovery with an incomplete snapshot,
 // a leader may have fewer members than expected (e.g., some servers missing from
 // its cluster configuration). This causes the missing servers to be permanently
-// excluded from the cluster. Restarting the process allows the cluster to
-// re-form with the correct membership.
+// excluded from the cluster.
+//
+// When detected, the corrupted db file is removed so that on restart,
+// ovn_db_pre_start can rebuild it from the raft header file and rejoin the
+// cluster with a clean state.
 func checkDBClusterIntegrity(db string, expectedMembers int) {
 	if expectedMembers <= 1 {
 		return
@@ -335,9 +338,15 @@ func checkDBClusterIntegrity(db string, expectedMembers int) {
 	}
 
 	if serverCount > 0 && serverCount < expectedMembers {
-		klog.Fatalf("ovn-%s leader has only %d cluster members, expected %d; "+
-			"cluster may have incomplete membership from a split-brain recovery, "+
-			"exiting to trigger re-election", db, serverCount, expectedMembers)
+		dbFile := fmt.Sprintf("/etc/ovn/ovn%s_db.db", db)
+		klog.Errorf("ovn-%s leader has only %d cluster members, expected %d; "+
+			"cluster may have incomplete membership from a split-brain recovery; "+
+			"removing db file %s to force clean rejoin on restart",
+			db, serverCount, expectedMembers, dbFile)
+		if err := os.Remove(dbFile); err != nil && !os.IsNotExist(err) {
+			klog.Errorf("failed to remove db file %s: %v", dbFile, err)
+		}
+		klog.Fatalf("exiting to trigger re-election with clean state")
 	}
 }
 
