@@ -429,6 +429,11 @@ var _ = framework.Describe("[group:metallb]", func() {
 		ginkgo.By("Deleting the first service")
 		serviceClient.DeleteSync(serviceName)
 
+		ginkgo.By("Waiting for first service's underlay OpenFlow rules to be cleaned up")
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, ingress.IP, curlListenPort, 15*time.Second)
+		}
+
 		ginkgo.By("Checking the second service is still reachable after first service deletion")
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
@@ -613,4 +618,22 @@ func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, se
 	}, "")
 
 	return flowFound
+}
+
+func waitUnderlayServiceFlowCleaned(nodeNames []string, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	bridgeName := util.ExternalBridgeName(providerNetworkName)
+	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
+
+	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
+		for _, nodeName := range nodeNames {
+			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
+				nodeName, bridgeName, serviceIP, matchPort)
+			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
+				return false, nil // flow still exists on this node
+			}
+		}
+		return true, nil // flow cleaned from all nodes
+	}, fmt.Sprintf("underlay service flow for %s should be cleaned up", serviceIP))
 }
