@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -58,10 +59,14 @@ func (c *VipClient) CreateSync(vip *apiv1.Vip) *apiv1.Vip {
 }
 
 // WaitToBeReady returns whether the ovn vip is ready within timeout.
+// A VIP is considered ready when it has an IP assigned AND has the controller finalizer,
+// ensuring the controller has fully processed the VIP before tests proceed.
 func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn vip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.V4ip != "" || c.Get(name).Status.V6ip != "" {
+		vip := c.Get(name)
+		if (vip.Status.V4ip != "" || vip.Status.V6ip != "") &&
+			slices.Contains(vip.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 			Logf("ovn vip %s is ready", name)
 			return true
 		}
