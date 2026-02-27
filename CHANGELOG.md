@@ -638,6 +638,31 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.31 (2026-02-27)
+
+ * [c4117e3ce](https://github.com/kubeovn/kube-ovn/commit/c4117e3ce556b487a092018d428d36178c31ce9c) release v1.14.31
+ * [e0fd6862c](https://github.com/kubeovn/kube-ovn/commit/e0fd6862cb3bf68cf3eee1b6d8e9b1c02f5bfe17) remove windows build
+ * [0630e8a79](https://github.com/kubeovn/kube-ovn/commit/0630e8a79a50da60d23f4fdf69e997b80107c0f1) fix(deps): update module golang.org/x/net to v0.51.0 (#6342)
+ * [385a935fc](https://github.com/kubeovn/kube-ovn/commit/385a935fcce46f479aa7a07f80603db4df59579c) feat: introduce serviceMonitor and labels to services (#6340)
+ * [5c2de20ad](https://github.com/kubeovn/kube-ovn/commit/5c2de20ad165963713d6630f0b7f786d594927f6) fix(build): pin OVN to specific commit for reproducible builds (#6335)
+ * [4eb403116](https://github.com/kubeovn/kube-ovn/commit/4eb403116185228193bb17104edcd78841d5cde0) fix: Ensure Kubevirt optimizations do not use old migration state
+ * [ad7ac8be0](https://github.com/kubeovn/kube-ovn/commit/ad7ac8be0dbd0df408e437b3a5ea98190abcb359) chore(deps): update dependency go to v1.26.0 (release-1.14) (#6294)
+ * [2196e2095](https://github.com/kubeovn/kube-ovn/commit/2196e20955bc358be8878991a819c426de9a4bb1) fix(lint): resolve golangci-lint v2.10.1 issues
+ * [ecfce5090](https://github.com/kubeovn/kube-ovn/commit/ecfce509064b60e385b5b0d27a825c08f6563c29) fix(controller): prevent NPE in isOvnSubnet when subnet is nil When an IP CR references a deleted subnet, handleUpdateIP calls isOvnSubnet with a nil subnet pointer, causing a panic that puts the controller into CrashLoopBackOff. Add a nil check so that isOvnSubnet safely returns false for nil input.
+ * [be9489c42](https://github.com/kubeovn/kube-ovn/commit/be9489c4273c79edbe84aafffb15385fd7138993) fix(deps): update golang (#6291)
+ * [afa344d34](https://github.com/kubeovn/kube-ovn/commit/afa344d345d63ce1496d3dbdbc47fb300a497f9b) fix(deps): update module golang.org/x/sys to v0.41.0 (#6283)
+ * [b53942943](https://github.com/kubeovn/kube-ovn/commit/b5394294340fe2304915e40558c3899cbc873214) chore(deps): update module golang.org/x/oauth2 to v0.35.0 (#6280)
+ * [c1d558a2d](https://github.com/kubeovn/kube-ovn/commit/c1d558a2d74e6be8ddd86b6a1d829d9039f6485a) controller: fix stale ip cr after subnet deletion (#6275)
+ * [bb28e0da6](https://github.com/kubeovn/kube-ovn/commit/bb28e0da6168e5d6359eab1ff42cba2dff931bac) prepare for next release
+
+### Contributors
+
+ * CreatureKing
+ * Johann Schley
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.30 (2026-02-06)
 
  * [edd8727f5](https://github.com/kubeovn/kube-ovn/commit/edd8727f57ec9304f8958a0555bf2b2229178527) release v1.14.30
