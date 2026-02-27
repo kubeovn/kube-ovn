@@ -253,20 +253,25 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		ginkgo.By("Waiting for DaemonSet ovs-ovn to be ready")
 		dsClient.RolloutStatus(ds.Name)
 
-		ginkgo.By("Getting pods of DaemonSet ovs-ovn")
-		pods, err = dsClient.GetPods(ds)
-		framework.ExpectNoError(err)
-
-		ginkgo.By("Getting newly created ovs-ovn pod running on node " + suiteCtx.Node)
-		for i := range pods.Items {
-			if pods.Items[i].Spec.NodeName == suiteCtx.Node {
-				pod = &pods.Items[i]
-				break
+		ginkgo.By("Waiting for newly created ovs-ovn pod running on node " + suiteCtx.Node)
+		pod = nil
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			ds = dsClient.Get("ovs-ovn")
+			pods, err = dsClient.GetPods(ds)
+			if err != nil {
+				return false, err
 			}
-		}
-		framework.ExpectNotNil(pod, "no ovs-ovn pod running on node "+suiteCtx.Node)
-		framework.ExpectEqual(pod.Status.Phase, corev1.PodRunning)
-		framework.ExpectEqual(pod.Status.ContainerStatuses[0].Ready, true)
+			for i := range pods.Items {
+				if pods.Items[i].Spec.NodeName == suiteCtx.Node &&
+					pods.Items[i].Status.Phase == corev1.PodRunning &&
+					len(pods.Items[i].Status.ContainerStatuses) != 0 &&
+					pods.Items[i].Status.ContainerStatuses[0].Ready {
+					pod = &pods.Items[i]
+					return true, nil
+				}
+			}
+			return false, nil
+		}, "waiting for ovs-ovn pod on node "+suiteCtx.Node+" to be running and ready")
 		pod.ManagedFields = nil
 		framework.Logf("newly created ovs-ovn pod %s:\n%s", pod.Name, format.Object(pod, 2))
 	})
