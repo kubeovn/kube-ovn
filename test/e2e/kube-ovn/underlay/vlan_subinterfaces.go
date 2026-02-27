@@ -317,9 +317,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectTrue(providerNetworkClient.WaitToBeReady(providerNetworkName, time.Minute))
 
 		for _, node := range readyKindNodes {
-			nodeIface := nodeInterfaceNameFor(node.Name(), pnDefaultInterface, nodeInterfaces)
-			time.Sleep(5 * time.Second)
-			framework.ExpectTrue(vlanSubinterfaceExists(kindNodeMap, node.Name(), nodeIface), fmt.Sprintf("VLAN subinterface %s should still exist on node %s when autoCreateVlanSubinterfaces is false", nodeIface, node.Name()))
+			nodeName := node.Name()
+			nodeIface := nodeInterfaceNameFor(nodeName, pnDefaultInterface, nodeInterfaces)
+			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				return vlanSubinterfaceExists(kindNodeMap, nodeName, nodeIface), nil
+			}, fmt.Sprintf("VLAN subinterface %s should still exist on node %s when autoCreateVlanSubinterfaces is false", nodeIface, nodeName))
 		}
 
 		providerNetworkClient.DeleteSync(providerNetworkName)
