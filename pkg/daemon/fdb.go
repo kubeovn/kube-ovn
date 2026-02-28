@@ -172,7 +172,7 @@ func (c *Controller) syncFdb() {
 			klog.Warningf("patch port %s not found on bridge %s", port, bridge)
 			continue
 		}
-		index := fdbIndex{vlan.Spec.VlanID, subnet.Status.U2OInterconnectionMAC}
+		index := fdbIndex{vlan.Spec.ID, subnet.Status.U2OInterconnectionMAC}
 		entries := current[bridge]
 		if entries != nil && entries[index] == port {
 			// the fdb entry already exists, remove it from current entries to avoid deletion
