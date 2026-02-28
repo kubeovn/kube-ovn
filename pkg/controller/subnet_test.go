@@ -276,6 +276,34 @@ func Test_formatSubnet(t *testing.T) {
 	}
 }
 
+func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {
+	t.Parallel()
+
+	// Create a subnet that references a non-existent vlan
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-underlay",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Vlan:      "non-existent-vlan",
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	// handleAddOrUpdateSubnet should return an error when the vlan does not exist,
+	// so that the work queue retries the item instead of forgetting it
+	err = ctrl.handleAddOrUpdateSubnet("test-underlay")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to validate vlan")
+}
+
 func Test_isOvnSubnet(t *testing.T) {
 	t.Parallel()
 

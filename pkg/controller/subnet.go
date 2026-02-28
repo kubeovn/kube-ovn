@@ -495,20 +495,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	err = c.validateSubnetVlan(subnet)
 	if err != nil {
-		err := fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
+		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
-		if err = c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return patchErr
 		}
 		return err
 	}
 
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-		if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+		if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return patchErr
 		}
 		return err
 	}
