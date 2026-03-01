@@ -3757,7 +3757,13 @@ spec:
                         max: 65535
                       policy:
                         type: string
-                        description: Policy action (allow or deny)
+                        description: Policy action (allow, pass or deny)
+                      localAddress:
+                        type: string
+                      sourcePortRangeMin:
+                        type: integer
+                      sourcePortRangeMax:
+                        type: integer
                 egressRules:
                   type: array
                   description: Egress traffic rules for the security group
@@ -3796,10 +3802,17 @@ spec:
                         max: 65535
                       policy:
                         type: string
-                        description: Policy action (allow or deny)
+                        description: Policy action (allow, pass or deny)
+                      localAddress:
+                        type: string
+                      sourcePortRangeMin:
+                        type: integer
+                      sourcePortRangeMax:
+                        type: integer
                 allowSameGroupTraffic:
                   type: boolean
-                  description: Allow traffic between pods in the same security group
+                tier:
+                  type: integer
             status:
               type: object
               properties:

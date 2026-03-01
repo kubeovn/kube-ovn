@@ -157,10 +157,19 @@ const (
 	VxlanNic  = "vxlan_sys_4789"
 	GeneveNic = "genev_sys_6081"
 
-	SecurityGroupHighestPriority = "2300"
+	// Allow 16384 priorities with base set to 2100.
+	SecurityGroupHighestPriority = "18484"
 	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
+
+	// SecurityGroup API limits for priority and tier
+	SecurityGroupPriorityMax = 16384
+	SecurityGroupPriorityMin = 1
+
+	SecurityGroupOvnTierBase    = 2
+	SecurityGroupAPITierMinimum = 0
+	SecurityGroupAPITierMaximum = 1
 
 	IngressAllowPriority = "2001"
 	IngressDefaultDrop   = "2000"

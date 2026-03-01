@@ -266,13 +266,21 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 	// check sg rules
 	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
+	if err := util.ValidateSecurityGroupTier(sg.Spec.Tier); err != nil {
+		return err
+	}
+
 	for _, rule := range allRules {
 		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
 			return errors.New("IPVersion should be 'ipv4' or 'ipv6'")
 		}
 
-		if rule.Priority < 1 || rule.Priority > 200 {
-			return fmt.Errorf("priority '%d' is not in the range of 1 to 200", rule.Priority)
+		if rule.Priority < util.SecurityGroupPriorityMin || rule.Priority > util.SecurityGroupPriorityMax {
+			return fmt.Errorf("priority '%d' is not in the range of %d to %d", rule.Priority, util.SecurityGroupPriorityMin, util.SecurityGroupPriorityMax)
+		}
+
+		if sg.Spec.Tier == util.SecurityGroupAPITierMaximum && rule.Policy == kubeovnv1.SgPolicyPass {
+			return fmt.Errorf("policy pass not valid when the security group tier is maximum [%d]", util.SecurityGroupAPITierMaximum)
 		}
 
 		switch rule.RemoteType {
@@ -295,12 +303,32 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 			return fmt.Errorf("not support sgRemoteType '%s'", rule.RemoteType)
 		}
 
+		if rule.LocalAddress != "" {
+			if strings.Contains(rule.LocalAddress, "/") {
+				if _, _, err := net.ParseCIDR(rule.LocalAddress); err != nil {
+					return fmt.Errorf("invalid CIDR '%s'", rule.LocalAddress)
+				}
+			} else {
+				if net.ParseIP(rule.LocalAddress) == nil {
+					return fmt.Errorf("invalid ip address '%s'", rule.LocalAddress)
+				}
+			}
+		}
+
 		if rule.Protocol == kubeovnv1.SgProtocolTCP || rule.Protocol == kubeovnv1.SgProtocolUDP {
 			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
 				return errors.New("portRange is out of range")
 			}
 			if rule.PortRangeMin > rule.PortRangeMax {
 				return errors.New("portRange err, range Minimum value greater than maximum value")
+			}
+			if rule.LocalAddress != "" {
+				if rule.SourcePortRangeMin < 1 || rule.SourcePortRangeMin > 65535 || rule.SourcePortRangeMax < 1 || rule.SourcePortRangeMax > 65535 {
+					return errors.New("sourcePortRange is out of range")
+				}
+				if rule.SourcePortRangeMin > rule.SourcePortRangeMax {
+					return errors.New("sourcePortRange err, range Minimum value greater than maximum value")
+				}
 			}
 		}
 	}

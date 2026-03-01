@@ -480,7 +480,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 			acls = ls.ACLs
 		}
 
-		acl, err := nbClient.GetACL(name, direction, priority, match, false)
+		acl, err := nbClient.GetACL(name, direction, priority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		expect := newACL(name, direction, priority, match, ovnnb.ACLActionAllowStateless, util.NetpolACLTier)
 		expect.UUID = acl.UUID
@@ -557,7 +557,7 @@ func (suite *OvnClientTestSuite) testCreateNodeACL() {
 	nbClient := suite.ovnNBClient
 
 	checkACL := func(pg *ovnnb.PortGroup, direction, priority, match string, options map[string]string) {
-		acl, err := nbClient.GetACL(pg.Name, direction, priority, match, false)
+		acl, err := nbClient.GetACL(pg.Name, direction, priority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		expect := newACL(pg.Name, direction, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		expect.UUID = acl.UUID
@@ -672,23 +672,26 @@ func (suite *OvnClientTestSuite) testCreateSgDenyAllACL() {
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 
-		// ingress acl
-		match := fmt.Sprintf("outport == @%s && ip", pgName)
-		ingressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, false)
-		require.NoError(t, err)
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop, util.NetpolACLTier)
-		expect.UUID = ingressACL.UUID
-		require.Equal(t, expect, ingressACL)
-		require.Contains(t, pg.ACLs, ingressACL.UUID)
+		for sgTier := util.SecurityGroupAPITierMinimum; sgTier <= util.SecurityGroupAPITierMaximum; sgTier++ {
+			ovnTier := util.ConvertSGTierToOvnTier(sgTier)
+			// ingress acl
+			match := fmt.Sprintf("outport == @%s && ip", pgName)
+			ingressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, ovnTier, false)
+			require.NoError(t, err)
+			expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop, ovnTier)
+			expect.UUID = ingressACL.UUID
+			require.Equal(t, expect, ingressACL)
+			require.Contains(t, pg.ACLs, ingressACL.UUID)
 
-		// egress acl
-		match = fmt.Sprintf("inport == @%s && ip", pgName)
-		egressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, false)
-		require.NoError(t, err)
-		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop, util.NetpolACLTier)
-		expect.UUID = egressACL.UUID
-		require.Equal(t, expect, egressACL)
-		require.Contains(t, pg.ACLs, egressACL.UUID)
+			// egress acl
+			match = fmt.Sprintf("inport == @%s && ip", pgName)
+			egressACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, ovnTier, false)
+			require.NoError(t, err)
+			expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, match, ovnnb.ACLActionDrop, ovnTier)
+			expect.UUID = egressACL.UUID
+			require.Equal(t, expect, egressACL)
+			require.Contains(t, pg.ACLs, egressACL.UUID)
+		}
 	})
 
 	t.Run("should print log err when sg name does not exist", func(t *testing.T) {
@@ -716,15 +719,18 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 	nbClient := suite.ovnNBClient
 
 	expect := func(pg *ovnnb.PortGroup, match, direction string) {
-		arpACL, err := nbClient.GetACL(pg.Name, direction, util.SecurityGroupBasePriority, match, false)
-		require.NoError(t, err)
+		for sgTier := util.SecurityGroupAPITierMinimum; sgTier <= util.SecurityGroupAPITierMaximum; sgTier++ {
+			ovnTier := util.ConvertSGTierToOvnTier(sgTier)
+			arpACL, err := nbClient.GetACL(pg.Name, direction, util.SecurityGroupBasePriority, match, ovnTier, false)
+			require.NoError(t, err)
 
-		expect := newACL(pg.Name, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
-			acl.UUID = arpACL.UUID
-		})
+			expect := newACL(pg.Name, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, ovnTier, func(acl *ovnnb.ACL) {
+				acl.UUID = arpACL.UUID
+			})
 
-		require.Equal(t, expect, arpACL)
-		require.Contains(t, pg.ACLs, arpACL.UUID)
+			require.Equal(t, expect, arpACL)
+			require.Contains(t, pg.ACLs, arpACL.UUID)
+		}
 	}
 
 	t.Run("create sg base ingress acl", func(t *testing.T) {
@@ -743,7 +749,8 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 5)
+		// for each rule expect to ACLs - 1 in tier 2 and 1 in tier 3
+		require.Len(t, pg.ACLs, 5*2)
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
@@ -782,7 +789,8 @@ func (suite *OvnClientTestSuite) testCreateSgBaseACL() {
 
 		pg, err := nbClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 5)
+		// for each rule expect to ACLs - 1 in tier 2 and 1 in tier 3
+		require.Len(t, pg.ACLs, 5*2)
 
 		// arp
 		match := fmt.Sprintf("%s == @%s && arp", portDirection, pgName)
@@ -827,6 +835,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 		},
 		Spec: kubeovnv1.SecurityGroupSpec{
 			AllowSameGroupTraffic: true,
+			Tier:                  1,
 			IngressRules: []kubeovnv1.SecurityGroupRule{
 				{
 					IPVersion:     "ipv4",
@@ -835,6 +844,19 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 					Protocol:      "icmp",
 					Priority:      12,
 					Policy:        "allow",
+				},
+				{
+					IPVersion:          "ipv4",
+					RemoteType:         kubeovnv1.SgRemoteTypeAddress,
+					RemoteAddress:      "0.0.0.0/0",
+					Protocol:           "tcp",
+					PortRangeMin:       80,
+					PortRangeMax:       80,
+					Priority:           20,
+					Policy:             "allow",
+					LocalAddress:       "10.10.10.0/24",
+					SourcePortRangeMin: 10,
+					SourcePortRangeMax: 2000,
 				},
 			},
 			EgressRules: []kubeovnv1.SecurityGroupRule{
@@ -846,9 +868,24 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 					Priority:      10,
 					Policy:        "allow",
 				},
+				{
+					IPVersion:           "ipv4",
+					RemoteType:          kubeovnv1.SgRemoteTypeSg,
+					RemoteSecurityGroup: "randomPortGroup",
+					Protocol:            "udp",
+					PortRangeMin:        22,
+					PortRangeMax:        80,
+					SourcePortRangeMin:  30000,
+					SourcePortRangeMax:  40000,
+					LocalAddress:        "10.10.100.100",
+					Priority:            500,
+					Policy:              "pass",
+				},
 			},
 		},
 	}
+
+	ovnTier := util.ConvertSGTierToOvnTier(sg.Spec.Tier)
 
 	err := nbClient.CreatePortGroup(pgName, nil)
 	require.NoError(t, err)
@@ -862,30 +899,39 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 
 		// ipv4 acl
 		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == $%s", pgName, v4AsName)
-		v4Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, false)
+		v4Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnTier, false)
 		require.NoError(t, err)
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = v4Acl.UUID
 		require.Equal(t, expect, v4Acl)
 		require.Contains(t, pg.ACLs, v4Acl.UUID)
 
 		// ipv6 acl
 		match = fmt.Sprintf("outport == @%s && ip6 && ip6.src == $%s", pgName, v6AsName)
-		v6Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, false)
+		v6Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnTier, false)
 		require.NoError(t, err)
-		expect = newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect = newACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = v6Acl.UUID
 		require.Equal(t, expect, v6Acl)
 		require.Contains(t, pg.ACLs, v6Acl.UUID)
 
 		// rule acl
 		match = fmt.Sprintf("outport == @%s && ip4 && ip4.src == 0.0.0.0/0 && icmp4", pgName)
-		rulACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "2288", match, false)
+		rulACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "18472", match, ovnTier, false)
 		require.NoError(t, err)
-		expect = newACL(pgName, ovnnb.ACLDirectionToLport, "2288", match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect = newACL(pgName, ovnnb.ACLDirectionToLport, "18472", match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = rulACL.UUID
 		require.Equal(t, expect, rulACL)
 		require.Contains(t, pg.ACLs, rulACL.UUID)
+
+		// rule acl with local address
+		match = fmt.Sprintf("outport == @%s && ip4 && ip4.src == 0.0.0.0/0 && ip4.dst == 10.10.10.0/24 && 80 <= tcp.dst <= 80 && 10 <= tcp.src <= 2000", pgName)
+		ruleACLWithLocalAddr, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "18464", match, ovnTier, false)
+		require.NoError(t, err)
+		expect = newACL(pgName, ovnnb.ACLDirectionToLport, "18464", match, ovnnb.ACLActionAllowRelated, ovnTier)
+		expect.UUID = ruleACLWithLocalAddr.UUID
+		require.Equal(t, expect, ruleACLWithLocalAddr)
+		require.Contains(t, pg.ACLs, ruleACLWithLocalAddr.UUID)
 	})
 
 	t.Run("update securityGroup egress acl", func(t *testing.T) {
@@ -897,30 +943,38 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 
 		// ipv4 acl
 		match := fmt.Sprintf("inport == @%s && ip4 && ip4.dst == $%s", pgName, v4AsName)
-		v4Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, false)
+		v4Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnTier, false)
 		require.NoError(t, err)
-		expect := newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = v4Acl.UUID
 		require.Equal(t, expect, v4Acl)
 		require.Contains(t, pg.ACLs, v4Acl.UUID)
 
 		// ipv6 acl
 		match = fmt.Sprintf("inport == @%s && ip6 && ip6.dst == $%s", pgName, v6AsName)
-		v6Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, false)
+		v6Acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnTier, false)
 		require.NoError(t, err)
-		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = v6Acl.UUID
 		require.Equal(t, expect, v6Acl)
 		require.Contains(t, pg.ACLs, v6Acl.UUID)
 
 		// rule acl
 		match = fmt.Sprintf("inport == @%s && ip4 && ip4.dst == 0.0.0.0/0", pgName)
-		rulACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, "2290", match, false)
+		rulACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, "18474", match, ovnTier, false)
 		require.NoError(t, err)
-		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, "2290", match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, "18474", match, ovnnb.ACLActionAllowRelated, ovnTier)
 		expect.UUID = rulACL.UUID
 		require.Equal(t, expect, rulACL)
 		require.Contains(t, pg.ACLs, rulACL.UUID)
+
+		match = fmt.Sprintf("inport == @%s && ip4 && ip4.dst == $%s && ip4.src == 10.10.100.100 && 22 <= udp.dst <= 80 && 30000 <= udp.src <= 40000", pgName, GetSgV4AssociatedName("randomPortGroup"))
+		ruleWithRemoteSgAndLocalAddr, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, "17984", match, ovnTier, false)
+		require.NoError(t, err)
+		expect = newACL(pgName, ovnnb.ACLDirectionFromLport, "17984", match, ovnnb.ACLActionPass, ovnTier)
+		expect.UUID = ruleWithRemoteSgAndLocalAddr.UUID
+		require.Equal(t, expect, ruleWithRemoteSgAndLocalAddr)
+		require.Contains(t, pg.ACLs, ruleWithRemoteSgAndLocalAddr.UUID)
 	})
 
 	t.Run("should print log err when sg name is empty", func(t *testing.T) {
@@ -982,14 +1036,14 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 		if protocol == kubeovnv1.ProtocolIPv6 {
 			match = "ip6.src == 2409:8720:4a00::0/64 && ip6.dst == 2409:8720:4a00::0/64"
 		}
-		ingressACL, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, false)
+		ingressACL, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		ingressExpect := newACL(lsName, ovnnb.ACLDirectionToLport, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllow, util.NetpolACLTier)
 		ingressExpect.UUID = ingressACL.UUID
 		ingressExpect.ExternalIDs["subnet"] = lsName
 		require.Equal(t, ingressExpect, ingressACL)
 		require.Contains(t, ls.ACLs, ingressACL.UUID)
-		egressACL, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, match, false)
+		egressACL, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		egressExpect := newACL(lsName, ovnnb.ACLDirectionFromLport, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllow, util.NetpolACLTier)
 		egressExpect.UUID = egressACL.UUID
@@ -999,7 +1053,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	}
 
 	for _, subnetACL := range subnetAcls {
-		acl, err := nbClient.GetACL(lsName, subnetACL.Direction, strconv.Itoa(subnetACL.Priority), subnetACL.Match, false)
+		acl, err := nbClient.GetACL(lsName, subnetACL.Direction, strconv.Itoa(subnetACL.Priority), subnetACL.Match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		expect := newACL(lsName, subnetACL.Direction, strconv.Itoa(subnetACL.Priority), subnetACL.Match, subnetACL.Action, util.NetpolACLTier)
 		expect.UUID = acl.UUID
@@ -1009,7 +1063,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	}
 }
 
-func (suite *OvnClientTestSuite) testSetACLLog() {
+func (suite *OvnClientTestSuite) testSetNetPolACLLog() {
 	t := suite.T()
 	t.Parallel()
 
@@ -1030,14 +1084,14 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		err = nbClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 
-		err = nbClient.SetACLLog(pgName, false, true)
+		err = nbClient.SetNetPolACLLog(pgName, false, true)
 		require.NoError(t, err)
 
-		acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, false)
+		acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		require.False(t, acl.Log)
 
-		err = nbClient.SetACLLog(pgName, false, true)
+		err = nbClient.SetNetPolACLLog(pgName, false, true)
 		require.NoError(t, err)
 	})
 
@@ -1052,24 +1106,24 @@ func (suite *OvnClientTestSuite) testSetACLLog() {
 		err = nbClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 
-		err = nbClient.SetACLLog(pgName, true, false)
+		err = nbClient.SetNetPolACLLog(pgName, true, false)
 		require.NoError(t, err)
 
-		acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.IngressDefaultDrop, match, false)
+		acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, util.IngressDefaultDrop, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		require.True(t, acl.Log)
 
-		err = nbClient.SetACLLog(pgName, true, false)
+		err = nbClient.SetNetPolACLLog(pgName, true, false)
 		require.NoError(t, err)
 	})
 
 	t.Run("set log for non-exist pgName", func(t *testing.T) {
-		err := nbClient.SetACLLog("non-exist-pgName", true, false)
+		err := nbClient.SetNetPolACLLog("non-exist-pgName", true, false)
 		require.NoError(t, err)
 	})
 
 	t.Run("test empty pgName", func(t *testing.T) {
-		err := nbClient.SetACLLog("", true, false)
+		err := nbClient.SetNetPolACLLog("", true, false)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -1106,7 +1160,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 
 		// default drop acl
 		match := "ip"
-		acl, err := nbClient.GetACL(lsName, direction, util.DefaultDropPriority, match, false)
+		acl, err := nbClient.GetACL(lsName, direction, util.DefaultDropPriority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		require.Contains(t, ls.ACLs, acl.UUID)
 
@@ -1119,7 +1173,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 				match = fmt.Sprintf(`ip6.src == %s && ip6.dst == %s`, cidr, cidr)
 			}
 
-			acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+			acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, util.NetpolACLTier, false)
 			require.NoError(t, err)
 			require.Contains(t, ls.ACLs, acl.UUID)
 
@@ -1137,7 +1191,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 					match = fmt.Sprintf("(ip6.src == %s && ip6.dst == %s) || (ip6.src == %s && ip6.dst == %s)", cidr, subnet, subnet, cidr)
 				}
 
-				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, util.NetpolACLTier, false)
 				require.NoError(t, err)
 				require.Contains(t, ls.ACLs, acl.UUID)
 			}
@@ -1152,7 +1206,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 				match = "ip6.src == " + cidr
 			}
 
-			acl, err = nbClient.GetACL(lsName, direction, util.NodeAllowPriority, match, false)
+			acl, err = nbClient.GetACL(lsName, direction, util.NodeAllowPriority, match, util.NetpolACLTier, false)
 			require.NoError(t, err)
 			require.Contains(t, ls.ACLs, acl.UUID)
 		}
@@ -1175,7 +1229,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 
 		// default drop acl
 		match := "ip"
-		acl, err := nbClient.GetACL(lsName, direction, util.DefaultDropPriority, match, false)
+		acl, err := nbClient.GetACL(lsName, direction, util.DefaultDropPriority, match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		require.Contains(t, ls.ACLs, acl.UUID)
 
@@ -1188,7 +1242,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 				match = fmt.Sprintf(`ip6.src == %s && ip6.dst == %s`, cidr, cidr)
 			}
 
-			acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+			acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, util.NetpolACLTier, false)
 			require.NoError(t, err)
 			require.Contains(t, ls.ACLs, acl.UUID)
 
@@ -1206,7 +1260,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 					match = fmt.Sprintf("(ip6.src == %s && ip6.dst == %s) || (ip6.src == %s && ip6.dst == %s)", cidr, subnet, subnet, cidr)
 				}
 
-				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, false)
+				acl, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, match, util.NetpolACLTier, false)
 				require.NoError(t, err)
 				require.Contains(t, ls.ACLs, acl.UUID)
 			}
@@ -1221,7 +1275,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 				match = "ip6.src == " + cidr
 			}
 
-			acl, err = nbClient.GetACL(lsName, direction, util.NodeAllowPriority, match, false)
+			acl, err = nbClient.GetACL(lsName, direction, util.NodeAllowPriority, match, util.NetpolACLTier, false)
 			if protocol == kubeovnv1.ProtocolIPv4 {
 				require.NoError(t, err)
 				require.Contains(t, ls.ACLs, acl.UUID)
@@ -1248,7 +1302,7 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 
 	t.Run("create securityGroup type sg acl", func(t *testing.T) {
 		t.Parallel()
-
+		testTier := 2
 		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:           "ipv4",
 			RemoteType:          kubeovnv1.SgRemoteTypeSg,
@@ -1258,19 +1312,18 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			Policy:              "allow",
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule)
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == $%s && icmp4", pgName, GetSgV4AssociatedName(sgRule.RemoteSecurityGroup))
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, testTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
 
 	t.Run("create address type sg acl", func(t *testing.T) {
 		t.Parallel()
-
+		testTier := 2
 		sgRule := kubeovnv1.SecurityGroupRule{
 			IPVersion:     "ipv4",
 			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
@@ -1280,12 +1333,11 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			Policy:        "allow",
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule)
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && icmp4", pgName, sgRule.RemoteAddress)
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, testTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
@@ -1302,12 +1354,12 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			Policy:        "allow",
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule)
+		testTier := 2
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("outport == @%s && ip6 && ip6.src == %s && icmp6", pgName, sgRule.RemoteAddress)
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, testTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
@@ -1324,12 +1376,12 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			Policy:        "allow",
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionFromLport, sgRule)
+		testTier := 2
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionFromLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("inport == @%s && ip4 && ip4.dst == %s && icmp4", pgName, sgRule.RemoteAddress)
-		expect := newACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, ovnnb.ACLActionAllowRelated, testTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
@@ -1346,12 +1398,12 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			Policy:        "drop",
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule)
+		testTier := 2
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && icmp4", pgName, sgRule.RemoteAddress)
-		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionDrop, util.NetpolACLTier)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionDrop, testTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
@@ -1370,12 +1422,85 @@ func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 			PortRangeMax:  12360,
 		}
 		priority := strconv.Itoa(highestPriority - sgRule.Priority)
-
-		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule)
+		testTier := 2
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, testTier)
 		require.NoError(t, err)
 
 		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && %d <= tcp.dst <= %d", pgName, sgRule.RemoteAddress, sgRule.PortRangeMin, sgRule.PortRangeMax)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, testTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
+
+	t.Run("create sg acl with local address", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.10.10.0/24",
+			LocalAddress:  "192.168.1.0/24",
+			Protocol:      "all",
+			Priority:      5,
+			Policy:        "allow",
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.NetpolACLTier)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && ip4.dst == %s", pgName, sgRule.RemoteAddress, sgRule.LocalAddress)
 		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
+
+	t.Run("create tcp sg acl with local address and source port", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:          "ipv4",
+			RemoteType:         kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress:      "10.10.10.0/24",
+			LocalAddress:       "192.168.1.100",
+			Protocol:           "tcp",
+			Priority:           8,
+			Policy:             "allow",
+			PortRangeMin:       80,
+			PortRangeMax:       443,
+			SourcePortRangeMin: 1024,
+			SourcePortRangeMax: 65535,
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.NetpolACLTier)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && ip4.dst == %s && %d <= tcp.dst <= %d && %d <= tcp.src <= %d",
+			pgName, sgRule.RemoteAddress, sgRule.LocalAddress, sgRule.PortRangeMin, sgRule.PortRangeMax, sgRule.SourcePortRangeMin, sgRule.SourcePortRangeMax)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		expect.UUID = acl.UUID
+		require.Equal(t, expect, acl)
+	})
+
+	t.Run("create pass policy sg acl", func(t *testing.T) {
+		t.Parallel()
+
+		sgRule := kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.10.10.0/24",
+			Protocol:      "icmp",
+			Priority:      10,
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionPass),
+		}
+		priority := strconv.Itoa(highestPriority - sgRule.Priority)
+
+		acl, err := nbClient.newSgRuleACL(sgName, ovnnb.ACLDirectionToLport, sgRule, util.NetpolACLTier)
+		require.NoError(t, err)
+
+		match := fmt.Sprintf("outport == @%s && ip4 && ip4.src == %s && icmp4", pgName, sgRule.RemoteAddress)
+		expect := newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionPass, util.NetpolACLTier)
 		expect.UUID = acl.UUID
 		require.Equal(t, expect, acl)
 	})
@@ -1411,7 +1536,7 @@ func (suite *OvnClientTestSuite) testCreateAcls() {
 
 		for i := range 3 {
 			match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort+i)
-			acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, false)
+			acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier, false)
 			require.NoError(t, err)
 			require.Equal(t, match, acl.Match)
 
@@ -1439,7 +1564,7 @@ func (suite *OvnClientTestSuite) testCreateAcls() {
 
 		for i := range 3 {
 			match := fmt.Sprintf("%s && udp.dst == %d", matchPrefix, basePort+i)
-			acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, priority, match, false)
+			acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier, false)
 			require.NoError(t, err)
 			require.Equal(t, match, acl.Match)
 
@@ -1729,7 +1854,7 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 1)
 
-		err = nbClient.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionToLport, priority, match)
+		err = nbClient.DeleteACL(pgName, portGroupKey, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier)
 		require.NoError(t, err)
 
 		pg, err = nbClient.GetPortGroup(pgName, false)
@@ -1752,7 +1877,7 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 1)
 
-		err = nbClient.DeleteACL(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match)
+		err = nbClient.DeleteACL(lsName, LogicalSwitchKey, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier)
 		require.NoError(t, err)
 
 		ls, err = nbClient.GetLogicalSwitch(lsName, false)
@@ -1765,7 +1890,7 @@ func (suite *OvnClientTestSuite) testDeleteACL() {
 		basePort := 5601
 		match := fmt.Sprintf("%s && tcp.dst == %d", matchPrefix, basePort)
 
-		err = nbClient.DeleteACL("", portGroupKey, ovnnb.ACLDirectionToLport, priority, match)
+		err = nbClient.DeleteACL("", portGroupKey, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
@@ -1778,19 +1903,20 @@ func (suite *OvnClientTestSuite) testGetACL() {
 	pgName := "test_get_acl_pg"
 	priority := "2000"
 	match := "ip4.dst == 100.64.0.0/16"
+	tier := util.NetpolACLTier
 
 	err := nbClient.CreatePortGroup(pgName, nil)
 	require.NoError(t, err)
 
-	acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+	acl, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, tier)
 	require.NoError(t, err)
 
 	err = nbClient.CreateAcls(pgName, portGroupKey, acl)
 	require.NoError(t, err)
 
-	t.Run("direction, priority and match are same", func(t *testing.T) {
+	t.Run("direction, priority, tier and match are same", func(t *testing.T) {
 		t.Parallel()
-		acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, false)
+		acl, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, tier, false)
 		require.NoError(t, err)
 		require.Equal(t, ovnnb.ACLDirectionToLport, acl.Direction)
 		require.Equal(t, 2000, acl.Priority)
@@ -1798,30 +1924,33 @@ func (suite *OvnClientTestSuite) testGetACL() {
 		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
 	})
 
-	t.Run("direction, priority and match are not all same", func(t *testing.T) {
+	t.Run("direction, priority, tier and match are not all same", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, false)
+		_, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, tier, false)
 		require.ErrorContains(t, err, "not found acl")
 
-		_, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "1010", match, false)
+		_, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "1010", match, tier, false)
 		require.ErrorContains(t, err, "not found acl")
 
-		_, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match+" && tcp", false)
+		_, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match+" && tcp", tier, false)
+		require.ErrorContains(t, err, "not found acl")
+
+		_, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, 10, false)
 		require.ErrorContains(t, err, "not found acl")
 	})
 
-	t.Run("should no err when direction, priority and match are not all same but ignoreNotFound=true", func(t *testing.T) {
+	t.Run("should no err when direction, priority, tier and match are not all same but ignoreNotFound=true", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, true)
+		_, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionFromLport, priority, match, tier, true)
 		require.NoError(t, err)
 	})
 
 	t.Run("no acl belongs to parent exist", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := nbClient.GetACL(pgName+"_1", ovnnb.ACLDirectionFromLport, priority, match, false)
+		_, err := nbClient.GetACL(pgName+"_1", ovnnb.ACLDirectionFromLport, priority, match, tier, false)
 		require.ErrorContains(t, err, "not found acl")
 	})
 
@@ -1840,7 +1969,7 @@ func (suite *OvnClientTestSuite) testGetACL() {
 		err = nbClient.CreateAcls(newPgName, portGroupKey, acl1, acl2)
 		require.NoError(t, err)
 
-		_, err = nbClient.GetACL(newPgName, ovnnb.ACLDirectionToLport, priority, match, true)
+		_, err = nbClient.GetACL(newPgName, ovnnb.ACLDirectionToLport, priority, match, tier, true)
 		require.ErrorContains(t, err, "more than one acl with same")
 	})
 }
@@ -2204,6 +2333,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 	pgName := GetSgPortGroupName(sgName)
 
 	err := nbClient.CreatePortGroup(pgName, nil)
+	tier := util.NetpolACLTier
 	require.NoError(t, err)
 
 	t.Run("ipv4 ingress rule", func(t *testing.T) {
@@ -2216,7 +2346,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 			PortRangeMax:  80,
 			Priority:      200,
 		}
-		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule)
+		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule, tier)
 		require.NoError(t, err)
 		require.True(t, noACL)
 	})
@@ -2231,7 +2361,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 			PortRangeMax:        53,
 			Priority:            199,
 		}
-		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule)
+		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule, tier)
 		require.NoError(t, err)
 		require.True(t, noACL)
 	})
@@ -2244,7 +2374,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 			RemoteAddress: "10.0.0.0/8",
 			Priority:      198,
 		}
-		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule)
+		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionToLport, rule, tier)
 		require.NoError(t, err)
 		require.True(t, noACL)
 	})
@@ -2268,7 +2398,7 @@ func (suite *OvnClientTestSuite) testSgRuleNoACL() {
 		err = nbClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 
-		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule)
+		noACL, err := nbClient.sgRuleNoACL(sgName, ovnnb.ACLDirectionFromLport, rule, tier)
 		require.NoError(t, err)
 		require.False(t, noACL)
 	})
@@ -2318,12 +2448,12 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 		err := nbClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		ingressACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, "2299", "outport == @ovn.sg.test.sg.no.lost.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		ingressACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, "18483", "outport == @ovn.sg.test.sg.no.lost.acl && ip4 && ip4.src == 192.168.0.0/24 && 80 <= tcp.dst <= 80", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		require.NoError(t, err)
 		err = nbClient.CreateAcls(pgName, portGroupKey, ingressACL)
 		require.NoError(t, err)
 
-		egressACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "2299", "inport == @ovn.sg.test.sg.no.lost.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
+		egressACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionFromLport, "18483", "inport == @ovn.sg.test.sg.no.lost.acl && ip6 && ip6.dst == fd00::/64 && 53 <= udp.dst <= 53", ovnnb.ACLActionAllowRelated, util.NetpolACLTier)
 		require.NoError(t, err)
 		err = nbClient.CreateAcls(pgName, portGroupKey, egressACL)
 		require.NoError(t, err)
@@ -2710,7 +2840,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 	err = nbClient.CreateAcls(pgName, portGroupKey, acl)
 	require.NoError(t, err)
 
-	acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, false)
+	acl, err = nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, priority, match, util.NetpolACLTier, false)
 	require.NoError(t, err)
 
 	t.Run("update ACL with nil input", func(t *testing.T) {
@@ -2724,7 +2854,7 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 		err := nbClient.UpdateACL(acl)
 		require.NoError(t, err)
 
-		newACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "1005", match, false)
+		newACL, err := nbClient.GetACL(pgName, ovnnb.ACLDirectionToLport, "1005", match, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		fmt.Println(newACL.Priority)
 	})

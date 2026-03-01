@@ -177,7 +177,7 @@ type ACL interface {
 	CreateSgBaseACL(sgName, direction string) error
 	UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string) error
 	UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error
-	SetACLLog(pgName string, logEnable, isIngress bool) error
+	SetNetPolACLLog(pgName string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
