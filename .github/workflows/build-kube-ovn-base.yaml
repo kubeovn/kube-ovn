@@ -74,10 +74,6 @@ jobs:
         - release-1.15
         - release-1.14
         - release-1.13
-        - release-1.12
-        - release-1.11
-        - release-1.9
-        - release-1.12-mc
     needs:
       - build
     name: push
