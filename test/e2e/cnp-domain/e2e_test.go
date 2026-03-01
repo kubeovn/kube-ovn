@@ -128,7 +128,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		dnsClient := f.DNSNameResolverClient()
 		labelSelector := fmt.Sprintf("anp=%s", name)
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			resolverList := dnsClient.ListByLabel(labelSelector)
 			if len(resolverList.Items) < expectedCount {
 				framework.Logf("Found %d/%d DNSNameResolver(s) for CNP %s", len(resolverList.Items), expectedCount, name)

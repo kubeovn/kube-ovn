@@ -69,7 +69,7 @@ func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
 	ExpectNoError(err)
 
 	var patchedPod *corev1.Pod
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.PodInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch pod %s/%s", original.Namespace, original.Name)
@@ -125,7 +125,7 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 				},
 			},
 			SecurityContext:               e2epod.GeneratePodSecurityContext(nil, nil),
-			TerminationGracePeriodSeconds: new(int64(3)),
+			TerminationGracePeriodSeconds: new(int64(1)),
 		},
 	}
 	if securityLevel == psaapi.LevelRestricted {

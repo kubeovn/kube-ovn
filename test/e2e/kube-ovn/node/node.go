@@ -136,7 +136,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 --max-time 5 %s/clientip", net.JoinHostPort(ip, port))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 			var output string
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				var err error
 				output, err = e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
 				return err == nil, nil
@@ -178,7 +178,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			eps, err := cs.CoreV1().Endpoints(namespaceName).Get(context.TODO(), serviceName, metav1.GetOptions{})
 			if err == nil {
 				for _, subset := range eps.Subsets {
@@ -209,7 +209,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 --max-time 5 %s/clientip", net.JoinHostPort(ip, portStr))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 			var output string
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				var err error
 				output, err = e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
 				return err == nil, nil
@@ -293,7 +293,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		}
 
 		ginkgo.By("Waiting for routes for subnet " + join.Name + " to be created")
-		framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 			if routes, err = iproute.RouteShow("", util.NodeNic, execFunc); err != nil {
 				return false, err
 			}

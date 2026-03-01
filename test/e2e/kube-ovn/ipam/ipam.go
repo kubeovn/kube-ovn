@@ -436,7 +436,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool = ippoolClient.CreateSync(ippool)
 
 		ginkgo.By("Validating ippool status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			if !ippool.Status.V4UsingIPs.EqualInt64(0) {
 				framework.Logf("unexpected .status.v4UsingIPs: %s", ippool.Status.V4UsingIPs)
 				return false, nil
@@ -503,7 +503,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 
 			ginkgo.By("Validating ippool status")
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				ippool = ippoolClient.Get(ippoolName)
 				v4Available, v6Available := ipv4Range.Separate(v4Using), ipv6Range.Separate(v6Using)
 				if !ippool.Status.V4UsingIPs.Equal(v4Using.Count()) {
@@ -553,7 +553,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool = ippoolClient.Patch(ippool, patchedIPPool, 10*time.Second)
 
 		ginkgo.By("Validating namespace annotations")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ns := nsClient.Get(namespaceName)
 			return len(ns.Annotations) != 0 && ns.Annotations[util.IPPoolAnnotation] == ippoolName, nil
 		}, "")

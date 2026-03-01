@@ -107,7 +107,7 @@ var _ = framework.Describe("[group:service]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
 				return err == nil, nil
@@ -154,7 +154,7 @@ var _ = framework.Describe("[group:service]", func() {
 			ginkgo.GinkgoHelper()
 
 			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, _, err := framework.NBExec(cmd)
 				framework.ExpectNoError(err)
 				output = bytes.TrimSpace(output)

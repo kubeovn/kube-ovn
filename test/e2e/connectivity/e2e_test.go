@@ -255,7 +255,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 
 		ginkgo.By("Waiting for newly created ovs-ovn pod running on node " + suiteCtx.Node)
 		pod = nil
-		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			ds = dsClient.Get("ovs-ovn")
 			pods, err = dsClient.GetPods(ds)
 			if err != nil {

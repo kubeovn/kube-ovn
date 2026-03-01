@@ -106,7 +106,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectNoError(docker.NetworkRemove(dockerNetwork.ID))
 
 			ginkgo.By(fmt.Sprintf("Waiting for docker network %s to disappear", dockerNetworkName))
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				_, err := docker.NetworkInspect(dockerNetworkName)
 				if err != nil {
 					if strings.Contains(err.Error(), "does not exist") {
@@ -319,7 +319,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		for _, node := range readyKindNodes {
 			nodeName := node.Name()
 			nodeIface := nodeInterfaceNameFor(nodeName, pnDefaultInterface, nodeInterfaces)
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				return vlanSubinterfaceExists(kindNodeMap, nodeName, nodeIface), nil
 			}, fmt.Sprintf("VLAN subinterface %s should still exist on node %s when autoCreateVlanSubinterfaces is false", nodeIface, nodeName))
 		}

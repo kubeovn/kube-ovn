@@ -47,7 +47,7 @@ func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient
 
 	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
 	var subnet *apiv1.Subnet
-	framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		s := subnetClient.Get(subnetName)
 		if len(s.Status.NatOutgoingPolicyRules) != len(rules) {
 			return false, nil
@@ -502,7 +502,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.ContainElement(s.Status.ActivateGateway).Match(gatewayNodes)
 		}, fmt.Sprintf("field .status.activateGateway is within %v", gatewayNodes),
-			2*time.Second, time.Minute,
+			time.Second, time.Minute,
 		)
 		framework.ExpectZero(subnet.Status.V4UsingIPs)
 		framework.ExpectZero(subnet.Status.V6UsingIPs)
@@ -835,7 +835,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForRunning(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
@@ -884,7 +884,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForNotFound(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -953,7 +953,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForNotFound(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -1021,7 +1021,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Checking subnet status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if !checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
@@ -1060,7 +1060,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Checking subnet status")
 		subnet = subnetClient.Get(subnetName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if !checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
@@ -1092,7 +1092,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = &enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}
@@ -1106,7 +1106,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = nil
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}

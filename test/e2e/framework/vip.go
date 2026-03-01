@@ -84,7 +84,7 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 	ExpectNoError(err)
 
 	var patchedVip *apiv1.Vip
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.VipInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vip %q", original.Name)
@@ -118,7 +118,7 @@ func (c *VipClient) Delete(name string) {
 func (c *VipClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN VIP to disappear.

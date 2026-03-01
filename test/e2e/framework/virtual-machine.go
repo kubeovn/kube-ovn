@@ -120,7 +120,7 @@ func (c *VMClient) Delete(name string) {
 func (c *VMClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified vm to be ready.

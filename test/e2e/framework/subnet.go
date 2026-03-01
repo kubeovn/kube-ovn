@@ -65,7 +65,7 @@ func (c *SubnetClient) Update(subnet *apiv1.Subnet, options metav1.UpdateOptions
 	ginkgo.GinkgoHelper()
 
 	var updatedSubnet *apiv1.Subnet
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.SubnetInterface.Update(ctx, subnet, options)
 		if err != nil {
 			return handleWaitingAPIError(err, false, "update subnet %q", subnet.Name)
@@ -105,7 +105,7 @@ func (c *SubnetClient) Patch(original, modified *apiv1.Subnet, timeout time.Dura
 	ExpectNoError(err)
 
 	var patchedSubnet *apiv1.Subnet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.SubnetInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch subnet %q", original.Name)
@@ -151,7 +151,7 @@ func (c *SubnetClient) Delete(name string) {
 func (c *SubnetClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for subnet %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for subnet %q to disappear", name)
 }
 
 func isSubnetConditionSetAsExpected(subnet *apiv1.Subnet, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {

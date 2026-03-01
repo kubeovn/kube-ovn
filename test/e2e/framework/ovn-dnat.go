@@ -67,7 +67,7 @@ func (c *OvnDnatRuleClient) Patch(original, modified *apiv1.OvnDnatRule) *apiv1.
 	ExpectNoError(err)
 
 	var patchedOvnDnatRule *apiv1.OvnDnatRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		dnat, err := c.OvnDnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ovn dnat %q", original.Name)
@@ -113,7 +113,7 @@ func (c *OvnDnatRuleClient) Delete(name string) {
 func (c *OvnDnatRuleClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn dnat %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ovn dnat %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the OVN DNAT rule is ready within timeout.

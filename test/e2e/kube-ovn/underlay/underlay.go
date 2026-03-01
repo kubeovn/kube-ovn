@@ -56,7 +56,7 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
 			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
@@ -374,7 +374,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Waiting for ovs bridge to disappear")
 		deadline := time.Now().Add(time.Minute)
 		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 
@@ -1077,7 +1077,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// create a second VLAN with the same ID
 		ginkgo.By("Creating conflict vlan subnet2 " + conflictVlanSubnet2Name)
 		// wait for conflictVlan1 to be processed by the controller before creating the conflicting vlan
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			v := vlanClient.Get(conflictVlan1Name)
 			return !v.Status.Conflict, nil
 		}, fmt.Sprintf("vlan %s should be processed and non-conflicting", conflictVlan1Name))
@@ -1089,7 +1089,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, cidr2, "", "", "", nil, nil, []string{namespaceName})
 		_ = subnetClient.Create(conflictVlanSubnet2)
 		// wait for the controller to detect the conflict
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			v := vlanClient.Get(conflictVlan2Name)
 			return v.Status.Conflict, nil
 		}, fmt.Sprintf("vlan %s should be detected as conflicting", conflictVlan2Name))

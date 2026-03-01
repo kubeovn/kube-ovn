@@ -70,7 +70,7 @@ func (c *VpcNatGatewayClient) Patch(original, modified *apiv1.VpcNatGateway) *ap
 	ExpectNoError(err)
 
 	var patchedVpcNatGateway *apiv1.VpcNatGateway
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		vpcNatGw, err := c.VpcNatGatewayInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc nat gw %q", original.Name)
@@ -129,7 +129,7 @@ func (c *VpcNatGatewayClient) Delete(name string) {
 func (c *VpcNatGatewayClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc nat gw %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for vpc nat gw %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.

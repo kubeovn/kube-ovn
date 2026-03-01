@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -100,7 +99,7 @@ func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	}
 	ExpectNoError(err)
 	var patchedDaemonSet *appsv1.DaemonSet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		daemonSet, err := c.DaemonSetInterface.Patch(ctx, daemonset.Name, types.MergePatchType, modifiedBytes, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
@@ -130,7 +129,7 @@ func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
 	var daemonSet *appsv1.DaemonSet
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(poll, timeout, func(_ context.Context) (bool, error) {
 		var err error
 		daemonSet = c.Get(name)
 		unstructured := &unstructured.Unstructured{}

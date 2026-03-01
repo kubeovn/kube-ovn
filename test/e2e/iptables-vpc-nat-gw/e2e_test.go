@@ -396,7 +396,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 					framework.Logf("Still waiting for %d EIP(s) to be deleted", len(eips.Items))
 				}
 				return len(eips.Items)
-			}, 2*time.Minute, 2*time.Second).Should(gomega.Equal(0), "All EIPs should be deleted before cleaning up subnet")
+			}, 2*time.Minute, time.Second).Should(gomega.Equal(0), "All EIPs should be deleted before cleaning up subnet")
 
 			ginkgo.By("Cleaning up shared macvlan underlay subnet " + networkAttachDefName)
 			subnetClient.DeleteSync(networkAttachDefName)

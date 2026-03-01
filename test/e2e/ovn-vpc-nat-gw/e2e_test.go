@@ -307,7 +307,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				// re-process the provider network event (triggered by the
 				// controller status update) and briefly reconfigure the bridge.
 				var port, bridge *iproute.Link
-				framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 					links, err := node.ListLinks()
 					if err != nil {
 						return false, err
@@ -465,7 +465,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Waiting for ovs bridge to disappear")
 		deadline := time.Now().Add(time.Minute)
 		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 

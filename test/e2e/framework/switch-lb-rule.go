@@ -59,7 +59,7 @@ func (c *SwitchLBRuleClient) Create(rule *apiv1.SwitchLBRule) *apiv1.SwitchLBRul
 func (c *SwitchLBRuleClient) CreateSync(rule *apiv1.SwitchLBRule, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string) *apiv1.SwitchLBRule {
 	ginkgo.GinkgoHelper()
 	_ = c.Create(rule)
-	return c.WaitUntil(rule.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(rule.Name, cond, condDesc, poll, timeout)
 }
 
 // Patch patches the switch-lb-rule
@@ -70,7 +70,7 @@ func (c *SwitchLBRuleClient) Patch(original, modified *apiv1.SwitchLBRule) *apiv
 	ExpectNoError(err)
 
 	var patchedService *apiv1.SwitchLBRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(_ context.Context) (bool, error) {
 		s, err := c.SwitchLBRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch switch-lb-rule %q", original.Name)
@@ -94,7 +94,7 @@ func (c *SwitchLBRuleClient) Patch(original, modified *apiv1.SwitchLBRule) *apiv
 func (c *SwitchLBRuleClient) PatchSync(original, modified *apiv1.SwitchLBRule, cond func(s *apiv1.SwitchLBRule) (bool, error), condDesc string) *apiv1.SwitchLBRule {
 	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
-	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(original.Name, cond, condDesc, poll, timeout)
 }
 
 // Delete deletes a switch-lb-rule if the switch-lb-rule exists
@@ -111,7 +111,7 @@ func (c *SwitchLBRuleClient) Delete(name string) {
 func (c *SwitchLBRuleClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for switch-lb-rule %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for switch-lb-rule %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
@@ -119,7 +119,7 @@ func (c *SwitchLBRuleClient) WaitUntil(name string, cond func(s *apiv1.SwitchLBR
 	ginkgo.GinkgoHelper()
 
 	var rules *apiv1.SwitchLBRule
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for switch-lb-rule %s to meet condition %q", name, condDesc)
 		rules = c.Get(name).DeepCopy()
 		met, err := cond(rules)

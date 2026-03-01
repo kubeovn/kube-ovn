@@ -81,7 +81,7 @@ func (c *IPClient) Patch(original, modified *apiv1.IP, timeout time.Duration) *a
 	ExpectNoError(err)
 
 	var patchedIP *apiv1.IP
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.IPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch IP %q", original.Name)
@@ -115,7 +115,7 @@ func (c *IPClient) Delete(name string) {
 func (c *IPClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ovn eip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified IP to disappear.

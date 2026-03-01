@@ -111,7 +111,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 	}
 
 	testNetworkConnectivity := func(target string, shouldSucceed bool, description string) {
-		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 20, 2*time.Second)
+		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 20, time.Second)
 	}
 
 	framework.ConformanceIt("should create ANP with domainName deny rule and verify connectivity behavior", func() {

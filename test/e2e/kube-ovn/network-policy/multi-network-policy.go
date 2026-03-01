@@ -157,14 +157,14 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(primaryIP, port)
 		ginkgo.By(fmt.Sprintf("Checking primary IP connectivity from client pod via %s", primaryProtocol))
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
 			return err == nil, nil
 		}, "")
 
 		cmd = "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(secondaryIP, port)
 		ginkgo.By(fmt.Sprintf("Checking secondary IP connectivity from client pod via %s", secondaryProtocol))
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, _, err := framework.ExecShellInPod(context.Background(), f, namespaceName, clientPod.Name, cmd)
 			return err != nil, nil
 		}, "")
@@ -234,7 +234,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
 
 			ginkgo.By(fmt.Sprintf("Checking address set %s for protocol %s", asName, protocol))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 				addresses, err := getAddressSetAddresses(asName)
 				if err != nil {
 					return false, err
@@ -302,7 +302,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
 
 			ginkgo.By(fmt.Sprintf("Checking address set %s for protocol %s", asName, protocol))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 				addresses, err := getAddressSetAddresses(asName)
 				if err != nil {
 					return false, err
@@ -384,7 +384,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			asName := policyAddressSetName(netpolName, namespaceName, "egress", protocol, 0)
 
 			ginkgo.By(fmt.Sprintf("Checking address set %s for protocol %s", asName, protocol))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 				addresses, err := getAddressSetAddresses(asName)
 				if err != nil {
 					return false, err

@@ -314,7 +314,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			eps, err := cs.CoreV1().Endpoints(namespaceName).Get(context.TODO(), serviceName, metav1.GetOptions{})
 			if err == nil {
 				for _, subset := range eps.Subsets {
@@ -377,7 +377,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 					match = matchPod
 				}
 				// Retry Service ClusterIP trace to allow OVN LB rules to be synced
-				framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 					ginkgo.By(fmt.Sprintf("Executing \"kubectl %s\"", cmd))
 					output := e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
 					return checkOutput(output, match), nil

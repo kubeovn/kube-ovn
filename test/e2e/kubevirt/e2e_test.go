@@ -189,7 +189,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		// the ip is deleted
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		err = ipClient.WaitToDisappear(portName, 2*time.Second, 2*time.Minute)
+		err = ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting vm " + vmName)

@@ -98,7 +98,7 @@ func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
 
 	var deploy *appsv1.Deployment
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(poll, timeout, func(_ context.Context) (bool, error) {
 		var err error
 		deploy = c.Get(name)
 		unstructured := &unstructured.Unstructured{}
@@ -129,7 +129,7 @@ func (c *DeploymentClient) Patch(original, modified *appsv1.Deployment) *appsv1.
 	ExpectNoError(err)
 
 	var patchedDeploy *appsv1.Deployment
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		deploy, err := c.DeploymentInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch deployment %s/%s", original.Namespace, original.Name)
@@ -212,11 +212,11 @@ func (c *DeploymentClient) Delete(name string) {
 func (c *DeploymentClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for deployment %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for deployment %q to disappear", name)
 }
 
 func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
-	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, 2*time.Second, 2*time.Minute)
+	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, poll, 2*time.Minute)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.

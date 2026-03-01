@@ -60,7 +60,7 @@ func (c *NamespaceClient) Patch(original, modified *corev1.Namespace) *corev1.Na
 	ExpectNoError(err)
 
 	var patchedNS *corev1.Namespace
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		ns, err := c.NamespaceInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch namespace %s", original.Name)
@@ -94,7 +94,7 @@ func (c *NamespaceClient) Delete(name string) {
 func (c *NamespaceClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for namespace %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for namespace %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified namespace to disappear.
