@@ -63,10 +63,10 @@ func shouldRetry(err error) (retry bool, retryAfter time.Duration) {
 }
 
 // WaitUntil waits the condition to be met
-func WaitUntil(_, timeout time.Duration, cond func(context.Context) (bool, error), condDesc string) {
+func WaitUntil(interval, timeout time.Duration, cond func(context.Context) (bool, error), condDesc string) {
 	ginkgo.GinkgoHelper()
 
-	if err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, false, cond); err != nil {
+	if err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, false, cond); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			Failf("timed out while waiting for the condition to be met: %s", condDesc)
 		}

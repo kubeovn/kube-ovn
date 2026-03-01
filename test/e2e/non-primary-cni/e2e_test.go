@@ -213,7 +213,7 @@ func waitForResourceReady(name string, getFunc func(string) any, readyFunc func(
 			return false
 		}
 		return readyFunc(resource)
-	}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(), fmt.Sprintf("Resource %s should be ready", name))
+	}, 60*time.Second, time.Second).Should(gomega.BeTrue(), fmt.Sprintf("Resource %s should be ready", name))
 }
 
 // Helper function to get pod IPs (primary or non-primary)

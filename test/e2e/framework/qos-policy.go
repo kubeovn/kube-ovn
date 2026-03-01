@@ -67,7 +67,7 @@ func (c *QoSPolicyClient) Update(qosPolicy *apiv1.QoSPolicy, options metav1.Upda
 	ginkgo.GinkgoHelper()
 
 	var updatedQoSPolicy *apiv1.QoSPolicy
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.QoSPolicyInterface.Update(ctx, qosPolicy, options)
 		if err != nil {
 			return handleWaitingAPIError(err, false, "update qosPolicy %q", qosPolicy.Name)
@@ -107,7 +107,7 @@ func (c *QoSPolicyClient) Patch(original, modified *apiv1.QoSPolicy) *apiv1.QoSP
 	ExpectNoError(err)
 
 	var patchedQoSPolicy *apiv1.QoSPolicy
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.QoSPolicyInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch qosPolicy %q", original.Name)
@@ -153,7 +153,7 @@ func (c *QoSPolicyClient) Delete(name string) {
 func (c *QoSPolicyClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for qosPolicy %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for qosPolicy %q to disappear", name)
 }
 
 func isQoSPolicyConditionSetAsExpected(qosPolicy *apiv1.QoSPolicy, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {

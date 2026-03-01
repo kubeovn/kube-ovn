@@ -60,13 +60,17 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting namespace " + ns1Name)
-		nsClient.DeleteSync(ns1Name)
-		ginkgo.By("Deleting namespace " + ns2Name)
-		nsClient.DeleteSync(ns2Name)
-		ginkgo.By("Deleting namespace " + ns3Name)
-		nsClient.DeleteSync(ns3Name)
+		// Level 1: Delete namespaces in parallel
+		ginkgo.By("Deleting namespaces " + ns1Name + ", " + ns2Name + ", " + ns3Name)
+		nsClient.Delete(ns1Name)
+		nsClient.Delete(ns2Name)
+		nsClient.Delete(ns3Name)
 
+		framework.ExpectNoError(nsClient.WaitToDisappear(ns1Name, 0, 2*time.Minute))
+		framework.ExpectNoError(nsClient.WaitToDisappear(ns2Name, 0, 2*time.Minute))
+		framework.ExpectNoError(nsClient.WaitToDisappear(ns3Name, 0, 2*time.Minute))
+
+		// Level 2: Subnet (needs namespaces gone)
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 	})

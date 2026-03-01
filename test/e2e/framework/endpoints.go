@@ -58,7 +58,7 @@ func (c *EndpointsClient) Create(endpoints *corev1.Endpoints) *corev1.Endpoints 
 func (c *EndpointsClient) CreateSync(endpoints *corev1.Endpoints, cond func(s *corev1.Endpoints) (bool, error), condDesc string) *corev1.Endpoints {
 	ginkgo.GinkgoHelper()
 	_ = c.Create(endpoints)
-	return c.WaitUntil(endpoints.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(endpoints.Name, cond, condDesc, poll, timeout)
 }
 
 // Patch patches the endpoints
@@ -69,7 +69,7 @@ func (c *EndpointsClient) Patch(original, modified *corev1.Endpoints) *corev1.En
 	ExpectNoError(err)
 
 	var patchedEndpoints *corev1.Endpoints
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(_ context.Context) (bool, error) {
 		s, err := c.EndpointsInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch endpoints %q", original.Name)
@@ -93,7 +93,7 @@ func (c *EndpointsClient) Patch(original, modified *corev1.Endpoints) *corev1.En
 func (c *EndpointsClient) PatchSync(original, modified *corev1.Endpoints, cond func(s *corev1.Endpoints) (bool, error), condDesc string) *corev1.Endpoints {
 	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
-	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(original.Name, cond, condDesc, poll, timeout)
 }
 
 // Delete deletes an Endpoints resource if it exists
@@ -110,7 +110,7 @@ func (c *EndpointsClient) Delete(name string) {
 func (c *EndpointsClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for endpoints %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for endpoints %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.
@@ -118,7 +118,7 @@ func (c *EndpointsClient) WaitUntil(name string, cond func(s *corev1.Endpoints) 
 	ginkgo.GinkgoHelper()
 
 	var endpoints *corev1.Endpoints
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(_ context.Context) (bool, error) {
 		Logf("Waiting for endpoints %s to meet condition %q", name, condDesc)
 		endpoints = c.Get(name).DeepCopy()
 		met, err := cond(endpoints)

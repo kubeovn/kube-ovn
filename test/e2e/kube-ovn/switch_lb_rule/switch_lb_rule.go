@@ -39,7 +39,7 @@ func curlSvc(f *framework.Framework, clientPodName, vip string, port int32) {
 	ginkgo.GinkgoHelper()
 	cmd := "curl -q -s --connect-timeout 5 --max-time 5 " + util.JoinHostPort(vip, port)
 	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, f.Namespace.Name, clientPodName))
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		_, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd)
 		return err == nil, nil
 	}, fmt.Sprintf("%s:%d is reachable", vip, port))
@@ -108,22 +108,34 @@ var _ = framework.Describe("[group:slr]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		// Level 1: Initiate all independent deletes
 		ginkgo.By("Deleting client pod " + clientPodName)
-		podClient.DeleteSync(clientPodName)
+		podClient.DeleteGracefully(clientPodName)
 		ginkgo.By("Deleting statefulset " + stsName)
-		stsClient.DeleteSync(stsName)
+		stsClient.Delete(stsName)
 		ginkgo.By("Deleting switch-lb-rule " + selSlrName)
-		switchLBRuleClient.DeleteSync(selSlrName)
+		switchLBRuleClient.Delete(selSlrName)
 		ginkgo.By("Deleting switch-lb-rule " + epSlrName)
-		switchLBRuleClient.DeleteSync(epSlrName)
+		switchLBRuleClient.Delete(epSlrName)
 		ginkgo.By("Deleting service " + stsSvcName)
-		serviceClient.DeleteSync(stsSvcName)
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
-		ginkgo.By("Deleting vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
+		serviceClient.Delete(stsSvcName)
 		ginkgo.By("Deleting network attachment definition " + nadName)
 		nadClient.Delete(nadName)
+
+		// Level 1: Wait for all to disappear
+		podClient.WaitForNotFound(clientPodName)
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
+		framework.ExpectNoError(switchLBRuleClient.WaitToDisappear(selSlrName, 0, 2*time.Minute))
+		framework.ExpectNoError(switchLBRuleClient.WaitToDisappear(epSlrName, 0, 2*time.Minute))
+		framework.ExpectNoError(serviceClient.WaitToDisappear(stsSvcName, 0, 2*time.Minute))
+
+		// Level 2: Subnet (needs workloads deleted first)
+		ginkgo.By("Deleting subnet " + subnetName)
+		subnetClient.DeleteSync(subnetName)
+
+		// Level 3: VPC (needs subnet deleted first)
+		ginkgo.By("Deleting vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 	})
 
 	ginkgo.DescribeTable("Test SLR connectivity", ginkgo.Label("Conformance"), func(customProvider bool) {
@@ -196,7 +208,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for sts service " + stsSvcName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			stsSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), stsSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -240,7 +252,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		_ = switchLBRuleClient.Create(selRule)
 
 		ginkgo.By("Waiting for switch-lb-rule " + selSlrName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err = switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), selSlrName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -252,7 +264,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		}, fmt.Sprintf("switch-lb-rule %s is created", selSlrName))
 
 		ginkgo.By("Waiting for headless service " + selSvcName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			selSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), selSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -265,7 +277,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		framework.ExpectNotNil(selSvc)
 
 		ginkgo.By("Waiting for endpoints " + selSvcName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			selSlrEps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), selSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -326,7 +338,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		_ = switchLBRuleClient.Create(epRule)
 
 		ginkgo.By("Waiting for switch-lb-rule " + epSlrName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			_, err := switchLBRuleClient.SwitchLBRuleInterface.Get(context.TODO(), epSlrName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -338,7 +350,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		}, fmt.Sprintf("switch-lb-rule %s is created", epSlrName))
 
 		ginkgo.By("Waiting for headless service " + epSvcName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			epSvc, err = serviceClient.ServiceInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -351,7 +363,7 @@ var _ = framework.Describe("[group:slr]", func() {
 		framework.ExpectNotNil(epSvc)
 
 		ginkgo.By("Waiting for endpoints " + epSvcName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			epSlrEps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil

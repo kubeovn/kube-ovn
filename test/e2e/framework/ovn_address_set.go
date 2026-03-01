@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	addressSetPollInterval = 2 * time.Second
+	addressSetPollInterval = time.Second
 	addressSetTimeout      = 2 * time.Minute
 	ippoolExternalIDKey    = "ippool"
 	ovnNbTimeoutSeconds    = 60

@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
 	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -56,7 +57,7 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
 			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
@@ -374,7 +375,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Waiting for ovs bridge to disappear")
 		deadline := time.Now().Add(time.Minute)
 		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 
@@ -1077,7 +1078,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// create a second VLAN with the same ID
 		ginkgo.By("Creating conflict vlan subnet2 " + conflictVlanSubnet2Name)
 		// wait for conflictVlan1 to be processed by the controller before creating the conflicting vlan
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			v := vlanClient.Get(conflictVlan1Name)
 			return !v.Status.Conflict, nil
 		}, fmt.Sprintf("vlan %s should be processed and non-conflicting", conflictVlan1Name))
@@ -1089,7 +1090,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, cidr2, "", "", "", nil, nil, []string{namespaceName})
 		_ = subnetClient.Create(conflictVlanSubnet2)
 		// wait for the controller to detect the conflict
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			v := vlanClient.Get(conflictVlan2Name)
 			return v.Status.Conflict, nil
 		}, fmt.Sprintf("vlan %s should be detected as conflicting", conflictVlan2Name))
@@ -1127,12 +1128,18 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		testLabelValue := "selected"
 
 		ginkgo.By("Adding test label to selected node " + selectedNodeName)
-		selectedNode := &k8sNodes.Items[0]
-		if selectedNode.Labels == nil {
-			selectedNode.Labels = make(map[string]string)
-		}
-		selectedNode.Labels[testLabelKey] = testLabelValue
-		_, err = cs.CoreV1().Nodes().Update(context.Background(), selectedNode, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			node, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[testLabelKey] = testLabelValue
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+			return updateErr
+		})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating provider network with nodeSelector " + providerNetworkName)
@@ -1176,13 +1183,19 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNotContainElement(pn.Status.ReadyNodes, nonSelectedUpdatedNode.Name)
 
 		ginkgo.By("Cleaning up test label from selected node")
-		cleanupNode, err := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		if cleanupNode.Labels != nil {
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			cleanupNode, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if cleanupNode.Labels == nil {
+				return nil
+			}
 			delete(cleanupNode.Labels, testLabelKey)
-			_, err = cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
-			framework.ExpectNoError(err)
-		}
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
+			return updateErr
+		})
+		framework.ExpectNoError(err)
 	})
 })
 

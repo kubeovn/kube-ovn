@@ -38,7 +38,7 @@ const (
 
 const (
 	// poll is how often to Poll resources.
-	poll = 2 * time.Second
+	poll = time.Second
 
 	timeout = 2 * time.Minute
 )

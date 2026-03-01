@@ -59,7 +59,7 @@ func (c *VlanClient) Patch(original, modified *apiv1.Vlan, timeout time.Duration
 	ExpectNoError(err)
 
 	var patchedVlan *apiv1.Vlan
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		pn, err := c.VlanInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vlan %q", original.Name)

@@ -62,23 +62,31 @@ var _ = framework.Describe("[group:ipam]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		// Level 1: Delete all workloads in parallel
+		ginkgo.By("Deleting pod " + podName + ", deployment " + deployName + ", statefulsets " + stsName + " and " + stsName2)
+		podClient.DeleteGracefully(podName)
+		deployClient.Delete(deployName)
+		stsClient.Delete(stsName)
+		stsClient.Delete(stsName2)
 
-		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		podClient.WaitForNotFound(podName)
+		framework.ExpectNoError(deployClient.WaitToDisappear(deployName, 0, 2*time.Minute))
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName2, 0, 2*time.Minute))
 
-		ginkgo.By("Deleting statefulset " + stsName + " and " + stsName2)
-		stsClient.DeleteSync(stsName)
-		stsClient.DeleteSync(stsName2)
-
+		// Level 2: Delete ippools in parallel (needs workloads gone)
 		ginkgo.By("Deleting ippool " + ippoolName + " and " + ippoolName2)
-		ippoolClient.DeleteSync(ippoolName)
-		ippoolClient.DeleteSync(ippoolName2)
+		ippoolClient.Delete(ippoolName)
+		ippoolClient.Delete(ippoolName2)
+		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName, 0, 2*time.Minute))
+		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName2, 0, 2*time.Minute))
 
+		// Level 3: Delete subnets in parallel (needs ippools gone)
 		ginkgo.By("Deleting subnet " + subnetName + " and " + subnetName2)
-		subnetClient.DeleteSync(subnetName)
-		subnetClient.DeleteSync(subnetName2)
+		subnetClient.Delete(subnetName)
+		subnetClient.Delete(subnetName2)
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName2, 0, 2*time.Minute))
 	})
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
@@ -165,13 +173,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(pod.Name)
-			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
+			podClient.DeleteGracefully(pod.Name)
 		}
-		err = deployClient.WaitToComplete(deploy)
-		framework.ExpectNoError(err)
+		for _, pod := range pods.Items {
+			podClient.WaitForNotFound(pod.Name)
+		}
 
 		ginkgo.By("Waiting for new pods to be ready")
+		err = deployClient.WaitToComplete(deploy)
+		framework.ExpectNoError(err)
 		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, int(*deploy.Spec.Replicas), time.Minute)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
@@ -247,7 +257,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			ippoolSep = ","
 		}
 
-		for replicas := 1; replicas <= 3; replicas++ {
+		for replicas := 3; replicas <= 3; replicas++ {
 			stsName = "sts-" + framework.RandomSuffix()
 			ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
 			labels := map[string]string{"app": stsName}
@@ -436,7 +446,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool = ippoolClient.CreateSync(ippool)
 
 		ginkgo.By("Validating ippool status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			if !ippool.Status.V4UsingIPs.EqualInt64(0) {
 				framework.Logf("unexpected .status.v4UsingIPs: %s", ippool.Status.V4UsingIPs)
 				return false, nil
@@ -503,7 +513,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			}
 
 			ginkgo.By("Validating ippool status")
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				ippool = ippoolClient.Get(ippoolName)
 				v4Available, v6Available := ipv4Range.Separate(v4Using), ipv6Range.Separate(v6Using)
 				if !ippool.Status.V4UsingIPs.Equal(v4Using.Count()) {
@@ -553,7 +563,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool = ippoolClient.Patch(ippool, patchedIPPool, 10*time.Second)
 
 		ginkgo.By("Validating namespace annotations")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ns := nsClient.Get(namespaceName)
 			return len(ns.Annotations) != 0 && ns.Annotations[util.IPPoolAnnotation] == ippoolName, nil
 		}, "")

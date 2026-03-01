@@ -91,7 +91,7 @@ func (c *StatefulSetClient) Delete(name string) {
 func (c *StatefulSetClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for statefulset %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for statefulset %q to disappear", name)
 }
 
 func (c *StatefulSetClient) WaitForRunningAndReady(sts *appsv1.StatefulSet) {
@@ -132,7 +132,7 @@ func (c *StatefulSetClient) Patch(original, modified *appsv1.StatefulSet) *appsv
 	ExpectNoError(err)
 
 	var patchedSts *appsv1.StatefulSet
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		sts, err := c.StatefulSetInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch StatefulSet %s/%s", original.Namespace, original.Name)
@@ -154,7 +154,7 @@ func (c *StatefulSetClient) Patch(original, modified *appsv1.StatefulSet) *appsv
 
 func (c *StatefulSetClient) RolloutStatus(name string) *appsv1.StatefulSet {
 	var sts *appsv1.StatefulSet
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(poll, timeout, func(_ context.Context) (bool, error) {
 		var err error
 		sts = c.Get(name)
 		unstructured := &unstructured.Unstructured{}
@@ -182,5 +182,6 @@ func MakeStatefulSet(name, svcName string, replicas int32, labels map[string]str
 	sts := statefulset.NewStatefulSet(name, "", svcName, replicas, nil, nil, labels)
 	sts.Spec.Template.Spec.Containers[0].Image = image
 	sts.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+	sts.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(1))
 	return sts
 }

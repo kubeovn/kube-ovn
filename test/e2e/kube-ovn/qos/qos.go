@@ -56,7 +56,7 @@ func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, exp
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 
 	var config map[string]string
-	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 		output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 		if err != nil {
 			return false, err

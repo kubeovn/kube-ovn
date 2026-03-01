@@ -44,15 +44,17 @@ var _ = framework.Describe("[group:service]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
+		// Level 1: Delete all independent resources in parallel
+		ginkgo.By("Deleting service " + serviceName + ", pods " + podName + " and " + hostPodName)
+		serviceClient.Delete(serviceName)
+		podClient.DeleteGracefully(podName)
+		podClient.DeleteGracefully(hostPodName)
 
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		framework.ExpectNoError(serviceClient.WaitToDisappear(serviceName, 0, 2*time.Minute))
+		podClient.WaitForNotFound(podName)
+		podClient.WaitForNotFound(hostPodName)
 
-		ginkgo.By("Deleting pod " + hostPodName)
-		podClient.DeleteSync(hostPodName)
-
+		// Level 2: Subnet (needs pods deleted first)
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 	})
@@ -107,7 +109,7 @@ var _ = framework.Describe("[group:service]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
 				return err == nil, nil
@@ -154,7 +156,7 @@ var _ = framework.Describe("[group:service]", func() {
 			ginkgo.GinkgoHelper()
 
 			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, _, err := framework.NBExec(cmd)
 				framework.ExpectNoError(err)
 				output = bytes.TrimSpace(output)

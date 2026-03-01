@@ -69,7 +69,7 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 	ExpectNoError(err)
 
 	var patchedIptablesDnatRule *apiv1.IptablesDnatRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		dnat, err := c.IptablesDnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables dnat %q", original.Name)
@@ -116,7 +116,7 @@ func (c *IptablesDnatClient) Delete(name string) {
 func (c *IptablesDnatClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables dnat %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for iptables dnat %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables dnat is ready within timeout.

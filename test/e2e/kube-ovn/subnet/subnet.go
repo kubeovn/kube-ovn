@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -46,7 +47,7 @@ func checkSubnetNatOutgoingPolicyRuleStatus(subnetClient *framework.SubnetClient
 
 	ginkgo.By("Waiting for status of subnet " + subnetName + " to be updated")
 	var subnet *apiv1.Subnet
-	framework.WaitUntil(2*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		s := subnetClient.Get(subnetName)
 		if len(s.Status.NatOutgoingPolicyRules) != len(rules) {
 			return false, nil
@@ -67,7 +68,7 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectedIPsets []stri
 
 	ovsPod := getOvsPodOnNode(f, node)
 	cmd := `ipset list | grep '^Name:' | awk '{print $2}'`
-	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		exitIPsets := strings.Split(output, "\n")
 		for _, r := range expectedIPsets {
@@ -128,23 +129,31 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
+		// Level 1: Delete all workloads in parallel
 		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		deployClient.Delete(deployName)
 
 		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Deleting pod " + podName)
-			podClient.DeleteSync(podName)
+			name := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Deleting pod " + name)
+			podClient.DeleteGracefully(name)
 		}
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteGracefully(podName)
 
-		ginkgo.By("Deleting subnet " + fakeSubnetName)
-		subnetClient.DeleteSync(fakeSubnetName)
+		framework.ExpectNoError(deployClient.WaitToDisappear(deployName, 0, 2*time.Minute))
+		for i := 1; i <= podCount; i++ {
+			podClient.WaitForNotFound(fmt.Sprintf("%s-%d", podNamePrefix, i))
+		}
+		podClient.WaitForNotFound(podName)
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		// Level 2: Delete subnets in parallel
+		ginkgo.By("Deleting subnet " + fakeSubnetName + " and " + subnetName)
+		subnetClient.Delete(fakeSubnetName)
+		subnetClient.Delete(subnetName)
+		framework.ExpectNoError(subnetClient.WaitToDisappear(fakeSubnetName, 0, 2*time.Minute))
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
 	})
 
 	framework.ConformanceIt("should create subnet with only cidr provided", func() {
@@ -501,7 +510,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.ContainElement(s.Status.ActivateGateway).Match(gatewayNodes)
 		}, fmt.Sprintf("field .status.activateGateway is within %v", gatewayNodes),
-			2*time.Second, time.Minute,
+			time.Second, time.Minute,
 		)
 		framework.ExpectZero(subnet.Status.V4UsingIPs)
 		framework.ExpectZero(subnet.Status.V6UsingIPs)
@@ -834,7 +843,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForRunning(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				v4UsingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIPv4), big.NewInt(int64(podCount-1))))
@@ -883,7 +892,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForNotFound(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -952,7 +961,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.WaitForNotFound(podName)
 		}
 
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
@@ -1020,7 +1029,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Checking subnet status")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if !checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
@@ -1059,7 +1068,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Checking subnet status")
 		subnet = subnetClient.Get(subnetName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if !checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
 				return false, nil
@@ -1091,7 +1100,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = &enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}
@@ -1105,7 +1114,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = nil
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			if output, _, err = framework.NBExec(cmd); err != nil {
 				return false, err
 			}
@@ -1507,42 +1516,52 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
-	for _, node := range nodes.Items {
-		var expectedIPsets []string
-		if cidrV4 != "" && shouldExist {
-			expectedIPsets = append(expectedIPsets, "ovn40subnets-nat-policy")
-		}
-		if cidrV6 != "" && shouldExist {
-			expectedIPsets = append(expectedIPsets, "ovn60subnets-nat-policy")
-		}
 
-		for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
-			protocol := ""
-			if natPolicyRule.Match.SrcIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
-			} else if natPolicyRule.Match.DstIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
-			}
-
-			if protocol == apiv1.ProtocolIPv4 {
-				if natPolicyRule.Match.SrcIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-src", natPolicyRule.RuleID))
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-dst", natPolicyRule.RuleID))
-				}
-			}
-			if protocol == apiv1.ProtocolIPv6 {
-				if natPolicyRule.Match.SrcIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-src", natPolicyRule.RuleID))
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-dst", natPolicyRule.RuleID))
-				}
-			}
-		}
-		checkIPSetOnNode(f, node.Name, expectedIPsets, shouldExist)
+	// Build expected ipsets once (same for all nodes)
+	var expectedIPsets []string
+	if cidrV4 != "" && shouldExist {
+		expectedIPsets = append(expectedIPsets, "ovn40subnets-nat-policy")
 	}
+	if cidrV6 != "" && shouldExist {
+		expectedIPsets = append(expectedIPsets, "ovn60subnets-nat-policy")
+	}
+	for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
+		protocol := ""
+		if natPolicyRule.Match.SrcIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
+		} else if natPolicyRule.Match.DstIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
+		}
+
+		if protocol == apiv1.ProtocolIPv4 {
+			if natPolicyRule.Match.SrcIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-src", natPolicyRule.RuleID))
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-dst", natPolicyRule.RuleID))
+			}
+		}
+		if protocol == apiv1.ProtocolIPv6 {
+			if natPolicyRule.Match.SrcIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-src", natPolicyRule.RuleID))
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-dst", natPolicyRule.RuleID))
+			}
+		}
+	}
+
+	// Check all nodes in parallel
+	var wg sync.WaitGroup
+	for _, node := range nodes.Items {
+		wg.Add(1)
+		go func(nodeName string) {
+			defer ginkgo.GinkgoRecover()
+			defer wg.Done()
+			checkIPSetOnNode(f, nodeName, expectedIPsets, shouldExist)
+		}(node.Name)
+	}
+	wg.Wait()
 }
 
 func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
@@ -1553,68 +1572,77 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
 
-	for _, node := range nodes.Items {
-		var expectV4Rules, expectV6Rules, staticV4Rules, staticV6Rules []string
-		if cidrV4 != "" {
-			staticV4Rules = append(staticV4Rules, "-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY")
-			expectV4Rules = append(expectV4Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV4, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	// Build expected rules once (same for all nodes)
+	var expectV4Rules, expectV6Rules, staticV4Rules, staticV6Rules []string
+	if cidrV4 != "" {
+		staticV4Rules = append(staticV4Rules, "-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY")
+		expectV4Rules = append(expectV4Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV4, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	}
+
+	if cidrV6 != "" {
+		staticV6Rules = append(staticV6Rules, "-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY")
+		expectV6Rules = append(expectV6Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV6, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	}
+
+	for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
+		markCode := ""
+		switch natPolicyRule.Action {
+		case util.NatPolicyRuleActionNat:
+			markCode = "0x90001/0x90001"
+		case util.NatPolicyRuleActionForward:
+			markCode = "0x90002/0x90002"
 		}
 
-		if cidrV6 != "" {
-			staticV6Rules = append(staticV6Rules, "-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY")
-			expectV6Rules = append(expectV6Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV6, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+		protocol := ""
+		if natPolicyRule.Match.SrcIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
+		} else if natPolicyRule.Match.DstIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
 		}
 
-		for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
-			markCode := ""
-			switch natPolicyRule.Action {
-			case util.NatPolicyRuleActionNat:
-				markCode = "0x90001/0x90001"
-			case util.NatPolicyRuleActionForward:
-				markCode = "0x90002/0x90002"
-			}
-
-			protocol := ""
+		var rule string
+		if protocol == apiv1.ProtocolIPv4 {
+			rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
 			if natPolicyRule.Match.SrcIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
-			} else if natPolicyRule.Match.DstIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
+				rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
 			}
-
-			var rule string
-			if protocol == apiv1.ProtocolIPv4 {
-				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
-				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
-				}
-				rule += " -j MARK --set-xmark " + markCode
-				expectV4Rules = append(expectV4Rules, rule)
+			if natPolicyRule.Match.DstIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
 			}
-			if protocol == apiv1.ProtocolIPv6 {
-				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
-				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
-				}
-				rule += " -j MARK --set-xmark " + markCode
-				expectV6Rules = append(expectV6Rules, rule)
-			}
+			rule += " -j MARK --set-xmark " + markCode
+			expectV4Rules = append(expectV4Rules, rule)
 		}
-
-		if cidrV4 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
-		}
-		if cidrV6 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
+		if protocol == apiv1.ProtocolIPv6 {
+			rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
+			if natPolicyRule.Match.SrcIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
+			}
+			rule += " -j MARK --set-xmark " + markCode
+			expectV6Rules = append(expectV6Rules, rule)
 		}
 	}
+
+	// Check all nodes in parallel
+	var wg sync.WaitGroup
+	for _, node := range nodes.Items {
+		wg.Add(1)
+		go func(nodeName string) {
+			defer ginkgo.GinkgoRecover()
+			defer wg.Done()
+			if cidrV4 != "" {
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
+			}
+			if cidrV6 != "" {
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
+			}
+		}(node.Name)
+	}
+	wg.Wait()
 }
 
 func checkAccessExternal(podName, podNamespace, protocol string, expectReachable bool) {
@@ -1630,7 +1658,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 			return strings.Contains(outputStr, "1 received")
 		}
 		if isv4ExternalIPReachable() {
-			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -vz -w 5 %s 53", podName, podNamespace, externalIP)
+			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -vz -w 2 %s 53", podName, podNamespace, externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)
@@ -1647,7 +1675,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 		}
 
 		if isv6ExternalIPReachable() {
-			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -6 -vz -w 5 %s 53", podName, podNamespace, externalIP)
+			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -6 -vz -w 2 %s 53", podName, podNamespace, externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)

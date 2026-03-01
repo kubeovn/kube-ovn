@@ -137,7 +137,7 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 		ginkgo.By("Waiting for ovn" + db + " db cluster to show all servers on every ovn-central pod")
 		for pod := range slices.Values(pods.Items) {
 			var lastStdout, lastStderr string
-			framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
 				if err != nil {
 					return false, nil
@@ -229,7 +229,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	deployClient.SetScale(deploy.Name, replicas-1)
 
 	ginkgo.By("Waiting for an ovn-central pod to be deleted")
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		pods, err := deployClient.GetAllPods(deploy)
 		if err != nil {
 			return false, err
@@ -288,7 +288,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	for pod := range slices.Values(pods.Items) {
 		newNodes.Insert(pod.Spec.NodeName)
 		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
 			return err == nil, nil
 		}, fmt.Sprintf("db file %s on node %s to be healthy", dbFile, pod.Spec.NodeName))

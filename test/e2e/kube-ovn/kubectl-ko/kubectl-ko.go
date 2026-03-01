@@ -64,17 +64,17 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 	ginkgo.AfterEach(func() {
 		k8sframework.TestContext.KubeConfig = kubectlConfig
 
-		ginkgo.By("Deleting network policy " + netpolName)
-		netpolClient.DeleteSync(netpolName)
+		// All resources are independent (no subnet dependency), delete in parallel
+		ginkgo.By("Deleting network policy " + netpolName + ", service " + serviceName + ", pods " + pod2Name + " and " + podName)
+		netpolClient.Delete(netpolName)
+		serviceClient.Delete(serviceName)
+		podClient.DeleteGracefully(pod2Name)
+		podClient.DeleteGracefully(podName)
 
-		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
-
-		ginkgo.By("Deleting pod " + pod2Name)
-		podClient.DeleteSync(pod2Name)
-
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		framework.ExpectNoError(netpolClient.WaitToDisappear(netpolName, 0, 2*time.Minute))
+		framework.ExpectNoError(serviceClient.WaitToDisappear(serviceName, 0, 2*time.Minute))
+		podClient.WaitForNotFound(pod2Name)
+		podClient.WaitForNotFound(podName)
 	})
 
 	framework.ConformanceIt(`should support "kubectl ko nbctl show"`, func() {
@@ -314,7 +314,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			eps, err := cs.CoreV1().Endpoints(namespaceName).Get(context.TODO(), serviceName, metav1.GetOptions{})
 			if err == nil {
 				for _, subset := range eps.Subsets {
@@ -377,7 +377,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 					match = matchPod
 				}
 				// Retry Service ClusterIP trace to allow OVN LB rules to be synced
-				framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 					ginkgo.By(fmt.Sprintf("Executing \"kubectl %s\"", cmd))
 					output := e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
 					return checkOutput(output, match), nil
