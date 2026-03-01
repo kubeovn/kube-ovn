@@ -173,13 +173,15 @@ var _ = framework.Describe("[group:ipam]", func() {
 
 		ginkgo.By("Deleting pods for deployment " + deployName)
 		for _, pod := range pods.Items {
-			err = podClient.Delete(pod.Name)
-			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
+			podClient.DeleteGracefully(pod.Name)
 		}
-		err = deployClient.WaitToComplete(deploy)
-		framework.ExpectNoError(err)
+		for _, pod := range pods.Items {
+			podClient.WaitForNotFound(pod.Name)
+		}
 
 		ginkgo.By("Waiting for new pods to be ready")
+		err = deployClient.WaitToComplete(deploy)
+		framework.ExpectNoError(err)
 		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, int(*deploy.Spec.Replicas), time.Minute)
 		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
