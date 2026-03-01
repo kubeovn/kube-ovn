@@ -186,6 +186,7 @@ check-kube-ovn-pod-restarts:
 
 .PHONY: install-chart
 install-chart:
+	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
@@ -250,6 +251,7 @@ upgrade-chart:
 
 .PHONY: install-chart-v2
 install-chart-v2:
+	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
