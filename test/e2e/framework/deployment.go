@@ -238,5 +238,6 @@ func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[s
 	deploy := deployment.NewDeployment(name, replicas, podLabels, containerName, image, strategyType)
 	deploy.Spec.Template.Annotations = podAnnotations
 	deploy.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(1))
 	return deploy
 }

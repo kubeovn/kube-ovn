@@ -68,7 +68,7 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectedIPsets []stri
 
 	ovsPod := getOvsPodOnNode(f, node)
 	cmd := `ipset list | grep '^Name:' | awk '{print $2}'`
-	framework.WaitUntil(3*time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		exitIPsets := strings.Split(output, "\n")
 		for _, r := range expectedIPsets {

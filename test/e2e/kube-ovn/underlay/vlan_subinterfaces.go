@@ -423,7 +423,7 @@ func waitForInterfaceState(nodeExecMap map[string]kind.Node, nodeName, interface
 
 	gomega.Eventually(func() bool {
 		return vlanSubinterfaceExists(nodeExecMap, nodeName, interfaceName)
-	}, timeout, 5*time.Second).Should(gomega.Equal(expected), fmt.Sprintf("interface %s on node %s state should be %t", interfaceName, nodeName, expected))
+	}, timeout, time.Second).Should(gomega.Equal(expected), fmt.Sprintf("interface %s on node %s state should be %t", interfaceName, nodeName, expected))
 }
 
 func vlanSubinterfaceExists(nodeExecMap map[string]kind.Node, nodeName, interfaceName string) bool {
