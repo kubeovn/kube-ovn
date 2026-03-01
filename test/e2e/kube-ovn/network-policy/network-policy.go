@@ -50,14 +50,17 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		// Level 1: Delete pod and network policy in parallel
+		ginkgo.By("Deleting pod " + podName + " and network policy " + netpolName)
+		podClient.DeleteGracefully(podName)
+		netpolClient.Delete(netpolName)
 
+		podClient.WaitForNotFound(podName)
+		framework.ExpectNoError(netpolClient.WaitToDisappear(netpolName, 0, 2*time.Minute))
+
+		// Level 2: Subnet (needs pod deleted first)
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
-
-		ginkgo.By("Deleting network policy " + netpolName)
-		netpolClient.DeleteSync(netpolName)
 	})
 
 	framework.ConformanceIt("should be able to access pods from node after creating a network policy with empty ingress rules", func() {

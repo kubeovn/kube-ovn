@@ -108,22 +108,34 @@ var _ = framework.Describe("[group:slr]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		// Level 1: Initiate all independent deletes
 		ginkgo.By("Deleting client pod " + clientPodName)
-		podClient.DeleteSync(clientPodName)
+		podClient.DeleteGracefully(clientPodName)
 		ginkgo.By("Deleting statefulset " + stsName)
-		stsClient.DeleteSync(stsName)
+		stsClient.Delete(stsName)
 		ginkgo.By("Deleting switch-lb-rule " + selSlrName)
-		switchLBRuleClient.DeleteSync(selSlrName)
+		switchLBRuleClient.Delete(selSlrName)
 		ginkgo.By("Deleting switch-lb-rule " + epSlrName)
-		switchLBRuleClient.DeleteSync(epSlrName)
+		switchLBRuleClient.Delete(epSlrName)
 		ginkgo.By("Deleting service " + stsSvcName)
-		serviceClient.DeleteSync(stsSvcName)
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
-		ginkgo.By("Deleting vpc " + vpcName)
-		vpcClient.DeleteSync(vpcName)
+		serviceClient.Delete(stsSvcName)
 		ginkgo.By("Deleting network attachment definition " + nadName)
 		nadClient.Delete(nadName)
+
+		// Level 1: Wait for all to disappear
+		podClient.WaitForNotFound(clientPodName)
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
+		framework.ExpectNoError(switchLBRuleClient.WaitToDisappear(selSlrName, 0, 2*time.Minute))
+		framework.ExpectNoError(switchLBRuleClient.WaitToDisappear(epSlrName, 0, 2*time.Minute))
+		framework.ExpectNoError(serviceClient.WaitToDisappear(stsSvcName, 0, 2*time.Minute))
+
+		// Level 2: Subnet (needs workloads deleted first)
+		ginkgo.By("Deleting subnet " + subnetName)
+		subnetClient.DeleteSync(subnetName)
+
+		// Level 3: VPC (needs subnet deleted first)
+		ginkgo.By("Deleting vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
 	})
 
 	ginkgo.DescribeTable("Test SLR connectivity", ginkgo.Label("Conformance"), func(customProvider bool) {

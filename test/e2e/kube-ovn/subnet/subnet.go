@@ -129,23 +129,31 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
+		// Level 1: Delete all workloads in parallel
 		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		deployClient.Delete(deployName)
 
 		for i := 1; i <= podCount; i++ {
-			podName := fmt.Sprintf("%s-%d", podNamePrefix, i)
-			ginkgo.By("Deleting pod " + podName)
-			podClient.DeleteSync(podName)
+			name := fmt.Sprintf("%s-%d", podNamePrefix, i)
+			ginkgo.By("Deleting pod " + name)
+			podClient.DeleteGracefully(name)
 		}
 
 		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		podClient.DeleteGracefully(podName)
 
-		ginkgo.By("Deleting subnet " + fakeSubnetName)
-		subnetClient.DeleteSync(fakeSubnetName)
+		framework.ExpectNoError(deployClient.WaitToDisappear(deployName, 0, 2*time.Minute))
+		for i := 1; i <= podCount; i++ {
+			podClient.WaitForNotFound(fmt.Sprintf("%s-%d", podNamePrefix, i))
+		}
+		podClient.WaitForNotFound(podName)
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		// Level 2: Delete subnets in parallel
+		ginkgo.By("Deleting subnet " + fakeSubnetName + " and " + subnetName)
+		subnetClient.Delete(fakeSubnetName)
+		subnetClient.Delete(subnetName)
+		framework.ExpectNoError(subnetClient.WaitToDisappear(fakeSubnetName, 0, 2*time.Minute))
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
 	})
 
 	framework.ConformanceIt("should create subnet with only cidr provided", func() {

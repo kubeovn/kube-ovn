@@ -62,23 +62,31 @@ var _ = framework.Describe("[group:ipam]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		// Level 1: Delete all workloads in parallel
+		ginkgo.By("Deleting pod " + podName + ", deployment " + deployName + ", statefulsets " + stsName + " and " + stsName2)
+		podClient.DeleteGracefully(podName)
+		deployClient.Delete(deployName)
+		stsClient.Delete(stsName)
+		stsClient.Delete(stsName2)
 
-		ginkgo.By("Deleting deployment " + deployName)
-		deployClient.DeleteSync(deployName)
+		podClient.WaitForNotFound(podName)
+		framework.ExpectNoError(deployClient.WaitToDisappear(deployName, 0, 2*time.Minute))
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
+		framework.ExpectNoError(stsClient.WaitToDisappear(stsName2, 0, 2*time.Minute))
 
-		ginkgo.By("Deleting statefulset " + stsName + " and " + stsName2)
-		stsClient.DeleteSync(stsName)
-		stsClient.DeleteSync(stsName2)
-
+		// Level 2: Delete ippools in parallel (needs workloads gone)
 		ginkgo.By("Deleting ippool " + ippoolName + " and " + ippoolName2)
-		ippoolClient.DeleteSync(ippoolName)
-		ippoolClient.DeleteSync(ippoolName2)
+		ippoolClient.Delete(ippoolName)
+		ippoolClient.Delete(ippoolName2)
+		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName, 0, 2*time.Minute))
+		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName2, 0, 2*time.Minute))
 
+		// Level 3: Delete subnets in parallel (needs ippools gone)
 		ginkgo.By("Deleting subnet " + subnetName + " and " + subnetName2)
-		subnetClient.DeleteSync(subnetName)
-		subnetClient.DeleteSync(subnetName2)
+		subnetClient.Delete(subnetName)
+		subnetClient.Delete(subnetName2)
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName2, 0, 2*time.Minute))
 	})
 
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {

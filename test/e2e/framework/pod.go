@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -55,6 +56,14 @@ func (c *PodClient) CreateSync(pod *corev1.Pod) *corev1.Pod {
 func (c *PodClient) Delete(name string) error {
 	ginkgo.GinkgoHelper()
 	return c.PodClient.Delete(context.Background(), name, metav1.DeleteOptions{})
+}
+
+func (c *PodClient) DeleteGracefully(name string) {
+	ginkgo.GinkgoHelper()
+	err := c.PodInterface.Delete(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(1))})
+	if err != nil && !apierrors.IsNotFound(err) {
+		Failf("Failed to delete pod %q: %v", name, err)
+	}
 }
 
 func (c *PodClient) DeleteSync(name string) {
