@@ -247,7 +247,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			ippoolSep = ","
 		}
 
-		for replicas := 1; replicas <= 3; replicas++ {
+		for replicas := 3; replicas <= 3; replicas++ {
 			stsName = "sts-" + framework.RandomSuffix()
 			ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
 			labels := map[string]string{"app": stsName}

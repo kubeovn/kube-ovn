@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -1507,42 +1508,52 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
-	for _, node := range nodes.Items {
-		var expectedIPsets []string
-		if cidrV4 != "" && shouldExist {
-			expectedIPsets = append(expectedIPsets, "ovn40subnets-nat-policy")
-		}
-		if cidrV6 != "" && shouldExist {
-			expectedIPsets = append(expectedIPsets, "ovn60subnets-nat-policy")
-		}
 
-		for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
-			protocol := ""
-			if natPolicyRule.Match.SrcIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
-			} else if natPolicyRule.Match.DstIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
-			}
-
-			if protocol == apiv1.ProtocolIPv4 {
-				if natPolicyRule.Match.SrcIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-src", natPolicyRule.RuleID))
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-dst", natPolicyRule.RuleID))
-				}
-			}
-			if protocol == apiv1.ProtocolIPv6 {
-				if natPolicyRule.Match.SrcIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-src", natPolicyRule.RuleID))
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-dst", natPolicyRule.RuleID))
-				}
-			}
-		}
-		checkIPSetOnNode(f, node.Name, expectedIPsets, shouldExist)
+	// Build expected ipsets once (same for all nodes)
+	var expectedIPsets []string
+	if cidrV4 != "" && shouldExist {
+		expectedIPsets = append(expectedIPsets, "ovn40subnets-nat-policy")
 	}
+	if cidrV6 != "" && shouldExist {
+		expectedIPsets = append(expectedIPsets, "ovn60subnets-nat-policy")
+	}
+	for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
+		protocol := ""
+		if natPolicyRule.Match.SrcIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
+		} else if natPolicyRule.Match.DstIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
+		}
+
+		if protocol == apiv1.ProtocolIPv4 {
+			if natPolicyRule.Match.SrcIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-src", natPolicyRule.RuleID))
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn40natpr-%s-dst", natPolicyRule.RuleID))
+			}
+		}
+		if protocol == apiv1.ProtocolIPv6 {
+			if natPolicyRule.Match.SrcIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-src", natPolicyRule.RuleID))
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				expectedIPsets = append(expectedIPsets, fmt.Sprintf("ovn60natpr-%s-dst", natPolicyRule.RuleID))
+			}
+		}
+	}
+
+	// Check all nodes in parallel
+	var wg sync.WaitGroup
+	for _, node := range nodes.Items {
+		wg.Add(1)
+		go func(nodeName string) {
+			defer ginkgo.GinkgoRecover()
+			defer wg.Done()
+			checkIPSetOnNode(f, nodeName, expectedIPsets, shouldExist)
+		}(node.Name)
+	}
+	wg.Wait()
 }
 
 func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
@@ -1553,68 +1564,77 @@ func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet 
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(nodes.Items)
 
-	for _, node := range nodes.Items {
-		var expectV4Rules, expectV6Rules, staticV4Rules, staticV6Rules []string
-		if cidrV4 != "" {
-			staticV4Rules = append(staticV4Rules, "-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY")
-			expectV4Rules = append(expectV4Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV4, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	// Build expected rules once (same for all nodes)
+	var expectV4Rules, expectV6Rules, staticV4Rules, staticV6Rules []string
+	if cidrV4 != "" {
+		staticV4Rules = append(staticV4Rules, "-A OVN-POSTROUTING -m set --match-set ovn40subnets-nat-policy src -m set ! --match-set ovn40subnets dst -j OVN-NAT-POLICY")
+		expectV4Rules = append(expectV4Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV4, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	}
+
+	if cidrV6 != "" {
+		staticV6Rules = append(staticV6Rules, "-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY")
+		expectV6Rules = append(expectV6Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV6, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+	}
+
+	for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
+		markCode := ""
+		switch natPolicyRule.Action {
+		case util.NatPolicyRuleActionNat:
+			markCode = "0x90001/0x90001"
+		case util.NatPolicyRuleActionForward:
+			markCode = "0x90002/0x90002"
 		}
 
-		if cidrV6 != "" {
-			staticV6Rules = append(staticV6Rules, "-A OVN-POSTROUTING -m set --match-set ovn60subnets-nat-policy src -m set ! --match-set ovn60subnets dst -j OVN-NAT-POLICY")
-			expectV6Rules = append(expectV6Rules, fmt.Sprintf("-A OVN-NAT-POLICY -s %s -m comment --comment natPolicySubnet-%s -j OVN-NAT-PSUBNET-%s", cidrV6, subnet.Name, subnet.UID[len(subnet.UID)-12:]))
+		protocol := ""
+		if natPolicyRule.Match.SrcIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
+		} else if natPolicyRule.Match.DstIPs != "" {
+			protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
 		}
 
-		for _, natPolicyRule := range subnet.Status.NatOutgoingPolicyRules {
-			markCode := ""
-			switch natPolicyRule.Action {
-			case util.NatPolicyRuleActionNat:
-				markCode = "0x90001/0x90001"
-			case util.NatPolicyRuleActionForward:
-				markCode = "0x90002/0x90002"
-			}
-
-			protocol := ""
+		var rule string
+		if protocol == apiv1.ProtocolIPv4 {
+			rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
 			if natPolicyRule.Match.SrcIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.SrcIPs, ",")[0])
-			} else if natPolicyRule.Match.DstIPs != "" {
-				protocol = util.CheckProtocol(strings.Split(natPolicyRule.Match.DstIPs, ",")[0])
+				rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
 			}
-
-			var rule string
-			if protocol == apiv1.ProtocolIPv4 {
-				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
-				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-src src", natPolicyRule.RuleID)
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
-				}
-				rule += " -j MARK --set-xmark " + markCode
-				expectV4Rules = append(expectV4Rules, rule)
+			if natPolicyRule.Match.DstIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn40natpr-%s-dst dst", natPolicyRule.RuleID)
 			}
-			if protocol == apiv1.ProtocolIPv6 {
-				rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
-				if natPolicyRule.Match.SrcIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
-				}
-				if natPolicyRule.Match.DstIPs != "" {
-					rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
-				}
-				rule += " -j MARK --set-xmark " + markCode
-				expectV6Rules = append(expectV6Rules, rule)
-			}
+			rule += " -j MARK --set-xmark " + markCode
+			expectV4Rules = append(expectV4Rules, rule)
 		}
-
-		if cidrV4 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
-		}
-		if cidrV6 != "" {
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
-			iptables.CheckIptablesRulesOnNode(f, node.Name, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
+		if protocol == apiv1.ProtocolIPv6 {
+			rule = "-A OVN-NAT-PSUBNET-" + util.GetTruncatedUID(string(subnet.UID))
+			if natPolicyRule.Match.SrcIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-src src", natPolicyRule.RuleID)
+			}
+			if natPolicyRule.Match.DstIPs != "" {
+				rule += fmt.Sprintf(" -m set --match-set ovn60natpr-%s-dst dst", natPolicyRule.RuleID)
+			}
+			rule += " -j MARK --set-xmark " + markCode
+			expectV6Rules = append(expectV6Rules, rule)
 		}
 	}
+
+	// Check all nodes in parallel
+	var wg sync.WaitGroup
+	for _, node := range nodes.Items {
+		wg.Add(1)
+		go func(nodeName string) {
+			defer ginkgo.GinkgoRecover()
+			defer wg.Done()
+			if cidrV4 != "" {
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv4, staticV4Rules, true)
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv4, expectV4Rules, shouldExist)
+			}
+			if cidrV6 != "" {
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv6, staticV6Rules, true)
+				iptables.CheckIptablesRulesOnNode(f, nodeName, "nat", "", apiv1.ProtocolIPv6, expectV6Rules, shouldExist)
+			}
+		}(node.Name)
+	}
+	wg.Wait()
 }
 
 func checkAccessExternal(podName, podNamespace, protocol string, expectReachable bool) {
@@ -1630,7 +1650,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 			return strings.Contains(outputStr, "1 received")
 		}
 		if isv4ExternalIPReachable() {
-			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -vz -w 5 %s 53", podName, podNamespace, externalIP)
+			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -vz -w 2 %s 53", podName, podNamespace, externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)
@@ -1647,7 +1667,7 @@ func checkAccessExternal(podName, podNamespace, protocol string, expectReachable
 		}
 
 		if isv6ExternalIPReachable() {
-			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -6 -vz -w 5 %s 53", podName, podNamespace, externalIP)
+			cmd := fmt.Sprintf("kubectl exec %s -n %s -- nc -6 -vz -w 2 %s 53", podName, podNamespace, externalIP)
 			output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 			outputStr := string(output)
 			framework.ExpectEqual(strings.Contains(outputStr, "succeeded"), expectReachable)

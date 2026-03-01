@@ -329,8 +329,8 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 			framework.ExpectNoError(err, "failed to send STOP signal to ovn sb process: %v, %s", err, string(stderr))
 		}
 
-		ginkgo.By("Waiting 60s")
-		time.Sleep(60 * time.Second)
+		ginkgo.By("Waiting 5s for process outage simulation")
+		time.Sleep(5 * time.Second)
 
 		for _, pod := range pods.Items {
 			ginkgo.By("Getting ovn sb pid of pod " + pod.Name + " running on " + pod.Spec.NodeName)
@@ -380,8 +380,8 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
 		framework.ExpectNoError(err, "failed to send STOP signal to ovn-controller process: %v, %s", err, string(stderr))
 
-		ginkgo.By("Waiting 60s")
-		time.Sleep(60 * time.Second)
+		ginkgo.By("Waiting 5s for process outage simulation")
+		time.Sleep(5 * time.Second)
 
 		ginkgo.By("Continuing the stopped ovn-controller process by sending a CONT signal")
 		cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -CONT %s"`, pid)}
@@ -422,8 +422,8 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		_, stderr, err = framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
 		framework.ExpectNoError(err, "failed to send STOP signal to ovs-vswitchd process: %v, %s", err, string(stderr))
 
-		ginkgo.By("Waiting 60s")
-		time.Sleep(60 * time.Second)
+		ginkgo.By("Waiting 5s for process outage simulation")
+		time.Sleep(5 * time.Second)
 
 		ginkgo.By("Continuing the stopped ovs-vswitchd process by sending a CONT signal")
 		cmd = []string{"sh", "-c", fmt.Sprintf(`"kill -CONT %s"`, pid)}

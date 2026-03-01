@@ -106,6 +106,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		pod = podClient.CreateSync(pod)
 		checkTProxyRules(f, pod, port, true)
@@ -121,6 +123,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port + 1),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		_ = podClient.Create(pod)
 
@@ -150,6 +154,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		pod = podClient.CreateSync(pod)
 		checkTProxyRules(f, pod, port, true)
@@ -165,6 +171,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port - 1),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		_ = podClient.Create(pod)
 		podClient.WaitForRunning(podName)
