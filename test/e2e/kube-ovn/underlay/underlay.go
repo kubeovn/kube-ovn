@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
 	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -1127,12 +1128,18 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		testLabelValue := "selected"
 
 		ginkgo.By("Adding test label to selected node " + selectedNodeName)
-		selectedNode := &k8sNodes.Items[0]
-		if selectedNode.Labels == nil {
-			selectedNode.Labels = make(map[string]string)
-		}
-		selectedNode.Labels[testLabelKey] = testLabelValue
-		_, err = cs.CoreV1().Nodes().Update(context.Background(), selectedNode, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			node, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[testLabelKey] = testLabelValue
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+			return updateErr
+		})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating provider network with nodeSelector " + providerNetworkName)
@@ -1176,13 +1183,19 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNotContainElement(pn.Status.ReadyNodes, nonSelectedUpdatedNode.Name)
 
 		ginkgo.By("Cleaning up test label from selected node")
-		cleanupNode, err := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		if cleanupNode.Labels != nil {
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			cleanupNode, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if cleanupNode.Labels == nil {
+				return nil
+			}
 			delete(cleanupNode.Labels, testLabelKey)
-			_, err = cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
-			framework.ExpectNoError(err)
-		}
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
+			return updateErr
+		})
+		framework.ExpectNoError(err)
 	})
 })
 
