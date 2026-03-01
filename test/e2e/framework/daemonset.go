@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 
 	"github.com/onsi/ginkgo/v2"
@@ -157,21 +158,31 @@ func (c *DaemonSetClient) RolloutStatus(name string) *appsv1.DaemonSet {
 func (c *DaemonSetClient) Restart(ds *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
-	buf, err := polymorphichelpers.ObjectRestarterFn(ds)
+	var result *appsv1.DaemonSet
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := c.Get(ds.Name)
+
+		buf, err := polymorphichelpers.ObjectRestarterFn(latest)
+		if err != nil {
+			return err
+		}
+
+		m := make(map[string]any)
+		if err = json.Unmarshal(buf, &m); err != nil {
+			return err
+		}
+
+		d := new(appsv1.DaemonSet)
+		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, d); err != nil {
+			return err
+		}
+
+		result, err = c.Update(context.TODO(), d, metav1.UpdateOptions{})
+		return err
+	})
 	ExpectNoError(err)
 
-	m := make(map[string]any)
-	err = json.Unmarshal(buf, &m)
-	ExpectNoError(err)
-
-	ds = new(appsv1.DaemonSet)
-	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, ds)
-	ExpectNoError(err)
-
-	ds, err = c.Update(context.TODO(), ds, metav1.UpdateOptions{})
-	ExpectNoError(err)
-
-	return ds.DeepCopy()
+	return result.DeepCopy()
 }
 
 // RestartSync restarts the DaemonSet and wait it to be ready

@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
@@ -159,21 +160,31 @@ func (c *DeploymentClient) PatchSync(original, modified *appsv1.Deployment) *app
 func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
 
-	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
+	var result *appsv1.Deployment
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := c.Get(deploy.Name)
+
+		buf, err := polymorphichelpers.ObjectRestarterFn(latest)
+		if err != nil {
+			return err
+		}
+
+		m := make(map[string]any)
+		if err = json.Unmarshal(buf, &m); err != nil {
+			return err
+		}
+
+		d := new(appsv1.Deployment)
+		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, d); err != nil {
+			return err
+		}
+
+		result, err = c.Update(context.TODO(), d, metav1.UpdateOptions{})
+		return err
+	})
 	ExpectNoError(err)
 
-	m := make(map[string]any)
-	err = json.Unmarshal(buf, &m)
-	ExpectNoError(err)
-
-	deploy = new(appsv1.Deployment)
-	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, deploy)
-	ExpectNoError(err)
-
-	deploy, err = c.Update(context.TODO(), deploy, metav1.UpdateOptions{})
-	ExpectNoError(err)
-
-	return deploy.DeepCopy()
+	return result.DeepCopy()
 }
 
 // RestartSync restarts the deployment and wait it to be ready
