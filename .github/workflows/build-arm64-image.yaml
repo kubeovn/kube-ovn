@@ -54,7 +54,7 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.base_ref }}-
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.1
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:

@@ -11,10 +11,6 @@ CILIUM_IMAGE_REPO ?= quay.io/cilium
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
 K8S_VERSION ?= v1.35.1
 
-# GHCR organization/user that hosts the kindest-node mirror image.
-# Override to use a fork-owned mirror (e.g. KINDEST_REPO=zbb88888).
-KINDEST_REPO ?= kubeovn
-
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
 UNDERLAY_NETWORK_IPV4_SUBNET = $(UNDERLAY_NETWORK_VAR_PREFIX)_IPV4_SUBNET
@@ -36,6 +32,11 @@ endif
 
 define kind_create_cluster
 	kind create cluster --config $(1) --name $(2)
+	@for node in $$(kind get nodes --name $(2)); do \
+		docker exec $$node sed -i 's/LimitNOFILE=infinity/LimitNOFILE=4096/' /etc/systemd/system/containerd.service; \
+		docker exec $$node systemctl daemon-reload; \
+		docker exec $$node systemctl restart containerd; \
+	done
 	@if [ "x$(3)" = "x1" ]; then \
 		kubectl delete --ignore-not-found sc standard; \
 		kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner; \
@@ -674,19 +675,6 @@ kind-install-bgp: kind-install
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
 	docker exec clab-bgp-router vtysh -c "show ip route bgp"
 
-.PHONY: kind-install-node-route-bgp-eip
-kind-install-node-route-bgp-eip: kind-install-vpc-nat-gw
-	kubectl label node --all ovn.kubernetes.io/bgp=true --overwrite
-	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local --overwrite
-	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
-		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
-		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
-		-e 's/--cluster-as=.*/--cluster-as=65002/' \
-		-e '/--cluster-as=/a\            - --node-route-eip-mode' yamls/speaker.yaml | \
-		kubectl apply -f -
-	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
-	docker exec clab-bgp-router vtysh -c "show ip route bgp"
-
 .PHONY: kind-install-bgp-ha
 kind-install-bgp-ha: kind-install
 	kubectl label node --all ovn.kubernetes.io/bgp=true
@@ -843,13 +831,9 @@ kind-clean-bgp-ha:
 
 .PHONY: kind-ghcr-pull
 kind-ghcr-pull:
-	@echo $${GHCR_TOKEN} | docker login ghcr.io -u "$${GHCR_USERNAME:-github-actions}" --password-stdin
-	docker pull ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION)
-	docker tag ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
-
-.PHONY: kind-dockerhub-pull
-kind-dockerhub-pull:
-	docker image inspect kindest/node:$(K8S_VERSION) >/dev/null 2>&1 || docker pull kindest/node:$(K8S_VERSION)
+	@echo $${GHCR_TOKEN} | docker login ghcr.io -u github-actions --password-stdin
+	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
+	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 
 .PHONY: kind-install-multus-cilium-kubeovn-non-primary
 kind-install-multus-cilium-kubeovn-non-primary: kind-install-multus-cilium-kubeovn-non-primary-ipv4
@@ -901,7 +885,3 @@ kind-setup-non-primary-cni: kind-install-multus-cilium-kubeovn-non-primary
 
 .PHONY: kind-setup-non-primary-cni-v2
 kind-setup-non-primary-cni-v2: kind-install-multus-cilium-kubeovn-non-primary-v2
-
-.PHONY: kind-install-enable-record-tunnel
-kind-install-enable-record-tunnel:
-	@ENABLE_RECORD_TUNNEL_KEY=true $(MAKE) kind-install
