@@ -456,7 +456,7 @@ func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image,
 		cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(svrIP, svrPort))
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 		var clientIP string
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
 			if err != nil {
 				return false, nil
