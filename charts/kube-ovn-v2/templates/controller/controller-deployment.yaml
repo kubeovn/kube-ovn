@@ -158,6 +158,7 @@ spec:
           - --ovsdb-con-timeout={{- .Values.features.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
+          - --enable-security-group={{- .Values.features.enableSecurityGroup }}
           - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
           - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
@@ -246,4 +247,3 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-
