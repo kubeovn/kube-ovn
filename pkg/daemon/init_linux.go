@@ -52,6 +52,12 @@ func (c *Controller) changeProviderNicName(current, target string) (bool, error)
 	link, err := netlink.LinkByName(current)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			// Check if the NIC was already renamed from a previous attempt
+			targetLink, targetErr := netlink.LinkByName(target)
+			if targetErr == nil && targetLink.Type() != "openvswitch" {
+				klog.Infof("link %s already renamed to %s, skip rename", current, target)
+				return true, nil
+			}
 			klog.Infof("link %s not found, skip", current)
 			return false, nil
 		}

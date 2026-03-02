@@ -259,6 +259,19 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	if err != nil {
 		return fmt.Errorf("failed to create OVS bridge %s, %w: %q", bridge, err, output)
 	}
+
+	if exchangeLinkName {
+		if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
+			// Bridge created in OVSDB but kernel interface not available.
+			// Delete the stale bridge to allow a clean retry.
+			klog.Warningf("OVS bridge %s interface not ready, cleaning up: %v", bridge, err)
+			if output, delErr := ovs.Exec(ovs.IfExists, "del-br", bridge); delErr != nil {
+				klog.Errorf("failed to delete stale bridge %s: %v, %q", bridge, delErr, output)
+			}
+			return err
+		}
+	}
+
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
 	}
@@ -305,6 +318,17 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	}
 
 	return nil
+}
+
+func (c *Controller) waitForBridgeInterface(bridge string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if ok, _ := linkExists(bridge); ok {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for OVS bridge %s kernel interface", bridge)
 }
 
 func initProviderChassisMac(provider string) error {
