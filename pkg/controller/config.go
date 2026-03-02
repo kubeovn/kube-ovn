@@ -118,6 +118,9 @@ type Configuration struct {
 	// used to set vpc-egress-gateway image
 	Image string
 
+	// used to set FRR image for egress-gateway BGP/EVPN
+	FRRImage string
+
 	// used to set log file permission
 	LogPerm string
 
@@ -219,6 +222,8 @@ func ParseFlags() (*Configuration, error) {
 
 		argImage = pflag.String("image", "", "The image for vpc-egress-gateway")
 
+		argFRRImage = pflag.String("frr-image", "quay.io/frrouting/frr:10.5.1", "The FRR image for vpc-egress-gateway BGP/EVPN")
+
 		argLogPerm = pflag.String("log-perm", "640", "The permission for the log file")
 
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
@@ -316,6 +321,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableANP:                      *argEnableANP,
 		EnableDNSNameResolver:          *argEnableDNSNameResolver,
 		Image:                          *argImage,
+		FRRImage:                       *argFRRImage,
 		LogPerm:                        *argLogPerm,
 		TLSMinVersion:                  *argTLSMinVersion,
 		TLSMaxVersion:                  *argTLSMaxVersion,

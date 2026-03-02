@@ -19,6 +19,15 @@ topology:
       - ip link set br0 up
       - ip address add 10.0.1.1/24 dev br0
       - ip address add 10.0.2.1/24 dev net3
+      - ip link add vrf-vpn type vrf table 1016
+      - ip link set vrf-vpn up
+      - ip link add br-vrf-vpn type bridge
+      - ip link set br-vrf-vpn up
+      - ip link set br-vrf-vpn master vrf-vpn
+      - ip link add vxlan1016 type vxlan id 1016 local 10.0.1.1 dstport 4789 nolearning
+      - ip link set vxlan1016 master br-vrf-vpn
+      - ip link set vxlan1016 up
+      - ip link set net3 master vrf-vpn
       - touch /etc/frr/vtysh.conf
       - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
       - /usr/lib/frr/frrinit.sh start

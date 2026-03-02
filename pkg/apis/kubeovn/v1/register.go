@@ -31,8 +31,12 @@ var (
 // Adds the list of known types to Scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
+		&BgpConf{},
+		&BgpConfList{},
 		&DNSNameResolver{},
 		&DNSNameResolverList{},
+		&EvpnConf{},
+		&EvpnConfList{},
 		&IP{},
 		&IPList{},
 		&IPPool{},

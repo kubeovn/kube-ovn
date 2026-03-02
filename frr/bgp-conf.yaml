@@ -1,0 +1,13 @@
+apiVersion: kubeovn.io/v1
+kind: BgpConf
+metadata:
+  name: bgp-conf-6502
+spec:
+  localASN: 65002
+  peerASN: 65001
+  neighbours:
+    - 10.0.1.1
+  holdTime: 90s
+  keepaliveTime: 30s
+  connectTime: 10s
+  ebgpMultiHop: true

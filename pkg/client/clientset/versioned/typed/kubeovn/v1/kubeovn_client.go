@@ -28,7 +28,9 @@ import (
 
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
+	BgpConvesGetter
 	DNSNameResolversGetter
+	EvpnConvesGetter
 	IPsGetter
 	IPPoolsGetter
 	IptablesDnatRulesGetter
@@ -57,8 +59,16 @@ type KubeovnV1Client struct {
 	restClient rest.Interface
 }
 
+func (c *KubeovnV1Client) BgpConves() BgpConfInterface {
+	return newBgpConves(c)
+}
+
 func (c *KubeovnV1Client) DNSNameResolvers() DNSNameResolverInterface {
 	return newDNSNameResolvers(c)
+}
+
+func (c *KubeovnV1Client) EvpnConves() EvpnConfInterface {
+	return newEvpnConves(c)
 }
 
 func (c *KubeovnV1Client) IPs() IPInterface {
