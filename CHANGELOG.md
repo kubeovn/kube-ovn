@@ -638,6 +638,18 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.32 (2026-03-02)
+
+ * [f5f1b5278](https://github.com/kubeovn/kube-ovn/commit/f5f1b5278cb90d774714b6b5be71cb18f6260c20) release v1.14.32
+ * [826e25861](https://github.com/kubeovn/kube-ovn/commit/826e25861f5263ca22049eadade40768f64c3335) bump k8s to v1.32.13 (#6367)
+ * [5b1cef1a2](https://github.com/kubeovn/kube-ovn/commit/5b1cef1a23d63db074c5399842686d0931379031) cni-server: fix vlan id reference (#6365)
+ * [6e05c021c](https://github.com/kubeovn/kube-ovn/commit/6e05c021c8985c8c7bb64529d31406d8bebd4af8) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.31 (2026-02-27)
 
  * [c4117e3ce](https://github.com/kubeovn/kube-ovn/commit/c4117e3ce556b487a092018d428d36178c31ce9c) release v1.14.31
