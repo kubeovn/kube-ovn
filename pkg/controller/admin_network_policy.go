@@ -162,7 +162,9 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	klog.Infof("handle add anp %s", cachedAnp.Name)
 	anp := cachedAnp.DeepCopy()
 
+	c.priorityMapMutex.Lock()
 	if err := c.validateAnpConfig(anp); err != nil {
+		c.priorityMapMutex.Unlock()
 		klog.Errorf("failed to validate anp %s: %v", anp.Name, err)
 		return err
 	}
@@ -173,6 +175,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	// record new created anp after validation
 	c.anpPrioNameMap[anp.Spec.Priority] = anp.Name
 	c.anpNamePrioMap[anp.Name] = anp.Spec.Priority
+	c.priorityMapMutex.Unlock()
 
 	anpName := getAnpName(anp.Name)
 	var logActions []string
@@ -378,8 +381,10 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 	defer func() { _ = c.anpKeyMutex.UnlockKey(anp.Name) }()
 
 	klog.Infof("handle delete admin network policy %s", anp.Name)
+	c.priorityMapMutex.Lock()
 	delete(c.anpPrioNameMap, anp.Spec.Priority)
 	delete(c.anpNamePrioMap, anp.Name)
+	c.priorityMapMutex.Unlock()
 
 	anpName := getAnpName(anp.Name)
 
