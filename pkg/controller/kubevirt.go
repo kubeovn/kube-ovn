@@ -133,10 +133,14 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		} else {
 			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 		}
-		// If we're at an end state and the vmi migration state is stale or nil, we're probably looking at an old migration
-		// either way, we can't proceed since we don't have the source and target nodes for resetting the migrate options
-		if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded || vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
-			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded/Failed but VMI migration state is stale or nil, skipping", key)
+		if vmiMigration.Status.MigrationState != nil {
+			srcNodeName = vmiMigration.Status.MigrationState.SourceNode
+			targetNodeName = vmiMigration.Status.MigrationState.TargetNode
+		}
+		// If we're at an end state and we still don't have source/target nodes, skip reset to avoid bad updates.
+		if (vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded || vmiMigration.Status.Phase == kubevirtv1.MigrationFailed) &&
+			(srcNodeName == "" || targetNodeName == "") {
+			klog.V(3).Infof("VirtualMachineInstanceMigration %s phase %s but migration state missing source/target nodes, skipping", key, vmiMigration.Status.Phase)
 			return nil
 		}
 	}
@@ -207,6 +211,20 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	case kubevirtv1.MigrationSucceeded:
 		for _, portName := range portNames {
+			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+			if err != nil {
+				klog.Errorf("failed to get lsp %s for migration reset: %v", portName, err)
+				return err
+			}
+			if lsp == nil || lsp.Options == nil {
+				klog.Infof("lsp %s has no options, skip migration reset", portName)
+				continue
+			}
+			requestedChassis := lsp.Options["requested-chassis"]
+			if requestedChassis == "" || len(strings.Split(requestedChassis, ",")) != 2 {
+				klog.Infof("lsp %s has no migrate requested-chassis, skip migration reset", portName)
+				continue
+			}
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration succeeded", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
@@ -216,6 +234,20 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	case kubevirtv1.MigrationFailed:
 		for _, portName := range portNames {
+			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+			if err != nil {
+				klog.Errorf("failed to get lsp %s for migration reset: %v", portName, err)
+				return err
+			}
+			if lsp == nil || lsp.Options == nil {
+				klog.Infof("lsp %s has no options, skip migration reset", portName)
+				continue
+			}
+			requestedChassis := lsp.Options["requested-chassis"]
+			if requestedChassis == "" || len(strings.Split(requestedChassis, ",")) != 2 {
+				klog.Infof("lsp %s has no migrate requested-chassis, skip migration reset", portName)
+				continue
+			}
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration failed", portName, srcNodeName, targetNodeName)
 			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
