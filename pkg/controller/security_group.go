@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"reflect"
 	"slices"
 	"strings"
@@ -286,11 +285,11 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 		switch rule.RemoteType {
 		case kubeovnv1.SgRemoteTypeAddress:
 			if strings.Contains(rule.RemoteAddress, "/") {
-				if _, _, err := net.ParseCIDR(rule.RemoteAddress); err != nil {
+				if err := util.CheckCidrs(rule.RemoteAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
 				}
 			} else {
-				if net.ParseIP(rule.RemoteAddress) == nil {
+				if !util.IsValidIP(rule.RemoteAddress) {
 					return fmt.Errorf("invalid ip address '%s'", rule.RemoteAddress)
 				}
 			}
@@ -305,11 +304,11 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 
 		if rule.LocalAddress != "" {
 			if strings.Contains(rule.LocalAddress, "/") {
-				if _, _, err := net.ParseCIDR(rule.LocalAddress); err != nil {
+				if err := util.CheckCidrs(rule.LocalAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.LocalAddress)
 				}
 			} else {
-				if net.ParseIP(rule.LocalAddress) == nil {
+				if !util.IsValidIP(rule.LocalAddress) {
 					return fmt.Errorf("invalid ip address '%s'", rule.LocalAddress)
 				}
 			}
