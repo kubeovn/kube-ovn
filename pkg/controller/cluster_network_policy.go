@@ -118,7 +118,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	cnp := cachedCnp.DeepCopy()
 
 	// Validate the CNP is valid and can be configured
+	c.priorityMapMutex.Lock()
 	if err := c.validateCnpConfig(cnp); err != nil {
+		c.priorityMapMutex.Unlock()
 		err := fmt.Errorf("failed to validate cnp %s: %w", cnp.Name, err)
 		klog.Error(err)
 		return err
@@ -126,10 +128,12 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 	// Update priority maps in case the priority/tier of the CNP has changed
 	if err := c.updateCnpPriorityMapEntries(cnp); err != nil {
+		c.priorityMapMutex.Unlock()
 		err := fmt.Errorf("failed to update priority maps for cnp %s: %w", cnp.Name, err)
 		klog.Error(err)
 		return err
 	}
+	c.priorityMapMutex.Unlock()
 
 	var logActions []string
 	if cnp.Annotations[util.ACLActionsLogAnnotation] != "" {
@@ -293,7 +297,10 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 	klog.Infof("handle update cluster network policy %s", desiredCnp.Name)
 
 	// Verify the CNP is correctly written
-	if err := c.validateCnpConfig(desiredCnp); err != nil {
+	c.priorityMapMutex.RLock()
+	err = c.validateCnpConfig(desiredCnp)
+	c.priorityMapMutex.RUnlock()
+	if err != nil {
 		klog.Errorf("failed to validate cnp %s: %v", desiredCnp.Name, err)
 		return err
 	}
@@ -383,7 +390,10 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	klog.Infof("handle delete cluster network policy %s", cnp.Name)
 
 	// Delete the CNP from the priority mapping
-	if err := c.deleteCnpPriorityMapEntries(cnp); err != nil {
+	c.priorityMapMutex.Lock()
+	err := c.deleteCnpPriorityMapEntries(cnp)
+	c.priorityMapMutex.Unlock()
+	if err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete priorityMapEntries: %v", err)
 	}
