@@ -3441,9 +3441,9 @@ spec:
                         description: Protocol (tcp, udp, icmp, or all)
                       priority:
                         type: integer
-                        description: Rule priority (1-200)
+                        description: Rule priority (1-16384)
                         min: 1
-                        max: 200
+                        max: 16384
                       remoteType:
                         type: string
                         description: Type of remote (address, cidr, or securityGroup)
@@ -3468,10 +3468,17 @@ spec:
                         description: Policy action (allow, pass or deny)
                       localAddress:
                         type: string
+                        description: Local address or CIDR
                       sourcePortRangeMin:
                         type: integer
+                        description: Start of source port range (1-65535)
+                        min: 1
+                        max: 65535
                       sourcePortRangeMax:
                         type: integer
+                        description: End of source port range (1-65535)
+                        min: 1
+                        max: 65535
                 egressRules:
                   type: array
                   description: Egress traffic rules for the security group
@@ -3486,9 +3493,9 @@ spec:
                         description: Protocol (tcp, udp, icmp, or all)
                       priority:
                         type: integer
-                        description: Rule priority (1-200)
+                        description: Rule priority (1-16384)
                         min: 1
-                        max: 200
+                        max: 16384
                       remoteType:
                         type: string
                         description: Type of remote (address, cidr, or securityGroup)
@@ -3513,12 +3520,20 @@ spec:
                         description: Policy action (allow, pass or deny)
                       localAddress:
                         type: string
+                        description: Local address or CIDR
                       sourcePortRangeMin:
                         type: integer
+                        description: Start of source port range (1-65535)
+                        min: 1
+                        max: 65535
                       sourcePortRangeMax:
                         type: integer
+                        description: End of source port range (1-65535)
+                        min: 1
+                        max: 65535
                 allowSameGroupTraffic:
                   type: boolean
+                  description: Allow traffic between pods in the same security group
                 tier:
                   type: integer
             status:
