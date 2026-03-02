@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: 1.15.0](https://img.shields.io/badge/Version-1.15.0-informational?style=flat-square)  ![Version: 1.15.0](https://img.shields.io/badge/Version-1.15.0-informational?style=flat-square)
+![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -12,7 +12,7 @@ Make sure to adjust your old values with the new ones and pre-generate your temp
 The Helm chart is available from GitHub Container Registry:
 
 ```bash
-helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version 1.15.0
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.0
 ```
 
 ### From Source
@@ -415,6 +415,18 @@ false
 			<td>Labels to be added to all top-level ovn-central objects (resources under templates/central)</td>
 		</tr>
 		<tr>
+			<td>central.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+		<tr>
 			<td>central.podAnnotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -525,7 +537,7 @@ false
   "images": {
     "kubeovn": {
       "repository": "kube-ovn",
-      "tag": "v1.14.0"
+      "tag": "v1.16.0"
     }
   },
   "registry": {
@@ -740,6 +752,18 @@ false
 </pre>
 </td>
 			<td>Configure the port on which the controller service will serve metrics.</td>
+		</tr>
+		<tr>
+			<td>controller.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
 		</tr>
 		<tr>
 			<td>controller.podAnnotations</td>
@@ -959,6 +983,38 @@ false
 		</tr>
 	</tbody>
 </table>
+<h3>OVN IC controller configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>ic</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Configuration for the OVN interconnection (IC) controller.</td>
+		</tr>
+		<tr>
+			<td>ic.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+	</tbody>
+</table>
 <h3>Kubelet configuration</h3>
 <table>
 	<thead>
@@ -1072,6 +1128,18 @@ false
 			<td>Configure the port on which the kube-ovn-monitor service will serve metrics.</td>
 		</tr>
 		<tr>
+			<td>monitor.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+		<tr>
 			<td>monitor.podAnnotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1176,7 +1244,7 @@ false
 			<td>natGw.bgpSpeaker.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.15.0"
+"v1.16.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1212,7 +1280,7 @@ false
 			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.15.0"
+"v1.16.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1674,7 +1742,7 @@ false
 			<td>ovsOvn.dpdkHybrid.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.14.0-dpdk"
+"v1.16.0"
 </pre>
 </td>
 			<td>DPDK image tag.</td>
@@ -2021,6 +2089,78 @@ false
 		<th>Description</th>
 	</thead>
 	<tbody>
+	<tr>
+		<td>central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>controller.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>controller.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>ic.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>ic.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>monitor.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>monitor.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
 	<tr>
 		<td>ovsOvn.ovsIpsecKeysDirectory</td>
 		<td>string</td>
