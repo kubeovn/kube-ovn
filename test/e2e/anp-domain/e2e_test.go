@@ -111,7 +111,32 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 	}
 
 	testNetworkConnectivity := func(target string, shouldSucceed bool, description string) {
-		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 20, time.Second)
+		testNetworkConnectivityWithRetry(target, shouldSucceed, description, 30, 3*time.Second)
+	}
+
+	// waitForDNSResolversCreated waits for DNSNameResolver CRs associated with an ANP
+	// to be created. This ensures the controller has processed the ANP and created the
+	// DNSNameResolver CRs, so the CoreDNS dnsnameresolver plugin can intercept DNS
+	// queries for the configured domains.
+	// Note: We intentionally do NOT check Status.ResolvedNames here because the
+	// dnsnameresolver CoreDNS plugin populates it reactively (only when actual DNS
+	// queries flow through CoreDNS), not proactively. The connectivity retry logic
+	// in testNetworkConnectivity handles the async chain:
+	//   DNS query → plugin intercepts → Status updated → address set updated → ACL applied.
+	waitForDNSResolversCreated := func(name string, expectedCount int) {
+		ginkgo.By(fmt.Sprintf("Waiting for %d DNSNameResolver(s) to be created for ANP %s", expectedCount, name))
+		dnsClient := f.DNSNameResolverClient()
+		labelSelector := fmt.Sprintf("anp=%s", name)
+
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			resolverList := dnsClient.ListByLabel(labelSelector)
+			if len(resolverList.Items) < expectedCount {
+				framework.Logf("Found %d/%d DNSNameResolver(s) for ANP %s", len(resolverList.Items), expectedCount, name)
+				return false, nil
+			}
+			framework.Logf("All %d DNSNameResolver(s) created for ANP %s", expectedCount, name)
+			return true, nil
+		}, fmt.Sprintf("DNSNameResolvers for ANP %s to be created", name))
 	}
 
 	framework.ConformanceIt("should create ANP with domainName deny rule and verify connectivity behavior", func() {
@@ -158,6 +183,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		framework.ExpectEqual(anp.Spec.Priority, int32(55))
 		framework.ExpectEqual(anp.Spec.Subject.Namespaces.MatchLabels[corev1.LabelMetadataName], namespaceName)
 
+		waitForDNSResolversCreated(anpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying ANP (should be blocked)")
 
 		ginkgo.By("Deleting AdminNetworkPolicy " + anpName)
@@ -211,6 +237,9 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		ginkgo.By("Creating second AdminNetworkPolicy in the cluster")
 		createdANP2 := anpClient.CreateSync(anp2)
 		framework.Logf("Successfully created second AdminNetworkPolicy: %s", createdANP2.Name)
+
+		waitForDNSResolversCreated(anpName, 1)
+		waitForDNSResolversCreated(anpName2, 1)
 
 		ginkgo.By("Verifying both ANPs structure is correct")
 		framework.ExpectEqual(len(anp1.Spec.Egress), 1)
@@ -288,6 +317,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		updatedANP := anpClient.Update(createdANP)
 		framework.Logf("Successfully updated AdminNetworkPolicy with baidu.com deny rule: %s", updatedANP.Name)
 
+		waitForDNSResolversCreated(anpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding deny rule (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after adding baidu.com deny rule (should still succeed)")
 
@@ -299,6 +329,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		updatedANP2 := anpClient.Update(updatedANP)
 		framework.Logf("Successfully updated AdminNetworkPolicy with both deny rules: %s", updatedANP2.Name)
 
+		waitForDNSResolversCreated(anpName, 2)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after adding both deny rules (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", false, "Testing connectivity to google.com after adding both deny rules (should be blocked)")
 
@@ -373,6 +404,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		framework.ExpectEqual(len(anp.Spec.Egress), 2)
 		framework.ExpectEqual(anp.Spec.Priority, int32(80))
 
+		waitForDNSResolversCreated(anpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to baidu.com after applying ANP (should be blocked)")
 		testNetworkConnectivity("https://www.google.com", true, "Testing connectivity to google.com after applying ANP (should be allowed)")
 		testNetworkConnectivity("https://8.8.8.8", false, "Testing connectivity to 8.8.8.8 after applying ANP (should be blocked by CIDR rule)")
@@ -421,6 +453,7 @@ var _ = framework.SerialDescribe("[group:admin-network-policy]", func() {
 		framework.ExpectEqual(len(anp.Spec.Egress), 1)
 		framework.ExpectEqual(anp.Spec.Priority, int32(85))
 
+		waitForDNSResolversCreated(anpName, 1)
 		testNetworkConnectivity("https://www.baidu.com", false, "Testing connectivity to www.baidu.com after applying ANP (should be blocked by wildcard)")
 		testNetworkConnectivity("https://api.baidu.com", false, "Testing connectivity to api.baidu.com after applying ANP (should be blocked by wildcard)")
 		testNetworkConnectivity("https://news.baidu.com", false, "Testing connectivity to news.baidu.com after applying ANP (should be blocked by wildcard)")
