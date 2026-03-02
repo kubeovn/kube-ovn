@@ -1549,13 +1549,15 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.Secur
 	pgName := GetSgPortGroupName(sgName)
 
 	// ingress rule
-	srcOrDst, portDirection := "src", "outport"
+	localSrcOrDst, remoteSrcOrDst, portDirection := "dst", "src", "outport"
 	if direction == ovnnb.ACLDirectionFromLport { // egress rule
-		srcOrDst = "dst"
+		remoteSrcOrDst = "dst"
+		localSrcOrDst = "src"
 		portDirection = "inport"
 	}
 
-	ipKey := ipSuffix + "." + srcOrDst
+	ipKey := ipSuffix + "." + remoteSrcOrDst
+	localIPKey := ipSuffix + "." + localSrcOrDst
 
 	/* match all traffic to or from pgName */
 	allIPMatch := NewAndACLMatch(
@@ -1582,6 +1584,14 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.Secur
 		)
 	}
 
+	// Add a rule to match local address only if it is set
+	if rule.LocalAddress != "" {
+		allowedIPMatch = NewAndACLMatch(
+			allowedIPMatch,
+			NewACLMatch(localIPKey, "==", rule.LocalAddress, ""),
+		)
+	}
+
 	/* allow layer 4 traffic */
 	// allow all layer 4 traffic
 	match := allowedIPMatch
@@ -1603,6 +1613,14 @@ func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.Secur
 			allowedIPMatch,
 			NewACLMatch(string(rule.Protocol)+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)),
 		)
+
+		// Add a match on source port if a local address was provided.
+		if rule.LocalAddress != "" {
+			match = NewAndACLMatch(
+				match,
+				NewACLMatch(string(rule.Protocol)+".src", "<=", strconv.Itoa(rule.SourcePortRangeMin), strconv.Itoa(rule.SourcePortRangeMax)),
+			)
+		}
 	}
 
 	securityGroupHighestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
