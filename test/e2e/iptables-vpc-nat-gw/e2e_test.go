@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -249,6 +250,48 @@ func verifySubnetStatusAfterEIPOperation(subnetClient *framework.SubnetClient, s
 	}
 }
 
+// iptablesSaveNat returns the iptables-save output from the NAT gateway pod,
+// using the exact same detection logic as nat-gateway.sh to determine whether
+// to use iptables-legacy-save or iptables-save (nft backend).
+func iptablesSaveNat(natGwPodName string) string {
+	// Replicate nat-gateway.sh detection: if iptables-legacy -t nat -S INPUT 1 succeeds,
+	// rules were written via iptables-legacy, so use iptables-legacy-save to read them.
+	// NOTE: KubectlExec joins args with space and passes to "/bin/sh -c", so pass
+	// the entire script as a single string to avoid double shell wrapping.
+	cmd := []string{"if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then iptables-legacy-save -t nat; else iptables-save -t nat; fi"}
+	stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, natGwPodName, cmd...)
+	framework.ExpectNoError(err, "failed to exec iptables-save in NAT gateway pod %s", natGwPodName)
+	return string(stdout)
+}
+
+// hairpinSnatChainExists checks if the HAIRPIN_SNAT chain exists in the NAT gateway pod.
+// Returns false on older versions that don't support this feature.
+func hairpinSnatChainExists(natGwPodName string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	return strings.Contains(output, ":HAIRPIN_SNAT") || strings.Contains(output, "-N HAIRPIN_SNAT")
+}
+
+// hairpinSnatRuleExists checks if hairpin SNAT rule exists in the NAT gateway pod
+// for the given CIDR and specific EIP.
+// Uses regex with word boundaries to prevent partial IP/CIDR matching
+// (e.g. EIP 10.1.69.21 must not match rule for 10.1.69.219).
+// Returns true if rule exists, false otherwise (including when HAIRPIN_SNAT chain doesn't exist).
+func hairpinSnatRuleExists(natGwPodName, cidr, eip string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	if !strings.Contains(output, ":HAIRPIN_SNAT") && !strings.Contains(output, "-N HAIRPIN_SNAT") {
+		return false
+	}
+
+	// Use regex with \b word boundaries for precise matching, and allow
+	// optional trailing args like --random-fully after the EIP.
+	hairpinRulePattern := fmt.Sprintf(
+		`-A HAIRPIN_SNAT -s \b%s\b -d \b%s\b -m conntrack --ctstate DNAT -j SNAT --to-source \b%s\b`,
+		regexp.QuoteMeta(cidr), regexp.QuoteMeta(cidr), regexp.QuoteMeta(eip),
+	)
+	re := regexp.MustCompile(hairpinRulePattern)
+	return re.MatchString(output)
+}
+
 var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
@@ -264,6 +307,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	var iptablesFIPClient *framework.IptablesFIPClient
 	var iptablesSnatRuleClient *framework.IptablesSnatClient
 	var iptablesDnatRuleClient *framework.IptablesDnatClient
+	var podClient *framework.PodClient
 
 	var dockerExtNet1Network *dockernetwork.Inspect
 	var net1NicName string
@@ -421,6 +465,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		vpcName = "vpc-" + randomSuffix
 		vpcNatGwName = "gw-" + randomSuffix
 		overlaySubnetName = "overlay-subnet-" + randomSuffix
+		podClient = f.PodClient()
 	})
 
 	framework.ConformanceIt("[1] change gateway image and custom annotations", func() {
@@ -543,6 +588,83 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesSnatRuleClient.DeleteSync(snatName)
 		})
 
+		// Verify hairpin SNAT rule is automatically created for internal CIDR
+		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after SNAT creation")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		snatEip = iptablesEIPClient.Get(snatEipName)
+		if !hairpinSnatChainExists(vpcNatGwPodName) {
+			framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin SNAT verification (feature requires v1.15+)")
+		} else {
+			gomega.Eventually(func() bool {
+				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP)
+			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+				"Hairpin SNAT rule should be created after SNAT creation")
+
+			// Verify real data-path: internal pod accessing another internal pod via FIP EIP
+			// Packet flow: client -> NAT GW (DNAT to serverIP + hairpin SNAT to EIP) -> server -> NAT GW (un-SNAT/DNAT) -> client
+			ginkgo.By("[hairpin SNAT] Verifying data-path connectivity: internal pod accessing another internal pod via FIP EIP")
+			serverPodName := "server-" + randomSuffix
+			clientPodName := "client-" + randomSuffix
+			hairpinFipEipName := "hairpin-fip-eip-" + randomSuffix
+			hairpinFipName := "hairpin-fip-" + randomSuffix
+
+			// [hairpin SNAT] Create server pod in overlay subnet with auto-assigned IP
+			serverAnnotations := map[string]string{
+				util.LogicalSwitchAnnotation: overlaySubnetName,
+			}
+			serverPort := "8080"
+			serverArgs := []string{"netexec", "--http-port", serverPort}
+			serverPod := framework.MakePod(f.Namespace.Name, serverPodName, nil, serverAnnotations, framework.AgnhostImage, nil, serverArgs)
+			_ = podClient.CreateSync(serverPod)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up server pod " + serverPodName)
+				podClient.DeleteSync(serverPodName)
+			})
+
+			// Get server pod's auto-assigned IP for FIP binding
+			createdServerPod := podClient.GetPod(serverPodName)
+			serverPodIP := createdServerPod.Annotations[util.IPAddressAnnotation]
+			framework.ExpectNotEmpty(serverPodIP, "server pod should have an IP assigned")
+			framework.Logf("Server pod %s has IP %s", serverPodName, serverPodIP)
+
+			// [hairpin SNAT] Create a dedicated EIP and FIP for the server pod
+			hairpinFipEip := framework.MakeIptablesEIP(hairpinFipEipName, "", "", "", vpcNatGwName, "", "")
+			_ = iptablesEIPClient.CreateSync(hairpinFipEip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up hairpin FIP EIP " + hairpinFipEipName)
+				iptablesEIPClient.DeleteSync(hairpinFipEipName)
+			})
+			hairpinFipEip = iptablesEIPClient.Get(hairpinFipEipName)
+			framework.ExpectNotEmpty(hairpinFipEip.Status.IP, "hairpin FIP EIP should have an IP assigned")
+
+			hairpinFip := framework.MakeIptablesFIPRule(hairpinFipName, hairpinFipEipName, serverPodIP)
+			_ = iptablesFIPClient.CreateSync(hairpinFip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up hairpin FIP " + hairpinFipName)
+				iptablesFIPClient.DeleteSync(hairpinFipName)
+			})
+
+			// [hairpin SNAT] Create client pod in same subnet
+			clientAnnotations := map[string]string{
+				util.LogicalSwitchAnnotation: overlaySubnetName,
+			}
+			clientPod := framework.MakePod(f.Namespace.Name, clientPodName, nil, clientAnnotations, framework.AgnhostImage, nil, []string{"pause"})
+			_ = podClient.CreateSync(clientPod)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up client pod " + clientPodName)
+				podClient.DeleteSync(clientPodName)
+			})
+
+			// [hairpin SNAT] Test connectivity: client -> FIP EIP -> server (same subnet)
+			ginkgo.By("[hairpin SNAT] Checking data-path: client pod -> FIP EIP " + hairpinFipEip.Status.IP + " -> server pod")
+			cmd := []string{"curl", "-m", "10", fmt.Sprintf("http://%s:%s/clientip", hairpinFipEip.Status.IP, serverPort)}
+			output, _, err := framework.KubectlExec(f.Namespace.Name, clientPodName, cmd...)
+			framework.ExpectNoError(err, "[hairpin SNAT] client pod should reach server pod via FIP EIP")
+			framework.Logf("[hairpin SNAT] connectivity verified, response: %s", string(output))
+			gomega.Expect(string(output)).To(gomega.ContainSubstring(snatEip.Status.IP),
+				"[hairpin SNAT] server should see request from SNAT EIP, not client pod IP")
+		}
+
 		ginkgo.By("Creating iptables vip for dnat")
 		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
@@ -618,8 +740,19 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesSnatRuleClient.DeleteSync(sharedEipSnatName)
 		})
 
-		ginkgo.By("Get share eip")
+		// Verify hairpin SNAT rule is created for the shared SNAT (same CIDR, different EIP).
+		// Hairpin mirrors SNAT 1:1: each SNAT creates its own hairpin rule.
+		ginkgo.By("Getting share eip")
 		shareEip = iptablesEIPClient.Get(sharedEipName)
+		framework.ExpectNotEmpty(shareEip.Status.IP, "shareEip.Status.IP should not be empty")
+		if hairpinSnatChainExists(vpcNatGwPodName) {
+			ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists for the shared SNAT EIP")
+			gomega.Eventually(func() bool {
+				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, shareEip.Status.IP)
+			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+				"Hairpin SNAT rule should be created for shared SNAT EIP")
+		}
+
 		ginkgo.By("Get share dnat")
 		shareDnat = iptablesDnatRuleClient.Get(sharedEipDnatName)
 		ginkgo.By("Get share snat")
@@ -643,6 +776,22 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// make sure eip is shared
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
+
+		// Verify hairpin SNAT rule cleanup when SNAT is deleted.
+		// Hairpin lifecycle is 1:1 with SNAT: created together, deleted together.
+		if hairpinSnatChainExists(vpcNatGwPodName) {
+			ginkgo.By("[hairpin SNAT] Deleting SNAT to verify hairpin rule cleanup")
+			iptablesSnatRuleClient.DeleteSync(snatName)
+			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the deleted SNAT EIP is removed")
+			gomega.Eventually(func() bool {
+				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP)
+			}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"Hairpin SNAT rule should be deleted after SNAT deletion")
+			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the shared SNAT EIP still exists")
+			gomega.Expect(hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, shareEip.Status.IP)).To(gomega.BeTrue(),
+				"Hairpin SNAT rule for the shared SNAT EIP should NOT be affected by deleting a different SNAT")
+		}
+
 		// All cleanup is handled by DeferCleanup above, no need for manual cleanup
 	})
 
