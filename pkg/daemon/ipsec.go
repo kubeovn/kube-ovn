@@ -177,8 +177,14 @@ func (c *Controller) getCACert(key string) (string, error) {
 	cmd := exec.Command("ipsec", "rereadcacerts")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to reload ipsec ca cert: %v, output: %s", err, output)
-		return "", err
+		active, _ := isServiceActive("ipsec")
+		if active {
+			// strongSwan is running but rereadcacerts failed — a real error
+			klog.Errorf("failed to reload ipsec ca cert: %v, output: %s", err, output)
+			return "", err
+		}
+		// strongSwan is not running yet; it will auto-load certs from /etc/ipsec.d/cacerts/ on start
+		klog.Infof("ipsec rereadcacerts skipped (strongSwan not running yet); certs will be loaded on service start")
 	}
 
 	klog.Infof("ipsec CA Cert file %s written", caCertPath)
