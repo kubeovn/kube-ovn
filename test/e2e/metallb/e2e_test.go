@@ -400,10 +400,17 @@ var _ = framework.Describe("[group:metallb]", func() {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
 		}, "second lb service ip is not empty")
 
-		ginkgo.By("Checking both services are reachable")
 		service = f.ServiceClient().Get(serviceName)
 		service2 = f.ServiceClient().Get(serviceName2)
 
+		ginkgo.By("Waiting for underlay OpenFlow rules to be installed for both services")
+		for _, svc := range []*corev1.Service{service, service2} {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				waitUnderlayServiceFlowOnAnyNode(nodeNames, providerNetworkName, ingress.IP, curlListenPort, 15*time.Second)
+			}
+		}
+
+		ginkgo.By("Checking both services are reachable")
 		for _, svc := range []*corev1.Service{service, service2} {
 			for i, ingress := range svc.Status.LoadBalancer.Ingress {
 				lbsvcIP := ingress.IP
@@ -521,21 +528,26 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 			fmt.Sprintf("%s:%s/clientip", targetIP, targetPort),
 		}
 	}
-	output, _, err := docker.Exec(containerID, nil, cmd...)
 	if expectReachable {
-		framework.ExpectNoError(err)
+		var output []byte
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			var err error
+			output, _, err = docker.Exec(containerID, nil, cmd...)
+			return err == nil, nil
+		}, fmt.Sprintf("service %s:%s should be reachable", targetIP, targetPort))
 		client, _, err := net.SplitHostPort(strings.TrimSpace(string(output)))
 		framework.ExpectNoError(err)
 		// check packet has not SNAT
 		framework.ExpectEqual(sourceIP, client)
 	} else {
+		_, _, err := docker.Exec(containerID, nil, cmd...)
 		framework.ExpectError(err)
 	}
 
 	ginkgo.By("checking vip node is same as backend pod's host")
 	if !isIPv6 {
 		cmd = strings.Fields(fmt.Sprintf("arping -c 5 -W 2 %s", targetIP))
-		output, _, err = docker.Exec(containerID, nil, cmd...)
+		output, _, err := docker.Exec(containerID, nil, cmd...)
 		if err != nil {
 			framework.Failf("arping failed: %v, output: %s", err, output)
 		}
@@ -553,7 +565,7 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 			fmt.Sprintf("%s:%s/hostname", targetIP, targetPort),
 		}
 	}
-	output, _, err = docker.Exec(containerID, nil, cmd...)
+	output, _, err := docker.Exec(containerID, nil, cmd...)
 	framework.ExpectNoError(err)
 	backendPodName := strings.TrimSpace(string(output))
 	framework.Logf("Packet reached backend: %s", backendPodName)
@@ -618,6 +630,24 @@ func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, se
 	}, "")
 
 	return flowFound
+}
+
+func waitUnderlayServiceFlowOnAnyNode(nodeNames []string, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	bridgeName := util.ExternalBridgeName(providerNetworkName)
+	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
+
+	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
+		for _, nodeName := range nodeNames {
+			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
+				nodeName, bridgeName, serviceIP, matchPort)
+			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
+				return true, nil
+			}
+		}
+		return false, nil
+	}, fmt.Sprintf("underlay service flow for %s should be installed on at least one node", serviceIP))
 }
 
 func waitUnderlayServiceFlowCleaned(nodeNames []string, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) {
