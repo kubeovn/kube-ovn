@@ -3760,10 +3760,17 @@ spec:
                         description: Policy action (allow, pass or deny)
                       localAddress:
                         type: string
+                        description: Local address or CIDR
                       sourcePortRangeMin:
                         type: integer
+                        description: Start of source port range (1-65535)
+                        min: 1
+                        max: 65535
                       sourcePortRangeMax:
                         type: integer
+                        description: End of source port range (1-65535)
+                        min: 1
+                        max: 65535
                 egressRules:
                   type: array
                   description: Egress traffic rules for the security group
@@ -3805,14 +3812,25 @@ spec:
                         description: Policy action (allow, pass or deny)
                       localAddress:
                         type: string
+                        description: Local address or CIDR
                       sourcePortRangeMin:
                         type: integer
+                        description: Start of source port range (1-65535)
+                        min: 1
+                        max: 65535
                       sourcePortRangeMax:
                         type: integer
+                        description: End of source port range (1-65535)
+                        min: 1
+                        max: 65535
                 allowSameGroupTraffic:
                   type: boolean
+                  description: Allow traffic between pods in the same security group
                 tier:
                   type: integer
+                  description: ACL tier to which the rules are added
+                  min: 0
+                  max: 1
             status:
               type: object
               properties:
