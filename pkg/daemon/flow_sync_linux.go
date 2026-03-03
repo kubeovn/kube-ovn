@@ -53,14 +53,17 @@ func (c *Controller) syncFlows() {
 
 		preserved := filterUnmanagedFlows(existing)
 		cachedFlows := flowCacheByBridge[bridgeName]
-		finalFlows := append(preserved, cachedFlows...)
 
-		if err := ovs.ReplaceFlows(bridgeName, finalFlows); err != nil {
-			klog.Errorf("failed to replace flows for bridge %s: %v", bridgeName, err)
+		// Skip replace-flows when there are no cached flows to add and no
+		// managed flows to remove (preserved == existing means nothing was filtered).
+		if len(cachedFlows) == 0 && len(preserved) == len(existing) {
+			klog.V(5).Infof("no managed flows for bridge %s, skipping replace-flows", bridgeName)
 			continue
 		}
-		if len(cachedFlows) == 0 {
-			klog.V(5).Infof("no cached flows for bridge %s", bridgeName)
+
+		finalFlows := append(preserved, cachedFlows...)
+		if err := ovs.ReplaceFlows(bridgeName, finalFlows); err != nil {
+			klog.Errorf("failed to replace flows for bridge %s: %v", bridgeName, err)
 			continue
 		}
 		klog.V(3).Infof("synced %d cached flows on bridge %s", len(cachedFlows), bridgeName)

@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"io"
 	"os/exec"
 	"slices"
 	"strings"
@@ -11,6 +12,60 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// openFlowStdinReader incrementally renders a flow slice as a newline-delimited
+// stream for ovs-ofctl stdin without constructing one large joined string.
+type openFlowStdinReader struct {
+	flows      []string
+	flowIndex  int
+	flowOffset int
+	needEOL    bool
+}
+
+// Read implements io.Reader over r.flows, producing output equivalent to
+// strings.Join(flows, "\n"), but in small chunks to reduce peak allocations.
+func (r *openFlowStdinReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if r.flowIndex >= len(r.flows) && !r.needEOL {
+		return 0, io.EOF
+	}
+
+	total := 0
+	for total < len(p) {
+		if r.needEOL {
+			p[total] = '\n'
+			total++
+			r.needEOL = false
+			if total == len(p) {
+				return total, nil
+			}
+			continue
+		}
+
+		if r.flowIndex >= len(r.flows) {
+			break
+		}
+
+		flow := r.flows[r.flowIndex]
+		if r.flowOffset >= len(flow) {
+			r.flowIndex++
+			r.flowOffset = 0
+			r.needEOL = r.flowIndex < len(r.flows)
+			continue
+		}
+
+		copied := copy(p[total:], flow[r.flowOffset:])
+		total += copied
+		r.flowOffset += copied
+	}
+
+	if total == 0 {
+		return 0, io.EOF
+	}
+	return total, nil
+}
 
 func DumpFlows(client *ovs.Client, bridgeName string) ([]string, error) {
 	flows, err := client.OpenFlow.DumpFlows(bridgeName)
@@ -35,11 +90,10 @@ func DumpFlows(client *ovs.Client, bridgeName string) ([]string, error) {
 }
 
 // ReplaceFlows uses ovs-ofctl replace-flows because go-openvswitch does not provide a native API.
+// It streams flows to ovs-ofctl stdin to avoid allocating a large joined string.
 func ReplaceFlows(bridgeName string, flows []string) error {
-	flowData := strings.Join(flows, "\n")
-
 	cmd := exec.Command("ovs-ofctl", "--bundle", "replace-flows", bridgeName, "-")
-	cmd.Stdin = strings.NewReader(flowData)
+	cmd.Stdin = &openFlowStdinReader{flows: flows}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
