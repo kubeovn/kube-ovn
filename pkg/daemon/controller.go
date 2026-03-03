@@ -80,6 +80,8 @@ type Controller struct {
 
 	k8sExec k8sexec.Interface
 
+	ipsecServiceStarted sync.Once
+
 	// channel used for fdb sync
 	fdbSyncChan   chan struct{}
 	fdbSyncMutex  sync.Mutex
@@ -780,10 +782,6 @@ func (c *Controller) gcInterfaces() {
 }
 
 func (c *Controller) runIPSecWorker() {
-	if err := c.StartIPSecService(); err != nil {
-		klog.Errorf("starting ipsec service: %v", err)
-	}
-
 	for c.processNextIPSecWorkItem() {
 	}
 }

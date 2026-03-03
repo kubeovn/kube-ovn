@@ -566,18 +566,29 @@ func (c *Controller) SyncIPSecKeys(key string) error {
 		}
 	}
 
-	if needNewCert {
-		err := configureOVSWithIPSecKeys(pkiFiles)
-		if err != nil {
-			klog.Errorf("configure ovs with ipsec keys error: %v", err)
-			return err
-		}
+	// Always configure OVS with IPSec keys to ensure the OVSDB has
+	// the correct certificate paths, even when the certificate was
+	// not regenerated (e.g., after an OVS restart that cleared OVSDB).
+	if err := configureOVSWithIPSecKeys(pkiFiles); err != nil {
+		klog.Errorf("configure ovs with ipsec keys error: %v", err)
+		return err
+	}
 
+	if needNewCert {
 		if err := clearIPSecKeysDir(*pkiFiles); err != nil {
 			// don't return here; we've already programmed the new keys
 			klog.Errorf("cleaning old ipsec files: %v", err)
 		}
 	}
+
+	// Start the IPSec service after certificates are configured in OVSDB.
+	// This prevents ovs-monitor-ipsec from seeing tunnels with IPSec
+	// enabled but no certificates configured during the startup window.
+	c.ipsecServiceStarted.Do(func() {
+		if err := c.StartIPSecService(); err != nil {
+			klog.Errorf("starting ipsec service: %v", err)
+		}
+	})
 
 	untilRefresh, err := c.untilCertRefresh(pkiFiles.certificatePath)
 	if err != nil {
