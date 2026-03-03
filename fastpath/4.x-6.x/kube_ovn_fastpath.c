@@ -7,7 +7,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/string.h>
-#include <linux/if_macvlan.h>
+#include <linux/inetdevice.h>
 
 unsigned int hook_func(void *priv,
                     struct sk_buff *skb, const struct nf_hook_state *state)
@@ -45,20 +45,43 @@ unsigned int hook_func(void *priv,
     }
 
     if (state->net != &init_net) {
-        // for Container traffic, DO NOT traverse netfilter
-        struct net_device *dev = state->in ? state->in : state->out;
-
         /*
-         * Skip fastpath for macvlan interfaces (e.g., vpc-nat-gw's net1).
-         * Macvlan interfaces may rely on netfilter (conntrack, DNAT/SNAT)
-         * for traffic processing. Bypassing netfilter on these interfaces
-         * causes NAT rules to never be evaluated.
+         * Skip fastpath for namespaces with IP forwarding enabled.
          *
-         * NOTE: If a non-macvlan interface (e.g., veth) is used as a
-         * secondary NIC that also requires netfilter processing, the same
-         * skip logic should be applied for that specific interface.
+         * Fastpath calls okfn() directly and returns NF_STOLEN, which
+         * bypasses ALL subsequent netfilter hooks in the chain. This
+         * skips the following critical subsystems:
+         *
+         *   - conntrack (nf_conntrack_in, priority -200):
+         *     Connection tracking is disabled. Without conntrack,
+         *     stateful NAT cannot function because the kernel cannot
+         *     associate reply packets with original connections.
+         *
+         *   - NAT (nft_do_chain / iptable_nat, priority -100):
+         *     DNAT/SNAT rules are never evaluated. For DNAT, inbound
+         *     destination rewriting fails. For return traffic, conntrack's
+         *     automatic reverse NAT also fails since no conntrack entry
+         *     exists.
+         *
+         *   - nftables/iptables filter chains:
+         *     All firewall rules (INPUT/FORWARD/OUTPUT filter tables)
+         *     are bypassed, disabling any security policies.
+         *
+         *   - mangle table:
+         *     TOS/DSCP marking, TTL modification, and policy routing
+         *     via fwmark are all skipped.
+         *
+         * For normal pods (forwarding=0), traffic is endpoint-only and
+         * managed by OVN at the virtual switch layer. Skipping netfilter
+         * is safe and improves performance.
+         *
+         * For gateway pods like vpc-nat-gw (forwarding=1), the pod acts
+         * as a router performing DNAT/SNAT between external networks
+         * (macvlan) and the overlay (veth). Both inbound and return
+         * traffic must traverse the full netfilter stack, so fastpath
+         * must be disabled for the gw pod namespace.
          */
-        if (dev && netif_is_macvlan(dev))
+        if (IPV4_DEVCONF_ALL(state->net, FORWARDING))
             return NF_ACCEPT;
 
         state->okfn(state->net, state->sk, skb);
