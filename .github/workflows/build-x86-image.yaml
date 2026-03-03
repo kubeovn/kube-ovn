@@ -4025,14 +4025,6 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Create kind cluster
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
