@@ -7,6 +7,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/string.h>
+#include <linux/if_macvlan.h>
 
 unsigned int hook_func(void *priv,
                     struct sk_buff *skb, const struct nf_hook_state *state)
@@ -45,6 +46,21 @@ unsigned int hook_func(void *priv,
 
     if (state->net != &init_net) {
         // for Container traffic, DO NOT traverse netfilter
+        struct net_device *dev = state->in ? state->in : state->out;
+
+        /*
+         * Skip fastpath for macvlan interfaces (e.g., vpc-nat-gw's net1).
+         * Macvlan interfaces may rely on netfilter (conntrack, DNAT/SNAT)
+         * for traffic processing. Bypassing netfilter on these interfaces
+         * causes NAT rules to never be evaluated.
+         *
+         * NOTE: If a non-macvlan interface (e.g., veth) is used as a
+         * secondary NIC that also requires netfilter processing, the same
+         * skip logic should be applied for that specific interface.
+         */
+        if (dev && netif_is_macvlan(dev))
+            return NF_ACCEPT;
+
         state->okfn(state->net, state->sk, skb);
         return NF_STOLEN;
     }
