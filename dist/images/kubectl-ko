@@ -517,20 +517,23 @@ xxctl(){
 
 checkLeader(){
   component="$1"; shift
-  set +o pipefail
-  count=$(kubectl get endpointslice -l kubernetes.io/service-name=ovn-$component -n $KUBE_OVN_NS -o jsonpath='{range .items[*]}{range .endpoints[?(@.conditions.ready!=false)]}{.targetRef.name}{"\n"}{end}{end}' | sort | uniq | wc -l)
-  set -o pipefail
+  for i in $(seq 1 10); do
+    set +o pipefail
+    count=$(kubectl get endpointslice -l kubernetes.io/service-name=ovn-$component -n $KUBE_OVN_NS -o jsonpath='{range .items[*]}{range .endpoints[?(@.conditions.ready!=false)]}{.targetRef.name}{"\n"}{end}{end}' 2>/dev/null | sort | uniq | wc -l)
+    set -o pipefail
+    if [ $count -eq 1 ]; then
+      echo "ovn-$component leader check ok"
+      return
+    fi
+    sleep 1
+  done
+
   if [ $count -eq 0 ]; then
-    echo "no ovn-$component exists !!"
-    exit 1
-  fi
-
-  if [ $count -gt 1 ]; then
+    echo "no ovn-$component leader exists !!"
+  else
     echo "ovn-$component has more than one leader !!"
-    exit 1
   fi
-
-  echo "ovn-$component leader check ok"
+  exit 1
 }
 
 applyConnServerDaemonset(){
@@ -872,13 +875,21 @@ getOvnCentralDbStatus(){
 
 checkDaemonSet(){
   name="$1"
-  currentScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.currentNumberScheduled})
-  desiredScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.desiredNumberScheduled})
-  available=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberAvailable})
-  ready=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberReady})
-  if [ "$currentScheduled" = "$desiredScheduled" ] && [ "$desiredScheduled" = "$available" ] && [ "$available" = "$ready" ]; then
-    echo "ds $name ready"
-  else
+  isfailed=true
+  for i in {0..29}
+  do
+    currentScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.currentNumberScheduled})
+    desiredScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.desiredNumberScheduled})
+    available=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberAvailable})
+    ready=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberReady})
+    if [ "$currentScheduled" = "$desiredScheduled" ] && [ "$desiredScheduled" = "$available" ] && [ "$available" = "$ready" ]; then
+      echo "ds $name ready"
+      isfailed=false
+      break
+    fi
+    sleep 1
+  done
+  if $isfailed; then
     echo "Error ds $name not ready"
     exit 1
   fi
