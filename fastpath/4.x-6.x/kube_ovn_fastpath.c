@@ -7,6 +7,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/string.h>
+#include <linux/inetdevice.h>
 
 unsigned int hook_func(void *priv,
                     struct sk_buff *skb, const struct nf_hook_state *state)
@@ -44,7 +45,45 @@ unsigned int hook_func(void *priv,
     }
 
     if (state->net != &init_net) {
-        // for Container traffic, DO NOT traverse netfilter
+        /*
+         * Skip fastpath for namespaces with IP forwarding enabled.
+         *
+         * Fastpath calls okfn() directly and returns NF_STOLEN, which
+         * bypasses ALL subsequent netfilter hooks in the chain. This
+         * skips the following critical subsystems:
+         *
+         *   - conntrack (nf_conntrack_in, priority -200):
+         *     Connection tracking is disabled. Without conntrack,
+         *     stateful NAT cannot function because the kernel cannot
+         *     associate reply packets with original connections.
+         *
+         *   - NAT (nft_do_chain / iptable_nat, priority -100):
+         *     DNAT/SNAT rules are never evaluated. For DNAT, inbound
+         *     destination rewriting fails. For return traffic, conntrack's
+         *     automatic reverse NAT also fails since no conntrack entry
+         *     exists.
+         *
+         *   - nftables/iptables filter chains:
+         *     All firewall rules (INPUT/FORWARD/OUTPUT filter tables)
+         *     are bypassed, disabling any security policies.
+         *
+         *   - mangle table:
+         *     TOS/DSCP marking, TTL modification, and policy routing
+         *     via fwmark are all skipped.
+         *
+         * For normal pods (forwarding=0), traffic is endpoint-only and
+         * managed by OVN at the virtual switch layer. Skipping netfilter
+         * is safe and improves performance.
+         *
+         * For gateway pods like vpc-nat-gw (forwarding=1), the pod acts
+         * as a router performing DNAT/SNAT between external networks
+         * (macvlan) and the overlay (veth). Both inbound and return
+         * traffic must traverse the full netfilter stack, so fastpath
+         * must be disabled for the gw pod namespace.
+         */
+        if (IPV4_DEVCONF_ALL(state->net, FORWARDING))
+            return NF_ACCEPT;
+
         state->okfn(state->net, state->sk, skb);
         return NF_STOLEN;
     }
