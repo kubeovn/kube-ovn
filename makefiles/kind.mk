@@ -515,6 +515,7 @@ kind-install-metallb:
 		--create-namespace \
 		--set speaker.frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
+	$(call kubectl_wait_exist,metallb-system,secret,metallb-memberlist)
 	$(call kubectl_wait_exist,metallb-system,daemonset,metallb-speaker)
 	kubectl -n metallb-system rollout status --timeout=120s daemonset metallb-speaker
 
