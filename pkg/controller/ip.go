@@ -48,7 +48,9 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
-		klog.Errorf("ip %s subnet can not change", newIP.Name)
+		klog.Warningf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
+		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
@@ -489,14 +491,20 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	} else {
 		newIPCR := ipCR.DeepCopy()
 		if newIPCR.Labels != nil {
+			// Remove old subnet dynamic label if subnet changed
+			oldSubnet := ipCR.Spec.Subnet
+			if oldSubnet != "" && oldSubnet != subnetName {
+				delete(newIPCR.Labels, oldSubnet)
+			}
 			newIPCR.Labels[util.SubnetNameLabel] = subnetName
 			newIPCR.Labels[util.NodeNameLabel] = nodeName
+			newIPCR.Labels[subnetName] = ""
 		} else {
 			newIPCR.Labels = map[string]string{
 				util.SubnetNameLabel: subnetName,
 				util.NodeNameLabel:   nodeName,
+				subnetName:           "",
 			}
-			// update not touch IP Reserved Label
 		}
 		if owner != nil {
 			// currently we only set owner for node IP, u2o IP and mcast querier ip,
