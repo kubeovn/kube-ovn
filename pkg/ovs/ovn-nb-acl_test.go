@@ -1231,6 +1231,77 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 		}
 	})
 
+	t.Run("should add igmp allow-stateless acl when allowSubnets contains ipv4 multicast", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_private_ls_igmp"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		multicastAllowSubnets := []string{
+			"10.230.0.0/16",
+			"224.0.0.0/4",
+		}
+		err = nbClient.SetLogicalSwitchPrivate(lsName, "10.244.0.0/16", nodeSwitchCidrBlock, multicastAllowSubnets)
+		require.NoError(t, err)
+
+		// verify igmp allow-stateless ACL exists
+		acl, err := nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, "igmp", false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowStateless, acl.Action)
+
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.ACLs, acl.UUID)
+	})
+
+	t.Run("should add mld allow-stateless acl when allowSubnets contains ipv6 multicast", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_private_ls_mld"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		multicastAllowSubnets := []string{
+			"fc00::af9:0/112",
+			"ff00::/8",
+		}
+		err = nbClient.SetLogicalSwitchPrivate(lsName, "fc00::af4:0/112", nodeSwitchCidrBlock, multicastAllowSubnets)
+		require.NoError(t, err)
+
+		// verify mld allow-stateless ACL exists
+		acl, err := nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, "mldv1 || mldv2", false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowStateless, acl.Action)
+
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.ACLs, acl.UUID)
+	})
+
+	t.Run("should not add igmp acl when allowSubnets has no multicast", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_private_ls_no_mcast"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		noMulticastSubnets := []string{
+			"10.230.0.0/16",
+			"10.240.0.0/16",
+		}
+		err = nbClient.SetLogicalSwitchPrivate(lsName, "10.244.0.0/16", nodeSwitchCidrBlock, noMulticastSubnets)
+		require.NoError(t, err)
+
+		// verify no igmp ACL
+		_, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, "igmp", false)
+		require.ErrorContains(t, err, "not found acl")
+
+		// verify no mld ACL
+		_, err = nbClient.GetACL(lsName, direction, util.SubnetAllowPriority, "mldv1 || mldv2", false)
+		require.ErrorContains(t, err, "not found acl")
+	})
+
 	t.Run("should print log err when ls name is empty", func(t *testing.T) {
 		err := nbClient.SetLogicalSwitchPrivate("", cidrBlock, nodeSwitchCidrBlock, allowSubnets)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
