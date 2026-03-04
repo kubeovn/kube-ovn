@@ -21,9 +21,14 @@ exit_code=0
 # check if there are any crashed pods
 for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
   podName=${pod#*/}
+  # skip pods that may have been deleted during iteration (e.g., DaemonSet rollout)
+  if ! kubectl get -n $namespace $pod &>/dev/null; then
+    echo ">>> pod $namespace/$podName no longer exists, skipping"
+    continue
+  fi
   containerTypes=(initContainer container)
   for containerType in ${containerTypes[@]}; do
-    restartCounts=(`kubectl get -n $namespace $pod -o jsonpath="{.status.${containerType}Statuses[*].restartCount}"`)
+    restartCounts=(`kubectl get -n $namespace $pod -o jsonpath="{.status.${containerType}Statuses[*].restartCount}" 2>/dev/null`) || continue
     for ((i=0; i<${#restartCounts[@]}; i++)); do
       restartCount=${restartCounts[i]}
       if [ $restartCount -eq 0 ]; then
