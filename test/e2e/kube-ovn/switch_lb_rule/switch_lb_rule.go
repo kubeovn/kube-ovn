@@ -408,6 +408,11 @@ var _ = framework.Describe("[group:slr]", func() {
 	ginkgo.It("should not delete VIPs in other VPCs when deleting SLR with same VIP IP", func() {
 		f.SkipVersionPriorTo(1, 16, "This fix was introduced in v1.16")
 
+		// Health check VIPs are only created for IPv4 endpoints.
+		if !f.HasIPv4() {
+			ginkgo.Skip("Health check VIPs require IPv4")
+		}
+
 		// --- Setup: 2 VPCs + 2 Subnets, using the same VIP IP ---
 		suffix2 := framework.RandomSuffix()
 		vpcName2 := generateVpcName(suffix2)
@@ -490,14 +495,32 @@ var _ = framework.Describe("[group:slr]", func() {
 			[]string{"app:slr-vpc2"}, nil, slrPorts)
 		_ = switchLBRuleClient.Create(slr2)
 
-		// --- Wait for health check VIP CRDs to be created ---
+		// --- Wait for health check VIP CRDs to be created and ready ---
 		vipClient := f.VipClient()
 
-		ginkgo.By("Waiting for health check VIP " + subnetName + " to be ready")
-		framework.ExpectTrue(vipClient.WaitToBeReady(subnetName, 2*time.Minute))
+		ginkgo.By("Waiting for health check VIP " + subnetName + " to be created and ready")
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			vip, err := vipClient.VipInterface.Get(context.TODO(), subnetName, metav1.GetOptions{})
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, err
+			}
+			return vip.Status.V4ip != "" || vip.Status.V6ip != "", nil
+		}, "health check VIP "+subnetName+" is ready")
 
-		ginkgo.By("Waiting for health check VIP " + subnetName2 + " to be ready")
-		framework.ExpectTrue(vipClient.WaitToBeReady(subnetName2, 2*time.Minute))
+		ginkgo.By("Waiting for health check VIP " + subnetName2 + " to be created and ready")
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			vip, err := vipClient.VipInterface.Get(context.TODO(), subnetName2, metav1.GetOptions{})
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, err
+			}
+			return vip.Status.V4ip != "" || vip.Status.V6ip != "", nil
+		}, "health check VIP "+subnetName2+" is ready")
 
 		// --- Core verification: delete SLR-1, VIP-2 must survive ---
 		ginkgo.By("Deleting SLR " + selSlrName + " and verifying VIP for " + subnetName2 + " survives")
@@ -510,7 +533,8 @@ var _ = framework.Describe("[group:slr]", func() {
 
 		// VIP for subnet-2 should still exist
 		ginkgo.By("Verifying VIP " + subnetName2 + " still exists")
-		vip2 := vipClient.Get(subnetName2)
+		vip2, err := vipClient.VipInterface.Get(context.TODO(), subnetName2, metav1.GetOptions{})
+		framework.ExpectNoError(err, "VIP "+subnetName2+" should still exist")
 		framework.ExpectNotNil(vip2)
 
 		// --- Cleanup (in order: SLRs → workloads → subnets → VPCs) ---

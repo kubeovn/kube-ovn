@@ -216,7 +216,12 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	vpcForSlr := ""
 	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
 		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
-		vpcForSlr = svc.Annotations[util.VpcAnnotation]
+		// Prefer VpcAnnotation (set by the endpoint_slice controller) but fall
+		// back to LogicalRouterAnnotation (set synchronously by the SLR
+		// controller) if the former hasn't been populated yet.
+		if vpcForSlr = svc.Annotations[util.VpcAnnotation]; vpcForSlr == "" {
+			vpcForSlr = svc.Annotations[util.LogicalRouterAnnotation]
+		}
 	}
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -231,13 +236,20 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	// we fall back to the original (unscoped) behaviour.
 	var vpcLBNames set.Set[string]
 	if vpcForSlr != "" {
-		if vpc, e := c.vpcsLister.Get(vpcForSlr); e == nil {
+		vpc, e := c.vpcsLister.Get(vpcForSlr)
+		switch {
+		case e == nil:
 			vpcLBNames = set.New(
 				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
 				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
 				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
 			)
 			vpcLBNames.Delete("")
+		case k8serrors.IsNotFound(e):
+			klog.Warningf("VPC %s not found for SLR %s, falling back to unscoped deletion", vpcForSlr, info.Name)
+		default:
+			klog.Errorf("failed to get VPC %s for SLR %s: %v, requeueing", vpcForSlr, info.Name, e)
+			return e
 		}
 	}
 
