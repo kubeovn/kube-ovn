@@ -278,8 +278,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		}
 
 		belongsToThisVpc := false
+		referencedByOtherVpc := false
 		for _, lb := range lbs {
 			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
+				referencedByOtherVpc = true
 				continue // skip LBs belonging to other VPCs
 			}
 			belongsToThisVpc = true
@@ -297,8 +299,13 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 			}
 		}
 
-		if belongsToThisVpc || vpcLBNames == nil {
+		// Only mark the LBHC for deletion if it is no longer referenced by
+		// any LB.  When other VPCs still reference the same LBHC, we must
+		// keep it alive.
+		if (belongsToThisVpc || vpcLBNames == nil) && !referencedByOtherVpc {
 			lbhcUUIDsToDelete.Insert(lbhc.UUID)
+		}
+		if belongsToThisVpc || vpcLBNames == nil {
 			if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
 				vips[vip] = struct{}{}
 			}
