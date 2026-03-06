@@ -1,0 +1,29 @@
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: eth1
+  namespace: default
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "net1",
+      "mode": "bridge",
+      "ipam": {
+        "type": "kube-ovn",
+        "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+        "provider": "eth1.default"
+      }
+    }'
+---
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: macvlan1
+spec:
+  protocol: IPv4
+  provider: eth1.default
+  cidrBlock: 10.0.1.0/24
+  gateway: 10.0.1.1
+  excludeIps:
+    - 10.0.1.1..10.0.1.10
