@@ -213,13 +213,43 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	// fallback to clean up the health-check VIP when no LBHC is found (e.g. the LBHC
 	// was already removed because the service was deleted before the SLR).
 	subnetForVip := ""
+	vpcForSlr := ""
 	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
 		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
+		// Prefer VpcAnnotation (set by the endpoint_slice controller) but fall
+		// back to LogicalRouterAnnotation (set synchronously by the SLR
+		// controller) if the former hasn't been populated yet.
+		if vpcForSlr = svc.Annotations[util.VpcAnnotation]; vpcForSlr == "" {
+			vpcForSlr = svc.Annotations[util.LogicalRouterAnnotation]
+		}
 	}
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete service %s, err: %v", name, err)
 			return err
+		}
+	}
+
+	// Collect the set of LB names belonging to this SLR's VPC so that we only
+	// touch LBHCs associated with LBs in the correct VPC.  When the VPC is
+	// unknown (e.g. the service was already deleted), vpcLBNames stays nil and
+	// we fall back to the original (unscoped) behaviour.
+	var vpcLBNames set.Set[string]
+	if vpcForSlr != "" {
+		vpc, e := c.vpcsLister.Get(vpcForSlr)
+		switch {
+		case e == nil:
+			vpcLBNames = set.New(
+				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
+				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
+				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
+			)
+			vpcLBNames.Delete("")
+		case k8serrors.IsNotFound(e):
+			klog.Warningf("VPC %s not found for SLR %s, falling back to unscoped deletion", vpcForSlr, info.Name)
+		default:
+			klog.Errorf("failed to get VPC %s for SLR %s: %v, requeueing", vpcForSlr, info.Name, e)
+			return e
 		}
 	}
 
@@ -233,12 +263,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	}
 
 	vips = make(map[string]struct{})
+	lbhcUUIDsToDelete := set.New[string]()
+
 	for _, lbhc := range lbhcs {
-		var (
-			lbs []ovnnb.LoadBalancer
-			vip string
-			ex  bool
-		)
+		var lbs []ovnnb.LoadBalancer
 
 		if lbs, err = c.OVNNbClient.ListLoadBalancers(
 			func(lb *ovnnb.LoadBalancer) bool {
@@ -249,7 +277,15 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 			return err
 		}
 
+		belongsToThisVpc := false
+		referencedByOtherVpc := false
 		for _, lb := range lbs {
+			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
+				referencedByOtherVpc = true
+				continue // skip LBs belonging to other VPCs
+			}
+			belongsToThisVpc = true
+
 			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
@@ -263,8 +299,16 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 			}
 		}
 
-		if vip, ex = lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
-			vips[vip] = struct{}{}
+		// Only mark the LBHC for deletion if it is no longer referenced by
+		// any LB.  When other VPCs still reference the same LBHC, we must
+		// keep it alive.
+		if (belongsToThisVpc || vpcLBNames == nil) && !referencedByOtherVpc {
+			lbhcUUIDsToDelete.Insert(lbhc.UUID)
+		}
+		if belongsToThisVpc || vpcLBNames == nil {
+			if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
+				vips[vip] = struct{}{}
+			}
 		}
 	}
 
@@ -276,13 +320,15 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		vips[subnetForVip] = struct{}{}
 	}
 
-	if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
-		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-			return slices.Contains(info.Vips, lbhc.Vip)
-		},
-	); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
-		return err
+	if lbhcUUIDsToDelete.Len() > 0 {
+		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
+			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+				return lbhcUUIDsToDelete.Has(lbhc.UUID)
+			},
+		); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
+			return err
+		}
 	}
 
 	for vip := range vips {
