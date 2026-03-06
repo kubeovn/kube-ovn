@@ -142,7 +142,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		u2oOverlaySubnetNameCustomVPC = "subnet-" + framework.RandomSuffix()
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
-		providerNetworkName2 = "pn2-" + framework.RandomSuffix()
+		providerNetworkName2 = "p2-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
 		netpolName = "netpol-" + framework.RandomSuffix()
 		containerID = ""
@@ -368,7 +368,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)
 
-	ginkgo.By("Deleting provider network " + providerNetworkName2)
+		ginkgo.By("Deleting provider network " + providerNetworkName2)
 		providerNetworkClient.DeleteSync(providerNetworkName2)
 
 		ginkgo.By("Getting nodes")
@@ -1220,7 +1220,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// create second provider network and update vlan to use it
 		ginkgo.By("Creating provider network " + providerNetworkName2)
 		pn2 := makeProviderNetwork(providerNetworkName2, false, linkMap)
-		_ = providerNetworkClient.CreateSync(pn2)
+		_ = providerNetworkClient.Create(pn2)
 
 		ginkgo.By("Updating vlan " + vlanName + " provider to " + providerNetworkName2)
 		originalVlan := vlanClient.Get(vlanName)
