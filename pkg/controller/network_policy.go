@@ -274,7 +274,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, true); err != nil {
+		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, true); err != nil {
 			// just log and do not return err here
 			klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 		}
@@ -421,7 +421,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, false); err != nil {
+		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, false); err != nil {
 			// just log and do not return err here
 			klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 		}

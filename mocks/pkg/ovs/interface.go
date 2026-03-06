@@ -2173,18 +2173,18 @@ func (mr *MockACLMockRecorder) SGLostACL(sg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockACL)(nil).SGLostACL), sg)
 }
 
-// SetACLLog mocks base method.
-func (m *MockACL) SetACLLog(pgName string, logEnable, isIngress bool) error {
+// SetNetPolACLLog mocks base method.
+func (m *MockACL) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "SetNetPolACLLog", pgName, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockACLMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
+// SetNetPolACLLog indicates an expected call of SetNetPolACLLog.
+func (mr *MockACLMockRecorder) SetNetPolACLLog(pgName, logEnable, isIngress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockACL)(nil).SetACLLog), pgName, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNetPolACLLog", reflect.TypeOf((*MockACL)(nil).SetNetPolACLLog), pgName, logEnable, isIngress)
 }
 
 // SetLogicalSwitchPrivate mocks base method.
@@ -5223,18 +5223,18 @@ func (mr *MockNbClientMockRecorder) SGLostACL(sg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockNbClient)(nil).SGLostACL), sg)
 }
 
-// SetACLLog mocks base method.
-func (m *MockNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error {
+// SetNetPolACLLog mocks base method.
+func (m *MockNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "SetNetPolACLLog", pgName, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockNbClientMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
+// SetNetPolACLLog indicates an expected call of SetNetPolACLLog.
+func (mr *MockNbClientMockRecorder) SetNetPolACLLog(pgName, logEnable, isIngress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockNbClient)(nil).SetACLLog), pgName, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNetPolACLLog", reflect.TypeOf((*MockNbClient)(nil).SetNetPolACLLog), pgName, logEnable, isIngress)
 }
 
 // SetAzName mocks base method.
