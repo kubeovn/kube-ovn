@@ -1209,7 +1209,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		// verify initial network_name
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			networkName, err := getLocalnetPortNetworkName(f, localnetPortName)
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
 			if err != nil {
 				framework.Logf("Failed to get localnet port: %v", err)
 				return false, nil
@@ -1229,7 +1229,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vlanClient.Patch(originalVlan, updatedVlan, 30*time.Second)
 
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			networkName, err := getLocalnetPortNetworkName(f, localnetPortName)
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
 			if err != nil {
 				framework.Logf("Failed to get localnet port: %v", err)
 				return false, nil
@@ -1245,7 +1245,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vlanClient.Patch(originalVlan, updatedVlan, 30*time.Second)
 
 		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			networkName, err := getLocalnetPortNetworkName(f, localnetPortName)
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
 			if err != nil {
 				framework.Logf("Failed to get localnet port: %v", err)
 				return false, nil
@@ -1502,7 +1502,7 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 }
 
 // getLocalnetPortNetworkName retrieves the network_name option from a localnet logical switch port
-func getLocalnetPortNetworkName(f *framework.Framework, lspName string) (string, error) {
+func getLocalnetPortNetworkName(lspName string) (string, error) {
 	cmd := fmt.Sprintf("ovn-nbctl get logical_switch_port %s options:network_name", lspName)
 	output, _, err := framework.NBExec(cmd)
 	if err != nil {
