@@ -6013,6 +6013,33 @@ fi
 echo "-------------------------------"
 echo ""
 
+echo "Wait for kube-ovn-cni to be fully ready"
+kubectl wait --for=condition=Ready pod -n kube-system -l app=kube-ovn-cni --timeout 180s
+
+# kube-ovn-cni can report Ready before kube-ovn-daemon.sock is available.
+# Ensure the Unix socket exists in each cni-server container before restarting workloads.
+for i in $(seq 1 60); do
+  all_ready=true
+  for pod in $(kubectl get pod -n kube-system -l app=kube-ovn-cni --no-headers -o custom-columns=NAME:.metadata.name); do
+    if ! kubectl exec -n kube-system "$pod" -c cni-server -- test -S /run/openvswitch/kube-ovn-daemon.sock >/dev/null 2>&1; then
+      all_ready=false
+      break
+    fi
+  done
+
+  if [[ "$all_ready" = "true" ]]; then
+    break
+  fi
+
+  if [[ "$i" -eq 60 ]]; then
+    echo "ERROR: kube-ovn-daemon.sock is not ready on all kube-ovn-cni pods"
+    kubectl get pod -n kube-system -l app=kube-ovn-cni -o wide
+    exit 1
+  fi
+
+  sleep 1
+done
+
 echo "Check to delete multus pods to reload CNI config"
 nad_count=$(
   kubectl get network-attachment-definitions.k8s.cni.cncf.io -A --no-headers 2>/dev/null \

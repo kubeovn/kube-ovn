@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -372,7 +374,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -381,7 +383,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 			},
 			expectError:    false,
@@ -418,7 +420,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -427,7 +429,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 			},
 			setupIPAM: func(c *Controller) {
@@ -465,7 +467,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -474,7 +476,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.BigInt{Int: *big.NewInt(100)}},
 				},
 			},
 			expectError:    false,
