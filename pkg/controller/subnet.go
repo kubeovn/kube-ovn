@@ -61,12 +61,13 @@ func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
 		return false
 	}
 
-	if subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs == 0 {
+	usingIPs := subnet.Status.V4UsingIPs.Add(subnet.Status.V6UsingIPs)
+	if usingIPs.EqualInt64(0) {
 		return true
 	}
 
 	if subnet.Status.U2OInterconnectionIP != "" {
-		return int(subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
+		return usingIPs.Int64() == int64(len(strings.Split(subnet.Status.U2OInterconnectionIP, ",")))
 	}
 
 	return false
@@ -297,7 +298,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	}
 
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
-	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
+	if !subnet.DeletionTimestamp.IsZero() && (usingIPs.EqualInt64(0) || (usingIPs.EqualInt64(1) && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
 		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)

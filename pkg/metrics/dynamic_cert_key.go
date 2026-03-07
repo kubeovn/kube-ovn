@@ -83,7 +83,7 @@ func tlsGetConfigForClient(config *tls.Config) (func(*tls.ClientHelloInfo) (*tls
 	// generate a context from stopCh. This is to avoid modifying files which are relying on apiserver
 	// TODO: See if we can pass ctx to the current method
 	stopCh := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel is invoked when stopCh closes
 	go func() {
 		select {
 		case <-stopCh:

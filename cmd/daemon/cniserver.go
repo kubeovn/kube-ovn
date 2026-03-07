@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -137,7 +138,15 @@ func main() {
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
+	cleanDir := filepath.Clean(configDir)
+	if filepath.Base(confName) != confName {
+		return fmt.Errorf("invalid cni config file name %q", confName)
+	}
 	cniConfPath := filepath.Join(configDir, confName)
+	cleanPath := filepath.Clean(cniConfPath)
+	if !strings.HasPrefix(cleanPath, cleanDir+string(os.PathSeparator)) {
+		return fmt.Errorf("invalid cni config path %q", cniConfPath)
+	}
 	if info, err := os.Stat(cniConfPath); err == nil {
 		// File exists, check permissions.
 		if info.Mode().Perm() == 0o600 {
@@ -155,7 +164,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
+	return os.WriteFile(cniConfPath, data, 0o600) //nolint:gosec // path sanitized and permissions enforced above
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, cfg *daemon.Configuration) (err error) {

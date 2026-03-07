@@ -236,9 +236,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		switch afterCreateSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
 			// Verify IP count changed
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&initialV4AvailableIPs.Int, 1), &afterCreateSubnet.Status.V4AvailableIPs.Int),
 				"V4AvailableIPs should decrease by 1 after VIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&initialV4UsingIPs.Int, 1), &afterCreateSubnet.Status.V4UsingIPs.Int),
 				"V4UsingIPs should increase by 1 after VIP creation")
 
 			// Verify IP range changed
@@ -253,9 +253,9 @@ var _ = framework.Describe("[group:vip]", func() {
 				"VIP IP %s should be in V4UsingIPRange %s", vipIP, afterCreateSubnet.Status.V4UsingIPRange)
 		case apiv1.ProtocolIPv6:
 			// Verify IP count changed
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&initialV6AvailableIPs.Int, 1), &afterCreateSubnet.Status.V6AvailableIPs.Int),
 				"V6AvailableIPs should decrease by 1 after VIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&initialV6UsingIPs.Int, 1), &afterCreateSubnet.Status.V6UsingIPs.Int),
 				"V6UsingIPs should increase by 1 after VIP creation")
 
 			// Verify IP range changed
@@ -270,13 +270,13 @@ var _ = framework.Describe("[group:vip]", func() {
 				"VIP IP %s should be in V6UsingIPRange %s", vipIP, afterCreateSubnet.Status.V6UsingIPRange)
 		default:
 			// Dual stack
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&initialV4AvailableIPs.Int, 1), &afterCreateSubnet.Status.V4AvailableIPs.Int),
 				"V4AvailableIPs should decrease by 1 after VIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&initialV4UsingIPs.Int, 1), &afterCreateSubnet.Status.V4UsingIPs.Int),
 				"V4UsingIPs should increase by 1 after VIP creation")
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&initialV6AvailableIPs.Int, 1), &afterCreateSubnet.Status.V6AvailableIPs.Int),
 				"V6AvailableIPs should decrease by 1 after VIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&initialV6UsingIPs.Int, 1), &afterCreateSubnet.Status.V6UsingIPs.Int),
 				"V6UsingIPs should increase by 1 after VIP creation")
 
 			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
@@ -310,9 +310,9 @@ var _ = framework.Describe("[group:vip]", func() {
 		switch afterDeleteSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&afterCreateV4AvailableIPs.Int, 1), &afterDeleteSubnet.Status.V4AvailableIPs.Int),
 				"V4AvailableIPs should increase by 1 after VIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&afterCreateV4UsingIPs.Int, 1), &afterDeleteSubnet.Status.V4UsingIPs.Int),
 				"V4UsingIPs should decrease by 1 after VIP deletion")
 
 			// Verify IP range changed
@@ -328,9 +328,9 @@ var _ = framework.Describe("[group:vip]", func() {
 				"V4UsingIPs should return to initial value after VIP deletion")
 		case apiv1.ProtocolIPv6:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&afterCreateV6AvailableIPs.Int, 1), &afterDeleteSubnet.Status.V6AvailableIPs.Int),
 				"V6AvailableIPs should increase by 1 after VIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&afterCreateV6UsingIPs.Int, 1), &afterDeleteSubnet.Status.V6UsingIPs.Int),
 				"V6UsingIPs should decrease by 1 after VIP deletion")
 
 			// Verify IP range changed
@@ -346,13 +346,13 @@ var _ = framework.Describe("[group:vip]", func() {
 				"V6UsingIPs should return to initial value after VIP deletion")
 		default:
 			// Dual stack
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&afterCreateV4AvailableIPs.Int, 1), &afterDeleteSubnet.Status.V4AvailableIPs.Int),
 				"V4AvailableIPs should increase by 1 after VIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&afterCreateV4UsingIPs.Int, 1), &afterDeleteSubnet.Status.V4UsingIPs.Int),
 				"V4UsingIPs should decrease by 1 after VIP deletion")
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&afterCreateV6AvailableIPs.Int, 1), &afterDeleteSubnet.Status.V6AvailableIPs.Int),
 				"V6AvailableIPs should increase by 1 after VIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&afterCreateV6UsingIPs.Int, 1), &afterDeleteSubnet.Status.V6UsingIPs.Int),
 				"V6UsingIPs should decrease by 1 after VIP deletion")
 
 			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
@@ -400,13 +400,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		time.Sleep(5 * time.Second)
 		newSubnet := subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs-1, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs+1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&oldSubnet.Status.V4AvailableIPs.Int, 1), &newSubnet.Status.V4AvailableIPs.Int))
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&oldSubnet.Status.V4UsingIPs.Int, 1), &newSubnet.Status.V4UsingIPs.Int))
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs-1, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs+1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&oldSubnet.Status.V6AvailableIPs.Int, 1), &newSubnet.Status.V6AvailableIPs.Int))
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&oldSubnet.Status.V6UsingIPs.Int, 1), &newSubnet.Status.V6UsingIPs.Int))
 			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
@@ -417,13 +417,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		time.Sleep(5 * time.Second)
 		newSubnet = subnetClient.Get(subnetName)
 		if newSubnet.Spec.Protocol == apiv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldSubnet.Status.V4AvailableIPs+1, newSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V4UsingIPs-1, newSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&oldSubnet.Status.V4AvailableIPs.Int, 1), &newSubnet.Status.V4AvailableIPs.Int))
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&oldSubnet.Status.V4UsingIPs.Int, 1), &newSubnet.Status.V4UsingIPs.Int))
 			framework.ExpectNotEqual(oldSubnet.Status.V4AvailableIPRange, newSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V4UsingIPRange, newSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldSubnet.Status.V6AvailableIPs+1, newSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldSubnet.Status.V6UsingIPs-1, newSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntAddInt(&oldSubnet.Status.V6AvailableIPs.Int, 1), &newSubnet.Status.V6AvailableIPs.Int))
+			framework.ExpectTrue(framework.BigIntEqual(framework.BigIntSubInt(&oldSubnet.Status.V6UsingIPs.Int, 1), &newSubnet.Status.V6UsingIPs.Int))
 			framework.ExpectNotEqual(oldSubnet.Status.V6AvailableIPRange, newSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldSubnet.Status.V6UsingIPRange, newSubnet.Status.V6UsingIPRange)
 		}
