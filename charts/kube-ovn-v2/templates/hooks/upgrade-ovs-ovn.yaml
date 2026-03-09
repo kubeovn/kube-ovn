@@ -1,4 +1,4 @@
-{{- if include "kubeovn.ovn.versionCompatibility" . -}}
+{{- if .Values.ovsOvn.upgrade -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -153,6 +153,10 @@ spec:
               value: "{{ .Values.networking.enableSsl }}"
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            - name: CHART_NAME
+              value: {{ .Chart.Name | quote }}
+            - name: CHART_VERSION
+              value: {{ .Chart.Version | quote }}
             - name: OVN_VERSION_COMPATIBILITY
               value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
           command:

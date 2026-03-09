@@ -3,14 +3,15 @@ apiVersion: apps/v1
 metadata:
   name: ovs-ovn
   namespace: {{ .Values.namespace }}
-  {{- with .Values.ovsOvn.annotations }}
   annotations:
+    {{- include "kubeovn.labels" .  | nindent 4 }}
+    {{- with .Values.ovsOvn.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .Values.ovsOvn.labels }}
+    {{- end }}
   labels:
+    {{- with .Values.ovsOvn.labels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
@@ -30,6 +31,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
+        {{- include "kubeovn.labels" . | nindent 8 }}
         app.kubernetes.io/name: kube-ovn-ovs
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.ovsOvn.podLabels }}
