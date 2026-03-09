@@ -1,4 +1,4 @@
-{{- if .Values.ovsOvn.upgrade -}}
+{{- if .Values.ovsOvn.upgrade.enabled -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -157,8 +157,10 @@ spec:
               value: {{ .Chart.Name | quote }}
             - name: CHART_VERSION
               value: {{ .Chart.Version | quote }}
+            - name: FORCE_UPGRADE
+              value: {{ .Values.ovsOvn.upgrade.force | quote }}
             - name: OVN_VERSION_COMPATIBILITY
-              value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
+              value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
           command:
             - bash
             - -eo

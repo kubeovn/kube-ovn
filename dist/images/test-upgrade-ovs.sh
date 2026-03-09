@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Import semver_compare from the original script
-# We'll use a trick to only source the function
-eval "$(sed -n '/function semver_compare {/,/^}/p' dist/images/upgrade-ovs.sh)"
+# Source the original script to get access to functions
+# We use a subshell for running tests to avoid polluting the environment
+SCRIPT_PATH="dist/images/upgrade-ovs.sh"
 
 # Test cases for semver_compare
 # expected, version1, version2
@@ -25,6 +25,9 @@ test_cases=(
 failed=0
 
 echo "Testing semver_compare..."
+# Source script in a way that doesn't execute the main block
+source "$SCRIPT_PATH"
+
 for test_case in "${test_cases[@]}"; do
   IFS=',' read -r expected v1 v2 <<< "$test_case"
   result=$(semver_compare "$v1" "$v2")
@@ -40,7 +43,6 @@ done
 export POD_NAMESPACE="kube-system"
 export CHART_NAME="kube-ovn"
 export CHART_VERSION="1.17.0"
-# new_chart_version will be kube-ovn-1.17.0 (sanitized)
 
 function test_upgrade_logic {
   local desc=$1
@@ -50,45 +52,14 @@ function test_upgrade_logic {
 
   echo "Testing: $desc"
 
-  # Mock kubectl
-  function kubectl {
-    if [[ "$*" == *"-n kube-system get ds ovs-ovn -o jsonpath='{.metadata.labels.helm\.sh/chart}{\"\n\"}{.spec.template.spec.containers[0].image}'"* ]]; then
-      echo -e "$mock_ds_info"
-    else
-      # For other kubectl calls, return dummy data or exit
-      if [[ "$*" == *"get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'"* ]]; then
-        echo "RollingUpdate"
-      else
-        echo "mock-kubectl called with: $*" >&2
-        return 0
-      fi
-    fi
-  }
-  export -f kubectl
-
-  # We need to run the script logic but stop before it hits real network/ovn-nbctl
-  # So we'll wrap the script and mock ovn-nbctl
-  function ovn-nbctl {
-    return 0
-  }
-  export -f ovn-nbctl
-
-  # Run the detection part of the script
-  # We extract the detection logic into a temporary file
-  # from "if [ -z "$OVN_VERSION_COMPATIBILITY" ]; then" 
-  # to "fi" (around line 80)
-  
-  # Set environment
-  export CHART_VERSION="$CHART_VERSION"
-  unset OVN_VERSION_COMPATIBILITY
-
-  # Use a subshell to avoid polluting current shell
-  # Capture stdout for compatibility and stderr for logs
+  # Run the detection part of the script in a subshell
   output=$(CHART_VERSION="$CHART_VERSION" \
     CHART_NAME="$CHART_NAME" \
     POD_NAMESPACE="$POD_NAMESPACE" \
+    FORCE_UPGRADE="$FORCE_UPGRADE" \
+    OVN_VERSION_COMPATIBILITY="$OVN_VERSION_COMPATIBILITY" \
     bash -c "
-      $(sed -n '/function semver_compare {/,/^}/p' dist/images/upgrade-ovs.sh)
+      source $SCRIPT_PATH
       function kubectl {
         if [[ \"\$*\" == *\"get ds ovs-ovn\"* ]]; then
           if [ -n \"$mock_ds_info\" ]; then
@@ -101,9 +72,10 @@ function test_upgrade_logic {
         fi
       }
       export -f kubectl
-      $(sed -n '/# Ported from _helpers.tpl/,/^fi/p' dist/images/upgrade-ovs.sh) > /dev/null
+      detect_ovn_compatibility > /dev/null 2>&1
       echo \$OVN_VERSION_COMPATIBILITY
     ")
+  
   result_compatibility=$(echo "$output" | tail -n 1)
   actual_exit_code=$?
   
@@ -139,6 +111,12 @@ test_upgrade_logic "Invalid image version" "kube-ovn-1.12.0\ndocker.io/kubeovn/k
 
 # 6. Compatibility switch 1.12.0 -> 22.12
 test_upgrade_logic "Upgrade from 1.12.0" "kube-ovn-1.12.0\ndocker.io/kubeovn/kube-ovn:v1.12.0" "22.12" 0
+
+# 7. Force upgrade when chart version is same
+FORCE_UPGRADE="true" test_upgrade_logic "Force upgrade (same chart version)" "kube-ovn-1.17.0\ndocker.io/kubeovn/kube-ovn:v1.15.1" "25.03" 0
+
+# 8. Specify OVN_VERSION_COMPATIBILITY manually
+OVN_VERSION_COMPATIBILITY="99.99" test_upgrade_logic "Manual OVN_VERSION_COMPATIBILITY" "kube-ovn-1.17.0\ndocker.io/kubeovn/kube-ovn:v1.15.1" "99.99" 0
 
 if [ $failed -eq 0 ]; then
   echo "ALL TESTS PASSED"

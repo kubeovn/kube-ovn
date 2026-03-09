@@ -443,10 +443,16 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration
   ovnDirectory: "/etc/origin/ovn"
 
-  # -- Enables the ovs-ovn upgrade hook.
-  # If enabled, a post-upgrade hook will be created to manage the OVS/OVN upgrade process.
+  # -- Upgrade logic for OVS/OVN.
   # @section -- OVS/OVN daemons configuration
-  upgrade: true
+  upgrade:
+    # -- Enable post-upgrade hooks to run upgrade logic of OVS/OVN.
+    enabled: true
+    # -- Force the upgrade script to run even if no version change is detected.
+    force: false
+    # -- Manually specify the OVN_VERSION_COMPATIBILITY value.
+    # If not set, it will be automatically detected based on the image version.
+    versionCompatibility: ""
 
   # @section -- OVS/OVN daemons configuration.
   ovnRemoteProbeInterval: 10000
