@@ -71,7 +71,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: steps.check.outputs.build-base == 1
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
@@ -130,7 +130,7 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: steps.check.outputs.build-dpdk-base == 1
 
       - name: Build kube-ovn-dpdk-base image
@@ -165,7 +165,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v6
         id: setup-go
         with:
