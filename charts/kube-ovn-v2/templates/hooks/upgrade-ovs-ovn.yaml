@@ -153,12 +153,6 @@ spec:
               value: "{{ .Values.networking.enableSsl }}"
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
-            - name: CHART_NAME
-              value: {{ .Chart.Name | quote }}
-            - name: CHART_VERSION
-              value: {{ .Chart.Version | quote }}
-            - name: FORCE_UPGRADE
-              value: {{ .Values.ovsOvn.upgrade.force | quote }}
             - name: OVN_VERSION_COMPATIBILITY
               value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
           command:
