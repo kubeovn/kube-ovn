@@ -3,12 +3,12 @@ apiVersion: apps/v1
 metadata:
   name: ovs-ovn
   namespace: {{ .Values.namespace }}
+  {{- with .Values.ovsOvn.annotations }}
   annotations:
-    {{- include "kubeovn.labels" .  | nindent 4 }}
-    {{- with .Values.ovsOvn.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
   labels:
+    {{- include "kubeovn.labels" .  | nindent 4 }}
     {{- with .Values.ovsOvn.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
