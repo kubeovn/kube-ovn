@@ -2679,8 +2679,8 @@ spec:
                       priority:
                         type: integer
                         description: Priority of the policy route (0-32767)
-                        min: 0
-                        max: 32767
+                        minimum: 0
+                        maximum: 32767
                       action:
                         type: string
                       match:
@@ -3804,9 +3804,9 @@ spec:
                         description: Protocol (tcp, udp, icmp, or all)
                       priority:
                         type: integer
-                        description: Rule priority (1-200)
-                        min: 1
-                        max: 200
+                        description: Rule priority (1-16384)
+                        minimum: 1
+                        maximum: 16384
                       remoteType:
                         type: string
                         description: Type of remote (address, cidr, or securityGroup)
@@ -3819,13 +3819,13 @@ spec:
                       portRangeMin:
                         type: integer
                         description: Start of port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       portRangeMax:
                         type: integer
                         description: End of port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       policy:
                         type: string
                         description: Policy action (allow, pass or deny)
@@ -3835,13 +3835,13 @@ spec:
                       sourcePortRangeMin:
                         type: integer
                         description: Start of source port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       sourcePortRangeMax:
                         type: integer
                         description: End of source port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                 egressRules:
                   type: array
                   description: Egress traffic rules for the security group
@@ -3856,9 +3856,9 @@ spec:
                         description: Protocol (tcp, udp, icmp, or all)
                       priority:
                         type: integer
-                        description: Rule priority (1-200)
-                        min: 1
-                        max: 200
+                        description: Rule priority (1-16384)
+                        minimum: 1
+                        maximum: 16384
                       remoteType:
                         type: string
                         description: Type of remote (address, cidr, or securityGroup)
@@ -3871,13 +3871,13 @@ spec:
                       portRangeMin:
                         type: integer
                         description: Start of port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       portRangeMax:
                         type: integer
                         description: End of port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       policy:
                         type: string
                         description: Policy action (allow, pass or deny)
@@ -3887,21 +3887,21 @@ spec:
                       sourcePortRangeMin:
                         type: integer
                         description: Start of source port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                       sourcePortRangeMax:
                         type: integer
                         description: End of source port range (1-65535)
-                        min: 1
-                        max: 65535
+                        minimum: 1
+                        maximum: 65535
                 allowSameGroupTraffic:
                   type: boolean
                   description: Allow traffic between pods in the same security group
                 tier:
                   type: integer
                   description: ACL tier to which the rules are added
-                  min: 0
-                  max: 1
+                  minimum: 0
+                  maximum: 1
             status:
               type: object
               properties:
