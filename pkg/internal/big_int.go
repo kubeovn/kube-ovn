@@ -48,6 +48,14 @@ func (b *BigInt) UnmarshalJSON(p []byte) error {
 	var z big.Int
 	_, ok := z.SetString(string(p), 10)
 	if !ok {
+		var f big.Float
+		if _, ok := f.SetString(string(p)); ok {
+			intVal, _ := f.Int(nil)
+			if f.Cmp(new(big.Float).SetInt(intVal)) == 0 {
+				b.Int = *intVal
+				return nil
+			}
+		}
 		return fmt.Errorf("invalid big integer: %q", p)
 	}
 	b.Int = z

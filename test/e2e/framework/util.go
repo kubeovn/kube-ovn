@@ -2,6 +2,7 @@ package framework
 
 import (
 	"fmt"
+	"math/big"
 	"math/rand/v2"
 	"net"
 	"sort"
@@ -21,6 +22,18 @@ const (
 	KubeOvnNamespace = metav1.NamespaceSystem
 	DaemonSetOvsOvn  = "ovs-ovn"
 )
+
+func BigIntAddInt(value *big.Int, delta int64) *big.Int {
+	return new(big.Int).Add(value, big.NewInt(delta))
+}
+
+func BigIntSubInt(value *big.Int, delta int64) *big.Int {
+	return new(big.Int).Sub(value, big.NewInt(delta))
+}
+
+func BigIntEqual(a, b *big.Int) bool {
+	return a.Cmp(b) == 0
+}
 
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
