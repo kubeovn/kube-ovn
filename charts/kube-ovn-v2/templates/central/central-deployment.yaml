@@ -131,7 +131,7 @@ spec:
             - name: ENABLE_COMPACT
               value: "{{ .Values.networking.enableCompact }}"
             - name: OVN_VERSION_COMPATIBILITY
-              value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
+              value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
             {{- with .Values.central.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
