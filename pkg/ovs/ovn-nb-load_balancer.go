@@ -20,7 +20,7 @@ import (
 )
 
 // CreateLoadBalancer create loadbalancer
-func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	var (
 		exist bool
 		err   error
@@ -50,7 +50,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 	}
 
 	if len(selectFields) != 0 {
-		lb.SelectionFields = []string{selectFields}
+		lb.SelectionFields = selectFields
 	}
 
 	if ops, err = c.Create(lb); err != nil {
