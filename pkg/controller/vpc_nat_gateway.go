@@ -224,6 +224,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		needToCreate, oldSts = true, nil
 	}
 	gwChanged := isVpcNatGwChanged(gw)
+	needPatchStatus := gwChanged || gw.Spec.LanIP != gw.Status.LanIP
 
 	newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
 	if err != nil {
@@ -256,6 +257,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Error(err)
 			return err
 		}
+	}
+
+	if needPatchStatus {
 		if err = c.patchNatGwStatus(key); err != nil {
 			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 			return err
@@ -1302,6 +1306,10 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	}
 	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
 		gw.Status.Affinity = gw.Spec.Affinity
+		changed = true
+	}
+	if gw.Spec.LanIP != gw.Status.LanIP {
+		gw.Status.LanIP = gw.Spec.LanIP
 		changed = true
 	}
 

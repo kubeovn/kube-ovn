@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -171,6 +173,107 @@ func TestCheckIsPodVpcNatGw(t *testing.T) {
 		assert.False(t, isVpcNatGw, "Pod with no annotations should not be VPC NAT gateway")
 		assert.Equal(t, "", vpcGwName, "Pod with no annotations should return empty")
 	})
+}
+
+func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
+	const (
+		gwName    = "test-nat-gw"
+		subnet    = "nat-subnet"
+		provider  = "net1.default.ovn"
+		lanIP     = "10.244.0.10"
+		namespace = "default"
+	)
+
+	tests := []struct {
+		name          string
+		gwSpecLanIP   string
+		givenGwName   string
+		podOwnerName  string
+		podAnnotation map[string]string
+		expectedLanIP string
+	}{
+		{
+			name:         "backfill lanIP from pod annotation",
+			gwSpecLanIP:  "",
+			givenGwName:  gwName,
+			podOwnerName: util.GenNatGwName(gwName),
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: lanIP,
+		},
+		{
+			name:         "derive gateway name from owner reference",
+			gwSpecLanIP:  "",
+			givenGwName:  "",
+			podOwnerName: util.GenNatGwName(gwName),
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: lanIP,
+		},
+		{
+			name:         "skip when spec lanIP already set",
+			gwSpecLanIP:  "10.244.0.99",
+			givenGwName:  gwName,
+			podOwnerName: util.GenNatGwName(gwName),
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: "10.244.0.99",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gwName,
+				},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Vpc:    "vpc-a",
+					Subnet: subnet,
+					LanIP:  tt.gwSpecLanIP,
+				},
+			}
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        util.GenNatGwPodName(gwName),
+					Namespace:   namespace,
+					Annotations: tt.podAnnotation,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: appsv1.SchemeGroupVersion.String(),
+							Kind:       util.KindStatefulSet,
+							Name:       tt.podOwnerName,
+						},
+					},
+				},
+			}
+
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: []*kubeovnv1.Subnet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: subnet},
+						Spec: kubeovnv1.SubnetSpec{
+							Provider: provider,
+						},
+					},
+				},
+				VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+			})
+			require.NoError(t, err)
+
+			controller := fakeController.fakeController
+			err = controller.backfillVpcNatGwLanIPFromPod(pod, tt.givenGwName)
+			require.NoError(t, err)
+
+			gotGw, err := controller.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(
+				context.Background(), gwName, metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedLanIP, gotGw.Spec.LanIP)
+		})
+	}
 }
 
 func TestGetPodKubeovnNetsNonPrimaryCNI(t *testing.T) {

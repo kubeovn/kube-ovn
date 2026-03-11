@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -343,4 +344,30 @@ func TestGetExternalSubnetNad(t *testing.T) {
 			assert.Equal(t, tt.expectedName, name, "name mismatch")
 		})
 	}
+}
+
+func TestPatchNatGwStatusSyncLanIP(t *testing.T) {
+	const gwName = "test-gw"
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: gwName},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					LanIP: "10.244.0.10",
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					LanIP: "",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	controller := fakeController.fakeController
+	require.NoError(t, controller.patchNatGwStatus(gwName))
+
+	updated, err := controller.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), gwName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "10.244.0.10", updated.Status.LanIP)
 }
