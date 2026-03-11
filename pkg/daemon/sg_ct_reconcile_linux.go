@@ -146,9 +146,36 @@ func buildPodsByZone(pods []*v1.Pod, ctZones map[string]int) map[int][]podInfo {
 	return podsByZone
 }
 
+// buildIPToSGsCache builds a map from pod IP to SG names for all pods in the
+// cluster. This is used to avoid listing all pods repeatedly for every CT entry.
+func (c *Controller) buildIPToSGsCache() (map[string][]string, error) {
+	allPods, err := c.podsLister.Pods(v1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	cache := make(map[string][]string, len(allPods))
+	for _, pod := range allPods {
+		sgs := getPodAllSGNames(pod)
+		if len(sgs) == 0 {
+			continue
+		}
+		for _, ip := range getPodAllIPs(pod) {
+			cache[ip.String()] = sgs
+		}
+	}
+	return cache, nil
+}
+
 // sweepStaleCTEntries performs one dump+flush cycle across all affected CT zones.
 // Returns the number of entries flushed.
 func (c *Controller) sweepStaleCTEntries(sgName string, sg *kubeovnv1.SecurityGroup, podsByZone map[int][]podInfo) int {
+	// Build once per sweep to avoid listing all pods for every CT entry.
+	ipToSGsCache, err := c.buildIPToSGsCache()
+	if err != nil {
+		klog.Errorf("sg %s: failed to build IP→SGs cache: %v", sgName, err)
+		return 0
+	}
+
 	allPodIPSet := make(map[string]*podInfo)
 	for _, pods := range podsByZone {
 		for i := range pods {
@@ -197,7 +224,7 @@ func (c *Controller) sweepStaleCTEntries(sgName string, sg *kubeovnv1.SecurityGr
 
 			// Check from the destination pod's ingress perspective.
 			if dstPi != nil {
-				allowed, err := c.isEntryAllowedBySGs(entry, dstPi.sgNames, false, true, sg)
+				allowed, err := c.isEntryAllowedBySGs(entry, dstPi.sgNames, false, true, sg, ipToSGsCache)
 				if err != nil {
 					klog.V(4).Infof("sg %s: error evaluating CT entry (dst): %v", sgName, err)
 				} else if !allowed {
@@ -207,7 +234,7 @@ func (c *Controller) sweepStaleCTEntries(sgName string, sg *kubeovnv1.SecurityGr
 
 			// Check from the source pod's egress perspective.
 			if !stale && srcPi != nil {
-				allowed, err := c.isEntryAllowedBySGs(entry, srcPi.sgNames, true, false, sg)
+				allowed, err := c.isEntryAllowedBySGs(entry, srcPi.sgNames, true, false, sg, ipToSGsCache)
 				if err != nil {
 					klog.V(4).Infof("sg %s: error evaluating CT entry (src): %v", sgName, err)
 				} else if !allowed {
@@ -237,6 +264,7 @@ func (c *Controller) isEntryAllowedBySGs(
 	podSGNames []string,
 	podIsSrc, podIsDst bool,
 	changedSG *kubeovnv1.SecurityGroup,
+	ipToSGsCache map[string][]string,
 ) (bool, error) {
 	for _, sgName := range podSGNames {
 		var sg *kubeovnv1.SecurityGroup
@@ -258,7 +286,7 @@ func (c *Controller) isEntryAllowedBySGs(
 			if podIsSrc {
 				remoteIP = entry.DstIP
 			}
-			if c.isPodInSG(remoteIP, sgName) {
+			if slices.Contains(ipToSGsCache[remoteIP.String()], sgName) {
 				return true, nil
 			}
 		}
@@ -268,7 +296,7 @@ func (c *Controller) isEntryAllowedBySGs(
 				if rule.Policy != kubeovnv1.SgPolicyAllow {
 					continue
 				}
-				if c.sgRuleMatchesEntry(rule, entry, entry.SrcIP) {
+				if c.sgRuleMatchesEntry(rule, entry, entry.SrcIP, ipToSGsCache) {
 					return true, nil
 				}
 			}
@@ -279,7 +307,7 @@ func (c *Controller) isEntryAllowedBySGs(
 				if rule.Policy != kubeovnv1.SgPolicyAllow {
 					continue
 				}
-				if c.sgRuleMatchesEntry(rule, entry, entry.DstIP) {
+				if c.sgRuleMatchesEntry(rule, entry, entry.DstIP, ipToSGsCache) {
 					return true, nil
 				}
 			}
@@ -290,7 +318,7 @@ func (c *Controller) isEntryAllowedBySGs(
 
 // sgRuleMatchesEntry returns true if the rule covers the given CT entry.
 // remoteIP is the IP of the peer (not the pod itself).
-func (c *Controller) sgRuleMatchesEntry(rule kubeovnv1.SecurityGroupRule, entry ovs.CTEntry, remoteIP net.IP) bool {
+func (c *Controller) sgRuleMatchesEntry(rule kubeovnv1.SecurityGroupRule, entry ovs.CTEntry, remoteIP net.IP, ipToSGsCache map[string][]string) bool {
 	isIPv6 := remoteIP.To4() == nil
 	if isIPv6 && rule.IPVersion != "ipv6" {
 		return false
@@ -323,7 +351,7 @@ func (c *Controller) sgRuleMatchesEntry(rule kubeovnv1.SecurityGroupRule, entry 
 		}
 		return cidr.Contains(remoteIP)
 	case kubeovnv1.SgRemoteTypeSg:
-		return c.isPodInSG(remoteIP, rule.RemoteSecurityGroup)
+		return slices.Contains(ipToSGsCache[remoteIP.String()], rule.RemoteSecurityGroup)
 	}
 	return false
 }
@@ -338,23 +366,6 @@ func sgProtoMatchesEntry(proto kubeovnv1.SgProtocol, protoNum int) bool {
 	default:
 		return ovs.CTProtoNumber(string(proto)) == protoNum
 	}
-}
-
-// isPodInSG returns true if the pod with the given IP belongs to sgName.
-// Checks ALL pods in the cluster (not just local) since the peer can be remote.
-func (c *Controller) isPodInSG(podIP net.IP, sgName string) bool {
-	pods, err := c.podsLister.Pods(v1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		return false
-	}
-	for _, pod := range pods {
-		for _, ip := range getPodAllIPs(pod) {
-			if ip.Equal(podIP) {
-				return slices.Contains(getPodAllSGNames(pod), sgName)
-			}
-		}
-	}
-	return false
 }
 
 // getLocalPodsWithSG returns all pods on this node that have sgName in any of
