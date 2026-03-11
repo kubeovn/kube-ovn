@@ -108,7 +108,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName, netpolName string
+	var clusterName, providerNetworkName, providerNetworkName2, vlanName, subnetName, podName, namespaceName, netpolName string
 	var vpcName string
 	var u2oPodNameUnderlay, u2oOverlaySubnetName, u2oPodNameOverlay, u2oOverlaySubnetNameCustomVPC, u2oPodOverlayCustomVPC string
 	var linkMap map[string]*iproute.Link
@@ -143,6 +143,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		u2oOverlaySubnetNameCustomVPC = "subnet-" + framework.RandomSuffix()
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
+		providerNetworkName2 = "p2-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
 		netpolName = "netpol-" + framework.RandomSuffix()
 		containerID = ""
@@ -380,6 +381,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		ginkgo.By("Deleting provider network " + providerNetworkName)
 		providerNetworkClient.DeleteSync(providerNetworkName)
+
+		ginkgo.By("Deleting provider network " + providerNetworkName2)
+		providerNetworkClient.DeleteSync(providerNetworkName2)
 
 		ginkgo.By("Getting nodes")
 		nodes, err := kind.ListNodes(clusterName, "")
@@ -1210,6 +1214,71 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		})
 		framework.ExpectNoError(err)
 	})
+
+	framework.ConformanceIt("should update localnet port network_name when vlan provider changes", func() {
+		f.SkipVersionPriorTo(1, 14, "vlan subinterfaces are not supported before 1.14.0")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 100)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		subnet := framework.MakeSubnet(subnetName, vlanName, cidr, "", "", "", nil, nil, nil)
+		_ = subnetClient.CreateSync(subnet)
+
+		localnetPortName := "localnet." + subnetName
+
+		// verify initial network_name
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
+			if err != nil {
+				framework.Logf("Failed to get localnet port: %v", err)
+				return false, nil
+			}
+			return networkName == providerNetworkName, nil
+		}, "localnet port network_name should be "+providerNetworkName)
+
+		// create second provider network and update vlan to use it
+		ginkgo.By("Creating provider network " + providerNetworkName2)
+		pn2 := makeProviderNetwork(providerNetworkName2, false, linkMap)
+		_ = providerNetworkClient.Create(pn2)
+
+		ginkgo.By("Updating vlan " + vlanName + " provider to " + providerNetworkName2)
+		originalVlan := vlanClient.Get(vlanName)
+		updatedVlan := originalVlan.DeepCopy()
+		updatedVlan.Spec.Provider = providerNetworkName2
+		vlanClient.Patch(originalVlan, updatedVlan, 30*time.Second)
+
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
+			if err != nil {
+				framework.Logf("Failed to get localnet port: %v", err)
+				return false, nil
+			}
+			return networkName == providerNetworkName2, nil
+		}, "localnet port network_name should be updated to "+providerNetworkName2)
+
+		// update vlan back to first provider
+		ginkgo.By("Updating vlan " + vlanName + " provider back to " + providerNetworkName)
+		originalVlan = vlanClient.Get(vlanName)
+		updatedVlan = originalVlan.DeepCopy()
+		updatedVlan.Spec.Provider = providerNetworkName
+		vlanClient.Patch(originalVlan, updatedVlan, 30*time.Second)
+
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			networkName, err := getLocalnetPortNetworkName(localnetPortName)
+			if err != nil {
+				framework.Logf("Failed to get localnet port: %v", err)
+				return false, nil
+			}
+			return networkName == providerNetworkName, nil
+		}, "localnet port network_name should be reverted to "+providerNetworkName)
+	})
 })
 
 func checkU2OItems(f *framework.Framework, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod, isU2OCustomVpc bool) {
@@ -1456,4 +1525,20 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 	}
 	framework.Logf("checkU2OFilterOpenFlowExist works successfully")
 	return nil
+}
+
+// getLocalnetPortNetworkName retrieves the network_name option from a localnet logical switch port
+func getLocalnetPortNetworkName(lspName string) (string, error) {
+	cmd := fmt.Sprintf("ovn-nbctl get logical_switch_port %s options:network_name", lspName)
+	output, _, err := framework.NBExec(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to get network_name for %s: %w", lspName, err)
+	}
+
+	networkName := strings.TrimSpace(string(output))
+	if networkName == "" {
+		return "", fmt.Errorf("localnet port %s not found or has no network_name", lspName)
+	}
+
+	return networkName, nil
 }
