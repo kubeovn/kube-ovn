@@ -6,18 +6,19 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
-	"github.com/neverlee/keymutex"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -39,16 +40,17 @@ type cniServerHandler struct {
 	KubeClient    kubernetes.Interface
 	KubeOvnClient clientset.Interface
 	Controller    *Controller
-	podReqKeyMux  *keymutex.KeyMutex
+	podReqKeyMux  keymutex.KeyMutex
 }
 
 func createCniServerHandler(config *Configuration, controller *Controller) *cniServerHandler {
+	numKeyLocks := runtime.NumCPU() * 2
 	csh := &cniServerHandler{
 		KubeClient:    config.KubeClient,
 		KubeOvnClient: config.KubeOvnClient,
 		Config:        config,
 		Controller:    controller,
-		podReqKeyMux:  keymutex.New(97),
+		podReqKeyMux:  keymutex.NewHashed(numKeyLocks),
 	}
 	return csh
 }
@@ -89,8 +91,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	lockKey := cniRequestLockKey(podRequest)
-	csh.podReqKeyMux.Lock(lockKey)
-	defer csh.podReqKeyMux.Unlock(lockKey)
+	csh.podReqKeyMux.LockKey(lockKey)
+	defer func() { _ = csh.podReqKeyMux.UnlockKey(lockKey) }()
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider)
 	if !exist {
@@ -451,8 +453,8 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 	lockKey := cniRequestLockKey(podRequest)
-	csh.podReqKeyMux.Lock(lockKey)
-	defer csh.podReqKeyMux.Unlock(lockKey)
+	csh.podReqKeyMux.LockKey(lockKey)
+	defer func() { _ = csh.podReqKeyMux.UnlockKey(lockKey) }()
 
 	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
