@@ -68,8 +68,8 @@ type Controller struct {
 	servicesSynced cache.InformerSynced
 	serviceQueue   workqueue.TypedRateLimitingInterface[*serviceEvent]
 
-	sgsLister    kubeovnlister.SecurityGroupLister
-	sgsSynced    cache.InformerSynced
+	sgsLister      kubeovnlister.SecurityGroupLister
+	sgsSynced      cache.InformerSynced
 	sgCTFlushQueue workqueue.TypedRateLimitingInterface[string]
 
 	caSecretLister listerv1.SecretLister
@@ -137,8 +137,8 @@ func NewController(config *Configuration,
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
-		sgsLister:    sgInformer.Lister(),
-		sgsSynced:    sgInformer.Informer().HasSynced,
+		sgsLister:      sgInformer.Lister(),
+		sgsSynced:      sgInformer.Informer().HasSynced,
 		sgCTFlushQueue: newTypedRateLimitingQueue[string]("SGCTFlush", nil),
 
 		podsLister:     podInformer.Lister(),
