@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -121,7 +120,7 @@ func (c *VMClient) Delete(name string) {
 func (c *VMClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for vm %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified vm to be ready.
@@ -250,7 +249,7 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 							},
 						},
 					},
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
 		},

@@ -15,7 +15,7 @@ ifeq ($(strip $(GO_MOD_VERSION)),)
 $(error failed to determine Go version from go.mod)
 endif
 GOTOOLCHAIN_VERSION := go$(GO_MOD_VERSION)
-MODERNIZE_ENV := GOTOOLCHAIN=$(GOTOOLCHAIN_VERSION)
+MODERNIZE_EXCLUDE := github.com/kubeovn/kube-ovn/mocks|github.com/kubeovn/kube-ovn/pkg/apis/kubeovn|github.com/kubeovn/kube-ovn/pkg/client
 
 .PHONY: build-go
 build-go:
@@ -148,11 +148,11 @@ lint:
     ifeq ($(CI),true)
 		@echo "Running in GitHub Actions"
 		golangci-lint run -v
-		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated ./...
+		go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test
     else
 		@echo "Running in local environment"
 		golangci-lint run -v --fix
-		$(MODERNIZE_ENV) go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated -fix ./...
+		go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test -fix
     endif
 
 .PHONY: scan

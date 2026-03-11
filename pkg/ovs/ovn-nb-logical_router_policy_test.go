@@ -573,14 +573,14 @@ func (suite *OvnClientTestSuite) testPolicyFilter() {
 	action := ovnnb.LogicalRouterPolicyActionAllow
 	policies := make([]*ovnnb.LogicalRouterPolicy, 0)
 
-	// create three polices
+	// create three policies
 	for i := range 3 {
 		priority := basePriority + i
 		policy := newLogicalRouterPolicy(priority, match, action, nextHops, map[string]string{"k1": "v1"})
 		policies = append(policies, policy)
 	}
 
-	// create two polices with different external-ids
+	// create two policies with different external-ids
 	for i := range 2 {
 		priority := basePriority + i
 		policy := newLogicalRouterPolicy(priority, match, action, nextHops, map[string]string{"k1": "v2"})

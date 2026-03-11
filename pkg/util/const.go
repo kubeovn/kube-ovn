@@ -13,7 +13,7 @@ import (
 const (
 	CniTypeName = "kube-ovn"
 
-	DepreciatedFinalizerName   = "kube-ovn-controller"
+	DeprecatedFinalizerName    = "kube-ovn-controller"
 	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
 	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
@@ -35,7 +35,6 @@ const (
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
 	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayAnnotationTemplate         = "%s.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
@@ -126,6 +125,7 @@ const (
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
+	NetworkPolicyForAnnotation         = "ovn.kubernetes.io/network_policy_for"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
 	ACLLogMeterAnnotation              = "ovn.kubernetes.io/acl_log_meter_rate"
 
@@ -251,8 +251,8 @@ const (
 	DpdkType    = "dpdk-port"
 	VethType    = "veth-pair"
 
-	MirrosRetryMaxTimes = 5
-	MirrosRetryInterval = 1
+	MirrorsRetryMaxTimes = 5
+	MirrorsRetryInterval = 1
 
 	ChassisRetryMaxTimes           = 5
 	ChassisCniDaemonRetryInterval  = 1
@@ -391,7 +391,8 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
-	KindPod = ObjectKind[*corev1.Pod]()
+	KindNode = ObjectKind[*corev1.Node]()
+	KindPod  = ObjectKind[*corev1.Pod]()
 
 	KindDeployment  = ObjectKind[*appsv1.Deployment]()
 	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()

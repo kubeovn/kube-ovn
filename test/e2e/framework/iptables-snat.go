@@ -67,7 +67,7 @@ func (c *IptablesSnatClient) Patch(original, modified *apiv1.IptablesSnatRule) *
 	ExpectNoError(err)
 
 	var patchedIptablesSnatRule *apiv1.IptablesSnatRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		snat, err := c.IptablesSnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables snat %q", original.Name)
@@ -99,7 +99,7 @@ func (c *IptablesSnatClient) PatchSync(original, modified *apiv1.IptablesSnatRul
 	return c.Get(snat.Name).DeepCopy()
 }
 
-// Delete deletes a iptables snat if the iptables snat exists
+// Delete deletes an iptables SNAT rule if it exists
 func (c *IptablesSnatClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesSnatRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -113,7 +113,7 @@ func (c *IptablesSnatClient) Delete(name string) {
 func (c *IptablesSnatClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables snat %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for iptables snat %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables snat is ready within timeout.

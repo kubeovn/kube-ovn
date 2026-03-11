@@ -42,7 +42,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	t.Run("create logical switch and router type port when logical switch does't exist and needRouter is true", func(t *testing.T) {
+	t.Run("create logical switch and router type port when logical switch doesn't exist and needRouter is true", func(t *testing.T) {
 		err = nbClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1,fd00::c0a8:6401", mac, true, false)
 		require.NoError(t, err)
 
@@ -85,12 +85,12 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 		require.NoError(t, err)
 	})
 
-	t.Run("should no err when router type port doest't exist", func(t *testing.T) {
+	t.Run("should no err when router type port doesn't exist", func(t *testing.T) {
 		err = nbClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", "", false, false)
 		require.NoError(t, err)
 	})
 
-	t.Run("create logical switch when logical switch does't exist and needRouter is false and randomAllocateGW is false", func(t *testing.T) {
+	t.Run("create logical switch when logical switch doesn't exist and needRouter is false and randomAllocateGW is false", func(t *testing.T) {
 		err = nbClient.CreateLogicalSwitch(lsName+"-2", lrName+"-2", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", "", false, true)
 		require.NoError(t, err)
 	})

@@ -424,8 +424,14 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Status.V6ip = v6ip
 			vip.Status.Mac = mac
 			vip.Status.Type = vip.Spec.Type
-			// TODO:// Ready = true as subnet.Status.Ready
-			// Update with labels, spec and status in one call
+
+			// Ensure finalizer is added atomically with status initialization,
+			// preventing a race where WaitToBeReady returns (V4ip is set) before
+			// handleUpdateVirtualIP has a chance to add the finalizer.
+			controllerutil.RemoveFinalizer(vip, util.DeprecatedFinalizerName)
+			controllerutil.AddFinalizer(vip, util.KubeOVNControllerFinalizer)
+
+			// Update with labels, spec, status, and finalizer in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update vip '%s', %w", key, err)
 				klog.Error(err)
@@ -526,7 +532,7 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newVip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -562,7 +568,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 		return nil
 	}
 	newVip := cachedVip.DeepCopy()
-	controllerutil.RemoveFinalizer(newVip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newVip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newVip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedVip, newVip)
 	if err != nil {
@@ -586,7 +592,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 }
 
 func (c *Controller) syncVipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	vips := &kubeovnv1.VipList{}
 	return migrateFinalizers(cl, vips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(vips.Items) {

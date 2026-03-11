@@ -219,8 +219,13 @@ var _ = framework.Describe("[group:vip]", func() {
 		testVipName := "test-vip-finalizer-" + framework.RandomSuffix()
 		testVip := makeOvnVip(namespaceName, testVipName, subnetName, "", "", "")
 		testVip = vipClient.CreateSync(testVip)
+		// Ensure the VIP is cleaned up even if the test fails early,
+		// otherwise the subnet deletion in AfterEach will time out.
+		ginkgo.DeferCleanup(func() {
+			vipClient.DeleteSync(testVipName)
+		})
 
-		// Verify VIP has finalizer
+		// Verify VIP has finalizer (CreateSync now waits for both IP and finalizer)
 		framework.ExpectContainElement(testVip.Finalizers, util.KubeOVNControllerFinalizer)
 
 		ginkgo.By("3. Wait for subnet status to be updated after VIP creation")
@@ -463,7 +468,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
-		// virtual parents should be set correctlly
+		// virtual parents should be set correctly
 		pairs := strings.Split(string(output), " ")
 		options := make(map[string]string)
 		for _, pair := range pairs {

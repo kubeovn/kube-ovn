@@ -2,7 +2,6 @@ package ovnmonitor
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/kubeovn/ovsdb"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
@@ -26,46 +26,34 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName) // #nosec G204
-	output, err := cmd.CombinedOutput()
+	output, err := ovs.OvnDatabaseControl(ovnnb.DatabaseName, "cluster/status", ovnnb.DatabaseName)
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
 		result["ovsdb-server-northbound"] = 0
 	}
-	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
+	result["ovsdb-server-northbound"] = parseDbStatus(output)
 
 	// get ovn-southbound status
-	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName) // #nosec G204
-	output, err = cmd.CombinedOutput()
+	output, err = ovs.OvnDatabaseControl(ovnsb.DatabaseName, "cluster/status", ovnsb.DatabaseName)
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
 		result["ovsdb-server-southbound"] = 0
 	}
-	result["ovsdb-server-southbound"] = parseDbStatus(string(output))
+	result["ovsdb-server-southbound"] = parseDbStatus(output)
 
 	// get ovn-northd status
-	pid, err := os.ReadFile(e.Client.Service.Northd.File.Pid.Path)
-	if err != nil {
-		klog.Errorf("read ovn-northd pid failed, err %v", err)
+	if output, err = ovs.Appctl("ovn-northd", "status"); err != nil {
+		klog.Errorf("get ovn-northd status failed, err %v", err)
+		result["ovn-northd"] = 0
+	} else if len(strings.Split(output, ":")) != 2 {
 		result["ovn-northd"] = 0
 	} else {
-		// #nosec G204
-		cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/ovn-northd.%s.ctl", strings.Trim(string(pid), "\n")), "status")
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			klog.Errorf("get ovn-northd status failed, err %v", err)
-			result["ovn-northd"] = 0
-		}
-		if len(strings.Split(string(output), ":")) != 2 {
-			result["ovn-northd"] = 0
-		} else {
-			status := strings.TrimSpace(strings.Split(string(output), ":")[1])
-			switch status {
-			case "standby":
-				result["ovn-northd"] = 2
-			case "active":
-				result["ovn-northd"] = 1
-			}
+		status := strings.TrimSpace(strings.Split(output, ":")[1])
+		switch status {
+		case "standby":
+			result["ovn-northd"] = 2
+		case "active":
+			result["ovn-northd"] = 1
 		}
 	}
 
@@ -76,24 +64,22 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	cmd := exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "cluster/status", ovnnb.DatabaseName) // #nosec G204
-	output, err := cmd.CombinedOutput()
+	output, err := ovs.OvnDatabaseControl(ovnnb.DatabaseName, "cluster/status", ovnnb.DatabaseName)
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
 	}
-	if strings.Contains(string(output), "Servers:") {
-		servers := strings.Split(string(output), "Servers:")[1]
+	if strings.Contains(output, "Servers:") {
+		servers := strings.Split(output, "Servers:")[1]
 		result["ovsdb-server-northbound"] = servers
 	}
 
 	// get ovn-southbound status
-	cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "cluster/status", ovnsb.DatabaseName) // #nosec G204
-	output, err = cmd.CombinedOutput()
+	output, err = ovs.OvnDatabaseControl(ovnsb.DatabaseName, "cluster/status", ovnsb.DatabaseName)
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
 	}
-	if strings.Contains(string(output), "Servers:") {
-		servers := strings.Split(string(output), "Servers:")[1]
+	if strings.Contains(output, "Servers:") {
+		servers := strings.Split(output, "Servers:")[1]
 		result["ovsdb-server-southbound"] = servers
 	}
 
@@ -174,15 +160,14 @@ func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 	}
 }
 
-func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
-	cmd := exec.Command("ovn-appctl", "-t", fmt.Sprintf("/var/run/ovn/ovn%s_db.ctl", direction), "cluster/status", dbName) // #nosec G204
-	output, err := cmd.CombinedOutput()
+func getClusterInfo(dbName string) (*OVNDBClusterStatus, error) {
+	output, err := ovs.OvnDatabaseControl(dbName, "cluster/status", dbName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster/status info for database %s: %w", dbName, err)
 	}
 
 	clusterStatus := &OVNDBClusterStatus{}
-	for line := range strings.SplitSeq(string(output), "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		idx := strings.Index(line, ":")
 		if idx == -1 {
 			continue
@@ -305,35 +290,21 @@ func parseDbStatus(output string) int {
 }
 
 func getDBStatus(dbName string) (bool, error) {
-	var cmd *exec.Cmd
-	var result bool
-	switch dbName {
-	case ovnnb.DatabaseName:
-		cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnnb_db.ctl", "ovsdb-server/get-db-storage-status", dbName) // #nosec G204
-	case ovnsb.DatabaseName:
-		cmd = exec.Command("ovn-appctl", "-t", "/var/run/ovn/ovnsb_db.ctl", "ovsdb-server/get-db-storage-status", dbName) // #nosec G204
-	default:
-		return false, fmt.Errorf("unknown db name %s", dbName)
-	}
-
-	output, err := cmd.CombinedOutput()
+	output, err := ovs.OvnDatabaseControl(dbName, "ovsdb-server/get-db-storage-status", dbName)
 	if err != nil {
 		klog.Errorf("get %s status failed, err %v", dbName, err)
 		return false, err
 	}
-	lines := strings.SplitSeq(string(output), "\n")
-	for line := range lines {
+	for line := range strings.SplitSeq(output, "\n") {
 		if strings.Contains(line, "status: ok") {
-			result = true
-			break
+			return true, nil
 		}
 		if strings.Contains(line, "ovsdb error") {
-			result = false
-			break
+			return false, nil
 		}
 	}
 
-	return result, nil
+	return false, nil
 }
 
 func resetLogicalSwitchMetrics() {

@@ -22,7 +22,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "ovn_status_content",
-			Help:      "OVN Health Status. The values are always 1. While the value of status label is the really status report.",
+			Help:      "OVN Health Status. The values are always 1. While the value of status label is the actual status report.",
 		},
 		[]string{
 			"hostname",
@@ -367,7 +367,7 @@ var (
 			"cluster_id",
 		})
 
-	// Todo: The metrics downside are to be implemented
+	// Todo: The metrics below are to be implemented
 	metricClusterPeerInConnInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,

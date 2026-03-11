@@ -528,7 +528,7 @@ func (c *Controller) natLabelAndAnnoOvnEip(eipName, natName, vpcName string) err
 }
 
 func (c *Controller) syncOvnEipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	eips := &kubeovnv1.OvnEipList{}
 	return migrateFinalizers(cl, eips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(eips.Items) {
@@ -543,7 +543,7 @@ func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEi
 		return nil
 	}
 	newEip := cachedEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newEip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
@@ -583,7 +583,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 		return err
 	}
 	newEip := cachedEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newEip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {

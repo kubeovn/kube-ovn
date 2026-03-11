@@ -132,7 +132,7 @@ func (c *OVNNbClient) DeleteBFD(uuid string) error {
 		return err
 	}
 	if err = c.Transact("bfd-del", ops); err != nil {
-		err = fmt.Errorf("failed to delete BFD with with UUID %s: %w", uuid, err)
+		err = fmt.Errorf("failed to delete BFD with UUID %s: %w", uuid, err)
 		klog.Error(err)
 		return err
 	}
@@ -157,7 +157,7 @@ func (c *OVNNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 		}
 		klog.Infof("delete lrp %s BFD dst ip %s", lrpName, bfd.DstIP)
 		if err = c.Transact("bfd-del", ops); err != nil {
-			err := fmt.Errorf("failed to delete BFD with with UUID %s: %w", bfd.UUID, err)
+			err := fmt.Errorf("failed to delete BFD with UUID %s: %w", bfd.UUID, err)
 			klog.Error(err)
 			return err
 		}

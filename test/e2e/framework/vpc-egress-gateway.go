@@ -28,10 +28,10 @@ type VpcEgressGatewayClient struct {
 	v1.VpcEgressGatewayInterface
 }
 
-func NewVpcEgressGatewayClient(cs clientset.Interface, namespapce string) *VpcEgressGatewayClient {
+func NewVpcEgressGatewayClient(cs clientset.Interface, namespace string) *VpcEgressGatewayClient {
 	return &VpcEgressGatewayClient{
-		namespace:                 namespapce,
-		VpcEgressGatewayInterface: cs.KubeovnV1().VpcEgressGateways(namespapce),
+		namespace:                 namespace,
+		VpcEgressGatewayInterface: cs.KubeovnV1().VpcEgressGateways(namespace),
 	}
 }
 
@@ -43,11 +43,11 @@ func (f *Framework) VpcEgressGatewayClient() *VpcEgressGatewayClient {
 	}
 }
 
-func (f *Framework) VpcEgressGatewayClientNS(namespapce string) *VpcEgressGatewayClient {
+func (f *Framework) VpcEgressGatewayClientNS(namespace string) *VpcEgressGatewayClient {
 	return &VpcEgressGatewayClient{
 		f:                         f,
-		namespace:                 namespapce,
-		VpcEgressGatewayInterface: f.KubeOVNClientSet.KubeovnV1().VpcEgressGateways(namespapce),
+		namespace:                 namespace,
+		VpcEgressGatewayInterface: f.KubeOVNClientSet.KubeovnV1().VpcEgressGateways(namespace),
 	}
 }
 
@@ -72,7 +72,7 @@ func (c *VpcEgressGatewayClient) CreateSync(gateway *apiv1.VpcEgressGateway) *ap
 	_ = c.Create(gateway)
 	return c.WaitUntil(gateway.Name, func(g *apiv1.VpcEgressGateway) (bool, error) {
 		return g.Ready(), nil
-	}, "Ready", 2*time.Second, timeout)
+	}, "Ready", poll, timeout)
 }
 
 // Patch patches the gateway
@@ -83,7 +83,7 @@ func (c *VpcEgressGatewayClient) Patch(original, modified *apiv1.VpcEgressGatewa
 	ExpectNoError(err)
 
 	var patchedGateway *apiv1.VpcEgressGateway
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		g, err := c.VpcEgressGatewayInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vpc-egress-gateway %s/%s", original.Namespace, original.Name)
@@ -109,7 +109,7 @@ func (c *VpcEgressGatewayClient) PatchSync(original, modified *apiv1.VpcEgressGa
 	_ = c.Patch(original, modified)
 	return c.WaitUntil(original.Name, func(g *apiv1.VpcEgressGateway) (bool, error) {
 		return g.Ready(), nil
-	}, "Ready", 2*time.Second, timeout)
+	}, "Ready", poll, timeout)
 }
 
 // Delete deletes a vpc-egress-gateway if the vpc-egress-gateway exists
@@ -126,7 +126,7 @@ func (c *VpcEgressGatewayClient) Delete(name string) {
 func (c *VpcEgressGatewayClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for vpc-egress-gateway %s/%s to disappear", c.namespace, name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for vpc-egress-gateway %s/%s to disappear", c.namespace, name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.

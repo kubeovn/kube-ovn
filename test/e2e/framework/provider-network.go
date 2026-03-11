@@ -75,7 +75,7 @@ func (c *ProviderNetworkClient) Patch(original, modified *apiv1.ProviderNetwork)
 	ExpectNoError(err)
 
 	var patchedProviderNetwork *apiv1.ProviderNetwork
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		pn, err := c.ProviderNetworkInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch provider network %q", original.Name)
@@ -121,7 +121,7 @@ func (c *ProviderNetworkClient) Delete(name string) {
 func (c *ProviderNetworkClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for provider network %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for provider network %q to disappear", name)
 }
 
 func isProviderNetworkConditionSetAsExpected(pn *apiv1.ProviderNetwork, node string, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {

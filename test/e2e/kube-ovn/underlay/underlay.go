@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
 	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -56,7 +57,7 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Waiting for using ips count of subnet " + subnetName + " to be " + fmt.Sprintf("%.0f", expectedUsingIPs))
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if (subnet.Status.V4AvailableIPs != 0 && subnet.Status.V4UsingIPs != expectedUsingIPs) ||
 			(subnet.Status.V6AvailableIPs != 0 && subnet.Status.V6UsingIPs != expectedUsingIPs) {
@@ -65,14 +66,13 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 			return false, nil
 		}
 		return true, nil
-	}, "")
+	}, fmt.Sprintf("using IPs count of subnet %s to be %.0f", subnetName, expectedUsingIPs))
 }
 
 func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(1*time.Second, 3*time.Second, func(_ context.Context) (bool, error) {
-		ginkgo.By("Waiting for U2OInterconnection status of subnet " + subnetName + " to be " + strconv.FormatBool(enableU2O))
+	framework.WaitUntil(1*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		subnet := subnetClient.Get(subnetName)
 		if enableU2O {
 			if !f.VersionPriorTo(1, 11) {
@@ -88,17 +88,17 @@ func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient
 					return true, nil
 				}
 			}
-			ginkgo.By("Keep waiting for U2O to be true: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
+			framework.Logf("keep waiting for U2O to be true: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
+				subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 		} else {
 			if subnet.Status.U2OInterconnectionIP == "" && subnet.Status.U2OInterconnectionVPC == "" {
-				framework.Logf("current disable U2O subnet status: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
-					subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 				return true, nil
 			}
-			ginkgo.By("Keep waiting for U2O to be false: current enable U2O subnet status: U2OInterconnectionIP = " + subnet.Status.U2OInterconnectionIP + ", U2OInterconnectionVPC = " + subnet.Status.U2OInterconnectionVPC)
+			framework.Logf("keep waiting for U2O to be false: U2OInterconnectionIP = %s, U2OInterconnectionVPC = %s",
+				subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionVPC)
 		}
 		return false, nil
-	}, "")
+	}, fmt.Sprintf("U2OInterconnection status of subnet %s to be %v", subnetName, enableU2O))
 }
 
 var _ = framework.SerialDescribe("[group:underlay]", func() {
@@ -375,7 +375,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Waiting for ovs bridge to disappear")
 		deadline := time.Now().Add(time.Minute)
 		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
 		}
 
@@ -1077,7 +1077,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 
 		// create a second VLAN with the same ID
 		ginkgo.By("Creating conflict vlan subnet2 " + conflictVlanSubnet2Name)
-		time.Sleep(10 * time.Second)
+		// wait for conflictVlan1 to be processed by the controller before creating the conflicting vlan
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			v := vlanClient.Get(conflictVlan1Name)
+			return !v.Status.Conflict, nil
+		}, fmt.Sprintf("vlan %s should be processed and non-conflicting", conflictVlan1Name))
 
 		conflictVlan2 := framework.MakeVlan(conflictVlan2Name, providerNetworkName, 100)
 		_ = vlanClient.Create(conflictVlan2)
@@ -1085,8 +1089,11 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
 		conflictVlanSubnet2 := framework.MakeSubnet(conflictVlanSubnet2Name, conflictVlan2Name, cidr2, "", "", "", nil, nil, []string{namespaceName})
 		_ = subnetClient.Create(conflictVlanSubnet2)
-		// wait for conflict vlan subnet to be created
-		time.Sleep(10 * time.Second)
+		// wait for the controller to detect the conflict
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			v := vlanClient.Get(conflictVlan2Name)
+			return v.Status.Conflict, nil
+		}, fmt.Sprintf("vlan %s should be detected as conflicting", conflictVlan2Name))
 
 		// check
 		conflictVlan1 = vlanClient.Get(conflictVlan1Name)
@@ -1121,12 +1128,18 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		testLabelValue := "selected"
 
 		ginkgo.By("Adding test label to selected node " + selectedNodeName)
-		selectedNode := &k8sNodes.Items[0]
-		if selectedNode.Labels == nil {
-			selectedNode.Labels = make(map[string]string)
-		}
-		selectedNode.Labels[testLabelKey] = testLabelValue
-		_, err = cs.CoreV1().Nodes().Update(context.Background(), selectedNode, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			node, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[testLabelKey] = testLabelValue
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+			return updateErr
+		})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Creating provider network with nodeSelector " + providerNetworkName)
@@ -1170,13 +1183,19 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNotContainElement(pn.Status.ReadyNodes, nonSelectedUpdatedNode.Name)
 
 		ginkgo.By("Cleaning up test label from selected node")
-		cleanupNode, err := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		if cleanupNode.Labels != nil {
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			cleanupNode, getErr := cs.CoreV1().Nodes().Get(context.Background(), selectedNodeName, metav1.GetOptions{})
+			if getErr != nil {
+				return getErr
+			}
+			if cleanupNode.Labels == nil {
+				return nil
+			}
 			delete(cleanupNode.Labels, testLabelKey)
-			_, err = cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
-			framework.ExpectNoError(err)
-		}
+			_, updateErr := cs.CoreV1().Nodes().Update(context.Background(), cleanupNode, metav1.UpdateOptions{})
+			return updateErr
+		})
+		framework.ExpectNoError(err)
 	})
 })
 
@@ -1353,20 +1372,21 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(time.Second, 10*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		cmd := "ovn-nbctl lr-policy-list " + vpcName
 		output, _, err := framework.NBExec(cmd)
 		if err != nil {
 			return false, err
 		}
-		outputStr := string(output)
-		for line := range strings.SplitSeq(outputStr, "\n") {
-			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) == expectPolicyExist {
-				return true, nil
+		found := false
+		for line := range strings.SplitSeq(string(output), "\n") {
+			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
+				found = true
+				break
 			}
 		}
-		return false, nil
-	}, "")
+		return found == expectPolicyExist, nil
+	}, fmt.Sprintf("policy %q exist=%v in vpc %s", hitPolicyStr, expectPolicyExist, vpcName))
 }
 
 func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, subnet *apiv1.Subnet, expectRuleExist bool) error {
@@ -1389,18 +1409,17 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001", node.Name(), pn.Name)
 			}
 
-			success := false
-			for range 3 {
+			var matchStr string
+			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
+				matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
+			} else {
+				matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
+			}
+
+			var success bool
+			for deadline := time.Now().Add(30 * time.Second); ; {
 				output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 				outputStr := string(output)
-
-				var matchStr string
-				if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-					matchStr = fmt.Sprintf("priority=10000,arp,in_port=1,arp_spa=%s,arp_tpa=%s,arp_op=1", gw, u2oIPs[index])
-				} else {
-					matchStr = "priority=10000,icmp6,in_port=1,icmp_type=135,nd_target=" + u2oIPs[index]
-				}
-
 				framework.Logf("matchStr rule %s", matchStr)
 				framework.Logf("outputStr rule %s", outputStr)
 				ruleExist := strings.Contains(outputStr, matchStr)
@@ -1408,15 +1427,17 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 					success = true
 					break
 				}
-
-				time.Sleep(5 * time.Second)
+				if time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(2 * time.Second)
 			}
 
 			if !success {
 				if expectRuleExist {
-					return errors.New("expected rule does not exist after 3 attempts")
+					return errors.New("expected rule does not exist after 30s")
 				}
-				return errors.New("unexpected rule exists after 3 attempts")
+				return errors.New("unexpected rule exists after 30s")
 			}
 		}
 	}

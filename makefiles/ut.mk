@@ -2,7 +2,7 @@
 
 .PHONY: ut
 ut:
-	ginkgo -mod=mod --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
+	$(GINKGO) --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
 	go test -coverprofile=profile.cov $$(go list ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
 
 .PHONY: ovs-sandbox
@@ -29,8 +29,8 @@ cover:
 
 .PHONY: ginkgo-cover
 ginkgo-cover:
-	if [ -f test/unittest/cover.out ]; then rm test/unittest/cover.out; fi
-	cd test/unittest && ginkgo -r -cover -output-dir=. -coverprofile=cover.out -covermode=atomic -coverpkg=github.com/kubeovn/kube-ovn/pkg/ipam
+	$(RM) test/unittest/cover.out
+	cd test/unittest && $(GINKGO) -r -cover -output-dir=. -coverprofile=cover.out -covermode=atomic -coverpkg=github.com/kubeovn/kube-ovn/pkg/ipam
 	go tool cover -func=test/unittest/cover.out | grep -v "100.0%"
 	go tool cover -html=test/unittest/cover.out -o test/unittest/cover.html
 

@@ -125,6 +125,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- with .Values.pinger.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs

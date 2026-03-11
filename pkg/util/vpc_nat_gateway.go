@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -58,14 +59,45 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
-// GenNatGwPodAnnotations returns the Pod annotations for a NAT gateway
-func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName string) map[string]string {
-	return map[string]string{
-		VpcNatGatewayAnnotation:      gw.Name,
-		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName),
-		LogicalSwitchAnnotation:      gw.Spec.Subnet,
-		IPAddressAnnotation:          gw.Spec.LanIP,
+// GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
+// userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
+// are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
+// users specify extra NADs in gw.Annotations.
+func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
+	p := provider
+	if p == "" {
+		p = OvnProvider
 	}
+
+	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+	if additionalNetworks != "" {
+		attachedNetworks = additionalNetworks + ", " + attachedNetworks
+	}
+
+	// Create a new map to avoid modifying the input map (which may be from informer cache)
+	result := make(map[string]string, len(userAnnotations)+5)
+	maps.Copy(result, userAnnotations)
+
+	// Set system annotations (overwrites any conflicting user annotations)
+	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+	result[VpcNatGatewayAnnotation] = gw.Name
+	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
+	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+
+	// We're using a custom provider, we need to override the default network of the pod so that the
+	// default VPC/Subnet of the cluster isn't accidentally injected.
+	if p != OvnProvider {
+		// Subdivide the provider so we can infer the namespace/name of the NetworkAttachmentDefinition
+		providerSplit := strings.Split(provider, ".")
+		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {
+			return nil, fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", provider)
+		}
+
+		name, namespace := providerSplit[0], providerSplit[1]
+		result[DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", namespace, name)
+	}
+
+	return result, nil
 }
 
 // GenNatGwBgpSpeakerContainer crafts a BGP speaker container for a VPC gateway
@@ -76,7 +108,7 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	args := []string{
-		"--nat-gw-mode", // Force speaker to run in  NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
+		"--nat-gw-mode", // Force speaker to run in NAT GW mode, we're not announcing Pod IPs or Services, only EIPs
 	}
 
 	if speakerParams.RouterID != "" { // Override default auto-selected RouterID

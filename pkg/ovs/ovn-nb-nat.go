@@ -283,7 +283,7 @@ func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, igno
 	}
 
 	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
-		err := errors.New("nat type must one of [ snat, dnat_and_snat ]")
+		err := errors.New("nat type must be one of [ snat, dnat_and_snat ]")
 		klog.Error(err)
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (c *OVNNbClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac,
 	}
 
 	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
-		err := errors.New("nat type must one of [ snat, dnat_and_snat ]")
+		err := errors.New("nat type must be one of [ snat, dnat_and_snat ]")
 		klog.Error(err)
 		return nil, err
 	}

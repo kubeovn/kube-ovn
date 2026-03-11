@@ -153,7 +153,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancer() {
 		require.ErrorContains(t, err, "not found load balancer")
 	})
 
-	t.Run("no err when not found load balancerand ignoreNotFound is true", func(t *testing.T) {
+	t.Run("no err when not found load balancer and ignoreNotFound is true", func(t *testing.T) {
 		t.Parallel()
 		_, err := nbClient.GetLoadBalancer("test-get-lr-non-existent", true)
 		require.NoError(t, err)
@@ -199,7 +199,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 
 	t.Run("has custom filter", func(t *testing.T) {
 		t.Parallel()
-		t.Run("fliter by name", func(t *testing.T) {
+		t.Run("filter by name", func(t *testing.T) {
 			t.Parallel()
 
 			except := lbNames[1:]
@@ -221,7 +221,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 			require.ElementsMatch(t, lbNames[:1], newLbNames)
 		})
 
-		t.Run("fliter by tcp protocol", func(t *testing.T) {
+		t.Run("filter by tcp protocol", func(t *testing.T) {
 			t.Parallel()
 
 			for _, p := range protocol {

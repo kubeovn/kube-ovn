@@ -18,9 +18,11 @@ spec:
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
+    {{- if eq (include "kubeovn.ovs-ovn.updateStrategy" .) "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: {{ .Values.ovsOvn.updateStrategy.maxSurge }}
+      maxUnavailable: {{ .Values.ovsOvn.updateStrategy.maxUnavailable }}
+    {{- end }}
   template:
     metadata:
       {{- with .Values.ovsOvn.podAnnotations }}
@@ -45,6 +47,10 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
+      {{- with .Values.ovsOvn.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -138,6 +144,9 @@ spec:
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteOpenflowInterval }}"
+            {{- with .Values.ovsOvn.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /usr/local/sbin
               name: usr-local-sbin
@@ -183,8 +192,10 @@ spec:
           resources:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
+      {{- with .Values.ovsOvn.nodeSelector }}
       nodeSelector:
-        kubernetes.io/os: "linux"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: usr-local-sbin
           emptyDir: {}

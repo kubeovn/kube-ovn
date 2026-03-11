@@ -15,6 +15,8 @@ DEBUG_TAG = $(shell cat VERSION)-debug
 LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 
+GINKGO = go tool github.com/onsi/ginkgo/v2/ginkgo
+
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
 FRR_VERSION = 9.1.3
@@ -23,7 +25,7 @@ FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 CLAB_IMAGE = ghcr.io/srl-labs/clab:0.72.0
 
 # renovate: datasource=github-releases depName=multus packageName=k8snetworkplumbingwg/multus-cni
-MULTUS_VERSION = v4.2.3
+MULTUS_VERSION = v4.2.4
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
@@ -34,7 +36,7 @@ METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:$(METALLB_VERSION)
 
 # renovate: datasource=github-releases depName=kubevirt packageName=kubevirt/kubevirt
-KUBEVIRT_VERSION = v1.7.0
+KUBEVIRT_VERSION = v1.7.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -44,11 +46,11 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
-CILIUM_VERSION = v1.18.5
+CILIUM_VERSION = v1.18.6
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
-CERT_MANAGER_VERSION = v1.19.2
+CERT_MANAGER_VERSION = v1.19.4
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -184,6 +186,7 @@ check-kube-ovn-pod-restarts:
 
 .PHONY: install-chart
 install-chart:
+	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
@@ -248,6 +251,7 @@ upgrade-chart:
 
 .PHONY: install-chart-v2
 install-chart-v2:
+	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \

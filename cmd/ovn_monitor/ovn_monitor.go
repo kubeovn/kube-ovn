@@ -58,7 +58,7 @@ func CmdMain() {
 		}
 	} else {
 		klog.Info("metrics server is disabled")
-		listerner, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.MetricsPort)})
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.MetricsPort)})
 		if err != nil {
 			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddrs[0], config.MetricsPort))
 		}
@@ -74,7 +74,7 @@ func CmdMain() {
 				IdleTimeout:       90 * time.Second,
 				ReadHeaderTimeout: 32 * time.Second,
 			},
-			Listener: listerner,
+			Listener: listener,
 		}
 		go func() {
 			if err = svr.Start(ctx); err != nil {

@@ -27,7 +27,7 @@ func (v *ValidatingHook) VipCreateHook(ctx context.Context, req admission.Reques
 	if err := v.ValidateVip(ctx, &vip); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Request) admission.Response {
@@ -47,11 +47,11 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 		} else {
-			err := errors.New("vip has been assigned, not support change")
+			err := errors.New("vip has been assigned, does not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error {

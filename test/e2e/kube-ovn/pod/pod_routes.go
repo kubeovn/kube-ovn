@@ -70,7 +70,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 		ginkgo.By("Deleting pod " + podName + " with north gateway annotation")
 		f.PodClientNS(namespaceName).DeleteSync(podName)
-		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			out, _, err = framework.NBExec(nbCmd)
 			if err == nil && strings.TrimSpace(string(out)) == "" {
 				return true, nil
@@ -93,7 +93,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		deployClient.SetScale(deploy.Name, 1)
 		deployClient.RolloutStatus(deploy.Name)
 
-		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			out, _, err = framework.NBExec(nbCmd)
 			if err == nil && strings.TrimSpace(string(out)) == "" {
 				return true, nil

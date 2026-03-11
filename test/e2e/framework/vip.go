@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -58,10 +59,14 @@ func (c *VipClient) CreateSync(vip *apiv1.Vip) *apiv1.Vip {
 }
 
 // WaitToBeReady returns whether the ovn vip is ready within timeout.
+// A VIP is considered ready when it has an IP assigned AND has the controller finalizer,
+// ensuring the controller has fully processed the VIP before tests proceed.
 func (c *VipClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	Logf("Waiting up to %v for ovn vip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.V4ip != "" || c.Get(name).Status.V6ip != "" {
+		vip := c.Get(name)
+		if (vip.Status.V4ip != "" || vip.Status.V6ip != "") &&
+			slices.Contains(vip.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 			Logf("ovn vip %s is ready", name)
 			return true
 		}
@@ -79,7 +84,7 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 	ExpectNoError(err)
 
 	var patchedVip *apiv1.Vip
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.VipInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vip %q", original.Name)
@@ -113,7 +118,7 @@ func (c *VipClient) Delete(name string) {
 func (c *VipClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ovn vip %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified OVN VIP to disappear.

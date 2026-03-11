@@ -17,7 +17,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	"github.com/onsi/ginkgo/v2"
@@ -132,18 +131,33 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
+	expectedCount := len(pods.Items)
 	dbServers := make(map[string]map[string]string)
 	for _, db := range [...]string{"nb", "sb"} {
-		ginkgo.By("Getting ovn" + db + " db server ids on all ovn-central pods")
+		ginkgo.By("Waiting for ovn" + db + " db cluster to show all servers on every ovn-central pod")
 		for pod := range slices.Values(pods.Items) {
-			stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
-			framework.ExpectNoError(err, fmt.Sprintf("failed to get ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr))
-			status := parseClusterStatus(stdout)
-			framework.ExpectHaveLen(status.Servers, len(pods.Items), "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
+			var lastStdout, lastStderr string
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				if err != nil {
+					return false, nil
+				}
+				lastStdout, lastStderr = stdout, stderr
+				var count int
+				for line := range strings.SplitSeq(stdout, "\n") {
+					if slices.Contains(strings.Fields(line), "at") {
+						count++
+					}
+				}
+				return count == expectedCount, nil
+			}, fmt.Sprintf("ovn%s db on pod %s to show %d servers", db, pod.Name, expectedCount))
+
+			status := parseClusterStatus(lastStdout)
+			framework.ExpectHaveLen(status.Servers, expectedCount, "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, lastStdout, lastStderr)
 			if len(dbServers[db]) == 0 {
 				dbServers[db] = maps.Clone(status.Servers)
 			} else {
-				framework.ExpectEqual(status.Servers, dbServers[db], "inconsistent servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr)
+				framework.ExpectEqual(status.Servers, dbServers[db], "inconsistent servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, lastStdout, lastStderr)
 			}
 		}
 	}
@@ -215,7 +229,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	deployClient.SetScale(deploy.Name, replicas-1)
 
 	ginkgo.By("Waiting for an ovn-central pod to be deleted")
-	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		pods, err := deployClient.GetAllPods(deploy)
 		if err != nil {
 			return false, err
@@ -273,9 +287,11 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	newNodes.Clear()
 	for pod := range slices.Values(pods.Items) {
 		newNodes.Insert(pod.Spec.NodeName)
-		ginkgo.By("Checking whether db file " + dbFile + " on node " + pod.Spec.NodeName + " is healthy")
-		stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
-		framework.ExpectNoError(err, fmt.Sprintf("failed to check db file %q: stdout = %q, stderr = %q", dbFile, stdout, stderr))
+		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy")
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
+			return err == nil, nil
+		}, fmt.Sprintf("db file %s on node %s to be healthy", dbFile, pod.Spec.NodeName))
 	}
 	framework.ExpectEqual(newNodes, nodes, "the set of nodes hosting ovn-central pods should be the same as before")
 
@@ -314,7 +330,7 @@ var _ = framework.Describe("[group:ha]", func() {
 			framework.ExpectNoError(err, "getting nodes in kind cluster")
 			framework.ExpectNotEmpty(nodes)
 			for node := range slices.Values(nodes) {
-				kindNodes[node.Name()] = ptr.To(node)
+				kindNodes[node.Name()] = new(node)
 			}
 		}
 	})

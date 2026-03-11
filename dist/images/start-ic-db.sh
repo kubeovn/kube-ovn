@@ -57,6 +57,14 @@ function gen_conn_str {
     echo "$x"
 }
 
+function gen_conn_addr {
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+        echo "tcp:[$1]:$2"
+    else
+        echo "ssl:[$1]:$2"
+    fi
+}
+
 function ovn_db_pre_start() {
     local db=""
     local port=""
@@ -230,8 +238,8 @@ else
     elif [ "$PROTOCOL" = "dual" ]; then
       TS_CIDR=${TS_CIDR:-"169.254.100.0/24,fe80:a9fe:64::/112"}
     fi
-    ovn-ic-nbctl --may-exist ts-add "$TS_NAME"
-    ovn-ic-nbctl set Transit_Switch ts external_ids:subnet="$TS_CIDR"
+    ovn-ic-nbctl \
+        --may-exist ts-add "$TS_NAME" -- \
+        set Transit_Switch "$TS_NAME" external_ids:subnet="$TS_CIDR" external_ids:vendor=kube-ovn
     tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
 fi
-

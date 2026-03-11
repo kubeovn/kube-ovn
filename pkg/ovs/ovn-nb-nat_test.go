@@ -261,7 +261,7 @@ func (suite *OvnClientTestSuite) testUpdateNat() {
 
 	t.Run("update nat", func(t *testing.T) {
 		externalMac := "00:00:00:08:0a:de"
-		// filed update
+		// field update
 		nat.ExternalMAC = &externalMac
 		err = nbClient.UpdateNat(nat, &nat.ExternalMAC)
 		require.Nil(t, err)
@@ -747,7 +747,7 @@ func (suite *OvnClientTestSuite) testNewNat() {
 	t.Run("natType empty", func(t *testing.T) {
 		t.Parallel()
 		nat, err := nbClient.newNat(lrName, "", externalIP, logicalIP, "", "")
-		require.ErrorContains(t, err, "nat type must one of [ snat, dnat_and_snat ]")
+		require.ErrorContains(t, err, "nat type must be one of [ snat, dnat_and_snat ]")
 		require.Nil(t, nat)
 	})
 
@@ -1023,7 +1023,7 @@ func (suite *OvnClientTestSuite) testGetNatValidations() {
 
 	t.Run("get nat with invalid type", func(t *testing.T) {
 		nat, err := nbClient.GetNat(lrName, "invalid-type", externalIP, logicalIP, false)
-		require.ErrorContains(t, err, "nat type must one of [ snat, dnat_and_snat ]")
+		require.ErrorContains(t, err, "nat type must be one of [ snat, dnat_and_snat ]")
 		require.Nil(t, nat)
 	})
 
@@ -1070,7 +1070,7 @@ func (suite *OvnClientTestSuite) testGetNatValidations() {
 		require.NoError(t, err)
 
 		nat, err := nbClient.GetNat(lrName, "", externalIP, logicalIP, false)
-		require.ErrorContains(t, err, "nat type must one of [ snat, dnat_and_snat ]")
+		require.ErrorContains(t, err, "nat type must be one of [ snat, dnat_and_snat ]")
 		require.Nil(t, nat)
 	})
 }

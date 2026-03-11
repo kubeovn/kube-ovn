@@ -12,7 +12,6 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -60,7 +59,7 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 			return fmt.Errorf("add policy to logical router %s: %w", lrName, err)
 		}
 	} else if !maps.Equal(policyFound.ExternalIDs, externalIDs) {
-		policy := ptr.To(*policyFound)
+		policy := new(*policyFound)
 		policy.ExternalIDs = externalIDs
 		ops, err := c.Where(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {
@@ -123,7 +122,7 @@ func (c *OVNNbClient) BatchAddLogicalRouterPolicy(lrName string, policies ...*ov
 		}
 	}
 	if len(needUpdatePolicy) > 0 {
-		if err := c.batchUpdatetLogicalRouterPolicies(needUpdatePolicy); err != nil {
+		if err := c.batchUpdateLogicalRouterPolicies(needUpdatePolicy); err != nil {
 			return err
 		}
 	}
@@ -321,7 +320,7 @@ func (c *OVNNbClient) ClearLogicalRouterPolicy(lrName string) error {
 	ops, err := c.UpdateLogicalRouterOp(lr, &lr.Policies)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for clear logical router %s policy: %w", lrName, err)
+		return fmt.Errorf("generate operations for clearing logical router %s policy: %w", lrName, err)
 	}
 	if err = c.Transact("lr-policy-clear", ops); err != nil {
 		klog.Error(err)
@@ -576,10 +575,10 @@ func (c *OVNNbClient) batchCreateLogicalRouterPolicies(lrName string, policies [
 	return nil
 }
 
-func (c *OVNNbClient) batchUpdatetLogicalRouterPolicies(updateMap map[*ovnnb.LogicalRouterPolicy]*ovnnb.LogicalRouterPolicy) error {
+func (c *OVNNbClient) batchUpdateLogicalRouterPolicies(updateMap map[*ovnnb.LogicalRouterPolicy]*ovnnb.LogicalRouterPolicy) error {
 	updateOps := make([]ovsdb.Operation, 0, len(updateMap))
 	for policyNew, policyFound := range updateMap {
-		policy := ptr.To(*policyFound)
+		policy := new(*policyFound)
 		policy.ExternalIDs = policyNew.ExternalIDs
 		ops, err := c.Where(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {

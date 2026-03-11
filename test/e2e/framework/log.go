@@ -61,7 +61,7 @@ var codeFilterRE = regexp.MustCompile(`/github.com/onsi/ginkgo/v2/`)
 
 // PrunedStack is a wrapper around debug.Stack() that removes information
 // about the current goroutine and optionally skips some of the initial stack entries.
-// With skip == 0, the returned stack will start with the caller of PruneStack.
+// With skip == 0, the returned stack will start with the caller of PrunedStack.
 // From the remaining entries it automatically filters out useless ones like
 // entries coming from Ginkgo.
 //

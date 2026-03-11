@@ -85,16 +85,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return nil
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	subnetName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	nadName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, nadName, subnets)
-	if err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
 
@@ -194,16 +188,10 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update iptables eip %s", key)
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
+	subnetName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	nadName := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
-	subnet, err := c.findSubnetByNetworkAttachmentDefinition(c.config.PodNamespace, nadName, subnets)
-	if err != nil {
-		klog.Error(err)
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
 
@@ -243,7 +231,9 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		if cachedEip.Status.QoSPolicy != "" {
+		// Save qosPolicy before deleting, we need to trigger QoS Policy reconcile after EIP is deleted
+		qosPolicyName := cachedEip.Status.QoSPolicy
+		if qosPolicyName != "" {
 			if err = c.delEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
 				klog.Errorf("failed to del qos '%s' in pod, %v", key, err)
 				return err
@@ -256,6 +246,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
+		}
+
+		// Trigger QoS Policy reconcile after EIP is deleted
+		// This allows the QoS Policy to remove its finalizer if no other EIPs are using it
+		if qosPolicyName != "" {
+			c.updateQoSPolicyQueue.Add(qosPolicyName)
 		}
 
 		return nil
@@ -411,7 +407,7 @@ func (c *Controller) addOrUpdateEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEI
 	var err error
 	for _, rule := range rules {
 		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
-			klog.Errorf("failed to set ingress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to set %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -447,12 +443,11 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	return c.addOrUpdateEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
-func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+func (c *Controller) delEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
-		// del qos
 		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction); err != nil {
-			klog.Errorf("failed to del egress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to del %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -471,7 +466,7 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 		return err
 	}
 
-	return c.delEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+	return c.delEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
 func (c *Controller) addEipQoSInPod(
@@ -579,7 +574,7 @@ func (c *Controller) eipChangeIP(eip *kubeovnv1.IptablesEIP) bool {
 func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	subnet, err := c.subnetsLister.Get(name)
 	if err != nil {
-		err = fmt.Errorf("faile to get subnet %q: %w", name, err)
+		err = fmt.Errorf("failed to get subnet %q: %w", name, err)
 		klog.Error(err)
 		return "", "", err
 	}
@@ -690,7 +685,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 }
 
 func (c *Controller) syncIptablesEipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	eips := &kubeovnv1.IptablesEIPList{}
 	return migrateFinalizers(cl, eips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(eips.Items) {
@@ -713,7 +708,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {
@@ -750,7 +745,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 		return nil
 	}
 	newIptablesEip := cachedIptablesEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newIptablesEip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIptablesEip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIptablesEip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIptablesEip, newIptablesEip)
 	if err != nil {

@@ -1,0 +1,63 @@
+name: Lint and Test Charts
+
+on:
+  pull_request:
+    paths:
+      - 'charts/kube-ovn-v2/**'
+      - '.github/workflows/helm-testing.yaml'
+
+
+permissions: {}
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        ip-family: [ "ipv4" ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.x'
+          check-latest: true
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.8.0
+
+      - name: Run chart-testing (lint)
+        run: |
+          ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install jinjanator j2cli
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Run chart-testing (install)
+        id: install
+        run: |
+          timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
+          kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
+          ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
+
+      - name: Check kube ovn pod restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts

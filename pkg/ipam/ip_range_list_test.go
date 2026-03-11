@@ -254,17 +254,17 @@ func TestNewIPRangeList(t *testing.T) {
 	v4RemoveIP1, err = NewIP("10.0.0.15")
 	require.NoError(t, err)
 	require.True(t, v4.Remove(v4RemoveIP1))
-	v4SplitedExpectRangeStart1, err := NewIP("10.0.0.10")
+	v4SplitExpectRangeStart1, err := NewIP("10.0.0.10")
 	require.NoError(t, err)
-	v4SplitedExpectRangeEnd1, err := NewIP("10.0.0.14")
+	v4SplitExpectRangeEnd1, err := NewIP("10.0.0.14")
 	require.NoError(t, err)
-	v4SplitedExpectRangeStart2, err := NewIP("10.0.0.16")
+	v4SplitExpectRangeStart2, err := NewIP("10.0.0.16")
 	require.NoError(t, err)
-	v4SplitedExpectRangeEnd2, err := NewIP("10.0.0.20")
+	v4SplitExpectRangeEnd2, err := NewIP("10.0.0.20")
 	require.NoError(t, err)
-	v4SplitedExpect, err := NewIPRangeList(v4SplitedExpectRangeStart1, v4SplitedExpectRangeEnd1, v4SplitedExpectRangeStart2, v4SplitedExpectRangeEnd2)
+	v4SplitExpect, err := NewIPRangeList(v4SplitExpectRangeStart1, v4SplitExpectRangeEnd1, v4SplitExpectRangeStart2, v4SplitExpectRangeEnd2)
 	require.NoError(t, err)
-	require.True(t, v4.Equal(v4SplitedExpect))
+	require.True(t, v4.Equal(v4SplitExpect))
 
 	// test ipv6 remove
 	v6RangeStart1, err = NewIP("2001:db8::5")
@@ -324,17 +324,17 @@ func TestNewIPRangeList(t *testing.T) {
 	v6RemoveIP1, err = NewIP("2001:db8::15")
 	require.NoError(t, err)
 	require.True(t, v6.Remove(v6RemoveIP1))
-	v6SplitedExpectRangeStart1, err := NewIP("2001:db8::10")
+	v6SplitExpectRangeStart1, err := NewIP("2001:db8::10")
 	require.NoError(t, err)
-	v6SplitedExpectRangeEnd1, err := NewIP("2001:db8::14")
+	v6SplitExpectRangeEnd1, err := NewIP("2001:db8::14")
 	require.NoError(t, err)
-	v6SplitedExpectRangeStart2, err := NewIP("2001:db8::16")
+	v6SplitExpectRangeStart2, err := NewIP("2001:db8::16")
 	require.NoError(t, err)
-	v6SplitedExpectRangeEnd2, err := NewIP("2001:db8::20")
+	v6SplitExpectRangeEnd2, err := NewIP("2001:db8::20")
 	require.NoError(t, err)
-	v6SplitedExpect, err := NewIPRangeList(v6SplitedExpectRangeStart1, v6SplitedExpectRangeEnd1, v6SplitedExpectRangeStart2, v6SplitedExpectRangeEnd2)
+	v6SplitExpect, err := NewIPRangeList(v6SplitExpectRangeStart1, v6SplitExpectRangeEnd1, v6SplitExpectRangeStart2, v6SplitExpectRangeEnd2)
 	require.NoError(t, err)
-	require.True(t, v6.Equal(v6SplitedExpect))
+	require.True(t, v6.Equal(v6SplitExpect))
 
 	// test ipv4 separate
 	v41RangeStart1, err := NewIP("10.0.0.1")
@@ -1387,4 +1387,96 @@ func TestIPRangeListToCIDRsEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"::/128"}, result)
 	})
+}
+
+func TestIPRangeList_NilReceiverSafety(t *testing.T) {
+	// Background: In single-stack subnets, V4Available or V6Available can be nil.
+	// All IPRangeList methods must handle nil receiver without panic.
+	var nilList *IPRangeList
+	ip, _ := NewIP("10.0.0.1")
+
+	t.Run("Len", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, 0, nilList.Len())
+		})
+	})
+
+	t.Run("Count", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, "0", nilList.Count().String())
+		})
+	})
+
+	t.Run("Clone", func(t *testing.T) {
+		var result *IPRangeList
+		require.NotPanics(t, func() {
+			result = nilList.Clone()
+		})
+		require.NotNil(t, result)
+		require.Equal(t, 0, result.Len())
+	})
+
+	t.Run("At", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Nil(t, nilList.At(0))
+		})
+	})
+
+	t.Run("Find", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			idx, found := nilList.Find(ip)
+			require.Equal(t, 0, idx)
+			require.False(t, found)
+		})
+	})
+
+	t.Run("Contains", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Contains(ip))
+		})
+	})
+
+	t.Run("Add", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Add(ip))
+		})
+	})
+
+	t.Run("Remove", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Remove(ip))
+		})
+	})
+
+	t.Run("Separate", func(t *testing.T) {
+		var result *IPRangeList
+		require.NotPanics(t, func() {
+			result = nilList.Separate(nil)
+		})
+		require.NotNil(t, result)
+		require.Equal(t, 0, result.Len())
+	})
+
+	t.Run("String", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, "", nilList.String())
+		})
+	})
+
+	t.Run("ToCIDRs", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			cidrs, err := nilList.ToCIDRs()
+			require.NoError(t, err)
+			require.Nil(t, cidrs)
+		})
+	})
+}
+
+func TestIPRangeListSeparate_WithEmptyList(t *testing.T) {
+	// An empty but non-nil list returns empty result immediately without using 'other'
+	emptyList := NewEmptyIPRangeList()
+
+	result := emptyList.Separate(nil)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.Len())
 }

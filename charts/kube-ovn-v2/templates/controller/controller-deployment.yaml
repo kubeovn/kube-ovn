@@ -135,6 +135,9 @@ spec:
           - --enable-lb={{- .Values.features.enableLoadbalancer }}
           - --enable-np={{- .Values.features.enableNetworkPolicies }}
           - --enable-eip-snat={{- .Values.networking.enableEipSnat }}
+          {{- if .Values.networking.externalGatewayConfigNs }}
+          - --external-gateway-config-ns={{- .Values.networking.externalGatewayConfigNs }}
+          {{- end }}
           - --enable-external-vpc={{- .Values.features.enableExternalVpcs }}
           - --enable-ecmp={{- .Values.networking.enableEcmp }}
           - --logtostderr=false
@@ -193,6 +196,9 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+            {{- with .Values.controller.extraEnv }}
+              {{- toYaml . | nindent 18 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime

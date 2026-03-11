@@ -50,14 +50,17 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		// Level 1: Delete pod and network policy in parallel
+		ginkgo.By("Deleting pod " + podName + " and network policy " + netpolName)
+		podClient.DeleteGracefully(podName)
+		netpolClient.Delete(netpolName)
 
+		podClient.WaitForNotFound(podName)
+		framework.ExpectNoError(netpolClient.WaitToDisappear(netpolName, 0, 2*time.Minute))
+
+		// Level 2: Subnet (needs pod deleted first)
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
-
-		ginkgo.By("Deleting network policy " + netpolName)
-		netpolClient.DeleteSync(netpolName)
 	})
 
 	framework.ConformanceIt("should be able to access pods from node after creating a network policy with empty ingress rules", func() {
@@ -114,7 +117,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 				ginkgo.By("Checking connection from node " + nodeName + " to " + podName + " via " + protocol)
 				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, hostPod.Namespace, hostPod.Name))
-				framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 					_, err := e2epodoutput.RunHostCmd(hostPod.Namespace, hostPod.Name, cmd)
 					return err != nil, nil
 				}, "")
@@ -122,7 +125,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 			ginkgo.By("Checking connection from node " + podSameNode.Spec.NodeName + " to " + podName + " via " + protocol)
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, podSameNode.Namespace, podSameNode.Name))
-			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 				_, err := e2epodoutput.RunHostCmd(podSameNode.Namespace, podSameNode.Name, cmd)
 				return err == nil, nil
 			}, "")
@@ -177,7 +180,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		cmd := "curl -k -q -s --connect-timeout 2 https://" + net.JoinHostPort(clusterIP, "443")
 		ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, pod.Namespace, pod.Name))
 
-		framework.WaitUntil(2*time.Second, 3*time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 3*time.Minute, func(_ context.Context) (bool, error) {
 			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
 			return err == nil, nil
 		}, "")

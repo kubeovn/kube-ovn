@@ -290,7 +290,7 @@ func TestAnnounceArpAddress(t *testing.T) {
 		}
 	}
 	require.NotNil(t, err)
-	// invalid mc
+	// invalid mac
 	err = AnnounceArpAddress(linkName, validIP, nil, maxRetry, time.Second)
 	if err != nil {
 		if strings.Contains(err.Error(), "not permitted") {

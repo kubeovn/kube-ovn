@@ -52,10 +52,10 @@ type VpcSpec struct {
 	VpcPeerings   []*VpcPeering  `json:"vpcPeerings,omitempty"`
 
 	EnableExternal bool `json:"enableExternal,omitempty"`
-	// EnableExternal only handle default external subnet
+	// EnableExternal only handles default external subnet
 
 	ExtraExternalSubnets []string `json:"extraExternalSubnets,omitempty"`
-	// ExtraExternalSubnets only handle provider-network vlan subnet
+	// ExtraExternalSubnets only handles provider-network vlan subnet
 
 	EnableBfd bool `json:"enableBfd,omitempty"`
 

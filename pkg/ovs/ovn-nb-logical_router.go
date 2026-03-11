@@ -91,7 +91,7 @@ func (c *OVNNbClient) DeleteLogicalRouter(lrName string) error {
 }
 
 // GetLogicalRouter get logical router by name,
-// it is because of lack name index that does't use OVNNbClient.Get
+// it is because of lack name index that doesn't use OVNNbClient.Get
 func (c *OVNNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()

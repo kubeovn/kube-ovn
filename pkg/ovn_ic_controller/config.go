@@ -15,7 +15,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// Configuration is the controller conf
+// Configuration is the controller config
 type Configuration struct {
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface

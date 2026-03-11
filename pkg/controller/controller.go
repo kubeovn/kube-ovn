@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -68,12 +69,13 @@ const (
 type Controller struct {
 	config *Configuration
 
-	ipam           *ovnipam.IPAM
-	namedPort      *NamedPort
-	anpPrioNameMap map[int32]string
-	anpNamePrioMap map[string]int32
-	bnpPrioNameMap map[int32]string
-	bnpNamePrioMap map[string]int32
+	ipam             *ovnipam.IPAM
+	namedPort        *NamedPort
+	anpPrioNameMap   map[int32]string
+	anpNamePrioMap   map[string]int32
+	bnpPrioNameMap   map[int32]string
+	bnpNamePrioMap   map[string]int32
+	priorityMapMutex sync.RWMutex
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
@@ -695,6 +697,10 @@ func Run(ctx context.Context, config *Configuration) {
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
+	// Start and sync NAD informer first, as many resources depend on NAD cache
+	// NAD CRD is optional, so we check if it exists before starting the informer
+	controller.StartNetAttachInformerFactory(ctx)
+
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
@@ -702,7 +708,6 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
-	controller.StartNetAttachInformerFactory(ctx)
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -1077,6 +1082,9 @@ func (c *Controller) Run(ctx context.Context) {
 	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
+
+	c.OVNNbClient.Close()
+	c.OVNSbClient.Close()
 }
 
 func (c *Controller) dbStatus() {

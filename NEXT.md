@@ -2,6 +2,32 @@
 
 This document lists the features merged into the master branch for the next minor release.
 
+## Post-v1.15.0
+
+- NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)
+- Support static IP/MAC for multiple interfaces on the same logical switch. [#6060](https://github.com/kubeovn/kube-ovn/pull/6060)
+- MetalLB underlay integration now supports IPv6 and dual-stack. [#6159](https://github.com/kubeovn/kube-ovn/pull/6159)
+- KubeVirt live-migration multi-chassis options now apply to all VM NICs, not just the primary one. [#6241](https://github.com/kubeovn/kube-ovn/pull/6241)
+- Add human-readable descriptions to all Kube-OVN CRD fields for better `kubectl explain` output. [#6133](https://github.com/kubeovn/kube-ovn/pull/6133) [#6147](https://github.com/kubeovn/kube-ovn/pull/6147)
+- VPC NAT Gateway
+  - Support user-defined annotations on NAT gateway Pod template. [#6256](https://github.com/kubeovn/kube-ovn/pull/6256)
+- Interconnection
+  - Add vendor ID to transit switches to avoid conflicts with other OVN controllers. [#6186](https://github.com/kubeovn/kube-ovn/pull/6186)
+- Reliability
+  - OpenFlow synchronization: detect and recover from stale or missing OVS flows automatically. [#6117](https://github.com/kubeovn/kube-ovn/pull/6117)
+  - OVN DB: back up Raft header before rejoining cluster to improve recovery. [#6106](https://github.com/kubeovn/kube-ovn/pull/6106)
+- Performance
+  - Strip `managedFields` from informer cache to reduce memory usage. [#6119](https://github.com/kubeovn/kube-ovn/pull/6119)
+  - Add field selectors to informer factory to reduce API server load. [#6091](https://github.com/kubeovn/kube-ovn/pull/6091)
+- Security
+  - Replace wildcard RBAC verbs with explicit verb lists. [#6233](https://github.com/kubeovn/kube-ovn/pull/6233)
+  - Specify ephemeral storage limits for containers. [#6259](https://github.com/kubeovn/kube-ovn/pull/6259)
+- Helm Chart
+  - Make DaemonSet update strategy configurable via `values.yaml`. [#6136](https://github.com/kubeovn/kube-ovn/pull/6136)
+  - Introduce `extraEnv` variable for all components. [#6142](https://github.com/kubeovn/kube-ovn/pull/6142)
+  - Add `affinity` and `nodeSelector` support for ovs-ovn and ovs-ovn-dpdk DaemonSets. [#6308](https://github.com/kubeovn/kube-ovn/pull/6308)
+  - Add `external-gateway-config-ns` option for controller. [#6211](https://github.com/kubeovn/kube-ovn/pull/6211)
+
 ## Post-v1.14.0
 
 - ACL log supports ratelimiting. [#5938](https://github.com/kubeovn/kube-ovn/pull/5938)

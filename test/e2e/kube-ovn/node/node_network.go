@@ -106,7 +106,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		ovsPod := getOvsPodOnNode(f, node.Name)
 
 		ginkgo.By("Waiting for OVS external-ids to be updated")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := "ovs-vsctl --no-heading get open . external-ids:ovn-encap-ip"
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
@@ -166,7 +166,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Verifying interface encap-ip is set correctly")
 		ifaceID := fmt.Sprintf("%s.%s", podName, namespaceName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := fmt.Sprintf(`ovs-vsctl --no-heading get interface %s external-ids:encap-ip 2>/dev/null || ovs-vsctl --no-heading --columns=external_ids find interface external-ids:iface-id="%s"`, pod.Name, ifaceID)
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
@@ -217,7 +217,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		createdPods = append(createdPods, podName)
 
 		ginkgo.By("Waiting for pod to fail with network not found error")
-		framework.WaitUntil(2*time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
 			p, err := cs.CoreV1().Pods(namespaceName).Get(context.Background(), podName, metav1.GetOptions{})
 			if err != nil {
 				return false, nil
@@ -276,7 +276,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for OVS encap IPs to include storage network")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
 				return false, nil
@@ -299,7 +299,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for OVS encap IPs to include both networks")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
 				return false, nil
@@ -321,7 +321,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Waiting for OVS encap IPs to only contain app network")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
 				return false, nil
@@ -356,7 +356,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Waiting for OVS to have both encap IPs")
 		cmd := "ovs-vsctl --no-heading get open . external-ids:ovn-encap-ip"
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
 				return false, nil
@@ -398,7 +398,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Verifying storage pod interface has correct encap-ip")
 		storageIfaceID := fmt.Sprintf("%s.%s", podName, namespaceName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=external_ids find interface external-ids:iface-id="%s"`, storageIfaceID)
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
@@ -410,7 +410,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Verifying app pod interface has correct encap-ip")
 		appIfaceID := fmt.Sprintf("%s.%s", podName2, namespaceName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=external_ids find interface external-ids:iface-id="%s"`, appIfaceID)
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
@@ -496,7 +496,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Waiting for OVS to have both encap IPs")
 		cmd := "ovs-vsctl --no-heading get open . external-ids:ovn-encap-ip"
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
 				return false, nil
@@ -522,7 +522,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 
 		ginkgo.By("Verifying pod interface has storage encap-ip")
 		ifaceID := fmt.Sprintf("%s.%s", podName, namespaceName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=external_ids find interface external-ids:iface-id="%s"`, ifaceID)
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {
@@ -543,7 +543,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		podClient.CreateSync(pod)
 
 		ginkgo.By("Verifying new pod interface has app encap-ip")
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=external_ids find interface external-ids:iface-id="%s"`, ifaceID)
 			output, err := e2epodoutput.RunHostCmd(ovsPod.Namespace, ovsPod.Name, cmd)
 			if err != nil {

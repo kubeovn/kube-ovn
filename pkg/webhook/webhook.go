@@ -118,6 +118,6 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 			return resp
 		}
 	}
-	resp = ctrlwebhook.Allowed("by pass")
+	resp = ctrlwebhook.Allowed("bypass")
 	return resp
 }

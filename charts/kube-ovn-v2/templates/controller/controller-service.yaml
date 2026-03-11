@@ -7,10 +7,12 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.controller.labels }}
   labels:
+    app.kubernetes.io/name: kube-ovn-controller
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with .Values.controller.labels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   selector:
     app.kubernetes.io/name: kube-ovn-controller

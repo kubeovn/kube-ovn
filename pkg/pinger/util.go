@@ -48,7 +48,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 			datapath := strings.Split(line, "@")
 			datapathType, datapathName = datapath[0], datapath[1]
 		} else {
-			// There is two line for "system@ovs-system\n", the second line is nil, ignore this situation
+			// There are two lines for "system@ovs-system\n", the second line is nil, ignore this situation
 			continue
 		}
 		metricOvsDp.WithLabelValues(e.Client.System.Hostname, datapathName, datapathType).Set(1)

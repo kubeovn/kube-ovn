@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
@@ -98,7 +99,7 @@ func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
 
 	var deploy *appsv1.Deployment
-	WaitUntil(2*time.Second, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(poll, timeout, func(_ context.Context) (bool, error) {
 		var err error
 		deploy = c.Get(name)
 		unstructured := &unstructured.Unstructured{}
@@ -129,7 +130,7 @@ func (c *DeploymentClient) Patch(original, modified *appsv1.Deployment) *appsv1.
 	ExpectNoError(err)
 
 	var patchedDeploy *appsv1.Deployment
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		deploy, err := c.DeploymentInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch deployment %s/%s", original.Namespace, original.Name)
@@ -159,21 +160,31 @@ func (c *DeploymentClient) PatchSync(original, modified *appsv1.Deployment) *app
 func (c *DeploymentClient) Restart(deploy *appsv1.Deployment) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
 
-	buf, err := polymorphichelpers.ObjectRestarterFn(deploy)
+	var result *appsv1.Deployment
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := c.Get(deploy.Name)
+
+		buf, err := polymorphichelpers.ObjectRestarterFn(latest)
+		if err != nil {
+			return err
+		}
+
+		m := make(map[string]any)
+		if err = json.Unmarshal(buf, &m); err != nil {
+			return err
+		}
+
+		d := new(appsv1.Deployment)
+		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, d); err != nil {
+			return err
+		}
+
+		result, err = c.Update(context.TODO(), d, metav1.UpdateOptions{})
+		return err
+	})
 	ExpectNoError(err)
 
-	m := make(map[string]any)
-	err = json.Unmarshal(buf, &m)
-	ExpectNoError(err)
-
-	deploy = new(appsv1.Deployment)
-	err = runtime.DefaultUnstructuredConverter.FromUnstructured(m, deploy)
-	ExpectNoError(err)
-
-	deploy, err = c.Update(context.TODO(), deploy, metav1.UpdateOptions{})
-	ExpectNoError(err)
-
-	return deploy.DeepCopy()
+	return result.DeepCopy()
 }
 
 // RestartSync restarts the deployment and wait it to be ready
@@ -212,11 +223,11 @@ func (c *DeploymentClient) Delete(name string) {
 func (c *DeploymentClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for deployment %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for deployment %q to disappear", name)
 }
 
 func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
-	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, 2*time.Second, 2*time.Minute)
+	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, poll, 2*time.Minute)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.
@@ -238,5 +249,6 @@ func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[s
 	deploy := deployment.NewDeployment(name, replicas, podLabels, containerName, image, strategyType)
 	deploy.Spec.Template.Annotations = podAnnotations
 	deploy.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(1))
 	return deploy
 }

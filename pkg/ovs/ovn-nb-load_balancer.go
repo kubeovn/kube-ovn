@@ -149,11 +149,13 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 		lbhc *ovnnb.LoadBalancerHealthCheck
 		err  error
 	)
-
 	lb, lbhc, err = c.GetLoadBalancerHealthCheck(lbName, vipEndpoint, true)
 	if err != nil {
 		klog.Errorf("failed to get lb health check: %v", err)
 		return err
+	}
+	if len(lb.IPPortMappings) != 0 {
+		ignoreHealthCheck = false
 	}
 	if !ignoreHealthCheck && lbhc != nil {
 		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
@@ -313,7 +315,7 @@ func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
 }
 
 // GetLoadBalancer get load balancer by name,
-// it is because of lack name index that does't use OVNNbClient.Get
+// it is because of lack name index that doesn't use OVNNbClient.Get
 func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
@@ -623,24 +625,7 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			// Delete from the IPPortMappings any outdated mapping
-			mappingToDelete := make(map[string]string)
-			for portIP, portMapVip := range lb.IPPortMappings {
-				if _, ok := ipPortMappings[portIP]; !ok {
-					mappingToDelete[portIP] = portMapVip
-				}
-			}
-
-			if len(mappingToDelete) > 0 {
-				klog.Infof("deleting outdated entry from ipportmapping %v", mappingToDelete)
-			}
-
 			return []model.Mutation{
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   mappingToDelete,
-					Mutator: ovsdb.MutateOperationDelete,
-				},
 				{
 					Field:   &lb.IPPortMappings,
 					Value:   ipPortMappings,

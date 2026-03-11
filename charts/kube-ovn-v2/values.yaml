@@ -152,6 +152,10 @@ networking:
   # -- Enable EIP and SNAT.
   # @section -- Network parameters of the CNI
   enableEipSnat: true
+  # -- Namespace where ovn-external-gw-config ConfigMap is located.
+  # Empty means it will use the same namespace as the controller (PodNamespace).
+  # @section -- Network parameters of the CNI
+  externalGatewayConfigNs: ""
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
@@ -285,6 +289,11 @@ validatingWebhook:
   # -- Labels to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   podLabels: {}
+  # -- Extra environment variables to be added to kube-ovn-webhook pods.
+  # @section -- Validating webhook configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
 # -- Configuration for the NAT gateways.
 # @section -- NAT gateways configuration
@@ -386,6 +395,19 @@ ovsOvn:
   # -- Labels to be added to ovs-ovn pods.
   # @section -- OVS/OVN daemons configuration
   podLabels: {}
+  # -- Affinity for ovs-ovn pods.
+  # @section -- OVS/OVN daemons configuration
+  affinity: {}
+  # -- Node selector to restrict the deployment of ovs-ovn to specific nodes.
+  # @section -- OVS/OVN daemons configuration
+  nodeSelector:
+    kubernetes.io/os: "linux"
+
+  # -- Extra environment variables to be added to ovs-ovn pods.
+  # @section -- OVS/OVN daemons configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
   # -- ovs-ovn resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
@@ -397,6 +419,15 @@ ovsOvn:
     limits:
       cpu: "2"
       memory: "1000Mi"
+      ephemeral-storage: 1Gi
+
+  # -- ovs-ovn DaemonSet update strategy.
+  # ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy
+  # @section -- OVS/OVN daemons configuration
+  updateStrategy:
+    type: "RollingUpdate"
+    maxSurge: 1
+    maxUnavailable: 0
 
   # -- Disable auto-loading of kernel modules by OVS.
   # If this is disabled, you will have to enable the Open vSwitch kernel module yourself.
@@ -430,6 +461,14 @@ ovsOvn:
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
     tag: v1.16.0
+    # -- Affinity for the ovs-ovn-dpdk DaemonSet.
+    # @section -- OVS/OVN daemons configuration
+    affinity: {}
+    # -- Node selector to restrict the deployment of DPDK-hybrid OVS to specific nodes.
+    # @section -- OVS/OVN daemons configuration
+    nodeSelector:
+      kubernetes.io/os: "linux"
+      ovn.kubernetes.io/ovs_dp_type: "userspace"
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
@@ -441,6 +480,7 @@ ovsOvn:
         hugepages-2Mi: 1Gi
         cpu: "2"
         memory: "1000Mi"
+        ephemeral-storage: 1Gi
 
 # -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world.
 # @section -- BGP speaker configuration
@@ -461,6 +501,12 @@ bgpSpeaker:
   # -- Labels to be added to kube-ovn-speaker pods.
   # @section -- BGP speaker configuration
   podLabels: {}
+
+  # -- Extra environment variables to be added to kube-ovn-speaker pods.
+  # @section -- BGP speaker configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
 
   # -- kube-ovn-speaker resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
@@ -501,6 +547,12 @@ pinger:
   # @section -- Ping daemon configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-pinger pods.
+  # @section -- Ping daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-pinger resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- Ping daemon configuration
@@ -511,6 +563,7 @@ pinger:
     limits:
       cpu: "200m"
       memory: "400Mi"
+      ephemeral-storage: 1Gi
 
   # -- kube-ovn-pinger metrics configuration.
   # @section -- Ping daemon configuration
@@ -520,6 +573,15 @@ pinger:
     # @section -- Ping daemon configuration
     port: 8080
 
+  # -- Ping daemon serviceMonitor configuration.
+  # @section -- Ping daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the pinger.
+    # @section -- Ping daemon configuration
+    enabled: false
+
+  # @section -- OVN monitoring daemon configuration
   # -- Remote targets used by the pinger daemon to determine if the CNI works and has external connectivity.
   # @section -- Ping daemon configuration
   # @default -- "{}"
@@ -563,6 +625,12 @@ monitor:
   # @section -- OVN monitoring daemon configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-monitor pods.
+  # @section -- OVN monitoring daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-monitor resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- OVN monitoring daemon configuration
@@ -573,6 +641,7 @@ monitor:
     limits:
       cpu: "200m"
       memory: "200Mi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-monitor.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -605,6 +674,14 @@ monitor:
     # @section -- OVN monitoring daemon configuration
     port: 10661
 
+  # -- kube-ovn-monitor serviceMonitor configuration.
+  # @section -- OVN monitoring daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.
+    # @section -- OVN monitoring daemon configuration
+    enabled: false
+
 # -- Configuration for kube-ovn-controller, the controller responsible for syncing K8s with OVN.
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
@@ -622,6 +699,12 @@ controller:
   # @section -- Kube-OVN controller configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-controller pods.
+  # @section -- Kube-OVN controller configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- kube-ovn-controller resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- Kube-OVN controller configuration
@@ -632,6 +715,7 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-controller.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -664,6 +748,14 @@ controller:
     # @section -- Kube-OVN controller configuration
     port: 10660
 
+  # -- Controller serviceMonitor configuration.
+  # @section -- Kube-OVN controller configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the Kube-OVN controller.
+    # @section -- Kube-OVN controller configuration
+    enabled: false
+
 # -- Configuration for ovn-central, the daemon containing the northbound/southbound DBs and northd.
 # @section -- OVN-central daemon configuration
 # @default -- "{}"
@@ -681,6 +773,12 @@ central:
   # @section -- OVN-central daemon configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to ovn-central pods.
+  # @section -- OVN-central daemon configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- ovn-central resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- OVN-central daemon configuration
@@ -691,6 +789,7 @@ central:
     limits:
       cpu: "3"
       memory: "4Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for ovn-central.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -753,6 +852,12 @@ ic:
     # --     - antarctica-west1
     requiredDuringSchedulingIgnoredDuringExecution: []
 
+  # -- Extra environment variables to be added to ovn-ic-controller pods.
+  # @section -- OVN IC controller configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
 # @section -- CNI agent configuration
 # @default -- "{}"
@@ -770,6 +875,12 @@ agent:
   # @section -- CNI agent configuration
   podLabels: {}
 
+  # -- Extra environment variables to be added to kube-ovn-cni pods.
+  # @section -- CNI agent configuration
+  extraEnv: []
+  #  - name: CUSTOM_ENV_VAR
+  #    value: "custom-value"
+
   # -- Agent daemon resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- CNI agent configuration
@@ -780,6 +891,7 @@ agent:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Agent metrics configuration.
   # @section -- CNI agent configuration
@@ -788,6 +900,14 @@ agent:
     # -- Configure the port on which the agent service will serve metrics.
     # @section -- CNI agent configuration
     port: 10665
+
+  # -- Agent serviceMonitor configuration.
+  # @section -- CNI agent configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the agent.
+    # @section -- CNI agent configuration
+    enabled: false
 
   # -- Mirroring of the traffic for debug or analysis.
   # https://kubeovn.github.io/docs/stable/en/guide/mirror/

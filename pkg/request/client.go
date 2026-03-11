@@ -8,7 +8,7 @@ import (
 	"github.com/parnurzeal/gorequest"
 )
 
-// NewCniServerClient return a new cniserver client
+// NewCniServerClient returns a new cniserver client
 func NewCniServerClient(socketAddress string) CniServerClient {
 	request := gorequest.New()
 	request.Transport = &http.Transport{DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {

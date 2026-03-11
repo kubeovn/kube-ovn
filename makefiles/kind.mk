@@ -9,7 +9,7 @@ CILIUM_VERSION ?= v1.18.5
 CILIUM_IMAGE_REPO ?= quay.io/cilium
 
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
-K8S_VERSION ?= v1.35.0
+K8S_VERSION ?= v1.35.1
 
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
@@ -32,6 +32,11 @@ endif
 
 define kind_create_cluster
 	kind create cluster --config $(1) --name $(2)
+	@for node in $$(kind get nodes --name $(2)); do \
+		docker exec $$node sed -i 's/LimitNOFILE=infinity/LimitNOFILE=4096/' /etc/systemd/system/containerd.service; \
+		docker exec $$node systemctl daemon-reload; \
+		docker exec $$node systemctl restart containerd; \
+	done
 	@if [ "x$(3)" = "x1" ]; then \
 		kubectl delete --ignore-not-found sc standard; \
 		kubectl delete --ignore-not-found -n local-path-storage deploy local-path-provisioner; \
@@ -510,7 +515,9 @@ kind-install-metallb:
 		--create-namespace \
 		--set speaker.frr.image.tag=$(FRR_VERSION)
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
-	$(call kubectl_wait_exist_and_ready,metallb-system,daemonset,metallb-speaker)
+	$(call kubectl_wait_exist,metallb-system,secret,metallb-memberlist)
+	$(call kubectl_wait_exist,metallb-system,daemonset,metallb-speaker)
+	kubectl -n metallb-system rollout status --timeout=120s daemonset metallb-speaker
 
 .PHONY: kind-configure-metallb
 kind-configure-metallb:
@@ -518,10 +525,23 @@ kind-configure-metallb:
 		jinjanate yamls/metallb-cr.yaml.j2 -o metallb-cr.yaml
 	kubectl apply -f metallb-cr.yaml
 
-.PHONY: kind-install-metallb-pool-from-underlay
-kind-install-metallb-pool-from-underlay: kind-load-image
+.PHONY: kind-install-metallb-pool-from-underlay-ipv4
+kind-install-metallb-pool-from-underlay-ipv4: kind-load-image
 	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false kind-install
 	@$(MAKE) kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay-ipv6
+kind-install-metallb-pool-from-underlay-ipv6: kind-load-image
+	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false IPV6=true kind-install
+	@$(MAKE) IPV6=true kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay-dual
+kind-install-metallb-pool-from-underlay-dual: kind-load-image
+	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false DUAL_STACK=true kind-install
+	@$(MAKE) DUAL_STACK=true kind-install-metallb
+
+.PHONY: kind-install-metallb-pool-from-underlay
+kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay-ipv4
 
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:

@@ -3,9 +3,9 @@ package subnet
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/onsi/ginkgo/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -95,26 +95,18 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		f.SkipVersionPriorTo(1, 15, "vpc cannot be set to non-ovn-cluster on update is not supported before 1.15.0")
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating vpc can be changed from empty to ovn-cluster")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = util.DefaultVpc
-		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err := updateSubnetVpc(subnetClient, subnetName, util.DefaultVpc)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to another value")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = "test-vpc"
-		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err = updateSubnetVpc(subnetClient, subnetName, "test-vpc")
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 
 		ginkgo.By("Validating vpc cannot be changed from ovn-cluster to empty")
-		subnet = subnetClient.Get(subnetName)
-		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = ""
-		_, err = subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err = updateSubnetVpc(subnetClient, subnetName, "")
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 	})
 
@@ -122,12 +114,20 @@ var _ = framework.Describe("[group:webhook-subnet]", func() {
 		f.SkipVersionPriorTo(1, 15, "vpc cannot be set to non-ovn-cluster on update is not supported before 1.15.0")
 		ginkgo.By("Creating subnet " + subnetName + " with empty vpc")
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating vpc cannot be changed from empty to non-ovn-cluster value")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.Vpc = "test-vpc"
-		_, err := subnetClient.SubnetInterface.Update(context.TODO(), modifiedSubnet, metav1.UpdateOptions{})
+		err := updateSubnetVpc(subnetClient, subnetName, "test-vpc")
 		framework.ExpectError(err, "vpc can only be changed from empty to ovn-cluster")
 	})
 })
+
+func updateSubnetVpc(client *framework.SubnetClient, name, vpc string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		subnet := client.Get(name)
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.Vpc = vpc
+		_, err := client.SubnetInterface.Update(context.Background(), modifiedSubnet, metav1.UpdateOptions{})
+		return err
+	})
+}

@@ -28,7 +28,7 @@ func CheckIptablesRulesOnNode(f *framework.Framework, node, table, chain, protoc
 	if chain != "" {
 		cmd += chain
 	}
-	framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 		rules := strings.Split(output, "\n")
 		for _, r := range expectedRules {

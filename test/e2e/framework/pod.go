@@ -9,13 +9,13 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 	psaapi "k8s.io/pod-security-admission/api"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -58,9 +58,17 @@ func (c *PodClient) Delete(name string) error {
 	return c.PodClient.Delete(context.Background(), name, metav1.DeleteOptions{})
 }
 
+func (c *PodClient) DeleteGracefully(name string) {
+	ginkgo.GinkgoHelper()
+	err := c.PodInterface.Delete(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(1))})
+	if err != nil && !apierrors.IsNotFound(err) {
+		Failf("Failed to delete pod %q: %v", name, err)
+	}
+}
+
 func (c *PodClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
-	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: ptr.To(int64(1))}, timeout)
+	c.PodClient.DeleteSync(context.Background(), name, metav1.DeleteOptions{GracePeriodSeconds: new(int64(1))}, timeout)
 }
 
 func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
@@ -70,7 +78,7 @@ func (c *PodClient) Patch(original, modified *corev1.Pod) *corev1.Pod {
 	ExpectNoError(err)
 
 	var patchedPod *corev1.Pod
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.PodInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch pod %s/%s", original.Namespace, original.Name)
@@ -126,7 +134,7 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 				},
 			},
 			SecurityContext:               e2epod.GeneratePodSecurityContext(nil, nil),
-			TerminationGracePeriodSeconds: ptr.To(int64(3)),
+			TerminationGracePeriodSeconds: new(int64(1)),
 		},
 	}
 	if securityLevel == psaapi.LevelRestricted {

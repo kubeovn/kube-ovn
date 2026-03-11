@@ -630,7 +630,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxR
 	return nil
 }
 
-func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int) error {
+func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int, enableNonPrimaryCNI bool) error {
 	ipStr := util.GetIPWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -718,17 +718,25 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait %s gw ready", util.NodeNic)
-	status := corev1.ConditionFalse
-	reason := "JoinSubnetGatewayReachable"
-	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
 	if err = waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry, nil); err != nil {
 		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
-		status = corev1.ConditionTrue
-		reason = "JoinSubnetGatewayUnreachable"
-		message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
 	}
-	if err := util.SetNodeNetworkUnavailableCondition(cs, nodeName, status, reason, message); err != nil {
-		klog.Errorf("failed to set node network unavailable condition: %v", err)
+
+	// Only set NetworkUnavailable condition when running as primary CNI
+	if !enableNonPrimaryCNI {
+		status := corev1.ConditionFalse
+		reason := "JoinSubnetGatewayReachable"
+		message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
+		if err != nil {
+			status = corev1.ConditionTrue
+			reason = "JoinSubnetGatewayUnreachable"
+			message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
+		}
+		if setErr := util.SetNodeNetworkUnavailableCondition(cs, nodeName, status, reason, message); setErr != nil {
+			klog.Errorf("failed to set node network unavailable condition: %v", setErr)
+		}
+	} else {
+		klog.Infof("running in non-primary CNI mode, skipping NetworkUnavailable condition update")
 	}
 
 	return err
@@ -737,6 +745,11 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 // If OVS restart, the ovn0 port will down and prevent host to pod network,
 // Restart the kube-ovn-cni when this happens
 func (c *Controller) loopOvn0Check() {
+	// Skip ovn0 check when running as non-primary CNI
+	if c.config.EnableNonPrimaryCNI {
+		return
+	}
+
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to get node nic %s", util.NodeNic)
@@ -857,7 +870,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 								}
 							}
 						} else {
-							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
+							err := fmt.Errorf("failed to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
 							klog.Error(err)
 							return err
 						}
@@ -2015,20 +2028,41 @@ func (c *Controller) createVlanSubinterfaces(vlanInterfaces []string, baseInterf
 	return nil
 }
 
-func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName string) error {
-	createdInterfaces, err := util.FindKubeOVNAutoCreatedInterfaces(providerName)
+func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName, nic string, preservedIfaces map[string]int) error {
+	gcVlanIfaces, err := util.FindKubeOVNAutoCreatedInterfaces(providerName)
 	if err != nil {
 		return fmt.Errorf("failed to find auto-created interfaces for provider %s: %w", providerName, err)
 	}
 
-	if len(createdInterfaces) == 0 {
+	inUseVlanIface := ""
+	if strings.Contains(nic, ".") {
+		inUseVlanIface = nic
+	}
+
+	filteredIfaces := make([]string, 0, len(gcVlanIfaces))
+	for _, iface := range gcVlanIfaces {
+		if iface == inUseVlanIface {
+			continue
+		}
+		if preservedIfaces != nil {
+			if _, skip := preservedIfaces[iface]; skip {
+				continue
+			}
+		}
+		if iface == "" {
+			continue
+		}
+		filteredIfaces = append(filteredIfaces, iface)
+	}
+	gcVlanIfaces = filteredIfaces
+	if len(gcVlanIfaces) == 0 {
 		klog.V(3).Infof("No auto-created VLAN interfaces found for provider %s", providerName)
 		return nil
 	}
 
-	klog.Infof("Found %d auto-created VLAN interfaces to clean up for provider %s: %v", len(createdInterfaces), providerName, createdInterfaces)
+	klog.Infof("Cleaning %d auto-created VLAN interfaces for provider %s: %v", len(gcVlanIfaces), providerName, gcVlanIfaces)
 
-	for _, ifaceName := range createdInterfaces {
+	for _, ifaceName := range gcVlanIfaces {
 		klog.Infof("Cleaning up auto-created VLAN interface %s", ifaceName)
 		output, err := exec.Command("ip", "link", "delete", ifaceName).CombinedOutput()
 		if err != nil {

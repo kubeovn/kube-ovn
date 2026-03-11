@@ -203,13 +203,13 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 		var err error
 
 		if rule.Match.SrcIPs != "" {
-			if srcProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
+			if srcProtocol, err = validateNatOutgoingPolicyRuleIPs(rule.Match.SrcIPs); err != nil {
 				klog.Error(err)
 				return fmt.Errorf("validate nat policy rules src ips %s failed with err %w", rule.Match.SrcIPs, err)
 			}
 		}
 		if rule.Match.DstIPs != "" {
-			if dstProtocol, err = validateNatOutGoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
+			if dstProtocol, err = validateNatOutgoingPolicyRuleIPs(rule.Match.DstIPs); err != nil {
 				klog.Error(err)
 				return fmt.Errorf("validate nat policy rules dst ips %s failed with err %w", rule.Match.DstIPs, err)
 			}
@@ -222,7 +222,7 @@ func validateNatOutgoingPolicyRules(subnet kubeovnv1.Subnet) error {
 	return nil
 }
 
-func validateNatOutGoingPolicyRuleIPs(matchIPStr string) (string, error) {
+func validateNatOutgoingPolicyRuleIPs(matchIPStr string) (string, error) {
 	if matchIPStr = strings.TrimSpace(matchIPStr); matchIPStr == "" {
 		return "", errors.New("IPStr should not be empty")
 	}

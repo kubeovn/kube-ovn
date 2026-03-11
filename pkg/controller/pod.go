@@ -26,7 +26,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -84,7 +83,7 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 					if n.namedPortMap[ns][port.Name].PortID == port.ContainerPort {
 						n.namedPortMap[ns][port.Name].Pods.Add(podName)
 					} else {
-						klog.Warningf("named port %s has already be defined with portID %d",
+						klog.Warningf("named port %s has already been defined with portID %d",
 							port.Name, n.namedPortMap[ns][port.Name].PortID)
 					}
 					continue
@@ -242,6 +241,19 @@ func (c *Controller) enqueueAddPod(obj any) {
 	}
 }
 
+func (c *Controller) getNsLabels(nsName, podName string) map[string]string {
+	podNs, err := c.namespacesLister.Get(nsName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("namespace %s not found for pod %s, use empty ns labels", nsName, podName)
+		} else {
+			klog.Errorf("failed to get namespace %s: %v, use empty ns labels", nsName, err)
+		}
+		return nil
+	}
+	return podNs.Labels
+}
+
 func (c *Controller) enqueueDeletePod(obj any) {
 	var p *v1.Pod
 	switch t := obj.(type) {
@@ -274,9 +286,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(p.Namespace)
-		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
-		c.updateCnpsByLabelsMatch(podNs.Labels, p.Labels)
+		nsLabels := c.getNsLabels(p.Namespace, p.Name)
+		c.updateAnpsByLabelsMatch(nsLabels, p.Labels)
+		c.updateCnpsByLabelsMatch(nsLabels, p.Labels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -351,18 +363,18 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
+		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
+			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 		}
 
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			if oldAllocated != newAllocated {
-				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
+				c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
 				break
 			}
 		}
@@ -402,16 +414,10 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		klog.Errorf("failed to handle pod event for vpc egress gateway: %v", err)
 	}
 
-	// do not delete statefulset pod unless ownerReferences is deleted
-	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID) {
-		go func() {
-			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
-			c.deletingPodObjMap.Store(key, newPod)
-			c.deletePodQueue.AddAfter(key, delay)
-		}()
-		return
-	}
-	if isVMPod && c.isVMToDel(newPod, vmName) {
+	// do not delete statefulset/vm pod unless ownerReferences is deleted
+	shouldDelete := (isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName, statefulSetUID)) ||
+		(isVMPod && c.isVMToDel(newPod, vmName))
+	if shouldDelete {
 		go func() {
 			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
 			c.deletingPodObjMap.Store(key, newPod)
@@ -1757,6 +1763,9 @@ type kubeovnNet struct {
 	AllowLiveMigration bool
 	IPRequest          string
 	MacRequest         string
+	NadName            string
+	NadNamespace       string
+	InterfaceName      string
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -1789,14 +1798,23 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 	// ignore to return all existing subnets to clean its ip crd
 	ignoreSubnetNotExist := !pod.DeletionTimestamp.IsZero()
 
+	nadCounts := make(map[string]int)
+	for _, attach := range multusNets {
+		nadCounts[fmt.Sprintf("%s/%s", attach.Namespace, attach.Name)]++
+	}
+
 	result := make([]*kubeovnNet, 0, len(multusNets))
 	for _, attach := range multusNets {
+		nadKey := fmt.Sprintf("%s/%s", attach.Namespace, attach.Name)
 		network, err := c.netAttachLister.NetworkAttachmentDefinitions(attach.Namespace).Get(attach.Name)
 		if err != nil {
 			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
 			if k8serrors.IsNotFound(err) && ignoreSubnetNotExist {
 				// NAD deleted before pod, find subnet for cleanup
 				providerName := fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
+				if nadCounts[nadKey] > 1 && attach.InterfaceRequest != "" {
+					providerName = fmt.Sprintf("%s.%s", providerName, attach.InterfaceRequest)
+				}
 				subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
 				if subnetName == "" {
 					for _, subnet := range subnets {
@@ -1824,10 +1842,13 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 				klog.Infof("pod %s/%s net-attach-def %s not found, using subnet %s for cleanup", pod.Namespace, pod.Name, attach.Name, subnetName)
 				result = append(result, &kubeovnNet{
-					Type:         providerTypeIPAM,
-					ProviderName: providerName,
-					Subnet:       subnet,
-					IsDefault:    util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach),
+					Type:          providerTypeIPAM,
+					ProviderName:  providerName,
+					Subnet:        subnet,
+					IsDefault:     util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach),
+					NadName:       attach.Name,
+					NadNamespace:  attach.Namespace,
+					InterfaceName: attach.InterfaceRequest,
 				})
 				continue
 			}
@@ -1851,6 +1872,9 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
 			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
+			if nadCounts[nadKey] > 1 && attach.InterfaceRequest != "" {
+				providerName = fmt.Sprintf("%s.%s", providerName, attach.InterfaceRequest)
+			}
 			if pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] != "" {
 				allowLiveMigration = true
 			}
@@ -1904,6 +1928,9 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				AllowLiveMigration: allowLiveMigration,
 				MacRequest:         attach.MacRequest,
 				IPRequest:          strings.Join(attach.IPRequest, ","),
+				NadName:            attach.Name,
+				NadNamespace:       attach.Namespace,
+				InterfaceName:      attach.InterfaceRequest,
 			}
 			result = append(result, ret)
 		} else {
@@ -1911,11 +1938,14 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			for _, subnet := range subnets {
 				if subnet.Spec.Provider == providerName {
 					result = append(result, &kubeovnNet{
-						Type:         providerTypeIPAM,
-						ProviderName: providerName,
-						Subnet:       subnet,
-						MacRequest:   attach.MacRequest,
-						IPRequest:    strings.Join(attach.IPRequest, ","),
+						Type:          providerTypeIPAM,
+						ProviderName:  providerName,
+						Subnet:        subnet,
+						MacRequest:    attach.MacRequest,
+						IPRequest:     strings.Join(attach.IPRequest, ","),
+						NadName:       attach.Name,
+						NadNamespace:  attach.Namespace,
+						InterfaceName: attach.InterfaceRequest,
 					})
 					break
 				}
@@ -1980,7 +2010,17 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	var macPointer *string
-	if isOvnSubnet(podNet.Subnet) {
+	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+		key := perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
+		if macStr := pod.Annotations[key]; macStr != "" {
+			if _, err := net.ParseMAC(macStr); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			macPointer = &macStr
+		}
+	}
+
+	if macPointer == nil && isOvnSubnet(podNet.Subnet) {
 		annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		if annoMAC != "" {
 			if _, err := net.ParseMAC(annoMAC); err != nil {
@@ -1988,23 +2028,28 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 			macPointer = &annoMAC
 		}
-	} else {
-		macPointer = ptr.To("")
+	} else if macPointer == nil {
+		macPointer = new("")
 	}
 
-	var err error
 	var nsNets []*kubeovnNet
 	ippoolStr := pod.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, podNet.ProviderName)]
 	subnetStr := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+
+	// Prepare nsNets based on subnet annotation
+	var err error
+	if subnetStr != "" {
+		nsNets = []*kubeovnNet{podNet}
+	} else if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
+		klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+		return "", "", "", podNet.Subnet, err
+	}
+
 	if ippoolStr == "" && podNet.IsDefault {
 		// no ippool specified by pod annotation, use namespace ippools or ippools in the subnet specified by pod annotation
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
 			klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
-			return "", "", "", podNet.Subnet, err
-		}
-		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
 			return "", "", "", podNet.Subnet, err
 		}
 		subnetNames := make([]string, 0, len(nsNets))
@@ -2066,6 +2111,14 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
 		ippoolStr == "" {
+		// check new IP annotation
+		if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+			annoKey := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
+			if ipStr := pod.Annotations[annoKey]; ipStr != "" {
+				return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key)
+			}
+		}
+
 		var skippedAddrs []string
 		for {
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
@@ -2091,17 +2144,27 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	// The static ip can be assigned from any subnet after ns supports multi subnets
-	if nsNets == nil {
-		if nsNets, err = c.getNsAvailableSubnets(pod, podNet); err != nil {
-			klog.Errorf("failed to get available subnets for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-			return "", "", "", podNet.Subnet, err
+	return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key)
+}
+
+func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet, portName string, macPointer *string, ippoolStr string, nsNets []*kubeovnNet, isStsPod bool, key string) (string, string, string, *kubeovnv1.Subnet, error) {
+	var v4IP, v6IP, mac string
+	var err error
+
+	// Static allocate
+	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+		key := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
+		if ipStr := pod.Annotations[key]; ipStr != "" {
+			for _, net := range nsNets {
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
+				if err == nil {
+					return v4IP, v6IP, mac, net.Subnet, nil
+				}
+			}
+			return v4IP, v6IP, mac, podNet.Subnet, err
 		}
 	}
 
-	var v4IP, v6IP, mac string
-
-	// Static allocate
 	if ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]; ipStr != "" {
 		for _, net := range nsNets {
 			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
@@ -2563,23 +2626,7 @@ func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 	if pod.Annotations == nil {
 		return false, ""
 	}
-	// default provider
-	providerName := util.OvnProvider
-	// In non-primary CNI mode, we get the providers from the pod annotations
-	// We get the vpc nat gw name using the provider name
-	if c.config.EnableNonPrimaryCNI {
-		// get providers
-		providers, err := c.getPodProviders(pod)
-		if err != nil {
-			klog.Errorf("failed to get pod %s/%s providers, %v", pod.Namespace, pod.Name, err)
-			return false, ""
-		}
-		if len(providers) > 0 {
-			// use the first provider
-			providerName = providers[0]
-		}
-	}
-	vpcGwName, isVpcNatGw := pod.Annotations[fmt.Sprintf(util.VpcNatGatewayAnnotationTemplate, providerName)]
+	vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]
 	if isVpcNatGw {
 		if vpcGwName == "" {
 			klog.Errorf("pod %s is vpc nat gateway but name is empty", pod.Name)
@@ -2588,4 +2635,12 @@ func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 		klog.Infof("pod %s is vpc nat gateway %s", pod.Name, vpcGwName)
 	}
 	return isVpcNatGw, vpcGwName
+}
+
+func perInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName string) string {
+	return fmt.Sprintf("%s.%s.kubernetes.io/ip_address.%s", nadName, nadNamespace, ifaceName)
+}
+
+func perInterfaceMACAnnotationKey(nadName, nadNamespace, ifaceName string) string {
+	return fmt.Sprintf("%s.%s.kubernetes.io/mac_address.%s", nadName, nadNamespace, ifaceName)
 }

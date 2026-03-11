@@ -50,7 +50,7 @@ func setACLName(acl *ovnnb.ACL, name string) {
 		// ACL name length limit is 63
 		name = name[:60] + "..."
 	}
-	acl.Name = ptr.To(name)
+	acl.Name = new(name)
 }
 
 // UpdateDefaultBlockACLOps returns operations to update/create the default block ACL
@@ -86,7 +86,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 			acl.Log = true
 			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
 			if loggingEnabled && logRate > 0 {
-				acl.Meter = ptr.To(meterName)
+				acl.Meter = new(meterName)
 			}
 		}
 
@@ -208,7 +208,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logEnable && logRate > 0 {
-					acl.Meter = ptr.To(meterName)
+					acl.Meter = new(meterName)
 				}
 			}
 		}
@@ -257,7 +257,7 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logEnable && logRate > 0 {
-					acl.Meter = ptr.To(meterName)
+					acl.Meter = new(meterName)
 				}
 			}
 		})

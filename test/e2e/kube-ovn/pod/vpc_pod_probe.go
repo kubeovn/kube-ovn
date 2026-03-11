@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,13 +56,18 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
+		// Level 1: Delete pod
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
-		subnetClient.DeleteSync(custVPCSubnetName)
+		// Level 2: Delete subnets in parallel
+		ginkgo.By("Deleting subnet " + subnetName + " and " + custVPCSubnetName)
+		subnetClient.Delete(subnetName)
+		subnetClient.Delete(custVPCSubnetName)
+		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
+		framework.ExpectNoError(subnetClient.WaitToDisappear(custVPCSubnetName, 0, 2*time.Minute))
 
+		// Level 3: VPC (needs subnets gone)
 		ginkgo.By("Deleting VPC " + vpcName)
 		vpcClient.DeleteSync(vpcName)
 	})
@@ -106,6 +112,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		pod = podClient.CreateSync(pod)
 		checkTProxyRules(f, pod, port, true)
@@ -121,6 +129,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port + 1),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		_ = podClient.Create(pod)
 
@@ -150,6 +160,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		pod = podClient.CreateSync(pod)
 		checkTProxyRules(f, pod, port, true)
@@ -165,6 +177,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 					Port: intstr.FromInt32(port - 1),
 				},
 			},
+			PeriodSeconds:    1,
+			FailureThreshold: 1,
 		}
 		_ = podClient.Create(pod)
 		podClient.WaitForRunning(podName)

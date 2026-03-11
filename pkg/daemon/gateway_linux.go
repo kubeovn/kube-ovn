@@ -1371,7 +1371,7 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 
 			key := strings.Join([]string{subnetName, direction, proto}, "/")
 			if c.gwCounters[key] == nil {
-				c.gwCounters[key] = new(util.GwIPtableCounters)
+				c.gwCounters[key] = new(util.GwIPTablesCounters)
 			}
 			lastPackets, lastPacketBytes := c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes
 			c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes = currentPackets, currentPacketBytes

@@ -302,7 +302,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancerHealthChecks() {
 		func(t *testing.T) {
 			t.Parallel()
 
-			t.Run("fliter by vip",
+			t.Run("filter by vip",
 				func(t *testing.T) {
 					t.Parallel()
 

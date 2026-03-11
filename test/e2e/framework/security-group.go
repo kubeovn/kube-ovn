@@ -80,7 +80,7 @@ func (c *SecurityGroupClient) Patch(original, modified *apiv1.SecurityGroup, tim
 	ExpectNoError(err)
 
 	var patchedSg *apiv1.SecurityGroup
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		p, err := c.SecurityGroupInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch security group %q", original.Name)
@@ -114,7 +114,7 @@ func (c *SecurityGroupClient) Delete(name string) {
 func (c *SecurityGroupClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for security group %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for security group %q to disappear", name)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified Security Group to disappear.

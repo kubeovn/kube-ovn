@@ -67,7 +67,7 @@ func (c *IptablesEIPClient) Patch(original, modified *apiv1.IptablesEIP) *apiv1.
 	ExpectNoError(err)
 
 	var patchedIptablesEIP *apiv1.IptablesEIP
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		eip, err := c.IptablesEIPInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables eip %q", original.Name)
@@ -112,7 +112,7 @@ func (c *IptablesEIPClient) PatchQoSPolicySync(eipName, qosPolicyName string) *a
 	return c.Get(eipName).DeepCopy()
 }
 
-// Delete deletes a iptables eip if the iptables eip exists
+// Delete deletes an iptables EIP if it exists
 func (c *IptablesEIPClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesEIPInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -126,7 +126,7 @@ func (c *IptablesEIPClient) Delete(name string) {
 func (c *IptablesEIPClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables eip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for iptables eip %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables eip is ready within timeout.

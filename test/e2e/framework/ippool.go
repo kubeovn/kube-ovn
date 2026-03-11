@@ -64,7 +64,7 @@ func (c *IPPoolClient) Update(ippool *apiv1.IPPool, options metav1.UpdateOptions
 	ginkgo.GinkgoHelper()
 
 	var updatedIPPool *apiv1.IPPool
-	err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.IPPoolInterface.Update(ctx, ippool, options)
 		if err != nil {
 			// On conflict, refresh the resource and retry
@@ -113,7 +113,7 @@ func (c *IPPoolClient) Patch(original, modified *apiv1.IPPool, timeout time.Dura
 	ExpectNoError(err)
 
 	var patchedIPPool *apiv1.IPPool
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.IPPoolInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ippool %q", original.Name)
@@ -144,7 +144,7 @@ func (c *IPPoolClient) PatchSync(original, modified *apiv1.IPPool) *apiv1.IPPool
 	return c.Get(s.Name).DeepCopy()
 }
 
-// Delete deletes a ippool if the ippool exists
+// Delete deletes an ippool if the ippool exists
 func (c *IPPoolClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IPPoolInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -158,7 +158,7 @@ func (c *IPPoolClient) Delete(name string) {
 func (c *IPPoolClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ippool %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ippool %q to disappear", name)
 }
 
 func isIPPoolConditionSetAsExpected(ippool *apiv1.IPPool, conditionType apiv1.ConditionType, wantTrue, silent bool) bool {

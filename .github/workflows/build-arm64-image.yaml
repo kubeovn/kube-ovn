@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - uses: actions/setup-go@v6
         id: setup-go
@@ -54,7 +54,7 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.base_ref }}-
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.35.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:

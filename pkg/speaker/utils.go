@@ -14,7 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// prefixMap is a map associating an BGP address family (IPv4 or IPv6) and an IP set
+// prefixMap is a map associating a BGP address family (IPv4 or IPv6) and an IP set
 type prefixMap map[api.Family_Afi]set.Set[string]
 
 // addExpectedPrefix adds a new prefix to the list of expected prefixes we should be announcing

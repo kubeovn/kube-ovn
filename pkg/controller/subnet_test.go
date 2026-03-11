@@ -9,7 +9,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -166,7 +165,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1"},
 					Provider:    util.OvnProvider,
 					GatewayType: kubeovnv1.GWDistributedType,
-					EnableLb:    ptr.To(ctrl.config.EnableLb),
+					EnableLb:    new(ctrl.config.EnableLb),
 				},
 			},
 		},
@@ -183,7 +182,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    ptr.To(false),
+					EnableLb:    new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -198,7 +197,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1", "192.168.0.255"},
 					Provider:    "ovn.test-provider",
 					GatewayType: kubeovnv1.GWCentralizedType,
-					EnableLb:    ptr.To(false),
+					EnableLb:    new(false),
 				},
 			},
 		},
@@ -214,7 +213,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -228,7 +227,7 @@ func Test_formatSubnet(t *testing.T) {
 					Vpc:        "test-vpc",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "ovn.test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 		},
@@ -243,7 +242,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 			output: &kubeovnv1.Subnet{
@@ -256,7 +255,7 @@ func Test_formatSubnet(t *testing.T) {
 					Gateway:    "192.168.0.255",
 					ExcludeIps: []string{"192.168.0.1", "192.168.0.255"},
 					Provider:   "test-provider",
-					EnableLb:   ptr.To(false),
+					EnableLb:   new(false),
 				},
 			},
 		},
@@ -272,6 +271,77 @@ func Test_formatSubnet(t *testing.T) {
 			require.Equal(t, tc.output, formattedSubnet)
 			err = ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Delete(context.Background(), tc.input.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)
+		})
+	}
+}
+
+func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {
+	t.Parallel()
+
+	// Create a subnet that references a non-existent vlan
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-underlay",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Vlan:      "non-existent-vlan",
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	// handleAddOrUpdateSubnet should return an error when the vlan does not exist,
+	// so that the work queue retries the item instead of forgetting it
+	err = ctrl.handleAddOrUpdateSubnet("test-underlay")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to validate vlan")
+}
+
+func Test_isOvnSubnet(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		subnet *kubeovnv1.Subnet
+		want   bool
+	}{
+		{
+			name:   "nil subnet returns false",
+			subnet: nil,
+			want:   false,
+		},
+		{
+			name: "empty provider defaults to OVN",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: ""},
+			},
+			want: true,
+		},
+		{
+			name: "explicit OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+			},
+			want: true,
+		},
+		{
+			name: "non-OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: "external.provider"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isOvnSubnet(tc.subnet))
 		})
 	}
 }

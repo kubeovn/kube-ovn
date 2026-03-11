@@ -261,12 +261,9 @@ func (e *Exporter) exportOvnClusterEnableGauge() {
 
 func (e *Exporter) exportOvnClusterInfoGauge() {
 	resetOvnClusterMetrics()
-	dirDbMap := map[string]string{
-		"nb": ovnnb.DatabaseName,
-		"sb": ovnsb.DatabaseName,
-	}
-	for direction, database := range dirDbMap {
-		clusterStatus, err := getClusterInfo(direction, database)
+	dbList := []string{ovnnb.DatabaseName, ovnsb.DatabaseName}
+	for _, database := range dbList {
+		clusterStatus, err := getClusterInfo(database)
 		if err != nil {
 			klog.Errorf("Failed to get Cluster Info for database %s: %v", database, err)
 			return

@@ -7,7 +7,7 @@ echo "check status of last commit build"
 commit=$(git rev-parse HEAD)
 check_status=$(curl https://api.github.com/repos/kubeovn/kube-ovn/commits/$commit/check-runs)
 if ! echo $check_status | grep -q '"conclusion": "failure"'; then
-    echo "last commit build successed"
+    echo "last commit build succeeded"
 else
     echo "last commit build failed"
     exit 1

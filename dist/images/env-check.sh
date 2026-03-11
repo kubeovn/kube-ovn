@@ -28,7 +28,7 @@ fi
 echo "3) check checksum value"
 which netstat 2>/dev/null >/dev/null
 if [[ $? != 0 ]]; then
-  echo "The netstat cmd not found, maybe can be installed mannully and exec 'netstat -s' to check if there is 'InCsumErrors'"
+  echo "The netstat cmd not found, maybe can be installed manually and exec 'netstat -s' to check if there is 'InCsumErrors'"
   echo "If there's 'InCsumErrors' and the value is increasing, should exec cmd 'ethtool -K ETH tx off' to disable checksum, where 'ETH' is the nic used for traffics"
 else
   result=`netstat -s`
@@ -73,7 +73,7 @@ fi
 echo "6) check geneve 6081 connection"
 which nmap 2>/dev/null >/dev/null
 if [[ $? != 0 ]]; then
-  echo "The nmap cmd not found, maybe can be installed mannully and exec 'nmap -sU 127.0.0.1 -p 6081' to check port connection"
+  echo "The nmap cmd not found, maybe can be installed manually and exec 'nmap -sU 127.0.0.1 -p 6081' to check port connection"
 else
   result=`nmap -sU 127.0.0.1 -p 6081`
   if [[ ! $result =~ "open" ]]; then

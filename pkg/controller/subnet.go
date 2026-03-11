@@ -262,7 +262,7 @@ func formatExcludeIPs(subnet *kubeovnv1.Subnet) {
 }
 
 func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	subnets := &kubeovnv1.SubnetList{}
 	return migrateFinalizers(cl, subnets, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(subnets.Items) {
@@ -275,7 +275,7 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 		newSubnet := subnet.DeepCopy()
-		controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.AddFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
@@ -299,7 +299,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
 	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
 		newSubnet := subnet.DeepCopy()
-		controllerutil.RemoveFinalizer(newSubnet, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
 		patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 		if err != nil {
@@ -495,20 +495,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	err = c.validateSubnetVlan(subnet)
 	if err != nil {
-		err := fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
+		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
-		if err = c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return patchErr
 		}
 		return err
 	}
 
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-		if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+		if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return patchErr
 		}
 		return err
 	}
@@ -1468,7 +1468,7 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	cidrs := [2]string{v4CIDR, v6CIDR}
 	for i, cidr := range cidrs {
-		if len(nodeIPs[i]) == 0 || cidr == "" {
+		if len(nodeIPs[i]) == 0 || cidr == "" { // #nosec G602
 			continue
 		}
 		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
@@ -1476,8 +1476,8 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 			return err
 		}
-		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeIPs[i])
-		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidr, nodeIPs[i], nameIPMaps[i]); err != nil {
+		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeIPs[i])                     // #nosec G602
+		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidr, nodeIPs[i], nameIPMaps[i]); err != nil { // #nosec G602
 			klog.Errorf("failed to add ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 			return err
 		}
@@ -1882,7 +1882,7 @@ func (c *Controller) releaseMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	return util.IsOvnProvider(subnet.Spec.Provider)
+	return subnet != nil && util.IsOvnProvider(subnet.Spec.Provider)
 }
 
 func formatExcludeIPRanges(subnet *kubeovnv1.Subnet) {

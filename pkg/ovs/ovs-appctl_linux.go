@@ -4,21 +4,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 const (
-	ovsRunDir = "/var/run/openvswitch"
-	ovnRunDir = "/var/run/ovn"
-
 	cmdOvsAppctl = "ovs-appctl"
+	cmdOvnAppctl = "ovn-appctl"
+
+	ovnNBCtlSocket = "/var/run/ovn/ovnnb_db.ctl"
+	ovnSBCtlSocket = "/var/run/ovn/ovnsb_db.ctl"
 )
 
-func appctlByTarget(target string, args ...string) (string, error) {
-	args = slices.Insert(args, 0, "-t", target)
-	cmd := exec.Command(cmdOvsAppctl, args...)
+func appctlByTarget(appctlCmd, target, command string, args ...string) (string, error) {
+	args = slices.Insert(args, 0, "-t", target, command)
+	cmd := exec.Command(appctlCmd, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to run command %q: %w", cmd.String(), err)
@@ -26,27 +29,33 @@ func appctlByTarget(target string, args ...string) (string, error) {
 	return string(output), nil
 }
 
-func Appctl(component string, args ...string) (string, error) {
-	var runDir string
-	switch {
-	case strings.HasPrefix(component, "ovs"):
-		runDir = ovsRunDir
-	case strings.HasPrefix(component, "ovn"):
-		runDir = ovnRunDir
+// OvnDatabaseControl sends a command to the specified OVN database control socket
+// and returns the output or an error if the command fails.
+func OvnDatabaseControl(db, command string, args ...string) (string, error) {
+	var socket string
+	switch db {
+	case "nb", ovnnb.DatabaseName:
+		socket = ovnNBCtlSocket
+	case "sb", ovnsb.DatabaseName:
+		socket = ovnSBCtlSocket
 	default:
-		return "", fmt.Errorf("unknown component %q", component)
+		return "", fmt.Errorf("unknown db %q", db)
+	}
+	return Appctl(socket, command, args...)
+}
+
+func Appctl(target, command string, args ...string) (string, error) {
+	var cmd string
+	switch {
+	case strings.IndexRune(target, os.PathSeparator) == 0:
+		fallthrough
+	case strings.HasPrefix(target, "ovn"):
+		cmd = cmdOvnAppctl
+	case strings.HasPrefix(target, "ovs"):
+		cmd = cmdOvsAppctl
+	default:
+		return "", fmt.Errorf("unknown target %q", target)
 	}
 
-	pidFile := filepath.Join(runDir, component+".pid")
-	pidBytes, err := os.ReadFile(pidFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to read pid file %q: %w", pidFile, err)
-	}
-	pidFields := strings.Fields(string(pidBytes))
-	if len(pidFields) == 0 {
-		return "", fmt.Errorf("pid file %q is empty or contains only whitespace", pidFile)
-	}
-	target := filepath.Join(runDir, fmt.Sprintf("%s.%s.ctl", component, pidFields[0]))
-
-	return appctlByTarget(target, args...)
+	return appctlByTarget(cmd, target, command, args...)
 }

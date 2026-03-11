@@ -67,7 +67,7 @@ func (c *OvnSnatRuleClient) Patch(original, modified *apiv1.OvnSnatRule) *apiv1.
 	ExpectNoError(err)
 
 	var patchedOvnSnatRule *apiv1.OvnSnatRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		snat, err := c.OvnSnatRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch ovn snat %q", original.Name)
@@ -113,7 +113,7 @@ func (c *OvnSnatRuleClient) Delete(name string) {
 func (c *OvnSnatRuleClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for ovn snat %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for ovn snat %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the ovn snat is ready within timeout.

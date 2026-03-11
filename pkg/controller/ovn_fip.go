@@ -86,7 +86,7 @@ func (c *Controller) isOvnFipDuplicated(fipName, eipV4IP string) error {
 	}
 	for _, uf := range usingFips {
 		if uf.Name != fipName {
-			err = fmt.Errorf("%s is using by the other fip %s", eipV4IP, uf.Name)
+			err = fmt.Errorf("%s is used by the other fip %s", eipV4IP, uf.Name)
 			klog.Error(err)
 			return err
 		}
@@ -121,7 +121,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -194,13 +194,13 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// ovn add fip
-	var staleless bool
+	var stateless bool
 	if cachedFip.Spec.Type != "" {
-		staleless = (cachedFip.Spec.Type == kubeovnv1.GWDistributedType)
+		stateless = (cachedFip.Spec.Type == kubeovnv1.GWDistributedType)
 	} else {
-		staleless = (c.ExternalGatewayType == kubeovnv1.GWDistributedType)
+		stateless = (c.ExternalGatewayType == kubeovnv1.GWDistributedType)
 	}
-	options := map[string]string{"staleless": strconv.FormatBool(staleless)}
+	options := map[string]string{"stateless": strconv.FormatBool(stateless)}
 
 	// support v4:v4
 	if v4IP != "" && v4Eip != "" {
@@ -327,7 +327,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -568,7 +568,7 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 }
 
 func (c *Controller) syncOvnFipFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	fips := &kubeovnv1.OvnFipList{}
 	return migrateFinalizers(cl, fips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(fips.Items) {
@@ -583,7 +583,7 @@ func (c *Controller) handleAddOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 		return nil
 	}
 	newFip := cachedFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newFip, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {
@@ -607,7 +607,7 @@ func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 	}
 	var err error
 	newFip := cachedFip.DeepCopy()
-	controllerutil.RemoveFinalizer(newFip, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newFip, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newFip, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedFip, newFip)
 	if err != nil {

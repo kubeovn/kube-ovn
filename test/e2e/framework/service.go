@@ -65,7 +65,7 @@ func (c *ServiceClient) Create(service *corev1.Service) *corev1.Service {
 func (c *ServiceClient) CreateSync(service *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
 	ginkgo.GinkgoHelper()
 	_ = c.Create(service)
-	return c.WaitUntil(service.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(service.Name, cond, condDesc, poll, timeout)
 }
 
 // Patch patches the service
@@ -76,7 +76,7 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 	ExpectNoError(err)
 
 	var patchedService *corev1.Service
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		s, err := c.ServiceInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch service %q", original.Name)
@@ -100,7 +100,7 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 func (c *ServiceClient) PatchSync(original, modified *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
 	ginkgo.GinkgoHelper()
 	_ = c.Patch(original, modified)
-	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
+	return c.WaitUntil(original.Name, cond, condDesc, poll, timeout)
 }
 
 // Delete deletes a service if the service exists
@@ -117,7 +117,7 @@ func (c *ServiceClient) Delete(name string) {
 func (c *ServiceClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
 }
 
 // WaitUntil waits the given timeout duration for the specified condition to be met.

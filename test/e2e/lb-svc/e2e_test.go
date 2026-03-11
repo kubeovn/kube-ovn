@@ -23,7 +23,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -168,13 +167,13 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			util.AttachmentProvider: provider,
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, labels, ports, corev1.ServiceAffinityNone)
-		service.Spec.AllocateLoadBalancerNodePorts = ptr.To(false)
+		service.Spec.AllocateLoadBalancerNodePorts = new(false)
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
 
 		ginkgo.By("Waiting for LB deployment " + deploymentName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
 			_, err := deploymentClient.DeploymentInterface.Get(ctx, deploymentName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -206,7 +205,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		framework.ExpectIPInCIDR(lbIP, pod.Annotations[cidrKey])
 
 		ginkgo.By("Checking service status")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			service = serviceClient.Get(serviceName)
 			return len(service.Status.LoadBalancer.Ingress) != 0, nil
 		}, ".status.loadBalancer.ingress is not empty")
@@ -243,7 +242,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		ginkgo.By("Checking service connectivity from client pod " + clientPodName)
 		curlCmd = fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(lbIP, port))
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, curlCmd, clientPod.Namespace, clientPod.Name))
 			_, err = e2epodoutput.RunHostCmd(clientPod.Namespace, clientPod.Name, curlCmd)
 			return err == nil, nil
@@ -253,7 +252,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		serviceClient.DeleteSync(serviceName)
 
 		ginkgo.By("Waiting for LB deployment " + deploymentName + " to be deleted automatically")
-		err = deploymentClient.WaitToDisappear(deploymentName, 2*time.Second, 2*time.Minute)
+		err = deploymentClient.WaitToDisappear(deploymentName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err, "deployment failed to disappear")
 	})
 
@@ -279,11 +278,11 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int64N(50))))
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, labels, ports, corev1.ServiceAffinityNone)
 		service.Spec.LoadBalancerIP = lbIP
-		service.Spec.AllocateLoadBalancerNodePorts = ptr.To(false)
+		service.Spec.AllocateLoadBalancerNodePorts = new(false)
 		_ = serviceClient.Create(service)
 
 		ginkgo.By("Waiting for LB deployment " + deploymentName + " to be ready")
-		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
 			_, err := deploymentClient.DeploymentInterface.Get(ctx, deploymentName, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
@@ -313,7 +312,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		framework.ExpectIPInCIDR(lbIP, pod.Annotations[cidrKey])
 
 		ginkgo.By("Checking service status")
-		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			service = serviceClient.Get(serviceName)
 			return len(service.Status.LoadBalancer.Ingress) != 0, nil
 		}, ".status.loadBalancer.ingress is not empty")
@@ -343,7 +342,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		framework.ExpectNoError(err, "deployment failed to complete")
 
 		ginkgo.By("Checking service connectivity from client pod " + clientPodName)
-		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, curlCmd, clientPod.Namespace, clientPod.Name))
 			_, err = e2epodoutput.RunHostCmd(clientPod.Namespace, clientPod.Name, curlCmd)
 			return err == nil, nil
@@ -353,7 +352,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		serviceClient.DeleteSync(serviceName)
 
 		ginkgo.By("Waiting for LB deployment " + deploymentName + " to be deleted automatically")
-		err = deploymentClient.WaitToDisappear(deploymentName, 2*time.Second, 2*time.Minute)
+		err = deploymentClient.WaitToDisappear(deploymentName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err, "deployment failed to disappear")
 	})
 })

@@ -164,7 +164,7 @@ func formatDHCPOptions(options map[string]string) string {
 		if k == "dns_server" {
 			v = strings.ReplaceAll(v, ",", ";")
 		}
-		sb.WriteString(fmt.Sprintf("%s=%s", k, v))
+		fmt.Fprintf(&sb, "%s=%s", k, v)
 	}
 	return sb.String()
 }
@@ -256,7 +256,7 @@ func (m OrACLMatch) Match() (string, error) {
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 
-		// has more then one rule
+		// has more than one rule
 		if strings.Contains(match, "&&") {
 			match = "(" + match + ")"
 		}

@@ -111,7 +111,7 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 						klog.Errorf("failed to get ipv4 config of device %s: %v", dev.GetPath(), err)
 						break
 					}
-					if config != nil && config.Path() == event.Path {
+					if config != nil && config.GetPath() == event.Path {
 						device = dev
 						break
 					}
@@ -121,7 +121,7 @@ func (n *networkManagerSyncer) Run(handler func(nic, bridge string, delNonExiste
 						klog.Errorf("failed to get ipv6 config of device %s: %v", dev.GetPath(), err)
 						break
 					}
-					if config != nil && config.Path() == event.Path {
+					if config != nil && config.GetPath() == event.Path {
 						device = dev
 						break
 					}
@@ -249,7 +249,7 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 			}
 			if vlanManaged {
 				// After setting device managed=no, the vlan interface will be set down by NetworkManager.
-				klog.Infof(`device %q has a vlan interface %q mannaged by NetworkManager, will not set the NetworkManager property "managed" to %v`, name, l.Attrs().Name, managed)
+				klog.Infof(`device %q has a vlan interface %q managed by NetworkManager, will not set the NetworkManager property "managed" to %v`, name, l.Attrs().Name, managed)
 				return nil
 			}
 		}

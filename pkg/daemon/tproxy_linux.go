@@ -15,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -201,7 +200,7 @@ func addRuleIfNotExist(family int, mark, mask uint32, table int) error {
 
 	rule := netlink.NewRule()
 	rule.Mark = mark
-	rule.Mask = ptr.To(mask)
+	rule.Mask = new(mask)
 	rule.Table = table
 	rule.Family = family
 

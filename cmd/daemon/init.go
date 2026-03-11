@@ -23,7 +23,7 @@ func initForOS() error {
 		return err
 	}
 
-	// disable checksum for genev_sys_6081 as default
+	// disable checksum for geneve_sys_6081 as default
 	return daemon.TurnOffNicTxChecksum(util.GeneveNic)
 }
 

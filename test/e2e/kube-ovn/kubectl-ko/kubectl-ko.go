@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
@@ -62,17 +64,17 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 	ginkgo.AfterEach(func() {
 		k8sframework.TestContext.KubeConfig = kubectlConfig
 
-		ginkgo.By("Deleting network policy " + netpolName)
-		netpolClient.DeleteSync(netpolName)
+		// All resources are independent (no subnet dependency), delete in parallel
+		ginkgo.By("Deleting network policy " + netpolName + ", service " + serviceName + ", pods " + pod2Name + " and " + podName)
+		netpolClient.Delete(netpolName)
+		serviceClient.Delete(serviceName)
+		podClient.DeleteGracefully(pod2Name)
+		podClient.DeleteGracefully(podName)
 
-		ginkgo.By("Deleting service " + serviceName)
-		serviceClient.DeleteSync(serviceName)
-
-		ginkgo.By("Deleting pod " + pod2Name)
-		podClient.DeleteSync(pod2Name)
-
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		framework.ExpectNoError(netpolClient.WaitToDisappear(netpolName, 0, 2*time.Minute))
+		framework.ExpectNoError(serviceClient.WaitToDisappear(serviceName, 0, 2*time.Minute))
+		podClient.WaitForNotFound(pod2Name)
+		podClient.WaitForNotFound(podName)
 	})
 
 	framework.ConformanceIt(`should support "kubectl ko nbctl show"`, func() {
@@ -280,10 +282,10 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 				Egress: []netv1.NetworkPolicyEgressRule{{
 					Ports: []netv1.NetworkPolicyPort{{
 						Protocol: ptr.To(corev1.ProtocolTCP),
-						Port:     ptr.To(intstr.FromInt32(tcpPort)),
+						Port:     new(intstr.FromInt32(tcpPort)),
 					}, {
 						Protocol: ptr.To(corev1.ProtocolUDP),
-						Port:     ptr.To(intstr.FromInt32(udpPort)),
+						Port:     new(intstr.FromInt32(udpPort)),
 					}},
 					To: []netv1.NetworkPolicyPeer{{
 						NamespaceSelector: &metav1.LabelSelector{},
@@ -311,6 +313,23 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 			return len(s.Spec.ClusterIPs) != 0, nil
 		}, "cluster ips are not empty")
 
+		ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			eps, err := cs.CoreV1().Endpoints(namespaceName).Get(context.TODO(), serviceName, metav1.GetOptions{})
+			if err == nil {
+				for _, subset := range eps.Subsets {
+					if len(subset.Addresses) > 0 {
+						return true, nil
+					}
+				}
+				return false, nil
+			}
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}, fmt.Sprintf("endpoints %s has at least one ready address", serviceName))
+
 		ginkgo.By("Creating pod " + podName)
 		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
 		pod = podClient.CreateSync(pod)
@@ -323,6 +342,13 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 		matchPod := fmt.Sprintf("output to %q", ovs.PodNameToPortName(pod2Name, pod2.Namespace, util.OvnProvider))
 		matchLocalnet := fmt.Sprintf("output to %q", "localnet."+util.DefaultSubnet)
+		checkOutput := func(output, match string) bool {
+			if subCmd == "ovn-trace" {
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+				return strings.Contains(lines[len(lines)-1], match)
+			}
+			return strings.Contains(output, match)
+		}
 		checkFunc := func(output string) {
 			ginkgo.GinkgoHelper()
 			var match string
@@ -331,11 +357,8 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 			} else {
 				match = matchPod
 			}
-			if subCmd == "ovn-trace" {
-				lines := strings.Split(strings.TrimSpace(output), "\n")
-				framework.ExpectContainSubstring(lines[len(lines)-1], match)
-			} else {
-				framework.ExpectContainSubstring(output, match)
+			if !checkOutput(output, match) {
+				framework.Failf("expected trace output to contain %q, but got %q", match, output)
 			}
 		}
 		for protocol, port := range map[corev1.Protocol]int32{corev1.ProtocolTCP: tcpPort, corev1.ProtocolUDP: udpPort} {
@@ -346,7 +369,19 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 			}
 			traceService = true
 			for _, ip := range service.Spec.ClusterIPs {
-				execOrDie(fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip, proto, port), checkFunc)
+				cmd := fmt.Sprintf("ko %s %s/%s %s %s %d", subCmd, pod.Namespace, pod.Name, ip, proto, port)
+				var match string
+				if f.VersionPriorTo(1, 11) && f.IsUnderlay() {
+					match = matchLocalnet
+				} else {
+					match = matchPod
+				}
+				// Retry Service ClusterIP trace to allow OVN LB rules to be synced
+				framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+					ginkgo.By(fmt.Sprintf("Executing \"kubectl %s\"", cmd))
+					output := e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
+					return checkOutput(output, match), nil
+				}, fmt.Sprintf("trace to service %s should reach target pod", ip))
 			}
 		}
 	})

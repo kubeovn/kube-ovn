@@ -67,7 +67,7 @@ func (c *IptablesFIPClient) Patch(original, modified *apiv1.IptablesFIPRule) *ap
 	ExpectNoError(err)
 
 	var patchedIptablesFIPRule *apiv1.IptablesFIPRule
-	err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
 		fip, err := c.IptablesFIPRuleInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables fip %q", original.Name)
@@ -99,7 +99,7 @@ func (c *IptablesFIPClient) PatchSync(original, modified *apiv1.IptablesFIPRule,
 	return c.Get(fip.Name).DeepCopy()
 }
 
-// Delete deletes a iptables fip if the iptables fip exists
+// Delete deletes an iptables FIP rule if it exists
 func (c *IptablesFIPClient) Delete(name string) {
 	ginkgo.GinkgoHelper()
 	err := c.IptablesFIPRuleInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -113,7 +113,7 @@ func (c *IptablesFIPClient) Delete(name string) {
 func (c *IptablesFIPClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
-	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for iptables fip %q to disappear", name)
+	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for iptables fip %q to disappear", name)
 }
 
 // WaitToBeReady returns whether the iptables fip is ready within timeout.

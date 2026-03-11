@@ -2,13 +2,16 @@
 package speaker
 
 import (
+	"fmt"
 	"net/netip"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -53,11 +56,13 @@ func (c *Controller) syncSubnetRoutes() {
 		}
 	}
 
-	localSubnets := make(map[string]string, 2)
+	subnetByName := make(map[string]*kubeovnv1.Subnet, len(subnets))
 	for _, subnet := range subnets {
 		if !subnet.Status.IsReady() || len(subnet.Annotations) == 0 {
 			continue
 		}
+
+		subnetByName[subnet.Name] = subnet
 
 		policy := subnet.Annotations[util.BgpAnnotation]
 		switch policy {
@@ -79,53 +84,68 @@ func (c *Controller) syncSubnetRoutes() {
 					bgpExpected[afi].Insert(prefix.String())
 				}
 			}
-		case announcePolicyLocal:
-			localSubnets[subnet.Name] = subnet.Spec.CIDRBlock
 		default:
-			klog.Warningf("invalid subnet annotation %s=%s", util.BgpAnnotation, policy)
+			if policy != announcePolicyLocal {
+				klog.Warningf("invalid subnet annotation %s=%s", util.BgpAnnotation, policy)
+			}
 		}
 	}
 
-	for _, pod := range pods {
-		if pod.Status.PodIP == "" || len(pod.Annotations) == 0 || !isPodAlive(pod) {
-			continue
-		}
-
-		ips := make(map[string]string, 2)
-		if policy := pod.Annotations[util.BgpAnnotation]; policy != "" {
-			switch policy {
-			case "true":
-				fallthrough
-			case announcePolicyCluster:
-				for _, podIP := range pod.Status.PodIPs {
-					ips[util.CheckProtocol(podIP.IP)] = podIP.IP
-				}
-			case announcePolicyLocal:
-				if pod.Spec.NodeName == c.config.NodeName {
-					for _, podIP := range pod.Status.PodIPs {
-						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
-					}
-				}
-			default:
-				klog.Warningf("invalid pod annotation %s=%s", util.BgpAnnotation, policy)
-			}
-		} else if pod.Spec.NodeName == c.config.NodeName {
-			cidrBlock := localSubnets[pod.Annotations[util.LogicalSwitchAnnotation]]
-			if cidrBlock != "" {
-				for _, podIP := range pod.Status.PodIPs {
-					if util.CIDRContainIP(cidrBlock, podIP.IP) {
-						ips[util.CheckProtocol(podIP.IP)] = podIP.IP
-					}
-				}
-			}
-		}
-
-		for _, ip := range ips {
-			addExpectedPrefix(ip, bgpExpected)
-		}
-	}
+	collectPodExpectedPrefixes(pods, subnetByName, c.config.NodeName, bgpExpected)
 
 	if err := c.reconcileRoutes(bgpExpected); err != nil {
 		klog.Errorf("failed to reconcile routes: %s", err.Error())
+	}
+}
+
+// collectPodExpectedPrefixes iterates over pods and collects IPs that should be announced via BGP.
+// It reads IPs from pod annotations ({provider}.kubernetes.io/ip_address) instead of pod.Status.PodIPs,
+// so that attachment network IPs and non-primary CNI IPs are correctly announced.
+func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kubeovnv1.Subnet, nodeName string, bgpExpected prefixMap) {
+	ipAddrSuffix := fmt.Sprintf(util.IPAddressAnnotationTemplate, "")
+	for _, pod := range pods {
+		if len(pod.Annotations) == 0 || !isPodAlive(pod) {
+			continue
+		}
+
+		podBgpPolicy := pod.Annotations[util.BgpAnnotation]
+
+		for key, ipStr := range pod.Annotations {
+			if ipStr == "" || !strings.HasSuffix(key, ipAddrSuffix) {
+				continue
+			}
+			provider := strings.TrimSuffix(key, ipAddrSuffix)
+			if provider == "" {
+				continue
+			}
+
+			lsKey := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)
+			subnetName := pod.Annotations[lsKey]
+			if subnetName == "" {
+				continue
+			}
+			subnet := subnetByName[subnetName]
+			if subnet == nil {
+				continue
+			}
+
+			policy := podBgpPolicy
+			if policy == "" {
+				policy = subnet.Annotations[util.BgpAnnotation]
+			}
+
+			switch policy {
+			case "true", announcePolicyCluster:
+				for ip := range strings.SplitSeq(ipStr, ",") {
+					addExpectedPrefix(strings.TrimSpace(ip), bgpExpected)
+				}
+			case announcePolicyLocal:
+				if pod.Spec.NodeName == nodeName {
+					for ip := range strings.SplitSeq(ipStr, ",") {
+						addExpectedPrefix(strings.TrimSpace(ip), bgpExpected)
+					}
+				}
+			}
+		}
 	}
 }

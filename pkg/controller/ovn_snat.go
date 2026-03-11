@@ -101,7 +101,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -256,7 +256,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-		// eip is using by ecmp nexthop lsp, nat can not use
+		// eip is used by ecmp nexthop lsp, nat can not use
 		err = fmt.Errorf("ovn nat %s can not use type %s eip %s", key, util.OvnEipTypeLSP, eipName)
 		klog.Error(err)
 		return err
@@ -484,7 +484,7 @@ func (c *Controller) patchOvnSnatAnnotation(key, eipName string) error {
 }
 
 func (c *Controller) syncOvnSnatFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	rules := &kubeovnv1.OvnSnatRuleList{}
 	return migrateFinalizers(cl, rules, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(rules.Items) {
@@ -499,7 +499,7 @@ func (c *Controller) handleAddOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 		return nil
 	}
 	newSnat := cachedSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newSnat, util.DeprecatedFinalizerName)
 	controllerutil.AddFinalizer(newSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
@@ -522,7 +522,7 @@ func (c *Controller) handleDelOvnSnatFinalizer(cachedSnat *kubeovnv1.OvnSnatRule
 		return nil
 	}
 	newSnat := cachedSnat.DeepCopy()
-	controllerutil.RemoveFinalizer(newSnat, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newSnat, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newSnat, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {

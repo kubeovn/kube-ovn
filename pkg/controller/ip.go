@@ -11,12 +11,12 @@ import (
 	"slices"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -27,7 +27,8 @@ import (
 
 func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
+		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		return
 	}
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
@@ -47,7 +48,9 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
-		klog.Errorf("ip %s subnet can not change", newIP.Name)
+		klog.Warningf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
+		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
@@ -114,7 +117,8 @@ func (c *Controller) enqueueDelIP(obj any) {
 		return
 	}
 
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:19]) {
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
+		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		return
 	}
 
@@ -238,8 +242,21 @@ func (c *Controller) handleUpdateIP(key string) error {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
-			return err
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
+				return err
+			}
+			// subnet not found, but ip exists, check if the ip is u2o ip or mcast querier ip
+			// if yes, remove finalizer to let ip be deleted
+			klog.Warningf("subnet %s not found for deleting ip %s", cachedIP.Spec.Subnet, cachedIP.Name)
+			if strings.HasPrefix(cachedIP.Name, util.U2OInterconnName[0:20]) ||
+				strings.HasPrefix(cachedIP.Name, util.McastQuerierName[0:14]) {
+				if err = c.handleDelIPFinalizer(cachedIP); err != nil {
+					klog.Errorf("failed to remove finalizer for deleting ip %s: %v", cachedIP.Name, err)
+					return err
+				}
+				return nil
+			}
 		}
 		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
@@ -290,7 +307,7 @@ func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 }
 
 func (c *Controller) syncIPFinalizer(cl client.Client) error {
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	ips := &kubeovnv1.IPList{}
 	return migrateFinalizers(cl, ips, func(i int) (client.Object, client.Object) {
 		if i < 0 || i >= len(ips.Items) {
@@ -305,7 +322,7 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 		return nil
 	}
 	newIP := cachedIP.DeepCopy()
-	controllerutil.RemoveFinalizer(newIP, util.DepreciatedFinalizerName)
+	controllerutil.RemoveFinalizer(newIP, util.DeprecatedFinalizerName)
 	controllerutil.RemoveFinalizer(newIP, util.KubeOVNControllerFinalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedIP, newIP)
 	if err != nil {
@@ -374,22 +391,46 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
 	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
+	var owner *metav1.OwnerReference
 	if ipCRName != "" {
 		// pod IP
 		key = podName
 		ipName = ipCRName
 	} else {
-		// node IP or interconn IP
+		// node IP, u2o IP or mcast querier IP
 		switch {
 		case subnetName == c.config.NodeSwitch:
+			node, err := c.nodesLister.Get(nodeName)
+			if err != nil {
+				err = fmt.Errorf("failed to get node %s: %w", nodeName, err)
+				klog.Error(err)
+				return err
+			}
 			key = nodeName
 			ipName = util.NodeLspName(nodeName)
-		case strings.HasPrefix(podName, util.U2OInterconnName[0:19]):
-			key = podName // interconn IP name
+			owner = &metav1.OwnerReference{
+				APIVersion: corev1.SchemeGroupVersion.String(),
+				Kind:       util.KindNode,
+				Name:       nodeName,
+				UID:        node.UID,
+			}
+		case strings.HasPrefix(podName, util.U2OInterconnName[0:20]) || strings.HasPrefix(podName, util.McastQuerierName[0:14]):
+			// u2o IP or mcast querier IP
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				err = fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
+				klog.Error(err)
+				return err
+			}
+			key = podName
 			ipName = podName
-		case strings.HasPrefix(podName, util.McastQuerierName[0:13]):
-			key = podName // mcast querier IP name
-			ipName = podName
+			owner = &metav1.OwnerReference{
+				APIVersion:         kubeovnv1.SchemeGroupVersion.String(),
+				Kind:               util.KindSubnet,
+				Name:               subnetName,
+				UID:                subnet.UID,
+				BlockOwnerDeletion: new(true),
+			}
 		}
 	}
 
@@ -439,6 +480,9 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				PodType:       podType,
 			},
 		}
+		if owner != nil {
+			ipCR.OwnerReferences = []metav1.OwnerReference{*owner}
+		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
@@ -447,14 +491,25 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	} else {
 		newIPCR := ipCR.DeepCopy()
 		if newIPCR.Labels != nil {
+			// Remove old subnet dynamic label if subnet changed
+			oldSubnet := ipCR.Spec.Subnet
+			if oldSubnet != "" && oldSubnet != subnetName {
+				delete(newIPCR.Labels, oldSubnet)
+			}
 			newIPCR.Labels[util.SubnetNameLabel] = subnetName
 			newIPCR.Labels[util.NodeNameLabel] = nodeName
+			newIPCR.Labels[subnetName] = ""
 		} else {
 			newIPCR.Labels = map[string]string{
 				util.SubnetNameLabel: subnetName,
 				util.NodeNameLabel:   nodeName,
+				subnetName:           "",
 			}
-			// update not touch IP Reserved Label
+		}
+		if owner != nil {
+			// currently we only set owner for node IP, u2o IP and mcast querier ip,
+			// so it's ok to overwrite it here
+			newIPCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
 		newIPCR.Spec.PodName = key
 		newIPCR.Spec.Namespace = ns
@@ -495,7 +550,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 			macPtr = &ip.Spec.MacAddress
 		}
 	} else {
-		macPtr = ptr.To("")
+		macPtr = new("")
 	}
 
 	if ipStr == "" {

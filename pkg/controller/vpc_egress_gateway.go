@@ -312,37 +312,16 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// collect egress policies
 	ipv4ForwardSrc, ipv6ForwardSrc := set.New[string](), set.New[string]()
 	ipv4SNATSrc, ipv6SNATSrc := set.New[string](), set.New[string]()
-	fnFilter := func(internalCIDR string, ipBlocks []string) set.Set[string] {
-		if internalCIDR == "" {
-			return nil
-		}
-
-		ret := set.New[string]()
-		for _, cidr := range ipBlocks {
-			if ok, _ := util.CIDRContainsCIDR(internalCIDR, cidr); !ok {
-				ret.Insert(cidr)
-			}
-		}
-		return ret
-	}
-
 	for _, policy := range gw.Spec.Policies {
 		ipv4, ipv6 := util.SplitIpsByProtocol(policy.IPBlocks)
-		filteredV4 := fnFilter(internalCIDRv4, ipv4)
-		filteredV6 := fnFilter(internalCIDRv6, ipv6)
 		if policy.SNAT {
-			ipv4SNATSrc = ipv4SNATSrc.Union(filteredV4)
-			ipv6SNATSrc = ipv6SNATSrc.Union(filteredV6)
+			ipv4SNATSrc = ipv4SNATSrc.Insert(ipv4...)
+			ipv6SNATSrc = ipv6SNATSrc.Insert(ipv6...)
 		} else {
-			ipv4ForwardSrc = ipv4ForwardSrc.Union(filteredV4)
-			ipv6ForwardSrc = ipv6ForwardSrc.Union(filteredV6)
+			ipv4ForwardSrc = ipv4ForwardSrc.Insert(ipv4...)
+			ipv6ForwardSrc = ipv6ForwardSrc.Insert(ipv6...)
 		}
 		for _, subnetName := range policy.Subnets {
-			if subnetName == internalSubnet {
-				// skip the internal subnet
-				continue
-			}
-
 			subnet, err := c.subnetsLister.Get(subnetName)
 			if err != nil {
 				klog.Error(err)
@@ -370,7 +349,25 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	ipv6ForwardSrc.Delete("")
 	ipv4SNATSrc.Delete("")
 	ipv6SNATSrc.Delete("")
-	intRouteDstIPv4, intRouteDstIPv6 := ipv4ForwardSrc.Union(ipv4SNATSrc), ipv6ForwardSrc.Union(ipv6SNATSrc)
+	ipv4Src := ipv4ForwardSrc.Union(ipv4SNATSrc)
+	ipv6Src := ipv6ForwardSrc.Union(ipv6SNATSrc)
+
+	// filter out ip blocks within the internal subnet CIDR(s) to avoid route(s) configuration failure
+	fnFilter := func(internalCIDR string, ipBlocks set.Set[string]) set.Set[string] {
+		if internalCIDR == "" {
+			return nil
+		}
+
+		ret := set.New[string]()
+		for cidr := range ipBlocks {
+			if ok, _ := util.CIDRContainsCIDR(internalCIDR, cidr); !ok {
+				ret.Insert(cidr)
+			}
+		}
+		return ret
+	}
+	intRouteDstIPv4 := fnFilter(internalCIDRv4, ipv4Src)
+	intRouteDstIPv6 := fnFilter(internalCIDRv6, ipv6Src)
 
 	// generate route annotations used to configure routes in the pod
 	routes := util.NewPodRoutes()
@@ -436,8 +433,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxUnavailable: ptr.To(intstr.FromInt(1)),
-					MaxSurge:       ptr.To(intstr.FromInt(0)),
+					MaxUnavailable: new(intstr.FromInt(1)),
+					MaxSurge:       new(intstr.FromInt(0)),
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -470,7 +467,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						},
 						Env: initEnv,
 						SecurityContext: &corev1.SecurityContext{
-							Privileged: ptr.To(true),
+							Privileged: new(true),
 						},
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "usr-local-sbin",
@@ -483,7 +480,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Command:         []string{"sleep", "infinity"},
 						SecurityContext: &corev1.SecurityContext{
-							Privileged: ptr.To(false),
+							Privileged: new(false),
 							RunAsUser:  ptr.To[int64](65534),
 							Capabilities: &corev1.Capabilities{
 								Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
@@ -534,7 +531,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	hash = hash[:12]
 	// replicas and the hash annotation should be excluded from hash calculation
-	deploy.Spec.Replicas = ptr.To(gw.Spec.Replicas)
+	deploy.Spec.Replicas = new(gw.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
 	if currentDeploy, err := c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -564,7 +561,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	// return the source CIDR blocks for later OVN resources reconciliation
 	deploy.APIVersion, deploy.Kind = appsv1.SchemeGroupVersion.String(), util.KindDeployment
-	return attachmentNetworkName, intRouteDstIPv4, intRouteDstIPv6, deploy, nil
+	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {
@@ -940,7 +937,7 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			FailureThreshold:    1,
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},

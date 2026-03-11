@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -363,7 +362,7 @@ func (c *Controller) InitIPAM() error {
 			var mac *string
 			klog.Infof("Init U2O for subnet %s", subnet.Name)
 			if subnet.Status.U2OInterconnectionMAC != "" {
-				mac = ptr.To(subnet.Status.U2OInterconnectionMAC)
+				mac = new(subnet.Status.U2OInterconnectionMAC)
 			} else {
 				lrp, err := c.OVNNbClient.GetLogicalRouterPort(u2oInterconnLrpName, true)
 				if err != nil {
@@ -371,7 +370,7 @@ func (c *Controller) InitIPAM() error {
 					return err
 				}
 				if lrp != nil {
-					mac = ptr.To(lrp.MAC)
+					mac = new(lrp.MAC)
 				}
 			}
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
@@ -438,6 +437,10 @@ func (c *Controller) InitIPAM() error {
 			continue
 		}
 
+		if !hasAllocatedAnnotation(pod) {
+			continue
+		}
+
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IPAddressAnnotation], err)
@@ -452,9 +455,13 @@ func (c *Controller) InitIPAM() error {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+				if ip == "" {
+					klog.Warningf("pod %s/%s has empty IP annotation for provider %s, skip IPAM init", pod.Namespace, podName, podNet.ProviderName)
+					continue
+				}
 				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, &mac, podNet.Subnet.Name, true)
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, ip, err)
 				} else {
 					err = c.createOrUpdateIPCR(portName, podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podType)
 					if err != nil {
@@ -852,7 +859,7 @@ func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
 		klog.Errorf("failed to batch delete obsolete address set for asNames %v nodes %d: %v", delAsNames, len(nodes), err)
 		return err
 	}
-	klog.V(3).Infof("take to %v batch migrate node route for router: %s priority: %d add policy len: %d extrenalID len: %d del policy len: %d del address set len: %d",
+	klog.V(3).Infof("take to %v batch migrate node route for router: %s priority: %d add policy len: %d externalID len: %d del policy len: %d del address set len: %d",
 		time.Since(start), c.config.ClusterRouter, util.NodeRouterPolicyPriority, len(addPolicies), len(externalIDsMap), len(delPolicies), len(delAsNames))
 
 	return nil
@@ -901,10 +908,6 @@ func (c *Controller) syncNodeRoutes() error {
 		return err
 	}
 
-	if err := c.addNodeGatewayStaticRoute(); err != nil {
-		klog.Errorf("failed to add static route for node gateway")
-		return err
-	}
 	return nil
 }
 
@@ -914,7 +917,7 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.OVNSbClient.GetKubeOvnChassisses()
+	chassises, err := c.OVNSbClient.GetKubeOvnChassises()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err
@@ -946,11 +949,11 @@ func migrateFinalizers(c client.Client, list client.ObjectList, getObjectItem fu
 		if cachedObj, patchedObj = getObjectItem(i); cachedObj == nil {
 			break
 		}
-		if !controllerutil.ContainsFinalizer(cachedObj, util.DepreciatedFinalizerName) {
+		if !controllerutil.ContainsFinalizer(cachedObj, util.DeprecatedFinalizerName) {
 			i++
 			continue
 		}
-		controllerutil.RemoveFinalizer(patchedObj, util.DepreciatedFinalizerName)
+		controllerutil.RemoveFinalizer(patchedObj, util.DeprecatedFinalizerName)
 		if cachedObj.GetDeletionTimestamp() == nil {
 			// if the object is not being deleted, add the new finalizer
 			controllerutil.AddFinalizer(patchedObj, util.KubeOVNControllerFinalizer)
@@ -974,7 +977,7 @@ func (c *Controller) syncFinalizers() error {
 		return err
 	}
 
-	// migrate depreciated finalizer to new finalizer
+	// migrate deprecated finalizer to new finalizer
 	klog.Info("start to sync finalizers")
 	if err := c.syncIPFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync ip finalizer: %v", err)
@@ -1030,4 +1033,13 @@ func (c *Controller) syncFinalizers() error {
 	}
 	klog.Info("sync finalizers done")
 	return nil
+}
+
+func hasAllocatedAnnotation(pod *v1.Pod) bool {
+	for key, value := range pod.Annotations {
+		if value == "true" && strings.HasSuffix(key, util.AllocatedAnnotationSuffix) {
+			return true
+		}
+	}
+	return false
 }

@@ -11,10 +11,6 @@ on:
           - release-1.15
           - release-1.14
           - release-1.13
-          - release-1.12
-          - release-1.11
-          - release-1.9
-          - release-1.12-mc
   schedule:
   - cron: "20 19 * * *"
 
@@ -31,10 +27,6 @@ jobs:
         - release-1.15
         - release-1.14
         - release-1.13
-        - release-1.12
-        - release-1.11
-        - release-1.9
-        - release-1.12-mc
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
@@ -43,7 +35,7 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
@@ -67,7 +59,7 @@ jobs:
 
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.arch }}-${{ matrix.branch }}
           path: image-${{ matrix.arch }}.tar
@@ -82,10 +74,6 @@ jobs:
         - release-1.15
         - release-1.14
         - release-1.13
-        - release-1.12
-        - release-1.11
-        - release-1.9
-        - release-1.12-mc
     needs:
       - build
     name: push
@@ -98,13 +86,13 @@ jobs:
 
       - name: Download image
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: image-amd64-${{ matrix.branch }}
 
       - name: Download image
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: image-arm64-${{ matrix.branch }}
 

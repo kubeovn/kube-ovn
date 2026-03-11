@@ -63,7 +63,7 @@ func (c *DNSNameResolverClient) WaitToBeReady(name string, timeout time.Duration
 	result := c.WaitUntil(name, func(dnsNameResolver *apiv1.DNSNameResolver) (bool, error) {
 		// DNSNameResolver is considered ready if it has at least one resolved name
 		return len(dnsNameResolver.Status.ResolvedNames) > 0, nil
-	}, "Ready", 2*time.Second, timeout)
+	}, "Ready", poll, timeout)
 	return result != nil
 }
 

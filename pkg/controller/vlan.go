@@ -116,6 +116,14 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
+	// re-enqueue subnets that reference this vlan, so they can proceed
+	// if they were previously blocked by the vlan not being ready
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == vlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
+
 	return nil
 }
 

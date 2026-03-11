@@ -787,7 +787,7 @@ func TestValidateCnpConfig(t *testing.T) {
 			error: false,
 		},
 		{
-			name:        "no ingress or egressrule",
+			name:        "no ingress or egress rule",
 			priorityMap: map[int32]string{10: "test"},
 			cnp: &v1alpha2.ClusterNetworkPolicy{
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
@@ -1169,7 +1169,7 @@ func TestGetCnpName(t *testing.T) {
 			"foo",
 		},
 		{
-			"start with digital",
+			"start with digit",
 			"123",
 			"cnp123",
 		},

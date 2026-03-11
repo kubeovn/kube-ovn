@@ -322,7 +322,7 @@ func (c *Controller) handleDeleteBanp(banp *v1alpha1.BaselineAdminNetworkPolicy)
 	klog.Infof("handle delete banp %s", banp.Name)
 	banpName := getAnpName(banp.Name)
 
-	// ACLs releated to port_group will be deleted automatically when port_group is deleted
+	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := strings.ReplaceAll(banpName, "-", ".")
 	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete port group for banp %s: %v", banpName, err)

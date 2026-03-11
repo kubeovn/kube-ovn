@@ -153,7 +153,7 @@ function set_nb_version_compatibility() {
 }
 
 # create a new db file and join it to the cluster
-# if the nb/sb db file is corrputed
+# if the nb/sb db file is corrupted
 function ovn_db_pre_start() {
     local db=""
     local db_eval=""

@@ -66,6 +66,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Deleting vm " + vmName)
 		vmClient.DeleteSync(vmName)
 
+		// Wait for the VM's IP CRD to be fully cleaned up before deleting subnet
+		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+		ginkgo.By("Waiting for IP " + portName + " to be cleaned up")
+		err := ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
+		framework.ExpectNoError(err)
+
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 	})
@@ -189,7 +195,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		// the ip is deleted
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		err = ipClient.WaitToDisappear(portName, 2*time.Second, 2*time.Minute)
+		err = ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting vm " + vmName)

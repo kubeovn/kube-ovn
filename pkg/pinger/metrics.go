@@ -283,7 +283,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "datapath",
-			Help:      "Represents an existing datapath. This metrics is always 1.",
+			Help:      "Represents an existing datapath. This metric is always 1.",
 		},
 		[]string{
 			"hostname",
@@ -305,7 +305,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "dp_if",
-			Help:      "Represents an existing datapath interface. This metrics is always 1.",
+			Help:      "Represents an existing datapath interface. This metric is always 1.",
 		},
 		[]string{
 			"hostname",
@@ -396,7 +396,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "dp_masks_hit_ratio",
-			Help:      "The average number of masks visited per packet. It is the ration between hit and total number of packets processed by a datapath.",
+			Help:      "The average number of masks visited per packet. It is the ratio between hit and total number of packets processed by a datapath.",
 		},
 		[]string{
 			"hostname",
@@ -408,7 +408,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "interface",
-			Help:      "Represents OVS interface. This is the primary metric for all other interface metrics. This metrics is always 1.",
+			Help:      "Represents OVS interface. This is the primary metric for all other interface metrics. This metric is always 1.",
 		},
 		[]string{
 			"hostname",

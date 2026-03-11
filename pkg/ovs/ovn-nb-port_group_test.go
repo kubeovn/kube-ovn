@@ -234,7 +234,7 @@ func (suite *OvnClientTestSuite) testDeletePortGroup() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testGetGetPortGroup() {
+func (suite *OvnClientTestSuite) testGetPortGroup() {
 	t := suite.T()
 	t.Parallel()
 

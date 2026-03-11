@@ -18,10 +18,12 @@ spec:
       app.kubernetes.io/name: kube-ovn-ovs-dpdk
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
-    type: RollingUpdate
+    type: {{ .Values.ovsOvn.updateStrategy.type }}
+    {{- if eq .Values.ovsOvn.updateStrategy.type "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: {{ .Values.ovsOvn.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.ovsOvn.strategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
   template:
     metadata:
       {{- with .Values.ovsOvn.podAnnotations }}
@@ -41,6 +43,10 @@ spec:
     spec:
       tolerations:
       - operator: Exists
+      {{- with .Values.ovsOvn.dpdkHybrid.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -77,6 +83,9 @@ spec:
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteOpenflowInterval }}"
+            {{- with .Values.ovsOvn.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /opt/ovs-config
               name: host-config-ovs
@@ -127,9 +136,10 @@ spec:
           resources:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
+      {{- with .Values.ovsOvn.dpdkHybrid.nodeSelector }}
       nodeSelector:
-        kubernetes.io/os: "linux"
-        ovn.kubernetes.io/ovs_dp_type: "userspace"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: host-config-ovs
           hostPath:
