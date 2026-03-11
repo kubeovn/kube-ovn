@@ -258,15 +258,18 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	protocol = strings.ToLower(protocol)
 
 	var (
-		selectFields string
+		selectFields []string
 		err          error
 	)
 
 	if sessionAffinity {
-		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
+		selectFields = []string{
+			ovnnb.LoadBalancerSelectionFieldsIPSrc,
+			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+		}
 	}
 
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
