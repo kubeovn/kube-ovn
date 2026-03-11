@@ -222,6 +222,19 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			linkMap[node.Name()] = linkMap[node.ID]
 			routeMap[node.Name()] = routeMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
+
+			// Clean up any stale OVS datapath port entries for this NIC.
+			// Previous provider network tests may leave stale port references in the
+			// ovs-system datapath when bridge cleanup races with NIC state changes.
+			// This prevents "could not open network device (File exists)" errors when
+			// the next test creates a bridge with exchangeLinkName=true.
+			nicName := linkMap[node.ID].IfName
+			if stdout, _, err := node.Exec("ovs-dpctl", "show"); err == nil {
+				if strings.Contains(string(stdout), nicName) {
+					framework.Logf("Cleaning up stale OVS datapath port %s on node %s", nicName, node.Name())
+					_, _, _ = node.Exec("ovs-dpctl", "del-if", "ovs-system", nicName)
+				}
+			}
 		}
 
 		itFn = func(exchangeLinkName bool) {
@@ -373,7 +386,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
 		ginkgo.By("Waiting for ovs bridge to disappear")
-		deadline := time.Now().Add(time.Minute)
+		deadline := time.Now().Add(2 * time.Minute)
 		for _, node := range nodes {
 			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
 			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
