@@ -1396,17 +1396,22 @@ func (m *MockLoadBalancer) EXPECT() *MockLoadBalancerMockRecorder {
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	varargs := []any{lbName, protocol}
+	for _, a := range selectFields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol any, selectFields ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	varargs := append([]any{lbName, protocol}, selectFields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), varargs...)
 }
 
 // DeleteLoadBalancers mocks base method.
@@ -3396,17 +3401,22 @@ func (mr *MockNbClientMockRecorder) CreateHAChassisGroup(name, chassises, extern
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	varargs := []any{lbName, protocol}
+	for _, a := range selectFields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol any, selectFields ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	varargs := append([]any{lbName, protocol}, selectFields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), varargs...)
 }
 
 // CreateLoadBalancerHealthCheck mocks base method.

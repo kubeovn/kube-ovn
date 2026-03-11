@@ -122,7 +122,7 @@ type LogicalSwitchPort interface {
 }
 
 type LoadBalancer interface {
-	CreateLoadBalancer(lbName, protocol, selectFields string) error
+	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
