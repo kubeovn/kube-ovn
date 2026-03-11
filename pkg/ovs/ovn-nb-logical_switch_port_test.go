@@ -296,6 +296,13 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
 		err = nbClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, "external", "192.168.2.0/24,fd02::/120", 0)
 		require.NoError(t, err)
+
+		err = nbClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, "external2", "192.168.2.0/24,fd02::/120", 0)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, "external2", lsp.Options["network_name"])
 	})
 
 	t.Run("should print err log when logical switch does not exist", func(t *testing.T) {
