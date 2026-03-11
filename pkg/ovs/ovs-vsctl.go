@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -304,12 +305,36 @@ func CleanLostInterface() {
 // but only the latest one should have the iface-id set.
 // See: https://github.com/ovn-org/ovn-kubernetes/pull/869
 func CleanDuplicatePort(ifaceID, portName string) {
+	CleanDuplicatePortByNetns(ifaceID, portName, "")
+}
+
+func CleanDuplicatePortByNetns(ifaceID, portName, podNetns string) {
 	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID, "name!="+portName)
 	for _, uuid := range uuids {
+		if podNetns != "" {
+			existingNetns, err := ovsGet("Interface", uuid, "external_ids", "pod_netns")
+			if err != nil {
+				klog.Errorf("failed to get pod_netns for OVS interface %q: %v", uuid, err)
+				continue
+			}
+			existingNetns = strings.Trim(existingNetns, "\"")
+			if existingNetns != "" && existingNetns != podNetns && netnsPathExists(existingNetns) {
+				klog.Infof("skip cleaning active OVS interface %q for iface-id %q: pod_netns %q does not match current %q", uuid, ifaceID, existingNetns, podNetns)
+				continue
+			}
+		}
 		if out, err := Exec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
 			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v\n  %q", uuid, ifaceID, err, out)
 		}
 	}
+}
+
+func netnsPathExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // ValidatePortVendor returns true if the port's external_ids:vendor=kube-ovn

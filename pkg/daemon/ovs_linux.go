@@ -48,7 +48,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
-	ovs.CleanDuplicatePort(ifaceID, hostNicName)
+	ovs.CleanDuplicatePortByNetns(ifaceID, hostNicName, netns)
 
 	vhostServerPath := path.Join(sharedDir, socketName)
 	if socketConsumption == util.ConsumptionKubevirt {
@@ -99,7 +99,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
-	ovs.CleanDuplicatePort(ifaceID, hostNicName)
+	ovs.CleanDuplicatePortByNetns(ifaceID, hostNicName, netns)
 	if yusur.IsYusurSmartNic(deviceID) {
 		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
 		// Add yusur ovs port
@@ -1800,7 +1800,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
-	ovs.CleanDuplicatePort(ifaceID, containerNicName)
+	ovs.CleanDuplicatePortByNetns(ifaceID, containerNicName, netns)
 
 	// Add container iface to ovs port as internal port
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", containerNicName, "--",

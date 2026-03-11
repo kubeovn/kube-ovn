@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
+	"github.com/neverlee/keymutex"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,11 +39,30 @@ type cniServerHandler struct {
 	KubeClient    kubernetes.Interface
 	KubeOvnClient clientset.Interface
 	Controller    *Controller
+	podReqKeyMux  *keymutex.KeyMutex
 }
 
 func createCniServerHandler(config *Configuration, controller *Controller) *cniServerHandler {
-	csh := &cniServerHandler{KubeClient: config.KubeClient, KubeOvnClient: config.KubeOvnClient, Config: config, Controller: controller}
+	csh := &cniServerHandler{
+		KubeClient:    config.KubeClient,
+		KubeOvnClient: config.KubeOvnClient,
+		Config:        config,
+		Controller:    controller,
+		podReqKeyMux:  keymutex.New(97),
+	}
 	return csh
+}
+
+func cniRequestLockKey(podRequest request.CniRequest) string {
+	provider := podRequest.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	ifName := podRequest.IfName
+	if ifName == "" {
+		ifName = "eth0"
+	}
+	return fmt.Sprintf("%s/%s/%s/%s", podRequest.PodNamespace, podRequest.PodName, provider, ifName)
 }
 
 func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
@@ -68,6 +88,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	lockKey := cniRequestLockKey(podRequest)
+	csh.podReqKeyMux.Lock(lockKey)
+	defer csh.podReqKeyMux.Unlock(lockKey)
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider)
 	if !exist {
@@ -427,6 +450,9 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	lockKey := cniRequestLockKey(podRequest)
+	csh.podReqKeyMux.Lock(lockKey)
+	defer csh.podReqKeyMux.Unlock(lockKey)
 
 	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
