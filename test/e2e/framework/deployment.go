@@ -227,7 +227,7 @@ func (c *DeploymentClient) DeleteSync(name string) {
 }
 
 func (c *DeploymentClient) WaitToComplete(deploy *appsv1.Deployment) error {
-	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, poll, 2*time.Minute)
+	return testutils.WaitForDeploymentComplete(c.clientSet, deploy, Logf, poll, timeout)
 }
 
 // WaitToDisappear waits the given timeout duration for the specified deployment to disappear.

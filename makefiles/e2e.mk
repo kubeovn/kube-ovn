@@ -140,6 +140,7 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
+	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/pause:3.9,1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
