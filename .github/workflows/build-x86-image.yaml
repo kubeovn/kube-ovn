@@ -24,13 +24,13 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.10.1
+  GOLANGCI_LINT_VERSION: v2.11.3
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v4.1.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.22.1
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.12.4
+  TALOS_VERSION: v1.12.5
 
 jobs:
   build-kube-ovn-base:

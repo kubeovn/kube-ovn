@@ -141,10 +141,10 @@ function set_nb_version_compatibility() {
     if [ -n "$OVN_VERSION_COMPATIBILITY" ]; then
         if ! ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options | grep -q version_compatibility=; then
             echo "setting ovn NB_Global option version_compatibility to ${OVN_VERSION_COMPATIBILITY}"
-            ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
+            ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility="${OVN_VERSION_COMPATIBILITY}"
             return
         fi
-        value=`ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
+        value=$(ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//')
         echo "ovn nb global option version_compatibility is set to $value"
         if [ "$value" != "_$OVN_VERSION_COMPATIBILITY" ]; then
             ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}

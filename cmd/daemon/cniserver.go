@@ -155,7 +155,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
+	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306,G703
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, cfg *daemon.Configuration) (err error) {

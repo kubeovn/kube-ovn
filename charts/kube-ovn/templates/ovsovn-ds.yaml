@@ -11,11 +11,14 @@ spec:
   selector:
     matchLabels:
       app: ovs
+  {{- $updateStrategyType := include "kubeovn.ovs-ovn.updateStrategy" . | trim }}
   updateStrategy:
-    type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
+    type: {{ $updateStrategyType }}
+    {{- if eq $updateStrategyType "RollingUpdate" }}
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+    {{- end }}
   template:
     metadata:
       labels:

@@ -1,4 +1,4 @@
-{{- if include "kubeovn.ovn.versionCompatibility" . -}}
+{{- if .Values.ovsOvn.upgrade.enabled -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -154,7 +154,7 @@ spec:
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
             - name: OVN_VERSION_COMPATIBILITY
-              value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
+              value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
           command:
             - bash
             - -eo

@@ -161,6 +161,8 @@ ovn-central:
     memory: "4Gi"
     ephemeral-storage: 1Gi
 ovs-ovn:
+  updateStrategy:
+    type: ""  # Override the DaemonSet update strategy. Leave empty to auto-detect based on the deployed version.
   requests:
     cpu: "200m"
     memory: "200Mi"
