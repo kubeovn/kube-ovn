@@ -219,7 +219,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancerHealthCheck() {
 	t.Run("should return err when health checks have the same vipEndpoint",
 		func(t *testing.T) {
 			t.Parallel()
-			err = nbClient.CreateLoadBalancer(lbName+"1", "tcp", "")
+			err = nbClient.CreateLoadBalancer(lbName+"1", "tcp")
 			require.NoError(t, err)
 			lbhc1 := &ovnnb.LoadBalancerHealthCheck{
 				UUID:        ovsclient.NamedUUID(),
@@ -435,7 +435,7 @@ func (suite *OvnClientTestSuite) testNewLoadBalancerHealthCheck() {
 		require.ErrorContains(t, err, "not found load balancer")
 		require.Nil(t, lbhc)
 
-		err = nbClient.CreateLoadBalancer(lbName, "tcp", "")
+		err = nbClient.CreateLoadBalancer(lbName, "tcp")
 		require.NoError(t, err)
 
 		lbhc, err = nbClient.newLoadBalancerHealthCheck(lbName, vip, externals)
