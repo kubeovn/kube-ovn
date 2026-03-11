@@ -58,6 +58,15 @@ func (g *VpcEgressGateway) Ready() bool {
 	return g.Status.Ready && g.Status.Conditions.IsReady(g.Generation)
 }
 
+// BandwidthLimit represents the bandwidth limit for the egress gateway in both ingress and egress directions.
+// The bandwidth is specified in Mbps. If not specified, there will be no bandwidth limit.
+type BandwidthLimit struct {
+	// ingress bandwidth limit in Mbps
+	Ingress int64 `json:"ingress,omitempty"`
+	// egress bandwidth limit in Mbps
+	Egress int64 `json:"egress,omitempty"`
+}
+
 type VpcEgressGatewaySpec struct {
 	// optional VPC name
 	// if not specified, the default VPC will be used
@@ -97,6 +106,14 @@ type VpcEgressGatewaySpec struct {
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
 	// optional tolerations applied to the workload pods
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Compute Resources required for the container. If not specified, the controller will set a default value.
+	// If specified, the controller will not set any default value and use the specified value directly.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
+	// If not specified, there will be no bandwidth limit.
+	Bandwidth *BandwidthLimit `json:"bandwidth,omitempty"`
 }
 
 type VpcEgressGatewaySelector struct {
