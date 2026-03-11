@@ -112,6 +112,32 @@ func (c *NamespaceClient) WaitToDisappear(name string, _, timeout time.Duration)
 	return nil
 }
 
+// WaitUntil waits the given timeout duration for the specified condition to be met.
+func (c *NamespaceClient) WaitUntil(name string, cond func(ns *corev1.Namespace) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Namespace {
+	ginkgo.GinkgoHelper()
+
+	var ns *corev1.Namespace
+	err := wait.PollUntilContextTimeout(context.Background(), interval, timeout, true, func(_ context.Context) (bool, error) {
+		Logf("Waiting for namespace %s to meet condition %q", name, condDesc)
+		ns = c.Get(name)
+		met, err := cond(ns)
+		if err != nil {
+			return false, fmt.Errorf("failed to check condition for namespace %s: %w", name, err)
+		}
+		return met, nil
+	})
+	if err == nil {
+		return ns
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		Failf("timed out while waiting for namespace %s to meet condition %q", name, condDesc)
+	}
+	Failf("error occurred while waiting for namespace %s to meet condition %q: %v", name, condDesc, err)
+
+	return nil
+}
+
 func MakeNamespace(name string, labels, annotations map[string]string) *corev1.Namespace {
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
