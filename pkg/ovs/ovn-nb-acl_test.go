@@ -460,6 +460,156 @@ func (suite *OvnClientTestSuite) testUpdateEgressACLOps() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
+	t := suite.T()
+	t.Parallel()
+
+	pgName := "test.ipblock.pg"
+
+	t.Run("single ipBlock without except", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/8"},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Contains(t, matches[0], "ip4.dst == 10.0.0.0/8")
+		require.NotContains(t, matches[0], "!=")
+	})
+
+	t.Run("single ipBlock with except", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "0.0.0.0/0", Except: []string{"10.42.0.0/16"}},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Contains(t, matches[0], "ip4.dst == 0.0.0.0/0")
+		require.Contains(t, matches[0], "ip4.dst != {10.42.0.0/16}")
+	})
+
+	t.Run("multiple ipBlocks with different excepts", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "0.0.0.0/0", Except: []string{"10.42.0.0/16"}},
+			{CIDR: "192.168.0.0/16"},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		// Should contain OR of the two ipBlock matches
+		require.Contains(t, matches[0], "ip4.dst == 0.0.0.0/0 && ip4.dst != {10.42.0.0/16}")
+		require.Contains(t, matches[0], "ip4.dst == 192.168.0.0/16")
+		require.Contains(t, matches[0], "||")
+	})
+
+	t.Run("ipBlock with ports", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/8", Except: []string{"10.1.0.0/16"}},
+		}
+		npp := mockNetworkPolicyPort()
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, npp, nil)
+		require.NotEmpty(t, matches)
+		for _, m := range matches {
+			require.Contains(t, m, "ip4.dst == 10.0.0.0/8")
+			require.Contains(t, m, "ip4.dst != {10.1.0.0/16}")
+			require.Contains(t, m, "tcp")
+		}
+	})
+
+	t.Run("ipv6 ipBlock", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "fd00::/48", Except: []string{"fd00:1::/64"}},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv6, ovnnb.ACLDirectionToLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Contains(t, matches[0], "ip6.src == fd00::/48")
+		require.Contains(t, matches[0], "ip6.src != {fd00:1::/64}")
+	})
+
+	t.Run("ipBlock with wrong protocol is filtered", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/8"},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv6, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Empty(t, matches)
+	})
+
+	t.Run("empty ipBlocks", func(t *testing.T) {
+		t.Parallel()
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, nil, nil, nil)
+		require.Empty(t, matches)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateIngressIPBlockACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	t.Run("ipv4 ipBlock ingress acl", func(t *testing.T) {
+		t.Parallel()
+		pgName := "test_ingress_ipblock_v4_pg"
+		aclName := "np/test.default/ingress/ipv4/0/ipBlock"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "0.0.0.0/0", Except: []string{"10.42.0.0/16"}},
+		}
+		ops, err := nbClient.UpdateIngressIPBlockACLOps(pgName, kubeovnv1.ProtocolIPv4, aclName, ipBlocks, nil, false, nil, 0, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+
+		expectedMatches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, ipBlocks, nil, nil)
+		require.Len(t, expectedMatches, 1)
+		require.Equal(t, expectedMatches[0], ops[0].Row["match"])
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateEgressIPBlockACLOps() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	t.Run("ipv4 ipBlock egress acl", func(t *testing.T) {
+		t.Parallel()
+		pgName := "test_egress_ipblock_v4_pg"
+		aclName := "np/test.default/egress/ipv4/0/ipBlock"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "0.0.0.0/0", Except: []string{"10.42.0.0/16"}},
+		}
+		ops, err := nbClient.UpdateEgressIPBlockACLOps(pgName, kubeovnv1.ProtocolIPv4, aclName, ipBlocks, nil, false, nil, 0, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, ops)
+
+		expectedMatches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, expectedMatches, 1)
+		require.Equal(t, expectedMatches[0], ops[0].Row["match"])
+	})
+
+	t.Run("empty ipBlocks returns nil", func(t *testing.T) {
+		t.Parallel()
+		pgName := "test_egress_ipblock_empty_pg"
+
+		err := nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+
+		ops, err := nbClient.UpdateEgressIPBlockACLOps(pgName, kubeovnv1.ProtocolIPv4, "test", nil, nil, false, nil, 0, nil)
+		require.NoError(t, err)
+		require.Empty(t, ops)
+	})
+}
+
 func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 	t := suite.T()
 	t.Parallel()
