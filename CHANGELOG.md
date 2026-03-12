@@ -638,6 +638,25 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.33 (2026-03-12)
+
+ * [7e7d5a33c](https://github.com/kubeovn/kube-ovn/commit/7e7d5a33cbedf21184e8dcaa60f5c385b11c738a) release v1.14.33
+ * [7a1a6fd97](https://github.com/kubeovn/kube-ovn/commit/7a1a6fd972f5cb4a56c63179e6077233f07642bc) fix(deps): update module golang.org/x/tools to v0.43.0 (#6433)
+ * [ab461d6a8](https://github.com/kubeovn/kube-ovn/commit/ab461d6a857e82d3df49a8e4fc552f02a3d551d7) fix(deps): update golang (#6429)
+ * [479ef68fd](https://github.com/kubeovn/kube-ovn/commit/479ef68fd6353d65b1832654c7249b1eac665b7c) fix: reconcile subnet and localnet network_name on vlan provider change (#6393)
+ * [b45db1456](https://github.com/kubeovn/kube-ovn/commit/b45db14566be2502ebd709ceee9d93bcb09df900) chore(deps): update aquasecurity/trivy-action action to v0.35.0 (#6404)
+ * [741b60c9a](https://github.com/kubeovn/kube-ovn/commit/741b60c9ab17b3b73aa2c4e6fc4154ecafe26540) fix(deps): update golang (#6398)
+ * [ab70c55b6](https://github.com/kubeovn/kube-ovn/commit/ab70c55b6636672560a1f510b365660e092ba6ed) chore(deps): update aquasecurity/trivy-action action to v0.34.2 (#6380)
+ * [2e8b9be60](https://github.com/kubeovn/kube-ovn/commit/2e8b9be601783dcc6f1b96ac16f781d2afef1e8f) feat(helm):Add affinity and nodeSelector support for ovs-ovn and ovs-ovn-dpdk DaemonSets using v2 chart (#6308)
+ * [a0afa85f7](https://github.com/kubeovn/kube-ovn/commit/a0afa85f7a9da5df62b6efb6c66f04237eb0efff) prepare for next release
+
+### Contributors
+
+ * Juan Morete
+ * Mengxin Liu
+ * changluyi
+ * renovate[bot]
+
 ## v1.14.32 (2026-03-02)
 
  * [f5f1b5278](https://github.com/kubeovn/kube-ovn/commit/f5f1b5278cb90d774714b6b5be71cb18f6260c20) release v1.14.32
