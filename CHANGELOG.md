@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.15.5 (2026-03-12)
+
+ * [77eb581ff](https://github.com/kubeovn/kube-ovn/commit/77eb581ff6291e56184b3f14536a1833932cbd1c) release v1.15.5
+ * [f7f135314](https://github.com/kubeovn/kube-ovn/commit/f7f135314297ac3c1a3cac21568df0790b99a69f) fix(deps): update module golang.org/x/tools to v0.43.0 (#6432)
+ * [a0d787433](https://github.com/kubeovn/kube-ovn/commit/a0d787433f0e740b75d986849833815a0d929bc5) fix: use targeted patch in calcSubnetStatusIP to prevent U2O status overwrite (#6350)
+ * [0fda9a69a](https://github.com/kubeovn/kube-ovn/commit/0fda9a69a3464f7b89ba3f7bd2b15049332efcf6) fix(deps): update golang (#6430)
+ * [99876f673](https://github.com/kubeovn/kube-ovn/commit/99876f673af736523edda40c363d92a36a76de47) fix(helm): make v2 helm chart run upgrade logic within ovn (#6410)
+ * [883121029](https://github.com/kubeovn/kube-ovn/commit/883121029aecf332ba05b05e8098d7043286e825) fix: add ipv6_src to LB selection_fields for IPv6 session affinity (#6422)
+ * [9c89b8e9d](https://github.com/kubeovn/kube-ovn/commit/9c89b8e9d539623a3c2f6d142d6fa82c5707291a) fix: scope ipBlock.except to its own CIDR in NetworkPolicy ACL rules (#6419)
+ * [7a6460130](https://github.com/kubeovn/kube-ovn/commit/7a64601308b0c7a7c72fd436c8079f2b8642050e) fix(deps): update golang (#6428)
+ * [bacf2d842](https://github.com/kubeovn/kube-ovn/commit/bacf2d84254fbc35446852ed4c97677c2e79c033) fix: reconcile subnet and localnet network_name on vlan provider change (#6393)
+ * [bcf256532](https://github.com/kubeovn/kube-ovn/commit/bcf256532061ff1d75fbeec1e45ce263f6726080) feat: support custom resources and bandwidth limits for VpcEgressGateway (#6407)
+ * [40bfa3432](https://github.com/kubeovn/kube-ovn/commit/40bfa3432652f9cb0219c5ff83c8300de3a68d14) fix: scope SLR deletion to its own VPC to avoid deleting VIPs across VPCs (#6391)
+ * [bdf022348](https://github.com/kubeovn/kube-ovn/commit/bdf022348e9e0ff0e0f9b5ede1f0a28523c6813b) chore(deps): update aquasecurity/trivy-action action to v0.35.0 (#6404)
+ * [08fbad4f3](https://github.com/kubeovn/kube-ovn/commit/08fbad4f3d1520e1a8bd295e3b28e7cee6317752) fix(deps): update golang (#6408)
+ * [02266c08f](https://github.com/kubeovn/kube-ovn/commit/02266c08f65e2d5ebed1d2f1946108c4716dcaf4) update trivy for arm build
+ * [e1274ab2c](https://github.com/kubeovn/kube-ovn/commit/e1274ab2c11ccea2f342c9cafac09e2c4a15a0ef) chore(deps): update dependency go to v1.26.1 (release-1.15) (#6397)
+ * [3bf23ab6a](https://github.com/kubeovn/kube-ovn/commit/3bf23ab6a0b2f665e55bb415e2f5fe78af606e43) feat(helm):Add affinity and nodeSelector support for ovs-ovn and ovs-ovn-dpdk DaemonSets using v2 chart (#6308)
+ * [1d130e5b2](https://github.com/kubeovn/kube-ovn/commit/1d130e5b23d3cf7123c8ed91fae07bd57a1b2cf5) bump k8s to v1.34.5 (#6366)
+ * [0720adb48](https://github.com/kubeovn/kube-ovn/commit/0720adb48c483b831b088b24806716982e43f361) fix(kind): set containerd LimitNOFILE to 4096 to avoid valgrind failure (#6337)
+ * [95b2b80fc](https://github.com/kubeovn/kube-ovn/commit/95b2b80fcd879cb2ac61a82ef02448e91d889e2b) fix: prevent subnet from getting permanently stuck when VLAN is not ready (#6352)
+ * [ca9282c0d](https://github.com/kubeovn/kube-ovn/commit/ca9282c0d4f02027f8b5d23ee6c536fc20fd3faa) cni-server: fix vlan id reference (#6365)
+ * [b78c94c56](https://github.com/kubeovn/kube-ovn/commit/b78c94c565057024f7e839def4fa74702bd47030) fix(deps): update module golang.org/x/net to v0.51.0 (#6341)
+ * [1b4dd3144](https://github.com/kubeovn/kube-ovn/commit/1b4dd3144552fb6edbca03966d85e5a9d0103eb6) feat: introduce serviceMonitor and labels to services (#6340)
+ * [b67d8a480](https://github.com/kubeovn/kube-ovn/commit/b67d8a48066c13d2793afeb0f49e9b7adbbac100) fix(ovn): update patches for compatibility with upstream OVN branch-25.03 (#6331)
+ * [7fee4a495](https://github.com/kubeovn/kube-ovn/commit/7fee4a495405cc3058589305523e30395ed34411) fix(loadbalancers): ip_port_mapping is overwritten by new vips (#6302)
+ * [e3a1fd660](https://github.com/kubeovn/kube-ovn/commit/e3a1fd660f5b35e45d670ce98396ca0ed45170ca) fix(ovn): add null check before sbrec delete calls to prevent crashes (#6316)
+ * [77bb39380](https://github.com/kubeovn/kube-ovn/commit/77bb39380bcd931aea1e1c792ff66839ef2ceac5) chore(deps): update dependency go to v1.26.0 (#6293)
+ * [aeccd2d33](https://github.com/kubeovn/kube-ovn/commit/aeccd2d33c3ebc2ea58270e72b1c8441db52e883) fix lint issues
+ * [be347caf1](https://github.com/kubeovn/kube-ovn/commit/be347caf17f110bc5369511fa025219f730762b6) fix(controller): prevent NPE in isOvnSubnet when subnet is nil (#6312)
+ * [7ee1a5632](https://github.com/kubeovn/kube-ovn/commit/7ee1a5632b84f48ea2644db975de5b6f934adfd7) update .gitignore
+ * [def05ac8e](https://github.com/kubeovn/kube-ovn/commit/def05ac8e0c56445b4caaa1840cb873aad637236) add CLAUDE.md and link to AGENTS.md
+ * [103894d95](https://github.com/kubeovn/kube-ovn/commit/103894d95937c8739b1b97a593141139a09a6c73) prepare for next release
+
+### Contributors
+
+ * Johann Schley
+ * Juan Morete
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * changluyi
+ * renovate[bot]
+ * 张祖建
+
 ## v1.15.4 (2026-02-12)
 
  * [fe5412f18](https://github.com/kubeovn/kube-ovn/commit/fe5412f180adba797d6cdf6818fe53928e10f1a7) release v1.15.4
