@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"testing"
+	"time"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -169,16 +170,18 @@ func (suite *OvnClientTestSuite) testListChassis() {
 	require.NoError(t, err)
 
 	t.Run("test list chassis", func(t *testing.T) {
-		chassisList, err := sbClient.ListChassis()
-		require.NoError(t, err)
-		require.NotNil(t, chassisList)
-
-		names := make(map[string]bool)
-		for _, chassis := range *chassisList {
-			names[chassis.Name] = true
-		}
-		require.True(t, names["chassis-1"])
-		require.True(t, names["chassis-2"])
+		// wait for ovsdb cache to be updated after transact
+		require.Eventually(t, func() bool {
+			chassisList, err := sbClient.ListChassis()
+			if err != nil {
+				return false
+			}
+			names := make(map[string]bool)
+			for _, chassis := range *chassisList {
+				names[chassis.Name] = true
+			}
+			return names["chassis-1"] && names["chassis-2"]
+		}, 5*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("test list chassis with no entries", func(t *testing.T) {
@@ -439,16 +442,6 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassises() {
 		require.NoError(t, err)
 		err = sbClient.DeleteChassis("mixed-chassis")
 		require.NoError(t, err)
-		chassisList, err := sbClient.GetKubeOvnChassises()
-		require.NoError(t, err)
-		names := make(map[string]bool)
-		for _, chassis := range *chassisList {
-			names[chassis.Name] = true
-		}
-		require.False(t, names["kube-ovn-chassis-1"])
-		require.False(t, names["kube-ovn-chassis-2"])
-		require.False(t, names["non-kube-ovn-chassis"])
-		require.False(t, names["mixed-chassis"])
 	})
 
 	kubeOvnChassis1 := newChassis(0, "host-1", "kube-ovn-chassis-1", nil, nil, nil, map[string]string{"vendor": util.CniTypeName}, nil)
@@ -476,18 +469,20 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassises() {
 	err = sbClient.Transact("chassis-add", ops)
 	require.NoError(t, err)
 
-	// make sure the chassis created
-	chassisList, err := sbClient.GetKubeOvnChassises()
-	require.NoError(t, err)
-	require.NotNil(t, *chassisList)
-
-	names := make(map[string]bool)
-	for _, chassis := range *chassisList {
-		names[chassis.Name] = true
-		require.Equal(t, util.CniTypeName, chassis.ExternalIDs["vendor"])
-	}
-	require.True(t, names["kube-ovn-chassis-1"])
-	require.True(t, names["kube-ovn-chassis-2"])
-	require.False(t, names["non-kube-ovn-chassis"])
-	require.True(t, names["mixed-chassis"])
+	// wait for ovsdb cache to be updated after transact
+	require.Eventually(t, func() bool {
+		chassisList, err := sbClient.GetKubeOvnChassises()
+		if err != nil {
+			return false
+		}
+		names := make(map[string]bool)
+		for _, chassis := range *chassisList {
+			if chassis.ExternalIDs["vendor"] != util.CniTypeName {
+				return false
+			}
+			names[chassis.Name] = true
+		}
+		return names["kube-ovn-chassis-1"] && names["kube-ovn-chassis-2"] &&
+			!names["non-kube-ovn-chassis"] && names["mixed-chassis"]
+	}, 5*time.Second, 100*time.Millisecond)
 }
