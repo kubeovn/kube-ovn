@@ -305,13 +305,13 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 				Subnets: []*kubeovnv1.Subnet{
 					{
-							ObjectMeta: metav1.ObjectMeta{Name: subnet},
-							Spec: kubeovnv1.SubnetSpec{
-								Provider: provider,
-								Protocol: tt.subnetProtocol,
-							},
+						ObjectMeta: metav1.ObjectMeta{Name: subnet},
+						Spec: kubeovnv1.SubnetSpec{
+							Provider: provider,
+							Protocol: tt.subnetProtocol,
 						},
 					},
+				},
 				VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
 			})
 			require.NoError(t, err)
