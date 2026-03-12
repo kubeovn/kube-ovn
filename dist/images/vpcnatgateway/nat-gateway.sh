@@ -256,12 +256,17 @@ function add_eip() {
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
     done
 
+    # Use "onlink" to skip the kernel's "gateway must be directly reachable" check.
+    # This allows EIPs from a different external subnet to share the NAT gateway's
+    # default route, as long as the gateway is L2-reachable (same VLAN/broadcast domain).
+    # When the gateway IS on the same subnet, "onlink" has no behavioral difference
+    # from the non-onlink form — the forwarding path and ARP resolution are identical.
     if [ -n "$GATEWAY_V4" ]; then
-        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
+        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE onlink"
     fi
 
     if [ -n "$GATEWAY_V6" ]; then
-        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
+        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE onlink"
     fi
 }
 
