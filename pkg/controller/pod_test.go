@@ -187,6 +187,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 	tests := []struct {
 		name                   string
 		gwSpecLanIP            string
+		subnetProtocol         string
 		givenGwName            string
 		podOwnerName           string
 		podNamespace           string
@@ -197,6 +198,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 		{
 			name:                   "backfill lanIP from pod annotation",
 			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            gwName,
 			podOwnerName:           util.GenNatGwName(gwName),
 			podNamespace:           namespace,
@@ -209,6 +211,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 		{
 			name:                   "derive gateway name from owner reference",
 			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            "",
 			podOwnerName:           util.GenNatGwName(gwName),
 			podNamespace:           namespace,
@@ -221,6 +224,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 		{
 			name:                   "skip when spec lanIP already set",
 			gwSpecLanIP:            "10.244.0.99",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            gwName,
 			podOwnerName:           util.GenNatGwName(gwName),
 			podNamespace:           namespace,
@@ -233,6 +237,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 		{
 			name:                   "skip when pod namespace is different from controller namespace",
 			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            gwName,
 			podOwnerName:           util.GenNatGwName(gwName),
 			podNamespace:           "other-ns",
@@ -245,6 +250,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 		{
 			name:                   "skip when lanIP annotation is invalid",
 			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            gwName,
 			podOwnerName:           util.GenNatGwName(gwName),
 			podNamespace:           namespace,
@@ -253,6 +259,19 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): "not-an-ip",
 			},
 			expectedLanIP: "",
+		},
+		{
+			name:                   "prefer IPv6 address for IPv6 subnet",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv6,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): "10.244.0.10,fd00:10:16::10",
+			},
+			expectedLanIP: "fd00:10:16::10",
 		},
 	}
 
@@ -286,12 +305,13 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 				Subnets: []*kubeovnv1.Subnet{
 					{
-						ObjectMeta: metav1.ObjectMeta{Name: subnet},
-						Spec: kubeovnv1.SubnetSpec{
-							Provider: provider,
+							ObjectMeta: metav1.ObjectMeta{Name: subnet},
+							Spec: kubeovnv1.SubnetSpec{
+								Provider: provider,
+								Protocol: tt.subnetProtocol,
+							},
 						},
 					},
-				},
 				VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
 			})
 			require.NoError(t, err)

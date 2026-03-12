@@ -2699,16 +2699,30 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		return nil
 	}
 
-	provider, err := c.GetSubnetProvider(gw.Spec.Subnet)
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get subnet %s: %w", gw.Spec.Subnet, err)
 	}
+	if !isOvnSubnet(subnet) {
+		return fmt.Errorf("subnet %s is not an OVN subnet", gw.Spec.Subnet)
+	}
+	provider := subnet.Spec.Provider
+
 	lanIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 	v4IP, v6IP := util.SplitStringIP(lanIP)
-	if v4IP != "" {
-		lanIP = v4IP
-	} else {
+	switch subnet.Spec.Protocol {
+	case kubeovnv1.ProtocolIPv6:
 		lanIP = v6IP
+	case kubeovnv1.ProtocolIPv4:
+		lanIP = v4IP
+	case kubeovnv1.ProtocolDual:
+		if v4IP != "" {
+			lanIP = v4IP
+		} else {
+			lanIP = v6IP
+		}
+	default:
+		lanIP = v4IP
 	}
 	if lanIP == "" || net.ParseIP(lanIP) == nil {
 		return nil
