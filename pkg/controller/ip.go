@@ -424,11 +424,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 			key = podName
 			ipName = podName
 			owner = &metav1.OwnerReference{
-				APIVersion:         kubeovnv1.SchemeGroupVersion.String(),
-				Kind:               util.KindSubnet,
-				Name:               subnetName,
-				UID:                subnet.UID,
-				BlockOwnerDeletion: ptr.To(true),
+				APIVersion: kubeovnv1.SchemeGroupVersion.String(),
+				Kind:       util.KindSubnet,
+				Name:       subnetName,
+				UID:        subnet.UID,
 			}
 		}
 	}
