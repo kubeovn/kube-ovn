@@ -2677,7 +2677,15 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		return nil
 	}
 
-	gw, err := c.vpcNatGatewayLister.Get(gwName)
+	var (
+		gw  *kubeovnv1.VpcNatGateway
+		err error
+	)
+	if c.vpcNatGatewayLister != nil {
+		gw, err = c.vpcNatGatewayLister.Get(gwName)
+	} else {
+		gw, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), gwName, metav1.GetOptions{})
+	}
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
