@@ -2662,6 +2662,9 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 	if pod == nil {
 		return nil
 	}
+	if pod.Namespace != c.config.PodNamespace {
+		return nil
+	}
 
 	ownerGwName := natGwNameFromStatefulSetOwner(pod)
 	if ownerGwName == "" {
@@ -2671,7 +2674,7 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		gwName = ownerGwName
 	}
 	// Use owner reference as a guard to avoid patching unrelated pods carrying a stale annotation.
-	if ownerGwName != "" && ownerGwName != gwName {
+	if ownerGwName != gwName {
 		klog.Warningf("skip backfill for pod %s/%s: gw annotation %q does not match owner statefulset %q",
 			pod.Namespace, pod.Name, gwName, ownerGwName)
 		return nil
@@ -2707,7 +2710,7 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 	} else {
 		lanIP = v6IP
 	}
-	if lanIP == "" {
+	if lanIP == "" || net.ParseIP(lanIP) == nil {
 		return nil
 	}
 

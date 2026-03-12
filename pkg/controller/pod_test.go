@@ -185,42 +185,74 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 	)
 
 	tests := []struct {
-		name          string
-		gwSpecLanIP   string
-		givenGwName   string
-		podOwnerName  string
-		podAnnotation map[string]string
-		expectedLanIP string
+		name                   string
+		gwSpecLanIP            string
+		givenGwName            string
+		podOwnerName           string
+		podNamespace           string
+		controllerPodNamespace string
+		podAnnotation          map[string]string
+		expectedLanIP          string
 	}{
 		{
-			name:         "backfill lanIP from pod annotation",
-			gwSpecLanIP:  "",
-			givenGwName:  gwName,
-			podOwnerName: util.GenNatGwName(gwName),
+			name:                   "backfill lanIP from pod annotation",
+			gwSpecLanIP:            "",
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
 			podAnnotation: map[string]string{
 				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
 			},
 			expectedLanIP: lanIP,
 		},
 		{
-			name:         "derive gateway name from owner reference",
-			gwSpecLanIP:  "",
-			givenGwName:  "",
-			podOwnerName: util.GenNatGwName(gwName),
+			name:                   "derive gateway name from owner reference",
+			gwSpecLanIP:            "",
+			givenGwName:            "",
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
 			podAnnotation: map[string]string{
 				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
 			},
 			expectedLanIP: lanIP,
 		},
 		{
-			name:         "skip when spec lanIP already set",
-			gwSpecLanIP:  "10.244.0.99",
-			givenGwName:  gwName,
-			podOwnerName: util.GenNatGwName(gwName),
+			name:                   "skip when spec lanIP already set",
+			gwSpecLanIP:            "10.244.0.99",
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
 			podAnnotation: map[string]string{
 				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
 			},
 			expectedLanIP: "10.244.0.99",
+		},
+		{
+			name:                   "skip when pod namespace is different from controller namespace",
+			gwSpecLanIP:            "",
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           "other-ns",
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: "",
+		},
+		{
+			name:                   "skip when lanIP annotation is invalid",
+			gwSpecLanIP:            "",
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): "not-an-ip",
+			},
+			expectedLanIP: "",
 		},
 	}
 
@@ -239,7 +271,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        util.GenNatGwPodName(gwName),
-					Namespace:   namespace,
+					Namespace:   tt.podNamespace,
 					Annotations: tt.podAnnotation,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -265,6 +297,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			require.NoError(t, err)
 
 			controller := fakeController.fakeController
+			controller.config.PodNamespace = tt.controllerPodNamespace
 			err = controller.backfillVpcNatGwLanIPFromPod(pod, tt.givenGwName)
 			require.NoError(t, err)
 
