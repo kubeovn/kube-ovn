@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -38,11 +40,31 @@ type cniServerHandler struct {
 	KubeClient    kubernetes.Interface
 	KubeOvnClient clientset.Interface
 	Controller    *Controller
+	podReqKeyMux  keymutex.KeyMutex
 }
 
 func createCniServerHandler(config *Configuration, controller *Controller) *cniServerHandler {
-	csh := &cniServerHandler{KubeClient: config.KubeClient, KubeOvnClient: config.KubeOvnClient, Config: config, Controller: controller}
+	numKeyLocks := runtime.NumCPU() * 2
+	csh := &cniServerHandler{
+		KubeClient:    config.KubeClient,
+		KubeOvnClient: config.KubeOvnClient,
+		Config:        config,
+		Controller:    controller,
+		podReqKeyMux:  keymutex.NewHashed(numKeyLocks),
+	}
 	return csh
+}
+
+func cniRequestLockKey(podRequest request.CniRequest) string {
+	provider := podRequest.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	ifName := podRequest.IfName
+	if ifName == "" {
+		ifName = "eth0"
+	}
+	return fmt.Sprintf("%s/%s/%s/%s", podRequest.PodNamespace, podRequest.PodName, provider, ifName)
 }
 
 func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
@@ -68,6 +90,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	lockKey := cniRequestLockKey(podRequest)
+	csh.podReqKeyMux.LockKey(lockKey)
+	defer func() { _ = csh.podReqKeyMux.UnlockKey(lockKey) }()
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider)
 	if !exist {
@@ -427,6 +452,9 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	lockKey := cniRequestLockKey(podRequest)
+	csh.podReqKeyMux.LockKey(lockKey)
+	defer func() { _ = csh.podReqKeyMux.UnlockKey(lockKey) }()
 
 	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
