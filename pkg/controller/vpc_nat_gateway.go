@@ -99,6 +99,14 @@ func (c *Controller) enqueueAddVpcNatGw(obj any) {
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
+func (c *Controller) enqueueAddOrUpdateVpcNatGwByName(gwName, reason string) {
+	if gwName == "" || c.addOrUpdateVpcNatGatewayQueue == nil {
+		return
+	}
+	klog.V(3).Infof("enqueue vpc-nat-gw %s from %s", gwName, reason)
+	c.addOrUpdateVpcNatGatewayQueue.Add(gwName)
+}
+
 func (c *Controller) enqueueUpdateVpcNatGw(_, newObj any) {
 	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcNatGateway)).String()
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
@@ -203,6 +211,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	var natGwPodContainerRestartCount int32
 	pod, err := c.getNatGwPod(key)
 	if err == nil {
+		if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
+			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
+			return err
+		}
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name == "vpc-nat-gw" {
 				natGwPodContainerRestartCount = containerStatus.RestartCount

@@ -23,7 +23,8 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesEIP)).String()
+	eip := obj.(*kubeovnv1.IptablesEIP)
+	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }

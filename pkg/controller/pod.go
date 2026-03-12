@@ -543,10 +543,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 
 	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
 	if isVpcNatGw {
-		if err := c.backfillVpcNatGwLanIPFromPod(pod, vpcGwName); err != nil {
-			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", vpcGwName, err)
-			return err
-		}
+		c.enqueueAddOrUpdateVpcNatGwByName(vpcGwName, "natgw-pod-update")
 		if needRestartNatGatewayPod(pod) {
 			klog.Infof("restarting vpc nat gateway %s", vpcGwName)
 			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
@@ -726,10 +723,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
 	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
 	if isVpcNatGw {
-		if err = c.backfillVpcNatGwLanIPFromPod(pod, vpcGwName); err != nil {
-			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", vpcGwName, err)
-			return nil, err
-		}
+		c.enqueueAddOrUpdateVpcNatGwByName(vpcGwName, "natgw-pod-update")
 		klog.Infof("init vpc nat gateway pod %s/%s with name %s", namespace, name, vpcGwName)
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
