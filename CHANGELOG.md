@@ -682,6 +682,17 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.34 (2026-03-12)
+
+ * [6b2072cd1](https://github.com/kubeovn/kube-ovn/commit/6b2072cd14ce8767426356683c7f957f3e029038) release v1.14.34
+ * [6274ca341](https://github.com/kubeovn/kube-ovn/commit/6274ca341307bc35a4164539a8675fe3f52f1cbb) controller: do not set blockOwnerDeletion for ip resources
+ * [105dd075b](https://github.com/kubeovn/kube-ovn/commit/105dd075be196e802e6731c378657a6e4ce1d24d) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * zhangzujian
+
 ## v1.14.33 (2026-03-12)
 
  * [7e7d5a33c](https://github.com/kubeovn/kube-ovn/commit/7e7d5a33cbedf21184e8dcaa60f5c385b11c738a) release v1.14.33
