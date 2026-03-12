@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -296,5 +297,61 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 			},
 		},
 	}
+	return vm
+}
+
+// MakeVMLiveMigratable creates a VM that supports live migration.
+// It sets EvictionStrategy to LiveMigrate and RunStrategy to Always.
+func MakeVMLiveMigratable(name, image, size string) *v1.VirtualMachine {
+	vm := MakeVM(name, image, size, ptr.To(v1.RunStrategyAlways))
+	vm.Spec.Template.Spec.EvictionStrategy = ptr.To(v1.EvictionStrategyLiveMigrate)
+	return vm
+}
+
+// MakeVMLiveMigratableBridge creates a VM that supports live migration using
+// a bridge interface instead of masquerade. Bridge mode requires the
+// AllowPodBridgeNetworkLiveMigrationAnnotation annotation on the VMI template.
+func MakeVMLiveMigratableBridge(name, image, size string) *v1.VirtualMachine {
+	vm := MakeVMLiveMigratable(name, image, size)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = []v1.Interface{
+		{
+			Name:                   "default",
+			InterfaceBindingMethod: v1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
+		},
+	}
+	if vm.Spec.Template.ObjectMeta.Annotations == nil {
+		vm.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+	}
+	vm.Spec.Template.ObjectMeta.Annotations[v1.AllowPodBridgeNetworkLiveMigrationAnnotation] = "true"
+	return vm
+}
+
+// MakeVMLiveMigratableMultiNIC creates a VM that supports live migration with
+// both the default pod network (masquerade) and an additional OVN NIC via Multus.
+// nadName should be in the form "namespace/name".
+func MakeVMLiveMigratableMultiNIC(name, image, size, nadName string) *v1.VirtualMachine {
+	vm := MakeVMLiveMigratable(name, image, size)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = append(
+		vm.Spec.Template.Spec.Domain.Devices.Interfaces,
+		v1.Interface{
+			Name:                   "secondary",
+			InterfaceBindingMethod: v1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
+		},
+	)
+	vm.Spec.Template.Spec.Networks = append(
+		vm.Spec.Template.Spec.Networks,
+		v1.Network{
+			Name: "secondary",
+			NetworkSource: v1.NetworkSource{
+				Multus: &v1.MultusNetwork{
+					NetworkName: nadName,
+				},
+			},
+		},
+	)
+	if vm.Spec.Template.ObjectMeta.Annotations == nil {
+		vm.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+	}
+	vm.Spec.Template.ObjectMeta.Annotations[v1.AllowPodBridgeNetworkLiveMigrationAnnotation] = "true"
 	return vm
 }
