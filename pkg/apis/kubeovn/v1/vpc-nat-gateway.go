@@ -70,9 +70,7 @@ type VpcBgpSpeaker struct {
 	ExtraArgs             []string        `json:"extraArgs"`
 }
 
-// TODO: Consider removing redundant Status fields since statefulset template changes always trigger Pod recreation.
 type VpcNatGatewayStatus struct {
-	LanIP           string              `json:"lanIp" patchStrategy:"merge"`
 	QoSPolicy       string              `json:"qosPolicy" patchStrategy:"merge"`
 	ExternalSubnets []string            `json:"externalSubnets" patchStrategy:"merge"`
 	Selector        []string            `json:"selector" patchStrategy:"merge"`

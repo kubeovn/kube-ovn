@@ -224,7 +224,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		needToCreate, oldSts = true, nil
 	}
 	gwChanged := isVpcNatGwChanged(gw)
-	needPatchStatus := gwChanged || gw.Spec.LanIP != gw.Status.LanIP
+	needPatchStatus := gwChanged
 
 	newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
 	if err != nil {
@@ -1308,11 +1308,6 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.Affinity = gw.Spec.Affinity
 		changed = true
 	}
-	if gw.Spec.LanIP != gw.Status.LanIP {
-		gw.Status.LanIP = gw.Spec.LanIP
-		changed = true
-	}
-
 	if changed {
 		bytes, err := gw.Status.Bytes()
 		if err != nil {
