@@ -645,9 +645,6 @@ func Run(ctx context.Context, config *Configuration) {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
-	if err = controller.waitForDBReady(); err != nil {
-		util.LogFatalAndExit(err, "failed to initialize ovn db cache")
-	}
 	if config.EnableLb {
 		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
 		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
@@ -1144,51 +1141,6 @@ func (c *Controller) dbStatus() {
 		klog.Infof("OVN database connection recovered after %d failures", c.dbFailureCount)
 		c.dbFailureCount = 0
 	}
-}
-
-func (c *Controller) waitForDBReady() error {
-	const maxFailures = 5
-
-	var lastErr error
-	for i := 1; i <= maxFailures; i++ {
-		done := make(chan error, 2)
-		go func() {
-			_, err := c.OVNNbClient.GetNbGlobal()
-			done <- err
-		}()
-		go func() {
-			_, err := c.OVNSbClient.ListChassis()
-			done <- err
-		}()
-
-		resultsReceived := 0
-		timeout := time.After(time.Duration(c.config.OvnTimeout) * time.Second)
-		ready := true
-
-		for resultsReceived < 2 {
-			select {
-			case err := <-done:
-				resultsReceived++
-				if err != nil {
-					lastErr = err
-					ready = false
-				}
-			case <-timeout:
-				lastErr = fmt.Errorf("timeout after %ds", c.config.OvnTimeout)
-				ready = false
-				resultsReceived = 2
-			}
-		}
-
-		if ready {
-			return nil
-		}
-
-		klog.Errorf("OVN database cache is not ready (%d/%d): %v", i, maxFailures, lastErr)
-		time.Sleep(time.Second)
-	}
-
-	return fmt.Errorf("OVN database cache is not ready after %d attempts: %w", maxFailures, lastErr)
 }
 
 func (c *Controller) shutdown() {
