@@ -379,7 +379,7 @@ trace(){
           exit 1
         fi
 
-        dstMac=$(echo "$output" | grep -oE '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
+        dstMac=$(echo "$output" | grep -oEm1 '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
       fi
     fi
 
