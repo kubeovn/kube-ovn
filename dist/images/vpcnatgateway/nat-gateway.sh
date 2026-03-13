@@ -267,7 +267,7 @@ function add_eip() {
         # when it is DNAT'd and routed back to the VPC. This avoids asymmetric routing issues.
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
         # Check if the rule already exists to maintain idempotency
-        if ! $iptables_save_cmd -t nat | grep -q "HAIRPIN_SNAT .* $hairpin_rule"; then
+        if ! $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
             exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
     done
@@ -301,12 +301,9 @@ function del_eip() {
 
         # Remove hairpin SNAT rule for this EIP
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
-        # Use iptables-save to find the exact rule including --random-fully
-        local ruleMatch
-        ruleMatch=$($iptables_save_cmd -t nat | grep "HAIRPIN_SNAT .* $hairpin_rule" | head -1)
-        if [ -n "$ruleMatch" ]; then
-            ruleMatch=$(echo "$ruleMatch" | sed 's/-A //')
-            exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
+        # Check if the rule exists before attempting to delete it
+        if $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
     done
 }

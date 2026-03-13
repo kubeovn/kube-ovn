@@ -283,7 +283,7 @@ func hairpinSnatRuleExists(natGwPodName, eip string) bool {
 	// Use regex with \b word boundaries for precise matching, and allow
 	// optional trailing args like --random-fully after the EIP.
 	hairpinRulePattern := fmt.Sprintf(
-		`-A HAIRPIN_SNAT -m mark --mark 0x1/0x1 -o eth0 -m conntrack --ctstate DNAT --ctorigdst \b%s\b -j SNAT --to-source \b%s\b`,
+		`-A HAIRPIN_SNAT -o eth0 -m mark --mark 0x1/0x1 -m conntrack --ctstate DNAT --ctorigdst \b%s\b -j SNAT --to-source \b%s\b`,
 		regexp.QuoteMeta(eip), regexp.QuoteMeta(eip),
 	)
 	re := regexp.MustCompile(hairpinRulePattern)
@@ -587,16 +587,16 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		})
 
 		// Verify hairpin SNAT rule is automatically created for each EIP
-		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after SNAT creation")
+		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after EIP creation")
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 		snatEip = iptablesEIPClient.Get(snatEipName)
 		if !hairpinSnatChainExists(vpcNatGwPodName) {
-			framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin SNAT verification (feature requires v1.15+)")
+			framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin EIP verification (feature requires v1.15+)")
 		} else {
 			gomega.Eventually(func() bool {
 				return hairpinSnatRuleExists(vpcNatGwPodName, snatEip.Status.IP)
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
-				"Hairpin SNAT rule should be created after SNAT creation")
+				"Hairpin SNAT rule should be created after EIP creation")
 
 			// Verify real data-path: internal pod accessing another internal pod via FIP EIP
 			// Packet flow: client -> NAT GW (DNAT to serverIP + hairpin SNAT to EIP) -> server -> NAT GW (un-SNAT/DNAT) -> client
@@ -664,7 +664,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			output, _, err := framework.KubectlExec(f.Namespace.Name, clientPodName, cmd...)
 			framework.ExpectNoError(err, "[hairpin SNAT] client pod should reach server pod via FIP EIP")
 			framework.Logf("[hairpin SNAT] connectivity verified, response: %s", string(output))
-			gomega.Expect(string(output)).To(gomega.ContainSubstring(snatEip.Status.IP),
+			gomega.Expect(string(output)).To(gomega.ContainSubstring(hairpinFipEip.Status.IP),
 				"[hairpin SNAT] server should see request from SNAT EIP, not client pod IP")
 		}
 
@@ -783,11 +783,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Verify hairpin SNAT rule cleanup when EIP is deleted.
 		// Hairpin lifecycle is 1:1 with EIP: created together, deleted together.
 		if hairpinSnatChainExists(vpcNatGwPodName) {
-			ginkgo.By("[hairpin SNAT] Deleting SNAT to verify hairpin rule cleanup")
+			snatEipIP := snatEip.Status.IP
+			ginkgo.By("[hairpin SNAT] Deleting EIP and its SNAT to verify hairpin rule cleanup")
 			iptablesSnatRuleClient.DeleteSync(snatName)
+			iptablesEIPClient.DeleteSync(snatEipName)
 			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the deleted SNAT EIP is removed")
 			gomega.Eventually(func() bool {
-				return hairpinSnatRuleExists(vpcNatGwPodName, snatEip.Status.IP)
+				return hairpinSnatRuleExists(vpcNatGwPodName, snatEipIP)
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
 				"Hairpin SNAT rule should be deleted after EIP deletion")
 			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the shared SNAT EIP still exists")
