@@ -75,8 +75,6 @@ function show_help() {
     echo "  dnat-del                 - Delete DNAT rule"
     echo "  snat-add                 - Add SNAT rule"
     echo "  snat-del                 - Delete SNAT rule"
-    echo "  hairpin-snat-add         - Add hairpin SNAT rule for internal FIP access"
-    echo "  hairpin-snat-del         - Delete hairpin SNAT rule"
     echo "  qos-add                  - Add QoS rule"
     echo "  qos-del                  - Delete QoS rule"
     echo "  eip-ingress-qos-add      - Add EIP ingress QoS"
@@ -256,7 +254,7 @@ function del_vpc_external_route() {
 
 function add_eip() {
     # make sure inited
-   check_inited
+    check_inited
     for rule in $@
     do
         eip=${rule}
@@ -264,7 +262,7 @@ function add_eip() {
         exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
 
-        # Add generalized hairpin SNAT rule for this EIP
+        # Add hairpin SNAT rule for this EIP
         # This rule SNATs traffic originating from the VPC and targeting an EIP back to the same EIP
         # when it is DNAT'd and routed back to the VPC. This avoids asymmetric routing issues.
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
@@ -301,7 +299,7 @@ function del_eip() {
             exec_cmd "ip addr del $ipCidr dev $EXTERNAL_INTERFACE"
         fi
 
-        # Remove generalized hairpin SNAT rule for this EIP
+        # Remove hairpin SNAT rule for this EIP
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
         # Use iptables-save to find the exact rule including --random-fully
         local ruleMatch
