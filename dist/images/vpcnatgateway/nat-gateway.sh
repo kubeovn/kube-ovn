@@ -45,13 +45,12 @@ EXTERNAL_INTERFACE=${EXTERNAL_INTERFACE:-"net1"}
 # In production, leave this as "false" to reduce log volume
 QOS_DEBUG=${QOS_DEBUG:-"false"}
 
+# Resolve iptables/iptables-save from $PATH.
+# If you need iptables-legacy, should change the system alternatives inside the container image
+# (e.g. update-alternatives --set iptables /usr/sbin/iptables-legacy) rather than modifying this script.
+# If the image has both backends installed, always use the default.
 iptables_cmd=$(which iptables)
 iptables_save_cmd=$(which iptables-save)
-if iptables-legacy -t nat -S INPUT 1 2>/dev/null; then
-    # use iptables-legacy for centos 7
-    iptables_cmd=$(which iptables-legacy)
-    iptables_save_cmd=$(which iptables-legacy-save)
-fi
 
 function show_help() {
     echo "NAT Gateway Configuration Script"
