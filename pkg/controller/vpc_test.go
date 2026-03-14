@@ -294,3 +294,74 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
+	t.Parallel()
+
+	vpcName := "test-vpc-policy"
+
+	t.Run("ECMP next-hops are split correctly for custom VPC policy routes", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		fakeinformers := fakeController.fakeInformers
+		mockOvnClient := fakeController.mockOvnClient
+
+		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
+
+		vpc := &kubeovnv1.Vpc{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: vpcName,
+			},
+			Spec: kubeovnv1.VpcSpec{
+				StaticRoutes:   []*kubeovnv1.StaticRoute{},
+				EnableExternal: false,
+				PolicyRoutes: []*kubeovnv1.PolicyRoute{
+					{
+						Priority:  100,
+						Match:     "ip4.dst == 10.1.0.0/16",
+						Action:    kubeovnv1.PolicyRouteActionReroute,
+						NextHopIP: "192.168.1.1,192.168.1.2",
+					},
+				},
+			},
+			Status: kubeovnv1.VpcStatus{
+				Subnets:        []string{},
+				EnableExternal: false,
+			},
+		}
+
+		_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = fakeinformers.vpcInformer.Informer().GetStore().Add(vpc)
+		require.NoError(t, err)
+
+		externalIDs := map[string]string{"vendor": util.CniTypeName}
+
+		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
+		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(nil, nil)
+		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
+			Name: vpcName,
+			Nat:  []string{},
+		}, nil)
+		// No existing policies in OVN for this custom VPC
+		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
+		// The key assertion: next-hops must be split into a slice, not wrapped as one element
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+			vpcName,
+			100,
+			"ip4.dst == 10.1.0.0/16",
+			string(kubeovnv1.PolicyRouteActionReroute),
+			[]string{"192.168.1.1", "192.168.1.2"},
+			([]string)(nil),
+			externalIDs,
+		).Return(nil)
+		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
+		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
+		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		err = ctrl.handleAddOrUpdateVpc(vpcName)
+		require.NoError(t, err)
+	})
+}
