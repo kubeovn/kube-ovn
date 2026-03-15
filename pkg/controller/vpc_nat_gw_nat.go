@@ -36,9 +36,9 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj any) {
 		c.updateIptablesFipQueue.Add(key)
 		return
 	}
-	if oldFip.Spec.EIP != newFip.Spec.EIP {
-		// to notify old eip to remove nat label
-		c.resetIptablesEipQueue.Add(oldFip.Spec.EIP)
+	if newFip.Spec.EIP == "" || newFip.Spec.InternalIP == "" {
+		klog.Errorf("skip enqueue fip %s: incomplete spec (eip=%q, internalIP=%q)", key, newFip.Spec.EIP, newFip.Spec.InternalIP)
+		return
 	}
 	if oldFip.Status.V4ip != newFip.Status.V4ip ||
 		oldFip.Spec.EIP != newFip.Spec.EIP ||
@@ -87,19 +87,19 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 		c.updateIptablesDnatRuleQueue.Add(key)
 		return
 	}
-
-	if oldDnat.Spec.EIP != newDnat.Spec.EIP {
-		// to notify old eip to remove nat table
-		c.resetIptablesEipQueue.Add(oldDnat.Spec.EIP)
+	if newDnat.Spec.EIP == "" || newDnat.Spec.ExternalPort == "" || newDnat.Spec.Protocol == "" ||
+		newDnat.Spec.InternalIP == "" || newDnat.Spec.InternalPort == "" {
+		klog.Errorf("skip enqueue dnat %s: incomplete spec (eip=%q, externalPort=%q, protocol=%q, internalIP=%q, internalPort=%q)",
+			key, newDnat.Spec.EIP, newDnat.Spec.ExternalPort, newDnat.Spec.Protocol, newDnat.Spec.InternalIP, newDnat.Spec.InternalPort)
+		return
 	}
-
 	if oldDnat.Status.V4ip != newDnat.Status.V4ip ||
 		oldDnat.Spec.EIP != newDnat.Spec.EIP ||
 		oldDnat.Status.Redo != newDnat.Status.Redo ||
 		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
 		oldDnat.Spec.InternalIP != newDnat.Spec.InternalIP ||
-		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
-		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
+		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort ||
+		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort {
 		klog.V(3).Infof("enqueue update dnat %s", key)
 		c.updateIptablesDnatRuleQueue.Add(key)
 		return
@@ -143,9 +143,9 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj any) {
 		c.updateIptablesSnatRuleQueue.Add(key)
 		return
 	}
-	if oldSnat.Spec.EIP != newSnat.Spec.EIP {
-		// to notify old eip to remove nat label
-		c.resetIptablesEipQueue.Add(oldSnat.Spec.EIP)
+	if newSnat.Spec.EIP == "" || newSnat.Spec.InternalCIDR == "" {
+		klog.Errorf("skip enqueue snat %s: incomplete spec (eip=%q, internalCIDR=%q)", key, newSnat.Spec.EIP, newSnat.Spec.InternalCIDR)
+		return
 	}
 	if oldSnat.Status.V4ip != newSnat.Status.V4ip ||
 		oldSnat.Spec.EIP != newSnat.Spec.EIP ||
@@ -179,6 +179,21 @@ func (c *Controller) enqueueDelIptablesSnatRule(obj any) {
 	c.delIptablesSnatRuleQueue.Add(key)
 }
 
+// handleAddIptablesFip creates a FIP rule from scratch.
+//
+// Responsibility:
+//   - Bring the FIP from an empty Status to a fully consistent state across all 4 dimensions:
+//     1. iptables rule in NAT GW Pod  2. FIP Status  3. FIP Labels  4. EIP Status
+//   - On success, Status MUST be fully populated (V4ip, InternalIP, NatGwDp, Ready=true).
+//     This is the contract that handleUpdateIptablesFip relies on: a complete Status means
+//     the old values are reliable and can be used for spec-change detection and rule deletion.
+//   - On failure at any step, returns error to retry. Partial state (e.g., iptables rule
+//     created but Status not yet patched) may exist; the next retry uses current Spec
+//     and must converge to the desired state.
+//
+// Error state: if this handler never completes (Status.V4ip stays empty), the resource is
+// in an error state. The update handler MUST NOT attempt NAT operations in this state —
+// it lacks reliable old values for safe rule replacement.
 func (c *Controller) handleAddIptablesFip(key string) error {
 	fip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -229,7 +244,14 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		return err
 	}
 
-	// create fip nat
+	// Defensive cleanup: remove any stale rule for this EIP before creating.
+	// Handles partial state from a previous attempt where createFipInPod succeeded
+	// but patchFipStatus failed (rule exists in Pod, Status is empty).
+	// deleteFipInPod is a no-op if no matching rule exists.
+	if err = c.deleteFipInPod(eip.Spec.NatGwDp, eip.Status.IP); err != nil {
+		klog.Errorf("failed to cleanup stale fip before create for %s, %v", key, err)
+		return err
+	}
 	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIP); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
@@ -269,6 +291,48 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 	return nil
 }
 
+// handleUpdateIptablesFip handles FIP deletion, spec changes, and redo.
+//
+// FIP involves 4 dimensions of data that must be kept consistent:
+//
+//	Dimension        Storage                Description
+//	──────────────── ────────────────────── ──────────────────────────────────────────
+//	1. iptables rule NAT GW Pod             v4ip <-> internalIP DNAT/SNAT pair
+//	2. FIP Status    CR .status             V4ip, InternalIP, NatGwDp, Ready
+//	3. FIP Label     CR .labels/.annotations EipV4IpLabel, VpcNatGatewayNameLabel, VpcEipAnnotation
+//	4. EIP Status    EIP CR .status         Nat field records which NAT rules use this EIP
+//
+// Precondition for spec-change path:
+//   - Status.V4ip != "" (Status is complete, populated by handleAddIptablesFip).
+//     A complete Status means the old values are reliable and reflect what was actually
+//     created in the Pod. This is the ONLY safe basis for deleting old iptables rules.
+//   - If Status.V4ip == "", the resource is in an error state (handleAdd never completed).
+//     The update handler MUST NOT attempt any NAT operations — it has no reliable old
+//     values to delete and creating new rules could leave stale data.
+//     It should log the error and return, leaving recovery to the add handler (or future updates that fix the spec).
+//     IMPORTANT: If a change fails, we must wait for retry until success. Continuing to change spec
+//     on top of a failed state (dirty status) can introduce more zombie rules that are hard to track.
+//
+// Paths:
+//
+//  1. Delete path (DeletionTimestamp set):
+//     Uses Status (with Spec fallback for best-effort cleanup) to locate the old iptables rule.
+//     Removes finalizer, then async-resets EIP to refresh dimension 4.
+//
+//  2. Spec change path (Status.V4ip != "" AND Status differs from Spec+EIP):
+//     Old values come from Status; new values come from Spec + EIP CR.
+//     Steps strictly ordered to maintain all 4 dimensions:
+//     a. finalDeleteFipInPod  (clean dimension 1 with old values from Status)
+//     b. createFipInPod  (create dimension 1 with new values from Spec+EIP)
+//     c. patchFipStatus  (update dimension 2 to match new iptables rule)
+//     d. patchFipLabel   (update dimension 3 to match new EIP)
+//     e. patchEipStatus  (update dimension 4 on new EIP)
+//     f. resetOldEip     (async clean dimension 4 on old EIP, if EIP changed)
+//     If any step fails, returns error to retry. Iptables operations are idempotent.
+//
+//  3. Redo path (gateway pod restarted):
+//     Re-creates the iptables rule using Status.V4ip (the known-good external IP)
+//     plus Spec.InternalIP. Only touches dimension 1; dimensions 2-4 are already correct.
 func (c *Controller) handleUpdateIptablesFip(key string) error {
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -286,9 +350,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	// should delete
 	if !cachedFip.DeletionTimestamp.IsZero() {
 		if vpcNatEnabled == "true" {
-			klog.V(3).Infof("clean fip '%s' in pod", key)
-			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
-				klog.Errorf("failed to delete fip %s, %v", key, err)
+			if err = c.finalDeleteFipInPod(key, cachedFip); err != nil {
 				return err
 			}
 		}
@@ -322,33 +384,84 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		return err
 	}
 
-	klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
-	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
-		klog.Errorf("failed to delete old fip, %v", err)
-		return err
+	if eip.Spec.NatGwDp == "" {
+		klog.Errorf("fip %s: eip %s has empty NatGwDp, skip binding", key, cachedFip.Spec.EIP)
+		return nil
 	}
-	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIP); err != nil {
-		klog.Errorf("failed to create new fip, %v", err)
-		return err
+
+	// Error state: Status incomplete means handleAdd never completed.
+	// Do not attempt NAT operations — no reliable old values for safe rule replacement.
+	// All spec-corresponding Status fields must be populated for the update handler to proceed.
+	if cachedFip.Status.V4ip == "" || cachedFip.Status.NatGwDp == "" || cachedFip.Status.InternalIP == "" {
+		klog.Errorf("fip %s has incomplete status (V4ip=%q, NatGwDp=%q, InternalIP=%q), skipping NAT operations; waiting for add handler to complete",
+			key, cachedFip.Status.V4ip, cachedFip.Status.NatGwDp, cachedFip.Status.InternalIP)
+		return nil
 	}
-	if err = c.patchFipStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-		klog.Errorf("failed to patch status for fip '%s', %v", key, err)
-		return err
+
+	// spec change: compare Status (old, what's in Pod) vs Spec+EIP (new, desired)
+	oldV4ip := cachedFip.Status.V4ip
+	newV4ip := eip.Status.IP
+	newInternalIP := cachedFip.Spec.InternalIP
+
+	// Warn if we are modifying a resource that might be in a dirty state from a previous failed update.
+	if !cachedFip.Status.Ready {
+		// TODO: consider using a webhook to reject spec changes when the resource is not ready,
+		// to prevent users from modifying the spec when the previous update has not yet been fully reconciled.
+		klog.Warningf("fip %s is being updated while not Ready (previous update likely failed). This may lead to stale iptables rules.", key)
 	}
-	// fip change eip
-	if c.fipChangeEip(cachedFip, eip) {
-		// label too long cause error
+
+	// Verify new parameters are valid before modifying any state.
+	// eip.Status.IP can be empty if EIP itself is in error state.
+	if newV4ip == "" || newInternalIP == "" {
+		klog.Errorf("skipping fip %s update: incomplete new parameters (v4ip=%q, internalIP=%q)", key, newV4ip, newInternalIP)
+		return nil
+	}
+
+	if oldV4ip != newV4ip || cachedFip.Status.InternalIP != newInternalIP {
+		// Mark FIP as not ready before starting the update.
+		// This ensures that if the controller crashes or the update fails midway,
+		// the resource will be left in a non-ready state, indicating a potential inconsistency.
+		if cachedFip.Status.Ready {
+			klog.V(3).Infof("fip %s spec changed, marking as not ready before update", key)
+			if err = c.patchFipStatus(key, oldV4ip, cachedFip.Status.V6ip, cachedFip.Status.NatGwDp, "", false); err != nil {
+				klog.Errorf("failed to mark fip %s as not ready, %v", key, err)
+				return err
+			}
+		}
+		// delete old rule; finalDeleteFipInPod resolves (natGwDp, v4ip) from Status
+		if err = c.finalDeleteFipInPod(key, cachedFip); err != nil {
+			return err
+		}
+		if err = c.createFipInPod(eip.Spec.NatGwDp, newV4ip, newInternalIP); err != nil {
+			klog.Errorf("failed to create fip %s, %v", key, err)
+			return err
+		}
+		if err = c.patchFipStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+			klog.Errorf("failed to patch status for fip %s, %v", key, err)
+			return err
+		}
 		if err = c.patchFipLabel(key, eip); err != nil {
 			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedFip.Spec.EIP, "", "", "", true); err != nil {
-			// refresh eip nats
 			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
+			return err
+		}
+		// Reset old EIP after all 4 dimensions are updated.
+		// This must NOT be in enqueue — async reset there could race with handler's
+		// patchEipStatus, causing the old EIP's nat label to be cleared before the
+		// new EIP is fully bound, leaving a window where the old EIP appears free.
+		if oldEipName := cachedFip.Annotations[util.VpcEipAnnotation]; oldEipName != "" && oldEipName != cachedFip.Spec.EIP {
+			c.resetIptablesEipQueue.AddAfter(oldEipName, 3*time.Second)
+		}
+		if err = c.handleAddIptablesFipFinalizer(key); err != nil {
+			klog.Errorf("failed to handle add finalizer for fip %s, %v", key, err)
 			return err
 		}
 		return nil
 	}
+
 	// redo
 	if !cachedFip.Status.Ready &&
 		cachedFip.Status.Redo != "" &&
@@ -360,11 +473,14 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// compare gw pod started time with fip redo time. if fip redo time before gw pod started. should redo again
+		// If Pod started before the redo timestamp, it has not restarted since
+		// the redo was marked — iptables rules are still intact, skip re-creation.
 		fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedFip.Status.Redo, time.Local)
-		if cachedFip.Status.Ready && cachedFip.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
-			// already ok
-			klog.V(3).Infof("fip %s already ok", key)
+		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
+			return fmt.Errorf("fip %s: gateway pod container not running, will retry redo", key)
+		}
+		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
+			klog.V(3).Infof("fip %s: pod started before redo mark, rules intact, skip", key)
 			return nil
 		}
 		if err = c.createFipInPod(eip.Spec.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIP); err != nil {
@@ -388,6 +504,20 @@ func (c *Controller) handleDelIptablesFip(key string) error {
 	return nil
 }
 
+// handleAddIptablesDnatRule creates a DNAT rule from scratch.
+//
+// Responsibility:
+//   - Bring the DNAT from an empty Status to a fully consistent state across all 4 dimensions:
+//     1. iptables rule in NAT GW Pod  2. DNAT Status  3. DNAT Labels  4. EIP Status
+//   - On success, Status MUST be fully populated (V4ip, Protocol, ExternalPort, InternalIP,
+//     InternalPort, NatGwDp, Ready=true). This is the contract that handleUpdateIptablesDnatRule
+//     relies on: a complete Status provides reliable old values for spec-change detection
+//     and rule deletion.
+//   - On failure at any step, returns error to retry. Partial state may exist; the next
+//     retry uses current Spec and must converge to the desired state.
+//
+// Error state: if this handler never completes (Status.V4ip stays empty), the resource is
+// in an error state. The update handler MUST NOT attempt NAT operations in this state.
 func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	dnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -425,7 +555,14 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	// create nat
+	// Defensive cleanup: remove any stale rule for this identity before creating.
+	// Handles partial state from a previous attempt where createDnatInPod succeeded
+	// but patchDnatStatus failed. deleteDnatInPod is a no-op if no matching rule exists.
+	if err = c.deleteDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
+		eip.Status.IP, dnat.Spec.ExternalPort); err != nil {
+		klog.Errorf("failed to cleanup stale dnat before create for %s, %v", key, err)
+		return err
+	}
 	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
 		eip.Status.IP, dnat.Spec.InternalIP,
 		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
@@ -453,6 +590,26 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	return nil
 }
 
+// handleUpdateIptablesDnatRule handles DNAT rule deletion, spec changes, and redo.
+//
+// DNAT involves 4 dimensions of data consistency (see handleUpdateIptablesFip for general pattern):
+//  1. iptables rule  - (protocol, v4ip, externalPort) -> (internalIP, internalPort)
+//  2. DNAT Status    - V4ip, Protocol, InternalIP, ExternalPort, InternalPort, NatGwDp, Ready
+//  3. DNAT Label     - EipV4IpLabel, VpcNatGatewayNameLabel, VpcDnatEPortLabel, VpcEipAnnotation
+//  4. EIP Status     - Nat field
+//
+// Key difference from FIP: DNAT identity = (eip, externalPort, protocol).
+// del_dnat in nat-gateway.sh matches by identity only (lenient deletion),
+// so even if controller passes stale internalIP/internalPort, deletion still works correctly.
+//
+// Precondition for spec-change path:
+//   - Status.V4ip != "" (Status is complete, populated by handleAddIptablesDnatRule).
+//     Status provides reliable old values for detecting what changed and deleting old rules.
+//   - If Status.V4ip == "", the resource is in an error state (handleAdd never completed).
+//     The update handler MUST NOT attempt any NAT operations — it should log the error
+//     and return, leaving recovery to the add handler.
+//     IMPORTANT: If a change fails, we must wait for retry until success. Continuing to change spec
+//     on top of a failed state (dirty status) can introduce more zombie rules that are hard to track.
 func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	cachedDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -465,21 +622,17 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle update iptables fip %s", key)
+	klog.Infof("handle update iptables dnat %s", key)
 
 	// should delete
 	if !cachedDnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("clean dnat '%s' in pod", key)
 		if vpcNatEnabled == "true" {
-			if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
-				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
-				klog.Errorf("failed to delete dnat, %v", err)
+			if err = c.finalDeleteDnatInPod(key, cachedDnat); err != nil {
 				return err
 			}
 		}
 		if err = c.handleDelIptablesDnatFinalizer(key); err != nil {
-			klog.Errorf("failed to handle add finalizer for dnat %s, %v", key, err)
+			klog.Errorf("failed to handle del finalizer for dnat %s, %v", key, err)
 			return err
 		}
 		//  reset eip
@@ -497,7 +650,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol); dup || err != nil {
 		klog.Errorf("failed to update dnat, %v", err)
 		return err
 	}
@@ -506,36 +659,95 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
-	if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-		cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
-		cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
-		klog.Errorf("failed to delete old dnat, %v", err)
-		return err
+	if eip.Spec.NatGwDp == "" {
+		klog.Errorf("dnat %s: eip %s has empty NatGwDp, skip binding", key, cachedDnat.Spec.EIP)
+		return nil
 	}
-	if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-		eip.Status.IP, cachedDnat.Spec.InternalIP,
-		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
-		klog.Errorf("failed to create new dnat %s, %v", key, err)
-		return err
+
+	// Error state: Status incomplete means handleAdd never completed.
+	// Do not attempt NAT operations — no reliable old values for safe rule replacement.
+	// All spec-corresponding Status fields must be populated for the update handler to proceed.
+	if cachedDnat.Status.V4ip == "" || cachedDnat.Status.NatGwDp == "" || cachedDnat.Status.Protocol == "" ||
+		cachedDnat.Status.ExternalPort == "" || cachedDnat.Status.InternalIP == "" || cachedDnat.Status.InternalPort == "" {
+		klog.Errorf("dnat %s has incomplete status (V4ip=%q, NatGwDp=%q, Protocol=%q, ExternalPort=%q, InternalIP=%q, InternalPort=%q), skipping NAT operations; waiting for add handler to complete",
+			key, cachedDnat.Status.V4ip, cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
+			cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalIP, cachedDnat.Status.InternalPort)
+		return nil
 	}
-	if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-		klog.Errorf("failed to patch status for dnat %s , %v", key, err)
-		return err
+
+	// spec change: compare Status (old, what's in Pod) vs Spec+EIP (new, desired)
+	oldV4ip := cachedDnat.Status.V4ip
+	oldProtocol := cachedDnat.Status.Protocol
+	oldExternalPort := cachedDnat.Status.ExternalPort
+	newV4ip := eip.Status.IP
+	newProtocol := cachedDnat.Spec.Protocol
+	newInternalIP := cachedDnat.Spec.InternalIP
+	newExternalPort := cachedDnat.Spec.ExternalPort
+	newInternalPort := cachedDnat.Spec.InternalPort
+
+	// Warn if we are modifying a resource that might be in a dirty state from a previous failed update.
+	if !cachedDnat.Status.Ready {
+		// TODO: consider using a webhook to reject spec changes when the resource is not ready,
+		// to prevent users from modifying the spec when the previous update has not yet been fully reconciled.
+		klog.Warningf("dnat %s is being updated while not Ready (previous update likely failed). This may lead to stale iptables rules.", key)
 	}
-	// dnat change eip
-	if c.dnatChangeEip(cachedDnat, eip) {
-		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", cachedDnat.Status.V4ip, eip.Status.IP)
-		// label too long cause error
+
+	// Verify new parameters are valid before modifying any state.
+	// eip.Status.IP can be empty if EIP itself is in error state.
+	if newV4ip == "" || newInternalIP == "" || newExternalPort == "" || newProtocol == "" || newInternalPort == "" {
+		klog.Errorf("skipping dnat %s update: incomplete new parameters (v4ip=%q, internalIP=%q, externalPort=%q, protocol=%q, internalPort=%q)",
+			key, newV4ip, newInternalIP, newExternalPort, newProtocol, newInternalPort)
+		return nil
+	}
+
+	if oldV4ip != newV4ip || oldProtocol != newProtocol || oldExternalPort != newExternalPort ||
+		cachedDnat.Status.InternalIP != newInternalIP || cachedDnat.Status.InternalPort != newInternalPort {
+		// Mark DNAT as not ready before starting the update.
+		// This ensures that if the controller crashes or the update fails midway,
+		// the resource will be left in a non-ready state, indicating a potential inconsistency.
+		if cachedDnat.Status.Ready {
+			klog.V(3).Infof("dnat %s spec changed, marking as not ready before update", key)
+			if err = c.patchDnatStatus(key, oldV4ip, cachedDnat.Status.V6ip, cachedDnat.Status.NatGwDp, "", false); err != nil {
+				klog.Errorf("failed to mark dnat %s as not ready, %v", key, err)
+				return err
+			}
+		}
+		// delete old rule; finalDeleteDnatInPod resolves identity from Status
+		if err = c.finalDeleteDnatInPod(key, cachedDnat); err != nil {
+			return err
+		}
+		if err = c.createDnatInPod(eip.Spec.NatGwDp, newProtocol,
+			newV4ip, newInternalIP,
+			newExternalPort, newInternalPort); err != nil {
+			klog.Errorf("failed to create dnat %s, %v", key, err)
+			return err
+		}
+		if err = c.patchDnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
+			return err
+		}
 		if err = c.patchDnatLabel(key, eip); err != nil {
 			klog.Errorf("failed to patch label for dnat %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedDnat.Spec.EIP, "", "", "", true); err != nil {
-			// refresh eip nats
 			klog.Errorf("failed to patch dnat use eip %s, %v", key, err)
 			return err
 		}
+		// Reset old EIP after all 4 dimensions are updated.
+		// This must NOT be in enqueue — async reset there could race with handler's
+		// patchEipStatus, causing the old EIP's nat label to be cleared before the
+		// new EIP is fully bound, leaving a window where the old EIP appears free.
+		if oldEipName := cachedDnat.Annotations[util.VpcEipAnnotation]; oldEipName != "" && oldEipName != cachedDnat.Spec.EIP {
+			c.resetIptablesEipQueue.AddAfter(oldEipName, 3*time.Second)
+		}
+		if err = c.handleAddIptablesDnatFinalizer(key); err != nil {
+			klog.Errorf("failed to handle add finalizer for dnat %s, %v", key, err)
+			return err
+		}
+		return nil
 	}
+
 	// redo
 	if !cachedDnat.Status.Ready &&
 		cachedDnat.Status.Redo != "" &&
@@ -547,11 +759,14 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// compare gw pod started time with dnat redo time. if redo time before gw pod started. redo again
+		// If Pod started before the redo timestamp, it has not restarted since
+		// the redo was marked — iptables rules are still intact, skip re-creation.
 		dnatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedDnat.Status.Redo, time.Local)
-		if cachedDnat.Status.Ready && cachedDnat.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
-			// already ok
-			klog.V(3).Infof("dnat %s already ok", key)
+		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
+			return fmt.Errorf("dnat %s: gateway pod container not running, will retry redo", key)
+		}
+		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
+			klog.V(3).Infof("dnat %s: pod started before redo mark, rules intact, skip", key)
 			return nil
 		}
 		if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
@@ -577,6 +792,19 @@ func (c *Controller) handleDelIptablesDnatRule(key string) error {
 	return nil
 }
 
+// handleAddIptablesSnatRule creates a SNAT rule from scratch.
+//
+// Responsibility:
+//   - Bring the SNAT from an empty Status to a fully consistent state across all 4 dimensions:
+//     1. iptables rule in NAT GW Pod  2. SNAT Status  3. SNAT Labels  4. EIP Status
+//   - On success, Status MUST be fully populated (V4ip, InternalCIDR, NatGwDp, Ready=true).
+//     This is the contract that handleUpdateIptablesSnatRule relies on: a complete Status
+//     provides reliable old values for spec-change detection and rule deletion.
+//   - On failure at any step, returns error to retry. Partial state may exist; the next
+//     retry uses current Spec and must converge to the desired state.
+//
+// Error state: if this handler never completes (Status.V4ip stays empty), the resource is
+// in an error state. The update handler MUST NOT attempt NAT operations in this state.
 func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	snat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
@@ -617,6 +845,13 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", snat.Spec.InternalCIDR)
 		return err
 	}
+	// Defensive cleanup: remove any stale rule for this identity before creating.
+	// Handles partial state from a previous attempt where createSnatInPod succeeded
+	// but patchSnatStatus failed. deleteSnatInPod is a no-op if no matching rule exists.
+	if err = c.deleteSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, v4Cidr); err != nil {
+		klog.Errorf("failed to cleanup stale snat before create for %s, %v", key, err)
+		return err
+	}
 	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, v4Cidr); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
@@ -641,6 +876,27 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	return nil
 }
 
+// handleUpdateIptablesSnatRule handles SNAT rule deletion, spec changes, and redo.
+//
+// SNAT involves 4 dimensions of data consistency (see handleUpdateIptablesFip for general pattern):
+//  1. iptables rule  - v4ip SNAT for internalCIDR
+//  2. SNAT Status    - V4ip, InternalCIDR, NatGwDp, Ready
+//  3. SNAT Label     - EipV4IpLabel, VpcNatGatewayNameLabel, VpcEipAnnotation
+//  4. EIP Status     - Nat field
+//
+// Key difference from FIP/DNAT: SNAT is a 1:N model. One EIP can serve multiple CIDRs,
+// and one CIDR can have multiple EIPs (for port exhaustion mitigation via --random-fully).
+// SNAT identity = (eip, internalCIDR). del_snat in nat-gateway.sh matches by identity
+// to locate the exact rule.
+//
+// Precondition for spec-change path:
+//   - Status.V4ip != "" (Status is complete, populated by handleAddIptablesSnatRule).
+//     Status provides reliable old values for detecting what changed and deleting old rules.
+//   - If Status.V4ip == "", the resource is in an error state (handleAdd never completed).
+//     The update handler MUST NOT attempt any NAT operations — it should log the error
+//     and return, leaving recovery to the add handler.
+//     IMPORTANT: If a change fails, we must wait for retry until success. Continuing to change spec
+//     on top of a failed state (dirty status) can introduce more zombie rules that are hard to track.
 func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	cachedSnat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
@@ -655,13 +911,10 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update iptables snat rule %s", key)
 
-	v4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
 	// should delete
 	if !cachedSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("clean snat '%s' in pod", key)
-		if vpcNatEnabled == "true" && v4Cidr != "" {
-			if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
-				klog.Errorf("failed to delete snat, %v", err)
+		if vpcNatEnabled == "true" {
+			if err = c.finalDeleteSnatInPod(key, cachedSnat); err != nil {
 				return err
 			}
 		}
@@ -689,32 +942,88 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
-	klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedSnat.Status.V4ip, eip.Status.IP)
-	if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
-		klog.Errorf("failed to delete old snat, %v", err)
-		return err
+	if eip.Spec.NatGwDp == "" {
+		klog.Errorf("snat %s: eip %s has empty NatGwDp, skip binding", key, cachedSnat.Spec.EIP)
+		return nil
 	}
-	v4CidrSpec, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
-	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, v4CidrSpec); err != nil {
-		klog.Errorf("failed to create new snat %s, %v", key, err)
-		return err
+
+	// Error state: Status incomplete means handleAdd never completed.
+	// Do not attempt NAT operations — no reliable old values for safe rule replacement.
+	// All spec-corresponding Status fields must be populated for the update handler to proceed.
+	if cachedSnat.Status.V4ip == "" || cachedSnat.Status.NatGwDp == "" || cachedSnat.Status.InternalCIDR == "" {
+		klog.Errorf("snat %s has incomplete status (V4ip=%q, NatGwDp=%q, InternalCIDR=%q), skipping NAT operations; waiting for add handler to complete",
+			key, cachedSnat.Status.V4ip, cachedSnat.Status.NatGwDp, cachedSnat.Status.InternalCIDR)
+		return nil
 	}
-	if err = c.patchSnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-		klog.Errorf("failed to patch status for snat %s , %v", key, err)
-		return err
+
+	// spec change: compare Status (old, what's in Pod) vs Spec+EIP (new, desired)
+	// SNAT identity = (v4ip, internalCIDR), all fields are identity — no non-identity fields.
+	oldV4ip := cachedSnat.Status.V4ip
+	oldV4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
+	newV4ip := eip.Status.IP
+	newV4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+
+	// Warn if we are modifying a resource that might be in a dirty state from a previous failed update.
+	if !cachedSnat.Status.Ready {
+		// TODO: consider using a webhook to reject spec changes when the resource is not ready,
+		// to prevent users from modifying the spec when the previous update has not yet been fully reconciled.
+		klog.Warningf("snat %s is being updated while not Ready (previous update likely failed). This may lead to stale iptables rules.", key)
 	}
-	// snat change eip
-	if c.snatChangeEip(cachedSnat, eip) {
+
+	// Verify new parameters are valid before modifying any state.
+	// eip.Status.IP can be empty if EIP itself is in error state;
+	// SplitStringIP can return empty v4 part for IPv6-only CIDR.
+	if newV4ip == "" || newV4Cidr == "" {
+		klog.Errorf("skipping snat %s update: incomplete new parameters (v4ip=%q, v4Cidr=%q)", key, newV4ip, newV4Cidr)
+		return nil
+	}
+
+	if oldV4ip != newV4ip || oldV4Cidr != newV4Cidr {
+		// Mark SNAT as not ready before starting the update.
+		// This ensures that if the controller crashes or the update fails midway,
+		// the resource will be left in a non-ready state, indicating a potential inconsistency.
+		if cachedSnat.Status.Ready {
+			klog.V(3).Infof("snat %s spec changed, marking as not ready before update", key)
+			if err = c.patchSnatStatus(key, oldV4ip, cachedSnat.Status.V6ip, cachedSnat.Status.NatGwDp, "", false); err != nil {
+				klog.Errorf("failed to mark snat %s as not ready, %v", key, err)
+				return err
+			}
+		}
+		// delete old rule; finalDeleteSnatInPod resolves identity from Status
+		if err = c.finalDeleteSnatInPod(key, cachedSnat); err != nil {
+			return err
+		}
+		if err = c.createSnatInPod(eip.Spec.NatGwDp, newV4ip, newV4Cidr); err != nil {
+			klog.Errorf("failed to create snat %s, %v", key, err)
+			return err
+		}
+		if err = c.patchSnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+			klog.Errorf("failed to patch status for snat %s, %v", key, err)
+			return err
+		}
 		if err = c.patchSnatLabel(key, eip); err != nil {
 			klog.Errorf("failed to patch label for snat %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedSnat.Spec.EIP, "", "", "", true); err != nil {
-			// refresh eip nats
-			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
+			klog.Errorf("failed to patch snat use eip %s, %v", key, err)
 			return err
 		}
+		// Reset old EIP after all 4 dimensions are updated.
+		// This must NOT be in enqueue — async reset there could race with handler's
+		// patchEipStatus, causing the old EIP's nat label to be cleared before the
+		// new EIP is fully bound, leaving a window where the old EIP appears free.
+		if oldEipName := cachedSnat.Annotations[util.VpcEipAnnotation]; oldEipName != "" && oldEipName != cachedSnat.Spec.EIP {
+			c.resetIptablesEipQueue.AddAfter(oldEipName, 3*time.Second)
+		}
+		if err = c.handleAddIptablesSnatFinalizer(key); err != nil {
+			klog.Errorf("failed to handle add finalizer for snat %s, %v", key, err)
+			return err
+		}
+		return nil
 	}
+
+	v4CidrSpec, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
 	// redo
 	if !cachedSnat.Status.Ready &&
 		cachedSnat.Status.Redo != "" &&
@@ -725,11 +1034,14 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// compare gw pod started time with snat redo time. if redo time before gw pod started. redo again
+		// If Pod started before the redo timestamp, it has not restarted since
+		// the redo was marked — iptables rules are still intact, skip re-creation.
 		snatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedSnat.Status.Redo, time.Local)
-		if cachedSnat.Status.Ready && cachedSnat.Status.V4ip != "" && gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: snatRedo}) {
-			// already ok
-			klog.V(3).Infof("snat %s already ok", key)
+		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
+			return fmt.Errorf("snat %s: gateway pod container not running, will retry redo", key)
+		}
+		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: snatRedo}) {
+			klog.V(3).Infof("snat %s: pod started before redo mark, rules intact, skip", key)
 			return nil
 		}
 		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4CidrSpec); err != nil {
@@ -1394,7 +1706,214 @@ func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	return nil
 }
 
-func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
+// finalDeleteFipInPod resolves (natGwDp, v4ip) from the FIP CR's Status,
+// with best-effort fallback to the EIP resource when Status is incomplete.
+// Then delegates to deleteFipInPod to execute the actual shell deletion.
+//
+// Used by both the delete path (Status may be empty) and the spec-change path
+// (Status guaranteed non-empty by the V4ip guard).
+func (c *Controller) finalDeleteFipInPod(key string, cachedFip *kubeovnv1.IptablesFIPRule) error {
+	klog.V(3).Infof("final delete fip '%s' in pod", key)
+	var firstErr error
+	statusV4ip := cachedFip.Status.V4ip
+	statusNatGwDp := cachedFip.Status.NatGwDp
+	if statusV4ip == "" {
+		klog.Warningf("fip %s has empty Status.V4ip, fallback to eip %s", key, cachedFip.Spec.EIP)
+		eip, err := c.GetEip(cachedFip.Spec.EIP)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Errorf("fip %s: eip %s not found, skip pod cleanup", key, cachedFip.Spec.EIP)
+				return nil
+			}
+			return err
+		}
+		statusV4ip = eip.Status.IP
+		if statusNatGwDp == "" {
+			statusNatGwDp = eip.Spec.NatGwDp
+		}
+	}
+	if statusV4ip == "" || statusNatGwDp == "" {
+		klog.Warningf("fip %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
+	} else if err := c.deleteFipInPod(statusNatGwDp, statusV4ip); err != nil {
+		klog.Errorf("failed to delete fip %s, %v", key, err)
+		firstErr = err
+	}
+
+	if !cachedFip.Status.Ready {
+		eip, err := c.GetEip(cachedFip.Spec.EIP)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return err
+			}
+			klog.Warningf("fip %s not ready: eip %s not found, skip spec-based cleanup", key, cachedFip.Spec.EIP)
+			return firstErr
+		}
+		specV4ip := eip.Status.IP
+		specNatGwDp := eip.Spec.NatGwDp
+		if specV4ip == "" || specNatGwDp == "" {
+			klog.Warningf("fip %s not ready: skip spec-based cleanup due to incomplete spec identity (v4ip=%q, natGwDp=%q)", key, specV4ip, specNatGwDp)
+			return firstErr
+		}
+		if specV4ip != statusV4ip || specNatGwDp != statusNatGwDp {
+			if err = c.deleteFipInPod(specNatGwDp, specV4ip); err != nil {
+				klog.Errorf("failed spec-based cleanup for fip %s, %v", key, err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+	}
+	return firstErr
+}
+
+// finalDeleteDnatInPod resolves (natGwDp, protocol, v4ip, externalPort) from the DNAT CR's
+// Status, with best-effort fallback to EIP/Spec when Status is incomplete.
+// Then delegates to deleteDnatInPod to execute the actual shell deletion.
+func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.IptablesDnatRule) error {
+	klog.V(3).Infof("final delete dnat '%s' in pod", key)
+	var firstErr error
+	statusV4ip := cachedDnat.Status.V4ip
+	statusNatGwDp := cachedDnat.Status.NatGwDp
+	if statusV4ip == "" {
+		klog.Warningf("dnat %s has empty Status.V4ip, fallback to eip %s", key, cachedDnat.Spec.EIP)
+		eip, err := c.GetEip(cachedDnat.Spec.EIP)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Errorf("dnat %s: eip %s not found, skip pod cleanup", key, cachedDnat.Spec.EIP)
+				return nil
+			}
+			return err
+		}
+		statusV4ip = eip.Status.IP
+		if statusNatGwDp == "" {
+			statusNatGwDp = eip.Spec.NatGwDp
+		}
+	}
+	statusProtocol := cachedDnat.Status.Protocol
+	if statusProtocol == "" {
+		klog.Warningf("dnat %s has empty Status.Protocol, fallback to Spec", key)
+		statusProtocol = cachedDnat.Spec.Protocol
+	}
+	if statusProtocol == "" {
+		klog.Errorf("dnat %s has v4ip %s but protocol is empty in both Status and Spec, skip pod cleanup", key, statusV4ip)
+		return nil
+	}
+	statusExternalPort := cachedDnat.Status.ExternalPort
+	if statusExternalPort == "" {
+		klog.Warningf("dnat %s has empty Status.ExternalPort, fallback to Spec", key)
+		statusExternalPort = cachedDnat.Spec.ExternalPort
+	}
+	if statusExternalPort == "" {
+		klog.Errorf("dnat %s has v4ip %s but externalPort is empty in both Status and Spec, skip pod cleanup", key, statusV4ip)
+		return nil
+	}
+	if statusV4ip == "" || statusNatGwDp == "" {
+		klog.Warningf("dnat %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
+	} else if err := c.deleteDnatInPod(statusNatGwDp, statusProtocol,
+		statusV4ip, statusExternalPort); err != nil {
+		klog.Errorf("failed to delete dnat %s, %v", key, err)
+		firstErr = err
+	}
+
+	if !cachedDnat.Status.Ready {
+		eip, err := c.GetEip(cachedDnat.Spec.EIP)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return err
+			}
+			klog.Warningf("dnat %s not ready: eip %s not found, skip spec-based cleanup", key, cachedDnat.Spec.EIP)
+			return firstErr
+		}
+		specV4ip := eip.Status.IP
+		specNatGwDp := eip.Spec.NatGwDp
+		specProtocol := cachedDnat.Spec.Protocol
+		specExternalPort := cachedDnat.Spec.ExternalPort
+		if specV4ip == "" || specNatGwDp == "" || specProtocol == "" || specExternalPort == "" {
+			klog.Warningf("dnat %s not ready: skip spec-based cleanup due to incomplete spec identity (v4ip=%q, natGwDp=%q, protocol=%q, externalPort=%q)",
+				key, specV4ip, specNatGwDp, specProtocol, specExternalPort)
+			return firstErr
+		}
+		if specV4ip != statusV4ip || specNatGwDp != statusNatGwDp || specProtocol != statusProtocol || specExternalPort != statusExternalPort {
+			if err = c.deleteDnatInPod(specNatGwDp, specProtocol, specV4ip, specExternalPort); err != nil {
+				klog.Errorf("failed spec-based cleanup for dnat %s, %v", key, err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+	}
+	return firstErr
+}
+
+// finalDeleteSnatInPod resolves (natGwDp, v4ip, v4Cidr) from the SNAT CR's Status,
+// with best-effort fallback to EIP/Spec when Status is incomplete.
+// Then delegates to deleteSnatInPod to execute the actual shell deletion.
+func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.IptablesSnatRule) error {
+	klog.V(3).Infof("final delete snat '%s' in pod", key)
+	var firstErr error
+	statusV4ip := cachedSnat.Status.V4ip
+	statusNatGwDp := cachedSnat.Status.NatGwDp
+	if statusV4ip == "" {
+		klog.Warningf("snat %s has empty Status.V4ip, fallback to eip %s", key, cachedSnat.Spec.EIP)
+		eip, err := c.GetEip(cachedSnat.Spec.EIP)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Errorf("snat %s: eip %s not found, skip pod cleanup", key, cachedSnat.Spec.EIP)
+				return nil
+			}
+			return err
+		}
+		statusV4ip = eip.Status.IP
+		if statusNatGwDp == "" {
+			statusNatGwDp = eip.Spec.NatGwDp
+		}
+	}
+	statusV4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
+	if statusV4Cidr == "" {
+		klog.Warningf("snat %s has empty Status.InternalCIDR, fallback to Spec", key)
+		statusV4Cidr, _ = util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+	}
+	if statusV4Cidr == "" {
+		klog.Errorf("snat %s has v4ip %s but v4Cidr is empty in both Status and Spec, skip pod cleanup", key, statusV4ip)
+		return nil
+	}
+	if statusV4ip == "" || statusNatGwDp == "" {
+		klog.Warningf("snat %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
+	} else if err := c.deleteSnatInPod(statusNatGwDp, statusV4ip, statusV4Cidr); err != nil {
+		klog.Errorf("failed to delete snat %s, %v", key, err)
+		firstErr = err
+	}
+
+	if !cachedSnat.Status.Ready {
+		eip, err := c.GetEip(cachedSnat.Spec.EIP)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return err
+			}
+			klog.Warningf("snat %s not ready: eip %s not found, skip spec-based cleanup", key, cachedSnat.Spec.EIP)
+			return firstErr
+		}
+		specV4ip := eip.Status.IP
+		specNatGwDp := eip.Spec.NatGwDp
+		specV4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+		if specV4ip == "" || specNatGwDp == "" || specV4Cidr == "" {
+			klog.Warningf("snat %s not ready: skip spec-based cleanup due to incomplete spec identity (v4ip=%q, natGwDp=%q, v4Cidr=%q)",
+				key, specV4ip, specNatGwDp, specV4Cidr)
+			return firstErr
+		}
+		if specV4ip != statusV4ip || specNatGwDp != statusNatGwDp || specV4Cidr != statusV4Cidr {
+			if err = c.deleteSnatInPod(specNatGwDp, specV4ip, specV4Cidr); err != nil {
+				klog.Errorf("failed spec-based cleanup for snat %s, %v", key, err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+	}
+	return firstErr
+}
+
+func (c *Controller) deleteFipInPod(dp, v4ip string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1403,11 +1922,8 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 		klog.Error(err)
 		return err
 	}
-	// del nat
-	var delRules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
-	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, delRules); err != nil {
+	// del_floating_ip matches by EIP only (FIP is 1:1, identity = EIP)
+	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, []string{v4ip}); err != nil {
 		klog.Errorf("failed to delete fip, err: %v", err)
 		return err
 	}
@@ -1431,7 +1947,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 	return nil
 }
 
-func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
+func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1441,11 +1957,9 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 		return err
 	}
 
-	// del nat
-	var delRules []string
-	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIP, internalPort)
-	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwDnatDel, delRules); err != nil {
+	// del_dnat matches by identity triplet (EIP, ExternalPort, Protocol) only
+	rule := fmt.Sprintf("%s,%s,%s", v4ip, externalPort, protocol)
+	if err = c.execNatGwRules(gwPod, natGwDnatDel, []string{rule}); err != nil {
 		klog.Errorf("failed to delete dnat, err: %v", err)
 		return err
 	}
@@ -1496,39 +2010,6 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 		return err
 	}
 	return nil
-}
-
-func (c *Controller) fipChangeEip(fip *kubeovnv1.IptablesFIPRule, eip *kubeovnv1.IptablesEIP) bool {
-	if fip.Status.V4ip == "" || eip.Status.IP == "" {
-		// eip created but not ready
-		return false
-	}
-	if fip.Status.V4ip != eip.Status.IP {
-		return true
-	}
-	return false
-}
-
-func (c *Controller) dnatChangeEip(dnat *kubeovnv1.IptablesDnatRule, eip *kubeovnv1.IptablesEIP) bool {
-	if dnat.Status.V4ip == "" || eip.Status.IP == "" {
-		// eip created but not ready
-		return false
-	}
-	if dnat.Status.V4ip != eip.Status.IP {
-		return true
-	}
-	return false
-}
-
-func (c *Controller) snatChangeEip(snat *kubeovnv1.IptablesSnatRule, eip *kubeovnv1.IptablesEIP) bool {
-	if snat.Status.V4ip == "" || eip.Status.IP == "" {
-		// eip created but not ready
-		return false
-	}
-	if snat.Status.V4ip != eip.Status.IP {
-		return true
-	}
-	return false
 }
 
 func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, protocol string) (bool, error) {

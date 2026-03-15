@@ -94,6 +94,23 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
+	// IptablesEIP is an internal resource of a NatGwDp. Once created and Ready,
+	// its Spec (including V4ip address) is immutable — the Ready check below blocks
+	// any Spec change. NatGwDp is additionally immutable once set (even before Ready),
+	// because migrating an EIP across gateways is not supported.
+	//
+	// This immutability is a key invariant for NAT rule controllers: they rely on
+	// EIP.Status.IP being stable for the lifetime of the EIP resource.
+
+	// NatGwDp is immutable once set: changing the gateway would require migrating
+	// all associated NAT rules (FIP/DNAT/SNAT) to a different gateway pod,
+	// which is not supported by the update handlers.
+	if eipOld.Spec.NatGwDp != "" && eipNew.Spec.NatGwDp != eipOld.Spec.NatGwDp {
+		err := fmt.Errorf("IptablesEIP %q: NatGwDp is immutable once set (old: %s, new: %s)",
+			eipNew.Name, eipOld.Spec.NatGwDp, eipNew.Spec.NatGwDp)
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
 	if eipOld.Spec != eipNew.Spec {
 		if eipOld.Status.Ready && eipNew.Status.Redo == eipOld.Status.Redo {
 			err := fmt.Errorf("IptablesEIP \"%s\" is ready, does not support change", eipNew.Name)
@@ -192,19 +209,13 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if dnatOld.Spec != dnatNew.Spec {
-		if dnatOld.Status.Ready && dnatOld.Status.Redo == dnatNew.Status.Redo {
-			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready, does not support change", dnatNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
+	if dnatNew.Spec != dnatOld.Spec {
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -245,19 +256,13 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if snatOld.Spec != snatNew.Spec {
-		if snatOld.Status.Ready && snatOld.Status.Redo == snatNew.Status.Redo {
-			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready, does not support change", snatNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
+	if snatNew.Spec != snatOld.Spec {
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -299,22 +304,17 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 	}
 
 	if fipNew.Spec != fipOld.Spec {
-		if fipOld.Status.Ready && fipNew.Status.Redo == fipOld.Status.Redo {
-			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready, does not support change", fipNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
+
 	return ctrlwebhook.Allowed("bypass")
 }
 
