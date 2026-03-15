@@ -283,7 +283,7 @@ func hairpinSnatRuleExists(natGwPodName, eip string) bool {
 	// Use regex with \b word boundaries for precise matching, and allow
 	// optional trailing args like --random-fully after the EIP.
 	hairpinRulePattern := fmt.Sprintf(
-		`-A HAIRPIN_SNAT -o eth0 -m mark --mark 0x1/0x1 -m conntrack --ctstate DNAT --ctorigdst \b%s\b -j SNAT --to-source \b%s\b`,
+		`-A HAIRPIN_SNAT -o \b.*\b -m mark --mark 0x1/0x1 -m conntrack --ctstate DNAT --ctorigdst \b%s\b -j SNAT --to-source \b%s\b`,
 		regexp.QuoteMeta(eip), regexp.QuoteMeta(eip),
 	)
 	re := regexp.MustCompile(hairpinRulePattern)
