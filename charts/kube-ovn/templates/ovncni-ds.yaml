@@ -126,6 +126,7 @@ spec:
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
           - --non-primary-cni-mode={{- .Values.cni_conf.NON_PRIMARY_CNI }}
+          - --enable-sg-ct-flush={{- .Values.func.ENABLE_SG_CT_FLUSH }}
         securityContext:
           runAsUser: 0
           privileged: false
