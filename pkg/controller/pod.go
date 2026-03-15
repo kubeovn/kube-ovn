@@ -1556,7 +1556,7 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	}
 
 	migrate := false
-	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok {
+	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok && pod.DeletionTimestamp.IsZero() {
 		klog.Infof("pod %s/%s is in the migration job %s", pod.Namespace, pod.Name, job)
 		migrate = true
 	}
