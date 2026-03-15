@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: 1.15.0](https://img.shields.io/badge/Version-1.15.0-informational?style=flat-square)  ![Version: 1.15.0](https://img.shields.io/badge/Version-1.15.0-informational?style=flat-square)
+![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -12,7 +12,7 @@ Make sure to adjust your old values with the new ones and pre-generate your temp
 The Helm chart is available from GitHub Container Registry:
 
 ```bash
-helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version 1.15.0
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.0
 ```
 
 ### From Source
@@ -75,6 +75,15 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 </pre>
 </td>
 			<td>Annotations to be added to all top-level agent objects (resources under templates/agent)</td>
+		</tr>
+		<tr>
+			<td>agent.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-cni pods.</td>
 		</tr>
 		<tr>
 			<td>agent.labels</td>
@@ -155,6 +164,7 @@ false
 {
   "limits": {
     "cpu": "1000m",
+    "ephemeral-storage": "1Gi",
     "memory": "1Gi"
   },
   "requests": {
@@ -165,6 +175,24 @@ false
 </pre>
 </td>
 			<td>Agent daemon resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+		<tr>
+			<td>agent.serviceMonitor</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Agent serviceMonitor configuration.</td>
+		</tr>
+		<tr>
+			<td>agent.serviceMonitor.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the ServiceMonitor for the agent.</td>
 		</tr>
 	</tbody>
 </table>
@@ -326,6 +354,15 @@ false
 			<td>Enable the kube-ovn-speaker.</td>
 		</tr>
 		<tr>
+			<td>bgpSpeaker.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-speaker pods.</td>
+		</tr>
+		<tr>
 			<td>bgpSpeaker.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -406,6 +443,15 @@ false
 			<td>Annotations to be added to all top-level ovn-central objects (resources under templates/central)</td>
 		</tr>
 		<tr>
+			<td>central.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to ovn-central pods.</td>
+		</tr>
+		<tr>
 			<td>central.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -413,6 +459,18 @@ false
 </pre>
 </td>
 			<td>Labels to be added to all top-level ovn-central objects (resources under templates/central)</td>
+		</tr>
+		<tr>
+			<td>central.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
 		</tr>
 		<tr>
 			<td>central.podAnnotations</td>
@@ -439,6 +497,7 @@ false
 {
   "limits": {
     "cpu": "3",
+    "ephemeral-storage": "1Gi",
     "memory": "4Gi"
   },
   "requests": {
@@ -525,7 +584,7 @@ false
   "images": {
     "kubeovn": {
       "repository": "kube-ovn",
-      "tag": "v1.14.0"
+      "tag": "v1.16.0"
     }
   },
   "registry": {
@@ -715,6 +774,15 @@ false
 			<td>Annotations to be added to all top-level kube-ovn-controller objects (resources under templates/controller)</td>
 		</tr>
 		<tr>
+			<td>controller.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-controller pods.</td>
+		</tr>
+		<tr>
 			<td>controller.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -742,6 +810,18 @@ false
 			<td>Configure the port on which the controller service will serve metrics.</td>
 		</tr>
 		<tr>
+			<td>controller.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+		<tr>
 			<td>controller.podAnnotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -766,6 +846,7 @@ false
 {
   "limits": {
     "cpu": "1000m",
+    "ephemeral-storage": "1Gi",
     "memory": "1Gi"
   },
   "requests": {
@@ -776,6 +857,24 @@ false
 </pre>
 </td>
 			<td>kube-ovn-controller resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+		<tr>
+			<td>controller.serviceMonitor</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Controller serviceMonitor configuration.</td>
+		</tr>
+		<tr>
+			<td>controller.serviceMonitor.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the ServiceMonitor for the Kube-OVN controller.</td>
 		</tr>
 	</tbody>
 </table>
@@ -959,6 +1058,47 @@ false
 		</tr>
 	</tbody>
 </table>
+<h3>OVN IC controller configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>ic</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Configuration for the OVN interconnection (IC) controller.</td>
+		</tr>
+		<tr>
+			<td>ic.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to ovn-ic-controller pods.</td>
+		</tr>
+		<tr>
+			<td>ic.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+	</tbody>
+</table>
 <h3>Kubelet configuration</h3>
 <table>
 	<thead>
@@ -1045,6 +1185,15 @@ false
 			<td>Annotations to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)</td>
 		</tr>
 		<tr>
+			<td>monitor.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-monitor pods.</td>
+		</tr>
+		<tr>
 			<td>monitor.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1072,6 +1221,18 @@ false
 			<td>Configure the port on which the kube-ovn-monitor service will serve metrics.</td>
 		</tr>
 		<tr>
+			<td>monitor.nodeAffinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "preferredDuringSchedulingIgnoredDuringExecution": [],
+  "requiredDuringSchedulingIgnoredDuringExecution": []
+}
+</pre>
+</td>
+			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
+		</tr>
+		<tr>
 			<td>monitor.podAnnotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1096,6 +1257,7 @@ false
 {
   "limits": {
     "cpu": "200m",
+    "ephemeral-storage": "1Gi",
     "memory": "200Mi"
   },
   "requests": {
@@ -1106,6 +1268,24 @@ false
 </pre>
 </td>
 			<td>kube-ovn-monitor resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+		<tr>
+			<td>monitor.serviceMonitor</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>kube-ovn-monitor serviceMonitor configuration.</td>
+		</tr>
+		<tr>
+			<td>monitor.serviceMonitor.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.</td>
 		</tr>
 	</tbody>
 </table>
@@ -1176,7 +1356,7 @@ false
 			<td>natGw.bgpSpeaker.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.15.0"
+"v1.16.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1212,7 +1392,7 @@ false
 			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.15.0"
+"v1.16.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1346,6 +1526,15 @@ false
 </pre>
 </td>
 			<td>IPs to exclude from IPAM in the default subnet.</td>
+		</tr>
+		<tr>
+			<td>networking.externalGatewayConfigNs</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Namespace where ovn-external-gw-config ConfigMap is located. Empty means it will use the same namespace as the controller (PodNamespace).</td>
 		</tr>
 		<tr>
 			<td>networking.join</td>
@@ -1616,6 +1805,15 @@ false
 			<td>Configuration for ovs-ovn, the Open vSwitch/Open Virtual Network daemons.</td>
 		</tr>
 		<tr>
+			<td>ovsOvn.affinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Affinity for ovs-ovn pods.</td>
+		</tr>
+		<tr>
 			<td>ovsOvn.annotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1643,6 +1841,15 @@ false
 			<td>DPDK-hybrid support for OVS. ref: https://kubeovn.github.io/docs/v1.12.x/en/advance/dpdk/</td>
 		</tr>
 		<tr>
+			<td>ovsOvn.dpdkHybrid.affinity</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Affinity for the ovs-ovn-dpdk DaemonSet.</td>
+		</tr>
+		<tr>
 			<td>ovsOvn.dpdkHybrid.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -1652,12 +1859,25 @@ false
 			<td>Enables DPDK-hybrid support on OVS.</td>
 		</tr>
 		<tr>
+			<td>ovsOvn.dpdkHybrid.nodeSelector</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "kubernetes.io/os": "linux",
+  "ovn.kubernetes.io/ovs_dp_type": "userspace"
+}
+</pre>
+</td>
+			<td>Node selector to restrict the deployment of DPDK-hybrid OVS to specific nodes.</td>
+		</tr>
+		<tr>
 			<td>ovsOvn.dpdkHybrid.resources</td>
 			<td>object</td>
 			<td><pre lang="json">
 {
   "limits": {
     "cpu": "2",
+    "ephemeral-storage": "1Gi",
     "hugepages-2Mi": "1Gi",
     "memory": "1000Mi"
   },
@@ -1674,10 +1894,19 @@ false
 			<td>ovsOvn.dpdkHybrid.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.14.0-dpdk"
+"v1.16.0"
 </pre>
 </td>
 			<td>DPDK image tag.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to ovs-ovn pods.</td>
 		</tr>
 		<tr>
 			<td>ovsOvn.labels</td>
@@ -1687,6 +1916,17 @@ false
 </pre>
 </td>
 			<td>Labels to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.nodeSelector</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "kubernetes.io/os": "linux"
+}
+</pre>
+</td>
+			<td>Node selector to restrict the deployment of ovs-ovn to specific nodes.</td>
 		</tr>
 		<tr>
 			<td>ovsOvn.ovnDirectory</td>
@@ -1731,6 +1971,7 @@ false
 {
   "limits": {
     "cpu": "2",
+    "ephemeral-storage": "1Gi",
     "memory": "1000Mi"
   },
   "requests": {
@@ -1741,6 +1982,31 @@ false
 </pre>
 </td>
 			<td>ovs-ovn resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.updateStrategy</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "maxSurge": 1,
+  "maxUnavailable": 0,
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+			<td>ovs-ovn DaemonSet update strategy. ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.upgrade</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "enabled": true,
+  "versionCompatibility": "25.03"
+}
+</pre>
+</td>
+			<td>Upgrade logic for OVS/OVN.</td>
 		</tr>
 	</tbody>
 </table>
@@ -1819,6 +2085,15 @@ false
 			<td>Annotations to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)</td>
 		</tr>
 		<tr>
+			<td>pinger.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-pinger pods.</td>
+		</tr>
+		<tr>
 			<td>pinger.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1870,6 +2145,7 @@ false
 {
   "limits": {
     "cpu": "200m",
+    "ephemeral-storage": "1Gi",
     "memory": "400Mi"
   },
   "requests": {
@@ -1880,6 +2156,24 @@ false
 </pre>
 </td>
 			<td>kube-ovn-pinger resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+		<tr>
+			<td>pinger.serviceMonitor</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Ping daemon serviceMonitor configuration.</td>
+		</tr>
+		<tr>
+			<td>pinger.serviceMonitor.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the ServiceMonitor for the pinger.</td>
 		</tr>
 		<tr>
 			<td>pinger.targets</td>
@@ -1983,6 +2277,15 @@ false
 			<td>Enable the deployment of the validating webhook.</td>
 		</tr>
 		<tr>
+			<td>validatingWebhook.extraEnv</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra environment variables to be added to kube-ovn-webhook pods.</td>
+		</tr>
+		<tr>
 			<td>validatingWebhook.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -2022,6 +2325,78 @@ false
 	</thead>
 	<tbody>
 	<tr>
+		<td>central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>controller.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>controller.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>ic.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>ic.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>monitor.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
+		<td>monitor.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution</td>
+		<td>list</td>
+		<td><pre lang="json">
+[]
+</pre>
+</td>
+		<td>- antarctica-west1</td>
+	</tr>
+	<tr>
 		<td>ovsOvn.ovsIpsecKeysDirectory</td>
 		<td>string</td>
 		<td><pre lang="json">
@@ -2029,6 +2404,24 @@ false
 </pre>
 </td>
 		<td>Directory on the node where Open vSwitch (OVS) IPSEC keys live.</td>
+	</tr>
+	<tr>
+		<td>ovsOvn.upgrade.enabled</td>
+		<td>bool</td>
+		<td><pre lang="json">
+true
+</pre>
+</td>
+		<td>Enable post-upgrade hooks to run upgrade logic of OVS/OVN.</td>
+	</tr>
+	<tr>
+		<td>ovsOvn.upgrade.versionCompatibility</td>
+		<td>string</td>
+		<td><pre lang="json">
+"25.03"
+</pre>
+</td>
+		<td>Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN. This value must be updated for each new OVN version.</td>
 	</tr>
 	</tbody>
 </table>
