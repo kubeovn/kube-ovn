@@ -1553,14 +1553,18 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
-		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			klog.Warningf("failed to get nic by name %s: %v", nicName, err)
-			return nil
+		if _, ok := err.(netlink.LinkNotFoundError); !ok {
+			return fmt.Errorf("failed to get nic by name %s: %w", nicName, err)
 		}
-		return fmt.Errorf("failed to get nic by name %s: %w", nicName, err)
+		klog.Warningf("nic %s not found, will still clean up addresses and routes on bridge %s", nicName, brName)
 	}
+
 	bridge, err := netlink.LinkByName(brName)
 	if err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			klog.Warningf("bridge %s not found, skip cleanup", brName)
+			return nil
+		}
 		return fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
@@ -1591,16 +1595,20 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		}
 		klog.Infof("address %q has been deleted from link %s", addr.String(), brName)
 
-		addr.Label = ""
-		if err = netlink.AddrReplace(nic, &addr); err != nil {
-			return fmt.Errorf("failed to replace address %q on nic %s: %w", addr.String(), nicName, err)
+		if nic != nil {
+			addr.Label = ""
+			if err = netlink.AddrReplace(nic, &addr); err != nil {
+				return fmt.Errorf("failed to replace address %q on nic %s: %w", addr.String(), nicName, err)
+			}
+			klog.Infof("address %q has been added/replaced to link %s", addr.String(), nicName)
 		}
-		klog.Infof("address %q has been added/replaced to link %s", addr.String(), nicName)
 	}
 
-	if err = netlink.LinkSetUp(nic); err != nil {
-		klog.Errorf("failed to set link %s up: %v", nicName, err)
-		return err
+	if nic != nil {
+		if err = netlink.LinkSetUp(nic); err != nil {
+			klog.Errorf("failed to set link %s up: %v", nicName, err)
+			return err
+		}
 	}
 
 	for _, scope := range routeScopeOrders {
@@ -1610,11 +1618,18 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 				continue
 			}
 			if route.Scope == scope {
-				route.LinkIndex = nic.Attrs().Index
-				if err = netlink.RouteReplace(&route); err != nil {
-					return fmt.Errorf("failed to add/replace route %s: %w", route.String(), err)
+				if nic != nil {
+					route.LinkIndex = nic.Attrs().Index
+					if err = netlink.RouteReplace(&route); err != nil {
+						return fmt.Errorf("failed to add/replace route %s: %w", route.String(), err)
+					}
+					klog.Infof("route %q has been added/replaced to link %s", route.String(), nicName)
+				} else {
+					if err = netlink.RouteDel(&route); err != nil {
+						return fmt.Errorf("failed to delete route %s from bridge %s: %w", route.String(), brName, err)
+					}
+					klog.Infof("route %q has been deleted from link %s (nic %s not found)", route.String(), brName, nicName)
 				}
-				klog.Infof("route %q has been added/replaced to link %s", route.String(), nicName)
 			}
 		}
 	}

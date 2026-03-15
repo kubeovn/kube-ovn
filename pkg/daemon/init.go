@@ -154,7 +154,11 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 
 	brName := mappings[provider]
 	if brName == "" {
-		return nil
+		// The mapping may have been cleared before cleanup finished (e.g., daemon restart
+		// or race with bridge setup failure). Fall back to the default bridge name to clean
+		// up any orphaned bridge and restore the original NIC name.
+		brName = util.ExternalBridgeName(provider)
+		klog.Infof("no ovn-bridge-mappings entry for provider %s, trying default bridge name %s", provider, brName)
 	}
 
 	output, err := ovs.Exec("list-br")
@@ -162,8 +166,17 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 		return fmt.Errorf("failed to list OVS bridges: %w, %q", err, output)
 	}
 
-	if !slices.Contains(strings.Split(output, "\n"), brName) {
+	bridges := strings.Split(output, "\n")
+	if !slices.Contains(bridges, brName) {
 		klog.V(3).Infof("ovs bridge %s not found", brName)
+		// Even if no OVS bridge exists, check if a NIC was renamed to br-<provider>
+		// and needs to be restored (e.g., exchangeLinkName was used but bridge setup failed).
+		if br := util.ExternalBridgeName(provider); br != brName {
+			if _, err = c.changeProviderNicName(br, brName); err != nil {
+				klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
+				return err
+			}
+		}
 		return nil
 	}
 
