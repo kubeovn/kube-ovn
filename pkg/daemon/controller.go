@@ -361,6 +361,15 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
+	// Skip initialization if the provider network is being deleted.
+	// Without this check, a requeue from a previous error could trigger re-init
+	// during deletion, adding the NIC as a port to a dying bridge. This creates
+	// stale OVS netdev cache entries that block exchange-link-name bridge creation.
+	if !pn.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("provider network %s is being deleted, skip init", key)
+		return nil
+	}
+
 	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
 	if err != nil {
 		klog.Error(err)
