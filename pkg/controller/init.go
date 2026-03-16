@@ -537,7 +537,13 @@ func (c *Controller) InitIPAM() error {
 				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IPAddressAnnotation], err)
 			}
 			if v4IP != "" && v6IP != "" {
-				node.Annotations[util.IPAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
+				ipStr := util.GetStringIP(v4IP, v6IP)
+				if ipStr != node.Annotations[util.IPAddressAnnotation] {
+					patch := util.KVPatch{util.IPAddressAnnotation: ipStr}
+					if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+						klog.Errorf("failed to patch node %s IP annotation: %v", node.Name, err)
+					}
+				}
 			}
 		}
 	}
