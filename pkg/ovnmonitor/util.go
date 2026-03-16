@@ -68,9 +68,8 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	if err != nil {
 		klog.Errorf("get ovn-northbound status failed, err %v", err)
 	}
-	if strings.Contains(output, "Servers:") {
-		servers := strings.Split(output, "Servers:")[1]
-		result["ovsdb-server-northbound"] = servers
+	if parts := strings.SplitN(output, "Servers:", 2); len(parts) >= 2 {
+		result["ovsdb-server-northbound"] = parts[1]
 	}
 
 	// get ovn-southbound status
@@ -78,9 +77,8 @@ func (e *Exporter) getOvnStatusContent() map[string]string {
 	if err != nil {
 		klog.Errorf("get ovn-southbound status failed, err %v", err)
 	}
-	if strings.Contains(output, "Servers:") {
-		servers := strings.Split(output, "Servers:")[1]
-		result["ovsdb-server-southbound"] = servers
+	if parts := strings.SplitN(output, "Servers:", 2); len(parts) >= 2 {
+		result["ovsdb-server-southbound"] = parts[1]
 	}
 
 	return result

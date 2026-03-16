@@ -537,7 +537,9 @@ func (c *Controller) InitIPAM() error {
 				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IPAddressAnnotation], err)
 			}
 			if v4IP != "" && v6IP != "" {
-				node.Annotations[util.IPAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
+				if node.Annotations[util.IPAddressAnnotation] != util.GetStringIP(v4IP, v6IP) {
+					klog.Infof("node %s IP annotation mismatch, expected %s", node.Name, util.GetStringIP(v4IP, v6IP))
+				}
 			}
 		}
 	}

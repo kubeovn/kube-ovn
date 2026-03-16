@@ -127,6 +127,9 @@ func tcpAddrToSocketAddr(addr *net.TCPAddr) (syscall.Sockaddr, error) {
 // out the address family based on the
 // network and TCP addresses
 func tcpAddrFamily(net string, laddr, raddr *net.TCPAddr) int {
+	if len(net) == 0 {
+		return syscall.AF_INET
+	}
 	switch net[len(net)-1] {
 	case '4':
 		return syscall.AF_INET

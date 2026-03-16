@@ -93,7 +93,10 @@ func getIpv6Prefix(networks []string) []string {
 	ipv6Prefix := make([]string, 0, len(networks))
 	for _, network := range networks {
 		if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(network) {
-			ipv6Prefix = append(ipv6Prefix, strings.Split(network, "/")[1])
+			parts := strings.SplitN(network, "/", 2)
+			if len(parts) == 2 {
+				ipv6Prefix = append(ipv6Prefix, parts[1])
+			}
 		}
 	}
 

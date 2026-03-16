@@ -355,8 +355,15 @@ func GetIPAddrWithMask(ip, cidr string) (string, error) {
 		cidrBlocks := strings.Split(cidr, ",")
 		if len(cidrBlocks) == 2 {
 			if len(ips) == 2 {
-				v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
-				v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+				v4Parts := strings.SplitN(cidrBlocks[0], "/", 2)
+				v6Parts := strings.SplitN(cidrBlocks[1], "/", 2)
+				if len(v4Parts) != 2 || len(v6Parts) != 2 {
+					err := fmt.Errorf("invalid cidr format %s", cidr)
+					klog.Error(err)
+					return "", err
+				}
+				v4IP := fmt.Sprintf("%s/%s", ips[0], v4Parts[1])
+				v6IP := fmt.Sprintf("%s/%s", ips[1], v6Parts[1])
 				ipAddr = v4IP + "," + v6IP
 			} else {
 				err := fmt.Errorf("ip %s should be dualstack", ip)
@@ -366,7 +373,13 @@ func GetIPAddrWithMask(ip, cidr string) (string, error) {
 		}
 	} else {
 		if len(ips) == 1 {
-			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+			parts := strings.SplitN(cidr, "/", 2)
+			if len(parts) != 2 {
+				err := fmt.Errorf("invalid cidr format %s", cidr)
+				klog.Error(err)
+				return "", err
+			}
+			ipAddr = fmt.Sprintf("%s/%s", ip, parts[1])
 		} else {
 			err := fmt.Errorf("ip %s should be singlestack", ip)
 			klog.Error(err)

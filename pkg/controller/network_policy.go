@@ -915,9 +915,6 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		for _, npp := range npr.From {
 			if npp.NamespaceSelector != nil {
 				nsSel, _ := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
-				if ns.Labels == nil {
-					ns.Labels = map[string]string{}
-				}
 				if nsSel.Matches(labels.Set(ns.Labels)) {
 					return true
 				}
@@ -929,9 +926,6 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		for _, npp := range npr.To {
 			if npp.NamespaceSelector != nil {
 				nsSel, _ := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
-				if ns.Labels == nil {
-					ns.Labels = map[string]string{}
-				}
 				if nsSel.Matches(labels.Set(ns.Labels)) {
 					return true
 				}

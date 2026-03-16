@@ -605,7 +605,11 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 
 func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxRetry int, done chan struct{}) error {
 	ips := strings.Split(ipAddr, ",")
-	for i, gw := range strings.Split(gateway, ",") {
+	gws := strings.Split(gateway, ",")
+	for i, gw := range gws {
+		if i >= len(ips) {
+			break
+		}
 		src := strings.Split(ips[i], "/")[0]
 		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
