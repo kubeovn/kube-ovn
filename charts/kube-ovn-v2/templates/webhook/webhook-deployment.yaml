@@ -42,6 +42,7 @@ spec:
                   app.kubernetes.io/name: kube-ovn-webhook
                   app.kubernetes.io/part-of: kube-ovn
               topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       automountServiceAccountToken: true
       securityContext:

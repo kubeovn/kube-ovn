@@ -29,6 +29,7 @@ spec:
                 matchLabels:
                   app: kube-ovn-webhook
               topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       automountServiceAccountToken: true
       hostNetwork: true
@@ -159,6 +160,12 @@ webhooks:
         - iptables-dnat-rules
         - iptables-snat-rules
         - iptables-fip-rules
+  objectSelector:
+    matchExpressions:
+      - key: app
+        operator: NotIn
+        values:
+          - kube-ovn-webhook
   failurePolicy: Ignore
   admissionReviewVersions: ["v1", "v1beta1"]
   sideEffects: None
