@@ -233,3 +233,41 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 	}
 	return nil
 }
+
+// isRouteAnnounced checks if a route is already being announced by this BGP speaker.
+// Returns true if the route exists in the BGP RIB with a local next hop.
+func (c *Controller) isRouteAnnounced(route string) bool {
+	prefix, err := parsePrefix(route)
+	if err != nil {
+		klog.Errorf("failed to parse route %s: %v", route, err)
+		return false
+	}
+
+	afi := prefixToAFI(prefix)
+	listPathRequest := apiutil.ListPathRequest{
+		TableType: api.TableType_TABLE_TYPE_GLOBAL,
+		Family:    apiutil.ToFamily(&api.Family{Afi: afi, Safi: api.Family_SAFI_UNICAST}),
+	}
+
+	found := false
+	fn := func(nlri bgp.NLRI, paths []*apiutil.Path) {
+		if nlri.String() != prefix.String() {
+			return
+		}
+		for _, path := range paths {
+			nextHop := getNextHopFromPathAttributes(path.Attrs)
+			routes, _ := netlink.RouteGet(nextHop)
+			if (len(routes) == 1 && routes[0].Type == unix.RTN_LOCAL) || nextHop.Equal(c.config.RouterID) {
+				found = true
+				return
+			}
+		}
+	}
+
+	if err := c.config.BgpServer.ListPath(listPathRequest, fn); err != nil {
+		klog.Errorf("failed to list paths for route %s: %v", route, err)
+		return false
+	}
+
+	return found
+}

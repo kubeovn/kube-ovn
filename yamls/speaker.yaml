@@ -38,6 +38,7 @@ spec:
           command:
             - /kube-ovn/kube-ovn-speaker
           args:
+            - --v=3
             - --neighbor-address=10.32.32.1
             - --neighbor-as=65030
             - --cluster-as=65000

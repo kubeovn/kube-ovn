@@ -1,0 +1,50 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG DUMB_INIT_VERSION="1.2.5"
+ARG TARGETARCH
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /usr/lib/apt/methods/mirror && \
+    apt update && apt upgrade -y && \
+    apt install -y --no-install-recommends --auto-remove \
+    bash \
+    ca-certificates \
+    conntrack \
+    curl \
+    iperf3 \
+    iproute2 \
+    iptables \
+    iputils-arping \
+    iputils-ping \
+    jq \
+    kmod \
+    mtr \
+    net-tools \
+    netcat-openbsd \
+    nftables \
+    tcpdump \
+    telnet \
+    traceroute \
+    vim \
+    && apt remove -y --allow-remove-essential --auto-remove login && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -f /usr/lib/apt/methods/mirror
+
+RUN curl -sSf -L --retry 5 -o /tmp/nettrace.deb \
+    https://github.com/OpenCloudOS/nettrace/releases/download/v1.2.11/nettrace-1.2.11-2.${TARGETARCH}.deb && \
+    dpkg -i /tmp/nettrace.deb && \
+    rm -f /tmp/nettrace.deb
+
+RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init \
+    https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
+    chmod +x /usr/bin/dumb-init
+
+WORKDIR /kube-ovn
+COPY nat-gateway.sh /kube-ovn/
+COPY lb-svc.sh /kube-ovn/
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["sleep", "infinity"]

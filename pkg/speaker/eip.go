@@ -53,12 +53,10 @@ func (c *Controller) announceEIPs(eips []*v1.IptablesEIP) error {
 			continue
 		}
 
-		if eip.Spec.V4ip != "" { // If we have an IPv4, add it to prefixes we should be announcing
-			addExpectedPrefix(eip.Spec.V4ip, expectedPrefixes)
-		}
-
-		if eip.Spec.V6ip != "" { // If we have an IPv6, add it to prefixes we should be announcing
-			addExpectedPrefix(eip.Spec.V6ip, expectedPrefixes)
+		for _, ip := range []string{eip.Spec.V4ip, eip.Spec.V6ip} {
+			if ip != "" {
+				addExpectedPrefix(ip, expectedPrefixes)
+			}
 		}
 	}
 

@@ -243,7 +243,9 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		if cachedEip.Status.QoSPolicy != "" {
+		// Save qosPolicy before deleting, we need to trigger QoS Policy reconcile after EIP is deleted
+		qosPolicyName := cachedEip.Status.QoSPolicy
+		if qosPolicyName != "" {
 			if err = c.delEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
 				klog.Errorf("failed to del qos '%s' in pod, %v", key, err)
 				return err
@@ -256,6 +258,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
+		}
+
+		// Trigger QoS Policy reconcile after EIP is deleted
+		// This allows the QoS Policy to remove its finalizer if no other EIPs are using it
+		if qosPolicyName != "" {
+			c.updateQoSPolicyQueue.Add(qosPolicyName)
 		}
 
 		return nil
@@ -411,7 +419,7 @@ func (c *Controller) addOrUpdateEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEI
 	var err error
 	for _, rule := range rules {
 		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
-			klog.Errorf("failed to set ingress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to set %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -447,12 +455,11 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	return c.addOrUpdateEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
-func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+func (c *Controller) delEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
-		// del qos
 		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction); err != nil {
-			klog.Errorf("failed to del egress eip '%s' qos in pod, %v", eip.Name, err)
+			klog.Errorf("failed to del %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
 	}
@@ -471,7 +478,7 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 		return err
 	}
 
-	return c.delEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+	return c.delEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
 func (c *Controller) addEipQoSInPod(
@@ -612,11 +619,12 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				},
 			},
 			Spec: kubeovnv1.IptablesEIPSpec{
-				V4ip:       v4ip,
-				V6ip:       v6ip,
-				MacAddress: mac,
-				NatGwDp:    natGwDp,
-				QoSPolicy:  qos,
+				V4ip:           v4ip,
+				V6ip:           v6ip,
+				MacAddress:     mac,
+				NatGwDp:        natGwDp,
+				QoSPolicy:      qos,
+				ExternalSubnet: externalNet,
 			},
 			Status: kubeovnv1.IptablesEIPStatus{
 				IP:        v4ip,
@@ -651,6 +659,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
+			eip.Spec.ExternalSubnet = externalNet
 			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)

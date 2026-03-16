@@ -138,6 +138,9 @@ type SubnetStatus struct {
 	NatOutgoingPolicyRules []NatOutgoingPolicyRuleStatus `json:"natOutgoingPolicyRules"`
 	McastQuerierIP         string                        `json:"mcastQuerierIP"`
 	McastQuerierMAC        string                        `json:"mcastQuerierMAC"`
+	// TunnelKey is the OVN logical switch tunnel_key from Datapath_Binding.
+	// This is only populated when EnableRecordTunnelKey is enabled.
+	TunnelKey int `json:"tunnelKey,omitempty"`
 }
 
 func (s *SubnetStatus) addCondition(ctype ConditionType, status corev1.ConditionStatus, reason, message string) {

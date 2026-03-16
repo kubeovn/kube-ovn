@@ -1110,6 +1110,11 @@ func (suite *OvnClientTestSuite) Test_GetKubeOvnChassisses() {
 	suite.testGetKubeOvnChassisses()
 }
 
+/* datapath_binding unit test */
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitchTunnelKey() {
+	suite.testGetLogicalSwitchTunnelKey()
+}
+
 // ovn ic
 func (suite *OvnClientTestSuite) Test_OvnIcNbCommand() {
 	suite.testOvnIcNbCommand()
@@ -1486,6 +1491,7 @@ func newSbClient(addr string, timeout int) (client.Client, error) {
 
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnsb.Chassis{}),
+		client.WithTable(&ovnsb.DatapathBinding{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Error(err)

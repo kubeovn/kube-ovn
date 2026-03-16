@@ -1388,3 +1388,95 @@ func TestIPRangeListToCIDRsEdgeCases(t *testing.T) {
 		require.Equal(t, []string{"::/128"}, result)
 	})
 }
+
+func TestIPRangeList_NilReceiverSafety(t *testing.T) {
+	// Background: In single-stack subnets, V4Available or V6Available can be nil.
+	// All IPRangeList methods must handle nil receiver without panic.
+	var nilList *IPRangeList
+	ip, _ := NewIP("10.0.0.1")
+
+	t.Run("Len", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, 0, nilList.Len())
+		})
+	})
+
+	t.Run("Count", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, "0", nilList.Count().String())
+		})
+	})
+
+	t.Run("Clone", func(t *testing.T) {
+		var result *IPRangeList
+		require.NotPanics(t, func() {
+			result = nilList.Clone()
+		})
+		require.NotNil(t, result)
+		require.Equal(t, 0, result.Len())
+	})
+
+	t.Run("At", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Nil(t, nilList.At(0))
+		})
+	})
+
+	t.Run("Find", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			idx, found := nilList.Find(ip)
+			require.Equal(t, 0, idx)
+			require.False(t, found)
+		})
+	})
+
+	t.Run("Contains", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Contains(ip))
+		})
+	})
+
+	t.Run("Add", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Add(ip))
+		})
+	})
+
+	t.Run("Remove", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.False(t, nilList.Remove(ip))
+		})
+	})
+
+	t.Run("Separate", func(t *testing.T) {
+		var result *IPRangeList
+		require.NotPanics(t, func() {
+			result = nilList.Separate(nil)
+		})
+		require.NotNil(t, result)
+		require.Equal(t, 0, result.Len())
+	})
+
+	t.Run("String", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			require.Equal(t, "", nilList.String())
+		})
+	})
+
+	t.Run("ToCIDRs", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			cidrs, err := nilList.ToCIDRs()
+			require.NoError(t, err)
+			require.Nil(t, cidrs)
+		})
+	})
+}
+
+func TestIPRangeListSeparate_WithEmptyList(t *testing.T) {
+	// An empty but non-nil list returns empty result immediately without using 'other'
+	emptyList := NewEmptyIPRangeList()
+
+	result := emptyList.Separate(nil)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.Len())
+}

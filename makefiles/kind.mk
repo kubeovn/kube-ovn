@@ -670,6 +670,19 @@ kind-install-bgp: kind-install
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
 	docker exec clab-bgp-router vtysh -c "show ip route bgp"
 
+.PHONY: kind-install-node-route-bgp-eip
+kind-install-node-route-bgp-eip: kind-install-vpc-nat-gw
+	kubectl label node --all ovn.kubernetes.io/bgp=true --overwrite
+	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local --overwrite
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
+		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
+		-e 's/--cluster-as=.*/--cluster-as=65002/' \
+		-e '/--cluster-as=/a\            - --node-route-eip-mode' yamls/speaker.yaml | \
+		kubectl apply -f -
+	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
+	docker exec clab-bgp-router vtysh -c "show ip route bgp"
+
 .PHONY: kind-install-bgp-ha
 kind-install-bgp-ha: kind-install
 	kubectl label node --all ovn.kubernetes.io/bgp=true
@@ -880,3 +893,7 @@ kind-setup-non-primary-cni: kind-install-multus-cilium-kubeovn-non-primary
 
 .PHONY: kind-setup-non-primary-cni-v2
 kind-setup-non-primary-cni-v2: kind-install-multus-cilium-kubeovn-non-primary-v2
+
+.PHONY: kind-install-enable-record-tunnel
+kind-install-enable-record-tunnel:
+	@ENABLE_RECORD_TUNNEL_KEY=true $(MAKE) kind-install

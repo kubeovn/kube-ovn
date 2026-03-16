@@ -588,6 +588,10 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			if pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] == "" {
 				patch[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] = c.config.PodNicType
 			}
+			// Sync tunnel key (VNI) from subnet status to pod annotation when enabled
+			if c.config.EnableRecordTunnelKey && subnet.Status.TunnelKey != 0 {
+				patch[fmt.Sprintf(util.TunnelKeyAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(subnet.Status.TunnelKey)
+			}
 		} else {
 			patch[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = nil
 			patch[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] = nil

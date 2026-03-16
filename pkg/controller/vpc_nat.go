@@ -9,10 +9,22 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	// vpcNatGwScriptMountPath is the path where NAT gateway scripts are mounted inside the container.
+	// This path is used both for the default scripts embedded in the image and for hostPath mounted scripts.
+	vpcNatGwScriptMountPath    = "/kube-ovn"
+	vpcNatGwScriptVolumeName   = "nat-gw-script"
+	vpcNatGwScriptName         = "nat-gateway.sh"
+	vpcNatGwScriptPath         = vpcNatGwScriptMountPath + "/" + vpcNatGwScriptName
+	vpcNatGwContainerName      = "vpc-nat-gw"
+	vpcNatGwServiceAccountName = "vpc-nat-gw"
+)
+
 var (
 	vpcNatImage             = ""
 	vpcNatGwBgpSpeakerImage = ""
 	vpcNatAPINadProvider    = ""
+	vpcNatGwScriptHostPath  = ""
 )
 
 func (c *Controller) resyncVpcNatConfig() {
@@ -48,4 +60,14 @@ func (c *Controller) resyncVpcNatConfig() {
 
 	// NetworkAttachmentDefinition provider for the BGP speaker to call the API server
 	vpcNatAPINadProvider = cm.Data["apiNadProvider"]
+
+	// Host path for NAT gateway scripts (optional)
+	// When configured, the NAT gateway pod will mount scripts from this host path
+	// instead of using the scripts embedded in the container image.
+	// This allows updating scripts without rebuilding the image; changes take effect immediately
+	// as the script is read on each invocation.
+	// NOTE: The host path directory must contain nat-gateway.sh as this mount will overlay
+	// the entire /kube-ovn directory in the container.
+	// NOTE: Existing NAT gateways need to be recreated to pick up this config change.
+	vpcNatGwScriptHostPath = cm.Data["natGwScriptHostPath"]
 }

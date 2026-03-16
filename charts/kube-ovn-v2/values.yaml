@@ -222,6 +222,9 @@ features:
   # -- Enable optimized live migrations for VMs
   # @section -- Opt-in/out Features
   enableLiveMigrationOptimization: true
+  # -- Enable recording tunnel key (VNI) to subnet status and pod annotations for integration with external components like Cilium
+  # @section -- Opt-in/out Features
+  enableRecordTunnelKey: false
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true

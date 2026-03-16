@@ -104,6 +104,10 @@ const (
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
+	// TunnelKeyAnnotation stores the OVN logical switch tunnel_key from Datapath_Binding
+	TunnelKeyAnnotation         = "ovn.kubernetes.io/tunnel_key"
+	TunnelKeyAnnotationTemplate = "%s.kubernetes.io/tunnel_key"
+
 	TunnelInterfaceAnnotation = "ovn.kubernetes.io/tunnel_interface"
 	NodeNetworksAnnotation    = "ovn.kubernetes.io/node_networks"
 
@@ -125,6 +129,11 @@ const (
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
 	ACLActionsLogAnnotation            = "ovn.kubernetes.io/log_acl_actions"
 	ACLLogMeterAnnotation              = "ovn.kubernetes.io/acl_log_meter_rate"
+
+	// NadMacvlanMasterAnnotation value indicates the macvlan master interface
+	NadMacvlanMasterAnnotation = "ovn.kubernetes.io/nad-macvlan-master"
+	// NadMacvlanTypeLabel is set to "true" when subnet uses macvlan NAD, used for efficient label selector filtering
+	NadMacvlanTypeLabel = "ovn.kubernetes.io/nad-macvlan-type"
 
 	VpcEgressGatewayLabel  = "ovn.kubernetes.io/vpc-egress-gateway"
 	GenerateHashAnnotation = "ovn.kubernetes.io/generate-hash"

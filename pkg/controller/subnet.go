@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -545,6 +546,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return err
 		}
 
+		// For non-OVN subnets with macvlan NAD, set the macvlan master annotation
+		if err = c.syncNadMacvlanMasterAnnotation(subnet); err != nil {
+			// Return error to retry - NAD might not be created yet
+			klog.Error(err)
+			return err
+		}
+
 		subnet.Status.EnsureStandardConditions()
 		klog.Infof("non ovn subnet %s is ready", subnet.Name)
 		return nil
@@ -714,6 +722,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	for _, p := range ippools {
 		if p.Spec.Subnet == subnet.Name {
 			c.addOrUpdateIPPoolQueue.Add(p.Name)
+		}
+	}
+
+	// Sync tunnel_key from OVN SB to subnet status (only when enabled and not already set)
+	// OVN subnets must have tunnel_key; non-OVN subnets (e.g., underlay) skip this
+	if c.config.EnableRecordTunnelKey && isOvnSubnet(subnet) && subnet.Status.TunnelKey == 0 {
+		if err := c.syncSubnetTunnelKey(subnet); err != nil {
+			klog.Errorf("failed to sync tunnel key for subnet %s: %v", subnet.Name, err)
+			return err
 		}
 	}
 
@@ -2897,5 +2914,105 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// syncNadMacvlanMasterAnnotation checks if the subnet's provider NAD is macvlan type,
+// and if so, sets the NadMacvlanMasterAnnotation with the master interface name.
+// This annotation is used by daemon for node-local EIP access feature.
+func (c *Controller) syncNadMacvlanMasterAnnotation(subnet *kubeovnv1.Subnet) error {
+	provider := subnet.Spec.Provider
+	if provider == "" || provider == util.OvnProvider {
+		return nil
+	}
+
+	// Parse provider format: <nad-name>.<namespace> or <nad-name>.<namespace>.ovn
+	nadName, nadNamespace, ok := util.GetNadBySubnetProvider(provider)
+	if !ok {
+		return nil
+	}
+
+	nad, err := c.netAttachLister.NetworkAttachmentDefinitions(nadNamespace).Get(nadName)
+	if err != nil {
+		// If NAD doesn't exist yet, return error to retry later
+		// NAD might be created after subnet, so we need to retry
+		err = fmt.Errorf("failed to get NAD %s/%s for subnet %s: %w", nadNamespace, nadName, subnet.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	// Parse NAD config to check if it's macvlan type
+	var netConf struct {
+		Type   string `json:"type"`
+		Master string `json:"master"`
+	}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), &netConf); err != nil {
+		// Malformed JSON is a configuration error, not a transient error.
+		// Retrying won't fix it - user needs to fix the NAD config.
+		// Log error and return nil to avoid infinite retry loop.
+		klog.Errorf("failed to parse NAD %s/%s config for subnet %s (not retrying): %v", nadNamespace, nadName, subnet.Name, err)
+		return nil
+	}
+
+	if netConf.Type != "macvlan" {
+		// If NAD is not macvlan type, remove the annotation and label if they exist
+		if _, ok := subnet.Annotations[util.NadMacvlanMasterAnnotation]; ok {
+			patch := util.KVPatch{util.NadMacvlanMasterAnnotation: nil}
+			if err := util.PatchAnnotations(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+				err = fmt.Errorf("failed to remove annotation from subnet %s: %w", subnet.Name, err)
+				klog.Error(err)
+				return err
+			}
+			klog.Infof("removed subnet %s annotation %s", subnet.Name, util.NadMacvlanMasterAnnotation)
+		}
+		if subnet.Labels[util.NadMacvlanTypeLabel] != "" {
+			patch := util.KVPatch{util.NadMacvlanTypeLabel: nil}
+			if err := util.PatchLabels(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+				err = fmt.Errorf("failed to remove label from subnet %s: %w", subnet.Name, err)
+				klog.Error(err)
+				return err
+			}
+			klog.Infof("removed subnet %s label %s", subnet.Name, util.NadMacvlanTypeLabel)
+		}
+		return nil
+	}
+
+	// Update annotation if master interface changed
+	if subnet.Annotations[util.NadMacvlanMasterAnnotation] != netConf.Master {
+		patch := util.KVPatch{util.NadMacvlanMasterAnnotation: netConf.Master}
+		if err := util.PatchAnnotations(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch subnet %s annotation: %w", subnet.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("set subnet %s annotation %s=%s", subnet.Name, util.NadMacvlanMasterAnnotation, netConf.Master)
+	}
+	// Ensure label is set for efficient filtering
+	if subnet.Labels[util.NadMacvlanTypeLabel] != "true" {
+		patch := util.KVPatch{util.NadMacvlanTypeLabel: "true"}
+		if err := util.PatchLabels(c.config.KubeOvnClient.KubeovnV1().Subnets(), subnet.Name, patch); err != nil {
+			err = fmt.Errorf("failed to patch subnet %s label: %w", subnet.Name, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("set subnet %s label %s=true", subnet.Name, util.NadMacvlanTypeLabel)
+	}
+	return nil
+}
+
+func (c *Controller) syncSubnetTunnelKey(subnet *kubeovnv1.Subnet) error {
+	tunnelKey, err := c.OVNSbClient.GetLogicalSwitchTunnelKey(subnet.Name)
+	if err != nil {
+		err = fmt.Errorf("failed to get tunnel key for logical switch %s: %w", subnet.Name, err)
+		klog.Error(err)
+		return err
+	}
+
+	patch := []byte(fmt.Sprintf(`{"status":{"tunnelKey":%d}}`, tunnelKey))
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch tunnel key for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+	klog.Infof("synced tunnel key %d for subnet %s", tunnelKey, subnet.Name)
 	return nil
 }

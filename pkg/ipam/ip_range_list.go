@@ -77,6 +77,9 @@ func NewIPRangeListFrom(x ...string) (*IPRangeList, error) {
 }
 
 func (r *IPRangeList) Clone() *IPRangeList {
+	if r == nil {
+		return NewEmptyIPRangeList()
+	}
 	ret := &IPRangeList{make([]*IPRange, r.Len())}
 	for i := range r.ranges {
 		ret.ranges[i] = r.ranges[i].Clone()
@@ -85,10 +88,16 @@ func (r *IPRangeList) Clone() *IPRangeList {
 }
 
 func (r *IPRangeList) Len() int {
+	if r == nil {
+		return 0
+	}
 	return len(r.ranges)
 }
 
 func (r *IPRangeList) Count() internal.BigInt {
+	if r == nil {
+		return internal.BigInt{}
+	}
 	var count internal.BigInt
 	for _, v := range r.ranges {
 		count = count.Add(v.Count())
@@ -97,13 +106,16 @@ func (r *IPRangeList) Count() internal.BigInt {
 }
 
 func (r *IPRangeList) At(i int) *IPRange {
-	if i < len(r.ranges) {
-		return r.ranges[i]
+	if r == nil || i < 0 || i >= len(r.ranges) {
+		return nil
 	}
-	return nil
+	return r.ranges[i]
 }
 
 func (r *IPRangeList) Find(ip IP) (int, bool) {
+	if r == nil {
+		return 0, false
+	}
 	return sort.Find(len(r.ranges), func(i int) int {
 		if r.At(i).Start().GreaterThan(ip) {
 			return -1
@@ -121,6 +133,9 @@ func (r *IPRangeList) Contains(ip IP) bool {
 }
 
 func (r *IPRangeList) Add(ip IP) bool {
+	if r == nil {
+		return false
+	}
 	n, ok := r.Find(ip)
 	if ok {
 		return false
@@ -145,6 +160,9 @@ func (r *IPRangeList) Add(ip IP) bool {
 }
 
 func (r *IPRangeList) Remove(ip IP) bool {
+	if r == nil {
+		return false
+	}
 	n, ok := r.Find(ip)
 	if !ok {
 		return false

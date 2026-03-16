@@ -134,6 +134,9 @@ type Configuration struct {
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
+
+	// EnableRecordTunnelKey controls whether to sync tunnel key from OVN to subnet status and pod annotations
+	EnableRecordTunnelKey bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -228,6 +231,8 @@ func ParseFlags() (*Configuration, error) {
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
+
+		argEnableRecordTunnelKey = pflag.Bool("enable-record-tunnel-key", false, "Sync OVN tunnel key (VNI) to subnet status and pod annotations for integration with external components")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -323,6 +328,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:       *argNPEnforcement,
 		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
+		EnableRecordTunnelKey:          *argEnableRecordTunnelKey,
 	}
 	if config.OvsDbInactivityTimeout > 0 && config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")

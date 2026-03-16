@@ -452,9 +452,13 @@ func (c *Controller) InitIPAM() error {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+				if ip == "" {
+					klog.Warningf("pod %s/%s has empty IP annotation for provider %s, skip IPAM init", pod.Namespace, podName, podNet.ProviderName)
+					continue
+				}
 				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, &mac, podNet.Subnet.Name, true)
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, ip, err)
 				} else {
 					err = c.createOrUpdateIPCR(portName, podName, ip, mac, podNet.Subnet.Name, pod.Namespace, pod.Spec.NodeName, podType)
 					if err != nil {

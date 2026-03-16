@@ -58,6 +58,7 @@ OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+ENABLE_RECORD_TUNNEL_KEY=${ENABLE_RECORD_TUNNEL_KEY:-false}
 
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
@@ -848,6 +849,11 @@ spec:
                       nextHopIP:
                         type: string
                         description: Next hop IP address
+                annotations:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: User-defined annotations for the StatefulSet NAT gateway Pod template. Only effective at creation time.
                 tolerations:
                   type: array
                   items:
@@ -3061,6 +3067,8 @@ spec:
                   type: string
                 v6availableIPrange:
                   type: string
+                tunnelKey:
+                  type: integer
                 natOutgoingPolicyRules:
                   description: NAT outgoing policy rules.
                   type: array
@@ -3870,10 +3878,12 @@ spec:
                         description: Interface name
                       rateMax:
                         type: string
-                        description: Maximum rate (e.g., 100Mbps)
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum rate in Mbps (e.g., 100 or 0.5 for 500Kbps)
                       burstMax:
                         type: string
-                        description: Maximum burst rate
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum burst in MB (e.g., 10 or 0.5 for 500KB)
                       priority:
                         type: integer
                         description: Rule priority
@@ -3933,10 +3943,12 @@ spec:
                         description: Network interface to apply the rule
                       rateMax:
                         type: string
-                        description: Maximum rate (e.g., 100Mbps, 1Gbps)
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum rate in Mbps (e.g., 100 or 0.5 for 500Kbps)
                       burstMax:
                         type: string
-                        description: Maximum burst rate
+                        pattern: '^[0-9]+(\.[0-9]+)?$'
+                        description: Maximum burst in MB (e.g., 10 or 0.5 for 500KB)
                       priority:
                         type: integer
                         description: Rule priority for ordering
@@ -4332,6 +4344,7 @@ rules:
       - subnets
       - vlans
       - provider-networks
+      - iptables-eips
     verbs:
       - get
       - list
@@ -5293,6 +5306,7 @@ spec:
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           - --enable-ovn-lb-prefer-local=$ENABLE_OVN_LB_PREFER_LOCAL
+          - --enable-record-tunnel-key=$ENABLE_RECORD_TUNNEL_KEY
           - --image=$REGISTRY/kube-ovn:$VERSION
           securityContext:
             runAsUser: ${RUN_AS_USER}

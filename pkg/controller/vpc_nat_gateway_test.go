@@ -5,11 +5,112 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestVpcNatGwScriptConstants(t *testing.T) {
+	// Verify the constants are set correctly for backward compatibility
+	assert.Equal(t, "/kube-ovn", vpcNatGwScriptMountPath, "Script mount path should be /kube-ovn")
+	assert.Equal(t, "nat-gw-script", vpcNatGwScriptVolumeName, "Volume name should be nat-gw-script")
+	assert.Equal(t, "nat-gateway.sh", vpcNatGwScriptName, "Script name should be nat-gateway.sh")
+	assert.Equal(t, "/kube-ovn/nat-gateway.sh", vpcNatGwScriptPath, "Script path should be /kube-ovn/nat-gateway.sh")
+	assert.Equal(t, "vpc-nat-gw", vpcNatGwContainerName, "Container name should be vpc-nat-gw")
+	assert.Equal(t, "vpc-nat-gw", vpcNatGwServiceAccountName, "ServiceAccount name should be vpc-nat-gw")
+}
+
+func TestIsVpcNatGwChanged(t *testing.T) {
+	tests := []struct {
+		name     string
+		gw       *kubeovnv1.VpcNatGateway
+		expected bool
+	}{
+		{
+			name: "no changes returns false",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "ExternalSubnets changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					ExternalSubnets: []string{"subnet2"},
+					Selector:        []string{"node=worker1"},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Selector changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker2"},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Tolerations changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+					Tolerations:     []corev1.Toleration{{Key: "new-key"}},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Affinity changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+					Affinity: corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{},
+					},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					ExternalSubnets: []string{"subnet1"},
+					Selector:        []string{"node=worker1"},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isVpcNatGwChanged(tt.gw)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
 
 func TestGetSubnetProvider(t *testing.T) {
 	tests := []struct {

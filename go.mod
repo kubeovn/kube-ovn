@@ -35,6 +35,7 @@ require (
 	github.com/osrg/gobgp/v4 v4.1.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/puzpuzpuz/xsync/v4 v4.2.0
@@ -155,7 +156,6 @@ require (
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20191112210931-090425220c54 // indirect

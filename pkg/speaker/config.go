@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
@@ -60,6 +61,9 @@ type Configuration struct {
 	NatGwMode                   bool
 	EnableMetrics               bool
 
+	VpcNatGwNamespace string
+	NodeRouteEIPMode  bool
+
 	NodeName       string
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -91,9 +95,11 @@ func ParseFlags() (*Configuration, error) {
 		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
 		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer, default: 1")
 		argExtendedNexthop             = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
-		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
+		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway pod. Mutually exclusive with --node-route-eip-mode. Pod IP/Service/Subnet announcements will be disabled")
 		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
 		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
+		argVpcNatGwNamespace           = pflag.String("vpc-nat-gw-namespace", "kube-system", "The namespace where VPC NAT Gateway pods are deployed, default: kube-system")
+		argNodeRouteEIPMode            = pflag.BoolP("node-route-eip-mode", "", false, "Make the BGP speaker announce EIPs for local NAT gateway pods. Mutually exclusive with --nat-gw-mode. Speaker runs on node with host network and announces EIPs for vpc-nat-gw pods on the same node")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -167,6 +173,12 @@ func ParseFlags() (*Configuration, error) {
 		NatGwMode:                   *argNatGwMode,
 		EnableMetrics:               *argEnableMetrics,
 		LogPerm:                     *argLogPerm,
+		VpcNatGwNamespace:           *argVpcNatGwNamespace,
+		NodeRouteEIPMode:            *argNodeRouteEIPMode,
+	}
+
+	if err := config.validateMutuallyExclusiveModes(); err != nil {
+		return nil, err
 	}
 
 	if err := config.validateRequiredFlags(); err != nil {
@@ -206,6 +218,16 @@ func ParseFlags() (*Configuration, error) {
 	return config, nil
 }
 
+// validateMutuallyExclusiveModes checks that mutually exclusive modes are not enabled simultaneously.
+// - NatGwMode: speaker runs inside NAT gateway pod, announces EIPs for that specific gateway
+// - NodeRouteEIPMode: speaker runs on node, announces EIPs for all local NAT gateway pods
+func (config *Configuration) validateMutuallyExclusiveModes() error {
+	if config.NatGwMode && config.NodeRouteEIPMode {
+		return errors.New("--nat-gw-mode and --node-route-eip-mode are mutually exclusive")
+	}
+	return nil
+}
+
 // validateRequiredFlags checks that all required BGP configuration flags are provided.
 // It collects all missing flags and returns them in a single error message.
 func (config *Configuration) validateRequiredFlags() error {
@@ -219,6 +241,11 @@ func (config *Configuration) validateRequiredFlags() error {
 	}
 	if config.NeighborAs == 0 {
 		missingFlags = append(missingFlags, "--neighbor-as must be specified")
+	}
+
+	// NodeRouteEIPMode requires NodeName to identify local NAT gateway pods
+	if config.NodeRouteEIPMode && config.NodeName == "" {
+		missingFlags = append(missingFlags, "--node-route-eip-mode requires --node-name to be specified")
 	}
 
 	if len(missingFlags) > 0 {
@@ -393,6 +420,10 @@ func (config *Configuration) initBgpServer() error {
 	}
 
 	config.BgpServer = s
+
+	// Start watching peer state changes for detailed logging
+	go config.watchPeerState()
+
 	return nil
 }
 
@@ -416,14 +447,40 @@ func addPeerWithRetry(s *gobgp.BgpServer, peer *api.Peer) error {
 	return err
 }
 
-// logBgpPeer logs the BGP peer configuration for debugging purposes.
+// logBgpPeer logs the BGP peer configuration details, masking sensitive information.
 func logBgpPeer(peer *api.Peer) {
-	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, PeerAsn=%d, HoldTime=%d, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v",
+	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, PeerAsn=%d, HoldTime=%d, LocalAddress=%s, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v",
 		peer.Conf.NeighborAddress,
 		peer.Conf.PeerAsn,
 		peer.Timers.Config.HoldTime,
+		peer.Transport.LocalAddress,
 		peer.Transport.PassiveMode,
 		peer.EbgpMultihop,
 		peer.GracefulRestart,
 		peer.AfiSafis)
+}
+
+// watchPeerState monitors BGP peer state changes and logs detailed information
+// including local address when peers go up or down.
+func (config *Configuration) watchPeerState() {
+	err := config.BgpServer.WatchEvent(context.Background(), gobgp.WatchEventMessageCallbacks{
+		OnPeerUpdate: func(peer *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
+			if peer == nil {
+				return
+			}
+			p := peer.Peer
+			neighborAddr := p.Conf.NeighborAddress.String()
+			localAddr := p.Transport.LocalAddress.String()
+			state := p.State.SessionState.String()
+			peerAS := p.Conf.PeerASN
+
+			if peer.Type == apiutil.PEER_EVENT_STATE {
+				klog.Infof("BGP peer state changed: neighbor=%s, state=%s, localAddress=%s, peerAS=%d",
+					neighborAddr, state, localAddr, peerAS)
+			}
+		},
+	}, gobgp.WatchPeer())
+	if err != nil {
+		klog.Errorf("failed to watch peer state: %v", err)
+	}
 }

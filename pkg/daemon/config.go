@@ -85,6 +85,9 @@ type Configuration struct {
 	LogPerm                   string
 	EnableNonPrimaryCNI       bool
 
+	// Node-local EIP access configuration for VPC NAT Gateway
+	EnableNodeLocalAccessVpcNatGwEIP bool
+
 	// TLS configuration for secure serving
 	TLSMinVersion   string
 	TLSMaxVersion   string
@@ -146,7 +149,10 @@ func ParseFlags() *Configuration {
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
-		argNonPrimaryCNI   = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
+
+		// Node-local EIP access for VPC NAT Gateway
+		argEnableNodeLocalAccessVpcNatGwEIP = pflag.Bool("enable-node-local-access-vpc-nat-gw-eip", true, "Enable node local access to VPC NAT gateway iptables EIP addresses via macvlan sub-interface")
+		argNonPrimaryCNI                    = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
 	)
 
 	// mute info log for ipset lib
@@ -217,7 +223,10 @@ func ParseFlags() *Configuration {
 		CertManagerIPSecCert:      *argCertManagerIPSecCert,
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
-		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
+
+		// Node-local access to eip in VPC NAT Gateway pod
+		EnableNodeLocalAccessVpcNatGwEIP: *argEnableNodeLocalAccessVpcNatGwEIP,
+		EnableNonPrimaryCNI:              *argNonPrimaryCNI,
 	}
 
 	return config

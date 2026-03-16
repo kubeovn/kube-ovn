@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -39,8 +40,9 @@ func GetNatGwExternalNetwork(externalNets []string) string {
 // GenNatGwLabels returns the labels to set on a NAT gateway
 func GenNatGwLabels(gwName string) map[string]string {
 	return map[string]string{
-		"app":              GenNatGwName(gwName),
-		VpcNatGatewayLabel: "true",
+		"app":                  GenNatGwName(gwName),
+		VpcNatGatewayLabel:     "true",
+		VpcNatGatewayNameLabel: gwName,
 	}
 }
 
@@ -58,9 +60,11 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
-// GenNatGwPodAnnotations returns the Pod annotations for a NAT gateway
-// additionalNetworks is optional, used when users specify extra NADs in gw.Annotations
-func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
+// GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
+// userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
+// are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
+// users specify extra NADs in gw.Annotations.
+func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
@@ -71,12 +75,17 @@ func GenNatGwPodAnnotations(gw *kubeovnv1.VpcNatGateway, externalNadNamespace, e
 		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
 
-	result := map[string]string{
-		nadv1.NetworkAttachmentAnnot:                    attachedNetworks,
-		VpcNatGatewayAnnotation:                         gw.Name,
-		fmt.Sprintf(LogicalSwitchAnnotationTemplate, p): gw.Spec.Subnet,
-		fmt.Sprintf(IPAddressAnnotationTemplate, p):     gw.Spec.LanIP,
+	// Create a new map to avoid modifying the input map (which may be from informer cache)
+	result := make(map[string]string, len(userAnnotations)+5)
+	for k, v := range userAnnotations {
+		result[k] = v
 	}
+
+	// Set system annotations (overwrites any conflicting user annotations)
+	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
+	result[VpcNatGatewayAnnotation] = gw.Name
+	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
+	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
 	// We're using a custom provider, we need to override the default network of the pod so that the
 	// default VPC/Subnet of the cluster isn't accidentally injected.
@@ -196,4 +205,41 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	return bgpSpeakerContainer, nil
+}
+
+const (
+	// MacvlanLinkPrefix is the prefix for macvlan sub-interfaces created for node local EIP access.
+	// Format: "mac" (3 chars) + master interface name or FNV hash (up to 12 chars) = max 15 chars.
+	MacvlanLinkPrefix = "mac"
+)
+
+// GenMacvlanIfaceName generates macvlan sub-interface name from master interface name.
+// Format: "mac" (3 chars) + master name or FNV hash (up to 12 chars) = max 15 chars.
+// Linux interface names are limited to 15 characters.
+//
+// For short master names (<=12 chars), appends master name directly.
+// For longer names, uses FNV-1a 32-bit hash to ensure uniqueness.
+//
+// Examples:
+//
+//	master "eth0"        -> "maceth0"
+//	master "bond0"       -> "macbond0"
+//	master "enp0s25"     -> "macenp0s25"
+//	master "very-long-interface-name" -> "mac" + hash
+func GenMacvlanIfaceName(master string) (string, error) {
+	if master == "" {
+		return "", errors.New("master interface name is empty")
+	}
+
+	maxMasterLen := 15 - len(MacvlanLinkPrefix) // 12 chars for master part
+
+	// If master name fits, use it directly
+	if len(master) <= maxMasterLen {
+		return MacvlanLinkPrefix + master, nil
+	}
+
+	// For longer names, use FNV-1a 32-bit hash (8 hex chars)
+	h := fnv.New32a()
+	h.Write([]byte(master))
+	return fmt.Sprintf("%s%08x", MacvlanLinkPrefix, h.Sum32()), nil
 }

@@ -212,11 +212,11 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
+    verbs:
       - "get"
       - "list"
       - "watch"
@@ -305,6 +305,7 @@ rules:
       - subnets
       - vlans
       - provider-networks
+      - iptables-eips
     verbs:
       - get
       - list
@@ -359,12 +360,12 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
-  - apiGroups: 
+  - apiGroups:
       - "certificates.k8s.io"
-    resources: 
+    resources:
       - "certificatesigningrequests"
-    verbs: 
-      - "create" 
+    verbs:
+      - "create"
       - "get"
       - "list"
       - "watch"
@@ -376,13 +377,13 @@ metadata:
   name: secret-reader-ovn-ipsec
   namespace: {{ .Values.namespace }}
 rules:
-- apiGroups: 
+- apiGroups:
     - ""
-  resources: 
+  resources:
     - "secrets"
-  resourceNames: 
+  resourceNames:
     - "ovn-ipsec-ca"
-  verbs: 
+  verbs:
     - "get"
     - "list"
     - "watch"

@@ -21,6 +21,18 @@ type VpcNatGatewayList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=vpc-nat-gateways
+//
+// VpcNatGateway represents a NAT gateway for a VPC, implemented as a StatefulSet Pod.
+//
+// Architecture note:
+// The NAT gateway Pod does NOT support hot updates. Any changes to Spec fields (ExternalSubnets,
+// Selector, Tolerations, Affinity, etc.) will trigger a StatefulSet template update,
+// which causes the Pod to be recreated via RollingUpdate strategy. This is by design because:
+//  1. Network configuration (routes, iptables rules) is initialized at Pod startup
+//  2. Runtime state (vpc_cidrs, init status) is managed by separate handlers and will be
+//     automatically restored after Pod recreation through the normal reconciliation flow
+//
+// The only exception is QoSPolicy, which can be updated without Pod restart.
 type VpcNatGateway struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -41,6 +53,9 @@ type VpcNatGatewaySpec struct {
 	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
 	Routes          []Route             `json:"routes"`
 	NoDefaultEIP    bool                `json:"noDefaultEIP"`
+	// User-defined annotations for the StatefulSet NAT gateway Pod template.
+	// Only effective at creation time; updates to this field are not detected.
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type VpcBgpSpeaker struct {
@@ -55,6 +70,7 @@ type VpcBgpSpeaker struct {
 	ExtraArgs             []string        `json:"extraArgs"`
 }
 
+// TODO: Consider removing redundant Status fields since statefulset template changes always trigger Pod recreation.
 type VpcNatGatewayStatus struct {
 	QoSPolicy       string              `json:"qosPolicy" patchStrategy:"merge"`
 	ExternalSubnets []string            `json:"externalSubnets" patchStrategy:"merge"`
