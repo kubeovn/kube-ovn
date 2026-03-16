@@ -96,14 +96,14 @@ func (c *VMIMigrationClient) WaitForPhase(name string, phase v1.VirtualMachineIn
 }
 
 // WaitToDisappear waits for the migration to be fully deleted.
-func (c *VMIMigrationClient) WaitToDisappear(name string, _, timeout time.Duration) error {
+func (c *VMIMigrationClient) WaitToDisappear(name string, poll, timeout time.Duration) error {
 	err := k8sframework.Gomega().Eventually(context.Background(), k8sframework.HandleRetry(func(ctx context.Context) (*v1.VirtualMachineInstanceMigration, error) {
 		m, err := c.VirtualMachineInstanceMigrationInterface.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
 		return m, err
-	})).WithTimeout(timeout).Should(gomega.BeNil())
+	})).WithPolling(poll).WithTimeout(timeout).Should(gomega.BeNil())
 	if err != nil {
 		return fmt.Errorf("expected migration %s to not be found: %w", name, err)
 	}
