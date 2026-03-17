@@ -265,7 +265,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if svcVpc = svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
 		// In non-primary CNI mode, skip patching the default VPC annotation onto services —
 		// all consumers fall back to c.config.ClusterRouter when the annotation is absent.
-		if !(c.config.EnableNonPrimaryCNI && vpcName == c.config.ClusterRouter) {
+		if !c.config.EnableNonPrimaryCNI || vpcName != c.config.ClusterRouter {
 			patch := util.KVPatch{util.VpcAnnotation: vpcName}
 			if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(namespace), svc.Name, patch); err != nil {
 				klog.Errorf("failed to patch service %s: %v", key, err)
