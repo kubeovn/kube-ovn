@@ -741,16 +741,25 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 		if ipsetExists {
-			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i %s -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, util.NodeNic, matchset, ipset))
 			rejectRule := strings.Fields(fmt.Sprintf(`-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
 			obsoleteRejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
-			iptablesRules = append(iptablesRules,
-				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
-				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
-			)
+			if !c.config.DisableSvcIptablesRule {
+				iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i %s -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, util.NodeNic, matchset, ipset))
+				iptablesRules = append(iptablesRules,
+					util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+					util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+				)
+			}
 			obsoleteRejectRules := []util.IPTableRule{
 				{Table: "filter", Chain: "INPUT", Rule: obsoleteRejectRule},
 				{Table: "filter", Chain: "OUTPUT", Rule: obsoleteRejectRule},
+			}
+			if c.config.DisableSvcIptablesRule {
+				// Also clean up current reject rules when service iptables rules are disabled
+				obsoleteRejectRules = append(obsoleteRejectRules,
+					util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
+					util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
+				)
 			}
 			for _, rule := range obsoleteRejectRules {
 				if err = deleteIptablesRule(ipt, rule); err != nil {
@@ -767,35 +776,66 @@ func (c *Controller) setIptables() error {
 				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			}
 
-			rules := make([]util.IPTableRule, len(iptablesRules)+1)
-			copy(rules, iptablesRules[:1])
-			copy(rules[2:], iptablesRules[1:])
-			rules[1] = util.IPTableRule{
-				Table: NAT,
-				Chain: OvnPostrouting,
-				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
-			}
-			iptablesRules = rules
-
-			for _, p := range [...]string{"tcp", "udp"} {
-				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
-				ipsetExists, err := c.ipsetExists(ipset)
-				if err != nil {
-					klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
-					return err
+			if !c.config.DisableSvcIptablesRule {
+				rules := make([]util.IPTableRule, len(iptablesRules)+1)
+				copy(rules, iptablesRules[:1])
+				copy(rules[2:], iptablesRules[1:])
+				rules[1] = util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPostrouting,
+					Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
 				}
-				if !ipsetExists {
-					klog.V(5).Infof("ipset %s does not exist", ipset)
+				iptablesRules = rules
+
+				for _, p := range [...]string{"tcp", "udp"} {
+					ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
+					ipsetExists, err := c.ipsetExists(ipset)
+					if err != nil {
+						klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
+						return err
+					}
+					if !ipsetExists {
+						klog.V(5).Infof("ipset %s does not exist", ipset)
+						continue
+					}
+					rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
+					rule2 := fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchSet, ipset)
+					obsoleteRules = append(obsoleteRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
+					iptablesRules = append(iptablesRules,
+						util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)},
+						util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule2)},
+					)
+				}
+			}
+		}
+
+		// When DisableSvcIptablesRule is enabled, filter out service-related rules
+		// from iptablesRules and clean up any existing service rules in standard chains.
+		// Rules in custom chains (OvnPrerouting, OvnPostrouting) are automatically
+		// reconciled by updateIptablesChain.
+		if c.config.DisableSvcIptablesRule {
+			var filteredRules []util.IPTableRule
+			for _, rule := range iptablesRules {
+				ruleStr := strings.Join(rule.Rule, " ")
+				// Skip MARK 0x4000 rule in OvnPrerouting (pod → service marking)
+				if rule.Table == NAT && rule.Chain == OvnPrerouting && strings.Contains(ruleStr, "0x4000/0x4000") {
 					continue
 				}
-				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
-				rule2 := fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchSet, ipset)
-				obsoleteRules = append(obsoleteRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
-				iptablesRules = append(iptablesRules,
-					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)},
-					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule2)},
-				)
+				// Skip 0x4000 MASQUERADE rule in OvnPostrouting
+				if rule.Table == NAT && rule.Chain == OvnPostrouting && strings.Contains(ruleStr, "0x4000/0x4000") && strings.Contains(ruleStr, OvnMasquerade) {
+					continue
+				}
+				// Clean up and skip service ACCEPT rules in filter chains
+				if rule.Table == "filter" && strings.Contains(ruleStr, svcMatchset) {
+					if err = deleteIptablesRule(ipt, rule); err != nil {
+						klog.Errorf("failed to delete service iptables rule %v: %v", rule, err)
+						return err
+					}
+					continue
+				}
+				filteredRules = append(filteredRules, rule)
 			}
+			iptablesRules = filteredRules
 		}
 
 		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)

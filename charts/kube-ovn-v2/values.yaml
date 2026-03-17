@@ -267,6 +267,10 @@ cni:
   # Interfaces are created using Network Attachment Definitions (NADs)
   # @section -- CNI configuration
   nonPrimaryCNI: false
+  # -- Whether to disable service-related iptables rules (MARK, REJECT, SNAT, NodePort).
+  # Use when another CNI handles service traffic (e.g. Cilium, Calico with kube-proxy IPVS).
+  # @section -- CNI configuration
+  disableSvcIptablesRule: false
 
 # -- Configuration of the validating webhook used to verify custom resources before they are pushed to Kubernetes.
 # Make sure cert-manager is installed for the generation of certificates for the webhook.

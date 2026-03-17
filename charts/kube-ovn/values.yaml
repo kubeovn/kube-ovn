@@ -129,6 +129,7 @@ cni_conf:
   LOCAL_BIN_DIR: "/usr/local/bin"
   MOUNT_LOCAL_BIN_DIR: false
   NON_PRIMARY_CNI: false
+  DISABLE_SVC_IPTABLES_RULE: false
 
 kubelet_conf:
   KUBELET_DIR: "/var/lib/kubelet"
