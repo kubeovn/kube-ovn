@@ -361,6 +361,15 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
+	// Skip initialization if the provider network is being deleted.
+	// Without this check, a requeue from a previous error could trigger re-init
+	// during deletion, adding the NIC as a port to a dying bridge. This creates
+	// stale OVS netdev cache entries that block exchange-link-name bridge creation.
+	if !pn.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("provider network %s is being deleted, skip init", key)
+		return nil
+	}
+
 	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
 	if err != nil {
 		klog.Error(err)
@@ -374,14 +383,17 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 }
 
-func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	nic := pn.Spec.DefaultInterface
+func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
 	for _, item := range pn.Spec.CustomInterfaces {
-		if slices.Contains(item.Nodes, node.Name) {
-			nic = item.Interface
-			break
+		if slices.Contains(item.Nodes, nodeName) {
+			return item.Interface
 		}
 	}
+	return pn.Spec.DefaultInterface
+}
+
+func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
+	nic := providerNetworkNic(pn, node.Name)
 
 	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
@@ -528,11 +540,11 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
-	return c.ovsCleanProviderNetwork(pn.Name)
+	return c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name))
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
-	if err := c.ovsCleanProviderNetwork(pn.Name); err != nil {
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName)); err != nil {
 		klog.Error(err)
 		return err
 	}

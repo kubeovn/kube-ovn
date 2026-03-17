@@ -224,16 +224,17 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			routeMap[node.Name()] = routeMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
 
-			// Clean up any stale OVS datapath port entries for this NIC.
-			// Previous provider network tests may leave stale port references in the
-			// ovs-system datapath when bridge cleanup races with NIC state changes.
-			// This prevents "could not open network device (File exists)" errors when
-			// the next test creates a bridge with exchangeLinkName=true.
+			// Clean up any stale OVS port references for this NIC.
+			// Previous provider network tests may leave stale port/netdev references
+			// when bridge cleanup races with NIC state changes. A stale netdev cache
+			// entry (type "system") prevents creating exchange-link-name bridges that
+			// need an internal port with the same NIC name.
 			nicName := linkMap[node.ID].IfName
-			if stdout, _, err := node.Exec("ovs-dpctl", "show"); err == nil {
-				if strings.Contains(string(stdout), nicName) {
-					framework.Logf("Cleaning up stale OVS datapath port %s on node %s", nicName, node.Name())
-					_, _, _ = node.Exec("ovs-dpctl", "del-if", "ovs-system", nicName)
+			if stdout, _, err := node.Exec("ovs-vsctl", "port-to-br", nicName); err == nil {
+				bridgeName := strings.TrimSpace(string(stdout))
+				if bridgeName != "" {
+					framework.Logf("Cleaning up stale OVS port %s from bridge %s on node %s", nicName, bridgeName, node.Name())
+					_, _, _ = node.Exec("ovs-vsctl", "--if-exists", "del-port", bridgeName, nicName)
 				}
 			}
 		}

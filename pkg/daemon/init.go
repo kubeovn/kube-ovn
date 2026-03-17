@@ -145,7 +145,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []strin
 	return mtu, nil
 }
 
-func (c *Controller) ovsCleanProviderNetwork(provider string) error {
+func (c *Controller) ovsCleanProviderNetwork(provider, nic string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
 		klog.Error(err)
@@ -174,6 +174,14 @@ func (c *Controller) ovsCleanProviderNetwork(provider string) error {
 		if br := util.ExternalBridgeName(provider); br != brName {
 			if _, err = c.changeProviderNicName(br, brName); err != nil {
 				klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
+				return err
+			}
+		} else if nic != "" {
+			// In exchangeLinkName mode, when mapping was never stored (setup failed before
+			// addOvnMapping), both br and brName equal ExternalBridgeName(provider). The NIC
+			// may have been renamed to br-<provider> and needs to be restored to its original name.
+			if _, err = c.changeProviderNicName(br, nic); err != nil {
+				klog.Errorf("failed to restore provider nic name from %s to %s: %v", br, nic, err)
 				return err
 			}
 		}
