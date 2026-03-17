@@ -125,10 +125,9 @@ func NewOvsDbClient(
 		return nil, err
 	}
 
+	klog.Infof("connecting to %s database server %s", db, addr)
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-
-	klog.Infof("connecting to %s database server %s", db, addr)
 	if err = c.Connect(ctx); err != nil {
 		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
