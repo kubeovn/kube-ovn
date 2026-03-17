@@ -75,6 +75,11 @@ nodes:
 {%- if ip_family != "ipv4" %}
             node-cidr-mask-size-ipv6: "120"
 {%- endif %}
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            enable-admission-plugins: OwnerReferencesPermissionEnforcement
 {%- if auditing is equalto "true" %}
       - |
         kind: ClusterConfiguration
