@@ -125,11 +125,11 @@ func NewOvsDbClient(
 		return nil, err
 	}
 
-	initCtx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
 
 	klog.Infof("connecting to %s database server %s", db, addr)
-	if err = c.Connect(initCtx); err != nil {
+	if err = c.Connect(ctx); err != nil {
 		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func NewOvsDbClient(
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)
 		monitor := c.NewMonitor(monitors...)
 		monitor.Method = ovsdb.ConditionalMonitorRPC
-		if _, err = c.Monitor(initCtx, monitor); err != nil {
+		if _, err = c.Monitor(ctx, monitor); err != nil {
 			c.Close()
 			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err
