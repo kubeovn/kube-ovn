@@ -7,7 +7,6 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -65,14 +64,6 @@ func (c *VMIMigrationClient) DeleteSync(name string) {
 	ginkgo.GinkgoHelper()
 	c.Delete(name)
 	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for migration %q to disappear", name)
-}
-
-// Abort cancels a running migration by patching spec.cancel = true.
-func (c *VMIMigrationClient) Abort(name string) {
-	ginkgo.GinkgoHelper()
-	patch := []byte(`{"spec":{"cancel":true}}`)
-	_, err := c.Patch(context.TODO(), name, types.MergePatchType, patch, metav1.PatchOptions{})
-	ExpectNoError(err, "failed to abort migration %s", name)
 }
 
 // WaitForPhase waits until the migration reaches the specified phase.
