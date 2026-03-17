@@ -719,12 +719,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to list pod, %w", err)
 		}
-		svcs, err := c.servicesLister.Services(ns).List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list svc, %v", err)
-			return nil, nil, fmt.Errorf("failed to list svc, %w", err)
-		}
-
 		for _, pod := range pods {
 			podNets, err := c.getPodKubeovnNets(pod)
 			if err != nil {
@@ -746,18 +740,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 						selectedAddresses = append(selectedAddresses, podIP)
 					}
 				}
-				if len(svcs) == 0 {
-					continue
-				}
-				if !shouldIncludeServiceIPs(podNet) {
-					continue
-				}
-
-				svcIPs, err := svcMatchPods(svcs, pod, protocol)
-				if err != nil {
-					return nil, nil, err
-				}
-				selectedAddresses = append(selectedAddresses, svcIPs...)
 			}
 			if providers != nil && !matchedProvider {
 				klog.V(4).Infof("skip pod %s/%s: no network attachment matches network_policy_for", pod.Namespace, pod.Name)
@@ -765,39 +747,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		}
 	}
 	return selectedAddresses, exceptAddresses, nil
-}
-
-func shouldIncludeServiceIPs(podNet *kubeovnNet) bool {
-	return podNet != nil && podNet.Subnet != nil && podNet.Subnet.Spec.Vpc == util.DefaultVpc
-}
-
-func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]string, error) {
-	matchSvcs := []string{}
-	// find svc ip by pod's info
-	for _, svc := range svcs {
-		if isSvcMatchPod(svc, pod) {
-			clusterIPs := util.ServiceClusterIPs(*svc)
-			protocolClusterIPs := getProtocolSvcIP(clusterIPs, protocol)
-			if len(protocolClusterIPs) != 0 {
-				matchSvcs = append(matchSvcs, protocolClusterIPs...)
-			}
-		}
-	}
-	return matchSvcs, nil
-}
-
-func getProtocolSvcIP(clusterIPs []string, protocol string) []string {
-	protocolClusterIPs := []string{}
-	for _, clusterIP := range clusterIPs {
-		if clusterIP != "" && clusterIP != corev1.ClusterIPNone && util.CheckProtocol(clusterIP) == protocol {
-			protocolClusterIPs = append(protocolClusterIPs, clusterIP)
-		}
-	}
-	return protocolClusterIPs
-}
-
-func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) bool {
-	return labels.Set(svc.Spec.Selector).AsSelector().Matches(labels.Set(pod.Labels))
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
