@@ -613,36 +613,22 @@ func Run(ctx context.Context, config *Configuration) {
 		anpInformerFactory:     anpInformerFactory,
 	}
 
-	if err = initWithTimeout(time.Duration(config.OvnTimeout)*time.Second, "ovn nb client", func() error {
-		nbClient, err := ovs.NewOvnNbClient(
-			config.OvnNbAddr,
-			config.OvnTimeout,
-			config.OvsDbConnectTimeout,
-			config.OvsDbInactivityTimeout,
-			config.OvsDbConnectMaxRetry,
-		)
-		if err != nil {
-			return err
-		}
-		controller.OVNNbClient = nbClient
-		return nil
-	}); err != nil {
+	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+		config.OvnNbAddr,
+		config.OvnTimeout,
+		config.OvsDbConnectTimeout,
+		config.OvsDbInactivityTimeout,
+		config.OvsDbConnectMaxRetry,
+	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if err = initWithTimeout(time.Duration(config.OvnTimeout)*time.Second, "ovn sb client", func() error {
-		sbClient, err := ovs.NewOvnSbClient(
-			config.OvnSbAddr,
-			config.OvnTimeout,
-			config.OvsDbConnectTimeout,
-			config.OvsDbInactivityTimeout,
-			config.OvsDbConnectMaxRetry,
-		)
-		if err != nil {
-			return err
-		}
-		controller.OVNSbClient = sbClient
-		return nil
-	}); err != nil {
+	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+		config.OvnSbAddr,
+		config.OvnTimeout,
+		config.OvsDbConnectTimeout,
+		config.OvsDbInactivityTimeout,
+		config.OvsDbConnectMaxRetry,
+	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.EnableLb {
@@ -1594,20 +1580,6 @@ func getWorkItemKey(obj any) string {
 			return ""
 		}
 		return key
-	}
-}
-
-func initWithTimeout(timeout time.Duration, name string, fn func() error) error {
-	done := make(chan error, 1)
-	go func() {
-		done <- fn()
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout after %s while creating %s", timeout, name)
 	}
 }
 
