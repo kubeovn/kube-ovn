@@ -627,9 +627,24 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	event := &subnetEvent{oldObj: obj}
+	var subnet *kubeovnv1.Subnet
+	switch t := obj.(type) {
+	case *kubeovnv1.Subnet:
+		subnet = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		subnet, ok = t.Obj.(*kubeovnv1.Subnet)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+	event := &subnetEvent{oldObj: subnet}
 	c.subnetQueue.Add(event)
-	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(obj) {
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(subnet) {
 		c.macvlanSubnetQueue.Add(event)
 	}
 }
@@ -675,7 +690,19 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
+	switch t := obj.(type) {
+	case *v1.Service:
+		c.serviceQueue.Add(&serviceEvent{oldObj: t})
+	case cache.DeletedFinalStateUnknown:
+		svc, ok := t.Obj.(*v1.Service)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+		c.serviceQueue.Add(&serviceEvent{oldObj: svc})
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+	}
 }
 
 func (c *Controller) runAddOrUpdateServicekWorker() {
