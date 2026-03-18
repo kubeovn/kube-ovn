@@ -1526,12 +1526,8 @@ func (c *Controller) setExGateway() error {
 		}
 
 		for _, pn := range providerNetworks {
-			// if external nic already attached into another bridge
-			if existBr, err := ovs.Exec("port-to-br", pn.Spec.DefaultInterface); err == nil {
-				if existBr == externalBridge {
-					// delete switch after related provider network not exist
-					return nil
-				}
+			if util.ExternalBridgeName(pn.Name) == externalBridge {
+				return nil
 			}
 		}
 
