@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.15.6 (2026-03-18)
+
+ * [b32aee09f](https://github.com/kubeovn/kube-ovn/commit/b32aee09f65faf2fc38f13f1fbcb61fff0cbfb62) release v1.15.6
+ * [a31ba277b](https://github.com/kubeovn/kube-ovn/commit/a31ba277bd4632a8e8d14f8c9e302fac77449e5e) dist: add 25.03 ACL compatibility for OVN patch (#6463)
+ * [f3dca4b60](https://github.com/kubeovn/kube-ovn/commit/f3dca4b60a911ca79463583922d68e9d83958800) fix: BGP speaker reads IPs from pod annotations instead of pod status (#6344)
+ * [a01efb4ed](https://github.com/kubeovn/kube-ovn/commit/a01efb4ed9bb277866e9c3af8a2fd64ba746daa2) kind: enable OwnerReferencesPermissionEnforcement (#6456)
+ * [abb302d50](https://github.com/kubeovn/kube-ovn/commit/abb302d50efceeaa14d77ab603eacb68a5702060) controller: do not set blockOwnerDeletion for ip resources
+ * [cdcd7034d](https://github.com/kubeovn/kube-ovn/commit/cdcd7034dd9dd7c356c4c1a06b3100d0650b547c) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * zhangzujian
+
 ## v1.15.5 (2026-03-12)
 
  * [77eb581ff](https://github.com/kubeovn/kube-ovn/commit/77eb581ff6291e56184b3f14536a1833932cbd1c) release v1.15.5
