@@ -562,7 +562,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	// add new policies
 	for _, item := range policyRouteNeedAdd {
-		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
+		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", vpc.Name, item.Match, string(item.Action), item.NextHopIP, externalIDs)
 		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), strings.Split(item.NextHopIP, ","), nil, externalIDs); err != nil {
 			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 			return err
