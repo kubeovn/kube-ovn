@@ -572,9 +572,10 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 // DHCP_Options rows and returns their UUIDs (with fallback to subnet-level UUIDs for
 // un-annotated families). When no annotations are set, stale per-port entries are deleted
 // and subnet-level UUIDs are returned.
+// subnet must be the actual allocated subnet (may differ from podNet.Subnet when a static IP
+// belongs to a different subnet in a multi-subnet namespace).
 // The second return value indicates whether any per-port DHCP override is active.
-func (c *Controller) computePodPortDHCPOptions(pod *v1.Pod, podNet *kubeovnNet, portName string) (*ovs.DHCPOptionsUUIDs, bool, error) {
-	subnet := podNet.Subnet
+func (c *Controller) computePodPortDHCPOptions(pod *v1.Pod, podNet *kubeovnNet, subnet *kubeovnv1.Subnet, portName string) (*ovs.DHCPOptionsUUIDs, bool, error) {
 	dhcpV4Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
 	dhcpV6Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
 
@@ -646,7 +647,7 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 			// Stale entries exist: annotation was removed. Revert to subnet-level.
 		}
 
-		dhcpOptions, _, err := c.computePodPortDHCPOptions(pod, podNet, portName)
+		dhcpOptions, _, err := c.computePodPortDHCPOptions(pod, podNet, podNet.Subnet, portName)
 		if err != nil {
 			klog.Errorf("failed to compute DHCP options for port %s: %v", portName, err)
 			return err
@@ -747,7 +748,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
 
-			dhcpOptions, hasPerPortDHCP, err := c.computePodPortDHCPOptions(pod, podNet, portName)
+			dhcpOptions, hasPerPortDHCP, err := c.computePodPortDHCPOptions(pod, podNet, subnet, portName)
 			if err != nil {
 				klog.Errorf("failed to compute DHCP options for port %s: %v", portName, err)
 				return nil, err

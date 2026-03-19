@@ -191,7 +191,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 
 	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
 		_, err := nbClient.updateDHCPv4Options("", "", cidr, gateway, "", 1500)
-		require.ErrorContains(t, err, "the logical router name is required")
+		require.ErrorContains(t, err, "the logical switch name is required")
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
@@ -282,7 +282,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 
 	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
 		_, err := nbClient.updateDHCPv6Options("", "", cidr, "")
-		require.ErrorContains(t, err, "the logical router name is required")
+		require.ErrorContains(t, err, "the logical switch name is required")
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
