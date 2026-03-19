@@ -63,6 +63,25 @@ tests:
                 values:
                   - "master"
 
+  - it: coerces unquoted YAML boolean to string in In operator values
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        node-role.kubernetes.io/control-plane: true
+      features.enableOvnInterconnections: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          content:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: In
+                values:
+                  - "true"
+
   - it: creates separate nodeSelectorTerms for multiple labels (OR semantics)
     set:
       masterNodes:

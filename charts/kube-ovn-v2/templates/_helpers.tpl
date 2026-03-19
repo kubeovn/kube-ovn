@@ -64,7 +64,7 @@ a dry-run/template call and return nothing.
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
   {{- range $label, $value := $.Values.masterNodesLabels }}
-  {{- if and (hasKey $node.metadata.labels $label) (or (eq ($value | toString) "") (eq (index $node.metadata.labels $label) $value)) -}}
+  {{- if and (hasKey $node.metadata.labels $label) (or (eq ($value | toString) "") (eq (index $node.metadata.labels $label) ($value | toString))) -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
@@ -93,7 +93,7 @@ Uses Exists operator for empty/nil-value labels and In for specific values.
   {{- if eq ($value | toString) "" -}}
     {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "Exists"))) -}}
   {{- else -}}
-    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "In" "values" (list $value)))) -}}
+    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "In" "values" (list ($value | toString))))) -}}
   {{- end -}}
 {{- end -}}
 {{- $terms | toYaml -}}
