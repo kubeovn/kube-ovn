@@ -64,7 +64,7 @@ a dry-run/template call and return nothing.
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
   {{- range $label, $value := $.Values.masterNodesLabels }}
-  {{- if eq (index $node.metadata.labels $label) $value -}}
+  {{- if and (hasKey $node.metadata.labels $label) (or (eq ($value | toString) "") (eq (index $node.metadata.labels $label) $value)) -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
@@ -79,6 +79,24 @@ a dry-run/template call and return nothing.
 {{- end -}}
 {{ join "," $ips }}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Build hardcodedRequired list for kube-ovn.affinities.nodeAffinity from masterNodesLabels.
+Each label gets its own nodeSelectorTerm so multiple labels use OR semantics
+(matching the kubeovn.nodeIPs helper which also uses OR).
+Uses Exists operator for empty/nil-value labels and In for specific values.
+*/}}
+{{- define "kubeovn.masterNodeRequired" -}}
+{{- $terms := list -}}
+{{- range $key, $value := .Values.masterNodesLabels -}}
+  {{- if eq ($value | toString) "" -}}
+    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "Exists"))) -}}
+  {{- else -}}
+    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "In" "values" (list $value)))) -}}
+  {{- end -}}
+{{- end -}}
+{{- $terms | toYaml -}}
 {{- end -}}
 
 {{/*

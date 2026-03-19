@@ -1,0 +1,92 @@
+suite: Master node affinity (v2)
+templates:
+  - central/central-deployment.yaml
+  - monitor/monitor-deployment.yaml
+  - ic/ic-controller-deploy.yaml
+tests:
+  - it: uses Exists operator when label value is empty
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        node-role.kubernetes.io/control-plane: ""
+      features.enableOvnInterconnections: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          content:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+
+  - it: uses In operator when label value is set
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        node-role.kubernetes.io/control-plane: "true"
+      features.enableOvnInterconnections: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          content:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: In
+                values:
+                  - "true"
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+
+  - it: uses In operator with custom label
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        kube-ovn/role: master
+      features.enableOvnInterconnections: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          content:
+            matchExpressions:
+              - key: kube-ovn/role
+                operator: In
+                values:
+                  - "master"
+
+  - it: creates separate nodeSelectorTerms for multiple labels (OR semantics)
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        node-role.kubernetes.io/control-plane: ""
+        kube-ovn/role: master
+      features.enableOvnInterconnections: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - lengthEqual:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          count: 2
+
+  - it: retains only kubernetes.io/os in nodeSelector
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      masterNodesLabels:
+        node-role.kubernetes.io/control-plane: ""
+      features.enableOvnInterconnections: true
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            kubernetes.io/os: "linux"
