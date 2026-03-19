@@ -503,6 +503,7 @@ func (config *Configuration) setEncapIPs() error {
 			ips = append(ips, ip)
 		}
 	}
+	slices.Sort(ips[1:])
 
 	encapIPStr := strings.Join(ips, ",")
 	// #nosec G204
