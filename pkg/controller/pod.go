@@ -557,8 +557,64 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
+	// Reconcile per-port DHCP options for pods that carry DHCP annotations.
+	// This handles annotation add/change on already-running pods without requiring a pod restart.
+	if err = c.reconcilePodDHCPOptions(pod, podNets); err != nil {
+		return err
+	}
+
 	// check if route subnet is need.
 	return c.reconcileRouteSubnets(pod, needRouteSubnets(pod, podNets))
+}
+
+// reconcilePodDHCPOptions updates per-port DHCP_Options and the LSP's DHCP option pointers
+// for already-allocated pods that carry per-port DHCP annotations. It is intentionally
+// limited to pods with at least one DHCP annotation to avoid unnecessary OVN operations.
+func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet) error {
+	podName := c.getNameByPod(pod)
+	for _, podNet := range podNets {
+		if podNet.Type == providerTypeIPAM {
+			continue
+		}
+		// Skip nets not yet allocated; they are handled by reconcileAllocateSubnets.
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] != "true" {
+			continue
+		}
+
+		dhcpV4Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
+		dhcpV6Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+		if dhcpV4Annotation == "" && dhcpV6Annotation == "" {
+			continue
+		}
+
+		subnet := podNet.Subnet
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+
+		mtu, err := c.getSubnetMTU(subnet)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		gateway := subnet.Spec.Gateway
+		if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+			gateway = subnet.Status.U2OInterconnectionIP
+		}
+
+		dhcpOptions, err := c.OVNNbClient.UpdateDHCPOptionsForPort(
+			subnet.Name, portName, subnet.Spec.CIDRBlock, gateway,
+			dhcpV4Annotation, dhcpV6Annotation, mtu,
+		)
+		if err != nil {
+			klog.Errorf("failed to update per-port dhcp options for port %s: %v", portName, err)
+			return err
+		}
+
+		if err := c.OVNNbClient.SetLogicalSwitchPortDHCPOptions(portName, dhcpOptions); err != nil {
+			klog.Errorf("failed to set dhcp options on lsp %s: %v", portName, err)
+			return err
+		}
+	}
+	return nil
 }
 
 // do the same thing as add pod
@@ -647,10 +703,45 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
-			dhcpOptions := &ovs.DHCPOptionsUUIDs{
-				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
-				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
+
+			dhcpV4Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
+			dhcpV6Annotation := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+
+			var dhcpOptions *ovs.DHCPOptionsUUIDs
+			if dhcpV4Annotation != "" || dhcpV6Annotation != "" {
+				// Pod-level annotation overrides subnet-level DHCP options.
+				mtu, err := c.getSubnetMTU(subnet)
+				if err != nil {
+					klog.Error(err)
+					return nil, err
+				}
+				gateway := subnet.Spec.Gateway
+				if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+					gateway = subnet.Status.U2OInterconnectionIP
+				}
+				dhcpOptions, err = c.OVNNbClient.UpdateDHCPOptionsForPort(
+					subnet.Name, portName, subnet.Spec.CIDRBlock, gateway,
+					dhcpV4Annotation, dhcpV6Annotation, mtu,
+				)
+				if err != nil {
+					klog.Errorf("failed to update per-port dhcp options for port %s: %v", portName, err)
+					return nil, err
+				}
+			} else {
+				// No pod-level annotation: use subnet-level DHCP options and clean up any
+				// stale per-port entry (e.g. annotation was removed).
+				if err := c.OVNNbClient.DeleteDHCPOptionsForPort(portName); err != nil {
+					klog.Errorf("failed to delete stale per-port dhcp options for port %s: %v", portName, err)
+					return nil, err
+				}
+				dhcpOptions = &ovs.DHCPOptionsUUIDs{
+					DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
+					DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
+				}
 			}
+
+			// When pod has per-port DHCP options, enable DHCP regardless of subnet setting.
+			enableDHCP := podNet.Subnet.Spec.EnableDHCP || dhcpV4Annotation != "" || dhcpV6Annotation != ""
 
 			var oldSgList []string
 			if vmKey != "" {
@@ -666,7 +757,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
-				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
+				portSecurity, securityGroupAnnotation, vips, enableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
@@ -1218,6 +1309,10 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			klog.Infof("delete logical switch port %s", port.Name)
 			if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
+				return err
+			}
+			if err := c.OVNNbClient.DeleteDHCPOptionsForPort(port.Name); err != nil {
+				klog.Errorf("failed to delete per-port dhcp options for %s: %v", port.Name, err)
 				return err
 			}
 		}

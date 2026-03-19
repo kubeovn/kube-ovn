@@ -105,6 +105,7 @@ type LogicalSwitchPort interface {
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
+	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
@@ -241,7 +242,9 @@ type NAT interface {
 
 type DHCPOptions interface {
 	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName, protocol string) error
+	DeleteDHCPOptionsForPort(portName string) error
 	DeleteDHCPOptionsByUUIDs(uuidList ...string) error
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }

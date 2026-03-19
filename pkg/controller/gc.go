@@ -180,6 +180,20 @@ func (c *Controller) gcLogicalSwitch() error {
 	for _, item := range dhcpOptions {
 		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
 			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
+			continue
+		}
+		// For per-port DHCP options, also check that the referenced LSP still exists.
+		portName := item.ExternalIDs[ovs.PortKey]
+		if portName == "" {
+			continue
+		}
+		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+		if err != nil {
+			klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+			continue
+		}
+		if lsp == nil {
+			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
 		}
 	}
 	klog.Infof("gc dhcp options %v", uuidToDeleteList)

@@ -20,6 +20,7 @@ const (
 	associatedSgKeyPrefix = "associated_sg_"
 	sgsKey                = "security_groups"
 	sgKey                 = "sg"
+	PortKey               = "port"
 )
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks

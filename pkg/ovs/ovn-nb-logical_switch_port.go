@@ -653,6 +653,31 @@ func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fiel
 	return nil
 }
 
+// SetLogicalSwitchPortDHCPOptions updates only the dhcpv4_options and dhcpv6_options fields
+// of a logical switch port. Used to apply per-port DHCP option changes on running pods
+// without rebuilding the entire port.
+func (c *OVNNbClient) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error {
+	lsp, err := c.GetLogicalSwitchPort(portName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if dhcpOptions != nil && dhcpOptions.DHCPv4OptionsUUID != "" {
+		lsp.Dhcpv4Options = &dhcpOptions.DHCPv4OptionsUUID
+	} else {
+		lsp.Dhcpv4Options = nil
+	}
+
+	if dhcpOptions != nil && dhcpOptions.DHCPv6OptionsUUID != "" {
+		lsp.Dhcpv6Options = &dhcpOptions.DHCPv6OptionsUUID
+	} else {
+		lsp.Dhcpv6Options = nil
+	}
+
+	return c.UpdateLogicalSwitchPort(lsp, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options)
+}
+
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
