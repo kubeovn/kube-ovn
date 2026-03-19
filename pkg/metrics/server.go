@@ -179,36 +179,53 @@ func ServeWithListener(ctx context.Context, config *rest.Config, listener net.Li
 
 	mux := http.NewServeMux()
 
-	handler := promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{
+	metricsHandler := promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{
 		ErrorHandling: promhttp.HTTPErrorOnError,
 	})
 
+	// When secureServing is enabled, wrap handlers with auth filter.
+	// Health check endpoints are exempt from auth, matching the
+	// behavior of the filterProvider used in the controller-runtime path.
+	var authFilter func(logr.Logger, http.Handler) (http.Handler, error)
 	if secureServing {
 		client, err := rest.HTTPClientFor(config)
 		if err != nil {
 			return fmt.Errorf("failed to create http client: %w", err)
 		}
-		filter, err := filters.WithAuthenticationAndAuthorization(config, client)
+		authFilter, err = filters.WithAuthenticationAndAuthorization(config, client)
 		if err != nil {
 			return fmt.Errorf("failed to create metrics filter: %w", err)
 		}
 		log := klog.NewKlogr()
-		handler, err = filter(log, handler)
+		metricsHandler, err = authFilter(log, metricsHandler)
 		if err != nil {
 			return fmt.Errorf("failed to apply metrics filter: %w", err)
 		}
 	}
 
-	mux.Handle("/metrics", handler)
+	mux.Handle("/metrics", metricsHandler)
 	mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
 	mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
 	mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
 	if withPprof {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		pprofHandlers := map[string]http.Handler{
+			"/debug/pprof/":        http.HandlerFunc(pprof.Index),
+			"/debug/pprof/cmdline": http.HandlerFunc(pprof.Cmdline),
+			"/debug/pprof/profile": http.HandlerFunc(pprof.Profile),
+			"/debug/pprof/symbol":  http.HandlerFunc(pprof.Symbol),
+			"/debug/pprof/trace":   http.HandlerFunc(pprof.Trace),
+		}
+		for path, h := range pprofHandlers {
+			if authFilter != nil {
+				log := klog.NewKlogr().WithValues("path", path)
+				var err error
+				h, err = authFilter(log, h)
+				if err != nil {
+					return fmt.Errorf("failed to apply auth filter to pprof handler %s: %w", path, err)
+				}
+			}
+			mux.Handle(path, h)
+		}
 	}
 
 	if secureServing {
@@ -243,9 +260,9 @@ func ServeWithListener(ctx context.Context, config *rest.Config, listener net.Li
 
 	srv := &http.Server{
 		Handler:           mux,
-		MaxHeaderBytes:    1 << 20,
-		IdleTimeout:       90 * time.Second,
-		ReadHeaderTimeout: 32 * time.Second,
+		MaxHeaderBytes:    defaultServerMaxHeaderBytes,
+		IdleTimeout:       defaultServerIdleTimeout,
+		ReadHeaderTimeout: defaultServerReadHeaderTimeout,
 	}
 
 	idleConnsClosed := make(chan struct{})

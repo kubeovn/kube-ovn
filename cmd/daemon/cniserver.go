@@ -114,12 +114,12 @@ func main() {
 	addrs := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
 		for _, addr := range addrs {
-			connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
-			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
+			tcpListenAddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
+			if err := util.TCPConnectivityListen(tcpListenAddr); err != nil {
 				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
 			}
-			connListenaddr = util.JoinHostPort(addr, config.UDPConnCheckPort)
-			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
+			udpListenAddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
+			if err := util.UDPConnectivityListen(udpListenAddr); err != nil {
 				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
 			}
 		}
