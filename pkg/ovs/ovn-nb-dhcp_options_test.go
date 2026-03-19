@@ -652,7 +652,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
 	gateway := "10.33.0.1"
 
 	t.Run("create per-port IPv4 dhcp options", func(t *testing.T) {
-		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName, cidr, gateway, "", "", 1500)
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName, cidr, gateway, "lease_time=3600", "", 1500)
 		require.NoError(t, err)
 		require.NotEmpty(t, uuids.DHCPv4OptionsUUID)
 		require.Empty(t, uuids.DHCPv6OptionsUUID)
@@ -686,9 +686,9 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
 
 	t.Run("per-port dhcp options not returned by GetDHCPOptions", func(t *testing.T) {
 		// GetDHCPOptions (subnet-level) must not return per-port entries.
-		_, err := nbClient.GetDHCPOptions(lsName, kubeovnv1.ProtocolIPv4, true)
+		opt, err := nbClient.GetDHCPOptions(lsName, kubeovnv1.ProtocolIPv4, true)
 		require.NoError(t, err)
-		// Should return nil (no subnet-level entry exists for lsName).
+		require.Nil(t, opt, "per-port DHCP entry must not be returned by subnet-level GetDHCPOptions")
 	})
 
 	t.Run("create per-port dual-stack dhcp options", func(t *testing.T) {
@@ -696,7 +696,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
 		dualCIDR := "10.34.0.0/24,fd00::a:22:0:0/112"
 		dualGateway := "10.34.0.1,fd00::a:22:0:1"
 
-		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, dualPortName, dualCIDR, dualGateway, "", "", 1500)
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, dualPortName, dualCIDR, dualGateway, "lease_time=3600", "server_id=00:11:22:33:44:55", 1500)
 		require.NoError(t, err)
 		require.NotEmpty(t, uuids.DHCPv4OptionsUUID)
 		require.NotEmpty(t, uuids.DHCPv6OptionsUUID)
@@ -708,6 +708,26 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
 		v6Opt, err := nbClient.getDHCPOptionsEntry("", dualPortName, kubeovnv1.ProtocolIPv6, false)
 		require.NoError(t, err)
 		require.Equal(t, uuids.DHCPv6OptionsUUID, v6Opt.UUID)
+	})
+
+	t.Run("per-family annotation on dual-stack only creates per-port entry for annotated family", func(t *testing.T) {
+		v4OnlyPortName := "test-per-port-dhcp-v4only"
+		dualCIDR := "10.35.0.0/24,fd00::a:23:0:0/112"
+		dualGateway := "10.35.0.1,fd00::a:23:0:1"
+
+		// Only v4 annotation set; v6 should return empty UUID.
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, v4OnlyPortName, dualCIDR, dualGateway, "lease_time=7200", "", 1500)
+		require.NoError(t, err)
+		require.NotEmpty(t, uuids.DHCPv4OptionsUUID, "per-port v4 entry must be created when v4 annotation is set")
+		require.Empty(t, uuids.DHCPv6OptionsUUID, "per-port v6 entry must NOT be created when v6 annotation is absent")
+
+		v4Opt, err := nbClient.getDHCPOptionsEntry("", v4OnlyPortName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, uuids.DHCPv4OptionsUUID, v4Opt.UUID)
+
+		v6Opt, err := nbClient.getDHCPOptionsEntry("", v4OnlyPortName, kubeovnv1.ProtocolIPv6, true)
+		require.NoError(t, err)
+		require.Nil(t, v6Opt, "no per-port v6 DHCP_Options row should exist")
 	})
 
 	t.Run("delete per-port dhcp options", func(t *testing.T) {
@@ -734,7 +754,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
 		require.NoError(t, err)
 
 		// Create per-port entry on the same LS.
-		_, err = nbClient.UpdateDHCPOptionsForPort(subnet.Name, "isolation-port", subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "", "", 1500)
+		_, err = nbClient.UpdateDHCPOptionsForPort(subnet.Name, "isolation-port", subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "lease_time=3600", "", 1500)
 		require.NoError(t, err)
 
 		// Delete per-port entry.

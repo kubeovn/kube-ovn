@@ -663,18 +663,25 @@ func (c *OVNNbClient) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptio
 		return err
 	}
 
+	var desiredV4, desiredV6 *string
 	if dhcpOptions != nil && dhcpOptions.DHCPv4OptionsUUID != "" {
-		lsp.Dhcpv4Options = &dhcpOptions.DHCPv4OptionsUUID
-	} else {
-		lsp.Dhcpv4Options = nil
+		desiredV4 = &dhcpOptions.DHCPv4OptionsUUID
 	}
-
 	if dhcpOptions != nil && dhcpOptions.DHCPv6OptionsUUID != "" {
-		lsp.Dhcpv6Options = &dhcpOptions.DHCPv6OptionsUUID
-	} else {
-		lsp.Dhcpv6Options = nil
+		desiredV6 = &dhcpOptions.DHCPv6OptionsUUID
 	}
 
+	// Fast path: skip the OVN transaction when nothing changed.
+	v4Same := (lsp.Dhcpv4Options == nil && desiredV4 == nil) ||
+		(lsp.Dhcpv4Options != nil && desiredV4 != nil && *lsp.Dhcpv4Options == *desiredV4)
+	v6Same := (lsp.Dhcpv6Options == nil && desiredV6 == nil) ||
+		(lsp.Dhcpv6Options != nil && desiredV6 != nil && *lsp.Dhcpv6Options == *desiredV6)
+	if v4Same && v6Same {
+		return nil
+	}
+
+	lsp.Dhcpv4Options = desiredV4
+	lsp.Dhcpv6Options = desiredV6
 	return c.UpdateLogicalSwitchPort(lsp, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options)
 }
 

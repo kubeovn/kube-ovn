@@ -82,8 +82,20 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 // UpdateDHCPOptionsForPort creates or updates per-port DHCP_Options for a logical switch port.
 // cidrBlock and gateway may be comma-separated dual-stack values.
 // v4Options/v6Options are the annotation values that fully override the subnet-level options.
-// Only the protocol families present in cidrBlock are processed.
+// A family is only processed when its options string is non-empty, which signals that the
+// corresponding per-pod annotation was set. At least one of v4Options/v6Options must be
+// non-empty. Unset families return an empty UUID so callers can fall back to subnet-level.
 func (c *OVNNbClient) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, error) {
+	if lsName == "" {
+		return nil, errors.New("the logical switch name is required")
+	}
+	if portName == "" {
+		return nil, errors.New("the port name is required")
+	}
+	if v4Options == "" && v6Options == "" {
+		return nil, errors.New("at least one of v4Options or v6Options must be non-empty")
+	}
+
 	var v4CIDR, v6CIDR, v4Gateway string
 	switch util.CheckProtocol(cidrBlock) {
 	case kubeovnv1.ProtocolIPv4:
@@ -94,12 +106,16 @@ func (c *OVNNbClient) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gate
 	case kubeovnv1.ProtocolDual:
 		cidrBlocks := strings.Split(cidrBlock, ",")
 		gateways := strings.Split(gateway, ",")
+		if len(cidrBlocks) < 2 || len(gateways) < 1 {
+			return nil, fmt.Errorf("invalid dual-stack cidrBlock %q or gateway %q", cidrBlock, gateway)
+		}
 		v4CIDR, v6CIDR = cidrBlocks[0], cidrBlocks[1]
 		v4Gateway = gateways[0]
 	}
 
 	dhcpOptionsUUIDs := &DHCPOptionsUUIDs{}
-	if len(v4CIDR) != 0 {
+	// Only process a family when the corresponding annotation is set (options non-empty).
+	if len(v4CIDR) != 0 && v4Options != "" {
 		uuid, err := c.updateDHCPv4Options(lsName, portName, v4CIDR, v4Gateway, v4Options, mtu)
 		if err != nil {
 			klog.Error(err)
@@ -108,7 +124,7 @@ func (c *OVNNbClient) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gate
 		dhcpOptionsUUIDs.DHCPv4OptionsUUID = uuid
 	}
 
-	if len(v6CIDR) != 0 {
+	if len(v6CIDR) != 0 && v6Options != "" {
 		uuid, err := c.updateDHCPv6Options(lsName, portName, v6CIDR, v6Options)
 		if err != nil {
 			klog.Error(err)
@@ -272,6 +288,10 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 
 // DeleteDHCPOptionsForPort deletes all per-port DHCP_Options entries for the given port.
 func (c *OVNNbClient) DeleteDHCPOptionsForPort(portName string) error {
+	if portName == "" {
+		return errors.New("the port name is required")
+	}
+
 	op, err := c.WhereCache(dhcpOptionsFilter(true, map[string]string{
 		PortKey: portName,
 	})).Delete()
@@ -293,7 +313,7 @@ func (c *OVNNbClient) DeleteDHCPOptionsForPort(portName string) error {
 // Per-port DHCP options (those with PortKey in ExternalIDs) are excluded.
 func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
 	if len(lsName) == 0 {
-		return nil, errors.New("the logical router name is required")
+		return nil, errors.New("the logical switch name is required")
 	}
 
 	if protocol != kubeovnv1.ProtocolIPv4 && protocol != kubeovnv1.ProtocolIPv6 {
@@ -308,7 +328,7 @@ func (c *OVNNbClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound boo
 // When portName is non-empty, it returns the per-port entry for that specific port.
 func (c *OVNNbClient) getDHCPOptionsEntry(lsName, portName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
 	if portName == "" && len(lsName) == 0 {
-		return nil, errors.New("the logical router name is required")
+		return nil, errors.New("the logical switch name is required")
 	}
 
 	var filterIDs map[string]string
