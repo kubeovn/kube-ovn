@@ -16,31 +16,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-func filterProvider(c *rest.Config, httpClient *http.Client) (server.Filter, error) {
-	return func(log logr.Logger, handler http.Handler) (http.Handler, error) {
-		filter, err := filters.WithAuthenticationAndAuthorization(c, httpClient)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create filter: %w", err)
-		}
-		h, err := filter(log, handler)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create handler: %w", err)
-		}
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			switch req.URL.Path {
-			case "/healthz", "/livez", "/readyz":
-				handler.ServeHTTP(w, req)
-			default:
-				h.ServeHTTP(w, req)
-			}
-		}), nil
-	}, nil
-}
 
 func TLSVersionFromString(version string) (uint16, error) {
 	switch version {
@@ -89,84 +67,16 @@ func CipherSuitesFromNames(suites []string) ([]uint16, error) {
 	return cipherSuites, nil
 }
 
+// Run creates a listener on addr and starts serving metrics.
+// The listener is created synchronously before this function blocks on
+// serving, so callers can rely on the bind completing before Run returns
+// an error or starts serving.
 func Run(ctx context.Context, config *rest.Config, addr string, secureServing, withPprof bool, tlsMinVersion, tlsMaxVersion string, tlsCipherSuites []string) error {
-	if config == nil {
-		config = ctrl.GetConfigOrDie()
-	}
-
-	minVersion, err := TLSVersionFromString(tlsMinVersion)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to parse TLS minimum version: %w", err)
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}
-	maxVersion, err := TLSVersionFromString(tlsMaxVersion)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to parse TLS maximum version: %w", err)
-	}
-	cipherSuites, err := CipherSuitesFromNames(tlsCipherSuites)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to parse TLS cipher suites: %w", err)
-	}
-
-	// Validate that if both minVersion and maxVersion are set, minVersion is not greater than maxVersion.
-	if maxVersion != 0 && minVersion > maxVersion {
-		err = fmt.Errorf("tls: MinVersion (%s) must be less than or equal to MaxVersion (%s)", tlsMinVersion, tlsMaxVersion)
-		klog.Error(err)
-		return err
-	}
-
-	// #nosec G402
-	tlsConfig := &tls.Config{
-		MinVersion:   minVersion,
-		MaxVersion:   maxVersion,
-		CipherSuites: cipherSuites,
-	}
-	getConfigForClient, err := tlsGetConfigForClient(tlsConfig)
-	if err != nil {
-		err = fmt.Errorf("failed to set GetConfigForClient for TLS config: %w", err)
-		klog.Error(err)
-		return err
-	}
-
-	client, err := rest.HTTPClientFor(config)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to create http client: %w", err)
-	}
-
-	options := server.Options{
-		SecureServing: secureServing,
-		BindAddress:   addr,
-	}
-	if secureServing {
-		options.FilterProvider = filterProvider
-		options.TLSOpts = []func(*tls.Config){
-			func(c *tls.Config) {
-				c.GetConfigForClient = getConfigForClient
-			},
-		}
-	}
-	options.ExtraHandlers = map[string]http.Handler{
-		"/healthz": http.HandlerFunc(util.DefaultHealthCheckHandler),
-		"/livez":   http.HandlerFunc(util.DefaultHealthCheckHandler),
-		"/readyz":  http.HandlerFunc(util.DefaultHealthCheckHandler),
-	}
-	if withPprof {
-		options.ExtraHandlers["/debug/pprof/"] = http.HandlerFunc(pprof.Index)
-		options.ExtraHandlers["/debug/pprof/cmdline"] = http.HandlerFunc(pprof.Cmdline)
-		options.ExtraHandlers["/debug/pprof/profile"] = http.HandlerFunc(pprof.Profile)
-		options.ExtraHandlers["/debug/pprof/symbol"] = http.HandlerFunc(pprof.Symbol)
-		options.ExtraHandlers["/debug/pprof/trace"] = http.HandlerFunc(pprof.Trace)
-	}
-	svr, err := server.NewServer(options, config, client)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to create metrics server: %w", err)
-	}
-
-	return svr.Start(ctx)
+	return ServeWithListener(ctx, config, listener, secureServing, withPprof, tlsMinVersion, tlsMaxVersion, tlsCipherSuites)
 }
 
 // ServeWithListener starts a metrics server using a pre-created listener.
