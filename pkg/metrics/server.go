@@ -4,13 +4,17 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -163,4 +167,104 @@ func Run(ctx context.Context, config *rest.Config, addr string, secureServing, w
 	}
 
 	return svr.Start(ctx)
+}
+
+// ServeWithListener starts a metrics server using a pre-created listener.
+// This avoids the race condition where the listener creation and address
+// transfer happen concurrently, causing bind failures.
+func ServeWithListener(ctx context.Context, config *rest.Config, listener net.Listener, secureServing, withPprof bool, tlsMinVersion, tlsMaxVersion string, tlsCipherSuites []string) error {
+	if config == nil {
+		config = ctrl.GetConfigOrDie()
+	}
+
+	mux := http.NewServeMux()
+
+	handler := promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{
+		ErrorHandling: promhttp.HTTPErrorOnError,
+	})
+
+	if secureServing {
+		client, err := rest.HTTPClientFor(config)
+		if err != nil {
+			return fmt.Errorf("failed to create http client: %w", err)
+		}
+		filter, err := filters.WithAuthenticationAndAuthorization(config, client)
+		if err != nil {
+			return fmt.Errorf("failed to create metrics filter: %w", err)
+		}
+		log := klog.NewKlogr()
+		handler, err = filter(log, handler)
+		if err != nil {
+			return fmt.Errorf("failed to apply metrics filter: %w", err)
+		}
+	}
+
+	mux.Handle("/metrics", handler)
+	mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
+	mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
+	mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
+	if withPprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+
+	if secureServing {
+		minVersion, err := TLSVersionFromString(tlsMinVersion)
+		if err != nil {
+			return fmt.Errorf("failed to parse TLS minimum version: %w", err)
+		}
+		maxVersion, err := TLSVersionFromString(tlsMaxVersion)
+		if err != nil {
+			return fmt.Errorf("failed to parse TLS maximum version: %w", err)
+		}
+		cipherSuites, err := CipherSuitesFromNames(tlsCipherSuites)
+		if err != nil {
+			return fmt.Errorf("failed to parse TLS cipher suites: %w", err)
+		}
+		if maxVersion != 0 && minVersion > maxVersion {
+			return fmt.Errorf("tls: MinVersion (%s) must be less than or equal to MaxVersion (%s)", tlsMinVersion, tlsMaxVersion)
+		}
+		// #nosec G402
+		tlsConfig := &tls.Config{
+			MinVersion:   minVersion,
+			MaxVersion:   maxVersion,
+			CipherSuites: cipherSuites,
+		}
+		getConfigForClient, err := tlsGetConfigForClient(tlsConfig)
+		if err != nil {
+			return fmt.Errorf("failed to set GetConfigForClient for TLS config: %w", err)
+		}
+		tlsConfig.GetConfigForClient = getConfigForClient
+		listener = tls.NewListener(listener, tlsConfig)
+	}
+
+	srv := &http.Server{
+		Handler:           mux,
+		MaxHeaderBytes:    1 << 20,
+		IdleTimeout:       90 * time.Second,
+		ReadHeaderTimeout: 32 * time.Second,
+	}
+
+	idleConnsClosed := make(chan struct{})
+	go func() { // #nosec G118
+		<-ctx.Done()
+		klog.Info("Shutting down metrics server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute) //nolint:contextcheck
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			klog.Errorf("error shutting down the metrics server: %v", err)
+		}
+		close(idleConnsClosed)
+	}()
+
+	klog.Infof("Serving metrics server on %s", listener.Addr())
+	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	<-idleConnsClosed
+	return nil
 }

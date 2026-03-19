@@ -104,25 +104,24 @@ func main() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}
-	klog.Info("start daemon controller")
-	go ctl.Run(stopCh)
-	go daemon.RunServer(config, ctl)
 
+	// Create all listen sockets BEFORE starting the controller.
+	// The controller's configProviderNic() transfers IP addresses from
+	// the physical NIC to an OVS bridge.  Any listener that binds to a
+	// node IP must complete its bind() call before that transfer starts,
+	// otherwise the address disappears mid-bind and the listener fails
+	// with "cannot assign requested address", crashing the daemon.
 	addrs := util.GetDefaultListenAddr()
 	if config.EnableVerboseConnCheck {
 		for _, addr := range addrs {
-			go func() {
-				connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
-				if err := util.TCPConnectivityListen(connListenaddr); err != nil {
-					util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
-				}
-			}()
-			go func() {
-				connListenaddr := util.JoinHostPort(addr, config.UDPConnCheckPort)
-				if err := util.UDPConnectivityListen(connListenaddr); err != nil {
-					util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
-				}
-			}()
+			connListenaddr := util.JoinHostPort(addr, config.TCPConnCheckPort)
+			if err := util.TCPConnectivityListen(connListenaddr); err != nil {
+				util.LogFatalAndExit(err, "failed to start TCP listen on addr %s", addr)
+			}
+			connListenaddr = util.JoinHostPort(addr, config.UDPConnCheckPort)
+			if err := util.UDPConnectivityListen(connListenaddr); err != nil {
+				util.LogFatalAndExit(err, "failed to start UDP listen on addr %s", addr)
+			}
 		}
 	}
 
@@ -132,6 +131,10 @@ func main() {
 		daemon.InitMetrics()
 	}
 	metrics.StartMetricsOrHealthServer(ctx, config.EnableMetrics, addrs, int(config.PprofPort), nil, config.SecureServing, servePprofInMetricsServer, config.TLSMinVersion, config.TLSMaxVersion, config.TLSCipherSuites)
+
+	klog.Info("start daemon controller")
+	go ctl.Run(stopCh)
+	go daemon.RunServer(config, ctl)
 
 	<-stopCh
 }
