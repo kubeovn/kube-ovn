@@ -38,6 +38,7 @@ spec:
                 matchLabels:
                   app: ovn-ic-controller
               topologyKey: kubernetes.io/hostname
+        {{- include "kubeovn.masterNodeAffinity" . | nindent 8 }}
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       automountServiceAccountToken: true
@@ -114,9 +115,6 @@ spec:
               name: kube-ovn-log
       nodeSelector:
         kubernetes.io/os: "linux"
-        {{- with splitList "=" .Values.MASTER_NODES_LABEL }}
-        {{ index . 0 }}: "{{ if eq (len .) 2 }}{{ index . 1 }}{{ end }}"
-        {{- end }}
       volumes:
         - name: host-run-ovn
           hostPath:
