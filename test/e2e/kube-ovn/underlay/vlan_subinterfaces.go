@@ -14,6 +14,7 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
@@ -98,6 +99,23 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		for i := len(providerNetworkNames) - 1; i >= 0; i-- {
 			providerNetworkClient.DeleteSync(providerNetworkNames[i])
 		}
+
+		// Wait for OVS bridges to disappear on all nodes before disconnecting
+		// the Docker network. Without this, the daemon may still be processing
+		// the provider network deletion (configProviderNic / add-port) when Docker
+		// removes the NIC. A failed add-port leaves a stale netdev cache entry in
+		// ovs-vswitchd, which causes EEXIST errors for subsequent bridge creation
+		// with exchangeLinkName=true.
+		ginkgo.By("Waiting for ovs bridges to disappear")
+		deadline := time.Now().Add(2 * time.Minute)
+		for _, pnName := range providerNetworkNames {
+			brName := util.ExternalBridgeName(pnName)
+			for _, node := range kindNodes {
+				err := node.WaitLinkToDisappear(brName, time.Second, deadline)
+				framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", brName, node.Name())
+			}
+		}
+
 		if dockerNetwork != nil {
 			ginkgo.By(fmt.Sprintf("Disconnecting nodes from docker network %s", dockerNetworkName))
 			framework.ExpectNoError(kind.NetworkDisconnect(dockerNetwork.ID, kindNodes))
