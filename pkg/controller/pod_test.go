@@ -529,3 +529,35 @@ func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
 	}
 	return ipamInstance
 }
+
+func TestGetNamedPortByNsReturnsCopy(t *testing.T) {
+	np := NewNamedPort()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+			Name:      "test-pod",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Ports: []corev1.ContainerPort{
+						{Name: "http", ContainerPort: 80},
+					},
+				},
+			},
+		},
+	}
+
+	np.AddNamedPortByPod(pod)
+
+	result := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result)
+	assert.Contains(t, result, "http")
+
+	// Mutating the returned map should not affect internal state
+	delete(result, "http")
+
+	result2 := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result2)
+	assert.Contains(t, result2, "http", "internal map should not be affected by mutation of returned copy")
+}
