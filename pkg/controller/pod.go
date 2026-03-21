@@ -149,10 +149,8 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 	defer n.mutex.RUnlock()
 
 	if result, ok := n.namedPortMap[namespace]; ok {
-		for portName, info := range result {
-			klog.Infof("namespace %s's namedPort portname is %s with info %v", namespace, portName, info)
-		}
-		return result
+		klog.V(3).Infof("namespace %s has %d named ports", namespace, len(result))
+		return maps.Clone(result)
 	}
 	return nil
 }
@@ -706,10 +704,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
+	oldPod := pod
 	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			key := strings.Join([]string{namespace, name}, "/")
-			c.deletingPodObjMap.Store(key, pod)
+			c.deletingPodObjMap.Store(key, oldPod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
 		}
@@ -1357,9 +1356,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 	for _, portNeedDel := range portsNeedToDel {
 		klog.Infof("release port %s for pod %s", portNeedDel, podName)
-		if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
-			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
-		}
+		c.ipam.ReleaseAddressByNic(key, portNeedDel, subnetUsedByPort[portNeedDel])
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, err
@@ -2241,6 +2238,7 @@ func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKi
 				return true, nil, nil
 			}
 			klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
+			return false, nil, err
 		}
 		if ss.Spec.Template.Annotations != nil {
 			ownerRefAnnotations = ss.Spec.Template.Annotations
@@ -2254,9 +2252,9 @@ func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKi
 				return true, nil, nil
 			}
 			klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
+			return false, nil, err
 		}
-		if vm != nil &&
-			vm.Spec.Template != nil &&
+		if vm.Spec.Template != nil &&
 			vm.Spec.Template.ObjectMeta.Annotations != nil {
 			ownerRefAnnotations = vm.Spec.Template.ObjectMeta.Annotations
 		}
