@@ -817,12 +817,6 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		}
 
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
-			node, err := c.nodesLister.Get(pod.Spec.NodeName)
-			if err != nil {
-				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
-				return err
-			}
-
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
 			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
@@ -1068,13 +1062,14 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 	}
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
+		return err
+	}
+
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-		if err != nil {
-			klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
-			return err
-		}
 		for _, port := range ports {
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
@@ -1106,11 +1101,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get kube-ovn nets of pod %s: %v", podKey, err)
-	}
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-	if err != nil {
-		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
-		return err
 	}
 	if keepIPCR {
 		// always remove lsp from port groups
