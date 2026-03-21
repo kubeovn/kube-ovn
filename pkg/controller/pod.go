@@ -106,11 +106,20 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	ns := pod.Namespace
 	podName := pod.Name
 
-	if pod.Spec.Containers == nil {
+	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
+	for i := range pod.Spec.InitContainers {
+		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
+			*pod.Spec.InitContainers[i].RestartPolicy == v1.ContainerRestartPolicyAlways {
+			restartableInitContainers = append(restartableInitContainers, pod.Spec.InitContainers[i])
+		}
+	}
+
+	containers := slices.Concat(restartableInitContainers, pod.Spec.Containers)
+	if len(containers) == 0 {
 		return
 	}
 
-	for _, container := range pod.Spec.Containers {
+	for _, container := range containers {
 		if container.Ports == nil {
 			continue
 		}
