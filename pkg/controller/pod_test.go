@@ -561,3 +561,42 @@ func TestGetNamedPortByNsReturnsCopy(t *testing.T) {
 	require.NotNil(t, result2)
 	assert.Contains(t, result2, "http", "internal map should not be affected by mutation of returned copy")
 }
+
+func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
+	restartAlways := corev1.ContainerRestartPolicyAlways
+	np := NewNamedPort()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+			Name:      "test-pod",
+		},
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{
+					Name:          "sidecar",
+					RestartPolicy: &restartAlways,
+					Ports: []corev1.ContainerPort{
+						{Name: "metrics", ContainerPort: 9090},
+					},
+				},
+			},
+			Containers: []corev1.Container{
+				{
+					Ports: []corev1.ContainerPort{
+						{Name: "http", ContainerPort: 80},
+					},
+				},
+			},
+		},
+	}
+
+	np.AddNamedPortByPod(pod)
+	result := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result)
+	assert.Contains(t, result, "http")
+	assert.Contains(t, result, "metrics")
+
+	np.DeleteNamedPortByPod(pod)
+	result = np.GetNamedPortByNs("test-ns")
+	assert.Empty(t, result, "both regular and sidecar init container named ports should be deleted")
+}
