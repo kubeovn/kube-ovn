@@ -148,12 +148,8 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 	defer n.mutex.RUnlock()
 
 	if result, ok := n.namedPortMap[namespace]; ok {
-		copied := make(map[string]*util.NamedPortInfo, len(result))
-		for portName, info := range result {
-			klog.Infof("namespace %s's namedPort portname is %s with info %v", namespace, portName, info)
-			copied[portName] = info
-		}
-		return copied
+		klog.V(3).Infof("namespace %s has %d named ports", namespace, len(result))
+		return maps.Clone(result)
 	}
 	return nil
 }
