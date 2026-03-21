@@ -1068,13 +1068,14 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 	}
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
+		return err
+	}
+
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-		if err != nil {
-			klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
-			return err
-		}
 		for _, port := range ports {
 			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
@@ -1106,11 +1107,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get kube-ovn nets of pod %s: %v", podKey, err)
-	}
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-	if err != nil {
-		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
-		return err
 	}
 	if keepIPCR {
 		// always remove lsp from port groups
