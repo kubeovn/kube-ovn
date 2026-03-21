@@ -1472,10 +1472,16 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	cidrs := [2]string{v4CIDR, v6CIDR}
 
-	klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
-	if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
-		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
-		return err
+	// Only delete old distributed routes when at least one address family has
+	// valid nexthops, so we never tear down existing routes without being able
+	// to install replacements.
+	needsUpdate := (len(nodeIPs[0]) > 0 && cidrs[0] != "") || (len(nodeIPs[1]) > 0 && cidrs[1] != "")
+	if needsUpdate {
+		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
+		if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
+			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	for i, cidr := range cidrs {
