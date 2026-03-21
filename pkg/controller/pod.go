@@ -120,7 +120,7 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	}
 
 	for _, container := range containers {
-		if container.Ports == nil {
+		if len(container.Ports) == 0 {
 			continue
 		}
 
