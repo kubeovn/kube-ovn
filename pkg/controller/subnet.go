@@ -245,6 +245,7 @@ func formatExcludeIPs(subnet *kubeovnv1.Subnet) {
 		subnet.Spec.ExcludeIps = excludeIPs
 	} else {
 		formatExcludeIPRanges(subnet)
+		changed := false
 		for _, gw := range excludeIPs {
 			gwExists := false
 			for _, excludeIP := range subnet.Spec.ExcludeIps {
@@ -255,8 +256,11 @@ func formatExcludeIPs(subnet *kubeovnv1.Subnet) {
 			}
 			if !gwExists {
 				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, gw)
-				sort.Strings(subnet.Spec.ExcludeIps)
+				changed = true
 			}
+		}
+		if changed {
+			sort.Strings(subnet.Spec.ExcludeIps)
 		}
 	}
 }
@@ -1467,14 +1471,16 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 
 	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	cidrs := [2]string{v4CIDR, v6CIDR}
+
+	klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
+	if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
+		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
+		return err
+	}
+
 	for i, cidr := range cidrs {
 		if len(nodeIPs[i]) == 0 || cidr == "" { // #nosec G602
 			continue
-		}
-		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
-		if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
-			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
-			return err
 		}
 		klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeIPs[i])                     // #nosec G602
 		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidr, nodeIPs[i], nameIPMaps[i]); err != nil { // #nosec G602
