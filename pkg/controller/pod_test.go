@@ -670,6 +670,89 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 	}
 }
 
+func TestAcquireStaticAddressHelperPerInterfaceIPAMKey(t *testing.T) {
+	// This test verifies that when acquireStaticAddressHelper allocates a static IP
+	// for a per-interface NAD (with NadName, NadNamespace, and InterfaceName all set),
+	// the IP is registered in IPAM under the original pod key ("namespace/podName"),
+	// NOT under the annotation key ("nadName.nadNs.kubernetes.io/ip_address.ifaceName").
+	//
+	// If the IPAM key is wrong, ReleaseAddressByNic (called on pod deletion with the pod key)
+	// will fail to find and release the IP, causing an IP leak.
+
+	subnetName := "test-subnet"
+	testSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock:  "10.0.0.0/24",
+			Protocol:   kubeovnv1.ProtocolIPv4,
+			ExcludeIps: []string{"10.0.0.1"},
+		},
+	}
+
+	nadName := "my-nad"
+	nadNamespace := "default"
+	ifaceName := "net1"
+	staticIP := "10.0.0.10"
+	annotationKey := perInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationKey: staticIP,
+			},
+		},
+	}
+
+	podNet := &kubeovnNet{
+		Subnet:        testSubnet,
+		ProviderName:  nadName + "." + nadNamespace + ".ovn",
+		NadName:       nadName,
+		NadNamespace:  nadNamespace,
+		InterfaceName: ifaceName,
+	}
+
+	nsNets := []*kubeovnNet{podNet}
+	podKey := "default/test-pod"
+	portName := podKey
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{testSubnet},
+		Pods:    []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{testSubnet})
+
+	// Allocate static IP via the per-interface path
+	v4IP, _, _, subnet, err := ctrl.acquireStaticAddressHelper(pod, podNet, portName, nil, "", nsNets, false, podKey)
+	require.NoError(t, err)
+	assert.Equal(t, staticIP, v4IP)
+	assert.Equal(t, subnetName, subnet.Name)
+
+	// Verify: IPAM should have the IP registered under the pod key, not the annotation key
+	ipamSubnet := ctrl.ipam.Subnets[subnetName]
+	require.NotNil(t, ipamSubnet)
+
+	// PodToNicList should have an entry for podKey
+	assert.NotEmpty(t, ipamSubnet.PodToNicList[podKey],
+		"IPAM should register the IP under pod key %q, but PodToNicList has no entry for it", podKey)
+
+	// PodToNicList should NOT have an entry for the annotation key
+	assert.Empty(t, ipamSubnet.PodToNicList[annotationKey],
+		"IPAM should NOT register the IP under annotation key %q, but PodToNicList has an entry for it (variable shadowing bug)", annotationKey)
+
+	// Verify that ReleaseAddressByNic with pod key actually releases the IP
+	ctrl.ipam.ReleaseAddressByNic(podKey, portName, subnetName)
+
+	// After release, the IP should no longer be tracked
+	assert.Empty(t, ipamSubnet.PodToNicList[podKey],
+		"After ReleaseAddressByNic with pod key, PodToNicList should be empty for %q", podKey)
+	assert.Empty(t, ipamSubnet.V4IPToPod[staticIP],
+		"After ReleaseAddressByNic, V4IPToPod should not map %q to any pod", staticIP)
+}
+
 func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
 	ipamInstance := ipam.NewIPAM()
 	for _, subnet := range subnets {

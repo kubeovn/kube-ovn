@@ -2152,8 +2152,8 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 
 	// Static allocate
 	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
-		key := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
-		if ipStr := pod.Annotations[key]; ipStr != "" {
+		annotationKey := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
+		if ipStr := pod.Annotations[annotationKey]; ipStr != "" {
 			for _, net := range nsNets {
 				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
 				if err == nil {
