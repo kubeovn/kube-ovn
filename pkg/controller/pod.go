@@ -1364,7 +1364,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 	for _, portNeedDel := range portsNeedToDel {
 		klog.Infof("release port %s for pod %s", portNeedDel, podName)
-		c.ipam.ReleaseAddressByNic(podName, portNeedDel, subnetUsedByPort[portNeedDel])
+		c.ipam.ReleaseAddressByNic(key, portNeedDel, subnetUsedByPort[portNeedDel])
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, err
