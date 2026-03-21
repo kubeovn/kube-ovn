@@ -1444,10 +1444,14 @@ func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kub
 	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
 	cidrs := [2]string{v4CIDR, v6CIDR}
 
-	klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
-	if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
-		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
-		return err
+	// Only delete old distributed policy routes when at least one centralized route will be configured,
+	// to avoid leaving the subnet without any working policy routes when all gateway nodes are NotReady.
+	if len(nodeIPs[0])+len(nodeIPs[1]) > 0 {
+		klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
+		if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
+			klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	for i, cidr := range cidrs {
@@ -1580,11 +1584,11 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			if subnet.Spec.GatewayNode != "" {
 				if !c.checkGwNodeExists(subnet.Spec.GatewayNode) {
 					klog.Errorf("failed to init centralized gateway for subnet %s, no gateway node exists", subnet.Name)
-					return errors.New("failed to add ecmp policy route, no gateway node exists")
+					return errors.New("failed to init centralized gateway route, no gateway node exists")
 				}
 			} else if len(gatewayNodes) == 0 {
 				klog.Errorf("failed to init centralized gateway for subnet %s, no gateway node exists", subnet.Name)
-				return errors.New("failed to add ecmp policy route, no gateway node exists")
+				return errors.New("failed to init centralized gateway route, no gateway node exists")
 			}
 
 			if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, false); err != nil {
