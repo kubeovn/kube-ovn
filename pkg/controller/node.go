@@ -1003,7 +1003,12 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 				}
 			} else {
 				klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
-				if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
+				gatewayNodes, err := c.getGatewayNodes(subnet)
+				if err != nil {
+					klog.Errorf("failed to get gateway nodes for subnet %s: %v", subnet.Name, err)
+					return err
+				}
+				if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet, gatewayNodes); err != nil {
 					klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
 					return err
 				}
