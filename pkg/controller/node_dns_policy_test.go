@@ -13,7 +13,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// pgAs mirrors the production logic at node.go:1087
+// pgAs mirrors the pgAs variable construction in addPolicyRouteForLocalDNSCacheOnNode
 func pgAs(nodePortName string, af int) string {
 	return strings.ReplaceAll(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".")
 }
@@ -25,10 +25,10 @@ func TestAddPolicyRouteForLocalDNSCacheOnNode_DualStackCrossDeletion(t *testing.
 	// addPolicyRouteForLocalDNSCacheOnNode(af=4) does NOT delete af=6 policies,
 	// and vice versa.
 	//
-	// BUG: L1096 uses GetLogicalRouterPoliciesByExtID which only filters by "node" key,
-	// returning policies from ALL address families. The loop at L1102-1116 then deletes
-	// any policy whose Match is not in the current af's match set — which includes
-	// all policies from the other address family.
+	// Previously, GetLogicalRouterPoliciesByExtID filtered only by "node" key,
+	// returning policies from ALL address families. The cleanup loop then deleted
+	// any policy whose Match was not in the current af's match set — which
+	// included all policies from the other address family.
 
 	fc := newFakeController(t)
 	ctrl := fc.fakeController
