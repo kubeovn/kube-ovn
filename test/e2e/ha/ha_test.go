@@ -215,9 +215,11 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 
 	checkCmd := "ovsdb-tool check-cluster " + dbFile
 	for _, pod := range pods.Items {
-		ginkgo.By("Checking whether db file " + dbFile + " on node " + pod.Spec.NodeName + " is healthy")
-		stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
-		framework.ExpectNoError(err, fmt.Sprintf("failed to check db file %q: stdout = %q, stderr = %q", dbFile, stdout, stderr))
+		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy before corruption")
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
+			return err == nil, nil
+		}, fmt.Sprintf("db file %s on node %s to be healthy before corruption", dbFile, pod.Spec.NodeName))
 	}
 
 	nodes := set.New[string]()
