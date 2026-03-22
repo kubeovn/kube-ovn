@@ -49,9 +49,10 @@ type fakeControllerInformers struct {
 }
 
 type fakeController struct {
-	fakeController *Controller
-	fakeInformers  *fakeControllerInformers
-	mockOvnClient  *mockovs.MockNbClient
+	fakeController  *Controller
+	fakeInformers   *fakeControllerInformers
+	mockOvnClient   *mockovs.MockNbClient
+	mockOvnSbClient *mockovs.MockSbClient
 }
 
 func alwaysReady() bool { return true }
@@ -148,8 +149,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		podInformer:       podInformer,
 	}
 
-	// Create mock OVN client
-	mockOvnClient := mockovs.NewMockNbClient(gomock.NewController(t))
+	// Create mock OVN clients
+	mockCtrl := gomock.NewController(t)
+	mockOvnClient := mockovs.NewMockNbClient(mockCtrl)
+	mockOvnSbClient := mockovs.NewMockSbClient(mockCtrl)
 
 	// Create controller with all informers
 	ctrl := &Controller{
@@ -165,6 +168,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
 		OVNNbClient:             mockOvnClient,
+		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
@@ -193,9 +197,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
 
 	return &fakeController{
-		fakeController: ctrl,
-		fakeInformers:  fakeInformers,
-		mockOvnClient:  mockOvnClient,
+		fakeController:  ctrl,
+		fakeInformers:   fakeInformers,
+		mockOvnClient:   mockOvnClient,
+		mockOvnSbClient: mockOvnSbClient,
 	}, nil
 }
 
