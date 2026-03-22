@@ -215,6 +215,10 @@ func TestGetStaticAddress(t *testing.T) {
 	require.Empty(t, v4)
 	require.Empty(t, v6)
 	require.Empty(t, macStr)
+	ip, err := NewIP("2001:db8::3")
+	require.NoError(t, err)
+	require.NotEmpty(t, ip)
+	require.False(t, dualSubnet.V6Using.Contains(ip))
 	// should conflict with v6 static ip
 	dualPodName = "pod7.default"
 	dualNicName = "pod7.default"
@@ -224,6 +228,10 @@ func TestGetStaticAddress(t *testing.T) {
 	require.Empty(t, v4)
 	require.Empty(t, v6)
 	require.Empty(t, macStr)
+	ip, err = NewIP("10.0.0.3")
+	require.NoError(t, err)
+	require.NotEmpty(t, ip)
+	require.False(t, dualSubnet.V4Using.Contains(ip))
 }
 
 func TestCheckAndAppendIpsForDual(t *testing.T) {
