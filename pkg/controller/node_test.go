@@ -6,10 +6,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	netlisters "k8s.io/client-go/listers/networking/v1"
 
+	ovs "github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -204,4 +209,58 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCleanDuplicatedChassis(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+	}
+
+	t.Run("single chassis exists, no cleanup needed", func(t *testing.T) {
+		fakeCtrl := newFakeController(t)
+		ctrl := fakeCtrl.fakeController
+		mockSb := fakeCtrl.mockOvnSbClient
+
+		mockSb.EXPECT().GetChassisByHost("test-node").Return(&ovnsb.Chassis{Name: "chassis-1"}, nil)
+
+		err := ctrl.cleanDuplicatedChassis(node)
+		require.NoError(t, err)
+	})
+
+	t.Run("multiple chassis detected, cleanup succeeds", func(t *testing.T) {
+		fakeCtrl := newFakeController(t)
+		ctrl := fakeCtrl.fakeController
+		mockSb := fakeCtrl.mockOvnSbClient
+
+		mockSb.EXPECT().GetChassisByHost("test-node").Return(nil, ovs.ErrOneNodeMultiChassis)
+		mockSb.EXPECT().DeleteChassisByHost("test-node").Return(nil)
+
+		err := ctrl.cleanDuplicatedChassis(node)
+		require.NoError(t, err)
+	})
+
+	t.Run("multiple chassis detected, cleanup fails", func(t *testing.T) {
+		fakeCtrl := newFakeController(t)
+		ctrl := fakeCtrl.fakeController
+		mockSb := fakeCtrl.mockOvnSbClient
+
+		mockSb.EXPECT().GetChassisByHost("test-node").Return(nil, ovs.ErrOneNodeMultiChassis)
+		mockSb.EXPECT().DeleteChassisByHost("test-node").Return(errors.New("delete failed"))
+
+		err := ctrl.cleanDuplicatedChassis(node)
+		require.ErrorContains(t, err, "delete failed")
+	})
+
+	t.Run("non-multi-chassis error is propagated", func(t *testing.T) {
+		fakeCtrl := newFakeController(t)
+		ctrl := fakeCtrl.fakeController
+		mockSb := fakeCtrl.mockOvnSbClient
+
+		mockSb.EXPECT().GetChassisByHost("test-node").Return(nil, errors.New("connection refused"))
+		// DeleteChassisByHost should NOT be called
+		mockSb.EXPECT().DeleteChassisByHost(gomock.Any()).Times(0)
+
+		err := ctrl.cleanDuplicatedChassis(node)
+		require.ErrorContains(t, err, "connection refused")
+	})
 }
