@@ -728,19 +728,22 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	var err error
-	if _, err := c.OVNSbClient.GetChassisByHost(node.Name); err == nil {
+	_, err := c.OVNSbClient.GetChassisByHost(node.Name)
+	if err == nil {
 		return nil
 	}
-	klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
-	if errors.Is(err, ovs.ErrOneNodeMultiChassis) {
-		klog.Warningf("node %s has multiple chassis", node.Name)
-		if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
-			return err
-		}
+
+	if !errors.Is(err, ovs.ErrOneNodeMultiChassis) {
+		klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
+		return err
 	}
-	return err
+
+	klog.Warningf("node %s has multiple chassis, deleting all", node.Name)
+	if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
+		klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
