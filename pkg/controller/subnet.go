@@ -991,7 +991,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 				continue // ignore vips which is empty
 			}
 
-			if strings.Contains(vips, vip) {
+			if slices.Contains(strings.Split(vips, ","), vip) {
 				virtualParents = append(virtualParents, lsp.Name)
 			}
 		}
