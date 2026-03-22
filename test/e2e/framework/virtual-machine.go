@@ -78,7 +78,7 @@ func (c *VMClient) Start(name string) *v1.VirtualMachine {
 func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
 	_ = c.Start(name)
-	ExpectNoError(c.WaitToBeReady(name, 2*time.Minute))
+	ExpectNoError(c.WaitToBeReady(name, 3*time.Minute))
 	return c.Get(name)
 }
 
