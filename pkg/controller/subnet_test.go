@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -414,6 +415,36 @@ func Test_checkSubnetConflict(t *testing.T) {
 		require.Contains(t, err.Error(), "conflict")
 	})
 
+	t.Run("node address conflict should return error", func(t *testing.T) {
+		nodeSubnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-conflict-subnet",
+			},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: "192.168.1.0/24",
+				Vpc:       util.DefaultVpc,
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{nodeSubnet},
+			Nodes: []*corev1.Node{{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
+						Type:    corev1.NodeInternalIP,
+						Address: "192.168.1.10",
+					}},
+				},
+			}},
+		})
+		require.NoError(t, err)
+
+		err = fakeCtrl.fakeController.checkSubnetConflict(nodeSubnet)
+		require.Error(t, err, "checkSubnetConflict should return error for node address conflict")
+		require.Contains(t, err.Error(), "conflict")
+	})
+
 	t.Run("no conflict should return nil", func(t *testing.T) {
 		noConflictSubnet := &kubeovnv1.Subnet{
 			ObjectMeta: metav1.ObjectMeta{
@@ -422,7 +453,6 @@ func Test_checkSubnetConflict(t *testing.T) {
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock: "172.16.0.0/24",
 				Vpc:       util.DefaultVpc,
-				Vlan:      "skip-node-check",
 			},
 		}
 

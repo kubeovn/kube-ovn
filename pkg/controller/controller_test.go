@@ -48,6 +48,7 @@ type fakeControllerInformers struct {
 	vlanInformer      kubeovninformer.VlanInformer
 	serviceInformer   coreinformers.ServiceInformer
 	namespaceInformer coreinformers.NamespaceInformer
+	nodeInformer      coreinformers.NodeInformer
 	podInformer       coreinformers.PodInformer
 }
 
@@ -67,6 +68,7 @@ type FakeControllerOptions struct {
 	Vlans              []*kubeovnv1.Vlan
 	NetworkAttachments []*nadv1.NetworkAttachmentDefinition
 	Pods               []*corev1.Pod
+	Nodes              []*corev1.Node
 	Namespaces         []*corev1.Namespace
 }
 
@@ -89,13 +91,16 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}}
 	}
 
-	// Create fake Kubernetes client with namespaces and pods
-	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods))
+	// Create fake Kubernetes client with namespaces, pods, and nodes
+	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes))
 	for _, ns := range namespaces {
 		kubeObjects = append(kubeObjects, ns)
 	}
 	for _, pod := range opts.Pods {
 		kubeObjects = append(kubeObjects, pod)
+	}
+	for _, node := range opts.Nodes {
+		kubeObjects = append(kubeObjects, node)
 	}
 	kubeClient := fake.NewSimpleClientset(kubeObjects...)
 
@@ -150,6 +155,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
+	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
@@ -181,6 +187,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		vlanInformer:      vlanInformer,
 		serviceInformer:   serviceInformer,
 		namespaceInformer: namespaceInformer,
+		nodeInformer:      nodeInformer,
 		podInformer:       podInformer,
 	}
 
@@ -191,6 +198,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ctrl := &Controller{
 		servicesLister:          serviceInformer.Lister(),
 		namespacesLister:        namespaceInformer.Lister(),
+		nodesLister:             nodeInformer.Lister(),
 		podsLister:              podInformer.Lister(),
 		vpcsLister:              vpcInformer.Lister(),
 		vpcSynced:               alwaysReady,

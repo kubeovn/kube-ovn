@@ -371,8 +371,9 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		if util.CIDROverlap(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
 			conflictErr := fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
 			klog.Error(conflictErr)
-			if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
-				klog.Error(err)
+			if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(conflictErr, patchErr)
 			}
 			return conflictErr
 		}
@@ -381,8 +382,9 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
 			conflictErr := fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
 			klog.Error(conflictErr)
-			if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
-				klog.Error(err)
+			if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(conflictErr, patchErr)
 			}
 			return conflictErr
 		}
@@ -399,8 +401,9 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
 					conflictErr := fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
 					klog.Error(conflictErr)
-					if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
-						klog.Error(err)
+					if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+						klog.Error(patchErr)
+						return errors.Join(conflictErr, patchErr)
 					}
 					return conflictErr
 				}
