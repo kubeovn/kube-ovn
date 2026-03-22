@@ -225,6 +225,54 @@ func Test_syncVirtualPort(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_syncVirtualPort_noSubstringMatch(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	mockOvnClient := fakeController.mockOvnClient
+
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ovn-test",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Vips:      []string{"10.0.0.1"},
+		},
+	}
+
+	err := fakeinformers.subnetInformer.Informer().GetStore().Add(subnet)
+	require.NoError(t, err)
+
+	// LSP has vip "10.0.0.10" which contains "10.0.0.1" as a substring
+	// but should NOT match the vip "10.0.0.1"
+	lsps := []ovnnb.LogicalSwitchPort{
+		{
+			Name: "lsp-no-match",
+			ExternalIDs: map[string]string{
+				"ls":   "",
+				"vips": "10.0.0.10,10.0.0.2",
+			},
+		},
+		{
+			Name: "lsp-match",
+			ExternalIDs: map[string]string{
+				"ls":   "",
+				"vips": "10.0.0.1,10.0.0.3",
+			},
+		},
+	}
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(lsps, nil)
+	// Only "lsp-match" should be a virtual parent, not "lsp-no-match"
+	mockOvnClient.EXPECT().SetLogicalSwitchPortVirtualParents(subnet.Name, "lsp-match", "10.0.0.1").Return(nil)
+
+	err = ctrl.syncVirtualPort(subnet.Name)
+	require.NoError(t, err)
+}
+
 func Test_formatSubnet(t *testing.T) {
 	t.Parallel()
 
