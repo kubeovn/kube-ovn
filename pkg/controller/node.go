@@ -821,7 +821,11 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	klog.V(3).Infoln("start to check node port-group status")
 	var networkPolicyExists bool
 	if c.config.EnableNP {
-		np, _ := c.npsLister.List(labels.Everything())
+		np, err := c.npsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			return err
+		}
 		networkPolicyExists = len(np) != 0
 	}
 
