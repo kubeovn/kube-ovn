@@ -38,20 +38,8 @@ type updateSvcObject struct {
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
-	klog.V(3).Infof("enqueue add endpoint %s", key)
+	klog.V(3).Infof("enqueue add service %s", key)
 	c.addOrUpdateEndpointSliceQueue.Add(key)
-
-	if c.config.EnableNP {
-		netpols, err := c.svcMatchNetworkPolicies(svc)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
-
-		for _, np := range netpols {
-			c.updateNpQueue.Add(np)
-		}
-	}
 
 	if c.config.EnableLbSvc {
 		klog.V(3).Infof("enqueue add service %s", key)
@@ -80,18 +68,6 @@ func (c *Controller) enqueueDeleteService(obj any) {
 
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
 	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" || svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		if c.config.EnableNP {
-			netpols, err := c.svcMatchNetworkPolicies(svc)
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-
-			for _, np := range netpols {
-				c.updateNpQueue.Add(np)
-			}
-		}
-
 		ips := util.ServiceClusterIPs(*svc)
 		if ok {
 			ips = strings.Split(vip, ",")
