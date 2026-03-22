@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -14,6 +15,95 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func Test_readyToRemoveFinalizer(t *testing.T) {
+	t.Parallel()
+
+	now := metav1.NewTime(time.Now())
+
+	tests := []struct {
+		name   string
+		subnet *kubeovnv1.Subnet
+		want   bool
+	}{
+		{
+			name:   "not deleted",
+			subnet: &kubeovnv1.Subnet{},
+			want:   false,
+		},
+		{
+			name: "deleted with no IPs in use",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 0, V6UsingIPs: 0},
+			},
+			want: true,
+		},
+		{
+			name: "deleted with V4 IPs in use",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 2, V6UsingIPs: 0},
+			},
+			want: false,
+		},
+		{
+			name: "deleted dual-stack with only V6 IPs in use",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 0, V6UsingIPs: 3},
+			},
+			want: false,
+		},
+		{
+			name: "deleted dual-stack with both V4 and V6 IPs in use",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 1, V6UsingIPs: 1},
+			},
+			want: false,
+		},
+		{
+			name: "deleted with only U2O interconnection IPv4 IP remaining",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status: kubeovnv1.SubnetStatus{
+					V4UsingIPs: 1, V6UsingIPs: 0,
+					U2OInterconnectionIP: "10.0.0.1",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "deleted dual-stack with only U2O interconnection IPs remaining",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status: kubeovnv1.SubnetStatus{
+					V4UsingIPs: 1, V6UsingIPs: 1,
+					U2OInterconnectionIP: "10.0.0.1,fd00::1",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "deleted with U2O IP but extra IPs still in use",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				Status: kubeovnv1.SubnetStatus{
+					V4UsingIPs: 2, V6UsingIPs: 1,
+					U2OInterconnectionIP: "10.0.0.1,fd00::1",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, readyToRemoveFinalizer(tc.subnet))
+		})
+	}
+}
 
 func Test_reconcileVips(t *testing.T) {
 	t.Parallel()
