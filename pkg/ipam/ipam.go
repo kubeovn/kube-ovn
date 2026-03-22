@@ -88,8 +88,13 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 		ipAddr, macStr, err = subnet.GetStaticAddress(podName, nicName, ip, mac, false, checkConflict)
 		if err != nil {
 			klog.Errorf("failed to allocate static ip %s for %s", ipStr, podName)
+			if len(ips) != 0 {
+				// release allocated ips if any
+				subnet.ReleaseAddressWithNicName(podName, nicName)
+			}
 			return "", "", "", err
 		}
+		klog.Infof("allocate static ip %s, mac %s for %s from subnet %s", ipStr, macStr, podName, subnetName)
 		ips = append(ips, ipAddr)
 	}
 	ips, err = checkAndAppendIpsForDual(ips, macStr, podName, nicName, subnet, checkConflict)
