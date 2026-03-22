@@ -369,24 +369,22 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		}
 
 		if util.CIDROverlap(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
-			err = fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
-			klog.Error(err)
-			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+			conflictErr := fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+			klog.Error(conflictErr)
+			if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
 				klog.Error(err)
-				return err
 			}
-			return err
+			return conflictErr
 		}
 
 		if subnet.Spec.ExternalEgressGateway != "" && sub.Spec.ExternalEgressGateway != "" &&
 			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
-			err = fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
-			klog.Error(err)
-			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+			conflictErr := fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
+			klog.Error(conflictErr)
+			if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
 				klog.Error(err)
-				return err
 			}
-			return err
+			return conflictErr
 		}
 	}
 
@@ -399,13 +397,12 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		for _, node := range nodes {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
-					err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
-					klog.Error(err)
-					if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
+					conflictErr := fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
+					klog.Error(conflictErr)
+					if err := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); err != nil {
 						klog.Error(err)
-						return err
 					}
-					return err
+					return conflictErr
 				}
 			}
 		}

@@ -345,3 +345,93 @@ func Test_isOvnSubnet(t *testing.T) {
 		})
 	}
 }
+
+func Test_checkSubnetConflict(t *testing.T) {
+	t.Parallel()
+
+	existingSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "existing-subnet",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Vpc:       util.DefaultVpc,
+		},
+	}
+
+	t.Run("CIDR overlap should return error", func(t *testing.T) {
+		newSubnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "new-subnet",
+			},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: "10.0.0.0/16",
+				Vpc:       util.DefaultVpc,
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{existingSubnet, newSubnet},
+		})
+		require.NoError(t, err)
+
+		err = fakeCtrl.fakeController.checkSubnetConflict(newSubnet)
+		require.Error(t, err, "checkSubnetConflict should return error for overlapping CIDRs")
+		require.Contains(t, err.Error(), "conflict")
+	})
+
+	t.Run("PolicyRoutingTableID conflict should return error", func(t *testing.T) {
+		existingWithEgress := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "existing-egress",
+			},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock:             "10.1.0.0/24",
+				Vpc:                   util.DefaultVpc,
+				ExternalEgressGateway: "1.2.3.4",
+				PolicyRoutingTableID:  100,
+			},
+		}
+		newWithEgress := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "new-egress",
+			},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock:             "10.2.0.0/24",
+				Vpc:                   util.DefaultVpc,
+				ExternalEgressGateway: "5.6.7.8",
+				PolicyRoutingTableID:  100,
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{existingWithEgress, newWithEgress},
+		})
+		require.NoError(t, err)
+
+		err = fakeCtrl.fakeController.checkSubnetConflict(newWithEgress)
+		require.Error(t, err, "checkSubnetConflict should return error for conflicting PolicyRoutingTableID")
+		require.Contains(t, err.Error(), "conflict")
+	})
+
+	t.Run("no conflict should return nil", func(t *testing.T) {
+		noConflictSubnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "no-conflict",
+			},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: "172.16.0.0/24",
+				Vpc:       util.DefaultVpc,
+				Vlan:      "skip-node-check",
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{existingSubnet, noConflictSubnet},
+		})
+		require.NoError(t, err)
+
+		err = fakeCtrl.fakeController.checkSubnetConflict(noConflictSubnet)
+		require.NoError(t, err)
+	})
+}
