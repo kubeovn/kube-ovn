@@ -1134,16 +1134,13 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
 
-	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
-		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		klog.Errorf("failed to list logical router policies for node %q af %d: %v", nodeName, af, err)
 		return err
 	}
 
 	for _, policy := range policies {
-		if len(policy.ExternalIDs) == 0 || policy.ExternalIDs["vendor"] != util.CniTypeName || policy.ExternalIDs["isLocalDnsCache"] != "true" {
-			continue
-		}
 		if policy.Priority == util.NodeRouterPolicyPriority && policy.Action == string(action) && slices.Equal(policy.Nexthops, nextHops) && matches.Has(policy.Match) {
 			matches.Remove(policy.Match)
 			continue
