@@ -819,7 +819,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("get vpc %s: %v", vpc.Name, err)
+			klog.Errorf("get vpc %s: %v", subnet.Spec.Vpc, err)
 			return err
 		}
 		router = c.config.ClusterRouter
@@ -1196,7 +1196,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defaultExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.vpcsLister.Get(vpcName)
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1204,6 +1204,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
 		return err
 	}
+	vpc := cachedVpc.DeepCopy()
 	routeTotal := len(vpc.Spec.StaticRoutes)
 	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
 	for _, route := range vpc.Spec.StaticRoutes {
@@ -2708,7 +2709,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		ip, err := c.ipsLister.Get(key)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
-				return nil
+				continue
 			}
 			klog.Error(err)
 			return err
@@ -2760,7 +2761,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		ip, err := c.ipsLister.Get(lsp.Name)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
-				return nil
+				continue
 			}
 			klog.Error(err)
 			return err
