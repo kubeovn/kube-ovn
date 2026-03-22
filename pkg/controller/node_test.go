@@ -1,11 +1,38 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	netlisters "k8s.io/client-go/listers/networking/v1"
+
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+type errorNetworkPolicyLister struct{}
+
+func (l *errorNetworkPolicyLister) List(labels.Selector) ([]*networkingv1.NetworkPolicy, error) {
+	return nil, errors.New("informer not synced")
+}
+
+func (l *errorNetworkPolicyLister) NetworkPolicies(string) netlisters.NetworkPolicyNamespaceLister {
+	return nil
+}
+
+func TestCheckAndUpdateNodePortGroup_NpsListerError(t *testing.T) {
+	fakeCtrl := newFakeController(t)
+	ctrl := fakeCtrl.fakeController
+	ctrl.config.EnableNP = true
+	ctrl.npsLister = &errorNetworkPolicyLister{}
+
+	err := ctrl.checkAndUpdateNodePortGroup()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "informer not synced")
+}
 
 func TestKubeOvnAnnotationsChanged(t *testing.T) {
 	tests := []struct {
