@@ -542,13 +542,6 @@ func (c *Controller) handleDeleteNp(key string) error {
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
-		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "service"),
-	}); err != nil {
-		klog.Errorf("delete np %s service address set: %v", key, err)
-		return err
-	}
-
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
@@ -771,44 +764,6 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 		}
 	}
 	return match
-}
-
-func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, error) {
-	// find all match pod
-	sel := labels.Set(svc.Spec.Selector).AsSelector()
-	pods, err := c.podsLister.Pods(svc.Namespace).List(sel)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods, %w", err)
-	}
-
-	// find all match netpol
-	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		return nil, fmt.Errorf("failed to list netpols, %w", err)
-	}
-	match := set.New[string]()
-	ns, err := c.namespacesLister.Get(svc.Namespace)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.V(3).Infof("namespace %s not found when matching network policies for service %s/%s", svc.Namespace, svc.Namespace, svc.Name)
-			return match.UnsortedList(), nil
-		}
-		return nil, fmt.Errorf("failed to get namespace %s: %w", svc.Namespace, err)
-	}
-
-	for _, pod := range pods {
-		for _, np := range nps {
-			key := cache.MetaObjectToName(np).String()
-			if match.Has(key) {
-				continue
-			}
-			if isPodMatchNetworkPolicy(pod, ns, np, np.Namespace) {
-				match.Insert(key)
-				klog.V(3).Infof("svc %s/%s match np %s", svc.Namespace, svc.Name, key)
-			}
-		}
-	}
-	return match.UnsortedList(), nil
 }
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
