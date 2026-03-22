@@ -632,13 +632,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			vpc.Status.SctpSessionLoadBalancer,
 		}
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
-				if err = c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error()); err != nil {
-					klog.Error(err)
-					return err
+			if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
+				klog.Error(lbErr)
+				if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
+					klog.Error(patchErr)
+					return errors.Join(lbErr, patchErr)
 				}
-				klog.Error(err)
-				return err
+				return lbErr
 			}
 		} else {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
@@ -664,13 +664,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		if err := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); err != nil {
-			if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+		if privErr := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); privErr != nil {
+			klog.Error(privErr)
+			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(privErr, patchErr)
 			}
-			klog.Error(err)
-			return err
+			return privErr
 		}
 
 		if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
@@ -679,13 +679,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// clear acl when direction is ""
-		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
-			if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
+			klog.Error(aclErr)
+			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(aclErr, patchErr)
 			}
-			klog.Error(err)
-			return err
+			return aclErr
 		}
 
 		if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
@@ -694,13 +694,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); err != nil {
-		if err = c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); aclErr != nil {
+		klog.Error(aclErr)
+		if patchErr := c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", aclErr.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return errors.Join(aclErr, patchErr)
 		}
-		klog.Error(err)
-		return err
+		return aclErr
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
