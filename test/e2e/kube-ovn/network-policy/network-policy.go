@@ -185,4 +185,119 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			return err == nil, nil
 		}, "")
 	})
+
+	framework.ConformanceIt("should correctly handle multiple IPBlocks in a single ingress rule", func() {
+		ginkgo.By("Creating server pod " + podName)
+		port := strconv.Itoa(8000 + rand.IntN(1000))
+		args := []string{"netexec", "--http-port", port}
+		pod := framework.MakePod(namespaceName, podName, map[string]string{"app": "server"}, nil, framework.AgnhostImage, nil, args)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Creating client pod 1 " + "client1-" + podName)
+		client1PodName := "client1-" + podName
+		client1Pod := framework.MakePod(namespaceName, client1PodName, map[string]string{"app": "client"}, nil, framework.AgnhostImage, nil, nil)
+		client1Pod = podClient.CreateSync(client1Pod)
+
+		client1IP := client1Pod.Status.PodIP
+		framework.ExpectNotEmpty(client1IP)
+
+		ginkgo.By("Creating client pod 2 " + "client2-" + podName)
+		client2PodName := "client2-" + podName
+		client2Pod := framework.MakePod(namespaceName, client2PodName, map[string]string{"app": "client"}, nil, framework.AgnhostImage, nil, nil)
+		client2Pod = podClient.CreateSync(client2Pod)
+
+		client2IP := client2Pod.Status.PodIP
+		framework.ExpectNotEmpty(client2IP)
+
+		ginkgo.By("Creating network policy " + netpolName + " with two IPBlocks")
+		// The first IPBlock matches client1 IP.
+		// The second IPBlock is some other dummy CIDR.
+		// client2 IP is not included initially.
+		netpol := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: netpolName,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "server"},
+				},
+				Ingress: []netv1.NetworkPolicyIngressRule{
+					{
+						From: []netv1.NetworkPolicyPeer{
+							{
+								IPBlock: &netv1.IPBlock{
+									CIDR: client1IP + "/32",
+								},
+							},
+							{
+								IPBlock: &netv1.IPBlock{
+									CIDR: "1.2.3.4/32",
+								},
+							},
+						},
+					},
+				},
+				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+			},
+		}
+		_ = netpolClient.Create(netpol)
+
+		for _, podIP := range pod.Status.PodIPs {
+			ip := podIP.IP
+			protocol := strings.ToLower(util.CheckProtocol(ip))
+			if protocol != strings.ToLower(f.ClusterIPFamily) {
+				continue
+			}
+
+			cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(ip, port)
+
+			ginkgo.By("Checking connection from client1 pod " + client1PodName + " to " + podName + " via " + protocol)
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, client1Pod.Namespace, client1Pod.Name))
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				_, err := e2epodoutput.RunHostCmd(client1Pod.Namespace, client1Pod.Name, cmd)
+				return err == nil, nil
+			}, "Connection from client1 should be allowed by IPBlock")
+
+			ginkgo.By("Checking connection from client2 pod " + client2PodName + " to " + podName + " via " + protocol + " (should be denied)")
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, client2Pod.Namespace, client2Pod.Name))
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				_, err := e2epodoutput.RunHostCmd(client2Pod.Namespace, client2Pod.Name, cmd)
+				return err != nil, nil
+			}, "Connection from client2 should be denied by NetworkPolicy")
+		}
+
+		ginkgo.By("Updating network policy " + netpolName + " to include client2 pod CIDR")
+		netpol = netpolClient.Get(netpolName)
+		// Update the second IPBlock to include client2IP
+		netpol.Spec.Ingress[0].From[1].IPBlock.CIDR = client2IP + "/32"
+		_, err := netpolClient.Update(context.TODO(), netpol, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
+
+		for _, podIP := range pod.Status.PodIPs {
+			ip := podIP.IP
+			protocol := strings.ToLower(util.CheckProtocol(ip))
+			if protocol != strings.ToLower(f.ClusterIPFamily) {
+				continue
+			}
+
+			cmd := "curl -q -s --connect-timeout 2 --max-time 2 " + net.JoinHostPort(ip, port)
+
+			ginkgo.By("Checking connection from client1 pod " + client1PodName + " to " + podName + " via " + protocol)
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, client1Pod.Namespace, client1Pod.Name))
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				_, err := e2epodoutput.RunHostCmd(client1Pod.Namespace, client1Pod.Name, cmd)
+				return err == nil, nil
+			}, "Connection from client1 should still be allowed")
+
+			ginkgo.By("Checking connection from client2 pod " + client2PodName + " to " + podName + " via " + protocol)
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, client2Pod.Namespace, client2Pod.Name))
+			framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				_, err := e2epodoutput.RunHostCmd(client2Pod.Namespace, client2Pod.Name, cmd)
+				return err == nil, nil
+			}, "Connection from client2 should now be allowed by updated IPBlock")
+		}
+
+		podClient.DeleteGracefully(client1PodName)
+		podClient.DeleteGracefully(client2PodName)
+	})
 })
