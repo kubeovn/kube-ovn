@@ -2362,6 +2362,7 @@ jobs:
         run: |
           make talos-install-${{ matrix.mode }}-${{ matrix.ip-family }}
           kubectl -n kube-system rollout status ds/kube-ovn-pinger
+          kubectl -n kube-system delete pod -n kube-system -l k8s-app=kube-dns --wait=false
           kubectl -n kube-system rollout status deploy/coredns
           kubectl get pod -o wide -A
           kubectl get endpointslice -A
