@@ -848,7 +848,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		// The port-group should already created when add node
 		pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
 		if pgName == "" {
-			klog.Warningf("node %s does not have port name annotation, skip port group update", node.Name)
+			klog.V(2).Infof("node %s does not have port name annotation, skip port group update", node.Name)
 			continue
 		}
 
