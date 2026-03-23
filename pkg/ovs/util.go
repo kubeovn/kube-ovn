@@ -225,6 +225,7 @@ func (m AndACLMatch) Match() (string, error) {
 			klog.Error(err)
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
+
 		matches = append(matches, match)
 	}
 
@@ -256,8 +257,8 @@ func (m OrACLMatch) Match() (string, error) {
 			return "", fmt.Errorf("generate match %s: %w", match, err)
 		}
 
-		// has more then one rule
-		if strings.Contains(match, "&&") {
+		// has more than one rule
+		if strings.Contains(match, "&&") || strings.Contains(match, "||") {
 			match = "(" + match + ")"
 		}
 
@@ -268,27 +269,6 @@ func (m OrACLMatch) Match() (string, error) {
 }
 
 func (m OrACLMatch) String() string {
-	match, _ := m.Match()
-	return match
-}
-
-type groupACLMatch struct {
-	match ACLMatch
-}
-
-func NewGroupACLMatch(match ACLMatch) ACLMatch {
-	return groupACLMatch{match: match}
-}
-
-func (m groupACLMatch) Match() (string, error) {
-	s, err := m.match.Match()
-	if err != nil {
-		return "", err
-	}
-	return "(" + s + ")", nil
-}
-
-func (m groupACLMatch) String() string {
 	match, _ := m.Match()
 	return match
 }
@@ -338,6 +318,29 @@ func (m aclMatch) Match() (string, error) {
 func (m aclMatch) String() string {
 	rule, _ := m.Match()
 	return rule
+}
+
+type groupACLMatch struct {
+	match ACLMatch
+}
+
+func NewGroupACLMatch(match ACLMatch) ACLMatch {
+	return groupACLMatch{
+		match: match,
+	}
+}
+
+func (m groupACLMatch) Match() (string, error) {
+	match, err := m.match.Match()
+	if err != nil {
+		return "", err
+	}
+	return "(" + match + ")", nil
+}
+
+func (m groupACLMatch) String() string {
+	match, _ := m.Match()
+	return match
 }
 
 type Limiter struct {
