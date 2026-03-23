@@ -254,6 +254,25 @@ func Test_OrAclMatch_Match(t *testing.T) {
 	})
 }
 
+func Test_GroupAclMatch_Match(t *testing.T) {
+	t.Parallel()
+
+	t.Run("generate grouped match", func(t *testing.T) {
+		t.Parallel()
+		match := NewGroupACLMatch(NewACLMatch("ip4.dst", "==", "10.0.0.0/8", ""))
+		rule, err := match.Match()
+		require.NoError(t, err)
+		require.Equal(t, "(ip4.dst == 10.0.0.0/8)", rule)
+	})
+
+	t.Run("error propagation", func(t *testing.T) {
+		t.Parallel()
+		match := NewGroupACLMatch(NewACLMatch("", "", "", ""))
+		_, err := match.Match()
+		require.Error(t, err)
+	})
+}
+
 func Test_Limiter(t *testing.T) {
 	t.Parallel()
 

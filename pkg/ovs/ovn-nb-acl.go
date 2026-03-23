@@ -1276,7 +1276,7 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 		NewACLMatch("ip", "", "", ""),
 	)
 
-	allowedIPMatch := NewAndACLMatch(allIPMatch, ipBlockL3Match)
+	allowedIPMatch := NewAndACLMatch(allIPMatch, NewGroupACLMatch(ipBlockL3Match))
 
 	if len(npp) == 0 {
 		return []string{allowedIPMatch.String()}
