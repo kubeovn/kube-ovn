@@ -847,6 +847,10 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	for _, node := range nodes {
 		// The port-group should already created when add node
 		pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
+		if pgName == "" {
+			klog.Warningf("node %s does not have port name annotation, skip port group update", node.Name)
+			continue
+		}
 
 		// use join IP only when no internal IP exists
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
@@ -934,7 +938,7 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 	if len(policyList) == 0 {
 		return strset.New(), map[string]string{}, nil
 	}
-	return strset.New(policyList[0].Nexthops...), policyList[0].ExternalIDs, nil
+	return strset.New(policyList[0].Nexthops...), maps.Clone(policyList[0].ExternalIDs), nil
 }
 
 func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
