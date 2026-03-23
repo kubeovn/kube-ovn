@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.15.7 (2026-03-23)
+
+ * [e7bd69c77](https://github.com/kubeovn/kube-ovn/commit/e7bd69c77f31cc0766e01401cfafb2e2831af503) release v1.15.7
+ * [3ca483d00](https://github.com/kubeovn/kube-ovn/commit/3ca483d0055659ee2007135a2636a1334bc76f7f) fix(deps): update module google.golang.org/grpc to v1.79.3 [security] (#6477)
+ * [6812bf03a](https://github.com/kubeovn/kube-ovn/commit/6812bf03a0de400b2b0204c5976d53142cebfc3d) fix(ipam): release allocated static IPs on partial allocation failure (#6493)
+ * [18247bbf1](https://github.com/kubeovn/kube-ovn/commit/18247bbf1b8da9648a4de5dce415048af1e626ab) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.15.6 (2026-03-18)
 
  * [b32aee09f](https://github.com/kubeovn/kube-ovn/commit/b32aee09f65faf2fc38f13f1fbcb61fff0cbfb62) release v1.15.6
