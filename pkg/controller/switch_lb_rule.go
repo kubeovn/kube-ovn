@@ -115,6 +115,11 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		return err
 	}
 
+	if slr.Spec.Vip == "" {
+		klog.Warningf("SwitchLBRule %s has empty Vip, skipping", key)
+		return nil
+	}
+
 	svcName = generateSvcName(slr.Name)
 	if oldSvc, err = c.servicesLister.Services(slr.Spec.Namespace).Get(svcName); err != nil {
 		if k8serrors.IsNotFound(err) {

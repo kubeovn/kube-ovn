@@ -105,7 +105,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		isPreferLocalBackend     = false
 	)
 
-	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok && vip != "" {
 		lbVips = []string{vip}
 
 		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled
