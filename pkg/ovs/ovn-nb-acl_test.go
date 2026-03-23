@@ -473,8 +473,7 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		}
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
 		require.Len(t, matches, 1)
-		require.Contains(t, matches[0], "ip4.dst == 10.0.0.0/8")
-		require.NotContains(t, matches[0], "!=")
+		require.Equal(t, "inport == @test.ipblock.pg && ip && (ip4.dst == 10.0.0.0/8)", matches[0])
 	})
 
 	t.Run("single ipBlock with except", func(t *testing.T) {
@@ -484,8 +483,7 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		}
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
 		require.Len(t, matches, 1)
-		require.Contains(t, matches[0], "ip4.dst == 0.0.0.0/0")
-		require.Contains(t, matches[0], "ip4.dst != {10.42.0.0/16}")
+		require.Equal(t, "inport == @test.ipblock.pg && ip && (ip4.dst == 0.0.0.0/0 && ip4.dst != {10.42.0.0/16})", matches[0])
 	})
 
 	t.Run("multiple ipBlocks with different excepts", func(t *testing.T) {
@@ -496,10 +494,8 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		}
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
 		require.Len(t, matches, 1)
-		// Should contain OR of the two ipBlock matches
-		require.Contains(t, matches[0], "ip4.dst == 0.0.0.0/0 && ip4.dst != {10.42.0.0/16}")
-		require.Contains(t, matches[0], "ip4.dst == 192.168.0.0/16")
-		require.Contains(t, matches[0], "||")
+		// Should contain OR of the two ipBlock matches with double parentheses due to OrACLMatch internal grouping and our explicit grouping
+		require.Equal(t, "inport == @test.ipblock.pg && ip && ((ip4.dst == 0.0.0.0/0 && ip4.dst != {10.42.0.0/16}) || ip4.dst == 192.168.0.0/16)", matches[0])
 	})
 
 	t.Run("ipBlock with ports", func(t *testing.T) {
@@ -511,8 +507,7 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, npp, nil)
 		require.NotEmpty(t, matches)
 		for _, m := range matches {
-			require.Contains(t, m, "ip4.dst == 10.0.0.0/8")
-			require.Contains(t, m, "ip4.dst != {10.1.0.0/16}")
+			require.Contains(t, m, "(ip4.dst == 10.0.0.0/8 && ip4.dst != {10.1.0.0/16})")
 			require.Contains(t, m, "tcp")
 		}
 	})
@@ -524,8 +519,7 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		}
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv6, ovnnb.ACLDirectionToLport, ipBlocks, nil, nil)
 		require.Len(t, matches, 1)
-		require.Contains(t, matches[0], "ip6.src == fd00::/48")
-		require.Contains(t, matches[0], "ip6.src != {fd00:1::/64}")
+		require.Equal(t, "outport == @test.ipblock.pg && ip && (ip6.src == fd00::/48 && ip6.src != {fd00:1::/64})", matches[0])
 	})
 
 	t.Run("ipBlock with wrong protocol is filtered", func(t *testing.T) {
