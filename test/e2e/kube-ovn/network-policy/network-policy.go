@@ -198,7 +198,16 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		client1Pod := framework.MakePod(namespaceName, client1PodName, map[string]string{"app": "client"}, nil, framework.AgnhostImage, nil, nil)
 		client1Pod = podClient.CreateSync(client1Pod)
 
-		client1IP := client1Pod.Status.PodIP
+		var client1IP string
+		for _, podIP := range client1Pod.Status.PodIPs {
+			if strings.EqualFold(util.CheckProtocol(podIP.IP), f.ClusterIPFamily) {
+				client1IP = podIP.IP
+				break
+			}
+		}
+		if client1IP == "" && f.IsDual() {
+			client1IP = client1Pod.Status.PodIP
+		}
 		framework.ExpectNotEmpty(client1IP)
 
 		ginkgo.By("Creating client pod 2 " + "client2-" + podName)
@@ -206,13 +215,28 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		client2Pod := framework.MakePod(namespaceName, client2PodName, map[string]string{"app": "client"}, nil, framework.AgnhostImage, nil, nil)
 		client2Pod = podClient.CreateSync(client2Pod)
 
-		client2IP := client2Pod.Status.PodIP
+		var client2IP string
+		for _, podIP := range client2Pod.Status.PodIPs {
+			if strings.EqualFold(util.CheckProtocol(podIP.IP), f.ClusterIPFamily) {
+				client2IP = podIP.IP
+				break
+			}
+		}
+		if client2IP == "" && f.IsDual() {
+			client2IP = client2Pod.Status.PodIP
+		}
 		framework.ExpectNotEmpty(client2IP)
 
 		ginkgo.By("Creating network policy " + netpolName + " with two IPBlocks")
 		// The first IPBlock matches client1 IP.
 		// The second IPBlock is some other dummy CIDR.
 		// client2 IP is not included initially.
+		mask := "/32"
+		dummyCIDR := "1.2.3.4/32"
+		if f.ClusterIPFamily == "ipv6" {
+			mask = "/128"
+			dummyCIDR = "fd00::1234/128"
+		}
 		netpol := &netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: netpolName,
@@ -226,12 +250,12 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 						From: []netv1.NetworkPolicyPeer{
 							{
 								IPBlock: &netv1.IPBlock{
-									CIDR: client1IP + "/32",
+									CIDR: client1IP + mask,
 								},
 							},
 							{
 								IPBlock: &netv1.IPBlock{
-									CIDR: "1.2.3.4/32",
+									CIDR: dummyCIDR,
 								},
 							},
 						},
@@ -269,7 +293,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 		ginkgo.By("Updating network policy " + netpolName + " to include client2 pod CIDR")
 		netpol = netpolClient.Get(netpolName)
 		// Update the second IPBlock to include client2IP
-		netpol.Spec.Ingress[0].From[1].IPBlock.CIDR = client2IP + "/32"
+		netpol.Spec.Ingress[0].From[1].IPBlock.CIDR = client2IP + mask
 		_, err := netpolClient.Update(context.TODO(), netpol, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
