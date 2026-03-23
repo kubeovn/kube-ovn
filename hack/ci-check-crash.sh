@@ -37,9 +37,10 @@ for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
 
       name=`kubectl get -n $namespace $pod -o jsonpath="{.status.${containerType}Statuses[*].name}"`
       echo ">>> $containerType $name in pod $namespace/$podName restarted $restartCount time(s). Logs of the previous instance:"
-      kubectl logs -p -n $namespace $pod -c $name
+      prevLogs=$(kubectl logs -p -n $namespace $pod -c $name 2>&1) || true
+      printf '%s\n' "$prevLogs"
       if [ "$provider" = "talos" -a "$name" = "cni-server" ]; then
-        if kubectl logs -p -n $namespace $pod -c $name | tail -n1 | grep -q "network not ready"; then
+        if printf '%s\n' "$prevLogs" | tail -n1 | grep -q "network not ready"; then
           continue
         fi
       fi
@@ -48,7 +49,16 @@ for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
           continue 2
         fi
       done
-      exit_code=1
+      # only fail if the previous instance crashed due to panic or SIGSEGV,
+      # or if Kubernetes reports a segfault via lastState.terminated.{signal,exitCode}
+      terminatedSignal=$(kubectl get -n "$namespace" "$pod" -o jsonpath="{.status.${containerType}Statuses[?(@.name==\"$name\")].lastState.terminated.signal}" 2>/dev/null || echo "")
+      terminatedExitCode=$(kubectl get -n "$namespace" "$pod" -o jsonpath="{.status.${containerType}Statuses[?(@.name==\"$name\")].lastState.terminated.exitCode}" 2>/dev/null || echo "")
+      if printf '%s\n' "$prevLogs" | grep -qE 'panic|SIGSEGV' || \
+         [ "$terminatedSignal" = "11" ] || [ "$terminatedExitCode" = "139" ]; then
+        exit_code=1
+      else
+        echo ">>> restart of $containerType $name in pod $namespace/$podName is not caused by panic/SIGSEGV, ignoring"
+      fi
     done
   done
 done
