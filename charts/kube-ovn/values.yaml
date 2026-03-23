@@ -8,11 +8,11 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.15.6
+      tag: v1.15.7
     natgateway:
       repository: vpc-nat-gateway
       # Falls back to the same tag as kubeovn if empty
-      tag: v1.15.6
+      tag: v1.15.7
 
 image:
   pullPolicy: IfNotPresent
