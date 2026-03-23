@@ -746,26 +746,20 @@ func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	return nil
 }
 
-func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
-	i := 0
-	for ; ; i++ {
-		err = f(node)
+func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) error {
+	for i := range attempts {
+		err := f(node)
 		if err == nil {
-			return err
+			return nil
 		}
 		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
-		if i >= (attempts - 1) {
-			break
+		if i < attempts-1 {
+			time.Sleep(time.Duration(sleep) * time.Second)
 		}
-		time.Sleep(time.Duration(sleep) * time.Second)
 	}
-	if i >= (attempts - 1) {
-		errMsg := errors.New("exhausting all attempts")
-		klog.Error(errMsg)
-		return errMsg
-	}
-	klog.V(3).Infof("finish check chassis")
-	return nil
+	errMsg := errors.New("exhausting all attempts")
+	klog.Error(errMsg)
+	return errMsg
 }
 
 func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
