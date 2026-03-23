@@ -514,7 +514,9 @@ func getVipIps(svc *v1.Service) []string {
 		ips = util.ServiceClusterIPs(*svc)
 		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
 			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				ips = append(ips, ingress.IP)
+				if ingress.IP != "" {
+					ips = append(ips, ingress.IP)
+				}
 			}
 		}
 	}

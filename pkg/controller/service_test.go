@@ -108,6 +108,30 @@ func Test_getVipIps(t *testing.T) {
 			},
 			expected: []string{"10.96.0.1", "192.168.1.1"},
 		},
+		{
+			name: "no annotation with empty ingress IP should be filtered",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						util.ServiceExternalIPFromSubnetAnnotation: "external-subnet",
+					},
+				},
+				Spec: v1.ServiceSpec{
+					ClusterIP:  "10.96.0.1",
+					ClusterIPs: []string{"10.96.0.1"},
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: "192.168.1.1"},
+							{IP: ""},
+							{Hostname: "lb.example.com"},
+						},
+					},
+				},
+			},
+			expected: []string{"10.96.0.1", "192.168.1.1"},
+		},
 	}
 
 	for _, tt := range tests {
