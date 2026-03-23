@@ -710,6 +710,22 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.35 (2026-03-23)
+
+ * [812ce2663](https://github.com/kubeovn/kube-ovn/commit/812ce266314a0dde5e2a44966e26f43bac724251) release v1.14.35
+ * [350536c9a](https://github.com/kubeovn/kube-ovn/commit/350536c9a7a6e4d9447782f8be7af6fe065cf615) add more checkout depth
+ * [f304313c4](https://github.com/kubeovn/kube-ovn/commit/f304313c47936423be6c7686184afa9fc25c1774) fix(deps): update module google.golang.org/grpc to v1.79.3 [security] (#6477)
+ * [a7ef27243](https://github.com/kubeovn/kube-ovn/commit/a7ef272433523a25afc9f56ebb16fc217c68a58c) fix(ipam): release allocated static IPs on partial allocation failure (#6493)
+ * [a8c72028f](https://github.com/kubeovn/kube-ovn/commit/a8c72028f1322b546fdb3e24ab622d7bd3ef25e1) kind: enable OwnerReferencesPermissionEnforcement (#6456)
+ * [adc04b76f](https://github.com/kubeovn/kube-ovn/commit/adc04b76fba74fbbbcf17bfe5bd8daacea3cf220) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * renovate[bot]
+ * 张祖建
+
 ## v1.14.34 (2026-03-12)
 
  * [6b2072cd1](https://github.com/kubeovn/kube-ovn/commit/6b2072cd14ce8767426356683c7f957f3e029038) release v1.14.34
