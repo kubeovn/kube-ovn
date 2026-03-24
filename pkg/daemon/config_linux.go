@@ -30,20 +30,20 @@ func getSrcIPsByRoutes(iface *net.Interface) ([]string, error) {
 }
 
 func getIfaceByIP(ip string) (string, int, error) {
-	links, err := netlink.LinkList()
+	// Use a single AddrList dump instead of LinkList + per-link AddrList (N+1 dumps → 1+1)
+	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
 	if err != nil {
-		return "", 0, err
+		return "", 0, fmt.Errorf("failed to list all addresses: %w", err)
 	}
 
-	for _, link := range links {
-		addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
-		if err != nil {
-			return "", 0, fmt.Errorf("failed to get addresses of link %s: %w", link.Attrs().Name, err)
-		}
-		for _, addr := range addrs {
-			if addr.Contains(net.ParseIP(ip)) && addr.IP.String() == ip {
-				return link.Attrs().Name, link.Attrs().MTU, nil
+	target := net.ParseIP(ip)
+	for _, addr := range addrs {
+		if addr.Contains(target) && addr.IP.Equal(target) {
+			link, err := netlink.LinkByIndex(addr.LinkIndex)
+			if err != nil {
+				return "", 0, fmt.Errorf("failed to get link by index %d: %w", addr.LinkIndex, err)
 			}
+			return link.Attrs().Name, link.Attrs().MTU, nil
 		}
 	}
 
