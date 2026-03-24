@@ -543,13 +543,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		newUnerlayExternalSubnet := subnetClient.Get(underlaySubnetName)
 		ginkgo.By("Check status using ovn eip for subnet " + underlaySubnetName)
 		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPs-1, newUnerlayExternalSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4UsingIPs+1, newUnerlayExternalSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V4AvailableIPs.SubInt(1).Equal(newUnerlayExternalSubnet.Status.V4AvailableIPs))
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V4UsingIPs.AddInt(1).Equal(newUnerlayExternalSubnet.Status.V4UsingIPs))
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPRange, newUnerlayExternalSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4UsingIPRange, newUnerlayExternalSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPs-1, newUnerlayExternalSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6UsingIPs+1, newUnerlayExternalSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V6AvailableIPs.SubInt(1).Equal(newUnerlayExternalSubnet.Status.V6AvailableIPs))
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V6UsingIPs.AddInt(1).Equal(newUnerlayExternalSubnet.Status.V6UsingIPs))
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPRange, newUnerlayExternalSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6UsingIPRange, newUnerlayExternalSubnet.Status.V6UsingIPRange)
 		}
@@ -559,13 +559,13 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		time.Sleep(3 * time.Second)
 		newUnerlayExternalSubnet = subnetClient.Get(underlaySubnetName)
 		if newUnerlayExternalSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPs+1, newUnerlayExternalSubnet.Status.V4AvailableIPs)
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V4UsingIPs-1, newUnerlayExternalSubnet.Status.V4UsingIPs)
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V4AvailableIPs.AddInt(1).Equal(newUnerlayExternalSubnet.Status.V4AvailableIPs))
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V4UsingIPs.SubInt(1).Equal(newUnerlayExternalSubnet.Status.V4UsingIPs))
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4AvailableIPRange, newUnerlayExternalSubnet.Status.V4AvailableIPRange)
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V4UsingIPRange, newUnerlayExternalSubnet.Status.V4UsingIPRange)
 		} else {
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPs+1, newUnerlayExternalSubnet.Status.V6AvailableIPs)
-			framework.ExpectEqual(oldUnderlayExternalSubnet.Status.V6UsingIPs-1, newUnerlayExternalSubnet.Status.V6UsingIPs)
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V6AvailableIPs.AddInt(1).Equal(newUnerlayExternalSubnet.Status.V6AvailableIPs))
+			framework.ExpectTrue(oldUnderlayExternalSubnet.Status.V6UsingIPs.SubInt(1).Equal(newUnerlayExternalSubnet.Status.V6UsingIPs))
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6AvailableIPRange, newUnerlayExternalSubnet.Status.V6AvailableIPRange)
 			framework.ExpectNotEqual(oldUnderlayExternalSubnet.Status.V6UsingIPRange, newUnerlayExternalSubnet.Status.V6UsingIPRange)
 		}
