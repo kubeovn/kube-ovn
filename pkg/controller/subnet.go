@@ -61,12 +61,14 @@ func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
 		return false
 	}
 
-	if subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs == 0 {
+	if subnet.Status.V4UsingIPs.EqualInt64(0) && subnet.Status.V6UsingIPs.EqualInt64(0) {
 		return true
 	}
 
+	usingIPs := subnet.Status.V4UsingIPs.Add(subnet.Status.V6UsingIPs)
+
 	if subnet.Status.U2OInterconnectionIP != "" {
-		return int(subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
+		return usingIPs.EqualInt64(int64(len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))))
 	}
 
 	return false

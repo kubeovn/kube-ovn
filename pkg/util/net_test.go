@@ -446,34 +446,106 @@ func TestCheckProtocol(t *testing.T) {
 	}
 }
 
-func TestAddressCount(t *testing.T) {
+func TestAddressCountBigInt(t *testing.T) {
+	// 2^64 - 2: the expected count for an IPv6 /64 subnet
+	ipv6Slash64Want := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(2))
+
 	tests := []struct {
 		name    string
 		network *net.IPNet
-		want    float64
+		want    *big.Int
 	}{
 		{
-			name: "base",
+			name: "ipv4_24",
 			network: &net.IPNet{
 				IP:   net.ParseIP("192.168.1.0"),
 				Mask: net.IPMask{255, 255, 255, 0},
 			},
-			want: 254,
+			want: big.NewInt(254),
 		},
 		{
-			name: "baseNoIP",
+			name: "ipv4_31",
 			network: &net.IPNet{
 				IP:   net.ParseIP("192.168.1.0"),
 				Mask: net.IPMask{255, 255, 255, 254},
 			},
-			want: 2,
+			want: big.NewInt(2),
+		},
+		{
+			name: "ipv4_32",
+			network: &net.IPNet{
+				IP:   net.ParseIP("192.168.1.1"),
+				Mask: net.IPMask{255, 255, 255, 255},
+			},
+			want: big.NewInt(1),
+		},
+		{
+			name: "ipv6_64",
+			network: &net.IPNet{
+				IP:   net.ParseIP("fd00::"),
+				Mask: net.CIDRMask(64, 128),
+			},
+			want: ipv6Slash64Want,
+		},
+		{
+			name: "ipv6_128",
+			network: &net.IPNet{
+				IP:   net.ParseIP("fd00::1"),
+				Mask: net.CIDRMask(128, 128),
+			},
+			want: big.NewInt(1),
+		},
+		{
+			name: "ipv6_127",
+			network: &net.IPNet{
+				IP:   net.ParseIP("fd00::"),
+				Mask: net.CIDRMask(127, 128),
+			},
+			want: big.NewInt(2),
 		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := AddressCount(c.network); ans != c.want {
-				t.Errorf("%v expected %v, but %v got",
-					c.network, c.want, ans)
+			result := AddressCountBigInt(c.network)
+			if result.Int.Cmp(c.want) != 0 {
+				t.Errorf("%v expected %v, but %v got", c.network, c.want, result)
+			}
+		})
+	}
+}
+
+func TestCountIPNumsBigInt(t *testing.T) {
+	tests := []struct {
+		name       string
+		excludeIPs []string
+		want       int64
+	}{
+		{
+			name:       "single_ip",
+			excludeIPs: []string{"192.168.1.1"},
+			want:       1,
+		},
+		{
+			name:       "range",
+			excludeIPs: []string{"192.168.1.1..192.168.1.10"},
+			want:       10,
+		},
+		{
+			name:       "mixed",
+			excludeIPs: []string{"192.168.1.1", "192.168.1.10..192.168.1.20"},
+			want:       12,
+		},
+		{
+			name:       "empty",
+			excludeIPs: []string{},
+			want:       0,
+		},
+	}
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			result := CountIPNumsBigInt(c.excludeIPs)
+			if !result.EqualInt64(c.want) {
+				t.Errorf("expected %v, but %v got", c.want, result)
 			}
 		})
 	}
@@ -1188,7 +1260,7 @@ func TestCountIpNums(t *testing.T) {
 	tests := []struct {
 		name string
 		excl []string
-		want float64
+		want int64
 	}{
 		{
 			name: "base",
@@ -1203,8 +1275,8 @@ func TestCountIpNums(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			ans := CountIPNums(c.excl)
-			if ans != c.want {
+			ans := CountIPNumsBigInt(c.excl)
+			if !ans.EqualInt64(c.want) {
 				t.Errorf("%v expected %v but %v got",
 					c.excl, c.want, ans)
 			}

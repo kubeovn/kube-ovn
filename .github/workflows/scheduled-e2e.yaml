@@ -1095,9 +1095,11 @@ jobs:
           - release-1.11 => release-1.12
           - release-1.11 => release-1.13
           - release-1.12 => release-1.13
-          - release-1.11 => master
-          - release-1.12 => master
+          - release-1.13 => release-1.14
+          - release-1.14 => release-1.15
           - release-1.13 => master
+          - release-1.14 => master
+          - release-1.15 => master
     steps:
       - uses: actions/checkout@v6
       - uses: azure/setup-helm@v5.0.0

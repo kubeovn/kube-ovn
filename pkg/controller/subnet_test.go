@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -36,7 +37,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			name: "deleted with no IPs in use",
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 0, V6UsingIPs: 0},
+				Status:     kubeovnv1.SubnetStatus{},
 			},
 			want: true,
 		},
@@ -44,7 +45,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			name: "deleted with V4 IPs in use",
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 2, V6UsingIPs: 0},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(2), V6UsingIPs: internal.BigInt{}},
 			},
 			want: false,
 		},
@@ -52,7 +53,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			name: "deleted dual-stack with only V6 IPs in use",
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 0, V6UsingIPs: 3},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.BigInt{}, V6UsingIPs: internal.NewBigInt(3)},
 			},
 			want: false,
 		},
@@ -60,7 +61,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			name: "deleted dual-stack with both V4 and V6 IPs in use",
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: 1, V6UsingIPs: 1},
+				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.NewBigInt(1)},
 			},
 			want: false,
 		},
@@ -69,7 +70,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
 				Status: kubeovnv1.SubnetStatus{
-					V4UsingIPs: 1, V6UsingIPs: 0,
+					V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.BigInt{},
 					U2OInterconnectionIP: "10.0.0.1",
 				},
 			},
@@ -80,7 +81,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
 				Status: kubeovnv1.SubnetStatus{
-					V4UsingIPs: 1, V6UsingIPs: 1,
+					V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.NewBigInt(1),
 					U2OInterconnectionIP: "10.0.0.1,fd00::1",
 				},
 			},
@@ -91,7 +92,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			subnet: &kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
 				Status: kubeovnv1.SubnetStatus{
-					V4UsingIPs: 2, V6UsingIPs: 1,
+					V4UsingIPs: internal.NewBigInt(2), V6UsingIPs: internal.NewBigInt(1),
 					U2OInterconnectionIP: "10.0.0.1,fd00::1",
 				},
 			},

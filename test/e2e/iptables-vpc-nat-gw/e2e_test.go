@@ -964,18 +964,18 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Verify IP count and range changes
 		switch afterCreateSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(initialV4AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(initialV4UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
 				"V4AvailableIPRange should change after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
 				"V4UsingIPRange should change after IptablesEIP creation")
 		case apiv1.ProtocolIPv6:
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(initialV6AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(initialV6UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
 				"V6AvailableIPRange should change after IptablesEIP creation")
@@ -983,13 +983,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V6UsingIPRange should change after IptablesEIP creation")
 		default:
 			// Dual stack
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(initialV4AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(initialV4UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should increase by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(initialV6AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(initialV6UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
 				"V4AvailableIPRange should change after IptablesEIP creation")
@@ -1038,9 +1038,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		switch afterDeleteSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(afterCreateV4AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(afterCreateV4UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			// Verify IP range changed
@@ -1056,9 +1056,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V4UsingIPs should return to initial value after IptablesEIP deletion")
 		case apiv1.ProtocolIPv6:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(afterCreateV6AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(afterCreateV6UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			// Verify IP range changed
@@ -1074,13 +1074,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V6UsingIPs should return to initial value after IptablesEIP deletion")
 		default:
 			// Dual stack
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(afterCreateV4AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(afterCreateV4UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(afterCreateV6AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(afterCreateV6UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
