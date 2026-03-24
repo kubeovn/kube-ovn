@@ -17,6 +17,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -767,11 +768,7 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 //  1. VirtualMachineInstanceIDLabel (vmi.kubevirt.io/id) — unique, available in KubeVirt >= 1.7
 //  2. DeprecatedVirtualMachineNameLabel (vm.kubevirt.io/name) — may not be unique when VM hostname is set
 //  3. DomainAnnotation (kubevirt.io/domain) — always the real VMI name, handles names > 63 chars
-//
-// The namespacePods parameter is an optional pre-fetched pod list for the annotation fallback.
-// Pass nil to have the method fetch pods itself; pass a cached list to avoid repeated queries
-// when calling this method in a loop.
-func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string, namespacePods []*v1.Pod) bool {
+func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string) bool {
 	// Try the new unique label first (KubeVirt >= 1.7)
 	selector := labels.SelectorFromSet(map[string]string{kubevirtv1.VirtualMachineInstanceIDLabel: vmiName})
 	launcherPods, err := c.podsLister.Pods(namespace).List(selector)
@@ -802,14 +799,18 @@ func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string, name
 
 	// Final fallback: for VMI names > 63 chars where VirtualMachineInstanceIDLabel is hashed,
 	// match by kubevirt.io/domain annotation which always contains the real VMI name.
-	if namespacePods == nil {
-		namespacePods, err = c.podsLister.Pods(namespace).List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list all pods in namespace %s for vmi annotation lookup: %v", namespace, err)
-			return false
-		}
+	// Use the deprecated label as a selector to narrow down to virt-launcher pods only,
+	// then match the annotation for the exact VMI name.
+	selector = labels.Everything()
+	if req, err := labels.NewRequirement(kubevirtv1.DeprecatedVirtualMachineNameLabel, selection.Exists, nil); err == nil {
+		selector = selector.Add(*req)
 	}
-	for _, p := range namespacePods {
+	candidates, err := c.podsLister.Pods(namespace).List(selector)
+	if err != nil {
+		klog.Errorf("failed to list virt-launcher pods in namespace %s for vmi annotation lookup: %v", namespace, err)
+		return false
+	}
+	for _, p := range candidates {
 		if p.Annotations[kubevirtv1.DomainAnnotation] == vmiName {
 			klog.V(5).Infof("found launcher pod %s by %s annotation for vmi %s/%s, keeping ovs interface %s",
 				p.Name, kubevirtv1.DomainAnnotation, namespace, vmiName, iface)
@@ -851,7 +852,7 @@ func (c *Controller) gcInterfaces() {
 			// Pod not found by name. Check if this might be a KubeVirt VM.
 			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VMI name (not the launcher pod name).
 			// Try to find launcher pods using KubeVirt labels/annotations.
-			if c.isVMLauncherPodAlive(podNamespace, podName, iface, nil) {
+			if c.isVMLauncherPodAlive(podNamespace, podName, iface) {
 				continue
 			}
 

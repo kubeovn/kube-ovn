@@ -120,7 +120,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 				podsLister: listerv1.NewPodLister(indexer),
 			}
 
-			result := c.isVMLauncherPodAlive(tt.namespace, tt.vmiName, "test-iface", nil)
+			result := c.isVMLauncherPodAlive(tt.namespace, tt.vmiName, "test-iface")
 			require.Equal(t, tt.expected, result)
 		})
 	}
