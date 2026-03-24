@@ -35,14 +35,14 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 	tests := []struct {
 		name      string
 		pods      []*v1.Pod
-		podName   string
+		vmiName   string
 		namespace string
 		expected  bool
 	}{
 		{
 			name:      "no pods in namespace",
 			pods:      nil,
-			podName:   "test-vm",
+			vmiName:   "test-vm",
 			namespace: "default",
 			expected:  false,
 		},
@@ -51,7 +51,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			pods: []*v1.Pod{
 				newLauncherPod("virt-launcher-test-vm-abc", "default", "test-vm", true),
 			},
-			podName:   "test-vm",
+			vmiName:   "test-vm",
 			namespace: "default",
 			expected:  true,
 		},
@@ -60,7 +60,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			pods: []*v1.Pod{
 				newLauncherPod("virt-launcher-test-vm-abc", "default", "test-vm", false),
 			},
-			podName:   "test-vm",
+			vmiName:   "test-vm",
 			namespace: "default",
 			expected:  true,
 		},
@@ -83,7 +83,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 					},
 				},
 			},
-			podName:   "this-is-a-very-long-vmi-name-that-exceeds-63-characters-and-gets-hashed-in-the-label",
+			vmiName:   "this-is-a-very-long-vmi-name-that-exceeds-63-characters-and-gets-hashed-in-the-label",
 			namespace: "default",
 			expected:  true,
 		},
@@ -92,7 +92,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			pods: []*v1.Pod{
 				newLauncherPod("virt-launcher-other-vm-abc", "default", "other-vm", true),
 			},
-			podName:   "test-vm",
+			vmiName:   "test-vm",
 			namespace: "default",
 			expected:  false,
 		},
@@ -101,7 +101,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			pods: []*v1.Pod{
 				newLauncherPod("virt-launcher-test-vm-abc", "other-ns", "test-vm", true),
 			},
-			podName:   "test-vm",
+			vmiName:   "test-vm",
 			namespace: "default",
 			expected:  false,
 		},
@@ -120,7 +120,7 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 				podsLister: listerv1.NewPodLister(indexer),
 			}
 
-			result := c.isVMLauncherPodAlive(tt.namespace, tt.podName, "test-iface")
+			result := c.isVMLauncherPodAlive(tt.namespace, tt.vmiName, "test-iface", nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
