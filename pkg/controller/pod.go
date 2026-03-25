@@ -716,13 +716,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
-	// Clean stale attachment IPs/LSPs from previous NAD references when a new
-	// VM pod starts. This handles the stop→patch NAD→start workflow where the
-	// old pod deletion was processed before the NAD change.
-	if isVMPod && c.config.EnableKeepVMIP {
-		c.cleanStaleVMAttachmentIPs(pod, podName, needAllocatePodNets)
-	}
-
 	oldPod := pod
 	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -733,6 +726,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		}
 		klog.Errorf("failed to get pod %s/%s: %v", namespace, name, err)
 		return nil, err
+	}
+
+	// Clean stale attachment IPs/LSPs from previous NAD references when a new
+	// VM pod starts. This handles the stop→patch NAD→start workflow where the
+	// old pod deletion was processed before the NAD change.
+	// Called after pod re-fetch so getPodKubeovnNets sees current annotations.
+	if isVMPod && c.config.EnableKeepVMIP {
+		c.cleanStaleVMAttachmentIPs(pod, podName)
 	}
 
 	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
@@ -1144,12 +1145,10 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 			}
 		}
-		// Release orphaned attachment IPs from NAD hotplug
-		for _, podNet := range podNets {
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-			if !slices.Contains(vmOrphanedPorts, portName) {
-				continue
-			}
+		// Release orphaned attachment IPs from NAD hotplug.
+		// Iterate vmOrphanedPorts directly (not podNets) so cleanup works
+		// even if getPodKubeovnNets fails or returns incomplete results.
+		for _, portName := range vmOrphanedPorts {
 			ipCR, err := c.ipsLister.Get(portName)
 			if err != nil {
 				if !k8serrors.IsNotFound(err) {
@@ -1165,8 +1164,11 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 						return err
 					}
 				}
-				c.ipam.ReleaseAddressByNic(podKey, portName, podNet.Subnet.Name)
-				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
+				subnetName := ipCR.Spec.Subnet
+				if subnetName != "" {
+					c.ipam.ReleaseAddressByNic(podKey, portName, subnetName)
+					c.updateSubnetStatusQueue.Add(subnetName)
+				}
 			}
 		}
 	} else {
@@ -2518,16 +2520,21 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) []
 // this VM but are not part of the current pod's networks. This handles
 // the stop→patch NAD→start workflow where the old pod deletion was
 // processed before the NAD change, leaving stale attachment resources.
-func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string, currentNets []*kubeovnNet) {
+func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
-	// Build set of current network port names
-	currentPorts := make(map[string]bool, len(currentNets))
-	for _, podNet := range currentNets {
+	// Build set of current network port names from the pod's full network list.
+	// This uses the re-fetched pod with up-to-date annotations.
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to get kube-ovn nets of pod %s for stale cleanup: %v", podKey, err)
+		return
+	}
+	currentPorts := make(map[string]bool, len(podNets)+1)
+	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		currentPorts[portName] = true
 	}
-
 	// Also include the default network port
 	defaultPort := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 	currentPorts[defaultPort] = true

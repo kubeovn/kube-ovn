@@ -493,13 +493,13 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Verifying new attachment IP is allocated")
 		attachPortNameB := ovs.PodNameToPortName(vmName, namespaceName, providerB)
-		newAttachIP := ipClient.Get(attachPortNameB)
-		framework.ExpectNotEmpty(newAttachIP.Spec.IPAddress)
+		framework.ExpectTrue(ipClient.WaitToBeReady(attachPortNameB, 2*time.Minute))
 
 		ginkgo.By("Verifying primary network IP is preserved")
 		podList, err = podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(podList.Items, 1)
+		framework.ExpectNotEmpty(podList.Items[0].Status.PodIPs)
 		framework.ExpectEqual(primaryIPs, podList.Items[0].Status.PodIPs)
 	})
 })
