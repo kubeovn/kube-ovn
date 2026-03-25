@@ -289,16 +289,27 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 		return false
 	}
 
+	hasReadyEndpoint := false
 	for _, eps := range epsList.Items {
 		for _, ep := range eps.Endpoints {
 			if (ep.Conditions.Ready != nil && !*ep.Conditions.Ready) || len(ep.Addresses) == 0 {
 				continue
 			}
 
-			// Found an address, check its availability. We only need one.
-			klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", ep.Addresses[0], eps.Namespace, eps.Name, service)
-			return checkNorthdEpAvailable(ep.Addresses[0])
+			hasReadyEndpoint = true
+			for _, address := range ep.Addresses {
+				if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+					continue
+				}
+
+				klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", address, eps.Namespace, eps.Name, service)
+				return checkNorthdEpAvailable(address)
+			}
 		}
+	}
+
+	if hasReadyEndpoint {
+		return true
 	}
 
 	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s", namespace, service)
