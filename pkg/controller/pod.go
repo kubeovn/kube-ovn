@@ -716,6 +716,13 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
+	// Clean stale attachment IPs/LSPs from previous NAD references when a new
+	// VM pod starts. This handles the stop→patch NAD→start workflow where the
+	// old pod deletion was processed before the NAD change.
+	if isVMPod && c.config.EnableKeepVMIP {
+		c.cleanStaleVMAttachmentIPs(pod, podName, needAllocatePodNets)
+	}
+
 	oldPod := pod
 	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -2505,6 +2512,63 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) []
 	}
 
 	return orphanedPorts
+}
+
+// cleanStaleVMAttachmentIPs removes IP CRs and OVN LSPs that belong to
+// this VM but are not part of the current pod's networks. This handles
+// the stop→patch NAD→start workflow where the old pod deletion was
+// processed before the NAD change, leaving stale attachment resources.
+func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string, currentNets []*kubeovnNet) {
+	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+
+	// Build set of current network port names
+	currentPorts := make(map[string]bool, len(currentNets))
+	for _, podNet := range currentNets {
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		currentPorts[portName] = true
+	}
+
+	// Also include the default network port
+	defaultPort := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+	currentPorts[defaultPort] = true
+
+	// List all existing LSPs for this VM
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of vm %s for stale cleanup: %v", podKey, err)
+		return
+	}
+
+	for _, port := range ports {
+		if currentPorts[port.Name] {
+			continue
+		}
+		klog.Infof("cleaning stale vm attachment lsp %s (not in current pod networks)", port.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete stale lsp %s: %v", port.Name, err)
+		}
+
+		subnetName := port.ExternalIDs["ls"]
+		ipCR, err := c.ipsLister.Get(port.Name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get ip %s: %v", port.Name, err)
+			}
+			continue
+		}
+		if ipCR.Labels[util.IPReservedLabel] != "true" {
+			klog.Infof("deleting stale vm attachment ip CR %s", ipCR.Name)
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
+				}
+			}
+			if subnetName != "" {
+				c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
+				c.updateSubnetStatusQueue.Add(subnetName)
+			}
+		}
+	}
 }
 
 func isVMPod(pod *v1.Pod) (bool, string) {
