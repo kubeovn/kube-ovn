@@ -813,6 +813,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 					}
 				}
 
+				if ip == nil {
+					continue
+				}
 				rule.Src = &net.IPNet{IP: ip, Mask: net.CIDRMask(maskBits, maskBits)}
 				rules = append(rules, *rule)
 			}
@@ -820,9 +823,10 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	} else {
 		for i := range protocols {
 			rule.Family, _ = util.ProtocolToFamily(protocols[i])
-			if len(cidr) == len(protocols) {
-				_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			if i >= len(cidr) {
+				continue
 			}
+			_, rule.Src, _ = net.ParseCIDR(cidr[i])
 			rules = append(rules, *rule)
 		}
 	}
