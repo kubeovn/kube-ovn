@@ -1,14 +1,21 @@
 package daemon
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newLauncherPod(name, namespace, vmiName string, useNewLabel bool) *v1.Pod {
@@ -123,5 +130,91 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			result := c.isVMLauncherPodAlive(tt.namespace, tt.vmiName, "test-iface")
 			require.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
+	t.Parallel()
+
+	pnName := "test-pn"
+	nodeName := "test-node"
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			Labels: map[string]string{
+				fmt.Sprintf(util.ProviderNetworkReadyTemplate, pnName):   "true",
+				fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pnName): "true",
+			},
+		},
+	}
+	fakeClient := fake.NewSimpleClientset(node)
+
+	c := &Controller{
+		config: &Configuration{KubeClient: fakeClient},
+	}
+	pn := &kubeovnv1.ProviderNetwork{
+		ObjectMeta: metav1.ObjectMeta{Name: pnName},
+		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
+	}
+
+	// PatchLabels is called before ovsCleanProviderNetwork, so the patch is
+	// captured even when ovsCleanProviderNetwork fails in a test environment.
+	_ = c.cleanProviderNetwork(pn, node)
+
+	vlanIntKey := fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pnName)
+	var patchFound bool
+	for _, action := range fakeClient.Actions() {
+		pa, ok := action.(k8stesting.PatchAction)
+		if !ok {
+			continue
+		}
+		if strings.Contains(string(pa.GetPatch()), vlanIntKey) {
+			patchFound = true
+			break
+		}
+	}
+	require.True(t, patchFound, "patch should include %s label cleanup", vlanIntKey)
+}
+
+func TestCleanProviderNetworkLabelConsistency(t *testing.T) {
+	t.Parallel()
+
+	pnName := "test-pn"
+
+	// All labels that handleDeleteProviderNetwork cleans (except ExcludeTemplate
+	// which is set to "true" in cleanProviderNetwork instead of nil).
+	expectedCleanedLabels := []string{
+		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pnName),
+		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pnName),
+		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pnName),
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pnName),
+	}
+
+	labels := make(map[string]string)
+	for _, key := range expectedCleanedLabels {
+		labels[key] = "true"
+	}
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: labels}}
+	fakeClient := fake.NewSimpleClientset(node)
+
+	c := &Controller{config: &Configuration{KubeClient: fakeClient}}
+	pn := &kubeovnv1.ProviderNetwork{
+		ObjectMeta: metav1.ObjectMeta{Name: pnName},
+		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
+	}
+
+	_ = c.cleanProviderNetwork(pn, node)
+
+	for _, action := range fakeClient.Actions() {
+		pa, ok := action.(k8stesting.PatchAction)
+		if !ok {
+			continue
+		}
+		patchJSON := string(pa.GetPatch())
+		for _, key := range expectedCleanedLabels {
+			require.Contains(t, patchJSON, key,
+				"cleanProviderNetwork should clean label %s (consistent with handleDeleteProviderNetwork)", key)
+		}
 	}
 }
