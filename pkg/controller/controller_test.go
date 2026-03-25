@@ -15,6 +15,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -44,7 +45,10 @@ import (
 func TestMain(m *testing.M) {
 	// Disable WatchListClient feature gate because fake clients (SimpleClientset)
 	// do not support WatchList semantics, which is enabled by default since k8s 1.35.
-	os.Setenv("KUBE_FEATURE_WatchListClient", "false")
+	if err := os.Setenv("KUBE_FEATURE_WatchListClient", "false"); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to set KUBE_FEATURE_WatchListClient: %v\n", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 
