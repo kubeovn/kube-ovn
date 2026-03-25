@@ -15,6 +15,7 @@ package controller
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -39,6 +40,13 @@ import (
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestMain(m *testing.M) {
+	// Disable WatchListClient feature gate because fake clients (SimpleClientset)
+	// do not support WatchList semantics, which is enabled by default since k8s 1.35.
+	os.Setenv("KUBE_FEATURE_WatchListClient", "false")
+	os.Exit(m.Run())
+}
 
 type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
