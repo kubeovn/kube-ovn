@@ -826,7 +826,12 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 			if i >= len(cidr) {
 				continue
 			}
-			_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			_, ipNet, err := net.ParseCIDR(cidr[i])
+			if err != nil {
+				klog.Errorf("failed to parse CIDR %q for subnet %s policy routing: %v", cidr[i], subnet.Name, err)
+				continue
+			}
+			rule.Src = ipNet
 			rules = append(rules, *rule)
 		}
 	}

@@ -253,6 +253,28 @@ func TestGetPolicyRouting(t *testing.T) {
 				require.Equal(t, "fd00::/120", rules[1].Src.String())
 			},
 		},
+		{
+			name: "centralized: dual-stack EGW + single-stack CIDR skips missing protocol",
+			subnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:                   clusterRouter,
+					CIDRBlock:             "10.16.0.0/24",
+					ExternalEgressGateway: "10.0.0.1,fd00::1",
+					GatewayType:           kubeovnv1.GWCentralizedType,
+					GatewayNode:           nodeName,
+					PolicyRoutingTableID:  tableID,
+					PolicyRoutingPriority: priority,
+				},
+			},
+			expectedRules: 1,
+			expectedRtns:  2,
+			validateRules: func(t *testing.T, rules []netlink.Rule) {
+				require.Equal(t, unix.AF_INET, rules[0].Family)
+				require.NotNil(t, rules[0].Src)
+				require.Equal(t, "10.16.0.0/24", rules[0].Src.String())
+			},
+		},
 	}
 
 	for _, tt := range tests {
