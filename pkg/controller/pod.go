@@ -2552,7 +2552,8 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 		}
 		klog.Infof("cleaning stale vm attachment lsp %s (not in current pod networks)", port.Name)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
-			klog.Errorf("failed to delete stale lsp %s: %v", port.Name, err)
+			klog.Errorf("failed to delete stale lsp %s, skipping IP cleanup to avoid inconsistency: %v", port.Name, err)
+			continue
 		}
 
 		subnetName := port.ExternalIDs["ls"]
