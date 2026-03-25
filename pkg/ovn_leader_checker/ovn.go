@@ -289,30 +289,36 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 		return false
 	}
 
-	hasReadyEndpoint := false
+	// Determine the expected AddressType based on pod IP protocol
+	podIP := os.Getenv(util.EnvPodIP)
+	var expectedAddrType discoveryv1.AddressType
+	if util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6 {
+		expectedAddrType = discoveryv1.AddressTypeIPv6
+	} else {
+		expectedAddrType = discoveryv1.AddressTypeIPv4
+	}
+
 	for _, eps := range epsList.Items {
+		// Only check endpoint slices matching the pod IP protocol
+		if eps.AddressType != expectedAddrType {
+			continue
+		}
+
 		for _, ep := range eps.Endpoints {
 			if (ep.Conditions.Ready != nil && !*ep.Conditions.Ready) || len(ep.Addresses) == 0 {
 				continue
 			}
 
-			hasReadyEndpoint = true
 			for _, address := range ep.Addresses {
-				if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
-					continue
-				}
-
 				klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", address, eps.Namespace, eps.Name, service)
-				return checkNorthdEpAvailable(address)
+				if checkNorthdEpAvailable(address) {
+					return true
+				}
 			}
 		}
 	}
 
-	if hasReadyEndpoint {
-		return true
-	}
-
-	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s", namespace, service)
+	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s with AddressType %s", namespace, service, expectedAddrType)
 	return false
 }
 
