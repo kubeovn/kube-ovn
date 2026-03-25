@@ -15,6 +15,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -39,6 +41,17 @@ import (
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestMain(m *testing.M) {
+	// Disable WatchListClient feature gate because the NAD fake client doesn't
+	// implement IsWatchListSemanticsUnSupported(), causing informer reflectors
+	// to hang with WatchList (enabled by default since k8s 1.35).
+	if err := os.Setenv("KUBE_FEATURE_WatchListClient", "false"); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to set KUBE_FEATURE_WatchListClient: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
 
 type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
