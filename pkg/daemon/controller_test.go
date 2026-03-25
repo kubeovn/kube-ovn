@@ -1,8 +1,8 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -133,6 +133,19 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 	}
 }
 
+// parsePatchLabels extracts the metadata.labels map from a merge-patch JSON.
+// Each key maps to a *string (nil means the label is being removed).
+func parsePatchLabels(t *testing.T, patchBytes []byte) map[string]*string {
+	t.Helper()
+	var raw struct {
+		Metadata struct {
+			Labels map[string]*string `json:"labels"`
+		} `json:"metadata"`
+	}
+	require.NoError(t, json.Unmarshal(patchBytes, &raw))
+	return raw.Metadata.Labels
+}
+
 func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
 	t.Parallel()
 
@@ -169,7 +182,10 @@ func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
 		if !ok {
 			continue
 		}
-		if strings.Contains(string(pa.GetPatch()), vlanIntKey) {
+		labels := parsePatchLabels(t, pa.GetPatch())
+		val, exists := labels[vlanIntKey]
+		if exists {
+			require.Nil(t, val, "VlanIntTemplate label should be set to null (removal)")
 			patchFound = true
 			break
 		}
@@ -206,15 +222,21 @@ func TestCleanProviderNetworkLabelConsistency(t *testing.T) {
 
 	_ = c.cleanProviderNetwork(pn, node)
 
+	var patchFound bool
 	for _, action := range fakeClient.Actions() {
 		pa, ok := action.(k8stesting.PatchAction)
 		if !ok {
 			continue
 		}
-		patchJSON := string(pa.GetPatch())
+		patchFound = true
+		patchLabels := parsePatchLabels(t, pa.GetPatch())
 		for _, key := range expectedCleanedLabels {
-			require.Contains(t, patchJSON, key,
+			val, exists := patchLabels[key]
+			require.True(t, exists,
 				"cleanProviderNetwork should clean label %s (consistent with handleDeleteProviderNetwork)", key)
+			require.Nil(t, val,
+				"label %s should be set to null (removal)", key)
 		}
 	}
+	require.True(t, patchFound, "expected at least one PatchAction to be recorded")
 }
