@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -177,12 +178,20 @@ func (c *VMClient) WaitToDisappear(name string, _, timeout time.Duration) error 
 	return nil
 }
 
-// Patch patches the vm with the given patch data.
+// Patch patches the vm with the given patch data, retrying on transient API errors.
 func (c *VMClient) Patch(name string, patchType types.PatchType, data []byte) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
-	vm, err := c.VirtualMachineInterface.Patch(context.TODO(), name, patchType, data, metav1.PatchOptions{})
+	var patchedVM *v1.VirtualMachine
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
+		vm, err := c.VirtualMachineInterface.Patch(ctx, name, patchType, data, metav1.PatchOptions{})
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch vm %q", name)
+		}
+		patchedVM = vm
+		return true, nil
+	})
 	ExpectNoError(err, "failed to patch vm %s", name)
-	return vm
+	return patchedVM.DeepCopy()
 }
 
 // MakeVMWithMultusNetwork creates a VM with an additional multus secondary network using bridge binding.

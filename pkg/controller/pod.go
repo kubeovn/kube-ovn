@@ -1057,7 +1057,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	var keepIPCR, isOwnerRefToDel, isOwnerRefDeleted bool
 	var ipcrToDelete []string
-	var vmOrphanedPorts []string
+	var vmOrphanedPorts map[string]bool
 	isStsPod, stsName, stsUID := isStatefulSetPod(pod)
 	if isStsPod {
 		if !pod.DeletionTimestamp.IsZero() {
@@ -1128,7 +1128,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	}
 	if keepIPCR {
 		for _, port := range ports {
-			if slices.Contains(vmOrphanedPorts, port.Name) {
+			if vmOrphanedPorts[port.Name] {
 				// Orphaned attachment LSP from NAD hotplug: delete it.
 				// This only affects attachment-specific ports (e.g., vm.ns.nad-a.ns.ovn),
 				// never shared primary network LSPs (e.g., vm.ns).
@@ -1148,7 +1148,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		// Release orphaned attachment IPs from NAD hotplug.
 		// Iterate vmOrphanedPorts directly (not podNets) so cleanup works
 		// even if getPodKubeovnNets fails or returns incomplete results.
-		for _, portName := range vmOrphanedPorts {
+		for portName := range vmOrphanedPorts {
 			ipCR, err := c.ipsLister.Get(portName)
 			if err != nil {
 				if !k8serrors.IsNotFound(err) {
@@ -2462,7 +2462,7 @@ func shouldCleanPodNet(c *Controller, pod *v1.Pod, ownerRefName, ownerRefSubnet,
 // that are no longer referenced by the VM's current spec (e.g., KubeVirt NAD hotplug).
 // It only uses vm.Spec.Template.Spec.Networks as the authoritative source because
 // template annotations may not be updated when VEP #140 (LiveUpdateNADRef) changes networkName.
-func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) []string {
+func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) map[string]bool {
 	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), vmName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get vm %s/%s for orphaned port detection: %v", pod.Namespace, vmName, err)
@@ -2499,7 +2499,7 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) []
 		return nil
 	}
 
-	var orphanedPorts []string
+	orphanedPorts := make(map[string]bool)
 	for _, attachNet := range attachmentNets {
 		if attachNet.NadName == "" || attachNet.NadNamespace == "" {
 			continue
@@ -2509,10 +2509,13 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) []
 			portName := ovs.PodNameToPortName(vmName, pod.Namespace, attachNet.ProviderName)
 			klog.Infof("attachment net %s on vm pod %s/%s is no longer in VM spec, marking port %s as orphaned",
 				nadKey, pod.Namespace, pod.Name, portName)
-			orphanedPorts = append(orphanedPorts, portName)
+			orphanedPorts[portName] = true
 		}
 	}
 
+	if len(orphanedPorts) == 0 {
+		return nil
+	}
 	return orphanedPorts
 }
 
