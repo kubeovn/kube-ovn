@@ -43,8 +43,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Disable WatchListClient feature gate because fake clients (SimpleClientset)
-	// do not support WatchList semantics, which is enabled by default since k8s 1.35.
+	// Disable WatchListClient feature gate because the NAD fake client doesn't
+	// implement IsWatchListSemanticsUnSupported(), causing informer reflectors
+	// to hang with WatchList (enabled by default since k8s 1.35).
 	if err := os.Setenv("KUBE_FEATURE_WatchListClient", "false"); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to set KUBE_FEATURE_WatchListClient: %v\n", err)
 		os.Exit(1)
