@@ -163,6 +163,11 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 	return subnet, nil
 }
 
+// errVlanNotReady is returned when the vlan has not been fully processed by
+// the vlan handler yet. The caller should requeue silently without patching
+// the subnet status as failed.
+var errVlanNotReady = errors.New("vlan not ready")
+
 func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vlan == "" {
 		return nil
@@ -188,16 +193,15 @@ func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 	// the vlan handler completes successfully (including conflict check).
 	// This prevents a race where the subnet allocates IPAM before the vlan's
 	// conflict status is determined.
+	if vlan.Spec.Provider == "" {
+		return fmt.Errorf("vlan %s provider not yet set, deferring subnet %s: %w", vlan.Name, subnet.Name, errVlanNotReady)
+	}
 	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
 	if err != nil {
-		err = fmt.Errorf("failed to get provider network %s for vlan %s: %w", vlan.Spec.Provider, vlan.Name, err)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("vlan %s not yet ready (provider network %s not found): %w", vlan.Name, vlan.Spec.Provider, errVlanNotReady)
 	}
 	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
-		err = fmt.Errorf("vlan %s not yet processed by vlan handler, deferring subnet %s", vlan.Name, subnet.Name)
-		klog.Info(err)
-		return err
+		return fmt.Errorf("vlan %s not yet processed by vlan handler, deferring subnet %s: %w", vlan.Name, subnet.Name, errVlanNotReady)
 	}
 
 	return nil
@@ -511,6 +515,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	err = c.validateSubnetVlan(subnet)
 	if err != nil {
+		if errors.Is(err, errVlanNotReady) {
+			// vlan hasn't been processed yet, requeue silently without
+			// marking the subnet as failed
+			klog.Infof("deferring subnet %s: %v", key, err)
+			return err
+		}
 		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {

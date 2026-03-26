@@ -629,9 +629,13 @@ func Test_validateSubnetVlan(t *testing.T) {
 		Spec:       kubeovnv1.VlanSpec{ID: 300, Provider: "test-pn"},
 		Status:     kubeovnv1.VlanStatus{Conflict: false}, // same as ready, but NOT in pn.Status.Vlans
 	}
+	emptyProviderVlan := &kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "empty-provider-vlan"},
+		Spec:       kubeovnv1.VlanSpec{ID: 400, Provider: ""}, // not yet defaulted by vlan handler
+	}
 
 	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Vlans:            []*kubeovnv1.Vlan{conflictVlan, readyVlan, unprocessedVlan},
+		Vlans:            []*kubeovnv1.Vlan{conflictVlan, readyVlan, unprocessedVlan, emptyProviderVlan},
 		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn},
 	})
 	require.NoError(t, err)
@@ -663,7 +667,17 @@ func Test_validateSubnetVlan(t *testing.T) {
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "not yet processed")
+		require.ErrorIs(t, err, errVlanNotReady)
+	})
+
+	t.Run("empty provider vlan is not ready", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{Vlan: "empty-provider-vlan"},
+		}
+		err := ctrl.validateSubnetVlan(subnet)
+		require.Error(t, err)
+		require.ErrorIs(t, err, errVlanNotReady)
 	})
 
 	t.Run("missing vlan returns error", func(t *testing.T) {
