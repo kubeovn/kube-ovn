@@ -176,14 +176,32 @@ func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if vlan.Status.Conflict {
-		err = fmt.Errorf("subnet %s has invalid conflict vlan %s: %w", subnet.Name, vlan.Name, errVlanConflict)
+		err = fmt.Errorf("subnet %s has invalid conflict vlan %s", subnet.Name, vlan.Name)
 		klog.Error(err)
 		return err
 	}
+
+	// Ensure the vlan has been fully processed by the vlan handler before
+	// allowing the subnet to proceed. A newly created vlan has Conflict=false
+	// (zero value) which is indistinguishable from a processed non-conflicting
+	// vlan. Use pn.Status.Vlans as a "vlan ready" signal — only set after
+	// the vlan handler completes successfully (including conflict check).
+	// This prevents a race where the subnet allocates IPAM before the vlan's
+	// conflict status is determined.
+	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+	if err != nil {
+		err = fmt.Errorf("failed to get provider network %s for vlan %s: %w", vlan.Spec.Provider, vlan.Name, err)
+		klog.Error(err)
+		return err
+	}
+	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
+		err = fmt.Errorf("vlan %s not yet processed by vlan handler, deferring subnet %s", vlan.Name, subnet.Name)
+		klog.Info(err)
+		return err
+	}
+
 	return nil
 }
-
-var errVlanConflict = errors.New("vlan conflict")
 
 func formatAddress(subnet *kubeovnv1.Subnet) error {
 	if err := formatCIDR(subnet); err != nil {
@@ -495,19 +513,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err != nil {
 		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
-		if errors.Is(err, errVlanConflict) {
-			// remove from IPAM and clear IP status fields to undo any prior
-			// successful processing that occurred before the vlan became conflicting
-			c.ipam.DeleteSubnet(subnet.Name)
-			subnet.Status.V4AvailableIPs = kubeovnv1.SubnetStatus{}.V4AvailableIPs
-			subnet.Status.V6AvailableIPs = kubeovnv1.SubnetStatus{}.V6AvailableIPs
-			subnet.Status.V4UsingIPs = kubeovnv1.SubnetStatus{}.V4UsingIPs
-			subnet.Status.V6UsingIPs = kubeovnv1.SubnetStatus{}.V6UsingIPs
-			subnet.Status.V4AvailableIPRange = ""
-			subnet.Status.V6AvailableIPRange = ""
-			subnet.Status.V4UsingIPRange = ""
-			subnet.Status.V6UsingIPRange = ""
-		}
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return patchErr

@@ -122,6 +122,12 @@ func (c *Controller) handleAddVlan(key string) error {
 
 	if err = c.checkVlanConflict(vlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+		// re-enqueue subnets so they can see the conflict status and reject
+		for _, subnet := range subnets {
+			if subnet.Spec.Vlan == vlan.Name {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
+		}
 		return err
 	}
 
@@ -136,7 +142,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	// re-enqueue subnets that reference this vlan, so they can proceed
-	// if they were previously blocked by the vlan not being ready
+	// now that the vlan is fully processed
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)

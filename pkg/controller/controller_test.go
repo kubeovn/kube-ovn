@@ -80,6 +80,7 @@ type FakeControllerOptions struct {
 	VpcNatGateways     []*kubeovnv1.VpcNatGateway
 	IPs                []*kubeovnv1.IP
 	Vlans              []*kubeovnv1.Vlan
+	ProviderNetworks   []*kubeovnv1.ProviderNetwork
 	NetworkAttachments []*nadv1.NetworkAttachmentDefinition
 	Pods               []*corev1.Pod
 	Nodes              []*corev1.Node
@@ -158,6 +159,13 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, pn := range opts.ProviderNetworks {
+		_, err := kubeovnClient.KubeovnV1().ProviderNetworks().Create(
+			context.Background(), pn, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
@@ -192,6 +200,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
+	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -223,6 +232,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ipsLister:               ipInformer.Lister(),
 		ipSynced:                alwaysReady,
 		vlansLister:             vlanInformer.Lister(),
+		providerNetworksLister:  providerNetworkInformer.Lister(),
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
 		OVNNbClient:             mockOvnClient,
