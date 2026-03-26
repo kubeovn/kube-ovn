@@ -728,6 +728,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
+	// Clean stale attachment IPs/LSPs from previous NAD references when a new
+	// VM pod starts. This handles the stop→patch NAD→start workflow where the
+	// old pod deletion was processed before the NAD change.
+	// Called after pod re-fetch so getPodKubeovnNets sees current annotations.
+	if isVMPod && c.config.EnableKeepVMIP {
+		c.cleanStaleVMAttachmentIPs(pod, podName)
+	}
+
 	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
 	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
 	if isVpcNatGw {
@@ -1049,6 +1057,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	var keepIPCR, isOwnerRefToDel, isOwnerRefDeleted bool
 	var ipcrToDelete []string
+	var vmOrphanedPorts map[string]bool
 	isStsPod, stsName, stsUID := isStatefulSetPod(pod)
 	if isStsPod {
 		if !pod.DeletionTimestamp.IsZero() {
@@ -1105,6 +1114,13 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				keepIPCR = false
 			}
 		}
+		// Detect orphaned attachment ports from NAD hotplug (KubeVirt VEP #140).
+		// Compare OVN's actual ports against VM spec's desired ports.
+		// These are cleaned selectively in the keepIPCR=true branch to avoid
+		// deleting shared primary network LSPs during live migration.
+		if keepIPCR {
+			vmOrphanedPorts = c.getVMOrphanedAttachmentPorts(pod.Namespace, vmName, ports)
+		}
 	}
 
 	podNets, err := c.getPodKubeovnNets(pod)
@@ -1112,12 +1128,40 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		klog.Errorf("failed to get kube-ovn nets of pod %s: %v", podKey, err)
 	}
 	if keepIPCR {
-		// always remove lsp from port groups
 		for _, port := range ports {
-			klog.Infof("remove lsp %s from all port groups", port.Name)
-			if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
-				klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
-				return err
+			if vmOrphanedPorts[port.Name] {
+				// Orphaned attachment LSP from NAD hotplug: delete and release its IP.
+				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+					klog.Errorf("failed to delete orphaned lsp %s: %v", port.Name, err)
+					return err
+				}
+				ipCR, err := c.ipsLister.Get(port.Name)
+				if err != nil {
+					if !k8serrors.IsNotFound(err) {
+						klog.Errorf("failed to get ip %s: %v", port.Name, err)
+					}
+					continue
+				}
+				if ipCR.Labels[util.IPReservedLabel] != "true" {
+					klog.Infof("delete orphaned vm attachment ip CR %s", ipCR.Name)
+					if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+						if !k8serrors.IsNotFound(err) {
+							klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
+							return err
+						}
+					}
+					if subnetName := ipCR.Spec.Subnet; subnetName != "" {
+						c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
+						c.updateSubnetStatusQueue.Add(subnetName)
+					}
+				}
+			} else {
+				klog.Infof("remove lsp %s from all port groups", port.Name)
+				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
+					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
+					return err
+				}
 			}
 		}
 	} else {
@@ -2405,6 +2449,129 @@ func shouldCleanPodNet(c *Controller, pod *v1.Pod, ownerRefName, ownerRefSubnet,
 	}
 
 	return false
+}
+
+// getVMOrphanedAttachmentPorts finds OVN ports that belong to the VM but are
+// no longer desired by the VM's current spec (e.g., KubeVirt NAD hotplug).
+// It compares OVN's actual ports (existingPorts) against the VM spec's desired
+// ports, rather than relying on pod annotations which may be stale or incomplete.
+func (c *Controller) getVMOrphanedAttachmentPorts(namespace, vmName string, existingPorts []ovnnb.LogicalSwitchPort) map[string]bool {
+	vm, err := c.config.KubevirtClient.VirtualMachine(namespace).Get(context.Background(), vmName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get vm %s/%s for orphaned port detection: %v", namespace, vmName, err)
+		return nil
+	}
+
+	if vm.Spec.Template == nil {
+		return nil
+	}
+
+	// Build expected port names from VM spec in a single pass (pattern from gc.go:1108-1145)
+	expectedPorts := make(map[string]bool)
+	defaultMultus := false
+	hasMultusNetwork := false
+	for _, network := range vm.Spec.Template.Spec.Networks {
+		if network.Multus == nil {
+			continue
+		}
+		if network.Multus.Default {
+			defaultMultus = true
+		}
+		if network.Multus.NetworkName != "" {
+			hasMultusNetwork = true
+			items := strings.Split(network.Multus.NetworkName, "/")
+			if len(items) != 2 {
+				items = []string{namespace, items[0]}
+			}
+			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
+			expectedPorts[ovs.PodNameToPortName(vmName, namespace, provider)] = true
+		}
+	}
+	if !defaultMultus {
+		expectedPorts[ovs.PodNameToPortName(vmName, namespace, util.OvnProvider)] = true
+	}
+
+	// If VM spec has no multus networks, skip detection to avoid
+	// false positives for VMs that only use template annotations.
+	if !hasMultusNetwork {
+		return nil
+	}
+
+	// Find orphaned: ports in OVN but not in expected
+	orphanedPorts := make(map[string]bool)
+	for _, port := range existingPorts {
+		if !expectedPorts[port.Name] {
+			klog.Infof("OVN port %s for vm %s/%s is not in VM spec, marking as orphaned",
+				port.Name, namespace, vmName)
+			orphanedPorts[port.Name] = true
+		}
+	}
+
+	if len(orphanedPorts) == 0 {
+		return nil
+	}
+	return orphanedPorts
+}
+
+// cleanStaleVMAttachmentIPs removes IP CRs and OVN LSPs that belong to
+// this VM but are not part of the current pod's networks. This handles
+// the stop→patch NAD→start workflow where the old pod deletion was
+// processed before the NAD change, leaving stale attachment resources.
+func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
+	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+
+	// List existing LSPs first (cheap OVN query) to bail out early if none exist
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of vm %s for stale cleanup: %v", podKey, err)
+		return
+	}
+	if len(ports) == 0 {
+		return
+	}
+
+	// Build current port names from the pod's full network list
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to get kube-ovn nets of pod %s for stale cleanup: %v", podKey, err)
+		return
+	}
+	currentPorts := make(map[string]bool, len(podNets)+1)
+	for _, podNet := range podNets {
+		currentPorts[ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)] = true
+	}
+	currentPorts[ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)] = true
+
+	for _, port := range ports {
+		if currentPorts[port.Name] {
+			continue
+		}
+		klog.Infof("cleaning stale vm attachment lsp %s (not in current pod networks)", port.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete stale lsp %s, skipping IP cleanup to avoid inconsistency: %v", port.Name, err)
+			continue
+		}
+
+		ipCR, err := c.ipsLister.Get(port.Name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get ip %s: %v", port.Name, err)
+			}
+			continue
+		}
+		if ipCR.Labels[util.IPReservedLabel] != "true" {
+			klog.Infof("deleting stale vm attachment ip CR %s", ipCR.Name)
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
+				}
+			}
+			if subnetName := ipCR.Spec.Subnet; subnetName != "" {
+				c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
+				c.updateSubnetStatusQueue.Add(subnetName)
+			}
+		}
+	}
 }
 
 func isVMPod(pod *v1.Pod) (bool, string) {
