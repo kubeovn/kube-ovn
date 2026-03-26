@@ -170,40 +170,6 @@ func (c *Controller) gcLogicalSwitch() error {
 	}
 	klog.Infof("finish to gc logical switch")
 
-	klog.Infof("start to gc dhcp options")
-	dhcpOptions, err := c.OVNNbClient.ListDHCPOptions(c.config.EnableExternalVpc, nil)
-	if err != nil {
-		klog.Errorf("failed to list dhcp options, %v", err)
-		return err
-	}
-	uuidToDeleteList := []string{}
-	for _, item := range dhcpOptions {
-		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
-			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
-			continue
-		}
-		// For per-port DHCP options, also check that the referenced LSP still exists.
-		portName := item.ExternalIDs[ovs.PortKey]
-		if portName == "" {
-			continue
-		}
-		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
-		if err != nil {
-			klog.Errorf("failed to get logical switch port %s: %v", portName, err)
-			continue
-		}
-		if lsp == nil {
-			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
-		}
-	}
-	klog.Infof("gc dhcp options %v", uuidToDeleteList)
-	if len(uuidToDeleteList) > 0 {
-		if err = c.OVNNbClient.DeleteDHCPOptionsByUUIDs(uuidToDeleteList...); err != nil {
-			klog.Errorf("failed to delete dhcp options by uuids, %v", err)
-			return err
-		}
-	}
-	klog.Infof("finish to gc dhcp options")
 	return nil
 }
 
@@ -547,6 +513,10 @@ func (c *Controller) markAndCleanLSP() error {
 		klog.Infof("gc logical switch port %s with uuid %s", lsp.Name, lsp.UUID)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPortByUUID(lsp.ExternalIDs[ovs.LogicalSwitchKey], lsp.UUID); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
+			return err
+		}
+		if err := c.OVNNbClient.DeleteDHCPOptionsForPort(lsp.Name); err != nil {
+			klog.Errorf("failed to delete per-port dhcp options for %s: %v", lsp.Name, err)
 			return err
 		}
 		ipCR, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), lsp.Name, metav1.GetOptions{})
