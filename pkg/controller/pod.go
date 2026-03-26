@@ -1115,10 +1115,11 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		// Detect orphaned attachment ports from NAD hotplug (KubeVirt VEP #140).
+		// Compare OVN's actual ports against VM spec's desired ports.
 		// These are cleaned selectively in the keepIPCR=true branch to avoid
 		// deleting shared primary network LSPs during live migration.
 		if keepIPCR {
-			vmOrphanedPorts = c.getVMOrphanedAttachmentPorts(pod, vmName)
+			vmOrphanedPorts = c.getVMOrphanedAttachmentPorts(pod.Namespace, vmName, ports)
 		}
 	}
 
@@ -2458,14 +2459,14 @@ func shouldCleanPodNet(c *Controller, pod *v1.Pod, ownerRefName, ownerRefSubnet,
 	return false
 }
 
-// getVMOrphanedAttachmentPorts detects attachment network ports on a VM pod
-// that are no longer referenced by the VM's current spec (e.g., KubeVirt NAD hotplug).
-// It only uses vm.Spec.Template.Spec.Networks as the authoritative source because
-// template annotations may not be updated when VEP #140 (LiveUpdateNADRef) changes networkName.
-func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) map[string]bool {
-	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), vmName, metav1.GetOptions{})
+// getVMOrphanedAttachmentPorts finds OVN ports that belong to the VM but are
+// no longer desired by the VM's current spec (e.g., KubeVirt NAD hotplug).
+// It compares OVN's actual ports (existingPorts) against the VM spec's desired
+// ports, rather than relying on pod annotations which may be stale or incomplete.
+func (c *Controller) getVMOrphanedAttachmentPorts(namespace, vmName string, existingPorts []ovnnb.LogicalSwitchPort) map[string]bool {
+	vm, err := c.config.KubevirtClient.VirtualMachine(namespace).Get(context.Background(), vmName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("failed to get vm %s/%s for orphaned port detection: %v", pod.Namespace, vmName, err)
+		klog.Errorf("failed to get vm %s/%s for orphaned port detection: %v", namespace, vmName, err)
 		return nil
 	}
 
@@ -2473,18 +2474,24 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) ma
 		return nil
 	}
 
-	// Collect current multus NAD keys from VM spec.networks
-	vmNADKeys := make(map[string]bool)
+	// Build expected port names from VM spec (same pattern as gc.go:1108-1145)
+	expectedPorts := make(map[string]bool)
+
+	// Default network port
+	defaultMultus := false
 	hasMultusNetwork := false
 	for _, network := range vm.Spec.Template.Spec.Networks {
-		if network.Multus != nil && network.Multus.NetworkName != "" {
-			hasMultusNetwork = true
-			items := strings.Split(network.Multus.NetworkName, "/")
-			if len(items) != 2 {
-				items = []string{vm.GetNamespace(), items[0]}
+		if network.Multus != nil {
+			if network.Multus.Default {
+				defaultMultus = true
 			}
-			vmNADKeys[fmt.Sprintf("%s/%s", items[0], items[1])] = true
+			if network.Multus.NetworkName != "" {
+				hasMultusNetwork = true
+			}
 		}
+	}
+	if !defaultMultus {
+		expectedPorts[ovs.PodNameToPortName(vmName, namespace, util.OvnProvider)] = true
 	}
 
 	// If VM spec has no multus networks, skip detection to avoid
@@ -2493,23 +2500,25 @@ func (c *Controller) getVMOrphanedAttachmentPorts(pod *v1.Pod, vmName string) ma
 		return nil
 	}
 
-	attachmentNets, err := c.getPodAttachmentNet(pod)
-	if err != nil {
-		klog.Errorf("failed to get attachment nets of pod %s/%s: %v", pod.Namespace, pod.Name, err)
-		return nil
+	// Multus network ports from VM spec.networks
+	for _, network := range vm.Spec.Template.Spec.Networks {
+		if network.Multus != nil && network.Multus.NetworkName != "" {
+			items := strings.Split(network.Multus.NetworkName, "/")
+			if len(items) != 2 {
+				items = []string{namespace, items[0]}
+			}
+			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
+			expectedPorts[ovs.PodNameToPortName(vmName, namespace, provider)] = true
+		}
 	}
 
+	// Find orphaned: ports in OVN but not in expected
 	orphanedPorts := make(map[string]bool)
-	for _, attachNet := range attachmentNets {
-		if attachNet.NadName == "" || attachNet.NadNamespace == "" {
-			continue
-		}
-		nadKey := fmt.Sprintf("%s/%s", attachNet.NadNamespace, attachNet.NadName)
-		if !vmNADKeys[nadKey] {
-			portName := ovs.PodNameToPortName(vmName, pod.Namespace, attachNet.ProviderName)
-			klog.Infof("attachment net %s on vm pod %s/%s is no longer in VM spec, marking port %s as orphaned",
-				nadKey, pod.Namespace, pod.Name, portName)
-			orphanedPorts[portName] = true
+	for _, port := range existingPorts {
+		if !expectedPorts[port.Name] {
+			klog.Infof("OVN port %s for vm %s/%s is not in VM spec, marking as orphaned",
+				port.Name, namespace, vmName)
+			orphanedPorts[port.Name] = true
 		}
 	}
 
