@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -603,4 +604,119 @@ func Test_checkSubnetConflict(t *testing.T) {
 		err = fakeCtrl.fakeController.checkSubnetConflict(noConflictSubnet)
 		require.NoError(t, err)
 	})
+}
+
+func Test_validateSubnetVlan_conflict(t *testing.T) {
+	t.Parallel()
+
+	conflictVlan := &kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "conflict-vlan"},
+		Spec:       kubeovnv1.VlanSpec{ID: 100, Provider: "test-pn"},
+		Status:     kubeovnv1.VlanStatus{Conflict: true},
+	}
+	normalVlan := &kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "normal-vlan"},
+		Spec:       kubeovnv1.VlanSpec{ID: 200, Provider: "test-pn"},
+		Status:     kubeovnv1.VlanStatus{Conflict: false},
+	}
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vlans: []*kubeovnv1.Vlan{conflictVlan, normalVlan},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+
+	t.Run("conflict vlan returns errVlanConflict", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{Vlan: "conflict-vlan"},
+		}
+		err := ctrl.validateSubnetVlan(subnet)
+		require.Error(t, err)
+		require.True(t, errors.Is(err, errVlanConflict), "error should wrap errVlanConflict")
+	})
+
+	t.Run("normal vlan passes validation", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{Vlan: "normal-vlan"},
+		}
+		err := ctrl.validateSubnetVlan(subnet)
+		require.NoError(t, err)
+	})
+
+	t.Run("missing vlan returns error without errVlanConflict", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{Vlan: "nonexistent-vlan"},
+		}
+		err := ctrl.validateSubnetVlan(subnet)
+		require.Error(t, err)
+		require.False(t, errors.Is(err, errVlanConflict), "lister error should not be errVlanConflict")
+	})
+
+	t.Run("empty vlan passes validation", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
+			Spec:       kubeovnv1.SubnetSpec{Vlan: ""},
+		}
+		err := ctrl.validateSubnetVlan(subnet)
+		require.NoError(t, err)
+	})
+}
+
+func Test_handleAddOrUpdateSubnet_clearsIPStatusOnVlanConflict(t *testing.T) {
+	t.Parallel()
+
+	conflictVlan := &kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "conflict-vlan"},
+		Spec:       kubeovnv1.VlanSpec{ID: 100, Provider: "test-pn"},
+		Status:     kubeovnv1.VlanStatus{Conflict: true},
+	}
+
+	// Subnet with stale IP status (simulating prior successful processing)
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "conflict-subnet"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "fd00::/64",
+			Protocol:  kubeovnv1.ProtocolIPv6,
+			Gateway:   "fd00::1",
+			Vlan:      "conflict-vlan",
+			Vpc:       util.DefaultVpc,
+		},
+		Status: kubeovnv1.SubnetStatus{
+			V6AvailableIPs:     internal.NewBigInt(100),
+			V6AvailableIPRange: "fd00::2-fd00::ffff:ffff:ffff:fffe",
+			V6UsingIPs:         internal.NewBigInt(0),
+		},
+	}
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vlans:   []*kubeovnv1.Vlan{conflictVlan},
+		Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+
+	// Pre-add subnet to IPAM to simulate prior successful processing
+	err = ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+	require.NoError(t, err)
+
+	// handleAddOrUpdateSubnet should detect vlan conflict and clear IP status
+	err = ctrl.handleAddOrUpdateSubnet("conflict-subnet")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errVlanConflict))
+
+	// Verify IPAM was cleaned up
+	_, _, _, v6Range := ctrl.ipam.GetSubnetIPRangeString(subnet.Name, nil)
+	require.Empty(t, v6Range, "IPAM should be cleared for conflict vlan subnet")
+
+	// Verify status was patched with cleared IP fields
+	updatedSubnet, getErr := ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Get(
+		context.Background(), subnet.Name, metav1.GetOptions{})
+	require.NoError(t, getErr)
+	require.Empty(t, updatedSubnet.Status.V6AvailableIPRange,
+		"V6AvailableIPRange should be cleared when vlan is conflicting")
+	require.True(t, updatedSubnet.Status.V6AvailableIPs.EqualInt64(0),
+		"V6AvailableIPs should be zero when vlan is conflicting")
 }
