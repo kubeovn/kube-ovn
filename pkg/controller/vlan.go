@@ -213,6 +213,24 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		return err
 	}
 
+	// ensure the vlan is registered in the provider network's Status.Vlans,
+	// which is used by validateSubnetVlan as a "vlan ready" signal.
+	// This is especially important after a provider change, where the vlan
+	// needs to appear in the new provider network's Vlans list.
+	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+	if err != nil {
+		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
+		return err
+	}
+	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
+		newPn := pn.DeepCopy()
+		newPn.Status.Vlans = append(newPn.Status.Vlans, vlan.Name)
+		if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+			return err
+		}
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
