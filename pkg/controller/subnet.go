@@ -493,6 +493,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err != nil {
 		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
+		// remove from IPAM and clear IP status fields to undo any prior
+		// successful processing that occurred before the vlan became conflicting
+		c.ipam.DeleteSubnet(subnet.Name)
+		var zero kubeovnv1.SubnetStatus
+		subnet.Status.V4AvailableIPs = zero.V4AvailableIPs
+		subnet.Status.V6AvailableIPs = zero.V6AvailableIPs
+		subnet.Status.V4UsingIPs = zero.V4UsingIPs
+		subnet.Status.V6UsingIPs = zero.V6UsingIPs
+		subnet.Status.V4AvailableIPRange = ""
+		subnet.Status.V6AvailableIPRange = ""
+		subnet.Status.V4UsingIPRange = ""
+		subnet.Status.V6UsingIPRange = ""
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return patchErr

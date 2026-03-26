@@ -122,6 +122,12 @@ func (c *Controller) handleAddVlan(key string) error {
 
 	if err = c.checkVlanConflict(vlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+		// re-enqueue subnets so they can re-validate against the conflict status
+		for _, subnet := range subnets {
+			if subnet.Spec.Vlan == vlan.Name {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
+		}
 		return err
 	}
 
@@ -204,6 +210,17 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	newVlan := vlan.DeepCopy()
 	if err = c.checkVlanConflict(newVlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+		// re-enqueue subnets so they can re-validate against the conflict status
+		subnets, listErr := c.subnetsLister.List(labels.Everything())
+		if listErr != nil {
+			klog.Errorf("failed to list subnets: %v", listErr)
+			return err
+		}
+		for _, subnet := range subnets {
+			if subnet.Spec.Vlan == vlan.Name {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
+		}
 		return err
 	}
 
