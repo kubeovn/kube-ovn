@@ -1130,45 +1130,37 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	if keepIPCR {
 		for _, port := range ports {
 			if vmOrphanedPorts[port.Name] {
-				// Orphaned attachment LSP from NAD hotplug: delete it.
-				// This only affects attachment-specific ports (e.g., vm.ns.nad-a.ns.ovn),
-				// never shared primary network LSPs (e.g., vm.ns).
+				// Orphaned attachment LSP from NAD hotplug: delete and release its IP.
 				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
 				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 					klog.Errorf("failed to delete orphaned lsp %s: %v", port.Name, err)
 					return err
+				}
+				ipCR, err := c.ipsLister.Get(port.Name)
+				if err != nil {
+					if !k8serrors.IsNotFound(err) {
+						klog.Errorf("failed to get ip %s: %v", port.Name, err)
+					}
+					continue
+				}
+				if ipCR.Labels[util.IPReservedLabel] != "true" {
+					klog.Infof("delete orphaned vm attachment ip CR %s", ipCR.Name)
+					if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+						if !k8serrors.IsNotFound(err) {
+							klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
+							return err
+						}
+					}
+					if subnetName := ipCR.Spec.Subnet; subnetName != "" {
+						c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
+						c.updateSubnetStatusQueue.Add(subnetName)
+					}
 				}
 			} else {
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
 					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
 					return err
-				}
-			}
-		}
-		// Release orphaned attachment IPs from NAD hotplug.
-		// Iterate vmOrphanedPorts directly (not podNets) so cleanup works
-		// even if getPodKubeovnNets fails or returns incomplete results.
-		for portName := range vmOrphanedPorts {
-			ipCR, err := c.ipsLister.Get(portName)
-			if err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to get ip %s: %v", portName, err)
-				}
-				continue
-			}
-			if ipCR.Labels[util.IPReservedLabel] != "true" {
-				klog.Infof("delete orphaned vm attachment ip CR %s", ipCR.Name)
-				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
-					if !k8serrors.IsNotFound(err) {
-						klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
-						return err
-					}
-				}
-				subnetName := ipCR.Spec.Subnet
-				if subnetName != "" {
-					c.ipam.ReleaseAddressByNic(podKey, portName, subnetName)
-					c.updateSubnetStatusQueue.Add(subnetName)
 				}
 			}
 		}
@@ -2474,20 +2466,25 @@ func (c *Controller) getVMOrphanedAttachmentPorts(namespace, vmName string, exis
 		return nil
 	}
 
-	// Build expected port names from VM spec (same pattern as gc.go:1108-1145)
+	// Build expected port names from VM spec in a single pass (pattern from gc.go:1108-1145)
 	expectedPorts := make(map[string]bool)
-
-	// Default network port
 	defaultMultus := false
 	hasMultusNetwork := false
 	for _, network := range vm.Spec.Template.Spec.Networks {
-		if network.Multus != nil {
-			if network.Multus.Default {
-				defaultMultus = true
+		if network.Multus == nil {
+			continue
+		}
+		if network.Multus.Default {
+			defaultMultus = true
+		}
+		if network.Multus.NetworkName != "" {
+			hasMultusNetwork = true
+			items := strings.Split(network.Multus.NetworkName, "/")
+			if len(items) != 2 {
+				items = []string{namespace, items[0]}
 			}
-			if network.Multus.NetworkName != "" {
-				hasMultusNetwork = true
-			}
+			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
+			expectedPorts[ovs.PodNameToPortName(vmName, namespace, provider)] = true
 		}
 	}
 	if !defaultMultus {
@@ -2498,18 +2495,6 @@ func (c *Controller) getVMOrphanedAttachmentPorts(namespace, vmName string, exis
 	// false positives for VMs that only use template annotations.
 	if !hasMultusNetwork {
 		return nil
-	}
-
-	// Multus network ports from VM spec.networks
-	for _, network := range vm.Spec.Template.Spec.Networks {
-		if network.Multus != nil && network.Multus.NetworkName != "" {
-			items := strings.Split(network.Multus.NetworkName, "/")
-			if len(items) != 2 {
-				items = []string{namespace, items[0]}
-			}
-			provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
-			expectedPorts[ovs.PodNameToPortName(vmName, namespace, provider)] = true
-		}
 	}
 
 	// Find orphaned: ports in OVN but not in expected
@@ -2535,8 +2520,17 @@ func (c *Controller) getVMOrphanedAttachmentPorts(namespace, vmName string, exis
 func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
-	// Build set of current network port names from the pod's full network list.
-	// This uses the re-fetched pod with up-to-date annotations.
+	// List existing LSPs first (cheap OVN query) to bail out early if none exist
+	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	if err != nil {
+		klog.Errorf("failed to list lsps of vm %s for stale cleanup: %v", podKey, err)
+		return
+	}
+	if len(ports) == 0 {
+		return
+	}
+
+	// Build current port names from the pod's full network list
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get kube-ovn nets of pod %s for stale cleanup: %v", podKey, err)
@@ -2544,19 +2538,9 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 	}
 	currentPorts := make(map[string]bool, len(podNets)+1)
 	for _, podNet := range podNets {
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		currentPorts[portName] = true
+		currentPorts[ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)] = true
 	}
-	// Also include the default network port
-	defaultPort := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	currentPorts[defaultPort] = true
-
-	// List all existing LSPs for this VM
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
-	if err != nil {
-		klog.Errorf("failed to list lsps of vm %s for stale cleanup: %v", podKey, err)
-		return
-	}
+	currentPorts[ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)] = true
 
 	for _, port := range ports {
 		if currentPorts[port.Name] {
@@ -2568,7 +2552,6 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 			continue
 		}
 
-		subnetName := port.ExternalIDs["ls"]
 		ipCR, err := c.ipsLister.Get(port.Name)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
@@ -2583,7 +2566,7 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 					klog.Errorf("failed to delete ip %s: %v", ipCR.Name, err)
 				}
 			}
-			if subnetName != "" {
+			if subnetName := ipCR.Spec.Subnet; subnetName != "" {
 				c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
 				c.updateSubnetStatusQueue.Add(subnetName)
 			}
