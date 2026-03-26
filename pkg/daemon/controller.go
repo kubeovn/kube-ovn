@@ -535,13 +535,18 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   "true",
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 	if err := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
-	return c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name))
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name)); err != nil {
+		return err
+	}
+
+	return c.cleanupAutoCreatedVlanInterfaces(pn.Name, "", nil)
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
