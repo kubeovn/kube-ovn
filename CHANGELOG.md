@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.15.8 (2026-03-26)
+
+ * [0060dd23c](https://github.com/kubeovn/kube-ovn/commit/0060dd23c36f26e52517b4808570b5bcd78f19d2) release v1.15.8
+ * [d1fd99f50](https://github.com/kubeovn/kube-ovn/commit/d1fd99f505af92be811073dce4201c8ad6652749) fix: check northd endpoint by pod IP protocol in ovn leader checker (#6523)
+ * [eeafcfdfd](https://github.com/kubeovn/kube-ovn/commit/eeafcfdfd918a8d3a59164a846f52ca6e78682a1) fix(netpol): use parenthesis around ipblock expressions
+ * [5c7bd2852](https://github.com/kubeovn/kube-ovn/commit/5c7bd28524b2d7fb771fadef20a683c97409aa5e) fix: resolve unused imports and missing errors package in node_test.go
+ * [4cbcae30f](https://github.com/kubeovn/kube-ovn/commit/4cbcae30f611647530d588a39e38cca17fdce7e4) Fix misleading log message on VPC Policy Route addition. (#6464)
+ * [f7bdbea82](https://github.com/kubeovn/kube-ovn/commit/f7bdbea8212820d4125f246be3a068fe6c4ca7cf) fix(daemon): handle tombstone objects in subnet and service delete handlers (#6470)
+ * [3b4479f73](https://github.com/kubeovn/kube-ovn/commit/3b4479f733cd6cb4580c9e049c71c0c3bf2d3bc5) fix(daemon): sort encap IP list for deterministic ovs-vsctl output (#6473)
+ * [8952152f2](https://github.com/kubeovn/kube-ovn/commit/8952152f2f7238e64ebbad943cb9f689748ae729) fix(controller): prevent dual-stack cross-deletion of local DNS cache policy routes (#6497)
+ * [e424a0f88](https://github.com/kubeovn/kube-ovn/commit/e424a0f88b358286187305a4bef3aafa9cce56aa) fix(controller): fix variable shadowing in cleanDuplicatedChassis (#6496)
+ * [33d44c5a2](https://github.com/kubeovn/kube-ovn/commit/33d44c5a2160aefd163b9c5cfd6202bb9dc29c14) fix(controller): use exact match instead of substring match for VIP lookup in syncVirtualPort (#6491)
+ * [f6cdf479e](https://github.com/kubeovn/kube-ovn/commit/f6cdf479e5286ac26740b278ca1153e8eadb5ef9) fix(controller): fix nil deref, cache mutation, and early return bugs in subnet controller (#6490)
+ * [183db4685](https://github.com/kubeovn/kube-ovn/commit/183db468558f51276fed244800aebaf674637a1e) fix(controller): handle restartable init containers in DeleteNamedPortByPod (#6486)
+ * [7bd041833](https://github.com/kubeovn/kube-ovn/commit/7bd041833855961573bb68c80bf33c1f8c1e4ab9) fix(controller): prevent panics from nil deref and data races in pod controller (#6483)
+ * [e4fab4cb0](https://github.com/kubeovn/kube-ovn/commit/e4fab4cb0568be5136328912b6d062a4fdafb5d5) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * SkalaNetworks
+ * andrewlee1089
+ * changluyi
+
 ## v1.15.7 (2026-03-23)
 
  * [e7bd69c77](https://github.com/kubeovn/kube-ovn/commit/e7bd69c77f31cc0766e01401cfafb2e2831af503) release v1.15.7
