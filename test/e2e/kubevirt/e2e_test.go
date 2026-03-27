@@ -25,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const image = "quay.io/kubevirt/cirros-container-disk-demo:latest"
+const image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
