@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -25,9 +26,13 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
+var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
 
 func init() {
+	if env := os.Getenv("KUBEVIRT_CONTAINERDISK_IMAGE"); env != "" {
+		image = env
+	}
+
 	klog.SetOutput(ginkgo.GinkgoWriter)
 
 	// Register flags.
