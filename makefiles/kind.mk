@@ -556,6 +556,7 @@ kind-install-kubevirt:
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTAINERDISK_IMAGE),1)
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl -n kubevirt scale deploy virt-operator --replicas=1

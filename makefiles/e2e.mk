@@ -256,6 +256,7 @@ kube-ovn-kubevirt-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	KUBEVIRT_CONTAINERDISK_IMAGE=$(KUBEVIRT_CONTAINERDISK_IMAGE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-webhook-e2e
