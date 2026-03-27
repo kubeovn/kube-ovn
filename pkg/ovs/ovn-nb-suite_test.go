@@ -1031,6 +1031,14 @@ func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
 	suite.testDhcpOptionsFilter()
 }
 
+func (suite *OvnClientTestSuite) Test_ReconcilePortDHCPOptions() {
+	suite.testReconcilePortDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateDHCPOptionsForPort() {
+	suite.testUpdateDHCPOptionsForPort()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateDHCPOptions() {
 	suite.testCreateDHCPOptions()
 }

@@ -86,6 +86,8 @@ const (
 	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
 	VfNameTemplate                  = "%s.kubernetes.io/vf"
 	ActivationStrategyTemplate      = "%s.kubernetes.io/activation_strategy"
+	DHCPv4OptionsAnnotationTemplate = "%s.kubernetes.io/dhcp-v4-options"
+	DHCPv6OptionsAnnotationTemplate = "%s.kubernetes.io/dhcp-v6-options"
 
 	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
 	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"

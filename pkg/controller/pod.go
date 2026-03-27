@@ -557,8 +557,65 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		}
 	}
 
+	// Reconcile per-port DHCP options for pods that carry DHCP annotations.
+	// This handles annotation add/change on already-running pods without requiring a pod restart.
+	if err = c.reconcilePodDHCPOptions(pod, podNets); err != nil {
+		return err
+	}
+
 	// check if route subnet is need.
 	return c.reconcileRouteSubnets(pod, needRouteSubnets(pod, podNets))
+}
+
+// subnetDHCPOptionsUUIDs returns the subnet-level DHCP option UUIDs from the subnet status.
+func subnetDHCPOptionsUUIDs(subnet *kubeovnv1.Subnet) *ovs.DHCPOptionsUUIDs {
+	return &ovs.DHCPOptionsUUIDs{
+		DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
+		DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
+	}
+}
+
+// reconcilePodDHCPOptions reconciles per-port DHCP_Options for already-allocated pods.
+// It delegates all DHCP logic (stale detection, create/update/cleanup, LSP pointer update)
+// to ReconcilePortDHCPOptions in the OVS layer.
+func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet) error {
+	podName := c.getNameByPod(pod)
+	for _, podNet := range podNets {
+		if podNet.Type == providerTypeIPAM {
+			continue
+		}
+		// Skip nets not yet allocated; they are handled by reconcileAllocateSubnets.
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] != "true" {
+			continue
+		}
+
+		subnet := podNet.Subnet
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
+		dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+
+		var mtu int
+		var gateway string
+		if dhcpV4 != "" || dhcpV6 != "" {
+			var err error
+			if mtu, err = c.getSubnetMTU(subnet); err != nil {
+				return err
+			}
+			gateway = subnet.Spec.Gateway
+			if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+				gateway = subnet.Status.U2OInterconnectionIP
+			}
+		}
+
+		if _, _, err := c.OVNNbClient.ReconcilePortDHCPOptions(
+			subnet.Name, portName, subnetDHCPOptionsUUIDs(subnet),
+			subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
+		); err != nil {
+			klog.Errorf("failed to reconcile DHCP options for port %s: %v", portName, err)
+			return err
+		}
+	}
+	return nil
 }
 
 // do the same thing as add pod
@@ -647,10 +704,33 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
-			dhcpOptions := &ovs.DHCPOptionsUUIDs{
-				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
-				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
+
+			dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
+			dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+
+			var mtu int
+			var gateway string
+			if dhcpV4 != "" || dhcpV6 != "" {
+				if mtu, err = c.getSubnetMTU(subnet); err != nil {
+					return nil, err
+				}
+				gateway = subnet.Spec.Gateway
+				if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+					gateway = subnet.Status.U2OInterconnectionIP
+				}
 			}
+
+			dhcpOptions, hasPerPortDHCP, err := c.OVNNbClient.ReconcilePortDHCPOptions(
+				subnet.Name, portName, subnetDHCPOptionsUUIDs(subnet),
+				subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
+			)
+			if err != nil {
+				klog.Errorf("failed to reconcile DHCP options for port %s: %v", portName, err)
+				return nil, err
+			}
+
+			// When pod has per-port DHCP options, enable DHCP regardless of subnet setting.
+			enableDHCP := podNet.Subnet.Spec.EnableDHCP || hasPerPortDHCP
 
 			var oldSgList []string
 			if vmKey != "" {
@@ -666,7 +746,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
-				portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
+				portSecurity, securityGroupAnnotation, vips, enableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err

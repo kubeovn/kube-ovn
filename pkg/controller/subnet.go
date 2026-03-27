@@ -433,27 +433,34 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
-	var mtu int
+// getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
+func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
 	if subnet.Spec.Mtu > 0 {
-		mtu = int(subnet.Spec.Mtu)
-	} else {
-		mtu = util.DefaultMTU
-		if subnet.Spec.Vlan == "" {
-			switch c.config.NetworkType {
-			case util.NetworkTypeVlan:
-				// default to geneve
-				fallthrough
-			case util.NetworkTypeGeneve:
-				mtu -= util.GeneveHeaderLength
-			case util.NetworkTypeVxlan:
-				mtu -= util.VxlanHeaderLength
-			case util.NetworkTypeStt:
-				mtu -= util.SttHeaderLength
-			default:
-				return fmt.Errorf("invalid network type: %s", c.config.NetworkType)
-			}
+		return int(subnet.Spec.Mtu), nil
+	}
+	mtu := util.DefaultMTU
+	if subnet.Spec.Vlan == "" {
+		switch c.config.NetworkType {
+		case util.NetworkTypeVlan:
+			// default to geneve
+			fallthrough
+		case util.NetworkTypeGeneve:
+			mtu -= util.GeneveHeaderLength
+		case util.NetworkTypeVxlan:
+			mtu -= util.VxlanHeaderLength
+		case util.NetworkTypeStt:
+			mtu -= util.SttHeaderLength
+		default:
+			return 0, fmt.Errorf("invalid network type: %s", c.config.NetworkType)
 		}
+	}
+	return mtu, nil
+}
+
+func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
+	mtu, err := c.getSubnetMTU(subnet)
+	if err != nil {
+		return err
 	}
 
 	dhcpOptionsUUIDs, err := c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)

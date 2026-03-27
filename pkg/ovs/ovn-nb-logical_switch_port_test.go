@@ -1439,6 +1439,30 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
+	t.Run("delete lsp also cleans up per-port dhcp options", func(t *testing.T) {
+		dhcpLsName := "test-delete-port-dhcp-ls"
+		dhcpLspName := "test-delete-port-dhcp-lsp"
+		err := nbClient.CreateBareLogicalSwitch(dhcpLsName)
+		require.NoError(t, err)
+		err = nbClient.CreateBareLogicalSwitchPort(dhcpLsName, dhcpLspName, "unknown", "")
+		require.NoError(t, err)
+
+		// Create per-port DHCP entries for this port.
+		_, err = nbClient.UpdateDHCPOptionsForPort(dhcpLsName, dhcpLspName, "10.99.0.0/24", "10.99.0.1", "lease_time=3600", "", 1500)
+		require.NoError(t, err)
+		opts, err := nbClient.ListDHCPOptions(true, map[string]string{PortKey: dhcpLspName})
+		require.NoError(t, err)
+		require.NotEmpty(t, opts)
+
+		// Delete LSP — should also clean up per-port DHCP.
+		err = nbClient.DeleteLogicalSwitchPort(dhcpLspName)
+		require.NoError(t, err)
+
+		opts, err = nbClient.ListDHCPOptions(true, map[string]string{PortKey: dhcpLspName})
+		require.NoError(t, err)
+		require.Empty(t, opts)
+	})
+
 	t.Run("failed client delete logical switch port", func(t *testing.T) {
 		err := failedNbClient.DeleteLogicalSwitchPort("")
 		require.Error(t, err)
@@ -2615,5 +2639,153 @@ func (suite *OvnClientTestSuite) testCleanLogicalSwitchPortMigrateOptions() {
 
 		err = nbClient.CleanLogicalSwitchPortMigrateOptions(lspName)
 		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testReconcilePortDHCPOptions() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-reconcile-dhcp-ls"
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	// Prepare subnet-level DHCP options.
+	subnet := mockSubnet(lsName, true)
+	subnetUUIDs, err := nbClient.UpdateDHCPOptions(subnet, 1500)
+	require.NoError(t, err)
+	require.NotEmpty(t, subnetUUIDs.DHCPv4OptionsUUID)
+	require.NotEmpty(t, subnetUUIDs.DHCPv6OptionsUUID)
+
+	t.Run("creation path, no annotations: returns subnet UUIDs with zero OVSDB writes", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-new-port"
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, subnetUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "", "", 1500,
+		)
+		require.NoError(t, err)
+		require.False(t, hasPerPort)
+		require.Equal(t, subnetUUIDs.DHCPv4OptionsUUID, result.DHCPv4OptionsUUID)
+		require.Equal(t, subnetUUIDs.DHCPv6OptionsUUID, result.DHCPv6OptionsUUID)
+
+		// No per-port DHCP entries should be created.
+		opts, err := nbClient.ListDHCPOptions(true, map[string]string{PortKey: portName})
+		require.NoError(t, err)
+		require.Empty(t, opts)
+	})
+
+	t.Run("creation path, with v4 annotation: creates per-port DHCP entry", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-create-v4"
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, subnetUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "lease_time=7200", "", 1500,
+		)
+		require.NoError(t, err)
+		require.True(t, hasPerPort)
+		require.NotEmpty(t, result.DHCPv4OptionsUUID)
+		require.NotEqual(t, subnetUUIDs.DHCPv4OptionsUUID, result.DHCPv4OptionsUUID)
+		// v6 should fall back to subnet-level.
+		require.Equal(t, subnetUUIDs.DHCPv6OptionsUUID, result.DHCPv6OptionsUUID)
+	})
+
+	t.Run("update path, no annotations, no stale entries: fast return", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-update-nostale"
+		// Create LSP with subnet-level DHCP.
+		err := nbClient.CreateLogicalSwitchPort(lsName, portName, "10.244.0.10", "00:00:00:00:00:01",
+			"test-pod", "default", false, "", "", true, subnetUUIDs, "")
+		require.NoError(t, err)
+
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, subnetUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "", "", 1500,
+		)
+		require.NoError(t, err)
+		require.False(t, hasPerPort)
+		require.Equal(t, subnetUUIDs.DHCPv4OptionsUUID, result.DHCPv4OptionsUUID)
+		require.Equal(t, subnetUUIDs.DHCPv6OptionsUUID, result.DHCPv6OptionsUUID)
+	})
+
+	t.Run("update path, no annotations, stale per-port entries: cleanup and revert", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-update-stale"
+		// First create the LSP with per-port DHCP.
+		perPortUUIDs, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName,
+			"10.244.0.0/16", "10.244.0.1", "lease_time=3600", "", 1500)
+		require.NoError(t, err)
+		dhcpOpts := &DHCPOptionsUUIDs{
+			DHCPv4OptionsUUID: perPortUUIDs.DHCPv4OptionsUUID,
+			DHCPv6OptionsUUID: subnetUUIDs.DHCPv6OptionsUUID,
+		}
+		err = nbClient.CreateLogicalSwitchPort(lsName, portName, "10.244.0.20", "00:00:00:00:00:02",
+			"test-pod", "default", false, "", "", true, dhcpOpts, "")
+		require.NoError(t, err)
+
+		// Verify per-port entry exists.
+		opts, err := nbClient.ListDHCPOptions(true, map[string]string{PortKey: portName})
+		require.NoError(t, err)
+		require.NotEmpty(t, opts)
+
+		// Now reconcile with no annotations — should clean up stale entries.
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, subnetUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "", "", 1500,
+		)
+		require.NoError(t, err)
+		require.False(t, hasPerPort)
+		require.Equal(t, subnetUUIDs.DHCPv4OptionsUUID, result.DHCPv4OptionsUUID)
+
+		// Per-port entries should be deleted.
+		opts, err = nbClient.ListDHCPOptions(true, map[string]string{PortKey: portName})
+		require.NoError(t, err)
+		require.Empty(t, opts)
+
+		// LSP should now point to subnet-level DHCP.
+		lsp, err := nbClient.GetLogicalSwitchPort(portName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp.Dhcpv4Options)
+		require.Equal(t, subnetUUIDs.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
+	})
+
+	t.Run("update path, with annotations, LSP exists: create per-port and update LSP", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-update-add"
+		// Create LSP with subnet-level DHCP.
+		err := nbClient.CreateLogicalSwitchPort(lsName, portName, "10.244.0.30", "00:00:00:00:00:03",
+			"test-pod", "default", false, "", "", true, subnetUUIDs, "")
+		require.NoError(t, err)
+
+		// Reconcile with v4 annotation — should create per-port entry and update LSP.
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, subnetUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "lease_time=9999", "", 1500,
+		)
+		require.NoError(t, err)
+		require.True(t, hasPerPort)
+		require.NotEqual(t, subnetUUIDs.DHCPv4OptionsUUID, result.DHCPv4OptionsUUID)
+		// v6 falls back to subnet.
+		require.Equal(t, subnetUUIDs.DHCPv6OptionsUUID, result.DHCPv6OptionsUUID)
+
+		// LSP should point to per-port v4 UUID.
+		lsp, err := nbClient.GetLogicalSwitchPort(portName, false)
+		require.NoError(t, err)
+		require.NotNil(t, lsp.Dhcpv4Options)
+		require.Equal(t, result.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
+	})
+
+	t.Run("subnet DHCP disabled: empty UUIDs, fast return", func(t *testing.T) {
+		portName := "test-reconcile-dhcp-disabled"
+		emptyUUIDs := &DHCPOptionsUUIDs{}
+		// Create LSP without DHCP.
+		err := nbClient.CreateLogicalSwitchPort(lsName, portName, "10.244.0.40", "00:00:00:00:00:04",
+			"test-pod", "default", false, "", "", false, nil, "")
+		require.NoError(t, err)
+
+		result, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+			lsName, portName, emptyUUIDs,
+			subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "", "", 1500,
+		)
+		require.NoError(t, err)
+		require.False(t, hasPerPort)
+		require.Empty(t, result.DHCPv4OptionsUUID)
+		require.Empty(t, result.DHCPv6OptionsUUID)
 	})
 }
