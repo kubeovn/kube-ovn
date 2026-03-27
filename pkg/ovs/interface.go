@@ -106,6 +106,7 @@ type LogicalSwitchPort interface {
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
 	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
+	ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, bool, error)
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error

@@ -685,7 +685,116 @@ func (c *OVNNbClient) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptio
 	return c.UpdateLogicalSwitchPort(lsp, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options)
 }
 
-// DeleteLogicalSwitchPort delete logical switch port in ovn
+// ReconcilePortDHCPOptions reconciles per-port DHCP_Options for a logical switch port.
+// When v4Options or v6Options are non-empty (pod has DHCP annotations), it creates/updates
+// per-port DHCP_Options rows and updates the LSP if it already exists.
+// When both are empty, it uses the LSP's current DHCP pointers (compared against subnetDHCP)
+// to detect stale per-port entries, cleaning them up only when needed.
+// Returns the effective DHCP UUIDs and whether per-port override is active.
+func (c *OVNNbClient) ReconcilePortDHCPOptions(
+	lsName, portName string,
+	subnetDHCP *DHCPOptionsUUIDs,
+	cidrBlock, gateway, v4Options, v6Options string,
+	mtu int,
+) (*DHCPOptionsUUIDs, bool, error) {
+	if v4Options != "" || v6Options != "" {
+		// Per-port annotations present: create/update per-port DHCP_Options entries.
+		perPortDHCP, err := c.UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu)
+		if err != nil {
+			return nil, false, err
+		}
+		// Fall back to subnet-level for families without per-port annotation.
+		result := &DHCPOptionsUUIDs{
+			DHCPv4OptionsUUID: perPortDHCP.DHCPv4OptionsUUID,
+			DHCPv6OptionsUUID: perPortDHCP.DHCPv6OptionsUUID,
+		}
+		if result.DHCPv4OptionsUUID == "" && subnetDHCP != nil {
+			result.DHCPv4OptionsUUID = subnetDHCP.DHCPv4OptionsUUID
+		}
+		if result.DHCPv6OptionsUUID == "" && subnetDHCP != nil {
+			result.DHCPv6OptionsUUID = subnetDHCP.DHCPv6OptionsUUID
+		}
+
+		// Update LSP if it already exists (reconcile path for running pods).
+		// For creation path, LSP doesn't exist yet; the caller passes UUIDs to CreateLogicalSwitchPort.
+		lsp, err := c.GetLogicalSwitchPort(portName, true)
+		if err != nil {
+			return nil, false, err
+		}
+		if lsp != nil {
+			if err := c.updateLSPDHCPPointers(lsp, result); err != nil {
+				return nil, false, err
+			}
+		}
+		return result, true, nil
+	}
+
+	// No per-port annotations: check if stale per-port entries need cleanup
+	// by comparing the LSP's current DHCP pointers with subnet-level UUIDs.
+	lsp, err := c.GetLogicalSwitchPort(portName, true)
+	if err != nil {
+		return subnetDHCP, false, err
+	}
+	if lsp == nil {
+		// Creation path: LSP doesn't exist yet. No stale entries possible.
+		return subnetDHCP, false, nil
+	}
+
+	subnetV4, subnetV6 := "", ""
+	if subnetDHCP != nil {
+		subnetV4, subnetV6 = subnetDHCP.DHCPv4OptionsUUID, subnetDHCP.DHCPv6OptionsUUID
+	}
+
+	currentV4 := ptrToString(lsp.Dhcpv4Options)
+	currentV6 := ptrToString(lsp.Dhcpv6Options)
+
+	if currentV4 == subnetV4 && currentV6 == subnetV6 {
+		// Fast path: LSP's DHCP pointers match subnet-level. No per-port DHCP, nothing to do.
+		return subnetDHCP, false, nil
+	}
+
+	// Stale per-port entries exist (or LSP pointers are outdated): clean up and revert.
+	if err := c.DeleteDHCPOptionsForPort(portName); err != nil {
+		return nil, false, err
+	}
+	if err := c.updateLSPDHCPPointers(lsp, subnetDHCP); err != nil {
+		return nil, false, err
+	}
+	return subnetDHCP, false, nil
+}
+
+// updateLSPDHCPPointers updates the dhcpv4_options and dhcpv6_options fields on an
+// already-fetched LSP object. Skips the OVN transaction when nothing changed.
+func (c *OVNNbClient) updateLSPDHCPPointers(lsp *ovnnb.LogicalSwitchPort, dhcpOptions *DHCPOptionsUUIDs) error {
+	var desiredV4, desiredV6 *string
+	if dhcpOptions != nil && dhcpOptions.DHCPv4OptionsUUID != "" {
+		desiredV4 = &dhcpOptions.DHCPv4OptionsUUID
+	}
+	if dhcpOptions != nil && dhcpOptions.DHCPv6OptionsUUID != "" {
+		desiredV6 = &dhcpOptions.DHCPv6OptionsUUID
+	}
+
+	v4Same := (lsp.Dhcpv4Options == nil && desiredV4 == nil) ||
+		(lsp.Dhcpv4Options != nil && desiredV4 != nil && *lsp.Dhcpv4Options == *desiredV4)
+	v6Same := (lsp.Dhcpv6Options == nil && desiredV6 == nil) ||
+		(lsp.Dhcpv6Options != nil && desiredV6 != nil && *lsp.Dhcpv6Options == *desiredV6)
+	if v4Same && v6Same {
+		return nil
+	}
+
+	lsp.Dhcpv4Options = desiredV4
+	lsp.Dhcpv6Options = desiredV6
+	return c.UpdateLogicalSwitchPort(lsp, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options)
+}
+
+func ptrToString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// DeleteLogicalSwitchPort deletes a logical switch port and its associated per-port DHCP options.
 func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
@@ -694,6 +803,11 @@ func (c *OVNNbClient) DeleteLogicalSwitchPort(lspName string) error {
 	}
 	if lsp == nil {
 		return nil
+	}
+
+	// Clean up per-port DHCP entries before deleting the LSP (best-effort).
+	if err := c.DeleteDHCPOptionsForPort(lspName); err != nil {
+		klog.Warningf("failed to delete per-port dhcp options for %s during LSP deletion: %v", lspName, err)
 	}
 
 	return c.DeleteLogicalSwitchPortByUUID(lsp.ExternalIDs[LogicalSwitchKey], lsp.UUID)
