@@ -81,7 +81,12 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	klog.Infof("handle add iptables eip %s", key)
 
 	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
-		// already ok
+		// already ok; still ensure the /32 static route exists (idempotent, covers EIPs
+		// that were ready before this fix was deployed)
+		if err := c.ensureEipVpcRoute(cachedEip.Spec.NatGwDp, cachedEip.Status.IP); err != nil {
+			klog.Errorf("failed to ensure VPC static route for eip %s, %v", key, err)
+			return err
+		}
 		return nil
 	}
 
@@ -145,6 +150,14 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
+		return err
+	}
+
+	// Add a /32 static route on the VPC router so that pod→EIP traffic routes
+	// through the NAT GW pod's VPC interface (for DNAT processing) rather than
+	// directly out the vpc-external gateway port, which would bypass DNAT.
+	if err = c.ensureEipVpcRoute(cachedEip.Spec.NatGwDp, v4ip); err != nil {
+		klog.Errorf("failed to add VPC static route for eip %s, %v", key, err)
 		return err
 	}
 
@@ -239,6 +252,14 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
+		// Remove the /32 static route from the VPC router.
+		if cachedEip.Status.IP != "" {
+			if err = c.cleanupEipVpcRoute(cachedEip.Spec.NatGwDp, cachedEip.Status.IP); err != nil {
+				klog.Errorf("failed to delete VPC static route for eip %s, %v", key, err)
+				return err
+			}
+		}
+
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
 
@@ -339,6 +360,15 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 
 		if err = c.patchEipStatus(key, "", "", cachedEip.Spec.QoSPolicy, true); err != nil {
 			klog.Errorf("failed to patch status for eip %s, %v", key, err)
+			return err
+		}
+	}
+	// Ensure the /32 static route exists on the VPC router for all ready EIPs,
+	// including those that were already Ready before this fix was deployed.
+	// The operation is idempotent so calling it unconditionally is safe.
+	if cachedEip.Status.IP != "" {
+		if err = c.ensureEipVpcRoute(cachedEip.Spec.NatGwDp, cachedEip.Status.IP); err != nil {
+			klog.Errorf("failed to ensure VPC static route for eip %s, %v", key, err)
 			return err
 		}
 	}
@@ -936,4 +966,47 @@ func (c *Controller) patchEipLabel(eipName string) error {
 		}
 	}
 	return err
+}
+
+func (c *Controller) ensureEipVpcRoute(natGwDp, eipIP string) error {
+	if natGwDp == "" || eipIP == "" {
+		return nil
+	}
+	gw, err := c.vpcNatGatewayLister.Get(natGwDp)
+	if err != nil {
+		return fmt.Errorf("get vpc nat gw %s: %w", natGwDp, err)
+	}
+	if gw.Spec.Vpc == "" || gw.Spec.LanIP == "" {
+		return nil
+	}
+	klog.Infof("add VPC static route %s/32 -> %s on vpc %s for eip %s", eipIP, gw.Spec.LanIP, gw.Spec.Vpc, eipIP)
+	return c.OVNNbClient.AddLogicalRouterStaticRoute(
+		gw.Spec.Vpc, util.MainRouteTable, "dst-ip", eipIP+"/32", nil, nil, gw.Spec.LanIP,
+	)
+}
+
+func (c *Controller) cleanupEipVpcRoute(natGwDp, eipIP string) error {
+	if natGwDp == "" || eipIP == "" {
+		return nil
+	}
+	gw, err := c.vpcNatGatewayLister.Get(natGwDp)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// NAT GW CR is gone; VPC and LAN IP cannot be determined for route cleanup.
+			// The VPC router itself may still exist, but without the NAT GW spec we
+			// cannot identify which route to remove — skip to avoid a partial cleanup.
+			klog.Infof("vpc nat gw %s not found, VPC and LAN IP cannot be determined for route cleanup of eip %s, skipping", natGwDp, eipIP)
+			return nil
+		}
+		return fmt.Errorf("get vpc nat gw %s: %w", natGwDp, err)
+	}
+	if gw.Spec.Vpc == "" || gw.Spec.LanIP == "" {
+		return nil
+	}
+	routeTable := util.MainRouteTable
+	policy := "dst-ip"
+	klog.Infof("delete VPC static route %s/32 -> %s on vpc %s for eip %s", eipIP, gw.Spec.LanIP, gw.Spec.Vpc, eipIP)
+	return c.OVNNbClient.DeleteLogicalRouterStaticRoute(
+		gw.Spec.Vpc, &routeTable, &policy, eipIP+"/32", gw.Spec.LanIP,
+	)
 }
