@@ -808,6 +808,7 @@ func (c *Controller) gcAddressSet() error {
 		}
 	}
 	if len(asList) == 0 {
+		klog.Infof("finish to gc address set")
 		return nil
 	}
 
@@ -855,6 +856,7 @@ func (c *Controller) gcSecurityGroup() error {
 		}
 	}
 	if len(needToDelPgs) == 0 {
+		klog.Infof("finish to gc security group residual port groups")
 		return nil
 	}
 	if err = c.OVNNbClient.DeletePortGroup(needToDelPgs...); err != nil {
