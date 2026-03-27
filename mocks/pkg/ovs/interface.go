@@ -1392,6 +1392,34 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspNam
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
 }
 
+// AddLogicalSwitchPortArpProxyIP mocks base method.
+func (m *MockLogicalSwitchPort) AddLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddLogicalSwitchPortArpProxyIP", lspName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddLogicalSwitchPortArpProxyIP indicates an expected call of AddLogicalSwitchPortArpProxyIP.
+func (mr *MockLogicalSwitchPortMockRecorder) AddLogicalSwitchPortArpProxyIP(lspName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalSwitchPortArpProxyIP", reflect.TypeOf((*MockLogicalSwitchPort)(nil).AddLogicalSwitchPortArpProxyIP), lspName, ip)
+}
+
+// RemoveLogicalSwitchPortArpProxyIP mocks base method.
+func (m *MockLogicalSwitchPort) RemoveLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveLogicalSwitchPortArpProxyIP", lspName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveLogicalSwitchPortArpProxyIP indicates an expected call of RemoveLogicalSwitchPortArpProxyIP.
+func (mr *MockLogicalSwitchPortMockRecorder) RemoveLogicalSwitchPortArpProxyIP(lspName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalSwitchPortArpProxyIP", reflect.TypeOf((*MockLogicalSwitchPort)(nil).RemoveLogicalSwitchPortArpProxyIP), lspName, ip)
+}
+
 // SetLogicalSwitchPortExternalIDs mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortExternalIDs(lspName string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
@@ -1726,6 +1754,20 @@ func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, pref
 func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
+}
+
+// SetLoadBalancerHairpinSnatIP mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerHairpinSnatIP(lbName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerHairpinSnatIP", lbName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerHairpinSnatIP indicates an expected call of SetLoadBalancerHairpinSnatIP.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerHairpinSnatIP(lbName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerHairpinSnatIP", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerHairpinSnatIP), lbName, ip)
 }
 
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
@@ -5333,6 +5375,20 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, pr
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
 }
 
+// SetLoadBalancerHairpinSnatIP mocks base method.
+func (m *MockNbClient) SetLoadBalancerHairpinSnatIP(lbName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerHairpinSnatIP", lbName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerHairpinSnatIP indicates an expected call of SetLoadBalancerHairpinSnatIP.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerHairpinSnatIP(lbName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerHairpinSnatIP", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerHairpinSnatIP), lbName, ip)
+}
+
 // SetLogicalRouterPortHAChassisGroup mocks base method.
 func (m *MockNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error {
 	m.ctrl.T.Helper()
@@ -5373,6 +5429,34 @@ func (m *MockNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpPro
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
+}
+
+// AddLogicalSwitchPortArpProxyIP mocks base method.
+func (m *MockNbClient) AddLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddLogicalSwitchPortArpProxyIP", lspName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddLogicalSwitchPortArpProxyIP indicates an expected call of AddLogicalSwitchPortArpProxyIP.
+func (mr *MockNbClientMockRecorder) AddLogicalSwitchPortArpProxyIP(lspName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLogicalSwitchPortArpProxyIP", reflect.TypeOf((*MockNbClient)(nil).AddLogicalSwitchPortArpProxyIP), lspName, ip)
+}
+
+// RemoveLogicalSwitchPortArpProxyIP mocks base method.
+func (m *MockNbClient) RemoveLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveLogicalSwitchPortArpProxyIP", lspName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveLogicalSwitchPortArpProxyIP indicates an expected call of RemoveLogicalSwitchPortArpProxyIP.
+func (mr *MockNbClientMockRecorder) RemoveLogicalSwitchPortArpProxyIP(lspName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalSwitchPortArpProxyIP", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalSwitchPortArpProxyIP), lspName, ip)
 }
 
 // SetLogicalSwitchPortExternalIDs mocks base method.

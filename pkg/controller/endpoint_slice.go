@@ -270,6 +270,12 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		}
 	}
 
+	// If this is a SwitchLBRule service, re-sync any FIPs targeting the VIP
+	// so their router+switch LB backends stay current when pods are added/removed.
+	if vip != "" {
+		c.enqueueFipsForVipIP(vip)
+	}
+
 	return nil
 }
 

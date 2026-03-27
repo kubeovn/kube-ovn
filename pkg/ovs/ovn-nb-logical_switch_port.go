@@ -414,6 +414,74 @@ func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProx
 	return nil
 }
 
+// AddLogicalSwitchPortArpProxyIP adds an IP to the arp_proxy option of a logical switch port.
+// This is used to make the LRP switch port respond to ARP for the given IP with the LRP's MAC.
+func (c *OVNNbClient) AddLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string)
+	}
+	existing := strings.Fields(lsp.Options["arp_proxy"])
+	if slices.Contains(existing, ip) {
+		return nil
+	}
+	existing = append(existing, ip)
+	lsp.Options["arp_proxy"] = strings.Join(existing, " ")
+	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.Transact("lsp-update", op); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to add arp_proxy ip %s to logical switch port %s: %w", ip, lspName, err)
+	}
+	return nil
+}
+
+// RemoveLogicalSwitchPortArpProxyIP removes an IP from the arp_proxy option of a logical switch port.
+func (c *OVNNbClient) RemoveLogicalSwitchPortArpProxyIP(lspName, ip string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil || lsp.Options == nil {
+		return nil
+	}
+	existing := strings.Fields(lsp.Options["arp_proxy"])
+	var remaining []string
+	for _, existingIP := range existing {
+		if existingIP != ip {
+			remaining = append(remaining, existingIP)
+		}
+	}
+	if len(remaining) == 0 {
+		delete(lsp.Options, "arp_proxy")
+	} else {
+		lsp.Options["arp_proxy"] = strings.Join(remaining, " ")
+	}
+	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.Transact("lsp-update", op); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to remove arp_proxy ip %s from logical switch port %s: %w", ip, lspName, err)
+	}
+	return nil
+}
+
 // SetLogicalSwitchPortSecurity set logical switch port port_security
 func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)

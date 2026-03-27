@@ -108,6 +108,8 @@ type LogicalSwitchPort interface {
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
+	AddLogicalSwitchPortArpProxyIP(lspName, ip string) error
+	RemoveLogicalSwitchPortArpProxyIP(lspName, ip string) error
 	SetLogicalSwitchPortExternalIDs(lspName string, externalIDs map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
@@ -138,6 +140,7 @@ type LoadBalancer interface {
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
+	SetLoadBalancerHairpinSnatIP(lbName, ip string) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)
 	ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error)

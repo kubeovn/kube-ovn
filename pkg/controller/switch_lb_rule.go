@@ -200,6 +200,10 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Re-enqueue any OvnFips targeting this VIP so their LB backends stay in sync.
+	c.enqueueFipsForVipIP(slr.Spec.Vip)
+
 	return nil
 }
 

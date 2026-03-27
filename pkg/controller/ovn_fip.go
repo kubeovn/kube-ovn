@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
+	"strings"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -103,11 +106,11 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedFip.Status.Ready && cachedFip.Status.V4Ip != "" {
-		// already ok
-		return nil
+	// If the FIP has a deletion timestamp (e.g. after controller restart), delegate to
+	// handleUpdateOvnFip which handles the deletion path.
+	if !cachedFip.DeletionTimestamp.IsZero() {
+		return c.handleUpdateOvnFip(key)
 	}
-	klog.Infof("handle add fip %s", key)
 	// check eip
 	eipName := cachedFip.Spec.OvnEip
 	if eipName == "" {
@@ -136,6 +139,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	}
 
 	var mac, subnetName, vpcName, ipName string
+	var isSwitchLBVip bool
 	vpcName = cachedFip.Spec.Vpc
 	v4IP = cachedFip.Spec.V4Ip
 	v6IP = cachedFip.Spec.V6Ip
@@ -150,6 +154,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 			v4IP = internalVip.Status.V4ip
 			v6IP = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
+			isSwitchLBVip = (internalVip.Spec.Type == util.SwitchLBRuleVip)
 			// though vip lsp has its mac, vip always use its parent lsp nic mac
 			// and vip could float to different parent lsp nic
 			// all vip its parent lsp acl should allow the vip ip
@@ -178,6 +183,15 @@ func (c *Controller) handleAddOvnFip(key string) error {
 			return err
 		}
 	}
+
+	// For switch_lb_vip FIPs we always re-run to sync backends.
+	// For regular FIPs, early exit if already established.
+	if !isSwitchLBVip && cachedFip.Status.Ready && cachedFip.Status.V4Ip != "" {
+		return nil
+	}
+
+	klog.Infof("handle add fip %s", key)
+
 	if vpcName == "" {
 		err := fmt.Errorf("failed to create fip %s, no vpc", cachedFip.Name)
 		klog.Error(err)
@@ -193,44 +207,61 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Error(err)
 		return err
 	}
-	// ovn add fip
-	var stateless bool
-	if cachedFip.Spec.Type != "" {
-		stateless = (cachedFip.Spec.Type == kubeovnv1.GWDistributedType)
+	if isSwitchLBVip {
+		// For switch_lb_vip: create router+switch LBs so external/node traffic
+		// can reach the VIP backends even though switch LB is bypassed for
+		// router→switch traffic (ls_in_pre_lb priority=110).
+		if v4IP != "" && v4Eip != "" {
+			if err = c.addFipVipLBRules(key, vpcName, subnetName, v4Eip, v4IP); err != nil {
+				klog.Errorf("failed to add fip vip lb rules for %s, %v", key, err)
+				return err
+			}
+		}
+		// store subnet name so deletion can clean up switch LBs without VIP
+		if err = c.patchOvnFipSubnetAnnotation(key, subnetName); err != nil {
+			klog.Errorf("failed to patch subnet annotation for fip %s, %v", key, err)
+			return err
+		}
 	} else {
-		stateless = (c.ExternalGatewayType == kubeovnv1.GWDistributedType)
-	}
-	options := map[string]string{"stateless": strconv.FormatBool(stateless)}
-
-	// support v4:v4
-	if v4IP != "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v4:v4 fip, %v", err)
-			return err
+		// ovn add fip via dnat_and_snat NAT rule
+		var stateless bool
+		if cachedFip.Spec.Type != "" {
+			stateless = (cachedFip.Spec.Type == kubeovnv1.GWDistributedType)
+		} else {
+			stateless = (c.ExternalGatewayType == kubeovnv1.GWDistributedType)
 		}
-	}
+		options := map[string]string{"stateless": strconv.FormatBool(stateless)}
 
-	// support v6:v6
-	if v6IP != "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v6:v6 fip, %v", err)
-			return err
+		// support v4:v4
+		if v4IP != "" && v4Eip != "" {
+			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
+				klog.Errorf("failed to create v4:v4 fip, %v", err)
+				return err
+			}
 		}
-	}
 
-	// support v4:v6
-	if v4IP != "" && v6IP == "" && v4Eip == "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v4:v6 fip, %v", err)
-			return err
+		// support v6:v6
+		if v6IP != "" && v6Eip != "" {
+			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
+				klog.Errorf("failed to create v6:v6 fip, %v", err)
+				return err
+			}
 		}
-	}
 
-	// support v6:v4
-	if v6IP != "" && v4IP == "" && v6Eip == "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
-			klog.Errorf("failed to create v6:v4 fip, %v", err)
-			return err
+		// support v4:v6
+		if v4IP != "" && v6IP == "" && v4Eip == "" && v6Eip != "" {
+			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
+				klog.Errorf("failed to create v4:v6 fip, %v", err)
+				return err
+			}
+		}
+
+		// support v6:v4
+		if v6IP != "" && v4IP == "" && v6Eip == "" && v4Eip != "" {
+			if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
+				klog.Errorf("failed to create v6:v4 fip, %v", err)
+				return err
+			}
 		}
 	}
 
@@ -281,18 +312,8 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			return nil
 		}
 
-		// ovn delete fip nat
-		if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
-				klog.Errorf("failed to delete v4 fip %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
-				klog.Errorf("failed to delete v6 fip %s, %v", key, err)
-				return err
-			}
+		if err = c.cleanOvnFipOvnResources(cachedFip); err != nil {
+			return err
 		}
 
 		// Remove finalizer
@@ -427,18 +448,8 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	if cachedFip.Status.Vpc == "" {
 		return nil
 	}
-	// ovn delete fip nat
-	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
-			klog.Errorf("failed to delete v4 fip %s, %v", key, err)
-			return err
-		}
-	}
-	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
-			klog.Errorf("failed to delete v6 fip %s, %v", key, err)
-			return err
-		}
+	if err = c.cleanOvnFipOvnResources(cachedFip); err != nil {
+		return err
 	}
 	if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
 		klog.Errorf("failed to remove finalizer for ovn fip %s, %v", cachedFip.Name, err)
@@ -447,6 +458,262 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	//  reset eip
 	if cachedFip.Spec.OvnEip != "" {
 		c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
+	}
+	return nil
+}
+
+// cleanOvnFipOvnResources removes OVN resources (NAT rules or LBs) created for the FIP.
+func (c *Controller) cleanOvnFipOvnResources(cachedFip *kubeovnv1.OvnFip) error {
+	// Determine if this was a switch_lb_vip FIP by checking the VIP type.
+	// If the VIP is already gone, fall back to the subnet annotation we stored at creation:
+	// its presence signals this was a switch_lb_vip FIP.
+	isSwitchLBVip := false
+	if cachedFip.Spec.IPType == util.Vip && cachedFip.Spec.IPName != "" {
+		if vip, err := c.virtualIpsLister.Get(cachedFip.Spec.IPName); err == nil {
+			isSwitchLBVip = (vip.Spec.Type == util.SwitchLBRuleVip)
+		}
+	}
+	if !isSwitchLBVip && cachedFip.Annotations[util.FipInternalSubnetAnnotation] != "" {
+		isSwitchLBVip = true
+	}
+
+	if isSwitchLBVip {
+		subnetName := cachedFip.Annotations[util.FipInternalSubnetAnnotation]
+		if err := c.delFipVipLBRules(cachedFip.Name, cachedFip.Status.Vpc, subnetName, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			klog.Errorf("failed to delete fip vip lb rules for %s, %v", cachedFip.Name, err)
+			return err
+		}
+		return nil
+	}
+
+	// Regular FIP: delete dnat_and_snat NAT rules
+	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
+		if err := c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			klog.Errorf("failed to delete v4 fip %s, %v", cachedFip.Name, err)
+			return err
+		}
+	}
+	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
+		if err := c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+			klog.Errorf("failed to delete v6 fip %s, %v", cachedFip.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// addFipVipLBRules creates a router-level LB (for external/node→EIP traffic) and a
+// switch-level LB with hairpin_snat_ip (for same-subnet pod→EIP traffic) for a FIP
+// that targets a switch_lb_vip VIP.  The switch LB is needed because OVN's
+// ls_in_pre_lb (priority 110) bypasses switch LBs for router→switch traffic, so
+// the existing switch LB for the VIP would never match external-originated packets.
+func (c *Controller) addFipVipLBRules(fipName, vpcName, subnetName, v4Eip, vipIP string) error {
+	// Find the SwitchLBRule that owns this VIP IP.
+	allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list SwitchLBRules: %w", err)
+	}
+	var slr *kubeovnv1.SwitchLBRule
+	for _, s := range allSlrs {
+		if s.Spec.Vip == vipIP {
+			slr = s
+			break
+		}
+	}
+	if slr == nil {
+		return fmt.Errorf("no SwitchLBRule found for VIP %s", vipIP)
+	}
+
+	// Get the backing endpoints.
+	svcName := generateSvcName(slr.Name)
+	eps, err := c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Warningf("endpoints %s/%s not found for fip %s, will retry", slr.Spec.Namespace, svcName, fipName)
+			return fmt.Errorf("endpoints %s/%s not found", slr.Spec.Namespace, svcName)
+		}
+		return fmt.Errorf("get endpoints %s/%s: %w", slr.Spec.Namespace, svcName, err)
+	}
+
+	for _, port := range slr.Spec.Ports {
+		proto := strings.ToLower(port.Protocol)
+		if proto == "" {
+			proto = "tcp"
+		}
+		targetPort := port.TargetPort
+		if targetPort == 0 {
+			targetPort = port.Port
+		}
+
+		var backends []string
+		for _, subset := range eps.Subsets {
+			for _, addr := range subset.Addresses {
+				backends = append(backends, net.JoinHostPort(addr.IP, strconv.Itoa(int(targetPort))))
+			}
+		}
+		if len(backends) == 0 {
+			klog.V(3).Infof("no backends yet for fip %s port %d/%s, will retry later", fipName, port.Port, proto)
+			return fmt.Errorf("no backends for fip %s port %d/%s", fipName, port.Port, proto)
+		}
+
+		eipVip := net.JoinHostPort(v4Eip, strconv.Itoa(int(port.Port)))
+
+		// Router LB: handles external/node → EIP:port → pod backends
+		routerLBName := fmt.Sprintf("fip-%s-%s", fipName, proto)
+		if err = c.OVNNbClient.CreateLoadBalancer(routerLBName, proto); err != nil {
+			return fmt.Errorf("create router LB %s: %w", routerLBName, err)
+		}
+		// Remove any stale VIPs (from a previous EIP IP) before adding the current one.
+		if existingLB, lbErr := c.OVNNbClient.GetLoadBalancer(routerLBName, true); lbErr == nil && existingLB != nil {
+			for staleVip := range existingLB.Vips {
+				if staleVip != eipVip {
+					_ = c.OVNNbClient.LoadBalancerDeleteVip(routerLBName, staleVip, true)
+				}
+			}
+		}
+		if err = c.OVNNbClient.LoadBalancerAddVip(routerLBName, eipVip, backends...); err != nil {
+			return fmt.Errorf("add vip to router LB %s: %w", routerLBName, err)
+		}
+		if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, routerLBName); err != nil {
+			return fmt.Errorf("attach router LB %s to vpc %s: %w", routerLBName, vpcName, err)
+		}
+
+		// Switch LB: handles same-subnet pod → EIP:port (hairpin) with SNAT to EIP
+		switchLBName := fmt.Sprintf("fip-%s-%s-sw", fipName, proto)
+		if err = c.OVNNbClient.CreateLoadBalancer(switchLBName, proto); err != nil {
+			return fmt.Errorf("create switch LB %s: %w", switchLBName, err)
+		}
+		// Remove any stale VIPs (from a previous EIP IP) before adding the current one.
+		if existingLB, lbErr := c.OVNNbClient.GetLoadBalancer(switchLBName, true); lbErr == nil && existingLB != nil {
+			for staleVip := range existingLB.Vips {
+				if staleVip != eipVip {
+					_ = c.OVNNbClient.LoadBalancerDeleteVip(switchLBName, staleVip, true)
+				}
+			}
+		}
+		if err = c.OVNNbClient.LoadBalancerAddVip(switchLBName, eipVip, backends...); err != nil {
+			return fmt.Errorf("add vip to switch LB %s: %w", switchLBName, err)
+		}
+		if err = c.OVNNbClient.SetLoadBalancerHairpinSnatIP(switchLBName, v4Eip); err != nil {
+			return fmt.Errorf("set hairpin_snat_ip on switch LB %s: %w", switchLBName, err)
+		}
+		if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, switchLBName); err != nil {
+			return fmt.Errorf("attach switch LB %s to subnet %s: %w", switchLBName, subnetName, err)
+		}
+	}
+
+	// Add a dnat_and_snat NAT rule on the VPC router for ARP proxy purposes.
+	// The router LB fires first in OVN's pipeline (priority 120 vs NAT priority 100),
+	// so this rule does NOT DNAT actual traffic — but it causes the router to respond
+	// to ARP requests for v4Eip, which is required for nodes on the external subnet
+	// to be able to send packets to the EIP.
+	if v4Eip != "" {
+		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, vipIP, "", "", nil); err != nil {
+			return fmt.Errorf("add arp-proxy NAT rule for fip %s: %w", fipName, err)
+		}
+	}
+	return nil
+}
+
+// delFipVipLBRules removes the router LBs, switch LBs, and ARP-proxy NAT rule
+// created by addFipVipLBRules.
+func (c *Controller) delFipVipLBRules(fipName, vpcName, subnetName, v4Eip, vipIP string) error {
+	for _, proto := range []string{"tcp", "udp", "sctp"} {
+		routerLBName := fmt.Sprintf("fip-%s-%s", fipName, proto)
+		switchLBName := fmt.Sprintf("fip-%s-%s-sw", fipName, proto)
+
+		// Detach from router (ignores non-existent LBs)
+		if vpcName != "" {
+			if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, routerLBName); err != nil {
+				klog.Warningf("failed to remove router LB %s from vpc %s: %v", routerLBName, vpcName, err)
+			}
+		}
+		// Detach from switch (ignores non-existent LBs)
+		if subnetName != "" {
+			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, switchLBName); err != nil {
+				klog.Warningf("failed to remove switch LB %s from subnet %s: %v", switchLBName, subnetName, err)
+			}
+		}
+		// Delete LB objects (no-op if not found)
+		rln, sln := routerLBName, switchLBName
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == rln }); err != nil {
+			klog.Warningf("failed to delete router LB %s: %v", routerLBName, err)
+		}
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == sln }); err != nil {
+			klog.Warningf("failed to delete switch LB %s: %v", switchLBName, err)
+		}
+	}
+	// Remove the ARP-proxy NAT rule (warn if not found, do not fail)
+	if vpcName != "" && v4Eip != "" && vipIP != "" {
+		if err := c.OVNNbClient.DeleteNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, vipIP); err != nil {
+			klog.Warningf("failed to delete arp-proxy NAT rule for fip %s: %v", fipName, err)
+		}
+	}
+	return nil
+}
+
+// enqueueFipsForVipIP re-queues all OvnFips that target a switch_lb_vip VIP with
+// the given IP address, so their LB backends get refreshed when the SwitchLBRule
+// endpoints change.
+func (c *Controller) enqueueFipsForVipIP(vipIP string) {
+	// Find VIP resources with this IP to get their names.
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vips for ip %s: %v", vipIP, err)
+		return
+	}
+	for _, vip := range vips {
+		if vip.Spec.Type != util.SwitchLBRuleVip {
+			continue
+		}
+		if vip.Status.V4ip != vipIP && vip.Spec.V4ip != vipIP &&
+			vip.Status.V6ip != vipIP && vip.Spec.V6ip != vipIP {
+			continue
+		}
+		// Find FIPs referencing this VIP by name.
+		fips, err := c.ovnFipsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ovn fips for vip %s: %v", vip.Name, err)
+			return
+		}
+		for _, fip := range fips {
+			if fip.Spec.IPType == util.Vip && fip.Spec.IPName == vip.Name {
+				key := cache.MetaObjectToName(fip).String()
+				klog.Infof("enqueue fip %s for vip %s endpoint change", key, vip.Name)
+				c.addOvnFipQueue.Add(key)
+			}
+		}
+	}
+}
+
+// patchOvnFipSubnetAnnotation stores the internal subnet name on the FIP so
+// deletion can clean up switch LBs even if the VIP resource is already gone.
+func (c *Controller) patchOvnFipSubnetAnnotation(key, subnetName string) error {
+	oriFip, err := c.ovnFipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if oriFip.Annotations[util.FipInternalSubnetAnnotation] == subnetName {
+		return nil
+	}
+	fip := oriFip.DeepCopy()
+	if fip.Annotations == nil {
+		fip.Annotations = make(map[string]string)
+	}
+	fip.Annotations[util.FipInternalSubnetAnnotation] = subnetName
+	patch, err := util.GenerateMergePatchPayload(oriFip, fip)
+	if err != nil {
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), oriFip.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
 	}
 	return nil
 }

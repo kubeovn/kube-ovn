@@ -118,30 +118,35 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	if vip.Spec.Type == util.SwitchLBRuleVip {
-		// create a lsp use subnet gw mac, and set it option as arp_proxy
-		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
-		if err != nil {
-			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
-			return err
-		}
-		if lrp.MAC == "" {
-			err = fmt.Errorf("logical router port %s should have mac", lrpName)
-			klog.Error(err)
-			return err
-		}
-		mac = lrp.MAC
-		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		// Create the VIP LSP with only a MAC address (no IP in OVN addresses).
+		// If the IP were included in addresses, OVN would generate a priority=50 ARP response
+		// flow for that LSP's MAC. After switch LB DNAT, the packet's dl_dst would still be
+		// the VIP LSP's MAC, causing L2 lookup to route it to the VIP LSP (which has no OVS
+		// port) and drop it. By omitting the IP here and instead setting arp_proxy on the LRP
+		// switch port (subnet-vpc), OVN generates a priority=30 ARP flow responding with the
+		// LRP's MAC. Pods then send dl_dst=LRP_MAC, and after DNAT the L2 lookup correctly
+		// routes packets through the LRP to the backend.
+		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, "", mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
 		}
-		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
-			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
-			klog.Error(err)
-			return err
+		// Add VIP IP to the LRP switch port's arp_proxy so OVN generates an ARP response
+		// for the VIP IP using the LRP's MAC address.
+		lrpSwitchPortName := ovs.LogicalSwitchPortName(subnet.Spec.Vpc, subnet.Name)
+		if v4ip != "" {
+			if err := c.OVNNbClient.AddLogicalSwitchPortArpProxyIP(lrpSwitchPortName, v4ip); err != nil {
+				err = fmt.Errorf("failed to add arp_proxy ip for vip %s on lsp %s: %w", vip.Name, lrpSwitchPortName, err)
+				klog.Error(err)
+				return err
+			}
+		}
+		if v6ip != "" {
+			if err := c.OVNNbClient.AddLogicalSwitchPortArpProxyIP(lrpSwitchPortName, v6ip); err != nil {
+				err = fmt.Errorf("failed to add arp_proxy ipv6 for vip %s on lsp %s: %w", vip.Name, lrpSwitchPortName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -202,6 +207,20 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 				klog.Error(err)
 				return err
+			}
+			if vip.Spec.Type == util.SwitchLBRuleVip {
+				// Remove VIP IP from the LRP switch port's arp_proxy.
+				lrpSwitchPortName := ovs.LogicalSwitchPortName(subnet.Spec.Vpc, subnet.Name)
+				if vip.Status.V4ip != "" {
+					if err := c.OVNNbClient.RemoveLogicalSwitchPortArpProxyIP(lrpSwitchPortName, vip.Status.V4ip); err != nil {
+						klog.Errorf("failed to remove arp_proxy ip for vip %s on lsp %s: %v", vip.Name, lrpSwitchPortName, err)
+					}
+				}
+				if vip.Status.V6ip != "" {
+					if err := c.OVNNbClient.RemoveLogicalSwitchPortArpProxyIP(lrpSwitchPortName, vip.Status.V6ip); err != nil {
+						klog.Errorf("failed to remove arp_proxy ipv6 for vip %s on lsp %s: %v", vip.Name, lrpSwitchPortName, err)
+					}
+				}
 			}
 		}
 		// delete virtual ports
