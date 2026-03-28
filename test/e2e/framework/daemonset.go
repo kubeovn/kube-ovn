@@ -20,6 +20,8 @@ import (
 	"k8s.io/kubectl/pkg/polymorphichelpers"
 
 	"github.com/onsi/ginkgo/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type DaemonSetClient struct {
@@ -91,19 +93,17 @@ func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*core
 	return nil, fmt.Errorf("pod for daemonset %s/%s on node %s not found", ds.Namespace, ds.Name, node)
 }
 
-func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+func (c *DaemonSetClient) Patch(original, modified *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
-	modifiedBytes, err := json.Marshal(daemonset)
-	if err != nil {
-		Failf("failed to marshal modified DaemonSet: %v", err)
-	}
+	patch, err := util.GenerateStrategicMergePatchPayload(original, modified)
 	ExpectNoError(err)
+
 	var patchedDaemonSet *appsv1.DaemonSet
 	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
-		daemonSet, err := c.DaemonSetInterface.Patch(ctx, daemonset.Name, types.MergePatchType, modifiedBytes, metav1.PatchOptions{}, "")
+		daemonSet, err := c.DaemonSetInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
-			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
+			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", original.Namespace, original.Name)
 		}
 		patchedDaemonSet = daemonSet
 		return true, nil
@@ -113,16 +113,16 @@ func (c *DaemonSetClient) Patch(daemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		Failf("timed out while retrying to patch daemonset %s/%s", daemonset.Namespace, daemonset.Name)
+		Failf("timed out while retrying to patch daemonset %s/%s", original.Namespace, original.Name)
 	}
-	Failf("error occurred while retrying to patch daemonset %s/%s: %v", daemonset.Namespace, daemonset.Name, err)
+	Failf("error occurred while retrying to patch daemonset %s/%s: %v", original.Namespace, original.Name, err)
 
 	return nil
 }
 
-func (c *DaemonSetClient) PatchSync(modifiedDaemonset *appsv1.DaemonSet) *appsv1.DaemonSet {
+func (c *DaemonSetClient) PatchSync(original, modified *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
-	daemonSet := c.Patch(modifiedDaemonset)
+	daemonSet := c.Patch(original, modified)
 	return c.RolloutStatus(daemonSet.Name)
 }
 
