@@ -864,7 +864,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 
 	nat, err := c.getIptablesEipNat(oriEip.Spec.V4ip)
 	if err != nil {
-		err := errors.New("failed to get eip nat")
+		err = fmt.Errorf("failed to get eip nat: %w", err)
 		klog.Error(err)
 		return err
 	}
