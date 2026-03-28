@@ -96,12 +96,12 @@ func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*core
 func (c *DaemonSetClient) Patch(original, modified *appsv1.DaemonSet) *appsv1.DaemonSet {
 	ginkgo.GinkgoHelper()
 
-	patch, err := util.GenerateMergePatchPayload(original, modified)
+	patch, err := util.GenerateStrategicMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
 	var patchedDaemonSet *appsv1.DaemonSet
 	err = wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
-		daemonSet, err := c.DaemonSetInterface.Patch(ctx, original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+		daemonSet, err := c.DaemonSetInterface.Patch(ctx, original.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch daemonset %s/%s", original.Namespace, original.Name)
 		}
