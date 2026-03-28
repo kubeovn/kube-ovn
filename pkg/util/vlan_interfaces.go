@@ -2,7 +2,6 @@ package util
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +12,8 @@ import (
 func DetectVlanInterfaces(parentInterface string) []int {
 	vlanIDs := make([]int, 0)
 
+	// LinkList is unavoidable here: the netlink library has no LinkListFiltered
+	// and the kernel RTM_GETLINK dump does not support filtering by link type or parent.
 	links, err := netlink.LinkList()
 	if err != nil {
 		klog.Errorf("failed to list network interfaces: %v", err)
@@ -62,32 +63,6 @@ func ExtractVlanIDFromInterface(interfaceName string) (int, error) {
 	return vlanID, nil
 }
 
-func GetInterfaceAlias(interfaceName string) string {
-	aliasFile := fmt.Sprintf("/sys/class/net/%s/ifalias", interfaceName)
-	data, err := os.ReadFile(aliasFile)
-	if err != nil {
-		klog.V(3).Infof("Failed to read alias for interface %s: %v", interfaceName, err)
-		return ""
-	}
-
-	alias := strings.TrimSpace(string(data))
-	if alias == "" {
-		klog.V(3).Infof("No alias set for interface %s", interfaceName)
-		return ""
-	}
-
-	klog.V(3).Infof("Interface %s has alias: %s", interfaceName, alias)
-	return alias
-}
-
-func IsKubeOVNAutoCreatedInterface(interfaceName string) (bool, string) {
-	alias := GetInterfaceAlias(interfaceName)
-	if providerName, ok := strings.CutPrefix(alias, "kube-ovn:"); ok {
-		return true, providerName
-	}
-	return false, ""
-}
-
 func FindKubeOVNAutoCreatedInterfaces(providerName string) ([]string, error) {
 	var createdInterfaces []string
 
@@ -96,8 +71,10 @@ func FindKubeOVNAutoCreatedInterfaces(providerName string) ([]string, error) {
 		return nil, fmt.Errorf("failed to list network interfaces: %w", err)
 	}
 
+	// Use link.Attrs().Alias (parsed from IFLA_IFALIAS by netlink) instead of reading sysfs
+	prefix := "kube-ovn:" + providerName
 	for _, link := range links {
-		if isKubeOVN, pnName := IsKubeOVNAutoCreatedInterface(link.Attrs().Name); isKubeOVN && pnName == providerName {
+		if link.Attrs().Alias == prefix {
 			createdInterfaces = append(createdInterfaces, link.Attrs().Name)
 		}
 	}
