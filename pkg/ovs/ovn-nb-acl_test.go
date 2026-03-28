@@ -515,11 +515,11 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 	t.Run("ipv6 ipBlock", func(t *testing.T) {
 		t.Parallel()
 		ipBlocks := []netv1.IPBlock{
-			{CIDR: "fd00::/48", Except: []string{"fd00:1::/64"}},
+			{CIDR: "fd00::/48", Except: []string{"fd00:0:0:1::/64"}},
 		}
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv6, ovnnb.ACLDirectionToLport, ipBlocks, nil, nil)
 		require.Len(t, matches, 1)
-		require.Equal(t, "outport == @test.ipblock.pg && ip && (ip6.src == fd00::/48 && ip6.src != {fd00:1::/64})", matches[0])
+		require.Equal(t, "outport == @test.ipblock.pg && ip && (ip6.src == fd00::/48 && ip6.src != {fd00:0:0:1::/64})", matches[0])
 	})
 
 	t.Run("ipBlock with wrong protocol is filtered", func(t *testing.T) {
@@ -535,6 +535,72 @@ func (suite *OvnClientTestSuite) testNewIPBlockACLMatch() {
 		t.Parallel()
 		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, nil, nil, nil)
 		require.Empty(t, matches)
+	})
+
+	t.Run("ipBlock with named port not found", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{{CIDR: "10.0.0.0/8"}}
+		protocolTCP := v1.ProtocolTCP
+		npp := []netv1.NetworkPolicyPort{
+			{
+				Port: &intstr.IntOrString{
+					Type:   intstr.String,
+					StrVal: "unknown-port",
+				},
+				Protocol: &protocolTCP,
+			},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, npp, nil)
+		require.Empty(t, matches)
+	})
+
+	t.Run("ipBlock with named port range should be skipped", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{{CIDR: "10.0.0.0/8"}}
+		protocolTCP := v1.ProtocolTCP
+		var endPort int32 = 20000
+		npp := []netv1.NetworkPolicyPort{
+			{
+				Port: &intstr.IntOrString{
+					Type:   intstr.String,
+					StrVal: "http",
+				},
+				EndPort:  &endPort,
+				Protocol: &protocolTCP,
+			},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, npp, nil)
+		require.Empty(t, matches)
+	})
+
+	t.Run("except CIDR larger than main CIDR is ignored", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/24", Except: []string{"10.0.0.0/16"}},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Equal(t, "inport == @test.ipblock.pg && ip && (ip4.dst == 10.0.0.0/24)", matches[0])
+	})
+
+	t.Run("except CIDR not overlapping main CIDR is ignored", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/24", Except: []string{"192.168.0.0/16"}},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Equal(t, "inport == @test.ipblock.pg && ip && (ip4.dst == 10.0.0.0/24)", matches[0])
+	})
+
+	t.Run("mixed valid and invalid excepts", func(t *testing.T) {
+		t.Parallel()
+		ipBlocks := []netv1.IPBlock{
+			{CIDR: "10.0.0.0/8", Except: []string{"10.1.0.0/16", "192.168.0.0/16"}},
+		}
+		matches := newIPBlockACLMatch(pgName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, ipBlocks, nil, nil)
+		require.Len(t, matches, 1)
+		require.Equal(t, "inport == @test.ipblock.pg && ip && (ip4.dst == 10.0.0.0/8 && ip4.dst != {10.1.0.0/16})", matches[0])
 	})
 }
 
@@ -2332,10 +2398,43 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 				},
 			}
 			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
-			require.ElementsMatch(t, []string{
-				fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, 0),
-			}, matches)
+			// named port not found should generate no match (deny-all), not port 0
+			require.Empty(t, matches)
 		})
+	})
+
+	t.Run("port range with named port should be skipped", func(t *testing.T) {
+		t.Parallel()
+		protocolTCP := v1.ProtocolTCP
+		var endPort int32 = 20000
+		npp := []netv1.NetworkPolicyPort{
+			{
+				Port: &intstr.IntOrString{
+					Type:   intstr.String,
+					StrVal: "http",
+				},
+				EndPort:  &endPort,
+				Protocol: &protocolTCP,
+			},
+		}
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
+		require.Empty(t, matches)
+	})
+
+	t.Run("named port not found with nil namedPortMap", func(t *testing.T) {
+		t.Parallel()
+		protocolTCP := v1.ProtocolTCP
+		npp := []netv1.NetworkPolicyPort{
+			{
+				Port: &intstr.IntOrString{
+					Type:   intstr.String,
+					StrVal: "http",
+				},
+				Protocol: &protocolTCP,
+			},
+		}
+		matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, nil)
+		require.Empty(t, matches)
 	})
 }
 
