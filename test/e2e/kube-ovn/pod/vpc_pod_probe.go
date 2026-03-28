@@ -89,7 +89,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		}
 		newArgs = append(newArgs, "--enable-tproxy=true")
 		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
-		daemonSetClient.PatchSync(modifyDs)
+		daemonSetClient.PatchSync(originDs, modifyDs)
 
 		ginkgo.By("Creating VPC " + vpcName)
 		vpcName = "vpc-" + framework.RandomSuffix()
