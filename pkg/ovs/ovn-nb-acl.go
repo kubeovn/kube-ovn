@@ -1223,15 +1223,17 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 			var portID int32
 			if port.Port.Type == intstr.Int {
 				portID = port.Port.IntVal
-			} else if namedPortMap != nil {
-				_, ok := namedPortMap[port.Port.StrVal]
-				if !ok {
-					// for cyclonus network policy test case 'should allow ingress access on one named port'
-					// this case expect all-deny if no named port defined
-					klog.Errorf("no named port with name %s found", port.Port.StrVal)
-				} else {
-					portID = namedPortMap[port.Port.StrVal].PortID
+			} else {
+				if namedPortMap == nil {
+					continue
 				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					// no allow ACL generated = deny-all for this named port
+					klog.Errorf("no named port with name %s found", port.Port.StrVal)
+					continue
+				}
+				portID = info.PortID
 			}
 
 			oneTCPMatch := NewAndACLMatch(
@@ -1241,6 +1243,12 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 			matches = append(matches, oneTCPMatch.String())
 
+			continue
+		}
+
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported, skipping", port.Port.StrVal)
 			continue
 		}
 
@@ -1277,17 +1285,24 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 	// Build per-ipBlock match with scoped except
 	var perBlockMatches []ACLMatch
 	for i := range ipBlocks {
-		if util.CheckProtocol(ipBlocks[i].CIDR) != protocol {
+		block := ipBlocks[i]
+		if util.CheckProtocol(block.CIDR) != protocol {
 			continue
 		}
 
-		cidrMatch := NewACLMatch(ipKey, "==", ipBlocks[i].CIDR, "")
+		cidrMatch := NewACLMatch(ipKey, "==", block.CIDR, "")
 
 		var filteredExcepts []string
-		for _, e := range ipBlocks[i].Except {
-			if util.CheckProtocol(e) == protocol {
-				filteredExcepts = append(filteredExcepts, e)
+		for _, e := range block.Except {
+			if util.CheckProtocol(e) != protocol {
+				continue
 			}
+			contained, err := util.CIDRContainsCIDR(block.CIDR, e)
+			if err != nil || !contained {
+				klog.Warningf("IPBlock except CIDR %s is not contained in main CIDR %s, skipping", e, block.CIDR)
+				continue
+			}
+			filteredExcepts = append(filteredExcepts, e)
 		}
 
 		if len(filteredExcepts) == 0 {
@@ -1333,12 +1348,24 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 			var portID int32
 			if port.Port.Type == intstr.Int {
 				portID = port.Port.IntVal
-			} else if namedPortMap != nil {
-				if info, ok := namedPortMap[port.Port.StrVal]; ok {
-					portID = info.PortID
+			} else {
+				if namedPortMap == nil {
+					continue
 				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					klog.Errorf("no named port with name %s found", port.Port.StrVal)
+					continue
+				}
+				portID = info.PortID
 			}
 			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "==", strconv.Itoa(int(portID)), "")).String())
+			continue
+		}
+
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported, skipping", port.Port.StrVal)
 			continue
 		}
 
