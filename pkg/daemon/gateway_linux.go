@@ -1358,12 +1358,12 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 				continue
 			}
 
-			currentPackets, err := strconv.Atoi(items[9])
+			currentPackets, err := strconv.ParseUint(items[9], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packets %q: %v", items[9], err)
 				continue
 			}
-			currentPacketBytes, err := strconv.Atoi(items[10])
+			currentPacketBytes, err := strconv.ParseUint(items[10], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packet bytes %q: %v", items[10], err)
 				continue

@@ -9,6 +9,6 @@ type IPTableRule struct {
 }
 
 type GwIPTablesCounters struct {
-	Packets     int
-	PacketBytes int
+	Packets     uint64
+	PacketBytes uint64
 }
