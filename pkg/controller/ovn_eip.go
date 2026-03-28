@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -441,7 +440,7 @@ func (c *Controller) patchOvnEipStatus(key string, markEIPAsReady bool) error {
 	}
 	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip)
 	if err != nil {
-		err := errors.New("failed to get ovn eip nat")
+		err = fmt.Errorf("failed to get ovn eip nat: %w", err)
 		klog.Error(err)
 		return err
 	}
@@ -573,7 +572,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	var err error
 	nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
 	if err != nil {
-		err := errors.New("failed to get ovn eip nat")
+		err = fmt.Errorf("failed to get ovn eip nat: %w", err)
 		klog.Error(err)
 		return err
 	}
