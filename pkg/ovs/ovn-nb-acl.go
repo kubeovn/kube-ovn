@@ -1230,7 +1230,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 				info, ok := namedPortMap[port.Port.StrVal]
 				if !ok {
 					// no allow ACL generated = deny-all for this named port
-					klog.Errorf("no named port with name %s found", port.Port.StrVal)
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
 					continue
 				}
 				portID = info.PortID
@@ -1248,7 +1248,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 		// named port with endPort range is not supported
 		if port.Port.Type == intstr.String {
-			klog.Errorf("named port %s with endPort is not supported, skipping", port.Port.StrVal)
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
 			continue
 		}
 
@@ -1298,7 +1298,11 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 				continue
 			}
 			contained, err := util.CIDRContainsCIDR(block.CIDR, e)
-			if err != nil || !contained {
+			if err != nil {
+				klog.Warningf("error checking containment for IPBlock except CIDR %s in main CIDR %s, skipping: %v", e, block.CIDR, err)
+				continue
+			}
+			if !contained {
 				klog.Warningf("IPBlock except CIDR %s is not contained in main CIDR %s, skipping", e, block.CIDR)
 				continue
 			}
@@ -1354,7 +1358,7 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 				}
 				info, ok := namedPortMap[port.Port.StrVal]
 				if !ok {
-					klog.Errorf("no named port with name %s found", port.Port.StrVal)
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
 					continue
 				}
 				portID = info.PortID
@@ -1365,7 +1369,7 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 
 		// named port with endPort range is not supported
 		if port.Port.Type == intstr.String {
-			klog.Errorf("named port %s with endPort is not supported, skipping", port.Port.StrVal)
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
 			continue
 		}
 
