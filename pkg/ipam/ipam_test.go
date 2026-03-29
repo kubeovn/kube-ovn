@@ -731,6 +731,11 @@ func TestIPAMAddOrUpdateSubnetAllowFirstIPv4Address(t *testing.T) {
 
 	v4, v6, _, err := ipam.GetRandomAddress("pod.allow.default", "pod.allow.default", nil, subnetName, "", nil, true)
 	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Empty(t, v6)
+
+	v4, v6, _, err = ipam.GetStaticAddress("pod.allow.first", "pod.allow.first", "10.0.0.0", nil, subnetName, true)
+	require.NoError(t, err)
 	require.Equal(t, "10.0.0.0", v4)
 	require.Empty(t, v6)
 }
@@ -761,7 +766,7 @@ func TestIPAMAddOrUpdateSubnetRejectDisableWithAllocatedFirstIPv4Address(t *test
 	err := ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "", nil, true)
 	require.NoError(t, err)
 
-	v4, _, _, err := ipam.GetRandomAddress("pod.allow.default", "pod.allow.default", nil, subnetName, "", nil, true)
+	v4, _, _, err := ipam.GetStaticAddress("pod.allow.default", "pod.allow.default", "10.0.0.0", nil, subnetName, true)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.0", v4)
 

@@ -52,7 +52,8 @@ func TestNewSubnetIPv4AllowFirstIPv4Address(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, subnet)
 	require.True(t, subnet.AllowFirstIPv4Address)
-	require.Equal(t, "10.0.0.0-10.0.0.1,10.0.0.3-10.0.0.254", subnet.V4Free.String())
+	require.Equal(t, "10.0.0.1,10.0.0.3-10.0.0.254", subnet.V4Free.String())
+	require.Equal(t, "10.0.0.0,10.0.0.2", subnet.V4Reserved.String())
 }
 
 func TestNewSubnetIPv6(t *testing.T) {

@@ -57,7 +57,7 @@ var _ = framework.Describe("[group:first-ipv4]", func() {
 		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
 	})
 
-	framework.ConformanceIt("should allocate the first IPv4 address and preserve pod connectivity", func() {
+	framework.ConformanceIt("should allow explicitly assigning the first IPv4 address and preserve pod connectivity", func() {
 		ginkgo.By("Creating server pod " + serverPodName + " with first IPv4 address " + firstIPv4)
 		serverAnnotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
@@ -82,6 +82,7 @@ var _ = framework.Describe("[group:first-ipv4]", func() {
 
 		clientIPv4, _ := util.SplitStringIP(clientPod.Annotations[util.IPAddressAnnotation])
 		framework.ExpectNotEmpty(clientIPv4)
+		framework.ExpectEqual(clientIPv4 == firstIPv4, false)
 		framework.ExpectHaveKeyWithValue(clientPod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(clientPod.Annotations, util.LogicalSwitchAnnotation, subnetName)
 

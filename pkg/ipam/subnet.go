@@ -58,6 +58,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string, allowFirstIPv4Address 
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
+	excludeIps = util.GetSubnetExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 	v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)

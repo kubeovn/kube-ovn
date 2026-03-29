@@ -88,6 +88,33 @@ func FirstIPv4Address(subnet string) string {
 	return cidr.IP.String()
 }
 
+func GetSubnetExcludeIPs(excludeIPs []string, cidr string, allowFirstIPv4Address bool) []string {
+	if !allowFirstIPv4Address {
+		return excludeIPs
+	}
+
+	v4CIDR, _ := SplitStringIP(cidr)
+	if v4CIDR == "" {
+		return excludeIPs
+	}
+
+	firstIPv4, err := FirstIPWithFirstIPv4(v4CIDR, true)
+	if err != nil || firstIPv4 == "" {
+		return excludeIPs
+	}
+
+	for _, excludeIP := range ExpandExcludeIPs(excludeIPs, v4CIDR, true) {
+		if ContainsIPs(excludeIP, firstIPv4) {
+			return excludeIPs
+		}
+	}
+
+	effectiveExcludeIPs := make([]string, 0, len(excludeIPs)+1)
+	effectiveExcludeIPs = append(effectiveExcludeIPs, excludeIPs...)
+	effectiveExcludeIPs = append(effectiveExcludeIPs, firstIPv4)
+	return effectiveExcludeIPs
+}
+
 func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
 	ones, bits := cidr.Mask.Size()

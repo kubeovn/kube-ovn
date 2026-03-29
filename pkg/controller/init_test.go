@@ -104,7 +104,7 @@ func TestInitSubnetIPAM(t *testing.T) {
 		}
 
 		require.NoError(t, controller.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, "", nil, true))
-		v4, _, _, err := controller.ipam.GetRandomAddress("pod.default", "pod.default", nil, subnet.Name, "", nil, true)
+		v4, _, _, err := controller.ipam.GetStaticAddress("pod.default", "pod.default", "10.0.0.0", nil, subnet.Name, true)
 		require.NoError(t, err)
 		require.Equal(t, "10.0.0.0", v4)
 

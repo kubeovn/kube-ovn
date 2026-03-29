@@ -179,6 +179,7 @@ func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string, allowFirstIPv4Address ...bool) error {
 	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
+	excludeIps = util.GetSubnetExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 
 	ipam.mutex.Lock()

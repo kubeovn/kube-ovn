@@ -197,6 +197,28 @@ func TestFirstIPv4Address(t *testing.T) {
 	}
 }
 
+func TestGetSubnetExcludeIPs(t *testing.T) {
+	t.Run("keeps exclude IPs unchanged when first IPv4 is disabled", func(t *testing.T) {
+		excludeIPs := []string{"10.0.0.2"}
+		require.Equal(t, excludeIPs, GetSubnetExcludeIPs(excludeIPs, "10.0.0.0/24", false))
+	})
+
+	t.Run("appends the first IPv4 address when enabled", func(t *testing.T) {
+		excludeIPs := []string{"10.0.0.2"}
+		require.Equal(t, []string{"10.0.0.2", "10.0.0.0"}, GetSubnetExcludeIPs(excludeIPs, "10.0.0.0/24", true))
+	})
+
+	t.Run("does not append the first IPv4 address twice", func(t *testing.T) {
+		excludeIPs := []string{"10.0.0.0..10.0.0.2"}
+		require.Equal(t, excludeIPs, GetSubnetExcludeIPs(excludeIPs, "10.0.0.0/24", true))
+	})
+
+	t.Run("ignores IPv6 only subnets", func(t *testing.T) {
+		excludeIPs := []string{"2001:db8::2"}
+		require.Equal(t, excludeIPs, GetSubnetExcludeIPs(excludeIPs, "2001:db8::/64", true))
+	})
+}
+
 func TestSubnetBroadcast(t *testing.T) {
 	tests := []struct {
 		name   string

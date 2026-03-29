@@ -1852,6 +1852,7 @@ func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) 
 }
 
 func (c *Controller) checkIPsInExcludeList(ips string, excludeIPs []string, cidr string, allowFirstIPv4 bool) bool {
+	excludeIPs = util.GetSubnetExcludeIPs(excludeIPs, cidr, allowFirstIPv4)
 	expandedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, cidr, allowFirstIPv4)
 
 	for ipAddr := range strings.SplitSeq(strings.TrimSpace(ips), ",") {
