@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -696,5 +698,179 @@ func Test_validateSubnetVlan(t *testing.T) {
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.NoError(t, err)
+	})
+}
+
+func Test_handleMcastQuerierChange(t *testing.T) {
+	t.Parallel()
+
+	subnetName := "test-mcast-subnet"
+	lspName := fmt.Sprintf(util.McastQuerierName, subnetName)
+	querierIP := "10.16.0.100"
+	querierMAC := "00:00:00:ab:cd:ef"
+
+	t.Run("enable multicast snoop successfully", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+		}
+
+		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(nil)
+		mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnetName, ovsdb.MutateOperationInsert, gomock.Any()).Return(nil)
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.NoError(t, err)
+	})
+
+	t.Run("enable multicast snoop create lsp fails", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+		}
+
+		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(errors.New("create lsp failed"))
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "create lsp failed")
+	})
+
+	t.Run("enable multicast snoop update other config fails", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+		}
+
+		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(nil)
+		mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnetName, ovsdb.MutateOperationInsert, gomock.Any()).Return(errors.New("update config failed"))
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "update config failed")
+	})
+
+	t.Run("disable multicast snoop successfully", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+		}
+
+		lss := []ovnnb.LogicalSwitch{{
+			Name: subnetName,
+			OtherConfig: map[string]string{
+				"mcast_snoop":   "true",
+				"mcast_querier": "true",
+				"mcast_ip4_src": querierIP,
+				"mcast_eth_src": querierMAC,
+			},
+		}}
+
+		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return(lss, nil)
+		mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnetName, ovsdb.MutateOperationDelete, gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName).Return(nil)
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.NoError(t, err)
+	})
+
+	t.Run("disable multicast snoop list logical switch fails", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+		}
+
+		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return(nil, errors.New("list failed"))
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "list failed")
+	})
+
+	// KEY TEST: This is the bug scenario - logical switch not found should return error, not nil
+	t.Run("disable multicast snoop logical switch not found returns error", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+		}
+
+		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil)
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), subnetName)
+	})
+
+	t.Run("disable multicast snoop delete other config fails", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+		}
+
+		lss := []ovnnb.LogicalSwitch{{
+			Name:        subnetName,
+			OtherConfig: map[string]string{},
+		}}
+
+		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return(lss, nil)
+		mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnetName, ovsdb.MutateOperationDelete, gomock.Any()).Return(errors.New("delete config failed"))
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "delete config failed")
+	})
+
+	t.Run("disable multicast snoop delete lsp fails", func(t *testing.T) {
+		fakeController := newFakeController(t)
+		ctrl := fakeController.fakeController
+		mockOvnClient := fakeController.mockOvnClient
+
+		subnet := &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+		}
+
+		lss := []ovnnb.LogicalSwitch{{
+			Name:        subnetName,
+			OtherConfig: map[string]string{},
+		}}
+
+		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return(lss, nil)
+		mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnetName, ovsdb.MutateOperationDelete, gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName).Return(errors.New("delete lsp failed"))
+
+		err := ctrl.handleMcastQuerierChange(subnet)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "delete lsp failed")
 	})
 }
