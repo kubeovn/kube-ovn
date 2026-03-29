@@ -2912,9 +2912,13 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 		lss, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 			return ls.Name == subnet.Name
 		})
-		if err != nil || len(lss) == 0 {
+		if err != nil {
 			klog.Errorf("failed to list logical switch %s: %v", subnet.Name, err)
 			return err
+		}
+		if len(lss) == 0 {
+			klog.Warningf("logical switch %s not found, skipping multicast snoop cleanup", subnet.Name)
+			return nil
 		}
 
 		multicastSnoopFlag := map[string]string{
