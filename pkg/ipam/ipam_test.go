@@ -723,6 +723,78 @@ func TestIPAMAddOrUpdateSubnet(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestIPAMAddOrUpdateSubnetAllowFirstIPv4Address(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "allowFirstIPv4"
+	err := ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "", nil, true)
+	require.NoError(t, err)
+
+	v4, v6, _, err := ipam.GetRandomAddress("pod.allow.default", "pod.allow.default", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.0", v4)
+	require.Empty(t, v6)
+}
+
+func TestSubnetFirstIPv4(t *testing.T) {
+	t.Run("returns the first IPv4 address for a regular IPv4 subnet", func(t *testing.T) {
+		ip, err := subnetFirstIPv4("10.0.0.0/24")
+		require.NoError(t, err)
+		require.Equal(t, IP(net.ParseIP("10.0.0.0").To4()), ip)
+	})
+
+	t.Run("returns nil for point to point subnet", func(t *testing.T) {
+		ip, err := subnetFirstIPv4("10.0.0.0/31")
+		require.NoError(t, err)
+		require.Nil(t, ip)
+	})
+
+	t.Run("rejects non IPv4 cidr", func(t *testing.T) {
+		ip, err := subnetFirstIPv4("2001:db8::/64")
+		require.ErrorContains(t, err, "is not an IPv4 cidr")
+		require.Nil(t, ip)
+	})
+}
+
+func TestIPAMAddOrUpdateSubnetRejectDisableWithAllocatedFirstIPv4Address(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "allowFirstIPv4"
+	err := ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "", nil, true)
+	require.NoError(t, err)
+
+	v4, _, _, err := ipam.GetRandomAddress("pod.allow.default", "pod.allow.default", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.0", v4)
+
+	err = ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "", nil, false)
+	require.ErrorContains(t, err, "cannot disable allowFirstIPv4Address")
+	require.True(t, ipam.Subnets[subnetName].AllowFirstIPv4Address)
+
+	ip, err := NewIP("10.0.0.0")
+	require.NoError(t, err)
+	require.True(t, ipam.Subnets[subnetName].V4Using.Contains(ip))
+	require.Equal(t, "pod.allow.default", ipam.Subnets[subnetName].V4IPToPod["10.0.0.0"])
+}
+
+func TestIPAMAddOrUpdateSubnetAllowFirstIPv4AddressDoesNotResetIPv6State(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "dualSubnet"
+	err := ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24,2001:db8::/64", "10.0.0.1,2001:db8::1", nil, false)
+	require.NoError(t, err)
+
+	_, v6, _, err := ipam.GetRandomAddress("pod.dual.default", "pod.dual.default", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	ipam.ReleaseAddressByPod("pod.dual.default", subnetName)
+
+	v6IP, err := NewIP(v6)
+	require.NoError(t, err)
+	require.True(t, ipam.Subnets[subnetName].IPPools[""].V6Released.Contains(v6IP))
+
+	err = ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24,2001:db8::/64", "10.0.0.1,2001:db8::1", nil, true)
+	require.NoError(t, err)
+	require.True(t, ipam.Subnets[subnetName].AllowFirstIPv4Address)
+	require.True(t, ipam.Subnets[subnetName].IPPools[""].V6Released.Contains(v6IP))
+}
+
 func TestIPAMAddOrUpdateIPPool(t *testing.T) {
 	// test v4 subnet
 	ipam := NewIPAM()

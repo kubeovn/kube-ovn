@@ -667,7 +667,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		if vmKey != "" {
 			patch[fmt.Sprintf(util.VMAnnotationTemplate, podNet.ProviderName)] = vmName
 		}
-		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
+		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr, c.config.AllowFirstIPv4Address); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 			return nil, err
@@ -1842,17 +1842,17 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 
 func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
 	if ipAddr := pod.Annotations[util.IPAddressAnnotation]; ipAddr != "" {
-		return c.checkIPsInExcludeList(ipAddr, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+		return c.checkIPsInExcludeList(ipAddr, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock, c.config.AllowFirstIPv4Address)
 	}
 	if ipPool := pod.Annotations[util.IPPoolAnnotation]; ipPool != "" {
-		return c.checkIPsInExcludeList(ipPool, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+		return c.checkIPsInExcludeList(ipPool, subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock, c.config.AllowFirstIPv4Address)
 	}
 
 	return false
 }
 
-func (c *Controller) checkIPsInExcludeList(ips string, excludeIPs []string, cidr string) bool {
-	expandedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, cidr)
+func (c *Controller) checkIPsInExcludeList(ips string, excludeIPs []string, cidr string, allowFirstIPv4 bool) bool {
+	expandedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, cidr, allowFirstIPv4)
 
 	for ipAddr := range strings.SplitSeq(strings.TrimSpace(ips), ",") {
 		ipAddr = strings.TrimSpace(ipAddr)

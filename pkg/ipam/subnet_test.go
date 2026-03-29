@@ -46,6 +46,15 @@ func TestNewSubnetIPv4(t *testing.T) {
 	// TODO: check pool
 }
 
+func TestNewSubnetIPv4AllowFirstIPv4Address(t *testing.T) {
+	excludeIps := []string{"10.0.0.2"}
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", excludeIps, true)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	require.True(t, subnet.AllowFirstIPv4Address)
+	require.Equal(t, "10.0.0.0-10.0.0.1,10.0.0.3-10.0.0.254", subnet.V4Free.String())
+}
+
 func TestNewSubnetIPv6(t *testing.T) {
 	excludeIps := []string{"2001:db8::2", "2001:db8::4", "2001:db8::100", "2001:db8::252", "2001:db8::253", "2001:db8::254"}
 	subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", excludeIps)

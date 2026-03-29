@@ -79,7 +79,7 @@ func BigInt2Ip(ipInt *big.Int) string {
 	return ip.String()
 }
 
-func SubnetNumber(subnet string) string {
+func FirstIPv4Address(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
 	maskLength, length := cidr.Mask.Size()
 	if maskLength+1 == length {
@@ -103,10 +103,17 @@ func SubnetBroadcast(subnet string) string {
 
 // FirstIP returns first usable ip address in the subnet
 func FirstIP(subnet string) (string, error) {
+	return FirstIPWithFirstIPv4(subnet, false)
+}
+
+func FirstIPWithFirstIPv4(subnet string, allowFirstIPv4Address bool) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		klog.Error(err)
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
+	}
+	if allowFirstIPv4Address && cidr.IP.To4() != nil {
+		return cidr.IP.String(), nil
 	}
 	// Handle ptp network case specially
 	if ones, bits := cidr.Mask.Size(); ones+1 == bits {
@@ -118,6 +125,10 @@ func FirstIP(subnet string) (string, error) {
 
 // LastIP returns last usable ip address in the subnet
 func LastIP(subnet string) (string, error) {
+	return LastIPWithFirstIPv4(subnet, false)
+}
+
+func LastIPWithFirstIPv4(subnet string, allowFirstIPv4Address bool) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		klog.Error(err)
@@ -125,6 +136,7 @@ func LastIP(subnet string) (string, error) {
 	}
 
 	ipInt := IP2BigInt(cidr.IP.String())
+	_ = allowFirstIPv4Address
 	size := getCIDRSize(cidr)
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
@@ -214,13 +226,18 @@ func CheckProtocol(address string) string {
 	return ""
 }
 
-func AddressCountBigInt(network *net.IPNet) internal.BigInt {
+func AddressCountBigInt(network *net.IPNet, allowFirstIPv4Address ...bool) internal.BigInt {
+	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
 	prefixLen, bits := network.Mask.Size()
 	zeros := uint(bits - prefixLen) // #nosec G115
 	count := big.NewInt(0).Lsh(big.NewInt(1), zeros)
 	// Special case handling for /31 and /32 subnets.
 	if bits-prefixLen >= 2 {
-		count.Sub(count, big.NewInt(2))
+		if allowFirstIPv4 && network.IP.To4() != nil {
+			count.Sub(count, big.NewInt(1))
+		} else {
+			count.Sub(count, big.NewInt(2))
+		}
 	}
 	return internal.BigInt{Int: *count}
 }
@@ -403,8 +420,9 @@ func SplitStringIP(ipStr string) (string, string) {
 	return v4IP, v6IP
 }
 
-// ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr
-func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
+// ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr.
+func ExpandExcludeIPs(excludeIPs []string, cidr string, allowFirstIPv4Address ...bool) []string {
+	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
@@ -424,12 +442,13 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					continue
 				}
 
-				firstIP, err := FirstIP(cidrBlock)
+				allowFirstIPv4InCIDR := allowFirstIPv4 && CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4
+				firstIP, err := FirstIPWithFirstIPv4(cidrBlock, allowFirstIPv4InCIDR)
 				if err != nil {
 					klog.Error(err)
 					continue
 				}
-				lastIP, _ := LastIP(cidrBlock)
+				lastIP, _ := LastIPWithFirstIPv4(cidrBlock, allowFirstIPv4InCIDR)
 				s1, e1 := s, e
 				if s1.Cmp(IP2BigInt(firstIP)) < 0 {
 					s1 = IP2BigInt(firstIP)
@@ -450,7 +469,8 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 				// exclude ip should be the same protocol with cidr
 				if CheckProtocol(cidrBlock) == CheckProtocol(excludeIP) {
 					// exclude ip should be in the range of cidr and not cidr addr and broadcast addr
-					if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
+					allowFirstIPv4InCIDR := allowFirstIPv4 && CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4
+					if CIDRContainIP(cidrBlock, excludeIP) && (allowFirstIPv4InCIDR || excludeIP != FirstIPv4Address(cidrBlock)) && excludeIP != SubnetBroadcast(cidrBlock) {
 						rv = append(rv, excludeIP)
 						break
 					}

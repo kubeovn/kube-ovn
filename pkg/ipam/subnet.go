@@ -40,10 +40,13 @@ type Subnet struct {
 	V6Gw         string
 	GatewayMAC   string
 
+	AllowFirstIPv4Address bool
+
 	IPPools map[string]*IPPool
 }
 
-func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
+func NewSubnet(name, cidrStr string, excludeIps []string, allowFirstIPv4Address ...bool) (*Subnet, error) {
+	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
 	var cidrs []*net.IPNet
 	for cidrBlock := range strings.SplitSeq(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
@@ -55,7 +58,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
-	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
+	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 	v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)
 	if err != nil {
@@ -88,10 +91,11 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		PodToNicList: map[string][]string{},
 		IPPools:      make(map[string]*IPPool, 0),
 	}
+	subnet.AllowFirstIPv4Address = allowFirstIPv4
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
-		firstIP, _ := util.FirstIP(cidrStr)
-		lastIP, _ := util.LastIP(cidrStr)
+		firstIP, _ := util.FirstIPWithFirstIPv4(cidrStr, allowFirstIPv4)
+		lastIP, _ := util.LastIPWithFirstIPv4(cidrStr, allowFirstIPv4)
 		subnet.V4CIDR = cidrs[0]
 		subnet.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 	case kubeovnv1.ProtocolIPv6:
@@ -103,8 +107,8 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		subnet.V4CIDR = cidrs[0]
 		subnet.V6CIDR = cidrs[1]
 		cidrBlocks := strings.Split(cidrStr, ",")
-		v4FirstIP, _ := util.FirstIP(cidrBlocks[0])
-		v4LastIP, _ := util.LastIP(cidrBlocks[0])
+		v4FirstIP, _ := util.FirstIPWithFirstIPv4(cidrBlocks[0], allowFirstIPv4)
+		v4LastIP, _ := util.LastIPWithFirstIPv4(cidrBlocks[0], allowFirstIPv4)
 		v6FirstIP, _ := util.FirstIP(cidrBlocks[1])
 		v6LastIP, _ := util.LastIP(cidrBlocks[1])
 		subnet.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", v4FirstIP, v4LastIP))

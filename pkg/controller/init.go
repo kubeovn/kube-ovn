@@ -355,8 +355,8 @@ func (c *Controller) InitIPAM() error {
 	for _, subnet := range subnets {
 		klog.Infof("Init subnet %s", subnet.Name)
 		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
+		if err := c.initSubnetIPAM(subnet); err != nil {
+			return err
 		}
 
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
@@ -549,6 +549,13 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	klog.Infof("take %.2f seconds to initialize IPAM", time.Since(start).Seconds())
+	return nil
+}
+
+func (c *Controller) initSubnetIPAM(subnet *kubeovnv1.Subnet) error {
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, c.config.AllowFirstIPv4Address); err != nil {
+		return fmt.Errorf("failed to init subnet %s: %w", subnet.Name, err)
+	}
 	return nil
 }
 

@@ -352,7 +352,8 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func ValidateNetworkBroadcast(cidr, ip string) error {
+func ValidateNetworkBroadcast(cidr, ip string, allowFirstIPv4Address ...bool) error {
+	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
 	for cidrBlock := range strings.SplitSeq(cidr, ",") {
 		for ipAddr := range strings.SplitSeq(ip, ",") {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {
@@ -367,7 +368,7 @@ func ValidateNetworkBroadcast(cidr, ip string) error {
 			if SubnetBroadcast(cidrBlock) == ipStr {
 				return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrBlock)
 			}
-			if SubnetNumber(cidrBlock) == ipStr {
+			if (!allowFirstIPv4 || CheckProtocol(cidrBlock) != kubeovnv1.ProtocolIPv4) && FirstIPv4Address(cidrBlock) == ipStr {
 				return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidrBlock)
 			}
 		}

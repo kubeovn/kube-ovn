@@ -202,6 +202,9 @@ features:
   # -- Enable Kube-OVN loadbalancer services
   # @section -- Opt-in/out Features
   enableLoadbalancerService: false
+  # -- Allow allocating the first IPv4 address in IPv4 subnets.
+  # @section -- Opt-in/out Features
+  allowFirstIPv4Address: false
   # -- Enable persistent VM IPs
   # @section -- Opt-in/out Features
   enableKeepVmIps: true

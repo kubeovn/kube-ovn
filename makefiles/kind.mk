@@ -278,6 +278,10 @@ kind-install: kind-load-image
 .PHONY: kind-install-ipv4
 kind-install-ipv4: kind-install
 
+.PHONY: kind-install-first-ipv4
+kind-install-first-ipv4:
+	@ALLOW_FIRST_IPV4_ADDRESS=true $(MAKE) kind-install
+
 .PHONY: kind-install-ipv6
 kind-install-ipv6:
 	@IPV6=true $(MAKE) kind-install

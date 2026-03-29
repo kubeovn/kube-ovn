@@ -881,45 +881,65 @@ func TestValidatePodNetwork(t *testing.T) {
 
 func TestValidateNetworkBroadcast(t *testing.T) {
 	tests := []struct {
-		name string
-		cidr string
-		ip   string
-		err  string
+		name                  string
+		cidr                  string
+		ip                    string
+		allowFirstIPv4Address bool
+		err                   string
 	}{
 		{
-			name: "correctV4",
-			cidr: "10.16.0.0/16",
-			ip:   "10.16.0.3",
-			err:  "",
+			name:                  "correctV4",
+			cidr:                  "10.16.0.0/16",
+			ip:                    "10.16.0.3",
+			allowFirstIPv4Address: false,
+			err:                   "",
 		},
 		{
-			name: "correctDual",
-			cidr: "10.244.0.0/16,fd00:10:244:0:2::/80",
-			ip:   "10.244.0.6,fd00:10:244:0:2:2",
-			err:  "",
+			name:                  "correctDual",
+			cidr:                  "10.244.0.0/16,fd00:10:244:0:2::/80",
+			ip:                    "10.244.0.6,fd00:10:244:0:2:2",
+			allowFirstIPv4Address: false,
+			err:                   "",
 		},
 		{
-			name: "boardV4",
-			cidr: "10.16.0.0/16",
-			ip:   "10.16.255.255",
-			err:  "10.16.255.255 is the broadcast ip in cidr 10.16.0.0/16",
+			name:                  "boardV4",
+			cidr:                  "10.16.0.0/16",
+			ip:                    "10.16.255.255",
+			allowFirstIPv4Address: false,
+			err:                   "10.16.255.255 is the broadcast ip in cidr 10.16.0.0/16",
 		},
 		{
-			name: "boardV4",
-			cidr: "10.16.0.0/16",
-			ip:   "10.16.0.0",
-			err:  "10.16.0.0 is the network number ip in cidr 10.16.0.0/16",
+			name:                  "boardV4",
+			cidr:                  "10.16.0.0/16",
+			ip:                    "10.16.0.0",
+			allowFirstIPv4Address: false,
+			err:                   "10.16.0.0 is the network number ip in cidr 10.16.0.0/16",
 		},
 		{
-			name: "boardV4/31subnet",
-			cidr: "10.16.0.0/31",
-			ip:   "",
-			err:  "",
+			name:                  "allowFirstIPv4V4",
+			cidr:                  "10.16.0.0/16",
+			ip:                    "10.16.0.0",
+			allowFirstIPv4Address: true,
+			err:                   "",
+		},
+		{
+			name:                  "allowFirstIPv4StillRejectBroadcast",
+			cidr:                  "10.16.0.0/16",
+			ip:                    "10.16.255.255",
+			allowFirstIPv4Address: true,
+			err:                   "10.16.255.255 is the broadcast ip in cidr 10.16.0.0/16",
+		},
+		{
+			name:                  "boardV4/31subnet",
+			cidr:                  "10.16.0.0/31",
+			ip:                    "",
+			allowFirstIPv4Address: false,
+			err:                   "",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ret := ValidateNetworkBroadcast(tt.cidr, tt.ip)
+			ret := ValidateNetworkBroadcast(tt.cidr, tt.ip, tt.allowFirstIPv4Address)
 			if !ErrorContains(ret, tt.err) {
 				t.Errorf("got %v, want error %v", ret, tt.err)
 			}

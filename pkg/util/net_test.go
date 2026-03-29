@@ -175,7 +175,7 @@ func TestBigInt2Ip(t *testing.T) {
 	}
 }
 
-func TestSubnetNumber(t *testing.T) {
+func TestFirstIPv4Address(t *testing.T) {
 	tests := []struct {
 		name   string
 		expect string
@@ -189,7 +189,7 @@ func TestSubnetNumber(t *testing.T) {
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			if ans := SubnetNumber(c.subnet); ans != c.expect {
+			if ans := FirstIPv4Address(c.subnet); ans != c.expect {
 				t.Errorf("%v expected %v, but %v got",
 					c.subnet, c.expect, ans)
 			}
@@ -511,6 +511,17 @@ func TestAddressCountBigInt(t *testing.T) {
 				t.Errorf("%v expected %v, but %v got", c.network, c.want, result)
 			}
 		})
+	}
+}
+
+func TestAddressCountBigIntAllowFirstIPv4Address(t *testing.T) {
+	network := &net.IPNet{
+		IP:   net.ParseIP("10.10.0.0"),
+		Mask: net.IPMask{255, 255, 255, 0},
+	}
+	count := AddressCountBigInt(network, true)
+	if !count.EqualInt64(255) {
+		t.Fatalf("expected 255 allocatable ips, got %s", count.String())
 	}
 }
 
@@ -1216,6 +1227,24 @@ func TestExpandExcludeIPs(t *testing.T) {
 					c.cidr, c.want, ans)
 			}
 		})
+	}
+}
+
+func TestExpandExcludeIPsAllowFirstIPv4Address(t *testing.T) {
+	exclude := []string{"10.16.0.0", "10.16.0.1..10.16.0.3"}
+	got := ExpandExcludeIPs(exclude, "10.16.0.0/24", true)
+	want := []string{"10.16.0.0", "10.16.0.1..10.16.0.3"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
+func TestExpandExcludeIPsAllowFirstIPv4AddressDoesNotAffectIPv6(t *testing.T) {
+	exclude := []string{"2001:db8::", "2001:db8::1..2001:db8::3"}
+	got := ExpandExcludeIPs(exclude, "2001:db8::/64", true)
+	want := []string{"2001:db8::1..2001:db8::3"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
 

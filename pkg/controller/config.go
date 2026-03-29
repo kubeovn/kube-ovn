@@ -91,6 +91,7 @@ type Configuration struct {
 	EnableEipSnat               bool
 	EnableExternalVpc           bool
 	EnableEcmp                  bool
+	AllowFirstIPv4Address       bool
 	EnableKeepVMIP              bool
 	EnableLbSvc                 bool
 	EnableOVNLBPreferLocal      bool
@@ -194,6 +195,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
+		argAllowFirstIPv4Address       = pflag.Bool("allow-first-ipv4-address", false, "Allow allocating the first IPv4 address in IPv4 subnets")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
@@ -300,6 +302,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayNet:             *argExternalGatewayNet,
 		ExternalGatewayVlanID:          *argExternalGatewayVlanID,
 		EnableEcmp:                     *argEnableEcmp,
+		AllowFirstIPv4Address:          *argAllowFirstIPv4Address,
 		EnableKeepVMIP:                 *argKeepVMIP,
 		NodePgProbeTime:                *argNodePgProbeTime,
 		GCInterval:                     *argGCInterval,
