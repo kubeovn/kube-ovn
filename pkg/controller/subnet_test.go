@@ -809,8 +809,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		require.Contains(t, err.Error(), "list failed")
 	})
 
-	// KEY TEST: This is the bug scenario - logical switch not found should return error, not nil
-	t.Run("disable multicast snoop logical switch not found returns error", func(t *testing.T) {
+	// logical switch not found: cleanup is unnecessary, should return nil to avoid infinite requeue
+	t.Run("disable multicast snoop logical switch not found skips cleanup", func(t *testing.T) {
 		fakeController := newFakeController(t)
 		ctrl := fakeController.fakeController
 		mockOvnClient := fakeController.mockOvnClient
@@ -823,8 +823,7 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil)
 
 		err := ctrl.handleMcastQuerierChange(subnet)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), subnetName)
+		require.NoError(t, err)
 	})
 
 	t.Run("disable multicast snoop delete other config fails", func(t *testing.T) {

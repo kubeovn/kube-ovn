@@ -2917,9 +2917,8 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 		if len(lss) == 0 {
-			err = fmt.Errorf("logical switch %s not found", subnet.Name)
-			klog.Error(err)
-			return err
+			klog.Warningf("logical switch %s not found, skipping multicast snoop cleanup", subnet.Name)
+			return nil
 		}
 
 		multicastSnoopFlag := map[string]string{
