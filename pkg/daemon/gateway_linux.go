@@ -1082,6 +1082,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 				markCode = OnOutGoingNatMark
 			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
+			default:
+				continue
 			}
 
 			if rule.RuleID == "" {
@@ -1612,7 +1614,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[0])
-				} else {
+				} else if len(ips) >= 2 {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[1])
 				}
 			} else if len(egw) == 2 && len(ips) == 2 {
