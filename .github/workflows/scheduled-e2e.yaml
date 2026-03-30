@@ -1,5 +1,8 @@
 name: Scheduled E2E
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   schedule:
