@@ -268,7 +268,11 @@ kind-install: kind-load-image
 	@if [ "$(UNTAINT_CONTROL_PLANE)" = "true" ]; then \
 		$(MAKE) untaint-control-plane; \
 	fi
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	@echo "Generating CRDs with controller-gen..."
+	hack/crd-gen.sh
+	@echo "Installing kube-ovn with auto-generated CRDs..."
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
+		awk '/^cat <<EOF > kube-ovn-crd\.yaml$$/{skip=1; next} skip && /^EOF$$/{skip=0; next} /^kubectl apply -f kube-ovn-crd\.yaml$$/{print "kubectl apply -f yamls/gen/"; next} !skip' | bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv4

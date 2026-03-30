@@ -19,6 +19,10 @@ type ProviderNetworkList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=provider-networks
+// +kubebuilder:resource:scope="Cluster",shortName="pn",path="provider-networks"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="DefaultInterface",type="string",JSONPath=".spec.defaultInterface"
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
 type ProviderNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -28,41 +32,61 @@ type ProviderNetwork struct {
 }
 
 type CustomInterface struct {
-	Interface string   `json:"interface"`
-	Nodes     []string `json:"nodes"`
+	// Interface name
+	// +kubebuilder:validation:MaxLength=15
+	// +kubebuilder:validation:Pattern=`^[^/\s]+$`
+	Interface string `json:"interface"`
+	// Nodes that use this custom interface
+	Nodes []string `json:"nodes"`
 }
 type ProviderNetworkSpec struct {
-	DefaultInterface            string                `json:"defaultInterface,omitempty"`
-	CustomInterfaces            []CustomInterface     `json:"customInterfaces,omitempty"`
-	NodeSelector                *metav1.LabelSelector `json:"nodeSelector,omitempty"`
-	ExcludeNodes                []string              `json:"excludeNodes,omitempty"`
-	ExchangeLinkName            bool                  `json:"exchangeLinkName,omitempty"`
-	AutoCreateVlanSubinterfaces bool                  `json:"autoCreateVlanSubinterfaces,omitempty"`
-	PreserveVlanInterfaces      bool                  `json:"preserveVlanInterfaces,omitempty"`
-	VlanInterfaces              []string              `json:"vlanInterfaces,omitempty"`
+	// Default interface name for the provider network. This field is immutable after creation.
+	// +kubebuilder:validation:MaxLength=15
+	// +kubebuilder:validation:Pattern=`^[^/\s]+$`
+	DefaultInterface string `json:"defaultInterface,omitempty"`
+	// Custom interface configurations for specific nodes
+	CustomInterfaces []CustomInterface `json:"customInterfaces,omitempty"`
+	// Node selector for targeting specific nodes
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+	// Nodes to exclude from this provider network
+	ExcludeNodes []string `json:"excludeNodes,omitempty"`
+	// Exchange link name between host and container
+	ExchangeLinkName bool `json:"exchangeLinkName,omitempty"`
+	// Automatically create VLAN subinterfaces
+	AutoCreateVlanSubinterfaces bool `json:"autoCreateVlanSubinterfaces,omitempty"`
+	// Enable automatic detection and preservation of VLAN interfaces
+	PreserveVlanInterfaces bool `json:"preserveVlanInterfaces,omitempty"`
+	// Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
+	// +kubebuilder:validation:Items={Type=string,Pattern=`^[a-zA-Z0-9_-]+\\.[0-9]{1,4}$`}
+	VlanInterfaces []string `json:"vlanInterfaces,omitempty"`
 }
 
 type ProviderNetworkCondition struct {
 	// Node name
-	Node string `json:"node"`
-	Condition
+	Node      string `json:"node"`
+	Condition `json:",inline"`
 }
 
 type ProviderNetworkStatus struct {
 	// +optional
+	// Whether the provider network is ready
 	Ready bool `json:"ready"`
 
 	// +optional
+	// Nodes that are ready
 	ReadyNodes []string `json:"readyNodes,omitempty"`
 
 	// +optional
+	// Nodes that are not ready
 	NotReadyNodes []string `json:"notReadyNodes,omitempty"`
 
 	// +optional
+	// VLANs in use by this provider network
 	Vlans []string `json:"vlans,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
+	// Conditions of nodes in the provider network
 	Conditions []ProviderNetworkCondition `json:"conditions,omitempty"`
 }
 

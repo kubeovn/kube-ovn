@@ -5,8 +5,9 @@ import (
 	"math/big"
 )
 
+// +kubebuilder:validation:Type=number
 type BigInt struct {
-	big.Int
+	big.Int `json:"-"`
 }
 
 func NewBigInt(n int64) BigInt {
