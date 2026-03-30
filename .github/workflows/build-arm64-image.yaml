@@ -1,4 +1,8 @@
 name: Build arm64 Image
+
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:

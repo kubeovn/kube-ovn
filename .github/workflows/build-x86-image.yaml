@@ -1,5 +1,8 @@
 name: Build x86 Image
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:

@@ -1,4 +1,8 @@
 name: Build Base
+
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
