@@ -12,8 +12,6 @@ import (
 func DetectVlanInterfaces(parentInterface string) []int {
 	vlanIDs := make([]int, 0)
 
-	// LinkList is unavoidable here: the netlink library has no LinkListFiltered
-	// and the kernel RTM_GETLINK dump does not support filtering by link type or parent.
 	links, err := netlink.LinkList()
 	if err != nil {
 		klog.Errorf("failed to list network interfaces: %v", err)
