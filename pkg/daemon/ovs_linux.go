@@ -1807,33 +1807,39 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 	}
 
 	return ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
-		routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
-		if err != nil {
-			return fmt.Errorf("failed to get all routes: %w", err)
+		if ipv4 {
+			if err := deleteDefaultRoutes(netlink.FAMILY_V4); err != nil {
+				return err
+			}
 		}
-
-		for _, r := range routes {
-			if r.Dst != nil {
-				if ones, _ := r.Dst.Mask.Size(); ones != 0 {
-					continue
-				}
-			}
-			if ipv4 && r.Family == netlink.FAMILY_V4 {
-				klog.Infof("deleting default ipv4 route %+v", r)
-				if err = netlink.RouteDel(&r); err != nil {
-					return fmt.Errorf("failed to delete route %+v: %w", r, err)
-				}
-				continue
-			}
-			if ipv6 && r.Family == netlink.FAMILY_V6 {
-				klog.Infof("deleting default ipv6 route %+v", r)
-				if err = netlink.RouteDel(&r); err != nil {
-					return fmt.Errorf("failed to delete route %+v: %w", r, err)
-				}
+		if ipv6 {
+			if err := deleteDefaultRoutes(netlink.FAMILY_V6); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
+}
+
+func deleteDefaultRoutes(family int) error {
+	var defaultDst *net.IPNet
+	switch family {
+	case netlink.FAMILY_V4:
+		defaultDst = &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}
+	case netlink.FAMILY_V6:
+		defaultDst = &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}
+	}
+	routes, err := netlink.RouteListFiltered(family, &netlink.Route{Dst: defaultDst}, netlink.RT_FILTER_DST)
+	if err != nil {
+		return fmt.Errorf("failed to get default routes: %w", err)
+	}
+	for _, r := range routes {
+		klog.Infof("deleting default route %+v", r)
+		if err = netlink.RouteDel(&r); err != nil {
+			return fmt.Errorf("failed to delete route %+v: %w", r, err)
+		}
+	}
+	return nil
 }
 
 func setVfMac(deviceID string, vfIndex int, mac string) error {
