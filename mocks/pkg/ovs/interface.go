@@ -1758,6 +1758,20 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerPreferLocalBackend(lbName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
 }
 
+// SetLoadBalancerHairpinSnatIP mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerHairpinSnatIP(lbName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerHairpinSnatIP", lbName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerHairpinSnatIP indicates an expected call of SetLoadBalancerHairpinSnatIP.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerHairpinSnatIP(lbName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerHairpinSnatIP", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerHairpinSnatIP), lbName, ip)
+}
+
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
 type MockLoadBalancerHealthCheck struct {
 	ctrl     *gomock.Controller
@@ -5406,6 +5420,20 @@ func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLo
 func (mr *MockNbClientMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
+}
+
+// SetLoadBalancerHairpinSnatIP mocks base method.
+func (m *MockNbClient) SetLoadBalancerHairpinSnatIP(lbName, ip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerHairpinSnatIP", lbName, ip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerHairpinSnatIP indicates an expected call of SetLoadBalancerHairpinSnatIP.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerHairpinSnatIP(lbName, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerHairpinSnatIP", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerHairpinSnatIP), lbName, ip)
 }
 
 // SetLogicalRouterPortHAChassisGroup mocks base method.

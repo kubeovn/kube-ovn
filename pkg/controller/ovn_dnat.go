@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -109,11 +112,6 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedDnat.Status.Ready && cachedDnat.Status.V4Ip != "" {
-		// already ok
-		return nil
-	}
-	klog.Infof("handle add dnat %s", key)
 	// check eip
 	eipName := cachedDnat.Spec.OvnEip
 	if eipName == "" {
@@ -134,6 +132,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	var v4Eip, v6Eip, internalV4Ip, internalV6Ip, subnetName, vpcName, ipName string
+	var isSwitchLBVip bool
 	v4Eip = cachedEip.Status.V4Ip
 	v6Eip = cachedEip.Status.V6Ip
 	if v4Eip == "" && v6Eip == "" {
@@ -155,6 +154,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 			internalV4Ip = internalVip.Status.V4ip
 			internalV6Ip = internalVip.Status.V6ip
 			subnetName = internalVip.Spec.Subnet
+			isSwitchLBVip = (internalVip.Spec.Type == util.SwitchLBRuleVip)
 		} else {
 			internalIP, err := c.ipsLister.Get(cachedDnat.Spec.IPName)
 			if err != nil {
@@ -212,16 +212,41 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if internalV4Ip != "" && v4Eip != "" {
-		if err = c.AddDnatRule(vpcName, cachedDnat.Name, v4Eip, internalV4Ip, externalPort, internalPort, protocol); err != nil {
-			klog.Errorf("failed to create v4 dnat, %v", err)
+	// For switch_lb_vip DNATs we always re-run to sync backends.
+	// For regular DNATs, early exit if already established.
+	if !isSwitchLBVip && cachedDnat.Status.Ready && cachedDnat.Status.V4Ip != "" {
+		return nil
+	}
+
+	klog.Infof("handle add dnat %s", key)
+
+	if isSwitchLBVip {
+		// For switch_lb_vip: create router+switch LBs so external traffic reaches
+		// pod backends directly, bypassing the switch LB skip that occurs for
+		// router→switch traffic (ls_in_pre_lb priority=110).
+		if internalV4Ip != "" && v4Eip != "" {
+			if err = c.addDnatVipLBRules(cachedDnat.Name, vpcName, subnetName, v4Eip, internalV4Ip, externalPort, internalPort, protocol); err != nil {
+				klog.Errorf("failed to add dnat vip lb rules for %s, %v", cachedDnat.Name, err)
+				return err
+			}
+		}
+		// store subnet name so deletion can clean up switch LBs without VIP
+		if err = c.patchOvnDnatSubnetAnnotation(key, subnetName); err != nil {
+			klog.Errorf("failed to patch subnet annotation for dnat %s, %v", key, err)
 			return err
 		}
-	}
-	if internalV6Ip != "" && v6Eip != "" {
-		if err = c.AddDnatRule(vpcName, cachedDnat.Name, v6Eip, internalV6Ip, externalPort, internalPort, protocol); err != nil {
-			klog.Errorf("failed to create v6 dnat, %v", err)
-			return err
+	} else {
+		if internalV4Ip != "" && v4Eip != "" {
+			if err = c.AddDnatRule(vpcName, cachedDnat.Name, v4Eip, internalV4Ip, externalPort, internalPort, protocol); err != nil {
+				klog.Errorf("failed to create v4 dnat, %v", err)
+				return err
+			}
+		}
+		if internalV6Ip != "" && v6Eip != "" {
+			if err = c.AddDnatRule(vpcName, cachedDnat.Name, v6Eip, internalV6Ip, externalPort, internalPort, protocol); err != nil {
+				klog.Errorf("failed to create v6 dnat, %v", err)
+				return err
+			}
 		}
 	}
 	if err := c.handleAddOvnDnatFinalizer(cachedDnat); err != nil {
@@ -259,24 +284,12 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedDnat.Status.Vpc != "" {
-		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
-				return err
-			}
-		}
-	} else {
+	if cachedDnat.Status.Vpc == "" {
 		err := fmt.Errorf("failed to delete dnat %s, no vpc", cachedDnat.Name)
 		klog.Error(err)
+		return err
+	}
+	if err = c.cleanOvnDnatOvnResources(cachedDnat); err != nil {
 		return err
 	}
 	if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
@@ -311,20 +324,8 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 			return nil
 		}
 
-		// ovn delete dnat
-		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
-				return err
-			}
+		if err = c.cleanOvnDnatOvnResources(cachedDnat); err != nil {
+			return err
 		}
 
 		// Remove finalizer
@@ -635,6 +636,261 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 		return err
 	}
 
+	return nil
+}
+
+// cleanOvnDnatOvnResources removes OVN resources (LBs) created for the DNAT rule.
+func (c *Controller) cleanOvnDnatOvnResources(cachedDnat *kubeovnv1.OvnDnatRule) error {
+	// Determine if this was a switch_lb_vip DNAT by checking the VIP type.
+	// If the VIP is already gone, fall back to the subnet annotation stored at creation.
+	isSwitchLBVip := false
+	if cachedDnat.Spec.IPType == util.Vip && cachedDnat.Spec.IPName != "" {
+		if vip, err := c.virtualIpsLister.Get(cachedDnat.Spec.IPName); err == nil {
+			isSwitchLBVip = (vip.Spec.Type == util.SwitchLBRuleVip)
+		}
+	}
+	if !isSwitchLBVip && cachedDnat.Annotations[util.DnatInternalSubnetAnnotation] != "" {
+		isSwitchLBVip = true
+	}
+
+	if isSwitchLBVip {
+		subnetName := cachedDnat.Annotations[util.DnatInternalSubnetAnnotation]
+		if err := c.delDnatVipLBRules(cachedDnat.Name, cachedDnat.Status.Vpc, subnetName); err != nil {
+			klog.Errorf("failed to delete dnat vip lb rules for %s, %v", cachedDnat.Name, err)
+			return err
+		}
+		return nil
+	}
+
+	// Regular DNAT: delete router LBs
+	if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
+		if err := c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+			klog.Errorf("failed to delete v4 dnat %s, %v", cachedDnat.Name, err)
+			return err
+		}
+	}
+	if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
+		if err := c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+			cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
+			klog.Errorf("failed to delete v6 dnat %s, %v", cachedDnat.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// addDnatVipLBRules creates a router-level LB (for external traffic) and a switch-level LB
+// with hairpin_snat_ip (for same-subnet hairpin) for a DNAT rule targeting a switch_lb_vip VIP.
+// The switch LB is needed because OVN's ls_in_pre_lb (priority 110) bypasses switch LBs for
+// router→switch traffic, making chained LB resolution impossible.
+func (c *Controller) addDnatVipLBRules(dnatName, vpcName, subnetName, v4Eip, vipIP, externalPort, internalPort, protocol string) error {
+	allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list SwitchLBRules: %w", err)
+	}
+	var slr *kubeovnv1.SwitchLBRule
+	for _, s := range allSlrs {
+		if s.Spec.Vip == vipIP {
+			slr = s
+			break
+		}
+	}
+	if slr == nil {
+		return fmt.Errorf("no SwitchLBRule found for VIP %s", vipIP)
+	}
+
+	intPortNum64, err := strconv.ParseInt(internalPort, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid internal port %s: %w", internalPort, err)
+	}
+	intPortNum := int32(intPortNum64)
+
+	// Find the matching port in SwitchLBRule (servicePort == internalPort, protocol matches).
+	var targetPort int32
+	found := false
+	proto := strings.ToLower(protocol)
+	for _, port := range slr.Spec.Ports {
+		portProto := strings.ToLower(port.Protocol)
+		if portProto == "" {
+			portProto = "tcp"
+		}
+		if port.Port == intPortNum && portProto == proto {
+			targetPort = port.TargetPort
+			if targetPort == 0 {
+				targetPort = port.Port
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Retry without protocol matching for SLRs that don't specify protocol.
+		for _, port := range slr.Spec.Ports {
+			if port.Port == intPortNum {
+				targetPort = port.TargetPort
+				if targetPort == 0 {
+					targetPort = port.Port
+				}
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		return fmt.Errorf("no port %s/%s in SwitchLBRule %s for VIP %s", internalPort, protocol, slr.Name, vipIP)
+	}
+
+	svcName := generateSvcName(slr.Name)
+	eps, err := c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("endpoints %s/%s not found", slr.Spec.Namespace, svcName)
+		}
+		return fmt.Errorf("get endpoints %s/%s: %w", slr.Spec.Namespace, svcName, err)
+	}
+
+	var backends []string
+	for _, subset := range eps.Subsets {
+		for _, addr := range subset.Addresses {
+			backends = append(backends, net.JoinHostPort(addr.IP, strconv.Itoa(int(targetPort))))
+		}
+	}
+	if len(backends) == 0 {
+		return fmt.Errorf("no backends for dnat %s", dnatName)
+	}
+
+	eipEndpoint := net.JoinHostPort(v4Eip, externalPort)
+
+	// Router LB: external/node → EIP:externalPort → pod backends directly,
+	// bypassing the VIP (whose switch LB would be skipped for router→switch traffic).
+	routerLBName := dnatName
+	if err = c.OVNNbClient.CreateLoadBalancer(routerLBName, proto); err != nil {
+		return fmt.Errorf("create router LB %s: %w", routerLBName, err)
+	}
+	if existingLB, lbErr := c.OVNNbClient.GetLoadBalancer(routerLBName, true); lbErr == nil && existingLB != nil {
+		for staleVip := range existingLB.Vips {
+			if staleVip != eipEndpoint {
+				_ = c.OVNNbClient.LoadBalancerDeleteVip(routerLBName, staleVip, true)
+			}
+		}
+	}
+	if err = c.OVNNbClient.LoadBalancerAddVip(routerLBName, eipEndpoint, backends...); err != nil {
+		return fmt.Errorf("add vip to router LB %s: %w", routerLBName, err)
+	}
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, routerLBName); err != nil {
+		return fmt.Errorf("attach router LB to vpc: %w", err)
+	}
+
+	// Switch LB with hairpin_snat_ip: same-subnet pod → EIP:externalPort → pod backends.
+	switchLBName := dnatName + "-sw"
+	if err = c.OVNNbClient.CreateLoadBalancer(switchLBName, proto); err != nil {
+		return fmt.Errorf("create switch LB %s: %w", switchLBName, err)
+	}
+	if existingLB, lbErr := c.OVNNbClient.GetLoadBalancer(switchLBName, true); lbErr == nil && existingLB != nil {
+		for staleVip := range existingLB.Vips {
+			if staleVip != eipEndpoint {
+				_ = c.OVNNbClient.LoadBalancerDeleteVip(switchLBName, staleVip, true)
+			}
+		}
+	}
+	if err = c.OVNNbClient.LoadBalancerAddVip(switchLBName, eipEndpoint, backends...); err != nil {
+		return fmt.Errorf("add vip to switch LB %s: %w", switchLBName, err)
+	}
+	if err = c.OVNNbClient.SetLoadBalancerHairpinSnatIP(switchLBName, v4Eip); err != nil {
+		return fmt.Errorf("set hairpin_snat_ip on switch LB %s: %w", switchLBName, err)
+	}
+	if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, switchLBName); err != nil {
+		return fmt.Errorf("attach switch LB to subnet: %w", err)
+	}
+	return nil
+}
+
+// delDnatVipLBRules removes the router LB and switch LB created by addDnatVipLBRules.
+func (c *Controller) delDnatVipLBRules(dnatName, vpcName, subnetName string) error {
+	routerLBName := dnatName
+	switchLBName := dnatName + "-sw"
+
+	if vpcName != "" {
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, routerLBName); err != nil {
+			klog.Warningf("failed to remove router LB %s from vpc %s: %v", routerLBName, vpcName, err)
+		}
+	}
+	if subnetName != "" {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, switchLBName); err != nil {
+			klog.Warningf("failed to remove switch LB %s from subnet %s: %v", switchLBName, subnetName, err)
+		}
+	}
+	rln, sln := routerLBName, switchLBName
+	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == rln }); err != nil {
+		klog.Warningf("failed to delete router LB %s: %v", routerLBName, err)
+	}
+	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == sln }); err != nil {
+		klog.Warningf("failed to delete switch LB %s: %v", switchLBName, err)
+	}
+	return nil
+}
+
+// enqueueDnatsForVipIP re-queues all OvnDnatRules that target a switch_lb_vip VIP with
+// the given IP address, so their LB backends get refreshed when endpoints change.
+func (c *Controller) enqueueDnatsForVipIP(vipIP string) {
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vips for ip %s: %v", vipIP, err)
+		return
+	}
+	for _, vip := range vips {
+		if vip.Spec.Type != util.SwitchLBRuleVip {
+			continue
+		}
+		if vip.Status.V4ip != vipIP && vip.Spec.V4ip != vipIP &&
+			vip.Status.V6ip != vipIP && vip.Spec.V6ip != vipIP {
+			continue
+		}
+		dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ovn dnat rules for vip %s: %v", vip.Name, err)
+			return
+		}
+		for _, dnat := range dnats {
+			if dnat.Spec.IPType == util.Vip && dnat.Spec.IPName == vip.Name {
+				key := cache.MetaObjectToName(dnat).String()
+				klog.Infof("enqueue dnat %s for vip %s endpoint change", key, vip.Name)
+				c.addOvnDnatRuleQueue.Add(key)
+			}
+		}
+	}
+}
+
+// patchOvnDnatSubnetAnnotation stores the internal subnet name on the DNAT so
+// deletion can clean up switch LBs even if the VIP resource is already gone.
+func (c *Controller) patchOvnDnatSubnetAnnotation(key, subnetName string) error {
+	oriDnat, err := c.ovnDnatRulesLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if oriDnat.Annotations[util.DnatInternalSubnetAnnotation] == subnetName {
+		return nil
+	}
+	dnat := oriDnat.DeepCopy()
+	if dnat.Annotations == nil {
+		dnat.Annotations = make(map[string]string)
+	}
+	dnat.Annotations[util.DnatInternalSubnetAnnotation] = subnetName
+	patch, err := util.GenerateMergePatchPayload(oriDnat, dnat)
+	if err != nil {
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Patch(context.Background(), oriDnat.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 

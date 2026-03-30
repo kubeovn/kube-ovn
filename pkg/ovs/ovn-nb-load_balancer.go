@@ -268,6 +268,34 @@ func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLoc
 	return nil
 }
 
+// SetLoadBalancerHairpinSnatIP sets options:hairpin_snat_ip on a load balancer.
+// OVN SNATs the source IP to ip when a client on the same subnet as a backend
+// hits the LB VIP, ensuring replies traverse the router so conntrack can reverse
+// the DNAT. Passing ip="" removes the option.
+func (c *OVNNbClient) SetLoadBalancerHairpinSnatIP(lbName, ip string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get lb %s for hairpin_snat_ip: %w", lbName, err)
+	}
+	if lb.Options["hairpin_snat_ip"] == ip {
+		return nil
+	}
+	options := make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	if ip == "" {
+		delete(options, "hairpin_snat_ip")
+	} else {
+		options["hairpin_snat_ip"] = ip
+	}
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("set hairpin_snat_ip on lb %s: %w", lbName, err)
+	}
+	return nil
+}
+
 // DeleteLoadBalancers delete several loadbalancer once
 func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
 	var (
