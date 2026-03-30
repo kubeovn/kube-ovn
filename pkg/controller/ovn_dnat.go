@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -107,6 +112,10 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+
+	if cachedDnat.Spec.IPType == util.OvnDnatIPTypeService {
+		return c.handleAddOvnDnatRuleService(key, cachedDnat)
 	}
 
 	if cachedDnat.Status.Ready && cachedDnat.Status.V4Ip != "" {
@@ -259,7 +268,12 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedDnat.Status.Vpc != "" {
+	if cachedDnat.Spec.IPType == util.OvnDnatIPTypeService {
+		if err = c.delDnatServiceLB(cachedDnat.Name, cachedDnat.Status.Vpc); err != nil {
+			klog.Errorf("failed to delete service dnat %s, %v", key, err)
+			return err
+		}
+	} else if cachedDnat.Status.Vpc != "" {
 		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
 			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
 				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
@@ -311,19 +325,25 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 			return nil
 		}
 
-		// ovn delete dnat
-		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
+		if cachedDnat.Spec.IPType == util.OvnDnatIPTypeService {
+			if err = c.delDnatServiceLB(cachedDnat.Name, cachedDnat.Status.Vpc); err != nil {
+				klog.Errorf("failed to delete service dnat %s, %v", key, err)
 				return err
 			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
-				return err
+		} else {
+			if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
+				if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+					cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
+					klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
+					return err
+				}
+			}
+			if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
+				if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+					cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
+					klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
+					return err
+				}
 			}
 		}
 
@@ -636,6 +656,197 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 	}
 
 	return nil
+}
+
+func (c *Controller) handleAddOvnDnatRuleService(key string, cachedDnat *kubeovnv1.OvnDnatRule) error {
+	klog.Infof("handle add service dnat %s", key)
+
+	eipName := cachedDnat.Spec.OvnEip
+	if eipName == "" {
+		return fmt.Errorf("dnat %s: ovnEip is required", cachedDnat.Name)
+	}
+	cachedEip, err := c.GetOvnEip(eipName)
+	if err != nil {
+		return fmt.Errorf("dnat %s: get eip %s: %w", cachedDnat.Name, eipName, err)
+	}
+	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
+		return fmt.Errorf("dnat %s: eip %s type %s cannot be used for nat", cachedDnat.Name, eipName, util.OvnEipTypeLSP)
+	}
+	v4Eip := cachedEip.Status.V4Ip
+	if v4Eip == "" {
+		return fmt.Errorf("dnat %s: eip %s has no v4 ip", cachedDnat.Name, eipName)
+	}
+
+	vpcName := cachedDnat.Spec.Vpc
+	svcNS := cachedDnat.Spec.ServiceNamespace
+	svcName := cachedDnat.Spec.ServiceName
+	externalPort := cachedDnat.Spec.ExternalPort
+	servicePort := cachedDnat.Spec.InternalPort
+	protocol := cachedDnat.Spec.Protocol
+
+	if vpcName == "" || svcNS == "" || svcName == "" || externalPort == "" || servicePort == "" || protocol == "" {
+		return fmt.Errorf("dnat %s: vpc, serviceNamespace, serviceName, externalPort, internalPort, protocol are required", cachedDnat.Name)
+	}
+	if err = c.isOvnDnatDuplicated(eipName, key, externalPort); err != nil {
+		return err
+	}
+
+	if err = c.addDnatServiceLB(cachedDnat, vpcName, v4Eip, svcNS, svcName, externalPort, servicePort, protocol); err != nil {
+		return err
+	}
+	if err = c.handleAddOvnDnatFinalizer(cachedDnat); err != nil {
+		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
+		return err
+	}
+	if err = c.natLabelAndAnnoOvnEip(eipName, cachedDnat.Name, vpcName); err != nil {
+		klog.Errorf("failed to label dnat '%s' in eip %s, %v", cachedDnat.Name, eipName, err)
+		return err
+	}
+	if err = c.patchOvnDnatAnnotations(key, eipName); err != nil {
+		klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
+		return err
+	}
+	if err = c.patchOvnDnatStatus(key, vpcName, v4Eip, "", "", "", true); err != nil {
+		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
+		return err
+	}
+	if err = c.patchOvnEipStatus(eipName, true); err != nil {
+		klog.Errorf("failed to patch status for eip %s, %v", eipName, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) addDnatServiceLB(dnat *kubeovnv1.OvnDnatRule, vpcName, v4Eip, svcNS, svcName, externalPort, servicePort, protocol string) error {
+	svc, err := c.servicesLister.Services(svcNS).Get(svcName)
+	if err != nil {
+		return fmt.Errorf("get service %s/%s: %w", svcNS, svcName, err)
+	}
+
+	svcPortNum, err := strconv.ParseInt(servicePort, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid internalPort %q: %w", servicePort, err)
+	}
+
+	proto := strings.ToLower(protocol)
+	var svcPort *corev1.ServicePort
+	for i := range svc.Spec.Ports {
+		p := &svc.Spec.Ports[i]
+		if p.Port == int32(svcPortNum) && strings.ToLower(string(p.Protocol)) == proto {
+			svcPort = p
+			break
+		}
+	}
+	if svcPort == nil {
+		return fmt.Errorf("service %s/%s has no port %s/%s", svcNS, svcName, servicePort, protocol)
+	}
+
+	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(svcNS).List(
+		labels.Set{discoveryv1.LabelServiceName: svcName}.AsSelector())
+	if err != nil {
+		return fmt.Errorf("list endpointslices for %s/%s: %w", svcNS, svcName, err)
+	}
+
+	if c.config.EnableNonPrimaryCNI && len(svc.Spec.Selector) > 0 {
+		pods, err := c.podsLister.Pods(svcNS).List(labels.Set(svc.Spec.Selector).AsSelector())
+		if err != nil {
+			return fmt.Errorf("list pods for service %s/%s: %w", svcNS, svcName, err)
+		}
+		if err = c.replaceEndpointAddressesWithSecondaryIPs(endpointSlices, pods); err != nil {
+			return fmt.Errorf("replace secondary IPs for dnat %s: %w", dnat.Name, err)
+		}
+	}
+
+	backends := c.getEndpointBackend(endpointSlices, *svcPort, v4Eip)
+	if len(backends) == 0 {
+		return fmt.Errorf("no ready backends for dnat %s (service %s/%s port %s/%s)", dnat.Name, svcNS, svcName, servicePort, protocol)
+	}
+
+	lbName := dnat.Name
+	eipEndpoint := net.JoinHostPort(v4Eip, externalPort)
+
+	existing, err := c.OVNNbClient.GetLoadBalancer(lbName, true)
+	if err != nil {
+		return err
+	}
+
+	if err = c.OVNNbClient.CreateLoadBalancer(lbName, proto); err != nil {
+		return fmt.Errorf("create lb %s: %w", lbName, err)
+	}
+
+	// Purge stale VIPs (e.g. EIP changed).
+	if existing != nil {
+		for staleVip := range existing.Vips {
+			if staleVip != eipEndpoint {
+				_ = c.OVNNbClient.LoadBalancerDeleteVip(lbName, staleVip, true)
+			}
+		}
+	}
+
+	if err = c.OVNNbClient.LoadBalancerAddVip(lbName, eipEndpoint, backends...); err != nil {
+		return fmt.Errorf("add vip to lb %s: %w", lbName, err)
+	}
+	if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, lbName); err != nil {
+		return fmt.Errorf("attach lb %s to vpc %s: %w", lbName, vpcName, err)
+	}
+	// Also attach to all VPC switches so intra-VPC traffic (same subnet hairpin) is handled
+	// at the switch level and not dropped by OVN's router loopback prevention.
+	for _, sw := range c.vpcSwitchNames(vpcName) {
+		if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(sw, ovsdb.MutateOperationInsert, lbName); err != nil {
+			klog.Warningf("attach lb %s to switch %s: %v", lbName, sw, err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) delDnatServiceLB(dnatName, vpcName string) error {
+	if vpcName != "" {
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
+			klog.Warningf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
+		}
+		for _, sw := range c.vpcSwitchNames(vpcName) {
+			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(sw, ovsdb.MutateOperationDelete, dnatName); err != nil {
+				klog.Warningf("failed to remove lb %s from switch %s: %v", dnatName, sw, err)
+			}
+		}
+	}
+	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == dnatName }); err != nil {
+		klog.Errorf("failed to delete lb %s: %v", dnatName, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) vpcSwitchNames(vpcName string) []string {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list subnets: %v", err)
+		return nil
+	}
+	names := make([]string, 0)
+	for _, s := range subnets {
+		if s.Spec.Vpc == vpcName && s.DeletionTimestamp.IsZero() {
+			names = append(names, s.Name)
+		}
+	}
+	return names
+}
+
+func (c *Controller) enqueueDnatsForService(namespace, name string) {
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ovn dnat rules: %v", err)
+		return
+	}
+	for _, dnat := range dnats {
+		if dnat.Spec.IPType == util.OvnDnatIPTypeService &&
+			dnat.Spec.ServiceNamespace == namespace &&
+			dnat.Spec.ServiceName == name {
+			key := cache.MetaObjectToName(dnat).String()
+			klog.Infof("enqueue dnat %s for service %s/%s endpoint change", key, namespace, name)
+			c.addOvnDnatRuleQueue.Add(key)
+		}
+	}
 }
 
 func (c *Controller) syncOvnDnatFinalizer(cl client.Client) error {

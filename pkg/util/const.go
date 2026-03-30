@@ -234,7 +234,8 @@ const (
 	EcmpRouteType      = "ecmp"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
 
-	Vip = "vip"
+	Vip                  = "vip"
+	OvnDnatIPTypeService = "service"
 
 	OvnEipTypeLRP = "lrp"
 	OvnEipTypeLSP = "lsp"

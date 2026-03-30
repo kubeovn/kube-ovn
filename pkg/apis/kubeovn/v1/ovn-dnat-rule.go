@@ -30,7 +30,7 @@ type OvnDnatRule struct {
 
 type OvnDnatRuleSpec struct {
 	OvnEip       string `json:"ovnEip"`
-	IPType       string `json:"ipType"` // vip, ip
+	IPType       string `json:"ipType"` // vip, ip, service
 	IPName       string `json:"ipName"` // vip, ip crd name
 	InternalPort string `json:"internalPort"`
 	ExternalPort string `json:"externalPort"`
@@ -38,6 +38,10 @@ type OvnDnatRuleSpec struct {
 	Vpc          string `json:"vpc"`
 	V4Ip         string `json:"v4Ip"`
 	V6Ip         string `json:"v6Ip"`
+
+	// service type fields
+	ServiceName      string `json:"serviceName,omitempty"`
+	ServiceNamespace string `json:"serviceNamespace,omitempty"`
 }
 
 type OvnDnatRuleStatus struct {

@@ -270,6 +270,8 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		}
 	}
 
+	c.enqueueDnatsForService(namespace, name)
+
 	return nil
 }
 
