@@ -1083,6 +1083,7 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
 			default:
+				klog.Warningf("skipping nat outgoing policy rule with unknown action %q in subnet %s", rule.Action, subnet.Name)
 				continue
 			}
 
