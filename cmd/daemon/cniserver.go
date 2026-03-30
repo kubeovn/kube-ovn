@@ -79,20 +79,24 @@ func main() {
 	ctx := signals.SetupSignalHandler()
 	stopCh := ctx.Done()
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = "spec.nodeName=" + config.NodeName + ",spec.hostNetwork=false"
 			listOption.AllowWatchBookmarks = true
 		}))
 	nodeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0,
+		kubeovninformer.WithTransform(util.TrimManagedFields),
 		kubeovninformer.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
 
 	caSecretInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = "metadata.name=" + util.DefaultOVNIPSecCA
 			listOption.AllowWatchBookmarks = true
