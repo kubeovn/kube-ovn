@@ -579,25 +579,14 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 }
 
 func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error) {
-	var needV4, needV6 bool
+	var routes, existRoutes []netlink.Route
+	var err error
 	for gw := range strings.SplitSeq(gateway, ",") {
 		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-			needV4 = true
+			routes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
 		} else {
-			needV6 = true
+			routes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
 		}
-	}
-
-	var existRoutes []netlink.Route
-	if needV4 {
-		routes, err := netlink.RouteList(nic, netlink.FAMILY_V4)
-		if err != nil {
-			return nil, err
-		}
-		existRoutes = append(existRoutes, routes...)
-	}
-	if needV6 {
-		routes, err := netlink.RouteList(nic, netlink.FAMILY_V6)
 		if err != nil {
 			return nil, err
 		}
