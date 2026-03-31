@@ -1502,6 +1502,7 @@ func (c *Controller) setExGateway() error {
 			); err != nil {
 				err = fmt.Errorf("failed to enable external gateway, %w", err)
 				klog.Error(err)
+				return err
 			}
 		}
 		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
