@@ -621,7 +621,8 @@ func getMapKeys(m map[string]bool) []string {
 }
 
 // LoadBalancerUpdateIPPortMapping update the ip_port_mapping of a loadbalancer.
-// The ipPortMapping received can contain a partial update of the port mapping (it doesn't have to contain the entire target port mapping).
+// The ipPortMapping received can contain a partial update of the port mapping.
+// You must only pass the port mapping of vipEndpoint, not of every VIP on the LB.
 // Existing port mappings will be overwritten if the LSP changed for a particular IP.
 // The orphaned port mappings (for IPs that are not contained in any backend for any VIP) are deleted on update.
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
@@ -655,13 +656,38 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 			// For each IP in the new mappings, check if it already exists with a different value
 			for ip, newLSP := range ipPortMappings {
 				if len(lb.IPPortMappings) != 0 {
-					if oldLSP, exists := lb.IPPortMappings[ip]; exists {
-						if oldLSP == newLSP {
+					// Normalize the IP key for comparison (strip brackets for IPv6)
+					cleanIP := strings.Trim(ip, "[]")
+
+					// Check if an existing mapping exists for this IP (in any key format)
+					var existingKey string
+					var existingLSP string
+					var found bool
+
+					// First try exact match
+					if lsp, exists := lb.IPPortMappings[ip]; exists {
+						existingKey = ip
+						existingLSP = lsp
+						found = true
+					} else {
+						// Try to find the IP with normalized key (check both bracketed/unbracketed forms)
+						for mappingKey, mappingValue := range lb.IPPortMappings {
+							if strings.Trim(mappingKey, "[]") == cleanIP {
+								existingKey = mappingKey
+								existingLSP = mappingValue
+								found = true
+								break
+							}
+						}
+					}
+
+					if found {
+						if existingLSP == newLSP {
 							// Mapping is already correct, skip
 							continue
 						}
 						// Different value, need to delete old and insert new
-						toDelete[ip] = oldLSP
+						toDelete[existingKey] = existingLSP
 						toInsert[ip] = newLSP
 					} else {
 						// New mapping

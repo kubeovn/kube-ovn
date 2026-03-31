@@ -1031,9 +1031,11 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			require.Equal(t, updatedMappings[host1], lb.IPPortMappings[host1], "LSP should be updated for host1")
 			require.Equal(t, updatedMappings[host2], lb.IPPortMappings[host2], "LSP should be updated for host2")
 
-			// Ensure old values are not present
-			require.NotContains(t, lb.IPPortMappings, initialMappings[host1])
-			require.NotContains(t, lb.IPPortMappings, initialMappings[host2])
+			// Ensure old LSP values are not present anywhere in the mappings
+			for _, value := range lb.IPPortMappings {
+				require.NotEqual(t, initialMappings[host1], value, "Old LSP value for host1 should not be present")
+				require.NotEqual(t, initialMappings[host2], value, "Old LSP value for host2 should not be present")
+			}
 		},
 	)
 
@@ -1093,6 +1095,10 @@ func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
 			testLbName := "test-lb-orphan-cleanup"
 			err := nbClient.CreateLoadBalancer(testLbName, "tcp")
 			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := nbClient.DeleteLoadBalancer(testLbName)
+				require.NoError(t, err)
+			})
 
 			vipTest := "10.96.0.9:3000"
 			backend1 := "192.168.50.10:3000"

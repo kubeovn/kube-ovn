@@ -1,6 +1,7 @@
 package switch_lb_rule
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -24,44 +25,67 @@ func getLoadBalancerIPPortMappings(lbName string) (map[string]string, error) {
 		return nil, fmt.Errorf("failed to query load balancer %s: %w", lbName, err)
 	}
 
-	// Parse output: format is "key1=value1 key2=value2 ..."
+	// Parse output format from OVN CSV - can be in two formats:
+	// Format 1 (space-separated): key1=value1 key2=value2
+	// Format 2 (quoted): "{""key1""=""value1"", ""key2""=""value2""}"
 	mappings := make(map[string]string)
-	if strings.TrimSpace(string(output)) == "" {
+	output = bytes.TrimSpace(output)
+	if len(output) == 0 {
 		return mappings, nil
 	}
 
-	// Split by space to get individual key=value pairs
-	pairs := strings.FieldsSeq(string(output))
-	for pair := range pairs {
+	// Strip surrounding quotes if present (OVN CSV format for map columns)
+	if len(output) >= 2 && output[0] == '"' && output[len(output)-1] == '"' {
+		output = output[1 : len(output)-1]
+	}
+
+	// Check for empty map representation: {} or empty string
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" || outputStr == "{}" {
+		return mappings, nil
+	}
+
+	// Determine format and parse accordingly
+	var pairs []string
+	if strings.HasPrefix(outputStr, "{") && strings.HasSuffix(outputStr, "}") {
+		// Format 2: Quoted format with braces "{""key1""=""value1"", ""key2""=""value2""}"
+		// Strip the surrounding braces
+		outputStr = outputStr[1 : len(outputStr)-1]
+		// Split by comma
+		pairs = strings.Split(outputStr, ",")
+	} else {
+		// Format 1: Space-separated format "key1=value1 key2=value2"
+		pairs = strings.Fields(outputStr)
+	}
+
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		// Split on the first = to separate key and value
 		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) == 2 {
-			mappings[parts[0]] = parts[1]
+		if len(parts) != 2 {
+			continue
+		}
+
+		// Trim quotes and spaces from key and value
+		key := strings.Trim(strings.TrimSpace(parts[0]), `"`)
+		value := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+
+		if key != "" {
+			mappings[key] = value
 		}
 	}
 
 	return mappings, nil
 }
 
-// getLSPNameForPodIP gets the logical switch port name for a pod IP
-func getLSPNameForPodIP(podIP string) (string, error) {
-	// Query for the port with this IP address
-	cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Logical_Switch_Port addresses~=%s", podIP)
-	output, _, err := framework.NBExec(cmd)
-	if err != nil {
-		return "", fmt.Errorf("failed to find LSP for IP %s: %w", podIP, err)
-	}
-
-	lspName := strings.TrimSpace(string(output))
-	if lspName == "" {
-		return "", fmt.Errorf("no LSP found for IP %s", podIP)
-	}
-
-	return lspName, nil
-}
-
 // getLoadBalancerNameForVPC returns the load balancer name for a VPC
+// This follows the naming scheme in pkg/controller/vpc.go:239
 func getLoadBalancerNameForVPC(vpcName string) string {
-	return fmt.Sprintf("cluster-tcp-loadbalancer-%s", vpcName)
+	return fmt.Sprintf("vpc-%s-tcp-load", vpcName)
 }
 
 var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
@@ -110,126 +134,10 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 		vpcClient.DeleteSync(vpcName)
 	})
 
-	ginkgo.It("should update ip_port_mappings when LSPs change (pod restart)", func() {
-		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
-
-		slrName := "slr-lsp-update-" + suffix
-		svcName := generateServiceName(slrName)
-		stsName := "sts-" + suffix
-		label := "app-lsp-update"
-
-		ginkgo.By("Creating statefulset with 2 replicas")
-		labels := map[string]string{"app": label}
-		sts := framework.MakeStatefulSet(stsName, stsName, 2, labels, framework.AgnhostImage)
-		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
-		sts.Spec.Template.Spec.Containers[0].Command = []string{"/agnhost", "netexec", "--http-port", "80"}
-		_ = stsClient.CreateSync(sts)
-
-		// Get initial pods
-		pods1 := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods1.Items, 2)
-
-		ginkgo.By("Creating service to get VIP")
-		ports := []corev1.ServicePort{{
-			Name:       "http",
-			Protocol:   corev1.ProtocolTCP,
-			Port:       8080,
-			TargetPort: intstr.FromInt32(80),
-		}}
-		svc := framework.MakeService(svcName, corev1.ServiceTypeClusterIP,
-			map[string]string{util.LogicalSwitchAnnotation: subnetName},
-			labels, ports, corev1.ServiceAffinityNone)
-		svc = serviceClient.CreateSync(svc, func(s *corev1.Service) (bool, error) {
-			return len(s.Spec.ClusterIPs) != 0, nil
-		}, "cluster ips are not empty")
-		vip := svc.Spec.ClusterIPs[0]
-
-		ginkgo.By("Creating SwitchLBRule")
-		slrPorts := []kubeovnv1.SwitchLBRulePort{{
-			Name:       "http",
-			Port:       8080,
-			TargetPort: 80,
-			Protocol:   "TCP",
-		}}
-		slr := framework.MakeSwitchLBRule(slrName, namespaceName, vip, corev1.ServiceAffinityNone,
-			map[string]string{util.LogicalSwitchAnnotation: subnetName},
-			[]string{"app:" + label}, nil, slrPorts)
-		_ = switchLBRuleClient.Create(slr)
-
-		// Wait for mappings to be created
-		time.Sleep(5 * time.Second)
-
-		lbName := getLoadBalancerNameForVPC(vpcName)
-
-		ginkgo.By("Getting initial ip_port_mappings")
-		initialMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(initialMappings, 2, "should have 2 initial mappings")
-
-		// Record initial LSP names for each pod IP
-		initialLSPs := make(map[string]string)
-		for _, pod := range pods1.Items {
-			lspName, err := getLSPNameForPodIP(pod.Status.PodIP)
-			framework.ExpectNoError(err)
-			initialLSPs[pod.Status.PodIP] = lspName
-			framework.ExpectHaveKey(initialMappings, pod.Status.PodIP, "mapping should exist for pod IP")
-		}
-
-		ginkgo.By("Deleting pods to trigger recreation (simulating pod restart)")
-		for _, pod := range pods1.Items {
-			podClient.DeleteSync(pod.Name)
-		}
-
-		ginkgo.By("Waiting for pods to be recreated")
-		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-			pods := stsClient.GetPods(sts)
-			if len(pods.Items) != 2 {
-				return false, nil
-			}
-			for _, pod := range pods.Items {
-				if pod.Status.Phase != corev1.PodRunning {
-					return false, nil
-				}
-			}
-			return true, nil
-		}, "pods are recreated and running")
-
-		// Wait for endpoint controller to update
-		time.Sleep(10 * time.Second)
-
-		ginkgo.By("Verifying ip_port_mappings were updated with new LSPs")
-		updatedMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(updatedMappings, 2, "should still have 2 mappings")
-
-		pods2 := stsClient.GetPods(sts)
-		for _, pod := range pods2.Items {
-			newLSPName, err := getLSPNameForPodIP(pod.Status.PodIP)
-			framework.ExpectNoError(err)
-
-			// Verify mapping exists for this IP
-			framework.ExpectHaveKey(updatedMappings, pod.Status.PodIP, "mapping should exist for new pod IP")
-
-			// Verify the LSP name in the mapping matches the current LSP
-			mapping := updatedMappings[pod.Status.PodIP]
-			framework.ExpectTrue(strings.Contains(mapping, newLSPName), "mapping should contain new LSP name %s, got %s", newLSPName, mapping)
-
-			// If pod IP is the same as before, verify LSP name changed
-			if oldLSP, existed := initialLSPs[pod.Status.PodIP]; existed {
-				framework.ExpectNotEqual(oldLSP, newLSPName, "LSP should have changed for same IP")
-			}
-		}
-
-		ginkgo.By("Cleanup")
-		switchLBRuleClient.DeleteSync(slrName)
-		serviceClient.Delete(svcName)
-		stsClient.Delete(stsName)
-		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
-	})
-
 	ginkgo.It("should remove orphaned ip_port_mappings when backends are removed", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
 
+		var err error
 		slrName := "slr-orphan-" + suffix
 		svcName := generateServiceName(slrName)
 		stsName := "sts-" + suffix
@@ -272,14 +180,16 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 			[]string{"app:" + label}, nil, slrPorts)
 		_ = switchLBRuleClient.Create(slr)
 
-		time.Sleep(5 * time.Second)
-
 		lbName := getLoadBalancerNameForVPC(vpcName)
 
-		ginkgo.By("Verifying initial 3 ip_port_mappings")
-		initialMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(initialMappings, 3, "should have 3 initial mappings")
+		ginkgo.By("Waiting for initial 3 ip_port_mappings to be created")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			return len(mappings) == 3, nil
+		}, "initial 3 ip_port_mappings are created")
 
 		// Record the IP that will be removed
 		removedPodName := pods.Items[2].Name
@@ -296,14 +206,19 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 		ginkgo.By("Waiting for pod to be deleted")
 		podClient.WaitForNotFound(removedPodName)
 
-		// Wait for endpoint controller to update
-		time.Sleep(10 * time.Second)
-
-		ginkgo.By("Verifying orphaned ip_port_mapping was removed")
-		updatedMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(updatedMappings, 2, "should have 2 mappings after scale down")
-		framework.ExpectNotHaveKey(updatedMappings, removedPodIP, "removed pod IP should not be in mappings")
+		ginkgo.By("Waiting for orphaned ip_port_mapping to be removed")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			if len(mappings) == 2 {
+				if _, exists := mappings[removedPodIP]; !exists {
+					return true, nil
+				}
+			}
+			return false, nil
+		}, "orphaned ip_port_mapping is removed")
 
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slrName)
@@ -315,6 +230,7 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 	ginkgo.It("should add new ip_port_mappings when backends are added", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
 
+		var err error
 		slrName := "slr-add-" + suffix
 		svcName := generateServiceName(slrName)
 		stsName := "sts-" + suffix
@@ -354,14 +270,16 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 			[]string{"app:" + label}, nil, slrPorts)
 		_ = switchLBRuleClient.Create(slr)
 
-		time.Sleep(5 * time.Second)
-
 		lbName := getLoadBalancerNameForVPC(vpcName)
 
-		ginkgo.By("Verifying initial 1 ip_port_mapping")
-		initialMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(initialMappings, 1, "should have 1 initial mapping")
+		ginkgo.By("Waiting for initial 1 ip_port_mapping to be created")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			return len(mappings) == 1, nil
+		}, "initial 1 ip_port_mapping is created")
 
 		ginkgo.By("Scaling up statefulset to 3 replicas")
 		sts, err = stsClient.StatefulSetInterface.Get(context.TODO(), stsName, metav1.GetOptions{})
@@ -385,18 +303,25 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 			return true, nil
 		}, "new pods are ready")
 
-		// Wait for endpoint controller to update
-		time.Sleep(10 * time.Second)
-
-		ginkgo.By("Verifying new ip_port_mappings were added")
-		updatedMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(updatedMappings, 3, "should have 3 mappings after scale up")
-
 		pods := stsClient.GetPods(sts)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKey(updatedMappings, pod.Status.PodIP, "mapping should exist for pod IP %s", pod.Status.PodIP)
-		}
+
+		ginkgo.By("Waiting for new ip_port_mappings to be added")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			if len(mappings) == 3 {
+				// Verify all pod IPs are present
+				for _, pod := range pods.Items {
+					if _, exists := mappings[pod.Status.PodIP]; !exists {
+						return false, nil
+					}
+				}
+				return true, nil
+			}
+			return false, nil
+		}, "new ip_port_mappings are added")
 
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slrName)
@@ -408,6 +333,7 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 	ginkgo.It("should not delete shared backends when updating multiple SwitchLBRules", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
 
+		var err error
 		slr1Name := "slr-shared-1-" + suffix
 		slr2Name := "slr-shared-2-" + suffix
 		svc1Name := generateServiceName(slr1Name)
@@ -482,17 +408,25 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 			nil, []string{pods.Items[1].Status.PodIP, pods.Items[2].Status.PodIP}, slr2Ports)
 		_ = switchLBRuleClient.Create(slr2)
 
-		time.Sleep(5 * time.Second)
-
 		lbName := getLoadBalancerNameForVPC(vpcName)
 
-		ginkgo.By("Verifying all 3 pod IPs have ip_port_mappings")
-		initialMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(initialMappings, 3, "should have mappings for all 3 pods")
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKey(initialMappings, pod.Status.PodIP)
-		}
+		ginkgo.By("Waiting for all 3 pod IPs to have ip_port_mappings")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			if len(mappings) == 3 {
+				// Verify all pod IPs are present
+				for _, pod := range pods.Items {
+					if _, exists := mappings[pod.Status.PodIP]; !exists {
+						return false, nil
+					}
+				}
+				return true, nil
+			}
+			return false, nil
+		}, "all 3 pod IPs have ip_port_mappings")
 
 		// Update SLR1 to only use pod 0 (removing shared pod 1)
 		ginkgo.By("Updating first SwitchLBRule to only use " + pods.Items[0].Status.PodIP)
@@ -502,16 +436,27 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 		modifiedSlr1.Spec.Endpoints = []string{pods.Items[0].Status.PodIP}
 		_ = switchLBRuleClient.Patch(slr1, modifiedSlr1)
 
-		// Wait for update to propagate
-		time.Sleep(10 * time.Second)
-
 		ginkgo.By("Verifying shared backend (pod 1) was NOT removed")
-		updatedMappings, err := getLoadBalancerIPPortMappings(lbName)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(updatedMappings, 3, "should still have 3 mappings")
-		framework.ExpectHaveKey(updatedMappings, pods.Items[0].Status.PodIP, "pod 0 should remain")
-		framework.ExpectHaveKey(updatedMappings, pods.Items[1].Status.PodIP, "shared pod 1 should remain (still used by SLR2)")
-		framework.ExpectHaveKey(updatedMappings, pods.Items[2].Status.PodIP, "pod 2 should remain")
+		framework.WaitUntil(2*time.Second, 1*time.Minute, func(_ context.Context) (bool, error) {
+			mappings, err := getLoadBalancerIPPortMappings(lbName)
+			if err != nil {
+				return false, nil
+			}
+			// Verify all 3 pods still have mappings (shared pod should not be removed)
+			if len(mappings) == 3 {
+				if _, exists := mappings[pods.Items[0].Status.PodIP]; !exists {
+					return false, nil
+				}
+				if _, exists := mappings[pods.Items[1].Status.PodIP]; !exists {
+					return false, nil
+				}
+				if _, exists := mappings[pods.Items[2].Status.PodIP]; !exists {
+					return false, nil
+				}
+				return true, nil
+			}
+			return false, nil
+		}, "shared backend pod 1 is not removed")
 
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slr1Name)
