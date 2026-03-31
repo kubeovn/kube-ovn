@@ -437,6 +437,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	// is processed before the NAD patch, so stale attachment IPs are cleaned up
 	// during new pod creation (cleanStaleVMAttachmentIPs in reconcileAllocateSubnets).
 	framework.ConformanceIt("should release old attachment ip and allocate new one when VM NAD is changed", func() {
+		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16.")
 		providerA := fmt.Sprintf("%s.%s.ovn", nadNameA, namespaceName)
 		providerB := fmt.Sprintf("%s.%s.ovn", nadNameB, namespaceName)
 
