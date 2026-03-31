@@ -1285,9 +1285,11 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 		fields := util.DoubleQuotedFields(rule)
 		for _, f := range fields {
 			if strings.HasPrefix(f, prefix) {
-				if err = ipt.Delete("filter", "FORWARD", fields...); err != nil {
+				// use fields[2:] to skip prefix "-A FORWARD"
+				if err = ipt.Delete("filter", "FORWARD", fields[2:]...); err != nil {
 					klog.Errorf("failed to delete legacy iptables rules %q: %v", rule, err)
 				}
+				break
 			}
 		}
 	}
