@@ -46,7 +46,7 @@ type ControllerRuntime struct {
 	k8siptables      map[string]k8siptables.Interface
 	k8sipsets        k8sipset.Interface
 	ipsets           map[string]*ipsets.IPSets
-	gwCounters       map[string]*util.GwIPtableCounters
+	gwCounters       map[string]*util.GwIPTablesCounters
 
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
@@ -104,7 +104,7 @@ func (c *Controller) initRuntime() error {
 
 	c.iptables = make(map[string]*iptables.IPTables)
 	c.ipsets = make(map[string]*ipsets.IPSets)
-	c.gwCounters = make(map[string]*util.GwIPtableCounters)
+	c.gwCounters = make(map[string]*util.GwIPTablesCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
 	c.k8sipsets = k8sipset.New()
 	c.ovsClient = ovsutil.New()
