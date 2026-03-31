@@ -33,6 +33,23 @@ import (
 
 var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
 
+func getVMPod(podClient *framework.PodClient, vmName string) *corev1.Pod {
+	ginkgo.GinkgoHelper()
+	labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
+	var result *corev1.Pod
+	gomega.Eventually(func(g gomega.Gomega) {
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+			FieldSelector: "status.phase=Running",
+		})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(podList.Items).To(gomega.HaveLen(1),
+			"expected exactly 1 running pod for vm %s, got %d", vmName, len(podList.Items))
+		result = &podList.Items[0]
+	}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(gomega.Succeed())
+	return result
+}
+
 func init() {
 	if env := os.Getenv("KUBEVIRT_CONTAINERDISK_IMAGE"); env != "" {
 		image = env
@@ -545,23 +562,6 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNoError(err)
 	})
 
-	getVMPod := func() *corev1.Pod {
-		ginkgo.GinkgoHelper()
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		var result *corev1.Pod
-		gomega.Eventually(func(g gomega.Gomega) {
-			podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-				LabelSelector: labelSelector,
-				FieldSelector: "status.phase=Running",
-			})
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(podList.Items).To(gomega.HaveLen(1),
-				"expected exactly 1 running pod for vm %s, got %d", vmName, len(podList.Items))
-			result = &podList.Items[0]
-		}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(gomega.Succeed())
-		return result
-	}
-
 	ginkgo.Context("with bridge interface", func() {
 		ginkgo.BeforeEach(func() {
 			ginkgo.By("Creating live-migratable bridge vm " + vmName)
@@ -571,7 +571,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		framework.ConformanceIt("should keep pod ip and mac unchanged after live migration", func() {
 			ginkgo.By("Getting pod of vm " + vmName)
-			pod := getVMPod()
+			pod := getVMPod(podClient, vmName)
 			origNode := pod.Spec.NodeName
 
 			ginkgo.By("Validating pod annotations")
@@ -596,7 +596,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Getting pod of vm " + vmName + " after migration")
-			pod = getVMPod()
+			pod = getVMPod(podClient, vmName)
 
 			ginkgo.By("Checking that the vm moved to a different node")
 			framework.ExpectNotEqual(pod.Spec.NodeName, origNode)
@@ -657,7 +657,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 
 			ginkgo.By("Getting pod of vm " + vmName)
-			pod := getVMPod()
+			pod := getVMPod(podClient, vmName)
 			origNode := pod.Spec.NodeName
 
 			ginkgo.By("Getting IP CRD " + portName + " before migration")
@@ -680,7 +680,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Getting pod of vm " + vmName + " after migration")
-			pod = getVMPod()
+			pod = getVMPod(podClient, vmName)
 			newNode := pod.Spec.NodeName
 			framework.ExpectNotEqual(newNode, origNode)
 
@@ -699,7 +699,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		framework.ConformanceIt("should preserve network identity when migration is aborted", func() {
 			ginkgo.By("Getting pod of vm " + vmName)
-			pod := getVMPod()
+			pod := getVMPod(podClient, vmName)
 			origIPs := pod.Status.PodIPs
 			origMAC := pod.Annotations[util.MacAddressAnnotation]
 			framework.ExpectMAC(origMAC)
@@ -713,7 +713,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			migrationClient.Delete(migration.Name)
 
 			ginkgo.By("Getting pod of vm " + vmName + " after canceled migration")
-			pod = getVMPod()
+			pod = getVMPod(podClient, vmName)
 
 			ginkgo.By("Checking that IP and MAC are unchanged regardless of migration outcome")
 			framework.ExpectEqual(pod.Status.PodIPs, origIPs)
@@ -731,7 +731,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		framework.ConformanceIt("should maintain network connectivity through multiple sequential migrations", func() {
 			ginkgo.By("Getting pod of vm " + vmName)
-			pod := getVMPod()
+			pod := getVMPod(podClient, vmName)
 			vmIP := pod.Status.PodIPs[0].IP
 			origIPs := pod.Status.PodIPs
 			origMAC := pod.Annotations[util.MacAddressAnnotation]
@@ -761,7 +761,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 			const migrationCount = 3
 			for i := 1; i <= migrationCount; i++ {
-				prevNode := getVMPod().Spec.NodeName
+				prevNode := getVMPod(podClient, vmName).Spec.NodeName
 				migrationName := fmt.Sprintf("mig-%d-%s", i, framework.RandomSuffix())
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Creating migration %s (non-blocking)", i, migrationCount, migrationName))
 				migration := framework.MakeVMIMigration(migrationName, vmName)
@@ -793,7 +793,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
 				framework.ExpectNoError(err)
 
-				pod = getVMPod()
+				pod = getVMPod(podClient, vmName)
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking node changed from %s to %s", i, migrationCount, prevNode, pod.Spec.NodeName))
 				framework.ExpectNotEqual(pod.Spec.NodeName, prevNode)
 
@@ -841,7 +841,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		framework.ConformanceIt("should maintain network connectivity during live migration with masquerade interface", func() {
 			ginkgo.By("Getting pod of vm " + vmName)
-			pod := getVMPod()
+			pod := getVMPod(podClient, vmName)
 			vmIP := pod.Status.PodIPs[0].IP
 			framework.Logf("VM pod IP: %s, node: %s", vmIP, pod.Spec.NodeName)
 
@@ -966,23 +966,6 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		subnetClient.DeleteSync(subnetName)
 	})
 
-	getVMPod := func() *corev1.Pod {
-		ginkgo.GinkgoHelper()
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		var result *corev1.Pod
-		gomega.Eventually(func(g gomega.Gomega) {
-			podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-				LabelSelector: labelSelector,
-				FieldSelector: "status.phase=Running",
-			})
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(podList.Items).To(gomega.HaveLen(1),
-				"expected exactly 1 running pod for vm %s, got %d", vmName, len(podList.Items))
-			result = &podList.Items[0]
-		}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(gomega.Succeed())
-		return result
-	}
-
 	framework.ConformanceIt("should preserve all NICs through live migration of a multi-NIC vm", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
@@ -1001,7 +984,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		pod := getVMPod()
+		pod := getVMPod(podClient, vmName)
 		origNode := pod.Spec.NodeName
 
 		ginkgo.By("Checking default NIC annotations")
@@ -1033,7 +1016,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Getting pod of vm " + vmName + " after migration")
-		pod = getVMPod()
+		pod = getVMPod(podClient, vmName)
 		framework.Logf("After migration — node: %s", pod.Spec.NodeName)
 
 		ginkgo.By("Checking that the vm moved to a different node")
