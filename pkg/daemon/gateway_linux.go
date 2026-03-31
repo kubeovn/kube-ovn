@@ -287,12 +287,14 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway stri
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
 		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
-		} else {
+		} else if len(ips) >= 2 {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
 		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		if len(ips) >= 2 {
+			prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		}
 	}
 
 	for _, meta := range prMetas {
@@ -312,12 +314,14 @@ func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway s
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
 		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
-		} else {
+		} else if len(ips) >= 2 {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
 		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		if len(ips) >= 2 {
+			prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		}
 	}
 
 	for _, meta := range prMetas {
