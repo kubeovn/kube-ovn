@@ -1,6 +1,7 @@
 package kubevirt
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -638,11 +639,16 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			ginkgo.By("Verifying requested-chassis does not contain a comma (dual-node binding)")
 			if strings.Contains(outputStr, "requested-chassis") {
 				// requested-chassis should be a single node, not "src,target"
-				for _, field := range strings.Fields(outputStr) {
-					if strings.HasPrefix(field, "requested-chassis=") {
-						chassisValue := strings.TrimPrefix(field, "requested-chassis=")
+				scanner := bufio.NewScanner(strings.NewReader(outputStr))
+				scanner.Split(bufio.ScanWords)
+				for scanner.Scan() {
+					field := scanner.Text()
+					if chassisValue, ok := strings.CutPrefix(field, "requested-chassis="); ok {
 						framework.ExpectNotContainSubstring(chassisValue, ",")
 					}
+				}
+				if err := scanner.Err(); err != nil {
+					framework.ExpectNoError(err)
 				}
 			}
 		})
