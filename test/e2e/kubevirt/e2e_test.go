@@ -515,7 +515,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 })
 
 var _ = framework.Describe("[group:kubevirt]", func() {
-	f := framework.NewDefaultFramework("kubevirt")
+	f := framework.NewDefaultFramework("kubevirt-migrations")
 
 	var vmName, namespaceName string
 	var podClient *framework.PodClient
@@ -894,7 +894,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 })
 
 var _ = framework.Describe("[group:kubevirt]", func() {
-	f := framework.NewDefaultFramework("kubevirt")
+	f := framework.NewDefaultFramework("kubevirt-multus-migrations")
 
 	var vmName, namespaceName, subnetName, nadName string
 	var podClient *framework.PodClient
@@ -926,7 +926,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			}
 		}
 		if !nadFound {
-			ginkgo.Skip("Multus CRD (NetworkAttachmentDefinition) not installed, skipping multi-NIC test")
+			ginkgo.Fail("Multus CRD (NetworkAttachmentDefinition) not installed, skipping multi-NIC test")
 		}
 
 		vmName = "vm-" + framework.RandomSuffix()
