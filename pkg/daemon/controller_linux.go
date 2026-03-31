@@ -973,10 +973,24 @@ func (c *Controller) loopEncapIPCheck() {
 			klog.V(3).Infof("node tunnel interface %s not changed", nodeTunnelName)
 			return
 		}
+
+		var encapIP string
+		for _, addr := range addrs {
+			ipStr := strings.Split(addr.String(), "/")[0]
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+				continue
+			}
+			encapIP = ipStr
+			break
+		}
+		if encapIP == "" {
+			klog.Errorf("iface %s has no valid IP address", nodeTunnelName)
+			return
+		}
+
 		c.config.Iface = nodeTunnelName
 		klog.Infof("Update node tunnel interface %v", nodeTunnelName)
-
-		c.config.DefaultEncapIP = strings.Split(addrs[0].String(), "/")[0]
+		c.config.DefaultEncapIP = encapIP
 		if err = c.config.setEncapIPs(); err != nil {
 			klog.Errorf("failed to set encap ip %s for iface %s", c.config.DefaultEncapIP, c.config.Iface)
 			return
