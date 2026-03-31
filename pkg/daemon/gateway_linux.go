@@ -1108,10 +1108,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			case rule.Match.DstIPs != "" && rule.Match.SrcIPs != "":
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
 			case rule.Match.SrcIPs != "":
-				protocol = getMatchProtocol(rule.Match.SrcIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
 			case rule.Match.DstIPs != "":
-				protocol = getMatchProtocol(rule.Match.DstIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
 			default:
 				continue
