@@ -8,7 +8,7 @@ type IPTableRule struct {
 	Rule  []string
 }
 
-type GwIPtableCounters struct {
-	Packets     int
-	PacketBytes int
+type GwIPTablesCounters struct {
+	Packets     uint64
+	PacketBytes uint64
 }
