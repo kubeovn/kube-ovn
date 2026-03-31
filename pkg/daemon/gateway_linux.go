@@ -291,9 +291,15 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway stri
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		if len(ips) >= 2 {
-			prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		for _, gw := range egw {
+			gwProto := util.CheckProtocol(gw)
+			family, _ := util.ProtocolToFamily(gwProto)
+			for _, ip := range ips {
+				if util.CheckProtocol(ip) == gwProto {
+					prMetas = append(prMetas, policyRouteMeta{family: family, source: ip, gateway: gw})
+					break
+				}
+			}
 		}
 	}
 
@@ -318,9 +324,15 @@ func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway s
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		if len(ips) >= 2 {
-			prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		for _, gw := range egw {
+			gwProto := util.CheckProtocol(gw)
+			family, _ := util.ProtocolToFamily(gwProto)
+			for _, ip := range ips {
+				if util.CheckProtocol(ip) == gwProto {
+					prMetas = append(prMetas, policyRouteMeta{family: family, source: ip, gateway: gw})
+					break
+				}
+			}
 		}
 	}
 
