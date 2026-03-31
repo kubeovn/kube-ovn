@@ -1171,6 +1171,7 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: |
           make kube-ovn-conformance-e2e
+          make kind-install-multus
           make kind-install-kubevirt
           make kube-ovn-kubevirt-e2e
 
