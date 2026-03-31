@@ -911,29 +911,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var migrationClient *framework.VMIMigrationClient
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 13, "Live migration e2e tests require v1.13 or later.")
+		f.SkipVersionPriorTo(1, 13, "Multus live migration e2e tests require v1.14 or later.")
 
 		namespaceName = f.Namespace.Name
-
-		ginkgo.By("Checking if Multus CRD is available")
-		_, resources, err := f.ClientSet.Discovery().ServerGroupsAndResources()
-		if err != nil {
-			ginkgo.Skip("failed to discover API resources: " + err.Error())
-		}
-		nadFound := false
-		for _, rl := range resources {
-			if rl.GroupVersion == "k8s.cni.cncf.io/v1" {
-				for _, r := range rl.APIResources {
-					if r.Kind == "NetworkAttachmentDefinition" {
-						nadFound = true
-						break
-					}
-				}
-			}
-		}
-		if !nadFound {
-			ginkgo.Fail("Multus CRD (NetworkAttachmentDefinition) not installed, skipping multi-NIC test")
-		}
 
 		vmName = "vm-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
