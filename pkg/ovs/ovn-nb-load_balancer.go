@@ -620,25 +620,98 @@ func getMapKeys(m map[string]bool) []string {
 	return keys
 }
 
-// LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
+// LoadBalancerUpdateIPPortMapping update the ip_port_mapping of a loadbalancer.
+// The ipPortMapping received can contain a partial update of the port mapping (it doesn't have to contain the entire target port mapping).
+// Existing port mappings will be overwritten if the LSP changed for a particular IP.
+// The orphaned port mappings (for IPs that are not contained in any backend for any VIP) are deleted on update.
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			return []model.Mutation{
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   ipPortMappings,
-					Mutator: ovsdb.MutateOperationInsert,
-				},
+			toDelete := make(map[string]string)
+			toInsert := make(map[string]string)
+
+			// Build set of new backend IPs
+			newBackendIPs := make(map[string]bool, len(ipPortMappings))
+			for ip := range ipPortMappings {
+				cleanIP := strings.Trim(ip, "[]")
+				newBackendIPs[cleanIP] = true
 			}
+
+			// Find orphaned mappings: IPs in current mappings that are not in new mappings
+			// AND not used by any other VIP in the load balancer
+			for mappingKey, mappingValue := range lb.IPPortMappings {
+				cleanKey := strings.Trim(mappingKey, "[]")
+
+				// If this IP is not in the new mappings, check if it should be deleted
+				if !newBackendIPs[cleanKey] {
+					// Use the existing isBackendIPStillUsed helper to check all VIPs
+					if !c.isBackendIPStillUsed(lb, vipEndpoint, cleanKey) {
+						toDelete[mappingKey] = mappingValue
+					}
+				}
+			}
+
+			// For each IP in the new mappings, check if it already exists with a different value
+			for ip, newLSP := range ipPortMappings {
+				if len(lb.IPPortMappings) != 0 {
+					if oldLSP, exists := lb.IPPortMappings[ip]; exists {
+						if oldLSP == newLSP {
+							// Mapping is already correct, skip
+							continue
+						}
+						// Different value, need to delete old and insert new
+						toDelete[ip] = oldLSP
+						toInsert[ip] = newLSP
+					} else {
+						// New mapping
+						toInsert[ip] = newLSP
+					}
+				} else {
+					// No existing mappings, just insert
+					toInsert[ip] = newLSP
+				}
+			}
+
+			mutations := make([]model.Mutation, 0, 2)
+
+			// Create delete mutation if needed
+			if len(toDelete) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toDelete,
+						Mutator: ovsdb.MutateOperationDelete,
+					},
+				)
+			}
+
+			// Create insert mutation if needed
+			if len(toInsert) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toInsert,
+						Mutator: ovsdb.MutateOperationInsert,
+					},
+				)
+			}
+
+			return mutations
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to generate operations when updating ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
-	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err = c.Transact("lb-update", ops); err != nil {
+		return fmt.Errorf("failed to update ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
