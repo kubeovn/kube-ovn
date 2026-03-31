@@ -1583,7 +1583,8 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			continue
 		}
 
-		if subnet.Spec.ExternalEgressGateway == "" ||
+		if subnet.Spec.NatOutgoing ||
+			subnet.Spec.ExternalEgressGateway == "" ||
 			subnet.Spec.Vpc != c.config.ClusterRouter ||
 			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
@@ -1649,6 +1650,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 
 	for _, subnet := range subnets {
 		if !subnet.DeletionTimestamp.IsZero() ||
+			subnet.Spec.NatOutgoing ||
 			subnet.Spec.ExternalEgressGateway == "" ||
 			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
