@@ -51,6 +51,48 @@ func getVMPod(podClient *framework.PodClient, vmName string) *corev1.Pod {
 	return result
 }
 
+func expectVMAnnotations(pod *corev1.Pod, vmName string) {
+	ginkgo.GinkgoHelper()
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+}
+
+func expectLSPMigrationCleanup(portName string) {
+	ginkgo.GinkgoHelper()
+	cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
+	output, _, err := framework.NBExec(cmd)
+	framework.ExpectNoError(err)
+	outputStr := string(output)
+	framework.ExpectNotContainSubstring(outputStr, "activation-strategy")
+	if strings.Contains(outputStr, "requested-chassis") {
+		scanner := bufio.NewScanner(strings.NewReader(outputStr))
+		scanner.Split(bufio.ScanWords)
+		for scanner.Scan() {
+			if chassisValue, ok := strings.CutPrefix(scanner.Text(), "requested-chassis="); ok {
+				framework.ExpectNotContainSubstring(chassisValue, ",")
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			framework.ExpectNoError(err)
+		}
+	}
+}
+
+func parsePingStats(stdout string) (transmitted, received, lost int) {
+	ginkgo.GinkgoHelper()
+	re := regexp.MustCompile(`(\d+) packets transmitted, (\d+) packets received`)
+	matches := re.FindStringSubmatch(stdout)
+	framework.ExpectNotEmpty(matches, "failed to parse ping statistics from output")
+	var err error
+	transmitted, err = strconv.Atoi(matches[1])
+	framework.ExpectNoError(err)
+	received, err = strconv.Atoi(matches[2])
+	framework.ExpectNoError(err)
+	lost = transmitted - received
+	return
+}
+
 func init() {
 	if env := os.Getenv("KUBEVIRT_CONTAINERDISK_IMAGE"); env != "" {
 		image = env
@@ -78,7 +120,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var vmClient *framework.VMClient
 	var ipClient *framework.IPClient
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12.")
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14.")
 
 		namespaceName = f.Namespace.Name
 		vmName = "vm-" + framework.RandomSuffix()
@@ -108,39 +150,24 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to keep pod ips after vm pod is deleted", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating pod annotations")
-		pod := &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		ips := pod.Status.PodIPs
 
 		ginkgo.By("Deleting pod " + pod.Name)
 		podClient.DeleteSync(pod.Name)
 
 		ginkgo.By("Waiting for vm " + vmName + " to be ready")
-		err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
+		err := vmClient.WaitToBeReady(vmName, 2*time.Minute)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod = getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating new pod annotations")
-		pod = &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
@@ -148,18 +175,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating pod annotations")
-		pod := &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		ips := pod.Status.PodIPs
 
 		ginkgo.By("Stopping vm " + vmName)
@@ -179,17 +198,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectEqual(oldVMIP.Spec, newVMIP.Spec)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod = getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating new pod annotations")
-		pod = &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
@@ -206,18 +218,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating pod annotations")
-		pod := &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		ips := pod.Status.PodIPs
 
 		ginkgo.By("Stopping vm " + vmName)
@@ -225,24 +229,17 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		// the ip is deleted
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		err = ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
+		err := ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting vm " + vmName)
 		vmClient.StartSync(vmName)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod = getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating new pod annotations")
-		pod = &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
@@ -256,19 +253,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	framework.ConformanceIt("should be able to handle vm restart when subnet changes after the vm is stopped", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
-
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating pod annotations")
-		pod := &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		ips := pod.Status.PodIPs
 
 		ginkgo.By("Stopping vm " + vmName)
@@ -283,17 +271,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		vmClient.StartSync(vmName)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod = getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating new pod annotations")
-		pod = &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectNotEqual(ips, pod.Status.PodIPs)
@@ -312,18 +293,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		// create new subnet in the namespace.
 		// make sure ip changed after vm started
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating pod annotations")
-		pod := &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		ginkgo.By("Stopping vm " + vmName)
 		vmClient.StopSync(vmName)
 
@@ -348,17 +321,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectNotEmpty(newVMIP.Spec.IPAddress)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod = getVMPod(podClient, vmName)
 
 		ginkgo.By("Validating new pod annotations")
-		pod = &podList.Items[0]
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+		expectVMAnnotations(pod, vmName)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
 
 		ginkgo.By("Checking whether pod ips are changed")
@@ -430,12 +396,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
-
-		pod := &podList.Items[0]
+		pod := getVMPod(podClient, vmName)
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 
 		ginkgo.By("Checking attachment IP exists")
@@ -448,7 +409,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		podClient.DeleteSync(pod.Name)
 
 		ginkgo.By("Waiting for vm " + vmName + " to be ready")
-		err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
+		err := vmClient.WaitToBeReady(vmName, 2*time.Minute)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Checking attachment IP is preserved")
@@ -486,13 +447,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
-		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
-		podList, err := podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
+		pod := getVMPod(podClient, vmName)
 
 		ginkgo.By("Recording IPs")
-		pod := &podList.Items[0]
 		primaryIPs := pod.Status.PodIPs
 
 		attachPortNameA := ovs.PodNameToPortName(vmName, namespaceName, providerA)
@@ -525,11 +482,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		framework.ExpectTrue(ipClient.WaitToBeReady(attachPortNameB, 2*time.Minute))
 
 		ginkgo.By("Verifying primary network IP is preserved")
-		podList, err = podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(podList.Items, 1)
-		framework.ExpectNotEmpty(podList.Items[0].Status.PodIPs)
-		framework.ExpectEqual(primaryIPs, podList.Items[0].Status.PodIPs)
+		pod = getVMPod(podClient, vmName)
+		framework.ExpectNotEmpty(pod.Status.PodIPs)
+		framework.ExpectEqual(primaryIPs, pod.Status.PodIPs)
 	})
 })
 
@@ -543,7 +498,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var migrationClient *framework.VMIMigrationClient
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 13, "Live migration e2e tests require v1.13 or later.")
+		f.SkipVersionPriorTo(1, 14, "Live migration e2e tests require v1.14 or later.")
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -582,9 +537,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			origNode := pod.Spec.NodeName
 
 			ginkgo.By("Validating pod annotations")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+			expectVMAnnotations(pod, vmName)
 			origIPs := pod.Status.PodIPs
 			origMAC := pod.Annotations[util.MacAddressAnnotation]
 			framework.ExpectMAC(origMAC)
@@ -609,9 +562,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectNotEqual(pod.Spec.NodeName, origNode)
 
 			ginkgo.By("Validating pod annotations after migration")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+			expectVMAnnotations(pod, vmName)
 
 			ginkgo.By("Checking that IP and MAC are unchanged")
 			framework.ExpectEqual(pod.Status.PodIPs, origIPs)
@@ -635,29 +586,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Checking OVN LSP options for " + portName)
-			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
-			output, _, err := framework.NBExec(cmd)
-			framework.ExpectNoError(err)
-			outputStr := string(output)
-
-			ginkgo.By("Verifying activation-strategy is removed")
-			framework.ExpectNotContainSubstring(outputStr, "activation-strategy")
-
-			ginkgo.By("Verifying requested-chassis does not contain a comma (dual-node binding)")
-			if strings.Contains(outputStr, "requested-chassis") {
-				// requested-chassis should be a single node, not "src,target"
-				scanner := bufio.NewScanner(strings.NewReader(outputStr))
-				scanner.Split(bufio.ScanWords)
-				for scanner.Scan() {
-					field := scanner.Text()
-					if chassisValue, ok := strings.CutPrefix(field, "requested-chassis="); ok {
-						framework.ExpectNotContainSubstring(chassisValue, ",")
-					}
-				}
-				if err := scanner.Err(); err != nil {
-					framework.ExpectNoError(err)
-				}
-			}
+			expectLSPMigrationCleanup(portName)
 		})
 
 		framework.ConformanceIt("should preserve IP CRD resource through live migration", func() {
@@ -728,12 +657,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 			portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 			ginkgo.By("Checking OVN LSP options for " + portName)
-			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
-			output, _, err := framework.NBExec(cmd)
-			framework.ExpectNoError(err)
-
-			ginkgo.By("Verifying activation-strategy is removed after migration completes")
-			framework.ExpectNotContainSubstring(string(output), "activation-strategy")
+			expectLSPMigrationCleanup(portName)
 		})
 
 		framework.ConformanceIt("should maintain network connectivity through multiple sequential migrations", func() {
@@ -758,12 +682,15 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				podClient.DeleteSync(proberName)
 			})
 
+			var stdout string
+			var err error
 			ginkgo.By("Verifying initial connectivity from prober to VM")
-			stdout, _, err := framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, fmt.Sprintf("ping -c 3 -W 2 %s", vmIP))
-			framework.ExpectNoError(err, "initial connectivity check failed")
+			gomega.Eventually(func() error {
+				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, fmt.Sprintf("ping -c 3 -W 2 %s", vmIP))
+				return err
+			}).WithTimeout(60*time.Second).WithPolling(5*time.Second).Should(gomega.Succeed(), "initial connectivity check failed")
 			framework.Logf("Initial ping output:\n%s", stdout)
 
-			re := regexp.MustCompile(`(\d+) packets transmitted, (\d+) packets received`)
 			maxAcceptableLoss := 5
 
 			const migrationCount = 3
@@ -779,13 +706,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, pingCmd)
 				framework.ExpectNoError(err)
 
-				matches := re.FindStringSubmatch(stdout)
-				framework.ExpectNotEmpty(matches, "failed to parse ping statistics from output")
-				transmitted, err := strconv.Atoi(matches[1])
-				framework.ExpectNoError(err)
-				received, err := strconv.Atoi(matches[2])
-				framework.ExpectNoError(err)
-				lost := transmitted - received
+				transmitted, received, lost := parsePingStats(stdout)
 				framework.Logf("[migration %d/%d] Ping: %d transmitted, %d received, %d lost", i, migrationCount, transmitted, received, lost)
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Verifying migration succeeded", i, migrationCount))
@@ -809,9 +730,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				framework.ExpectEqual(pod.Annotations[util.MacAddressAnnotation], origMAC)
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking annotations", i, migrationCount))
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
+				expectVMAnnotations(pod, vmName)
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking IP CRD preserved", i, migrationCount))
 				gomega.Eventually(func(g gomega.Gomega) {
@@ -824,10 +743,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking OVN LSP cleanup", i, migrationCount))
-				cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
-				output, _, err := framework.NBExec(cmd)
-				framework.ExpectNoError(err)
-				framework.ExpectNotContainSubstring(string(output), "activation-strategy")
+				expectLSPMigrationCleanup(portName)
 
 				framework.Logf("[migration %d/%d] PASSED — node: %s, IP: %v, MAC: %s, lost packets: %d", i, migrationCount, pod.Spec.NodeName, pod.Status.PodIPs, origMAC, lost)
 			}
@@ -867,7 +783,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			gomega.Eventually(func() error {
 				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, fmt.Sprintf("ping -c 3 -W 2 %s", vmIP))
 				return err
-			}).WithTimeout(60 * time.Second).WithPolling(5 * time.Second).Should(gomega.Succeed(), "initial connectivity check failed")
+			}).WithTimeout(60*time.Second).WithPolling(5*time.Second).Should(gomega.Succeed(), "initial connectivity check failed")
 			framework.Logf("Initial ping output:\n%s", stdout)
 
 			migrationName := "mig-" + framework.RandomSuffix()
@@ -882,15 +798,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.Logf("Continuous ping output:\n%s", stdout)
 
 			ginkgo.By("Parsing ping statistics for packet loss")
-			re := regexp.MustCompile(`(\d+) packets transmitted, (\d+) packets received`)
-			matches := re.FindStringSubmatch(stdout)
-			framework.ExpectNotEmpty(matches, "failed to parse ping statistics from output")
-
-			transmitted, err := strconv.Atoi(matches[1])
-			framework.ExpectNoError(err)
-			received, err := strconv.Atoi(matches[2])
-			framework.ExpectNoError(err)
-			lost := transmitted - received
+			transmitted, received, lost := parsePingStats(stdout)
 			framework.Logf("Ping results: %d transmitted, %d received, %d lost", transmitted, received, lost)
 
 			ginkgo.By("Verifying migration succeeded")
@@ -922,7 +830,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var migrationClient *framework.VMIMigrationClient
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 13, "Multus live migration e2e tests require v1.14 or later.")
+		f.SkipVersionPriorTo(1, 14, "Multus live migration e2e tests require v1.14 or later.")
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -1029,17 +937,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Checking default NIC OVN LSP cleanup")
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
-		output, _, err := framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectNotContainSubstring(string(output), "activation-strategy")
+		expectLSPMigrationCleanup(portName)
 
 		ginkgo.By("Checking secondary NIC OVN LSP cleanup")
 		secondaryPortName := ovs.PodNameToPortName(vmName, namespaceName, provider)
-		cmd = "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + secondaryPortName
-		output, _, err = framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectNotContainSubstring(string(output), "activation-strategy")
+		expectLSPMigrationCleanup(secondaryPortName)
 
 		framework.Logf("After migration — default IP: %v, MAC: %s, secondary IP: %s, MAC: %s",
 			pod.Status.PodIPs, pod.Annotations[util.MacAddressAnnotation],
