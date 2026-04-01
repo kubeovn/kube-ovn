@@ -1182,7 +1182,7 @@ func (c *Controller) cleanTProxyIPTableRules(protocol string) {
 		return
 	}
 	for _, chain := range [2]string{OvnPrerouting, OvnOutput} {
-		if err := ipt.ClearChain(MANGLE, chain); err != nil {
+		if err := clearAndDeleteChainIfExists(ipt, MANGLE, chain); err != nil {
 			klog.Errorf("failed to clear iptables chain %v in table %v, %+v", chain, MANGLE, err)
 			return
 		}
