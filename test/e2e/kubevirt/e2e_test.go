@@ -20,6 +20,7 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 
@@ -544,6 +545,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 13, "Live migration e2e tests require v1.13 or later.")
 
+		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
+		framework.ExpectNoError(err)
+		if len(nodes.Items) < 2 {
+			ginkgo.Skip("live migration requires at least 2 schedulable nodes")
+		}
+
 		namespaceName = f.Namespace.Name
 		vmName = "vm-" + framework.RandomSuffix()
 		podClient = f.PodClientNS(namespaceName)
@@ -854,9 +861,13 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				podClient.DeleteSync(proberName)
 			})
 
+			var stdout string
+			var err error
 			ginkgo.By("Verifying initial connectivity from prober to VM")
-			stdout, _, err := framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, fmt.Sprintf("ping -c 3 -W 2 %s", vmIP))
-			framework.ExpectNoError(err, "initial connectivity check failed")
+			gomega.Eventually(func() error {
+				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, fmt.Sprintf("ping -c 3 -W 2 %s", vmIP))
+				return err
+			}).WithTimeout(60 * time.Second).WithPolling(5 * time.Second).Should(gomega.Succeed(), "initial connectivity check failed")
 			framework.Logf("Initial ping output:\n%s", stdout)
 
 			migrationName := "mig-" + framework.RandomSuffix()
@@ -912,6 +923,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 13, "Multus live migration e2e tests require v1.14 or later.")
+
+		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
+		framework.ExpectNoError(err)
+		if len(nodes.Items) < 2 {
+			ginkgo.Skip("live migration requires at least 2 schedulable nodes")
+		}
 
 		namespaceName = f.Namespace.Name
 
