@@ -969,7 +969,15 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
-	go wait.Until(c.runGateway, 3*time.Second, stopCh)
+	if c.config.EnableNonPrimaryCNI {
+		// In non-primary CNI mode, iptables cleanup is a one-time operation at startup.
+		// There is no dynamic state to reconcile, so periodic execution is unnecessary.
+		if err := c.cleanupIptablesInNonPrimaryCNIMode(); err != nil {
+			klog.Errorf("failed to cleanup iptables in non-primary CNI mode: %v", err)
+		}
+	} else {
+		go wait.Until(c.runGateway, 3*time.Second, stopCh)
+	}
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
 	go wait.Until(func() {

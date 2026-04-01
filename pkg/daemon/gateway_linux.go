@@ -962,52 +962,62 @@ func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
 	}
 
 	for _, protocol := range getProtocols(c.protocol) {
-		ipt := c.iptables[protocol]
-		if ipt == nil {
-			continue
-		}
-
-		for _, rule := range getKubeOVNBaseIptablesRulesForCleanup(protocol) {
-			bestEffortDeleteIptablesRule(ipt, rule)
-		}
-
-		for _, rule := range getKubeOVNJumpRulesForCleanup() {
-			bestEffortDeleteIptablesRule(ipt, rule)
-		}
-
-		if err := cleanupSubnetGatewayForwardRules(ipt); err != nil {
-			klog.Errorf("failed to cleanup subnet gateway FORWARD rules: %v", err)
-			return err
-		}
-
-		for _, item := range []struct {
-			table string
-			chain string
-		}{
-			{table: NAT, chain: OvnPrerouting},
-			{table: NAT, chain: OvnPostrouting},
-			{table: NAT, chain: OvnMasquerade},
-			{table: NAT, chain: OvnNatOutGoingPolicy},
-			{table: MANGLE, chain: OvnPrerouting},
-			{table: MANGLE, chain: OvnPostrouting},
-			{table: MANGLE, chain: OvnOutput},
-		} {
-			if err := clearAndDeleteChainIfExists(ipt, item.table, item.chain); err != nil {
-				klog.Errorf("failed to cleanup chain %s/%s: %v", item.table, item.chain, err)
-				return err
+		// Clean up both the default (nft) and legacy iptables backends to handle
+		// environments where kube-ovn previously ran in legacy mode.
+		iptInstances := []*iptables.IPTables{c.iptables[protocol]}
+		if c.iptablesObsolete != nil {
+			if ipt := c.iptablesObsolete[protocol]; ipt != nil {
+				iptInstances = append(iptInstances, ipt)
 			}
 		}
 
-		natChains, err := ipt.ListChains(NAT)
-		if err != nil {
-			klog.Errorf("failed to list nat chains: %v", err)
-			return err
-		}
-		for _, chain := range natChains {
-			if strings.HasPrefix(chain, OvnNatOutGoingPolicySubnet) {
-				if err := clearAndDeleteChainIfExists(ipt, NAT, chain); err != nil {
-					klog.Errorf("failed to cleanup nat policy chain %s: %v", chain, err)
+		for _, ipt := range iptInstances {
+			if ipt == nil {
+				continue
+			}
+
+			for _, rule := range getKubeOVNBaseIptablesRulesForCleanup(protocol) {
+				bestEffortDeleteIptablesRule(ipt, rule)
+			}
+
+			for _, rule := range getKubeOVNJumpRulesForCleanup() {
+				bestEffortDeleteIptablesRule(ipt, rule)
+			}
+
+			if err := cleanupSubnetGatewayForwardRules(ipt); err != nil {
+				klog.Errorf("failed to cleanup subnet gateway FORWARD rules: %v", err)
+				return err
+			}
+
+			for _, item := range []struct {
+				table string
+				chain string
+			}{
+				{table: NAT, chain: OvnPrerouting},
+				{table: NAT, chain: OvnPostrouting},
+				{table: NAT, chain: OvnMasquerade},
+				{table: NAT, chain: OvnNatOutGoingPolicy},
+				{table: MANGLE, chain: OvnPrerouting},
+				{table: MANGLE, chain: OvnPostrouting},
+				{table: MANGLE, chain: OvnOutput},
+			} {
+				if err := clearAndDeleteChainIfExists(ipt, item.table, item.chain); err != nil {
+					klog.Errorf("failed to cleanup chain %s/%s: %v", item.table, item.chain, err)
 					return err
+				}
+			}
+
+			natChains, err := ipt.ListChains(NAT)
+			if err != nil {
+				klog.Errorf("failed to list nat chains: %v", err)
+				return err
+			}
+			for _, chain := range natChains {
+				if strings.HasPrefix(chain, OvnNatOutGoingPolicySubnet) {
+					if err := clearAndDeleteChainIfExists(ipt, NAT, chain); err != nil {
+						klog.Errorf("failed to cleanup nat policy chain %s: %v", chain, err)
+						return err
+					}
 				}
 			}
 		}
@@ -1316,7 +1326,18 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 // errors (e.g. when referenced ipsets don't exist, causing iptables -C to fail).
 // This is used during non-primary CNI cleanup where rules may never have been created.
 func bestEffortDeleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) {
-	if err := deleteIptablesRule(ipt, rule); err != nil {
+	// If the chain does not exist, the rule was never installed; skip silently.
+	if exists, err := ipt.ChainExists(rule.Table, rule.Chain); err != nil || !exists {
+		return
+	}
+	// ipt.Exists may return an error when the rule references a target chain that
+	// does not exist (exit status 2). Treat any such failure as "rule not present".
+	exists, err := ipt.Exists(rule.Table, rule.Chain, rule.Rule...)
+	if err != nil || !exists {
+		klog.V(3).Infof("skipping best-effort iptables rule cleanup (not present) %v: %v", rule, err)
+		return
+	}
+	if err = ipt.Delete(rule.Table, rule.Chain, rule.Rule...); err != nil {
 		klog.V(3).Infof("ignoring error during best-effort iptables rule cleanup %v: %v", rule, err)
 	}
 }
