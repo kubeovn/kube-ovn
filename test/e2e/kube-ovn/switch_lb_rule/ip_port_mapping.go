@@ -136,6 +136,9 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 
 	ginkgo.It("should remove orphaned ip_port_mappings when backends are removed", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
+		if !f.IsIPv4() {
+			ginkgo.Skip("IPv6 is not supported for SwitchLBRule healthchecks yet")
+		}
 
 		var err error
 		slrName := "slr-orphan-" + suffix
@@ -229,6 +232,9 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 
 	ginkgo.It("should add new ip_port_mappings when backends are added", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
+		if !f.IsIPv4() {
+			ginkgo.Skip("IPv6 is not supported for SwitchLBRule healthchecks yet")
+		}
 
 		var err error
 		slrName := "slr-add-" + suffix
@@ -332,6 +338,9 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 
 	ginkgo.It("should not delete shared backends when updating multiple SwitchLBRules", func() {
 		f.SkipVersionPriorTo(1, 12, "SwitchLBRule was introduced in v1.12")
+		if !f.IsIPv4() {
+			ginkgo.Skip("IPv6 is not supported for SwitchLBRule healthchecks yet")
+		}
 
 		var err error
 		slr1Name := "slr-shared-1-" + suffix
