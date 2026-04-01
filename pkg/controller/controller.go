@@ -125,6 +125,12 @@ type Controller struct {
 	evpnConfLister kubeovnlister.EvpnConfLister
 	evpnConfSynced cache.InformerSynced
 
+	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
+	routerLBRuleSynced      cache.InformerSynced
+	addRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
+	updateRouterLBRuleQueue workqueue.TypedRateLimitingInterface[*RlrInfo]
+	delRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[*RlrInfo]
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
@@ -412,6 +418,7 @@ func Run(ctx context.Context, config *Configuration) {
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
+	routerLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().RouterLBRules()
 	switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
 	vpcDNSInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
@@ -647,6 +654,24 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.EnableLb {
+		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
+		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
+		controller.delRouterLBRuleQueue = newTypedRateLimitingQueue(
+			"DeleteRouterLBRule",
+			workqueue.NewTypedMaxOfRateLimiter(
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*RlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*RlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+		)
+		controller.updateRouterLBRuleQueue = newTypedRateLimitingQueue(
+			"UpdateRouterLBRule",
+			workqueue.NewTypedMaxOfRateLimiter(
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*RlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*RlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			),
+		)
+
 		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
 		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
 		controller.addSwitchLBRuleQueue = newTypedRateLimitingQueue("AddSwitchLBRule", custCrdRateLimiter)
@@ -742,7 +767,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnDnatRuleSynced,
 	}
 	if controller.config.EnableLb {
-		cacheSyncs = append(cacheSyncs, controller.switchLBRuleSynced, controller.vpcDNSSynced)
+		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	}
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
@@ -949,6 +974,14 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if config.EnableLb {
+		if _, err = routerLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddRouterLBRule,
+			UpdateFunc: controller.enqueueUpdateRouterLBRule,
+			DeleteFunc: controller.enqueueDeleteRouterLBRule,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add router lb rule event handler")
+		}
+
 		if _, err = switchLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddSwitchLBRule,
 			UpdateFunc: controller.enqueueUpdateSwitchLBRule,
@@ -1198,6 +1231,10 @@ func (c *Controller) shutdown() {
 	c.delVpcEgressGatewayQueue.ShutDown()
 
 	if c.config.EnableLb {
+		c.addRouterLBRuleQueue.ShutDown()
+		c.delRouterLBRuleQueue.ShutDown()
+		c.updateRouterLBRuleQueue.ShutDown()
+
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
 		c.updateSwitchLBRuleQueue.ShutDown()
@@ -1355,6 +1392,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+
+		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())
+		go wait.Until(runWorker("update router lb rule", c.updateRouterLBRuleQueue, c.handleUpdateRouterLBRule), time.Second, ctx.Done())
 
 		go wait.Until(runWorker("add/update switch lb rule", c.addSwitchLBRuleQueue, c.handleAddOrUpdateSwitchLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete switch lb rule", c.delSwitchLBRuleQueue, c.handleDelSwitchLBRule), time.Second, ctx.Done())

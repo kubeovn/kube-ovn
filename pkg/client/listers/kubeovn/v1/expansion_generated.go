@@ -86,6 +86,10 @@ type SecurityGroupListerExpansion interface{}
 // SubnetLister.
 type SubnetListerExpansion interface{}
 
+// RouterLBRuleListerExpansion allows custom methods to be added to
+// RouterLBRuleLister.
+type RouterLBRuleListerExpansion interface{}
+
 // SwitchLBRuleListerExpansion allows custom methods to be added to
 // SwitchLBRuleLister.
 type SwitchLBRuleListerExpansion interface{}

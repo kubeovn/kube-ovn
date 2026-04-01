@@ -58,6 +58,8 @@ type Interface interface {
 	SecurityGroups() SecurityGroupInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
+	// RouterLBRules returns a RouterLBRuleInformer.
+	RouterLBRules() RouterLBRuleInformer
 	// SwitchLBRules returns a SwitchLBRuleInformer.
 	SwitchLBRules() SwitchLBRuleInformer
 	// Vips returns a VipInformer.
@@ -168,6 +170,11 @@ func (v *version) SecurityGroups() SecurityGroupInformer {
 // Subnets returns a SubnetInformer.
 func (v *version) Subnets() SubnetInformer {
 	return &subnetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// RouterLBRules returns a RouterLBRuleInformer.
+func (v *version) RouterLBRules() RouterLBRuleInformer {
+	return &routerLBRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // SwitchLBRules returns a SwitchLBRuleInformer.
