@@ -367,6 +367,20 @@ func (c *Controller) handleDelRouterLBRule(info *RlrInfo) error {
 		}
 	}
 
+	// Explicitly remove VIP entries from the VPC shared load balancers.
+	// The service-delete queue only handles cluster-IP services; for
+	// RouterLBRule headless services the VIP must be removed here.
+	if vpcLBNames != nil {
+		for _, lbName := range vpcLBNames.UnsortedList() {
+			for _, vip := range vips {
+				if e := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); e != nil && !k8serrors.IsNotFound(e) {
+					klog.Errorf("failed to delete vip %s from LB %s for RLR %s: %v", vip, lbName, info.Name, e)
+					return e
+				}
+			}
+		}
+	}
+
 	lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(vips, lbhc.Vip)
@@ -525,7 +539,7 @@ func generateRlrEndpoints(rlr *kubeovnv1.RouterLBRule, oldEps *corev1.Endpoints,
 		addrs = append(addrs, corev1.EndpointAddress{
 			IP: endpoint,
 			TargetRef: &corev1.ObjectReference{
-				Namespace: rlr.Namespace,
+				Namespace: namespace,
 			},
 		})
 	}

@@ -113,9 +113,15 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			ignoreHealthCheck = false
 		}
 	} else if vip, ok = svc.Annotations[util.RouterLBRuleVipsAnnotation]; ok && vip != "" {
-		lbVips = []string{vip}
-		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
-			ignoreHealthCheck = false
+		for ip := range strings.SplitSeq(vip, ",") {
+			ip = strings.TrimSpace(ip)
+			if ip == "" {
+				continue
+			}
+			lbVips = append(lbVips, ip)
+			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
+				ignoreHealthCheck = false
+			}
 		}
 	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
