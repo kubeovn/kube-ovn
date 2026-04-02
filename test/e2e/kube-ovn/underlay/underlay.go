@@ -394,7 +394,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		deadline := time.Now().Add(2 * time.Minute)
 		for _, node := range nodes {
 			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
-			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
+			framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", util.ExternalBridgeName(providerNetworkName), node.Name())
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName2), time.Second, deadline)
+			framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", util.ExternalBridgeName(providerNetworkName2), node.Name())
 		}
 
 		if dockerNetwork != nil {
