@@ -390,11 +390,14 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		nodes, err := kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in cluster")
 
-		ginkgo.By("Waiting for ovs bridge to disappear")
-		deadline := time.Now().Add(2 * time.Minute)
+		ginkgo.By("Waiting for ovs bridges to disappear")
 		for _, node := range nodes {
+			deadline := time.Now().Add(2 * time.Minute)
 			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
-			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
+			framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", util.ExternalBridgeName(providerNetworkName), node.Name())
+			deadline = time.Now().Add(2 * time.Minute)
+			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName2), time.Second, deadline)
+			framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", util.ExternalBridgeName(providerNetworkName2), node.Name())
 		}
 
 		if dockerNetwork != nil {
