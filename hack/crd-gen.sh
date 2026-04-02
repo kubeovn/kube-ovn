@@ -48,10 +48,27 @@ bundle = '\n---\n'.join(parts) + '\n'
 # Sync embedded install.sh CRD heredoc.
 install_path = repo / 'dist' / 'images' / 'install.sh'
 install_text = install_path.read_text()
-pattern = re.compile(r'cat <<EOF > kube-ovn-crd\.yaml\n.*?\nEOF\n', re.S)
-replacement = 'cat <<EOF > kube-ovn-crd.yaml\n' + bundle + 'EOF\n'
-new_text, count = pattern.subn(lambda _m: replacement, install_text, count=1)
-if count != 1:
-    raise SystemExit('failed to replace kube-ovn-crd.yaml heredoc in dist/images/install.sh')
+start_anchor = '# BEGIN GENERATED KUBE-OVN CRD BUNDLE\n'
+end_anchor = '# END GENERATED KUBE-OVN CRD BUNDLE\n'
+replacement = (
+    start_anchor +
+    'cat <<EOF > kube-ovn-crd.yaml\n' +
+    bundle +
+    'EOF\n' +
+    end_anchor
+)
+
+start = install_text.find(start_anchor)
+end = install_text.find(end_anchor)
+if start != -1 and end != -1 and end > start:
+    end += len(end_anchor)
+    new_text = install_text[:start] + replacement + install_text[end:]
+else:
+    # Backward-compatible fallback for the first sync before anchors exist.
+    pattern = re.compile(r'cat <<EOF > kube-ovn-crd\.yaml\n.*?\nEOF\n', re.S)
+    new_text, count = pattern.subn(lambda _m: replacement, install_text, count=1)
+    if count != 1:
+        raise SystemExit('failed to replace kube-ovn-crd.yaml block in dist/images/install.sh')
+
 install_path.write_text(new_text)
 PY
