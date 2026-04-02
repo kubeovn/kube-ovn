@@ -42,12 +42,15 @@ type IPPool struct {
 
 type IPPoolSpec struct {
 	// Subnet name for the IP pool. This field is immutable.
+	// +kubebuilder:validation:Required
 	Subnet string `json:"subnet,omitempty"`
 	// Namespaces that can use this IP pool
 	Namespaces []string `json:"namespaces,omitempty"`
 	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges)
+	// +kubebuilder:validation:Required
 	IPs []string `json:"ips,omitempty"`
 	// EnableAddressSet to work with policy-based routing and ACL
+	// +kubebuilder:default=false
 	EnableAddressSet bool `json:"enableAddressSet,omitempty"`
 }
 

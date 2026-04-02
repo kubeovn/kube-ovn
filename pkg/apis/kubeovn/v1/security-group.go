@@ -47,7 +47,7 @@ type SecurityGroupList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=security-groups
-// +kubebuilder:resource:scope="Cluster",shortName="sg",path="security-groups"
+// +kubebuilder:resource:scope="Cluster",shortName="sg",path="security-groups",singular="security-group"
 // +kubebuilder:subresource:status
 type SecurityGroup struct {
 	metav1.TypeMeta   `json:",inline"`

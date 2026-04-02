@@ -20,7 +20,7 @@ type OvnFipList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=ovn-fips
-// +kubebuilder:resource:scope="Cluster",shortName="ofip",path="ovn-fips"
+// +kubebuilder:resource:scope="Cluster",shortName="ofip",path="ovn-fips",singular="ovn-fip"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".status.vpc"
 // +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"

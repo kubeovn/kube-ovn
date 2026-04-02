@@ -35,8 +35,9 @@ type VpcEgressGatewayList struct {
 // +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/api/autoscaling/v1.Scale,result=k8s.io/api/autoscaling/v1.Scale
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resourceName=vpc-egress-gateways
-// +kubebuilder:resource:scope="Namespaced",shortName={"vpc-egress-gw","veg"},path="vpc-egress-gateways"
+// +kubebuilder:resource:scope="Namespaced",shortName={"vpc-egress-gw","veg"},path="vpc-egress-gateways",singular="vpc-egress-gateway"
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.labelSelector
 // +kubebuilder:printcolumn:name="VPC",type="string",JSONPath=".spec.vpc"
 // +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
 // +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
@@ -84,6 +85,7 @@ type VpcEgressGatewaySpec struct {
 	// if not specified, the default VPC will be used
 	VPC string `json:"vpc,omitempty"`
 	// workload replicas
+	// +kubebuilder:default=1
 	Replicas int32 `json:"replicas,omitempty"`
 	// optional name prefix used to generate the workload
 	// the workload name will be generated as <prefix><vpc-egress-gateway-name>
@@ -95,6 +97,7 @@ type VpcEgressGatewaySpec struct {
 	// if not specified, the workload will be created in the default subnet of the VPC
 	InternalSubnet string `json:"internalSubnet,omitempty"`
 	// external subnet used to create the workload
+	// +kubebuilder:validation:Required
 	ExternalSubnet string `json:"externalSubnet"`
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
@@ -108,6 +111,7 @@ type VpcEgressGatewaySpec struct {
 	// if not specified, the default traffic policy "Cluster" will be used
 	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
 	// currently it works only for the default vpc
+	// +kubebuilder:default=Cluster
 	TrafficPolicy string `json:"trafficPolicy,omitempty"`
 
 	// BFD configuration
@@ -157,6 +161,7 @@ type VpcEgressGatewayBFDConfig struct {
 
 type VpcEgressGatewayPolicy struct {
 	// whether to enable SNAT/MASQUERADE for the egress traffic
+	// +kubebuilder:default=false
 	SNAT bool `json:"snat"`
 	// CIDRs/subnets targeted by the egress traffic policy
 	IPBlocks []string `json:"ipBlocks,omitempty"`
@@ -176,14 +181,18 @@ type VpcEgressGatewayStatus struct {
 	LabelSelector string `json:"labelSelector,omitempty"`
 
 	// whether the egress gateway is ready
+	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 	// Current phase of the egress gateway (Pending, Processing, or Completed)
+	// +kubebuilder:default=Pending
+	// +kubebuilder:validation:Required
 	Phase Phase `json:"phase"`
 	// internal/external IPs used by the workload
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// External IP addresses assigned to the egress gateway
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 	// Conditions represent the latest available observations of the egress gateway's current state
+	// +kubebuilder:validation:Required
 	Conditions Conditions `json:"conditions,omitempty"`
 
 	// workload information
