@@ -138,10 +138,20 @@ type VpcEgressGatewayBFDConfig struct {
 	// whether to enable BFD
 	// if set to true, the egress gateway will establish BFD session(s) with the VPC BFD LRP
 	// the VPC's .spec.bfd.enabled must be set to true to enable BFD
+	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 	// optional BFD minRX/minTX/multiplier
-	MinRX      int32 `json:"minRX,omitempty"`
-	MinTX      int32 `json:"minTX,omitempty"`
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinRX int32 `json:"minRX,omitempty"`
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinTX int32 `json:"minTX,omitempty"`
+	// +kubebuilder:default=3
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
 	Multiplier int32 `json:"multiplier,omitempty"`
 }
 
