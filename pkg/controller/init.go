@@ -814,8 +814,11 @@ func (c *Controller) syncVlanCR() error {
 			newVlan.Spec.VlanID = 0
 			needUpdate = true
 		}
+		//nolint:staticcheck // Ignore SA1019 for backward compatibility of deprecated field ProviderInterfaceName
 		if newVlan.Spec.ProviderInterfaceName != "" && newVlan.Spec.Provider == "" {
+			//nolint:staticcheck // Ignore SA1019
 			newVlan.Spec.Provider = newVlan.Spec.ProviderInterfaceName
+			//nolint:staticcheck // Ignore SA1019
 			newVlan.Spec.ProviderInterfaceName = ""
 			needUpdate = true
 		}

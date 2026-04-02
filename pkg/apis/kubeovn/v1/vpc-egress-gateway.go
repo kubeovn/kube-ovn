@@ -35,6 +35,18 @@ type VpcEgressGatewayList struct {
 // +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/api/autoscaling/v1.Scale,result=k8s.io/api/autoscaling/v1.Scale
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resourceName=vpc-egress-gateways
+// +kubebuilder:resource:scope="Namespaced",shortName={"vpc-egress-gw","veg"},path="vpc-egress-gateways"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="VPC",type="string",JSONPath=".spec.vpc"
+// +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
+// +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
+// +kubebuilder:printcolumn:name="EXTERNAL SUBNET",type="string",JSONPath=".spec.externalSubnet"
+// +kubebuilder:printcolumn:name="PHASE",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
+// +kubebuilder:printcolumn:name="INTERNAL IPS",type="string",JSONPath=".status.internalIPs",priority=1
+// +kubebuilder:printcolumn:name="EXTERNAL IPS",type="string",JSONPath=".status.externalIPs",priority=1
+// +kubebuilder:printcolumn:name="WORKING NODES",type="string",JSONPath=".status.workload.nodes",priority=1
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 // vpc egress gateway is used to forward the egress traffic from the VPC to the external network
 type VpcEgressGateway struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -88,6 +100,7 @@ type VpcEgressGatewaySpec struct {
 	// these IPs must be in the internal/external subnet
 	// the IPs count must NOT be less than the replicas count
 	InternalIPs []string `json:"internalIPs,omitempty"`
+	// External IP addresses for the egress gateway
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 	// namespace/pod selectors
 	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
@@ -125,10 +138,20 @@ type VpcEgressGatewayBFDConfig struct {
 	// whether to enable BFD
 	// if set to true, the egress gateway will establish BFD session(s) with the VPC BFD LRP
 	// the VPC's .spec.bfd.enabled must be set to true to enable BFD
+	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 	// optional BFD minRX/minTX/multiplier
-	MinRX      int32 `json:"minRX,omitempty"`
-	MinTX      int32 `json:"minTX,omitempty"`
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinRX int32 `json:"minRX,omitempty"`
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinTX int32 `json:"minTX,omitempty"`
+	// +kubebuilder:default=3
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
 	Multiplier int32 `json:"multiplier,omitempty"`
 }
 
@@ -148,16 +171,20 @@ type VpcEgressGatewayNodeSelector struct {
 
 type VpcEgressGatewayStatus struct {
 	// used by the scale subresource
-	Replicas      int32  `json:"replicas,omitempty"`
+	Replicas int32 `json:"replicas,omitempty"`
+	// Label selector for the egress gateway
 	LabelSelector string `json:"labelSelector,omitempty"`
 
 	// whether the egress gateway is ready
-	Ready bool  `json:"ready"`
+	Ready bool `json:"ready"`
+	// Current phase of the egress gateway (Pending, Processing, or Completed)
 	Phase Phase `json:"phase"`
 	// internal/external IPs used by the workload
-	InternalIPs []string   `json:"internalIPs,omitempty"`
-	ExternalIPs []string   `json:"externalIPs,omitempty"`
-	Conditions  Conditions `json:"conditions,omitempty"`
+	InternalIPs []string `json:"internalIPs,omitempty"`
+	// External IP addresses assigned to the egress gateway
+	ExternalIPs []string `json:"externalIPs,omitempty"`
+	// Conditions represent the latest available observations of the egress gateway's current state
+	Conditions Conditions `json:"conditions,omitempty"`
 
 	// workload information
 	Workload VpcEgressWorkload `json:"workload"`

@@ -12,6 +12,7 @@ import (
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 type IPPoolList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -22,6 +23,15 @@ type IPPoolList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +kubebuilder:resource:scope="Cluster",shortName="ippool",path="ippools"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
+// +kubebuilder:printcolumn:name="enableAddressSet",type="boolean",JSONPath=".spec.enableAddressSet"
+// +kubebuilder:printcolumn:name="IPs",type="string",JSONPath=".spec.ips"
+// +kubebuilder:printcolumn:name="V4Used",type="number",JSONPath=".status.v4UsingIPs"
+// +kubebuilder:printcolumn:name="V4Available",type="number",JSONPath=".status.v4AvailableIPs"
+// +kubebuilder:printcolumn:name="V6Used",type="number",JSONPath=".status.v6UsingIPs"
+// +kubebuilder:printcolumn:name="V6Available",type="number",JSONPath=".status.v6AvailableIPs"
 type IPPool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -31,22 +41,33 @@ type IPPool struct {
 }
 
 type IPPoolSpec struct {
-	Subnet     string   `json:"subnet,omitempty"`
+	// Subnet name for the IP pool. This field is immutable.
+	Subnet string `json:"subnet,omitempty"`
+	// Namespaces that can use this IP pool
 	Namespaces []string `json:"namespaces,omitempty"`
-	IPs        []string `json:"ips,omitempty"`
+	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges)
+	IPs []string `json:"ips,omitempty"`
 	// EnableAddressSet to work with policy-based routing and ACL
 	EnableAddressSet bool `json:"enableAddressSet,omitempty"`
 }
 
 type IPPoolStatus struct {
-	V4AvailableIPs     internal.BigInt `json:"v4AvailableIPs"`
-	V4AvailableIPRange string          `json:"v4AvailableIPRange"`
-	V4UsingIPs         internal.BigInt `json:"v4UsingIPs"`
-	V4UsingIPRange     string          `json:"v4UsingIPRange"`
-	V6AvailableIPs     internal.BigInt `json:"v6AvailableIPs"`
-	V6AvailableIPRange string          `json:"v6AvailableIPRange"`
-	V6UsingIPs         internal.BigInt `json:"v6UsingIPs"`
-	V6UsingIPRange     string          `json:"v6UsingIPRange"`
+	// Number of available IPv4 addresses
+	V4AvailableIPs internal.BigInt `json:"v4AvailableIPs"`
+	// Available IPv4 address range
+	V4AvailableIPRange string `json:"v4AvailableIPRange"`
+	// Number of using IPv4 addresses
+	V4UsingIPs internal.BigInt `json:"v4UsingIPs"`
+	// IPv4 address range in use
+	V4UsingIPRange string `json:"v4UsingIPRange"`
+	// Number of available IPv6 addresses
+	V6AvailableIPs internal.BigInt `json:"v6AvailableIPs"`
+	// Available IPv6 address range
+	V6AvailableIPRange string `json:"v6AvailableIPRange"`
+	// Number of using IPv6 addresses
+	V6UsingIPs internal.BigInt `json:"v6UsingIPs"`
+	// IPv6 address range in use
+	V6UsingIPRange string `json:"v6UsingIPRange"`
 
 	// Conditions represents the latest state of the object
 	// +optional

@@ -26,6 +26,7 @@ var (
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 type VpcList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -36,6 +37,15 @@ type VpcList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +kubebuilder:resource:scope="Cluster",shortName="vpc",path="vpcs"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="EnableExternal",type="boolean",JSONPath=".status.enableExternal"
+// +kubebuilder:printcolumn:name="EnableBfd",type="boolean",JSONPath=".status.enableBfd"
+// +kubebuilder:printcolumn:name="Standby",type="boolean",JSONPath=".status.standby"
+// +kubebuilder:printcolumn:name="Subnets",type="string",JSONPath=".status.subnets"
+// +kubebuilder:printcolumn:name="ExtraExternalSubnets",type="string",JSONPath=".status.extraExternalSubnets"
+// +kubebuilder:printcolumn:name="Namespaces",type="string",JSONPath=".spec.namespaces"
+// +kubebuilder:printcolumn:name="DefaultSubnet",type="string",JSONPath=".status.defaultLogicalSwitch"
 type Vpc struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -45,18 +55,26 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	DefaultSubnet string         `json:"defaultSubnet,omitempty"`
-	Namespaces    []string       `json:"namespaces,omitempty"`
-	StaticRoutes  []*StaticRoute `json:"staticRoutes,omitempty"`
-	PolicyRoutes  []*PolicyRoute `json:"policyRoutes,omitempty"`
-	VpcPeerings   []*VpcPeering  `json:"vpcPeerings,omitempty"`
+	// The default subnet name for the VPC
+	DefaultSubnet string `json:"defaultSubnet,omitempty"`
+	// List of namespaces that can use this VPC
+	Namespaces []string `json:"namespaces,omitempty"`
+	// Static routes for the VPC.
+	StaticRoutes []*StaticRoute `json:"staticRoutes,omitempty"`
+	// Policy routes for the VPC.
+	PolicyRoutes []*PolicyRoute `json:"policyRoutes,omitempty"`
+	// VPC peering configurations.
+	VpcPeerings []*VpcPeering `json:"vpcPeerings,omitempty"`
 
+	// Enable external network access for the VPC
 	EnableExternal bool `json:"enableExternal,omitempty"`
 	// EnableExternal only handles default external subnet
 
+	// Extra external subnets for provider-network VLAN. Immutable after creation.
 	ExtraExternalSubnets []string `json:"extraExternalSubnets,omitempty"`
 	// ExtraExternalSubnets only handles provider-network vlan subnet
 
+	// Enable BFD (Bidirectional Forwarding Detection) for the VPC
 	EnableBfd bool `json:"enableBfd,omitempty"`
 
 	// optional BFD LRP configuration
@@ -65,12 +83,13 @@ type VpcSpec struct {
 }
 
 type BFDPort struct {
+	// Enable BFD port
 	Enabled bool `json:"enabled"`
 	// ip address(es) of the BFD port
 	IP string `json:"ip,omitempty"`
 
-	// optional node selector used to select the nodes where the BFD LRP will be hosted
-	// if not specified, at most 3 nodes will be selected
+	// Optional node selector used to select the nodes where the BFD LRP will be hosted.
+	// If not specified, at most 3 nodes will be selected.
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
@@ -93,17 +112,23 @@ type StaticRoute struct {
 }
 
 type PolicyRoute struct {
-	Priority int               `json:"priority,omitempty"`
-	Match    string            `json:"match,omitempty"`
-	Action   PolicyRouteAction `json:"action,omitempty"`
+	// Priority of the policy route (0-32767)
+	Priority int `json:"priority,omitempty"`
+	// Match of the policy route
+	Match string `json:"match,omitempty"`
+	// Action of the policy route
+	Action PolicyRouteAction `json:"action,omitempty"`
 	// NextHopIP is an optional parameter. It needs to be provided only when 'action' is 'reroute'.
 	// +optional
 	NextHopIP string `json:"nextHopIP,omitempty"`
 }
 
 type BFDPortStatus struct {
-	Name  string   `json:"name,omitempty"`
-	IP    string   `json:"ip,omitempty"`
+	// BFD port name
+	Name string `json:"name,omitempty"`
+	// BFD port IP address
+	IP string `json:"ip,omitempty"`
+	// Nodes where BFD port is deployed
 	Nodes []string `json:"nodes,omitempty"`
 }
 
@@ -122,7 +147,8 @@ type VpcStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Standby                 bool     `json:"standby"`
+	Standby bool `json:"standby"`
+	// Whether this is the default VPC.
 	Default                 bool     `json:"default"`
 	DefaultLogicalSwitch    string   `json:"defaultLogicalSwitch"`
 	Router                  string   `json:"router"`
@@ -133,10 +159,12 @@ type VpcStatus struct {
 	UDPSessionLoadBalancer  string   `json:"udpSessionLoadBalancer"`
 	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
 	Subnets                 []string `json:"subnets"`
-	VpcPeerings             []string `json:"vpcPeerings"`
-	EnableExternal          bool     `json:"enableExternal"`
-	ExtraExternalSubnets    []string `json:"extraExternalSubnets"`
-	EnableBfd               bool     `json:"enableBfd"`
+	// VPC peering configurations.
+	VpcPeerings    []string `json:"vpcPeerings"`
+	EnableExternal bool     `json:"enableExternal"`
+	// Extra external subnets for provider-network VLAN. Immutable after creation.
+	ExtraExternalSubnets []string `json:"extraExternalSubnets"`
+	EnableBfd            bool     `json:"enableBfd"`
 
 	BFDPort BFDPortStatus `json:"bfdPort"`
 }
