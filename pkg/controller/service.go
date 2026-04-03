@@ -160,15 +160,20 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
-			if c.config.EnableOVNLBPreferLocal {
-				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
-					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
+			if err = c.withLBKeyLock(lb, func() error {
+				if c.config.EnableOVNLBPreferLocal {
+					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
+						return err
+					}
+				}
+
+				if err := c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
-			}
-
-			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
-				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+				return nil
+			}); err != nil {
 				return err
 			}
 		}
@@ -257,53 +262,70 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			return nil
 		}
 
-		lb, err := c.OVNNbClient.GetLoadBalancer(lbName, false)
-		if err != nil {
-			klog.Errorf("failed to get LB %s: %v", lbName, err)
-			return err
-		}
-		lbVIPs := maps.Clone(lb.Vips)
-		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lbVIPs)
-		for _, vip := range svcVips {
-			if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
-				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
+		if err := c.withLBKeyLock(lbName, func() error {
+			lb, err := c.OVNNbClient.GetLoadBalancer(lbName, false)
+			if err != nil {
+				klog.Errorf("failed to get LB %s: %v", lbName, err)
 				return err
 			}
-
-			if _, ok := lbVIPs[vip]; !ok {
-				klog.Infof("add vip %s to LB %s", vip, lbName)
-				needUpdateEndpointQueue = true
-			}
-		}
-		for vip := range lbVIPs {
-			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
-				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
-				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
-					return err
+			lbVIPs := maps.Clone(lb.Vips)
+			klog.V(3).Infof("existing vips of LB %s: %v", lbName, lbVIPs)
+			for _, vip := range svcVips {
+				if _, ok := lbVIPs[vip]; !ok {
+					klog.Infof("add vip %s to LB %s", vip, lbName)
+					needUpdateEndpointQueue = true
 				}
 			}
+			for vip := range lbVIPs {
+				if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
+					klog.Infof("remove stale vip %s from LB %s", vip, lbName)
+					if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
+						return err
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 
 		if len(oLbName) == 0 {
 			return nil
 		}
 
-		oLb, err := c.OVNNbClient.GetLoadBalancer(oLbName, false)
-		if err != nil {
-			klog.Errorf("failed to get LB %s: %v", oLbName, err)
-			return err
-		}
-		oLbVIPs := maps.Clone(oLb.Vips)
-		klog.V(3).Infof("existing vips of LB %s: %v", oLbName, oLbVIPs)
-		for vip := range oLbVIPs {
-			if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
-				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
+		for _, vip := range svcVips {
+			if err := c.withLBKeyLock(oLbName, func() error {
+				if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}
+				return nil
+			}); err != nil {
+				return err
 			}
+		}
+
+		if err := c.withLBKeyLock(oLbName, func() error {
+			oLb, err := c.OVNNbClient.GetLoadBalancer(oLbName, false)
+			if err != nil {
+				klog.Errorf("failed to get LB %s: %v", oLbName, err)
+				return err
+			}
+			oLbVIPs := maps.Clone(oLb.Vips)
+			klog.V(3).Infof("existing vips of LB %s: %v", oLbName, oLbVIPs)
+			for vip := range oLbVIPs {
+				if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
+					klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
+					if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
+						return err
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 		return nil
 	}

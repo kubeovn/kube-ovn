@@ -708,13 +708,18 @@ func (c *Controller) gcLoadBalancer() error {
 			return nil
 		}
 
-		for vip := range lb.Vips {
-			if !svcVips.Has(vip) {
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
-					return err
+		if err = c.withLBKeyLock(lbName, func() error {
+			for vip := range lb.Vips {
+				if !svcVips.Has(vip) {
+					if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
+						return err
+					}
 				}
 			}
+			return nil
+		}); err != nil {
+			return err
 		}
 		return nil
 	}

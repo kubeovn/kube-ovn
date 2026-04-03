@@ -91,6 +91,7 @@ type Controller struct {
 	deletingNodeObjMap     *xsync.Map[string, *corev1.Node]
 	updatePodSecurityQueue workqueue.TypedRateLimitingInterface[string]
 	podKeyMutex            keymutex.KeyMutex
+	lbKeyMutex             keymutex.KeyMutex
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
@@ -524,6 +525,7 @@ func Run(ctx context.Context, config *Configuration) {
 		),
 		updatePodSecurityQueue: newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil),
 		podKeyMutex:            keymutex.NewHashed(numKeyLocks),
+		lbKeyMutex:             keymutex.NewHashed(numKeyLocks),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,

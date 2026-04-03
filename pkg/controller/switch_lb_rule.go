@@ -291,15 +291,19 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 			}
 			belongsToThisVpc = true
 
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
-			}
+			err = c.withLBKeyLock(lb.Name, func() error {
+				if err := c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID); err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+				if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip); err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 		}
