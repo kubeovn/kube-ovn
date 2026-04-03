@@ -269,7 +269,7 @@ kind-install: kind-load-image
 		$(MAKE) untaint-control-plane; \
 	fi
 	@echo "Generating CRDs with controller-gen and syncing static CRD bundles..."
-	hack/crd-gen.sh
+	$(MAKE) gen-crd
 	@echo "Installing kube-ovn with synced generated CRDs..."
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no

@@ -17,6 +17,10 @@ endif
 GOTOOLCHAIN_VERSION := go$(GO_MOD_VERSION)
 MODERNIZE_EXCLUDE := github.com/kubeovn/kube-ovn/mocks|github.com/kubeovn/kube-ovn/pkg/apis/kubeovn|github.com/kubeovn/kube-ovn/pkg/client
 
+.PHONY: gen-crd
+gen-crd:
+	hack/gen-crd.sh
+
 .PHONY: build-go
 build-go:
 	go mod tidy
@@ -34,20 +38,20 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-controller -v ./cmd/controller
 
 .PHONY: build-kube-ovn
-build-kube-ovn: build-debug build-go
+build-kube-ovn: gen-crd build-debug build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
 	docker build -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-dpdk
-build-kube-ovn-dpdk: build-go
+build-kube-ovn-dpdk: gen-crd build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-dev
-build-dev: build-go
+build-dev: gen-crd build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(DEV_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-debug
-build-debug:
+build-debug: gen-crd
 	@DEBUG=1 $(MAKE) build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -f dist/images/Dockerfile dist/images/
 
@@ -67,25 +71,25 @@ base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: build-kit
-build-kit: build-go
+build-kit: gen-crd build-go
 	DOCKER_BUILDKIT=1 docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn
-image-kube-ovn: image-kube-ovn-debug build-go
+image-kube-ovn: gen-crd image-kube-ovn-debug build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-arm64
-image-kube-ovn-arm64: build-go-arm
+image-kube-ovn-arm64: gen-crd build-go-arm
 	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-debug
-image-kube-ovn-debug:
+image-kube-ovn-debug: gen-crd
 	@DEBUG=1 $(MAKE) build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-dpdk
-image-kube-ovn-dpdk: build-go
+image-kube-ovn-dpdk: gen-crd build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-vpc-nat-gateway
