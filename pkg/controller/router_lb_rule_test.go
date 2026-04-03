@@ -234,7 +234,7 @@ func Test_generateRlrEndpoints(t *testing.T) {
 	})
 }
 
-func Test_newRlrInfo(t *testing.T) {
+func Test_newRouterLBRuleInfo(t *testing.T) {
 	t.Run("empty namespace defaults to 'default'", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
 			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
@@ -245,7 +245,7 @@ func Test_newRlrInfo(t *testing.T) {
 				Ports:     []kubeovnv1.RouterLBRulePort{{Port: 80}},
 			},
 		}
-		info := newRlrInfo(rlr)
+		info := newRouterLBRuleInfo(rlr)
 		assert.Equal(t, metav1.NamespaceDefault, info.Namespace)
 	})
 
@@ -254,7 +254,7 @@ func Test_newRlrInfo(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
 			Spec:       kubeovnv1.RouterLBRuleSpec{Namespace: "custom-ns"},
 		}
-		info := newRlrInfo(rlr)
+		info := newRouterLBRuleInfo(rlr)
 		assert.Equal(t, "custom-ns", info.Namespace)
 	})
 
@@ -265,7 +265,7 @@ func Test_newRlrInfo(t *testing.T) {
 				Ports: []kubeovnv1.RouterLBRulePort{{Port: 80}, {Port: 443}},
 			},
 		}
-		info := newRlrInfo(rlr)
+		info := newRouterLBRuleInfo(rlr)
 		assert.Equal(t, []int32{80, 443}, info.Ports)
 	})
 }
@@ -601,8 +601,8 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		}
 		return svc
 	}
-	makeInfo := func() *RlrInfo {
-		return &RlrInfo{Name: "test-rlr", Namespace: svcNS, Ports: []int32{testPort}}
+	makeInfo := func() *RouterLBRuleInfo {
+		return &RouterLBRuleInfo{Name: "test-rlr", Namespace: svcNS, Ports: []int32{testPort}}
 	}
 
 	t.Run("service not found exits cleanly without OVN calls", func(t *testing.T) {
@@ -673,7 +673,7 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 	fc, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
 	ctrl := fc.fakeController
-	ctrl.updateRouterLBRuleQueue = newTypedRateLimitingQueue[*RlrInfo]("UpdateRouterLBRuleTest", nil)
+	ctrl.updateRouterLBRuleQueue = newTypedRateLimitingQueue[*RouterLBRuleInfo]("UpdateRouterLBRuleTest", nil)
 
 	base := &kubeovnv1.RouterLBRule{
 		ObjectMeta: metav1.ObjectMeta{Name: "rlr1", ResourceVersion: "1"},
@@ -685,7 +685,7 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 		},
 	}
 
-	drainQueue := func() *RlrInfo {
+	drainQueue := func() *RouterLBRuleInfo {
 		item, _ := ctrl.updateRouterLBRuleQueue.Get()
 		ctrl.updateRouterLBRuleQueue.Done(item)
 		return item

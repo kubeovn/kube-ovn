@@ -25,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-type RlrInfo struct {
+type RouterLBRuleInfo struct {
 	Name       string
 	Namespace  string
 	OvnEip     string
@@ -38,7 +38,7 @@ func generateRlrSvcName(name string) string {
 	return "rlr-" + name
 }
 
-func newRlrInfo(rlr *kubeovnv1.RouterLBRule) *RlrInfo {
+func newRouterLBRuleInfo(rlr *kubeovnv1.RouterLBRule) *RouterLBRuleInfo {
 	namespace := rlr.Spec.Namespace
 	if namespace == "" {
 		namespace = metav1.NamespaceDefault
@@ -49,7 +49,7 @@ func newRlrInfo(rlr *kubeovnv1.RouterLBRule) *RlrInfo {
 		ports = append(ports, p.Port)
 	}
 
-	return &RlrInfo{
+	return &RouterLBRuleInfo{
 		Name:      rlr.Name,
 		Namespace: namespace,
 		OvnEip:    rlr.Spec.OvnEip,
@@ -68,7 +68,7 @@ func (c *Controller) enqueueUpdateRouterLBRule(oldObj, newObj any) {
 	var (
 		oldRlr = oldObj.(*kubeovnv1.RouterLBRule)
 		newRlr = newObj.(*kubeovnv1.RouterLBRule)
-		info   = newRlrInfo(oldRlr)
+		info   = newRouterLBRuleInfo(oldRlr)
 	)
 
 	if oldRlr.ResourceVersion == newRlr.ResourceVersion {
@@ -102,7 +102,7 @@ func (c *Controller) enqueueDeleteRouterLBRule(obj any) {
 	}
 
 	klog.Infof("enqueue del RouterLBRule %s", rlr.Name)
-	c.delRouterLBRuleQueue.Add(newRlrInfo(rlr))
+	c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(rlr))
 }
 
 // checkEipPortConflict returns an error if eip:portStr is already used by another
@@ -312,7 +312,7 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelRouterLBRule(info *RlrInfo) error {
+func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 	klog.V(3).Infof("handleDelRouterLBRule %s", info.Name)
 
 	svcName := generateRlrSvcName(info.Name)
@@ -441,7 +441,7 @@ func (c *Controller) handleDelRouterLBRule(info *RlrInfo) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateRouterLBRule(info *RlrInfo) error {
+func (c *Controller) handleUpdateRouterLBRule(info *RouterLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateRouterLBRule %s", info.Name)
 	if info.IsRecreate {
 		if err := c.handleDelRouterLBRule(info); err != nil {

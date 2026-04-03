@@ -128,8 +128,8 @@ type Controller struct {
 	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
 	routerLBRuleSynced      cache.InformerSynced
 	addRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
-	updateRouterLBRuleQueue workqueue.TypedRateLimitingInterface[*RlrInfo]
-	delRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[*RlrInfo]
+	updateRouterLBRuleQueue workqueue.TypedRateLimitingInterface[*RouterLBRuleInfo]
+	delRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[*RouterLBRuleInfo]
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
@@ -660,15 +660,15 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.delRouterLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteRouterLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*RlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*RlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*RouterLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*RouterLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 		controller.updateRouterLBRuleQueue = newTypedRateLimitingQueue(
 			"UpdateRouterLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*RlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*RlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*RouterLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*RouterLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 
