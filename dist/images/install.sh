@@ -248,7 +248,7 @@ count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
 echo "Install OVN DB in $addresses"
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
-cat <<EOF > kube-ovn-crd.yaml
+cat <<'EOF' > kube-ovn-crd.yaml
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -529,7 +529,6 @@ spec:
             type: object
         required:
         - spec
-        - status
         type: object
     served: true
     storage: true

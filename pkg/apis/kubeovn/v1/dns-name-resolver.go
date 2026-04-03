@@ -17,8 +17,7 @@ type DNSNameResolver struct {
 	metav1.ObjectMeta `json:"metadata"`
 
 	// +kubebuilder:validation:Required
-	Spec DNSNameResolverSpec `json:"spec"`
-	// +kubebuilder:validation:Required
+	Spec   DNSNameResolverSpec   `json:"spec"`
 	Status DNSNameResolverStatus `json:"status"`
 }
 

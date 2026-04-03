@@ -48,7 +48,7 @@ def sync_install_script(bundle: str) -> None:
     install_text = INSTALL_PATH.read_text()
     replacement = (
         START_ANCHOR
-        + "cat <<EOF > kube-ovn-crd.yaml\n"
+        + "cat <<'EOF' > kube-ovn-crd.yaml\n"
         + bundle
         + "EOF\n"
         + END_ANCHOR
@@ -60,7 +60,7 @@ def sync_install_script(bundle: str) -> None:
         end += len(END_ANCHOR)
         new_text = install_text[:start] + replacement + install_text[end:]
     else:
-        pattern = re.compile(r"cat <<EOF > kube-ovn-crd\.yaml\n.*?\nEOF\n", re.S)
+        pattern = re.compile(r"cat <<'?EOF'? > kube-ovn-crd\.yaml\n.*?\nEOF\n", re.S)
         new_text, count = pattern.subn(lambda _m: replacement, install_text, count=1)
         if count != 1:
             raise SystemExit("failed to replace kube-ovn-crd.yaml block in dist/images/install.sh")
