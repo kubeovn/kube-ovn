@@ -10,7 +10,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
-// +kubebuilder:resource:scope="Cluster"
+// +kubebuilder:resource:scope="Cluster",shortName="dnr",path="dnsnameresolvers",singular="dnsnameresolver"
 // +kubebuilder:subresource:status
 type DNSNameResolver struct {
 	metav1.TypeMeta   `json:",inline"`

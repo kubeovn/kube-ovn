@@ -262,6 +262,8 @@ spec:
     kind: DNSNameResolver
     listKind: DNSNameResolverList
     plural: dnsnameresolvers
+    shortNames:
+    - dnr
     singular: dnsnameresolver
   scope: Cluster
   versions:
@@ -1918,6 +1920,8 @@ spec:
     kind: ProviderNetwork
     listKind: ProviderNetworkList
     plural: provider-networks
+    shortNames:
+    - pn
     singular: provider-network
   scope: Cluster
   versions:

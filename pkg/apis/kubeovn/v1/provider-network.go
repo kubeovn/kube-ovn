@@ -19,7 +19,7 @@ type ProviderNetworkList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=provider-networks
-// +kubebuilder:resource:scope="Cluster",path="provider-networks",singular="provider-network"
+// +kubebuilder:resource:scope="Cluster",shortName="pn",path="provider-networks",singular="provider-network"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="DefaultInterface",type="string",JSONPath=".spec.defaultInterface"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
