@@ -21,6 +21,11 @@ MODERNIZE_EXCLUDE := github.com/kubeovn/kube-ovn/mocks|github.com/kubeovn/kube-o
 gen-crd:
 	hack/gen-crd.sh
 
+.PHONY: verify-crd
+verify-crd: gen-crd
+@if ! git diff --exit-code charts/kube-ovn/templates/kube-ovn-crd.yaml dist/images/install.sh >/dev/null; then echo "Error: CRDs are out of sync. Please run 'make gen-crd' and commit the changes."; exit 1; fi
+@echo "CRDs are up to date."
+
 .PHONY: build-go
 build-go:
 	go mod tidy

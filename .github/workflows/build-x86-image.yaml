@@ -308,6 +308,7 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+          make verify-crd
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             make build-kube-ovn
