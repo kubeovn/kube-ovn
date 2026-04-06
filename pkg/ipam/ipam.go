@@ -177,8 +177,10 @@ func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 	}
 }
 
-func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
-	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
+func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string, allowFirstIPv4Address ...bool) error {
+	allowFirstIPv4 := len(allowFirstIPv4Address) != 0 && allowFirstIPv4Address[0]
+	excludeIps = util.GetSubnetExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
+	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allowFirstIPv4)
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
@@ -222,6 +224,10 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 
 	if subnet, ok := ipam.Subnets[name]; ok {
+		if err := checkFirstIPv4AddressUpdate(subnet, v4cidrStr, allowFirstIPv4); err != nil {
+			klog.Error(err)
+			return err
+		}
 		subnet.Protocol = protocol
 		v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)
 		if err != nil {
@@ -234,12 +240,12 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			return err
 		}
 		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4) &&
-			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4Reserved.Equal(v4Reserved)) {
+			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4Reserved.Equal(v4Reserved) || subnet.AllowFirstIPv4Address != allowFirstIPv4) {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
 			subnet.V4CIDR = cidr
 			subnet.V4Reserved = v4Reserved
-			firstIP, _ := util.FirstIP(v4cidrStr)
-			lastIP, _ := util.LastIP(v4cidrStr)
+			firstIP, _ := util.FirstIPWithFirstIPv4(v4cidrStr, allowFirstIPv4)
+			lastIP, _ := util.LastIPWithFirstIPv4(v4cidrStr, allowFirstIPv4)
 			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 			subnet.V4Using = subnet.V4Using.Intersect(ips)
 			subnet.V4Free = ips.Separate(subnet.V4Reserved).Separate(subnet.V4Using)
@@ -334,10 +340,11 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				delete(subnet.MacToPod, mac)
 			}
 		}
+		subnet.AllowFirstIPv4Address = allowFirstIPv4
 		return nil
 	}
 
-	subnet, err := NewSubnet(name, cidrStr, excludeIps)
+	subnet, err := NewSubnet(name, cidrStr, excludeIps, allowFirstIPv4)
 	if err != nil {
 		klog.Errorf("failed to create subnet %s, %v", name, err)
 		return err
@@ -347,6 +354,51 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 	klog.Infof("adding new subnet %s", name)
 	ipam.Subnets[name] = subnet
 	return nil
+}
+
+func checkFirstIPv4AddressUpdate(subnet *Subnet, v4cidrStr string, allowFirstIPv4 bool) error {
+	if !subnet.AllowFirstIPv4Address || allowFirstIPv4 || v4cidrStr == "" {
+		return nil
+	}
+
+	firstIPv4, err := subnetFirstIPv4(v4cidrStr)
+	if err != nil {
+		return err
+	}
+	if firstIPv4 == nil {
+		return nil
+	}
+
+	if !subnet.V4Using.Contains(firstIPv4) {
+		return nil
+	}
+
+	return fmt.Errorf("cannot disable allowFirstIPv4Address for subnet %s while %s is still allocated", subnet.Name, firstIPv4)
+}
+
+func subnetFirstIPv4(v4cidrStr string) (IP, error) {
+	if v4cidrStr == "" {
+		return nil, nil
+	}
+
+	_, cidr, err := net.ParseCIDR(v4cidrStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IPv4 cidr %q: %w", v4cidrStr, err)
+	}
+	if cidr.IP.To4() == nil {
+		return nil, fmt.Errorf("cidr %q is not an IPv4 cidr", v4cidrStr)
+	}
+
+	firstIPv4 := util.FirstIPv4Address(cidr.String())
+	if firstIPv4 == "" {
+		return nil, nil
+	}
+
+	ip, err := NewIP(firstIPv4)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse first IPv4 address %q in cidr %q: %w", firstIPv4, v4cidrStr, err)
+	}
+	return ip, nil
 }
 
 func (ipam *IPAM) DeleteSubnet(subnetName string) {

@@ -117,10 +117,10 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	return nil
 }
 
-func filterNonGatewayExcludeIPs(subnet *kubeovnv1.Subnet) []string {
+func filterNonGatewayExcludeIPs(gateway string, excludeIPs []string) []string {
 	noGWExcludeIPs := []string{}
-	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
-	for _, excludeIP := range subnet.Spec.ExcludeIps {
+	v4gw, v6gw := util.SplitStringIP(gateway)
+	for _, excludeIP := range excludeIPs {
 		if v4gw == excludeIP || v6gw == excludeIP {
 			continue
 		}
@@ -181,7 +181,8 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		return nil, err
 	}
 
-	noGWExcludeIPs := filterNonGatewayExcludeIPs(subnet)
+	excludeIPs := util.GetSubnetExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock, c.config.AllowFirstIPv4Address)
+	noGWExcludeIPs := filterNonGatewayExcludeIPs(subnet.Spec.Gateway, excludeIPs)
 	usingIPs, err := c.calculateUsingIPs(subnet, podUsedIPs, noGWExcludeIPs)
 	if err != nil {
 		klog.Error(err)
@@ -189,25 +190,26 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	}
 
 	v4availableIPs, v6availableIPs := internal.BigInt{}, internal.BigInt{}
-	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, excludeIPs)
+	allowFirstIPv4 := c.config.AllowFirstIPv4Address
 
 	switch subnet.Spec.Protocol {
 	case kubeovnv1.ProtocolDual:
-		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
+		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(excludeIPs)
 		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
+		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0], allowFirstIPv4)
 		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
 		_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 		_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-		v4availableIPs = util.AddressCountBigInt(v4CIDR).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(usingIPs)
+		v4availableIPs = util.AddressCountBigInt(v4CIDR, allowFirstIPv4).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(usingIPs)
 		v6availableIPs = util.AddressCountBigInt(v6CIDR).Sub(util.CountIPNumsBigInt(v6toSubIPs)).Sub(usingIPs)
 	case kubeovnv1.ProtocolIPv4:
 		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-		v4availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
+		toSubIPs := util.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock, allowFirstIPv4)
+		v4availableIPs = util.AddressCountBigInt(cidr, allowFirstIPv4).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
 	case kubeovnv1.ProtocolIPv6:
 		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+		toSubIPs := util.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 		v6availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
 	}
 

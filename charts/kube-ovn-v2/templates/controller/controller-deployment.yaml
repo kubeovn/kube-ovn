@@ -148,6 +148,7 @@ spec:
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.features.enableLoadbalancerService }}
           - --keep-vm-ip={{- .Values.features.enableKeepVmIps }}
+          - --allow-first-ipv4-address={{- .Values.features.allowFirstIPv4Address }}
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
           - --skip-conntrack-dst-cidrs={{- .Values.networking.skipConntrackDstCidrs }}

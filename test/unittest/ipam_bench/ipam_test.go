@@ -280,17 +280,17 @@ func delIPAMSubnet(im *ipam.IPAM, index int) {
 	im.DeleteSubnet(subnetName)
 }
 
-func benchmarkAddDelSubnetParallel(b *testing.B, subnetNumber int, protocol string) {
+func benchmarkAddDelSubnetParallel(b *testing.B, subnetCount int, protocol string) {
 	im := ipam.NewIPAM()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			for n := range subnetNumber {
+			for n := range subnetCount {
 				if !addIPAMSubnet(b, im, n, protocol) {
 					return
 				}
 			}
-			for n := range subnetNumber {
+			for n := range subnetCount {
 				delIPAMSubnet(im, n)
 			}
 		}

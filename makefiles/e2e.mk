@@ -86,6 +86,7 @@ e2e: kube-ovn-conformance-e2e
 e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/k8s-network
 	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
+	$(GINKGO_E2E_BUILD) ./test/e2e/first-ipv4
 	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-ic
 	$(GINKGO_E2E_BUILD) ./test/e2e/multus
 	$(GINKGO_E2E_BUILD) ./test/e2e/non-primary-cni
@@ -146,6 +147,18 @@ kube-ovn-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --timeout=35m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-first-ipv4-e2e
+kube-ovn-first-ipv4-e2e:
+	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(GINKGO_E2E_BUILD) ./test/e2e/first-ipv4
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=ipv4 \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN) --timeout=10m --focus="group:first-ipv4" ./test/e2e/first-ipv4/first-ipv4.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kind-first-ipv4-e2e
+kind-first-ipv4-e2e: kind-init-ipv4 kind-install-first-ipv4 kube-ovn-first-ipv4-e2e
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:

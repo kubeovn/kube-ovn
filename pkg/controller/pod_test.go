@@ -840,3 +840,9 @@ func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
 	result = np.GetNamedPortByNs("test-ns")
 	assert.Empty(t, result, "both regular and sidecar init container named ports should be deleted")
 }
+
+func TestCheckIPsInExcludeListAllowsFirstIPv4WhenEnabled(t *testing.T) {
+	ctrl := &Controller{config: &Configuration{AllowFirstIPv4Address: true}}
+	require.True(t, ctrl.checkIPsInExcludeList("10.0.0.0", nil, "10.0.0.0/24", true))
+	require.False(t, ctrl.checkIPsInExcludeList("10.0.0.1", nil, "10.0.0.0/24", true))
+}
