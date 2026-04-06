@@ -66,7 +66,7 @@ We are looking forward to your PR!
 The Kube-OVN community is waiting for your participation!
 
 - 🔗 Follow us on [Linkedin](https://www.linkedin.com/company/kube-ovn/)
-- 💬 Chat with us on [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
+- 💬 Chat with us on [Slack](https://cloud-native.slack.com/archives/C0AQMHUDX39)
 
 ## Adopters
 
