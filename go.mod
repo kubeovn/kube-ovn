@@ -67,7 +67,7 @@ require (
 	k8s.io/kubernetes v1.35.3
 	k8s.io/pod-security-admission v0.35.3
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
-	kernel.org/pub/linux/libs/security/libcap/cap v1.2.77
+	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
 	kubevirt.io/api v1.8.1
 	kubevirt.io/client-go v1.8.1
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -276,7 +276,7 @@ require (
 	k8s.io/kube-scheduler v0.35.3 // indirect
 	k8s.io/kubelet v0.35.3 // indirect
 	k8s.io/mount-utils v0.35.3 // indirect
-	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.78 // indirect
 	kubevirt.io/containerized-data-importer-api v1.64.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
