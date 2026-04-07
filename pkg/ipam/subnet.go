@@ -539,6 +539,15 @@ func (s *Subnet) releaseAddr(podName, nicName string) {
 		if len(oldPods) > 1 {
 			newPods := util.RemoveString(oldPods, podName)
 			s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
+			delete(s.V4NicToIP, nicName)
+			if mac, ok = s.NicToMac[nicName]; ok {
+				delete(s.NicToMac, nicName)
+				// only delete MacToPod if this pod is still the owner,
+				// as another shared-MAC peer may have overwritten the entry
+				if s.MacToPod[mac] == podName {
+					delete(s.MacToPod, mac)
+				}
+			}
 		} else {
 			delete(s.V4NicToIP, nicName)
 			delete(s.V4IPToPod, ip.String())
@@ -579,6 +588,13 @@ func (s *Subnet) releaseAddr(podName, nicName string) {
 		if len(oldPods) > 1 {
 			newPods := util.RemoveString(oldPods, podName)
 			s.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
+			delete(s.V6NicToIP, nicName)
+			if mac, ok = s.NicToMac[nicName]; ok {
+				delete(s.NicToMac, nicName)
+				if s.MacToPod[mac] == podName {
+					delete(s.MacToPod, mac)
+				}
+			}
 		} else {
 			delete(s.V6NicToIP, nicName)
 			delete(s.V6IPToPod, ip.String())

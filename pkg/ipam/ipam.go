@@ -334,6 +334,22 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				delete(subnet.MacToPod, mac)
 			}
 		}
+
+		// clean up PodToNicList for NICs that no longer have IP assignments
+		for podName, nicList := range subnet.PodToNicList {
+			var validNics []string
+			for _, nicName := range nicList {
+				if subnet.V4NicToIP[nicName] != nil || subnet.V6NicToIP[nicName] != nil || subnet.NicToMac[nicName] != "" {
+					validNics = append(validNics, nicName)
+				}
+			}
+			if len(validNics) == 0 {
+				delete(subnet.PodToNicList, podName)
+			} else {
+				subnet.PodToNicList[podName] = validNics
+			}
+		}
+
 		return nil
 	}
 

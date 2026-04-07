@@ -1047,7 +1047,31 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.Equal(t, v4, ip2.String())
 	require.NotEmpty(t, macStr2)
 	subnet.releaseAddr(pod41Name, nic41Name)
+	// after releasing pod41 (shared IP, len(oldPods) > 1 branch):
+	// V4IPToPod should only contain pod42
+	require.Equal(t, pod42Name, subnet.V4IPToPod[v4])
+	// released NIC's map entries must be cleaned
+	_, exists := subnet.V4NicToIP[nic41Name]
+	require.False(t, exists, "V4NicToIP should not contain released NIC")
+	_, exists = subnet.NicToMac[nic41Name]
+	require.False(t, exists, "NicToMac should not contain released NIC")
+	_, exists = subnet.MacToPod[macStr1]
+	require.False(t, exists, "MacToPod should not contain released NIC's MAC")
+	// the other pod's entries must remain
+	_, exists = subnet.V4NicToIP[nic42Name]
+	require.True(t, exists, "V4NicToIP should still contain the other pod's NIC")
+	mac42, exists := subnet.NicToMac[nic42Name]
+	require.True(t, exists, "NicToMac should still contain the other pod's NIC")
+	_, exists = subnet.MacToPod[mac42]
+	require.True(t, exists, "MacToPod should still contain the other pod's MAC")
+
 	subnet.releaseAddr(pod42Name, nic42Name)
+	// after releasing last shared pod: all maps should be clean
+	require.Empty(t, subnet.V4NicToIP)
+	require.Empty(t, subnet.V4IPToPod)
+	require.Empty(t, subnet.NicToMac)
+	require.Empty(t, subnet.MacToPod)
+
 	pod43Name := "pod43.default"
 	nic43Name := "pod43.default"
 	// 1.2 release from exclude ip
@@ -1086,7 +1110,27 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.Equal(t, v6, ip2.String())
 	require.NotEmpty(t, macStr2)
 	subnet.releaseAddr(pod61Name, nic61Name)
+	// after releasing pod61 (shared IP, len(oldPods) > 1 branch):
+	require.Equal(t, pod62Name, subnet.V6IPToPod[v6])
+	_, exists = subnet.V6NicToIP[nic61Name]
+	require.False(t, exists, "V6NicToIP should not contain released NIC")
+	_, exists = subnet.NicToMac[nic61Name]
+	require.False(t, exists, "NicToMac should not contain released NIC")
+	_, exists = subnet.MacToPod[macStr1]
+	require.False(t, exists, "MacToPod should not contain released NIC's MAC")
+	_, exists = subnet.V6NicToIP[nic62Name]
+	require.True(t, exists, "V6NicToIP should still contain the other pod's NIC")
+	mac62, exists := subnet.NicToMac[nic62Name]
+	require.True(t, exists, "NicToMac should still contain the other pod's NIC")
+	_, exists = subnet.MacToPod[mac62]
+	require.True(t, exists, "MacToPod should still contain the other pod's MAC")
+
 	subnet.releaseAddr(pod62Name, nic62Name)
+	require.Empty(t, subnet.V6NicToIP)
+	require.Empty(t, subnet.V6IPToPod)
+	require.Empty(t, subnet.NicToMac)
+	require.Empty(t, subnet.MacToPod)
+
 	// 2.2 release from exclude ip
 	pod63Name := "pod63.default"
 	nic63Name := "pod63.default"
@@ -1098,6 +1142,41 @@ func TestSubnetReleaseAddr(t *testing.T) {
 	require.Equal(t, v63, ip3.String())
 	require.NotEmpty(t, macStr3)
 	subnet.releaseAddr(pod63Name, nic63Name)
+
+	// 3. shared IP with shared MAC (live migration scenario)
+	subnet, err = NewSubnet("v4SharedMac", "10.0.0.0/24", nil)
+	require.NoError(t, err)
+	srcPod := "src-vm.default"
+	srcNic := "src-vm.default"
+	dstPod := "dst-vm.default"
+	dstNic := "dst-vm.default"
+	sharedV4 := "10.0.0.10"
+	sharedV4IP, err := NewIP(sharedV4)
+	require.NoError(t, err)
+	// allocate to source pod
+	_, srcMac, err := subnet.GetStaticAddress(srcPod, srcNic, sharedV4IP, nil, false, true)
+	require.NoError(t, err)
+	// allocate same IP and same MAC to destination pod (live migration)
+	sharedMac := srcMac
+	_, dstMac, err := subnet.GetStaticAddress(dstPod, dstNic, sharedV4IP, &sharedMac, false, false)
+	require.NoError(t, err)
+	require.Equal(t, srcMac, dstMac)
+	// release source pod — MacToPod must preserve destination pod's ownership
+	subnet.releaseAddr(srcPod, srcNic)
+	_, exists = subnet.V4NicToIP[srcNic]
+	require.False(t, exists, "V4NicToIP should not contain released src NIC")
+	_, exists = subnet.NicToMac[srcNic]
+	require.False(t, exists, "NicToMac should not contain released src NIC")
+	// MacToPod[sharedMac] must still exist because dst pod owns it
+	macOwner, exists := subnet.MacToPod[sharedMac]
+	require.True(t, exists, "MacToPod should preserve the surviving pod's MAC ownership")
+	require.Equal(t, dstPod, macOwner)
+	// release destination pod — now everything should be clean
+	subnet.releaseAddr(dstPod, dstNic)
+	require.Empty(t, subnet.V4NicToIP)
+	require.Empty(t, subnet.V4IPToPod)
+	require.Empty(t, subnet.NicToMac)
+	require.Empty(t, subnet.MacToPod)
 }
 
 func TestPopPodNic(t *testing.T) {
