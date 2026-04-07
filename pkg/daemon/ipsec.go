@@ -242,7 +242,7 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 		},
 		Spec: certmanagerv1.CertificateRequestSpec{
 			Request: csrBytes,
-			IssuerRef: cmmeta.ObjectReference{
+			IssuerRef: cmmeta.IssuerReference{
 				Name:  c.config.CertManagerIssuerName,
 				Kind:  util.ObjectKind[*certmanagerv1.ClusterIssuer](),
 				Group: certmanager.GroupName,
