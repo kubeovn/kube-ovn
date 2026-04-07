@@ -153,16 +153,16 @@ base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-arm64 -o image-arm64.tar
 
 .PHONY: lint
-lint:
-    ifeq ($(CI),true)
-		@echo "Running in GitHub Actions"
-		golangci-lint run -v
-		go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test
-    else
-		@echo "Running in local environment"
-		golangci-lint run -v --fix
-		go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test -fix
-    endif
+lint: verify-crd
+ifeq ($(CI),true)
+	@echo "Running in GitHub Actions"
+	golangci-lint run -v
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test
+else
+	@echo "Running in local environment"
+	golangci-lint run -v --fix
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test -fix
+endif
 
 .PHONY: scan
 scan:
