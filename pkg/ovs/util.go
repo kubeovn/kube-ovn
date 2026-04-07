@@ -164,7 +164,7 @@ func formatDHCPOptions(options map[string]string) string {
 		if k == "dns_server" {
 			v = strings.ReplaceAll(v, ",", ";")
 		}
-		sb.WriteString(fmt.Sprintf("%s=%s", k, v))
+		fmt.Fprintf(&sb, "%s=%s", k, v)
 	}
 	return sb.String()
 }
