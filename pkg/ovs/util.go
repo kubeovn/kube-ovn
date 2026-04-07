@@ -272,6 +272,27 @@ func (m OrACLMatch) String() string {
 	return match
 }
 
+type groupACLMatch struct {
+	match ACLMatch
+}
+
+func NewGroupACLMatch(match ACLMatch) ACLMatch {
+	return groupACLMatch{match: match}
+}
+
+func (m groupACLMatch) Match() (string, error) {
+	s, err := m.match.Match()
+	if err != nil {
+		return "", err
+	}
+	return "(" + s + ")", nil
+}
+
+func (m groupACLMatch) String() string {
+	match, _ := m.Match()
+	return match
+}
+
 type aclMatch struct {
 	key      string
 	value    string

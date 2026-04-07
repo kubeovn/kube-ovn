@@ -669,6 +669,7 @@ func (suite *OvnClientTestSuite) testUpdateEgressIPBlockACLOps() {
 		require.Empty(t, ops)
 	})
 }
+
 func (suite *OvnClientTestSuite) testCreateGatewayACL() {
 	t := suite.T()
 	t.Parallel()

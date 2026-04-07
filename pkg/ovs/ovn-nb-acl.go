@@ -1358,7 +1358,7 @@ func (c *OVNNbClient) UpdateIngressIPBlockACLOps(pgName, protocol, aclName strin
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logRate > 0 {
-					acl.Meter = new(meterName)
+					acl.Meter = ptr.To(meterName)
 				}
 			}
 		}
@@ -1392,7 +1392,7 @@ func (c *OVNNbClient) UpdateEgressIPBlockACLOps(pgName, protocol, aclName string
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logRate > 0 {
-					acl.Meter = new(meterName)
+					acl.Meter = ptr.To(meterName)
 				}
 			}
 		})
