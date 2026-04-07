@@ -19,7 +19,7 @@ type ProviderNetworkList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=provider-networks
-// +kubebuilder:resource:scope="Cluster",shortName="pn",path="provider-networks"
+// +kubebuilder:resource:scope="Cluster",shortName="pn",path="provider-networks",singular="provider-network"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="DefaultInterface",type="string",JSONPath=".spec.defaultInterface"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
@@ -41,6 +41,7 @@ type CustomInterface struct {
 }
 type ProviderNetworkSpec struct {
 	// Default interface name for the provider network. This field is immutable after creation.
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=15
 	// +kubebuilder:validation:Pattern=`^[^/\s]+$`
 	DefaultInterface string `json:"defaultInterface,omitempty"`

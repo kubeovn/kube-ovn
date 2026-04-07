@@ -40,6 +40,7 @@ type VlanSpec struct {
 	// VLAN ID (0-4095). This field is immutable after creation.
 	ID int `json:"id"`
 	// Provider network name. This field is immutable after creation.
+	// +kubebuilder:validation:Required
 	Provider string `json:"provider,omitempty"`
 }
 

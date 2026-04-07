@@ -84,6 +84,7 @@ type VpcSpec struct {
 
 type BFDPort struct {
 	// Enable BFD port
+	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 	// ip address(es) of the BFD port
 	IP string `json:"ip,omitempty"`

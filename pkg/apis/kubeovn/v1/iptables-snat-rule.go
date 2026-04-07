@@ -20,7 +20,7 @@ type IptablesSnatRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=iptables-snat-rules
-// +kubebuilder:resource:scope="Cluster",shortName="snat",path="iptables-snat-rules"
+// +kubebuilder:resource:scope="Cluster",shortName="snat",path="iptables-snat-rules",singular="iptables-snat-rule"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="EIP",type="string",JSONPath=".spec.eip"
 // +kubebuilder:printcolumn:name="V4ip",type="string",JSONPath=".status.v4ip"

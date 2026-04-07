@@ -16,7 +16,7 @@ type SwitchLBRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=switch-lb-rules
-// +kubebuilder:resource:scope="Cluster",shortName="slr",path="switch-lb-rules"
+// +kubebuilder:resource:scope="Cluster",shortName="slr",path="switch-lb-rules",singular="switch-lb-rule"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="vip",type="string",JSONPath=".spec.vip"
 // +kubebuilder:printcolumn:name="port(s)",type="string",JSONPath=".status.ports"

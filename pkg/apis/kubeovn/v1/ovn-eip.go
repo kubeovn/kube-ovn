@@ -20,7 +20,7 @@ type OvnEipList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=ovn-eips
-// +kubebuilder:resource:scope="Cluster",shortName="oeip",path="ovn-eips"
+// +kubebuilder:resource:scope="Cluster",shortName="oeip",path="ovn-eips",singular="ovn-eip"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="V4IP",type="string",JSONPath=".status.v4Ip"
 // +kubebuilder:printcolumn:name="V6IP",type="string",JSONPath=".status.v6Ip"

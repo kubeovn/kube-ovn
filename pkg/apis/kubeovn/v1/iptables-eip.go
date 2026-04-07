@@ -20,7 +20,7 @@ type IptablesEIPList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=iptables-eips
-// +kubebuilder:resource:scope="Cluster",shortName="eip",path="iptables-eips"
+// +kubebuilder:resource:scope="Cluster",shortName="eip",path="iptables-eips",singular="iptables-eip"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="IP",type="string",JSONPath=".status.ip"
 // +kubebuilder:printcolumn:name="Mac",type="string",JSONPath=".spec.macAddress"

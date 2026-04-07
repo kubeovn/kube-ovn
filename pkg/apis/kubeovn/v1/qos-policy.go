@@ -39,7 +39,7 @@ type QoSPolicyList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=qos-policies
-// +kubebuilder:resource:scope="Cluster",shortName="qos",path="qos-policies"
+// +kubebuilder:resource:scope="Cluster",shortName="qos",path="qos-policies",singular="qos-policy"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Shared",type="string",JSONPath=".spec.shared"
 // +kubebuilder:printcolumn:name="BindingType",type="string",JSONPath=".spec.bindingType"
@@ -62,6 +62,7 @@ type QoSPolicySpec struct {
 // BandwidthLimitRule describes the rule of a bandwidth limit.
 type QoSPolicyBandwidthLimitRule struct {
 	// Rule name
+	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 	// Interface name
 	Interface string `json:"interface,omitempty"`

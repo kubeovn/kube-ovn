@@ -20,7 +20,7 @@ type IptablesDnatRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=iptables-dnat-rules
-// +kubebuilder:resource:scope="Cluster",shortName="dnat",path="iptables-dnat-rules"
+// +kubebuilder:resource:scope="Cluster",shortName="dnat",path="iptables-dnat-rules",singular="iptables-dnat-rule"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Eip",type="string",JSONPath=".spec.eip"
 // +kubebuilder:printcolumn:name="Protocol",type="string",JSONPath=".spec.protocol"

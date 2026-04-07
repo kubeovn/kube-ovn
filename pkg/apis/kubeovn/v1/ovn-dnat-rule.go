@@ -20,7 +20,7 @@ type OvnDnatRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=ovn-dnat-rules
-// +kubebuilder:resource:scope="Cluster",shortName="odnat",path="ovn-dnat-rules"
+// +kubebuilder:resource:scope="Cluster",shortName="odnat",path="ovn-dnat-rules",singular="ovn-dnat-rule"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".status.vpc"
 // +kubebuilder:printcolumn:name="Eip",type="string",JSONPath=".spec.ovnEip"

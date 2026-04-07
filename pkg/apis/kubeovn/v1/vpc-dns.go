@@ -16,7 +16,7 @@ type VpcDnsList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=vpc-dnses
-// +kubebuilder:resource:scope="Cluster",shortName="vpc-dns",path="vpc-dnses"
+// +kubebuilder:resource:scope="Cluster",shortName="vpc-dns",path="vpc-dnses",singular="vpc-dns"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Active",type="boolean",JSONPath=".status.active"
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
@@ -38,6 +38,7 @@ type VpcDNSSpec struct {
 	// Subnet name for the DNS service. This field is immutable after creation.
 	Subnet string `json:"subnet"`
 	// CoreDNS corefile configuration
+	// +kubebuilder:default=vpc-dns-corefile
 	Corefile string `json:"corefile,omitempty"`
 }
 

@@ -20,7 +20,7 @@ type IptablesFIPRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=iptables-fip-rules
-// +kubebuilder:resource:scope="Cluster",shortName="fip",path="iptables-fip-rules"
+// +kubebuilder:resource:scope="Cluster",shortName="fip",path="iptables-fip-rules",singular="iptables-fip-rule"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Eip",type="string",JSONPath=".spec.eip"
 // +kubebuilder:printcolumn:name="V4ip",type="string",JSONPath=".status.v4ip"
