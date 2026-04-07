@@ -81,6 +81,7 @@ func (c *Controller) gcLogicalRouterPort() error {
 		klog.Errorf("delete non-existent peer logical router port: %v", err)
 		return err
 	}
+	klog.Infof("finish to gc logical router port")
 	return nil
 }
 
@@ -124,6 +125,7 @@ func (c *Controller) gcVpcNatGateway() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc vpc nat gateway")
 	return nil
 }
 
@@ -166,26 +168,8 @@ func (c *Controller) gcLogicalSwitch() error {
 			return err
 		}
 	}
+	klog.Infof("finish to gc logical switch")
 
-	klog.Infof("start to gc dhcp options")
-	dhcpOptions, err := c.OVNNbClient.ListDHCPOptions(c.config.EnableExternalVpc, nil)
-	if err != nil {
-		klog.Errorf("failed to list dhcp options, %v", err)
-		return err
-	}
-	uuidToDeleteList := []string{}
-	for _, item := range dhcpOptions {
-		if len(item.ExternalIDs) == 0 || !subnetNames.Has(item.ExternalIDs["ls"]) {
-			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
-		}
-	}
-	klog.Infof("gc dhcp options %v", uuidToDeleteList)
-	if len(uuidToDeleteList) > 0 {
-		if err = c.OVNNbClient.DeleteDHCPOptionsByUUIDs(uuidToDeleteList...); err != nil {
-			klog.Errorf("failed to delete dhcp options by uuids, %v", err)
-			return err
-		}
-	}
 	return nil
 }
 
@@ -222,6 +206,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 			return err
 		}
 	}
+	klog.Infof("finish to gc logical router")
 	return nil
 }
 
@@ -280,6 +265,7 @@ func (c *Controller) gcNode() error {
 		}
 	}
 
+	klog.Infof("finish to gc nodes")
 	return nil
 }
 
@@ -308,6 +294,7 @@ func (c *Controller) gcVip() error {
 						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
 						return err
 					}
+					klog.Infof("finish to gc vips")
 					return nil
 				}
 				klog.Error(err)
@@ -315,6 +302,7 @@ func (c *Controller) gcVip() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc vips")
 	return nil
 }
 
@@ -416,6 +404,7 @@ func (c *Controller) gcIP() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc ips")
 	return nil
 }
 
@@ -521,8 +510,8 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 
-		klog.Infof("gc logical switch port %s with uuid %s", lsp.Name, lsp.UUID)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPortByUUID(lsp.ExternalIDs[ovs.LogicalSwitchKey], lsp.UUID); err != nil {
+		klog.Infof("gc logical switch port %s", lsp.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}
@@ -566,6 +555,7 @@ func (c *Controller) markAndCleanLSP() error {
 		return true
 	})
 
+	klog.V(4).Infof("finish to gc logical switch ports")
 	return nil
 }
 
@@ -640,6 +630,7 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
+		klog.Infof("finish to gc load balancers")
 		return nil
 	}
 
@@ -770,6 +761,7 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("delete load balancers: %v", err)
 		return err
 	}
+	klog.Infof("finish to gc load balancers")
 	return nil
 }
 
@@ -796,6 +788,7 @@ func (c *Controller) gcAddressSet() error {
 		}
 	}
 	if len(asList) == 0 {
+		klog.Infof("finish to gc address set")
 		return nil
 	}
 
@@ -804,6 +797,7 @@ func (c *Controller) gcAddressSet() error {
 		return err
 	}
 
+	klog.Infof("finish to gc address set")
 	return nil
 }
 
@@ -842,12 +836,14 @@ func (c *Controller) gcSecurityGroup() error {
 		}
 	}
 	if len(needToDelPgs) == 0 {
+		klog.Infof("finish to gc security group residual port groups")
 		return nil
 	}
 	if err = c.OVNNbClient.DeletePortGroup(needToDelPgs...); err != nil {
 		klog.Errorf("failed to gc port group list,%v", err)
 		return err
 	}
+	klog.Infof("finish to gc security group residual port groups")
 	return nil
 }
 
@@ -932,6 +928,7 @@ func (c *Controller) gcNetworkPolicy() error {
 		return err
 	}
 
+	klog.Infof("finish to gc network policy")
 	return nil
 }
 
@@ -971,6 +968,7 @@ func (c *Controller) gcRoutePolicy() error {
 		}
 	}
 
+	klog.Infof("finish to gc route policy")
 	return nil
 }
 
@@ -1019,6 +1017,7 @@ func (c *Controller) gcStaticRoute() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc static routes")
 	return nil
 }
 
@@ -1066,6 +1065,7 @@ func (c *Controller) gcChassis() error {
 		}
 	}
 
+	klog.Infof("finish to gc chassis")
 	return nil
 }
 
@@ -1186,6 +1186,7 @@ func (c *Controller) gcLbSvcPods() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc lb svc pods")
 	return nil
 }
 
@@ -1253,6 +1254,7 @@ func (c *Controller) gcVPCDNS() error {
 			}
 		}
 	}
+	klog.Infof("finish to gc vpc dns")
 	return nil
 }
 

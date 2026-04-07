@@ -75,8 +75,6 @@ function show_help() {
     echo "  dnat-del                 - Delete DNAT rule"
     echo "  snat-add                 - Add SNAT rule"
     echo "  snat-del                 - Delete SNAT rule"
-    echo "  hairpin-snat-add         - Add hairpin SNAT rule for internal FIP access"
-    echo "  hairpin-snat-del         - Delete hairpin SNAT rule"
     echo "  qos-add                  - Add QoS rule"
     echo "  qos-del                  - Delete QoS rule"
     echo "  eip-ingress-qos-add      - Add EIP ingress QoS"
@@ -165,6 +163,7 @@ function init() {
     $iptables_cmd -t nat -N SHARED_DNAT
     $iptables_cmd -t nat -N SHARED_SNAT
     $iptables_cmd -t nat -N HAIRPIN_SNAT
+    $iptables_cmd -t mangle -N VPC_MARK
 
     $iptables_cmd -t nat -A PREROUTING -j DNAT_FILTER
     $iptables_cmd -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
@@ -174,6 +173,9 @@ function init() {
     $iptables_cmd -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
     $iptables_cmd -t nat -A SNAT_FILTER -j HAIRPIN_SNAT
+
+    $iptables_cmd -t mangle -A PREROUTING -j VPC_MARK
+    $iptables_cmd -t mangle -A VPC_MARK -i "$VPC_INTERFACE" -j MARK --set-xmark 0x1/0x1
 
     # Load IFB kernel module for ingress QoS traffic shaping
     # IFB (Intermediate Functional Block) is required for ingress rate limiting using HTB
@@ -252,128 +254,164 @@ function del_vpc_external_route() {
 
 function add_eip() {
     # make sure inited
-   check_inited
+    check_inited
     for rule in $@
     do
         eip=${rule}
         eip_without_prefix=(${eip//\// })
         exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
+
+        # Add hairpin SNAT rule for this EIP
+        # This rule SNATs traffic originating from the VPC and targeting an EIP back to the same EIP
+        # when it is DNAT'd and routed back to the VPC. This avoids asymmetric routing issues.
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
+        # Check if the rule already exists to maintain idempotency
+        if ! $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT $hairpin_rule --random-fully"
+        fi
     done
 
+    # Use "onlink" to skip the kernel's "gateway must be directly reachable" check.
+    # This allows EIPs from a different external subnet to share the NAT gateway's
+    # default route, as long as the gateway is L2-reachable (same VLAN/broadcast domain).
+    # When the gateway IS on the same subnet, "onlink" has no behavioral difference
+    # from the non-onlink form — the forwarding path and ARP resolution are identical.
     if [ -n "$GATEWAY_V4" ]; then
-        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE"
+        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE onlink"
     fi
 
     if [ -n "$GATEWAY_V6" ]; then
-        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE"
+        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE onlink"
     fi
 }
 
 function del_eip() {
     # make sure inited
     check_inited
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=${arr[0]}
-        ipCidr=`ip addr show $EXTERNAL_INTERFACE | grep $eip | awk '{print $2 }'`
+        eip_without_prefix=(${eip//\// })
+        ipCidr=`ip addr show "$EXTERNAL_INTERFACE" | grep -w "$eip" | awk '{print $2 }'`
         if [ -n "$ipCidr" ]; then
             exec_cmd "ip addr del $ipCidr dev $EXTERNAL_INTERFACE"
+        fi
+
+        # Remove hairpin SNAT rule for this EIP
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
+        # Check if the rule exists before attempting to delete it
+        if $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
     done
 }
 
-# Check if the given CIDR exists in VPC_INTERFACE's routes (indicates it's an internal CIDR)
-# This is used to determine if hairpin SNAT is needed for a given SNAT rule
-# Args: $1 - CIDR to check (e.g., "10.0.1.0/24")
-# Returns: 0 if the CIDR is found in VPC_INTERFACE routes, 1 otherwise
-function is_internal_cidr() {
-    local cidr="$1"
-    if [ -z "$cidr" ]; then
-        return 1
-    fi
-    # Escape '.' in CIDR for grep regex to avoid matching unintended characters
-    # e.g., "10.0.1.0/24" -> "^10\.0\.1\.0/24 " matches exactly, not "10X0Y1Z0/24"
-    local cidr_pattern="^${cidr//./\\.} "
-    if ip -4 route show dev "$VPC_INTERFACE" | grep -q "$cidr_pattern"; then
-        return 0
-    fi
-    return 1
-}
-
 function add_floating_ip() {
+    # Strict validation before adding (FIP is 1:1, identity = EIP):
+    # 1. If EIP rule does not exist -> create DNAT + SNAT rules
+    # 2. If EIP rule exists and internalIp matches -> return success (idempotent)
+    # 3. If EIP rule exists but internalIp mismatches -> return error (reject stale/conflicting data)
+    #
+    # iptables-save output format:
+    #   -A EXCLUSIVE_DNAT -d <eip>/32 -j DNAT --to-destination <internalIp>
+    #   -A EXCLUSIVE_SNAT -s <internalIp>/32 -j SNAT --to-source <eip>
+    # NOTE: Current FIP CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
-        # check if already exist
-        $iptables_save_cmd | grep EXCLUSIVE_DNAT | grep -w "\-d $eip/32" | grep destination && exit 0
+        # check if DNAT rule already exists for this eip: match "-d <eip>/32"
+        existingRule=$($iptables_save_cmd | grep EXCLUSIVE_DNAT | grep -w -- "-d $eip/32")
+        if [ -n "$existingRule" ]; then
+            # eip rule exists, check if internalIp matches: match "--to-destination <internalIp>"
+            echo "$existingRule" | grep -w -- "--to-destination $internalIp" > /dev/null 2>&1 && exit 0
+            # eip exists but internalIp mismatch
+            echo "eip $eip already bindTo rule: $existingRule, but expected internalIp $internalIp"
+            exit 1
+        fi
         exec_cmd "$iptables_cmd -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
         exec_cmd "$iptables_cmd -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
     done
 }
 
 function del_floating_ip() {
+    # Lenient deletion (FIP is 1:1, identity = EIP): match by EIP only.
+    # If the rule exists -> extract the full rule from iptables-save and delete it
+    # If the rule does not exist -> treat as already deleted (no error)
+    #
+    # iptables-save output format:
+    #   -A EXCLUSIVE_DNAT -d <eip>/32 -j DNAT --to-destination <internalIp>
+    #   -A EXCLUSIVE_SNAT -s <internalIp>/32 -j SNAT --to-source <eip>
+    # NOTE: Current FIP CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
-    for rule in $@
+    for eip in "$@"
     do
-        arr=(${rule//,/ })
-        eip=(${arr[0]//\// })
-        internalIp=${arr[1]}
-        # check if already exist
-        $iptables_save_cmd  | grep EXCLUSIVE_DNAT | grep -w "\-d $eip/32" | grep destination
-        if [ "$?" -eq 0 ];then
-            exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
-            exec_cmd "$iptables_cmd -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
-            conntrack -D -d $eip 2>/dev/null || true
+        # delete DNAT rule: match "-d <eip>/32" (/32 suffix prevents prefix match)
+        # head -1: FIP is 1:1, at most one rule per EIP; guard against unexpected duplicates
+        dnatRule=$($iptables_save_cmd | grep EXCLUSIVE_DNAT | grep -w -- "-d $eip/32" | head -1)
+        if [ -n "$dnatRule" ]; then
+            dnatRule=$(echo "$dnatRule" | sed 's/^-A //')
+            exec_cmd "$iptables_cmd -t nat -D $dnatRule"
+            conntrack -D -d "$eip" 2>/dev/null || true
+        fi
+        # delete SNAT rule: match "--to-source <eip>" (-w prevents prefix match,
+        # e.g., 10.0.0.1 will not match 10.0.0.10)
+        snatRule=$($iptables_save_cmd | grep EXCLUSIVE_SNAT | grep -w -- "--to-source $eip" | head -1)
+        if [ -n "$snatRule" ]; then
+            snatRule=$(echo "$snatRule" | sed 's/^-A //')
+            exec_cmd "$iptables_cmd -t nat -D $snatRule"
         fi
     done
 }
 
 function add_snat() {
+    # Validation before adding (SNAT identity = (EIP, InternalCIDR), 1:N model):
+    # One EIP can serve multiple CIDRs, and one CIDR can have multiple EIPs
+    # (for port exhaustion mitigation via --random-fully).
+    # 1. If exact (eip, internalCIDR) pair does not exist -> create rule
+    # 2. If exact (eip, internalCIDR) pair already exists -> return success (idempotent)
+    #
+    # iptables-save output format:
+    #   -A SHARED_SNAT -s <internalCIDR> -o <ext_iface> -j SNAT --to-source <eip>
+    # NOTE: Current SNAT CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
     local all_shared_snat_rules
     all_shared_snat_rules=$($iptables_save_cmd -t nat | grep SHARED_SNAT)
-    declare -A internal_cidrs_cache
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
-        # check if already exist, skip adding if exists (idempotent)
+        # check if exact (eip, internalCIDR) pair already exists (idempotent)
         ruleMatch=$(echo "$all_shared_snat_rules" | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
         if [ -z "$ruleMatch" ]; then
             exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
         fi
-        # Add hairpin SNAT when internalCIDR is routed via VPC_INTERFACE
-        # This enables internal VMs to access other internal VMs via FIP
-        if [ -z "${internal_cidrs_cache[$internalCIDR]+_}" ]; then
-            if is_internal_cidr "$internalCIDR"; then
-                internal_cidrs_cache[$internalCIDR]=true
-            else
-                internal_cidrs_cache[$internalCIDR]=false
-            fi
-        fi
-        if [ "${internal_cidrs_cache[$internalCIDR]}" = true ]; then
-            echo "SNAT cidr $internalCIDR is internal, adding hairpin SNAT with EIP $eip"
-            add_hairpin_snat "$eip,$internalCIDR,$randomFullyOption"
-        fi
     done
 }
 function del_snat() {
+    # NOTE: Current SNAT CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
     local all_shared_snat_rules
     all_shared_snat_rules=$($iptables_save_cmd -t nat | grep SHARED_SNAT)
-    declare -A internal_cidrs_cache
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
@@ -381,96 +419,34 @@ function del_snat() {
         # check if already exist
         ruleMatch=$(echo "$all_shared_snat_rules" | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )" | head -1)
         if [ -n "$ruleMatch" ]; then
-          ruleMatch=$(echo "$ruleMatch" | sed 's/-A //')
+          ruleMatch=$(echo "$ruleMatch" | sed 's/^-A //')
           exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
         fi
-        # Remove the corresponding hairpin SNAT rule (1:1 with SNAT).
-        if [ -z "${internal_cidrs_cache[$internalCIDR]+_}" ]; then
-            if is_internal_cidr "$internalCIDR"; then
-                internal_cidrs_cache[$internalCIDR]=true
-            else
-                internal_cidrs_cache[$internalCIDR]=false
-            fi
-        fi
-        if [ "${internal_cidrs_cache[$internalCIDR]}" = true ]; then
-            del_hairpin_snat "$eip,$internalCIDR"
-        fi
     done
 }
 
-# Hairpin SNAT: Enables internal VM to access another internal VM's FIP
-# Packet flow when VM A accesses VM B's EIP:
-# 1. VM A (10.0.1.6) -> EIP (10.1.69.216) arrives at NAT GW
+# Hairpin SNAT: Enables internal VM to access another internal VM's EIP/FIP
+# Packet flow when VM A (internal) accesses VM B's EIP (external IP):
+# 1. VM A (10.0.1.6) -> EIP (10.1.69.216) arrives at NAT GW via VPC_INTERFACE
 # 2. DNAT translates destination to VM B's internal IP (10.0.1.11)
-# 3. Without hairpin SNAT, reply from VM B goes directly to VM A (same subnet),
-#    but VM A expects reply from EIP, causing asymmetric routing failure
-# 4. Hairpin SNAT translates source to EIP, ensuring symmetric return path via NAT GW
-#
-# Why "-m conntrack --ctstate DNAT":
-#   After DNAT, the packet (src=internal, dst=internal) is indistinguishable from
-#   normal intra-VPC traffic at the IP layer. Only conntrack remembers that this
-#   packet originally targeted an EIP and underwent DNAT. Using --ctstate DNAT
-#   ensures that only FIP-destined (DNAT'd) traffic gets hairpin SNAT'd to the EIP,
-#   while regular intra-VPC traffic remains untouched with its original source IP.
-#
-# Hairpin SNAT mirrors SHARED_SNAT 1:1: each SNAT rule creates a corresponding
-# hairpin rule with the same EIP and --random-fully option. Multiple SNATs with
-# different EIPs for the same CIDR are supported (for port exhaustion mitigation).
-#
-# Rule format: eip,internalCIDR[,--random-fully]
-# Example: 10.1.69.219,10.0.1.0/24,--random-fully
-# Creates: iptables -t nat -A HAIRPIN_SNAT -s 10.0.1.0/24 -d 10.0.1.0/24 -m conntrack --ctstate DNAT -j SNAT --to-source 10.1.69.219 --random-fully
-function add_hairpin_snat() {
-    # make sure inited
-    check_inited
-    local all_hairpin_rules
-    all_hairpin_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT)
-    for rule in $@
-    do
-        arr=(${rule//,/ })
-        eip=(${arr[0]//\// })
-        internalCIDR=${arr[1]}
-        randomFullyOption=${arr[2]}
-
-        # Check if this exact rule already exists (idempotent)
-        if echo "$all_hairpin_rules" | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR" | grep -qE -- "--to-source $eip(\$| )"; then
-            echo "Hairpin SNAT rule for $internalCIDR with EIP $eip already exists, skipping"
-            continue
-        fi
-
-        exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT -s $internalCIDR -d $internalCIDR -m conntrack --ctstate DNAT -j SNAT --to-source $eip $randomFullyOption"
-        echo "Hairpin SNAT rule added: $internalCIDR -> $eip"
-    done
-}
-
-# Delete a hairpin SNAT rule.
-# Args: eip,internalCIDR (comma-separated)
-function del_hairpin_snat() {
-    # make sure inited
-    check_inited
-    local all_hairpin_rules
-    all_hairpin_rules=$($iptables_save_cmd -t nat | grep HAIRPIN_SNAT)
-    for rule in $@
-    do
-        arr=(${rule//,/ })
-        eip=(${arr[0]//\// })
-        internalCIDR=${arr[1]}
-        # Use iptables-save output to construct -D command (preserves --random-fully etc.)
-        local ruleMatch
-        ruleMatch=$(echo "$all_hairpin_rules" | grep -w -- "-s $internalCIDR" | grep -w -- "-d $internalCIDR" | grep -E -- "--to-source $eip(\$| )" | head -1)
-        if [ -n "$ruleMatch" ]; then
-            ruleMatch=$(echo "$ruleMatch" | sed 's/-A //')
-            exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
-            echo "Hairpin SNAT rule deleted: $internalCIDR -> $eip"
-        fi
-    done
-}
-
-
+# 3. Packet is now (src: 10.0.1.6, dst: 10.0.1.11) and routed back out VPC_INTERFACE
+# 4. Without hairpin SNAT, reply from VM B goes directly to VM A (same subnet or VPC),
+#    bypassing NAT GW. VM A expects reply from EIP, causing connection failure.
+# 5. Hairpin SNAT translates source to EIP, ensuring symmetric return path via NAT GW.
 function add_dnat() {
+    # Strict validation before adding (DNAT identity = (EIP, ExternalPort, Protocol)):
+    # 1. If identity does not exist -> create rule
+    # 2. If identity exists and internalIp:internalPort matches -> return success (idempotent)
+    # 3. If identity exists but internalIp:internalPort mismatches -> return error (reject stale/conflicting data)
+    #
+    # iptables-save output format:
+    #   -A SHARED_DNAT -d <eip>/32 -p <protocol> -m <protocol> --dport <dport> -j DNAT --to-destination <internalIp>:<internalPort>
+    # NOTE: Current DNAT CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
@@ -478,28 +454,42 @@ function add_dnat() {
         protocol=${arr[2]}
         internalIp=${arr[3]}
         internalPort=${arr[4]}
-        # check if already exist
-        $iptables_save_cmd | grep SHARED_DNAT | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep -w "destination $internalIp:$internalPort" && exit 0
+        # check if identity triplet (eip, dport, protocol) already exists
+        existingRule=$($iptables_save_cmd | grep SHARED_DNAT | grep -w -- "-d $eip/32" | grep -w -- "-p $protocol" | grep -w "dport $dport")
+        if [ -n "$existingRule" ]; then
+            # identity exists, check if internalIp:internalPort matches
+            echo "$existingRule" | grep -w "destination $internalIp:$internalPort" > /dev/null 2>&1 && exit 0
+            # identity exists but internalIp:internalPort mismatch
+            echo "dnat ($eip, $dport, $protocol) already exists: $existingRule, but expected $internalIp:$internalPort"
+            exit 1
+        fi
         exec_cmd "$iptables_cmd -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
     done
 }
 
 
 function del_dnat() {
+    # Lenient deletion (DNAT identity = (EIP, ExternalPort, Protocol)):
+    # Match by identity only, ignore internalIp:internalPort.
+    # If the rule exists -> extract the full rule from iptables-save and delete it
+    # If the rule does not exist -> treat as already deleted (no error)
+    # NOTE: Current DNAT CRD/controller path sends one rule per invocation.
+    # The for-loop is currently of limited practical value.
+    # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
     # make sure inited
     check_inited
-    for rule in $@
+    for rule in "$@"
     do
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         dport=${arr[1]}
         protocol=${arr[2]}
-        internalIp=${arr[3]}
-        internalPort=${arr[4]}
-        # check if already exist
-        $iptables_save_cmd | grep SHARED_DNAT | grep -w "\-d $eip/32" | grep "p $protocol" | grep -w "dport $dport"| grep -w "destination $internalIp:$internalPort"
-        if [ "$?" -eq 0 ];then
-          exec_cmd "$iptables_cmd -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
+        # match by identity triplet; head -1 guards against unexpected duplicates
+        existingRule=$($iptables_save_cmd | grep SHARED_DNAT | grep -w -- "-d $eip/32" | grep -w -- "-p $protocol" | grep -w "dport $dport" | head -1)
+        if [ -n "$existingRule" ]; then
+          existingRule=$(echo "$existingRule" | sed 's/^-A //')
+          exec_cmd "$iptables_cmd -t nat -D $existingRule"
+          conntrack -D -d "$eip" -p "$protocol" --dport "$dport" 2>/dev/null || true
         fi
     done
 }
@@ -1554,14 +1544,6 @@ case $opt in
     snat-del)
         echo "snat-del $rules"
         del_snat $rules
-        ;;
-    hairpin-snat-add)
-        echo "hairpin-snat-add $rules"
-        add_hairpin_snat $rules
-        ;;
-    hairpin-snat-del)
-        echo "hairpin-snat-del $rules"
-        del_hairpin_snat $rules
         ;;
     floating-ip-add)
         echo "floating-ip-add $rules"

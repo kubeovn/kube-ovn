@@ -2,13 +2,16 @@ package kubevirt
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -23,9 +26,13 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const image = "quay.io/kubevirt/cirros-container-disk-demo:latest"
+var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
 
 func init() {
+	if env := os.Getenv("KUBEVIRT_CONTAINERDISK_IMAGE"); env != "" {
+		image = env
+	}
+
 	klog.SetOutput(ginkgo.GinkgoWriter)
 
 	// Register flags.
@@ -339,5 +346,166 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		output, _, err := framework.NBExec(cmd)
 		framework.ExpectNoError(err)
 		framework.ExpectContainElement(strings.Fields(string(output)), "ls="+subnetName)
+	})
+})
+
+var _ = framework.Describe("[group:kubevirt]", func() {
+	f := framework.NewDefaultFramework("kubevirt-multus")
+
+	var vmName, namespaceName string
+	var subnetNameA, subnetNameB, nadNameA, nadNameB string
+	var subnetClient *framework.SubnetClient
+	var nadClient *framework.NetworkAttachmentDefinitionClient
+	var podClient *framework.PodClient
+	var vmClient *framework.VMClient
+	var ipClient *framework.IPClient
+
+	ginkgo.BeforeEach(func() {
+		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14.")
+
+		namespaceName = f.Namespace.Name
+		vmName = "vm-" + framework.RandomSuffix()
+		subnetNameA = "subnet-a-" + framework.RandomSuffix()
+		subnetNameB = "subnet-b-" + framework.RandomSuffix()
+		nadNameA = "nad-a-" + framework.RandomSuffix()
+		nadNameB = "nad-b-" + framework.RandomSuffix()
+		subnetClient = f.SubnetClient()
+		nadClient = f.NetworkAttachmentDefinitionClientNS(namespaceName)
+		podClient = f.PodClientNS(namespaceName)
+		vmClient = f.VMClientNS(namespaceName)
+		ipClient = f.IPClient()
+	})
+
+	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting vm " + vmName)
+		vmClient.DeleteSync(vmName)
+
+		ginkgo.By("Deleting NADs")
+		nadClient.Delete(nadNameA)
+		nadClient.Delete(nadNameB)
+
+		ginkgo.By("Deleting subnets")
+		subnetClient.DeleteSync(subnetNameA)
+		subnetClient.DeleteSync(subnetNameB)
+	})
+
+	framework.ConformanceIt("should keep attachment network ip after vm pod is deleted", func() {
+		providerA := fmt.Sprintf("%s.%s.ovn", nadNameA, namespaceName)
+
+		ginkgo.By("Creating subnet " + subnetNameA)
+		cidrA := framework.RandomCIDR(f.ClusterIPFamily)
+		subnetA := framework.MakeSubnet(subnetNameA, "", cidrA, "", "", "", nil, nil, nil)
+		subnetA.Spec.Provider = providerA
+		_ = subnetClient.CreateSync(subnetA)
+
+		ginkgo.By("Creating NAD " + nadNameA)
+		nadA := framework.MakeOVNNetworkAttachmentDefinition(nadNameA, namespaceName, providerA, nil)
+		_ = nadClient.Create(nadA)
+
+		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		_ = vmClient.CreateSync(vm)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		pod := &podList.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+
+		ginkgo.By("Checking attachment IP exists")
+		attachPortName := ovs.PodNameToPortName(vmName, namespaceName, providerA)
+		attachIP := ipClient.Get(attachPortName)
+		framework.ExpectNotEmpty(attachIP.Spec.IPAddress)
+		oldAttachIPAddr := attachIP.Spec.IPAddress
+
+		ginkgo.By("Deleting pod " + pod.Name)
+		podClient.DeleteSync(pod.Name)
+
+		ginkgo.By("Waiting for vm " + vmName + " to be ready")
+		err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Checking attachment IP is preserved")
+		newAttachIP := ipClient.Get(attachPortName)
+		framework.ExpectEqual(oldAttachIPAddr, newAttachIP.Spec.IPAddress)
+	})
+
+	// This test exercises the stop→patch NAD→start workflow. The old pod deletion
+	// is processed before the NAD patch, so stale attachment IPs are cleaned up
+	// during new pod creation (cleanStaleVMAttachmentIPs in reconcileAllocateSubnets).
+	framework.ConformanceIt("should release old attachment ip and allocate new one when VM NAD is changed", func() {
+		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16.")
+		providerA := fmt.Sprintf("%s.%s.ovn", nadNameA, namespaceName)
+		providerB := fmt.Sprintf("%s.%s.ovn", nadNameB, namespaceName)
+
+		ginkgo.By("Creating subnets")
+		cidrA := framework.RandomCIDR(f.ClusterIPFamily)
+		subnetA := framework.MakeSubnet(subnetNameA, "", cidrA, "", "", "", nil, nil, nil)
+		subnetA.Spec.Provider = providerA
+		_ = subnetClient.CreateSync(subnetA)
+
+		cidrB := framework.RandomCIDR(f.ClusterIPFamily)
+		subnetB := framework.MakeSubnet(subnetNameB, "", cidrB, "", "", "", nil, nil, nil)
+		subnetB.Spec.Provider = providerB
+		_ = subnetClient.CreateSync(subnetB)
+
+		ginkgo.By("Creating NADs")
+		nadA := framework.MakeOVNNetworkAttachmentDefinition(nadNameA, namespaceName, providerA, nil)
+		_ = nadClient.Create(nadA)
+		nadB := framework.MakeOVNNetworkAttachmentDefinition(nadNameB, namespaceName, providerB, nil)
+		_ = nadClient.Create(nadB)
+
+		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		_ = vmClient.CreateSync(vm)
+
+		ginkgo.By("Getting pod of vm " + vmName)
+		labelSelector := fmt.Sprintf("%s=%s", v1.VirtualMachineInstanceIDLabel, vmName)
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+
+		ginkgo.By("Recording IPs")
+		pod := &podList.Items[0]
+		primaryIPs := pod.Status.PodIPs
+
+		attachPortNameA := ovs.PodNameToPortName(vmName, namespaceName, providerA)
+		attachIPA := ipClient.Get(attachPortNameA)
+		framework.ExpectNotEmpty(attachIPA.Spec.IPAddress)
+
+		ginkgo.By("Stopping vm " + vmName)
+		vmClient.StopSync(vmName)
+
+		ginkgo.By("Patching vm " + vmName + " to switch NAD from " + nadNameA + " to " + nadNameB)
+		patchData, err := json.Marshal([]map[string]any{
+			{
+				"op":    "replace",
+				"path":  "/spec/template/spec/networks/1/multus/networkName",
+				"value": nadNameB,
+			},
+		})
+		framework.ExpectNoError(err)
+		vmClient.Patch(vmName, types.JSONPatchType, patchData)
+
+		ginkgo.By("Starting vm " + vmName)
+		vmClient.StartSync(vmName)
+
+		ginkgo.By("Verifying old attachment IP is released")
+		err = ipClient.WaitToDisappear(attachPortNameA, time.Second, 2*time.Minute)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Verifying new attachment IP is allocated")
+		attachPortNameB := ovs.PodNameToPortName(vmName, namespaceName, providerB)
+		framework.ExpectTrue(ipClient.WaitToBeReady(attachPortNameB, 2*time.Minute))
+
+		ginkgo.By("Verifying primary network IP is preserved")
+		podList, err = podClient.List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(podList.Items, 1)
+		framework.ExpectNotEmpty(podList.Items[0].Status.PodIPs)
+		framework.ExpectEqual(primaryIPs, podList.Items[0].Status.PodIPs)
 	})
 })

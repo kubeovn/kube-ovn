@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)  ![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
+![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -2174,6 +2174,18 @@ false
 </td>
 			<td>ovs-ovn DaemonSet update strategy. ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy</td>
 		</tr>
+		<tr>
+			<td>ovsOvn.upgrade</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "enabled": true,
+  "versionCompatibility": "25.03"
+}
+</pre>
+</td>
+			<td>Upgrade logic for OVS/OVN.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Performance configuration</h3>
@@ -2570,6 +2582,24 @@ false
 </pre>
 </td>
 		<td>Directory on the node where Open vSwitch (OVS) IPSEC keys live.</td>
+	</tr>
+	<tr>
+		<td>ovsOvn.upgrade.enabled</td>
+		<td>bool</td>
+		<td><pre lang="json">
+true
+</pre>
+</td>
+		<td>Enable post-upgrade hooks to run upgrade logic of OVS/OVN.</td>
+	</tr>
+	<tr>
+		<td>ovsOvn.upgrade.versionCompatibility</td>
+		<td>string</td>
+		<td><pre lang="json">
+"25.03"
+</pre>
+</td>
+		<td>Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN. This value must be updated for each new OVN version.</td>
 	</tr>
 	</tbody>
 </table>

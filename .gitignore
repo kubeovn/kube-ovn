@@ -75,3 +75,4 @@ cmd/controller/controller
 cmd/daemon/daemon
 
 .context/*
+yamls/gen

@@ -10,10 +10,10 @@ a dry-run/template call and return nothing.
   {{- $label := splitList "=" $.Values.MASTER_NODES_LABEL }}
   {{- $key := index $label 0 }}
   {{- $val := "" }}
-  {{- if eq (len $label) 2 }}
-  {{- $val = index $label 1 }}
+  {{- if gt (len $label) 1 }}
+  {{- $val = join "=" (rest $label) }}
   {{- end }}
-  {{- if eq (index $node.metadata.labels $key) $val -}}
+  {{- if and (hasKey $node.metadata.labels $key) (or (eq $val "") (eq (index $node.metadata.labels $key) $val)) -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
@@ -27,6 +27,33 @@ a dry-run/template call and return nothing.
 {{- end -}}
 {{ join "," $ips }}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Render nodeAffinity for master node scheduling.
+Uses Exists operator when MASTER_NODES_LABEL has no value or empty value
+(matches any value), and In operator when a specific value is given.
+Handles "key", "key=value", "key=" and "key=val=ue" formats correctly.
+*/}}
+{{- define "kubeovn.masterNodeAffinity" -}}
+{{- $parts := splitList "=" .Values.MASTER_NODES_LABEL -}}
+{{- $key := index $parts 0 -}}
+{{- $val := "" -}}
+{{- if gt (len $parts) 1 -}}
+  {{- $val = join "=" (rest $parts) -}}
+{{- end -}}
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: {{ $key }}
+          {{- if ne $val "" }}
+            operator: In
+            values:
+              - {{ $val | quote }}
+          {{- else }}
+            operator: Exists
+          {{- end }}
 {{- end -}}
 
 {{/*

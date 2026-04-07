@@ -1350,6 +1350,22 @@ func (mr *MockLogicalSwitchPortMockRecorder) LogicalSwitchPortExists(name any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchPortExists", reflect.TypeOf((*MockLogicalSwitchPort)(nil).LogicalSwitchPortExists), name)
 }
 
+// ReconcilePortDHCPOptions mocks base method.
+func (m *MockLogicalSwitchPort) ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcilePortDHCPOptions", lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
+	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ReconcilePortDHCPOptions indicates an expected call of ReconcilePortDHCPOptions.
+func (mr *MockLogicalSwitchPortMockRecorder) ReconcilePortDHCPOptions(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcilePortDHCPOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ReconcilePortDHCPOptions), lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
+}
+
 // ResetLogicalSwitchPortMigrateOptions mocks base method.
 func (m *MockLogicalSwitchPort) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
 	m.ctrl.T.Helper()
@@ -1390,6 +1406,20 @@ func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, ena
 func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
+}
+
+// SetLogicalSwitchPortDHCPOptions mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *ovs.DHCPOptionsUUIDs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortDHCPOptions", portName, dhcpOptions)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortDHCPOptions indicates an expected call of SetLogicalSwitchPortDHCPOptions.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortDHCPOptions(portName, dhcpOptions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortDHCPOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortDHCPOptions), portName, dhcpOptions)
 }
 
 // SetLogicalSwitchPortExternalIDs mocks base method.
@@ -1520,17 +1550,22 @@ func (m *MockLoadBalancer) EXPECT() *MockLoadBalancerMockRecorder {
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockLoadBalancer) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	varargs := []any{lbName, protocol}
+	for _, a := range selectFields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol any, selectFields ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	varargs := append([]any{lbName, protocol}, selectFields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), varargs...)
 }
 
 // DeleteLoadBalancers mocks base method.
@@ -2173,20 +2208,6 @@ func (mr *MockACLMockRecorder) SGLostACL(sg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockACL)(nil).SGLostACL), sg)
 }
 
-// SetACLLog mocks base method.
-func (m *MockACL) SetACLLog(pgName string, logEnable, isIngress bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockACLMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockACL)(nil).SetACLLog), pgName, logEnable, isIngress)
-}
-
 // SetLogicalSwitchPrivate mocks base method.
 func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	m.ctrl.T.Helper()
@@ -2199,6 +2220,20 @@ func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR stri
 func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+}
+
+// SetNetPolACLLog mocks base method.
+func (m *MockACL) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNetPolACLLog", pgName, logEnable, isIngress)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNetPolACLLog indicates an expected call of SetNetPolACLLog.
+func (mr *MockACLMockRecorder) SetNetPolACLLog(pgName, logEnable, isIngress any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNetPolACLLog", reflect.TypeOf((*MockACL)(nil).SetNetPolACLLog), pgName, logEnable, isIngress)
 }
 
 // UpdateAnpRuleACLOps mocks base method.
@@ -2276,6 +2311,21 @@ func (mr *MockACLMockRecorder) UpdateEgressACLOps(pgName, asEgressName, asExcept
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateEgressACLOps), pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap)
 }
 
+// UpdateEgressIPBlockACLOps mocks base method.
+func (m *MockACL) UpdateEgressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []v10.IPBlock, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEgressIPBlockACLOps", pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateEgressIPBlockACLOps indicates an expected call of UpdateEgressIPBlockACLOps.
+func (mr *MockACLMockRecorder) UpdateEgressIPBlockACLOps(pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressIPBlockACLOps", reflect.TypeOf((*MockACL)(nil).UpdateEgressIPBlockACLOps), pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+}
+
 // UpdateIngressACLOps mocks base method.
 func (m *MockACL) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
@@ -2289,6 +2339,21 @@ func (m *MockACL) UpdateIngressACLOps(pgName, asIngressName, asExceptName, proto
 func (mr *MockACLMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockACL)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap)
+}
+
+// UpdateIngressIPBlockACLOps mocks base method.
+func (m *MockACL) UpdateIngressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []v10.IPBlock, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIngressIPBlockACLOps", pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIngressIPBlockACLOps indicates an expected call of UpdateIngressIPBlockACLOps.
+func (mr *MockACLMockRecorder) UpdateIngressIPBlockACLOps(pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressIPBlockACLOps", reflect.TypeOf((*MockACL)(nil).UpdateIngressIPBlockACLOps), pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
 }
 
 // UpdateLogicalSwitchACL mocks base method.
@@ -3033,6 +3098,20 @@ func (mr *MockDHCPOptionsMockRecorder) DeleteDHCPOptionsByUUIDs(uuidList ...any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsByUUIDs", reflect.TypeOf((*MockDHCPOptions)(nil).DeleteDHCPOptionsByUUIDs), uuidList...)
 }
 
+// DeleteDHCPOptionsForPort mocks base method.
+func (m *MockDHCPOptions) DeleteDHCPOptionsForPort(portName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDHCPOptionsForPort", portName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDHCPOptionsForPort indicates an expected call of DeleteDHCPOptionsForPort.
+func (mr *MockDHCPOptionsMockRecorder) DeleteDHCPOptionsForPort(portName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsForPort", reflect.TypeOf((*MockDHCPOptions)(nil).DeleteDHCPOptionsForPort), portName)
+}
+
 // ListDHCPOptions mocks base method.
 func (m *MockDHCPOptions) ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error) {
 	m.ctrl.T.Helper()
@@ -3061,6 +3140,21 @@ func (m *MockDHCPOptions) UpdateDHCPOptions(subnet *v1.Subnet, mtu int) (*ovs.DH
 func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptions(subnet, mtu any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockDHCPOptions)(nil).UpdateDHCPOptions), subnet, mtu)
+}
+
+// UpdateDHCPOptionsForPort mocks base method.
+func (m *MockDHCPOptions) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDHCPOptionsForPort", lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu)
+	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDHCPOptionsForPort indicates an expected call of UpdateDHCPOptionsForPort.
+func (mr *MockDHCPOptionsMockRecorder) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptionsForPort", reflect.TypeOf((*MockDHCPOptions)(nil).UpdateDHCPOptionsForPort), lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu)
 }
 
 // MockMeter is a mock of Meter interface.
@@ -3502,17 +3596,22 @@ func (mr *MockNbClientMockRecorder) CreateHAChassisGroup(name, chassises, extern
 }
 
 // CreateLoadBalancer mocks base method.
-func (m *MockNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (m *MockNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateLoadBalancer", lbName, protocol, selectFields)
+	varargs := []any{lbName, protocol}
+	for _, a := range selectFields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateLoadBalancer", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateLoadBalancer indicates an expected call of CreateLoadBalancer.
-func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol, selectFields any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) CreateLoadBalancer(lbName, protocol any, selectFields ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), lbName, protocol, selectFields)
+	varargs := append([]any{lbName, protocol}, selectFields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockNbClient)(nil).CreateLoadBalancer), varargs...)
 }
 
 // CreateLoadBalancerHealthCheck mocks base method.
@@ -3854,6 +3953,20 @@ func (m *MockNbClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 func (mr *MockNbClientMockRecorder) DeleteDHCPOptionsByUUIDs(uuidList ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsByUUIDs", reflect.TypeOf((*MockNbClient)(nil).DeleteDHCPOptionsByUUIDs), uuidList...)
+}
+
+// DeleteDHCPOptionsForPort mocks base method.
+func (m *MockNbClient) DeleteDHCPOptionsForPort(portName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDHCPOptionsForPort", portName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDHCPOptionsForPort indicates an expected call of DeleteDHCPOptionsForPort.
+func (mr *MockNbClientMockRecorder) DeleteDHCPOptionsForPort(portName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsForPort", reflect.TypeOf((*MockNbClient)(nil).DeleteDHCPOptionsForPort), portName)
 }
 
 // DeleteHAChassisGroup mocks base method.
@@ -5161,6 +5274,22 @@ func (mr *MockNbClientMockRecorder) PortGroupSetPorts(pgName, ports any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockNbClient)(nil).PortGroupSetPorts), pgName, ports)
 }
 
+// ReconcilePortDHCPOptions mocks base method.
+func (m *MockNbClient) ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcilePortDHCPOptions", lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
+	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ReconcilePortDHCPOptions indicates an expected call of ReconcilePortDHCPOptions.
+func (mr *MockNbClientMockRecorder) ReconcilePortDHCPOptions(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcilePortDHCPOptions", reflect.TypeOf((*MockNbClient)(nil).ReconcilePortDHCPOptions), lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
+}
+
 // RemoveLogicalPatchPort mocks base method.
 func (m *MockNbClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 	m.ctrl.T.Helper()
@@ -5221,20 +5350,6 @@ func (m *MockNbClient) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
 func (mr *MockNbClientMockRecorder) SGLostACL(sg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SGLostACL", reflect.TypeOf((*MockNbClient)(nil).SGLostACL), sg)
-}
-
-// SetACLLog mocks base method.
-func (m *MockNbClient) SetACLLog(pgName string, logEnable, isIngress bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetACLLog", pgName, logEnable, isIngress)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetACLLog indicates an expected call of SetACLLog.
-func (mr *MockNbClientMockRecorder) SetACLLog(pgName, logEnable, isIngress any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetACLLog", reflect.TypeOf((*MockNbClient)(nil).SetACLLog), pgName, logEnable, isIngress)
 }
 
 // SetAzName mocks base method.
@@ -5333,6 +5448,20 @@ func (m *MockNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpPro
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
+}
+
+// SetLogicalSwitchPortDHCPOptions mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *ovs.DHCPOptionsUUIDs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortDHCPOptions", portName, dhcpOptions)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortDHCPOptions indicates an expected call of SetLogicalSwitchPortDHCPOptions.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortDHCPOptions(portName, dhcpOptions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortDHCPOptions", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortDHCPOptions), portName, dhcpOptions)
 }
 
 // SetLogicalSwitchPortExternalIDs mocks base method.
@@ -5464,6 +5593,20 @@ func (m *MockNbClient) SetLsDnatModDlDst(enabled bool) error {
 func (mr *MockNbClientMockRecorder) SetLsDnatModDlDst(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLsDnatModDlDst", reflect.TypeOf((*MockNbClient)(nil).SetLsDnatModDlDst), enabled)
+}
+
+// SetNetPolACLLog mocks base method.
+func (m *MockNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNetPolACLLog", pgName, logEnable, isIngress)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetNetPolACLLog indicates an expected call of SetNetPolACLLog.
+func (mr *MockNbClientMockRecorder) SetNetPolACLLog(pgName, logEnable, isIngress any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNetPolACLLog", reflect.TypeOf((*MockNbClient)(nil).SetNetPolACLLog), pgName, logEnable, isIngress)
 }
 
 // SetNodeLocalDNSIP mocks base method.
@@ -5614,6 +5757,21 @@ func (mr *MockNbClientMockRecorder) UpdateDHCPOptions(subnet, mtu any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptions", reflect.TypeOf((*MockNbClient)(nil).UpdateDHCPOptions), subnet, mtu)
 }
 
+// UpdateDHCPOptionsForPort mocks base method.
+func (m *MockNbClient) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDHCPOptionsForPort", lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu)
+	ret0, _ := ret[0].(*ovs.DHCPOptionsUUIDs)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDHCPOptionsForPort indicates an expected call of UpdateDHCPOptionsForPort.
+func (mr *MockNbClientMockRecorder) UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDHCPOptionsForPort", reflect.TypeOf((*MockNbClient)(nil).UpdateDHCPOptionsForPort), lsName, portName, cidrBlock, gateway, v4Options, v6Options, mtu)
+}
+
 // UpdateDefaultBlockACLOps mocks base method.
 func (m *MockNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string, loggingEnabled, lax bool, logRate int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
@@ -5673,6 +5831,21 @@ func (mr *MockNbClientMockRecorder) UpdateEgressACLOps(pgName, asEgressName, asE
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateEgressACLOps), pgName, asEgressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap)
 }
 
+// UpdateEgressIPBlockACLOps mocks base method.
+func (m *MockNbClient) UpdateEgressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []v10.IPBlock, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEgressIPBlockACLOps", pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateEgressIPBlockACLOps indicates an expected call of UpdateEgressIPBlockACLOps.
+func (mr *MockNbClientMockRecorder) UpdateEgressIPBlockACLOps(pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressIPBlockACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateEgressIPBlockACLOps), pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+}
+
 // UpdateGatewayChassis mocks base method.
 func (m *MockNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error {
 	m.ctrl.T.Helper()
@@ -5705,6 +5878,21 @@ func (m *MockNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, 
 func (mr *MockNbClientMockRecorder) UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressACLOps), pgName, asIngressName, asExceptName, protocol, aclName, npp, logEnable, logACLActions, logRate, namedPortMap)
+}
+
+// UpdateIngressIPBlockACLOps mocks base method.
+func (m *MockNbClient) UpdateIngressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []v10.IPBlock, npp []v10.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIngressIPBlockACLOps", pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIngressIPBlockACLOps indicates an expected call of UpdateIngressIPBlockACLOps.
+func (mr *MockNbClientMockRecorder) UpdateIngressIPBlockACLOps(pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressIPBlockACLOps", reflect.TypeOf((*MockNbClient)(nil).UpdateIngressIPBlockACLOps), pgName, protocol, aclName, ipBlocks, npp, logEnable, logACLActions, logRate, namedPortMap)
 }
 
 // UpdateLogicalRouter mocks base method.

@@ -76,12 +76,11 @@ type policyRouteMeta struct {
 }
 
 func (c *Controller) setIPSet() error {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -146,12 +145,11 @@ func (c *Controller) setIPSet() error {
 }
 
 func (c *Controller) gcIPSet() {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -236,12 +234,11 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 }
 
 func (c *Controller) setPolicyRouting() error {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -290,12 +287,20 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway stri
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
 		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
-		} else {
+		} else if len(ips) >= 2 {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		for _, gw := range egw {
+			gwProto := util.CheckProtocol(gw)
+			family, _ := util.ProtocolToFamily(gwProto)
+			for _, ip := range ips {
+				if util.CheckProtocol(ip) == gwProto {
+					prMetas = append(prMetas, policyRouteMeta{family: family, source: ip, gateway: gw})
+					break
+				}
+			}
+		}
 	}
 
 	for _, meta := range prMetas {
@@ -315,12 +320,20 @@ func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway s
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
 		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
-		} else {
+		} else if len(ips) >= 2 {
 			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
 		}
 	} else {
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
-		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+		for _, gw := range egw {
+			gwProto := util.CheckProtocol(gw)
+			family, _ := util.ProtocolToFamily(gwProto)
+			for _, ip := range ips {
+				if util.CheckProtocol(ip) == gwProto {
+					prMetas = append(prMetas, policyRouteMeta{family: family, source: ip, gateway: gw})
+					break
+				}
+			}
+		}
 	}
 
 	for _, meta := range prMetas {
@@ -1085,6 +1098,9 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 				markCode = OnOutGoingNatMark
 			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
+			default:
+				klog.Warningf("skipping nat outgoing policy rule with unknown action %q in subnet %s", rule.Action, subnet.Name)
+				continue
 			}
 
 			if rule.RuleID == "" {
@@ -1108,10 +1124,8 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 			case rule.Match.DstIPs != "" && rule.Match.SrcIPs != "":
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark %s`, srcMatch, dstMatch, markCode))}
 			case rule.Match.SrcIPs != "":
-				protocol = getMatchProtocol(rule.Match.SrcIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s src -j MARK --set-xmark %s`, srcMatch, markCode))}
 			case rule.Match.DstIPs != "":
-				protocol = getMatchProtocol(rule.Match.DstIPs)
 				ovnNatoutGoingPolicyRule = util.IPTableRule{Table: NAT, Chain: ovnNatPolicySubnetChainName, Rule: strings.Fields(fmt.Sprintf(`-m set --match-set %s dst -j MARK --set-xmark %s`, dstMatch, markCode))}
 			default:
 				continue
@@ -1287,9 +1301,11 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 		fields := util.DoubleQuotedFields(rule)
 		for _, f := range fields {
 			if strings.HasPrefix(f, prefix) {
-				if err = ipt.Delete("filter", "FORWARD", fields...); err != nil {
+				// use fields[2:] to skip prefix "-A FORWARD"
+				if err = ipt.Delete("filter", "FORWARD", fields[2:]...); err != nil {
 					klog.Errorf("failed to delete legacy iptables rules %q: %v", rule, err)
 				}
+				break
 			}
 		}
 	}
@@ -1358,12 +1374,12 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 				continue
 			}
 
-			currentPackets, err := strconv.Atoi(items[9])
+			currentPackets, err := strconv.ParseUint(items[9], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packets %q: %v", items[9], err)
 				continue
 			}
-			currentPacketBytes, err := strconv.Atoi(items[10])
+			currentPacketBytes, err := strconv.ParseUint(items[10], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packet bytes %q: %v", items[10], err)
 				continue
@@ -1504,6 +1520,7 @@ func (c *Controller) setExGateway() error {
 			); err != nil {
 				err = fmt.Errorf("failed to enable external gateway, %w", err)
 				klog.Error(err)
+				return err
 			}
 		}
 		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
@@ -1526,12 +1543,8 @@ func (c *Controller) setExGateway() error {
 		}
 
 		for _, pn := range providerNetworks {
-			// if external nic already attached into another bridge
-			if existBr, err := ovs.Exec("port-to-br", pn.Spec.DefaultInterface); err == nil {
-				if existBr == externalBridge {
-					// delete switch after related provider network not exist
-					return nil
-				}
+			if util.ExternalBridgeName(pn.Name) == externalBridge {
+				return nil
 			}
 		}
 
@@ -1582,7 +1595,8 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			continue
 		}
 
-		if subnet.Spec.ExternalEgressGateway == "" ||
+		if subnet.Spec.NatOutgoing ||
+			subnet.Spec.ExternalEgressGateway == "" ||
 			subnet.Spec.Vpc != c.config.ClusterRouter ||
 			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
@@ -1619,7 +1633,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[0])
-				} else {
+				} else if len(ips) >= 2 {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[1])
 				}
 			} else if len(egw) == 2 && len(ips) == 2 {
@@ -1648,6 +1662,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 
 	for _, subnet := range subnets {
 		if !subnet.DeletionTimestamp.IsZero() ||
+			subnet.Spec.NatOutgoing ||
 			subnet.Spec.ExternalEgressGateway == "" ||
 			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||

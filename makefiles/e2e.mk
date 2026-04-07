@@ -140,6 +140,7 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
+	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/pause:3.9,1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -255,6 +256,7 @@ kube-ovn-kubevirt-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	KUBEVIRT_CONTAINERDISK_IMAGE=$(KUBEVIRT_CONTAINERDISK_IMAGE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-webhook-e2e
@@ -324,3 +326,12 @@ kube-ovn-underlay-metallb-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/metallb/metallb.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-slr-e2e
+kube-ovn-slr-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN) --timeout=10m \
+		--focus="\[group:slr-ip-port-mapping\]" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)

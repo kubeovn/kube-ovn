@@ -21,6 +21,11 @@ type VpcNatGatewayList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=vpc-nat-gateways
+// +kubebuilder:resource:scope="Cluster",shortName="vpc-nat-gw",path="vpc-nat-gateways",singular="vpc-nat-gateway"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
+// +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
+// +kubebuilder:printcolumn:name="LanIP",type="string",JSONPath=".spec.lanIp"
 //
 // VpcNatGateway represents a NAT gateway for a VPC, implemented as a StatefulSet Pod.
 //
@@ -42,45 +47,68 @@ type VpcNatGateway struct {
 }
 
 type VpcNatGatewaySpec struct {
-	Vpc             string              `json:"vpc"`
-	Subnet          string              `json:"subnet"`
-	ExternalSubnets []string            `json:"externalSubnets"`
-	LanIP           string              `json:"lanIp"`
-	Selector        []string            `json:"selector"`
-	Tolerations     []corev1.Toleration `json:"tolerations"`
-	Affinity        corev1.Affinity     `json:"affinity"`
-	QoSPolicy       string              `json:"qosPolicy"`
-	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
-	Routes          []Route             `json:"routes"`
-	NoDefaultEIP    bool                `json:"noDefaultEIP"`
+	// VPC name for the NAT gateway. This field is immutable after creation.
+	Vpc string `json:"vpc"`
+	// Subnet name for the NAT gateway. This field is immutable after creation.
+	Subnet string `json:"subnet"`
+	// External subnets accessible through the NAT gateway
+	ExternalSubnets []string `json:"externalSubnets"`
+	// LAN IP address for the NAT gateway. This field is immutable after creation.
+	LanIP string `json:"lanIp"`
+	// Pod selector for the NAT gateway
+	Selector    []string            `json:"selector"`
+	Tolerations []corev1.Toleration `json:"tolerations"`
+	Affinity    corev1.Affinity     `json:"affinity"`
+	// QoS policy name to apply to the NAT gateway
+	QoSPolicy string `json:"qosPolicy"`
+	// BGP speaker configuration
+	BgpSpeaker VpcBgpSpeaker `json:"bgpSpeaker"`
+	// Static routes for the NAT gateway
+	Routes []Route `json:"routes"`
+	// Disable default EIP assignment
+	NoDefaultEIP bool `json:"noDefaultEIP"`
 	// User-defined annotations for the StatefulSet NAT gateway Pod template.
 	// Only effective at creation time; updates to this field are not detected.
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type VpcBgpSpeaker struct {
-	Enabled               bool            `json:"enabled"`
-	ASN                   uint32          `json:"asn"`
-	RemoteASN             uint32          `json:"remoteAsn"`
-	Neighbors             []string        `json:"neighbors"`
-	HoldTime              metav1.Duration `json:"holdTime"`
-	RouterID              string          `json:"routerId"`
-	Password              string          `json:"password"` // #nosec G117
-	EnableGracefulRestart bool            `json:"enableGracefulRestart"`
-	ExtraArgs             []string        `json:"extraArgs"`
+	// Whether to enable BGP speaker
+	Enabled bool `json:"enabled"`
+	// BGP ASN
+	ASN uint32 `json:"asn"`
+	// BGP remote ASN
+	RemoteASN uint32 `json:"remoteAsn"`
+	// BGP neighbors
+	Neighbors []string `json:"neighbors"`
+	// BGP hold time
+	HoldTime metav1.Duration `json:"holdTime"`
+	// BGP router ID
+	RouterID string `json:"routerId"`
+	// BGP password
+	Password string `json:"password"` // #nosec G117
+	// Enable graceful restart
+	EnableGracefulRestart bool `json:"enableGracefulRestart"`
+	// Extra arguments for BGP speaker
+	ExtraArgs []string `json:"extraArgs"`
 }
 
 // TODO: Consider removing redundant Status fields since statefulset template changes always trigger Pod recreation.
 type VpcNatGatewayStatus struct {
-	QoSPolicy       string              `json:"qosPolicy" patchStrategy:"merge"`
-	ExternalSubnets []string            `json:"externalSubnets" patchStrategy:"merge"`
-	Selector        []string            `json:"selector" patchStrategy:"merge"`
-	Tolerations     []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
-	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
+	// QoS policy applied to the NAT gateway
+	QoSPolicy string `json:"qosPolicy" patchStrategy:"merge"`
+	// External subnets configured for the NAT gateway
+	ExternalSubnets []string `json:"externalSubnets" patchStrategy:"merge"`
+	// Pod selector configured for the NAT gateway
+	Selector    []string            `json:"selector" patchStrategy:"merge"`
+	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
+	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 }
 
 type Route struct {
-	CIDR      string `json:"cidr"`
+	// Route CIDR
+	CIDR string `json:"cidr"`
+	// Next hop IP
 	NextHopIP string `json:"nextHopIP"`
 }
 

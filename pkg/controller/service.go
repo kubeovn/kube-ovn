@@ -38,23 +38,11 @@ type updateSvcObject struct {
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
-	klog.V(3).Infof("enqueue add endpoint %s", key)
+	klog.V(3).Infof("enqueue add service %s", key)
 	c.addOrUpdateEndpointSliceQueue.Add(key)
 
-	if c.config.EnableNP {
-		netpols, err := c.svcMatchNetworkPolicies(svc)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
-
-		for _, np := range netpols {
-			c.updateNpQueue.Add(np)
-		}
-	}
-
 	if c.config.EnableLbSvc {
-		klog.V(3).Infof("enqueue add service %s", key)
+		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
 }
@@ -78,31 +66,8 @@ func (c *Controller) enqueueDeleteService(obj any) {
 
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
-	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
-	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" || svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		if c.config.EnableNP {
-			netpols, err := c.svcMatchNetworkPolicies(svc)
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-
-			for _, np := range netpols {
-				c.updateNpQueue.Add(np)
-			}
-		}
-
-		ips := util.ServiceClusterIPs(*svc)
-		if ok {
-			ips = strings.Split(vip, ",")
-		}
-
-		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				ips = append(ips, ingress.IP)
-			}
-		}
-
+	ips := getVipIps(svc)
+	if len(ips) != 0 {
 		for _, port := range svc.Spec.Ports {
 			vpcSvc := &vpcService{
 				Protocol: port.Protocol,
@@ -366,7 +331,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 	}
 	// add the svc key which has the same vip
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
-	if ok {
+	if ok && vip != "" {
 		allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
 		if err != nil {
 			klog.Error(err)
@@ -540,12 +505,18 @@ func (c *Controller) handleAddService(key string) error {
 func getVipIps(svc *v1.Service) []string {
 	var ips []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		ips = strings.Split(vip, ",")
+		for ip := range strings.SplitSeq(vip, ",") {
+			if ip != "" {
+				ips = append(ips, ip)
+			}
+		}
 	} else {
 		ips = util.ServiceClusterIPs(*svc)
 		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
 			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				ips = append(ips, ingress.IP)
+				if ingress.IP != "" {
+					ips = append(ips, ingress.IP)
+				}
 			}
 		}
 	}

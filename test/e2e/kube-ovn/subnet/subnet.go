@@ -32,6 +32,30 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
+// expectSubnetIPsAvailable checks that a subnet has zero using IPs and that the available
+// IPs equal AddressCount - excludeCount - 1 (for gateway) per address family.
+func expectSubnetIPsAvailable(subnet *apiv1.Subnet, cidrV4, cidrV6 string, excludeV4, excludeV6 []string) {
+	ginkgo.GinkgoHelper()
+
+	framework.ExpectTrue(subnet.Status.V4UsingIPs.EqualInt64(0))
+	framework.ExpectTrue(subnet.Status.V6UsingIPs.EqualInt64(0))
+
+	if cidrV4 == "" {
+		framework.ExpectTrue(subnet.Status.V4AvailableIPs.EqualInt64(0))
+	} else {
+		_, ipnet, _ := net.ParseCIDR(cidrV4)
+		expected := util.AddressCountBigInt(ipnet).Sub(util.CountIPNumsBigInt(excludeV4)).SubInt(1)
+		framework.ExpectTrue(expected.Equal(subnet.Status.V4AvailableIPs))
+	}
+	if cidrV6 == "" {
+		framework.ExpectTrue(subnet.Status.V6AvailableIPs.EqualInt64(0))
+	} else {
+		_, ipnet, _ := net.ParseCIDR(cidrV6)
+		expected := util.AddressCountBigInt(ipnet).Sub(util.CountIPNumsBigInt(excludeV6)).SubInt(1)
+		framework.ExpectTrue(expected.Equal(subnet.Status.V6AvailableIPs))
+	}
+}
+
 func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
 
@@ -178,21 +202,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating subnet status fields")
 		framework.ExpectEmpty(subnet.Status.ActivateGateway)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, nil, nil)
 
 		// TODO: check routes on ovn0
 	})
@@ -236,21 +246,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating subnet status fields")
 		framework.ExpectEmpty(subnet.Status.ActivateGateway)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, nil, nil)
 
 		// TODO: check routes on ovn0
 	})
@@ -281,23 +277,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating subnet status fields")
 		framework.ExpectEmpty(subnet.Status.ActivateGateway)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv4) - 1
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, expected)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			expected := util.AddressCount(ipnet) - util.CountIPNums(excludeIPv6) - 1
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, expected)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, excludeIPv4, excludeIPv6)
 	})
 
 	framework.ConformanceIt("should allow pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
@@ -327,7 +307,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		smallSubnet = subnetClient.CreateSync(smallSubnet)
 
 		ginkgo.By("Verifying available IPs is 0 after excluding the only usable IPs")
-		framework.ExpectZero(smallSubnet.Status.V4AvailableIPs + smallSubnet.Status.V6AvailableIPs)
+		sumAvailableIPs := smallSubnet.Status.V4AvailableIPs.Add(smallSubnet.Status.V6AvailableIPs)
+		framework.ExpectTrue(sumAvailableIPs.EqualInt64(0))
 
 		// Test cases: both fixed IP and IP pool annotations
 		testCases := []struct {
@@ -405,21 +386,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating subnet status fields")
 		framework.ExpectContainElement(gatewayNodes, subnet.Status.ActivateGateway)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, nil, nil)
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sleep", "infinity"}
@@ -456,21 +423,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating subnet status fields")
 		framework.ExpectEmpty(subnet.Status.ActivateGateway)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, nil, nil)
 
 		ginkgo.By("Converting gateway mode to centralized")
 		n := min(3, max(1, len(nodes.Items)-1))
@@ -512,21 +465,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}, fmt.Sprintf("field .status.activateGateway is within %v", gatewayNodes),
 			time.Second, time.Minute,
 		)
-		framework.ExpectZero(subnet.Status.V4UsingIPs)
-		framework.ExpectZero(subnet.Status.V6UsingIPs)
-
-		if cidrV4 == "" {
-			framework.ExpectZero(subnet.Status.V4AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV4)
-			framework.ExpectEqual(subnet.Status.V4AvailableIPs, util.AddressCount(ipnet)-1)
-		}
-		if cidrV6 == "" {
-			framework.ExpectZero(subnet.Status.V6AvailableIPs)
-		} else {
-			_, ipnet, _ := net.ParseCIDR(cidrV6)
-			framework.ExpectEqual(subnet.Status.V6AvailableIPs, util.AddressCount(ipnet)-1)
-		}
+		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, nil, nil)
 
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sleep", "infinity"}

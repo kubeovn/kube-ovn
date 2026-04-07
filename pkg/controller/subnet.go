@@ -61,12 +61,14 @@ func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
 		return false
 	}
 
-	if subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs == 0 {
+	if subnet.Status.V4UsingIPs.EqualInt64(0) && subnet.Status.V6UsingIPs.EqualInt64(0) {
 		return true
 	}
 
+	usingIPs := subnet.Status.V4UsingIPs.Add(subnet.Status.V6UsingIPs)
+
 	if subnet.Status.U2OInterconnectionIP != "" {
-		return int(subnet.Status.V4UsingIPs+subnet.Status.V6UsingIPs) == len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))
+		return usingIPs.EqualInt64(int64(len(strings.Split(subnet.Status.U2OInterconnectionIP, ","))))
 	}
 
 	return false
@@ -161,6 +163,11 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 	return subnet, nil
 }
 
+// errVlanNotReady is returned when the vlan has not been fully processed by
+// the vlan handler yet. The caller should requeue silently without patching
+// the subnet status as failed.
+var errVlanNotReady = errors.New("vlan not ready")
+
 func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vlan == "" {
 		return nil
@@ -178,6 +185,25 @@ func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 		klog.Error(err)
 		return err
 	}
+
+	// Ensure the vlan has been fully processed by the vlan handler before
+	// allowing the subnet to proceed. A newly created vlan has Conflict=false
+	// (zero value) which is indistinguishable from a processed non-conflicting
+	// vlan. Use pn.Status.Vlans as a "vlan ready" signal — only set after
+	// the vlan handler completes successfully (including conflict check).
+	// This prevents a race where the subnet allocates IPAM before the vlan's
+	// conflict status is determined.
+	if vlan.Spec.Provider == "" {
+		return fmt.Errorf("vlan %s provider not yet set, deferring subnet %s: %w", vlan.Name, subnet.Name, errVlanNotReady)
+	}
+	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+	if err != nil {
+		return fmt.Errorf("vlan %s not yet ready (provider network %s not found): %w", vlan.Name, vlan.Spec.Provider, errVlanNotReady)
+	}
+	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
+		return fmt.Errorf("vlan %s not yet processed by vlan handler, deferring subnet %s: %w", vlan.Name, subnet.Name, errVlanNotReady)
+	}
+
 	return nil
 }
 
@@ -291,13 +317,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 		return patchSubnet, false, nil
 	}
 
-	usingIPs := subnet.Status.V4UsingIPs
-	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv6 {
-		usingIPs = subnet.Status.V6UsingIPs
-	}
-
-	u2oInterconnIP := subnet.Status.U2OInterconnectionIP
-	if !subnet.DeletionTimestamp.IsZero() && (usingIPs == 0 || (usingIPs == 1 && u2oInterconnIP != "")) {
+	if readyToRemoveFinalizer(subnet) {
 		newSubnet := subnet.DeepCopy()
 		controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
 		controllerutil.RemoveFinalizer(newSubnet, util.KubeOVNControllerFinalizer)
@@ -369,24 +389,24 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		}
 
 		if util.CIDROverlap(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
-			err = fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
-			klog.Error(err)
-			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+			conflictErr := fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+			klog.Error(conflictErr)
+			if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(conflictErr, patchErr)
 			}
-			return err
+			return conflictErr
 		}
 
 		if subnet.Spec.ExternalEgressGateway != "" && sub.Spec.ExternalEgressGateway != "" &&
 			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
-			err = fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
-			klog.Error(err)
-			if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+			conflictErr := fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
+			klog.Error(conflictErr)
+			if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(conflictErr, patchErr)
 			}
-			return err
+			return conflictErr
 		}
 	}
 
@@ -399,13 +419,13 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 		for _, node := range nodes {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
-					err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
-					klog.Error(err)
-					if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); err != nil {
-						klog.Error(err)
-						return err
+					conflictErr := fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
+					klog.Error(conflictErr)
+					if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", conflictErr.Error()); patchErr != nil {
+						klog.Error(patchErr)
+						return errors.Join(conflictErr, patchErr)
 					}
-					return err
+					return conflictErr
 				}
 			}
 		}
@@ -413,27 +433,34 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
-	var mtu int
+// getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
+func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
 	if subnet.Spec.Mtu > 0 {
-		mtu = int(subnet.Spec.Mtu)
-	} else {
-		mtu = util.DefaultMTU
-		if subnet.Spec.Vlan == "" {
-			switch c.config.NetworkType {
-			case util.NetworkTypeVlan:
-				// default to geneve
-				fallthrough
-			case util.NetworkTypeGeneve:
-				mtu -= util.GeneveHeaderLength
-			case util.NetworkTypeVxlan:
-				mtu -= util.VxlanHeaderLength
-			case util.NetworkTypeStt:
-				mtu -= util.SttHeaderLength
-			default:
-				return fmt.Errorf("invalid network type: %s", c.config.NetworkType)
-			}
+		return int(subnet.Spec.Mtu), nil
+	}
+	mtu := util.DefaultMTU
+	if subnet.Spec.Vlan == "" {
+		switch c.config.NetworkType {
+		case util.NetworkTypeVlan:
+			// default to geneve
+			fallthrough
+		case util.NetworkTypeGeneve:
+			mtu -= util.GeneveHeaderLength
+		case util.NetworkTypeVxlan:
+			mtu -= util.VxlanHeaderLength
+		case util.NetworkTypeStt:
+			mtu -= util.SttHeaderLength
+		default:
+			return 0, fmt.Errorf("invalid network type: %s", c.config.NetworkType)
 		}
+	}
+	return mtu, nil
+}
+
+func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
+	mtu, err := c.getSubnetMTU(subnet)
+	if err != nil {
+		return err
 	}
 
 	dhcpOptionsUUIDs, err := c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)
@@ -495,6 +522,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	err = c.validateSubnetVlan(subnet)
 	if err != nil {
+		if errors.Is(err, errVlanNotReady) {
+			// vlan hasn't been processed yet, requeue silently without
+			// marking the subnet as failed
+			klog.Infof("deferring subnet %s: %v", key, err)
+			return err
+		}
 		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", key, err)
 		klog.Error(err)
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
@@ -582,19 +615,23 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	// Lock VPC to prevent CIDR conflict between concurrent subnet creations in the same VPC
-	c.vpcKeyMutex.LockKey(subnet.Spec.Vpc)
-	if err := c.checkSubnetConflict(subnet); err != nil {
-		_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
-		klog.Errorf("failed to check subnet %s, %v", subnet.Name, err)
+	if err := func() error {
+		c.vpcKeyMutex.LockKey(subnet.Spec.Vpc)
+		defer func() { _ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc) }()
+
+		if err := c.checkSubnetConflict(subnet); err != nil {
+			klog.Errorf("failed to check subnet %s, %v", subnet.Name, err)
+			return err
+		}
+		// create or update logical switch
+		if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, gatewayMAC, needRouter, randomAllocateGW); err != nil {
+			klog.Errorf("create logical switch %s: %v", subnet.Name, err)
+			return err
+		}
+		return nil
+	}(); err != nil {
 		return err
 	}
-	// create or update logical switch
-	if err := c.OVNNbClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, gateway, gatewayMAC, needRouter, randomAllocateGW); err != nil {
-		_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
-		klog.Errorf("create logical switch %s: %v", subnet.Name, err)
-		return err
-	}
-	_ = c.vpcKeyMutex.UnlockKey(subnet.Spec.Vpc)
 
 	// Record the gateway MAC in ipam if router port exists
 	if needRouter {
@@ -632,13 +669,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			vpc.Status.SctpSessionLoadBalancer,
 		}
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
-				if err = c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error()); err != nil {
-					klog.Error(err)
-					return err
+			if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
+				klog.Error(lbErr)
+				if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
+					klog.Error(patchErr)
+					return errors.Join(lbErr, patchErr)
 				}
-				klog.Error(err)
-				return err
+				return lbErr
 			}
 		} else {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
@@ -664,13 +701,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		if err := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); err != nil {
-			if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+		if privErr := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); privErr != nil {
+			klog.Error(privErr)
+			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(privErr, patchErr)
 			}
-			klog.Error(err)
-			return err
+			return privErr
 		}
 
 		if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
@@ -679,13 +716,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// clear acl when direction is ""
-		if err = c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
-			if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error()); err != nil {
-				klog.Error(err)
-				return err
+		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
+			klog.Error(aclErr)
+			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(aclErr, patchErr)
 			}
-			klog.Error(err)
-			return err
+			return aclErr
 		}
 
 		if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
@@ -694,13 +731,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if err := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); err != nil {
-		if err = c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error()); err != nil {
-			klog.Error(err)
-			return err
+	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); aclErr != nil {
+		klog.Error(aclErr)
+		if patchErr := c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", aclErr.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return errors.Join(aclErr, patchErr)
 		}
-		klog.Error(err)
-		return err
+		return aclErr
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
@@ -819,7 +856,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("get vpc %s: %v", vpc.Name, err)
+			klog.Errorf("get vpc %s: %v", subnet.Spec.Vpc, err)
 			return err
 		}
 		router = c.config.ClusterRouter
@@ -991,7 +1028,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 				continue // ignore vips which is empty
 			}
 
-			if strings.Contains(vips, vip) {
+			if slices.Contains(strings.Split(vips, ","), vip) {
 				virtualParents = append(virtualParents, lsp.Name)
 			}
 		}
@@ -1196,7 +1233,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defaultExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.vpcsLister.Get(vpcName)
+	cachedVpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1204,6 +1241,7 @@ func (c *Controller) reconcileCustomVpcDelNormalStaticRoute(vpcName string) erro
 		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
 		return err
 	}
+	vpc := cachedVpc.DeepCopy()
 	routeTotal := len(vpc.Spec.StaticRoutes)
 	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
 	for _, route := range vpc.Spec.StaticRoutes {
@@ -2708,7 +2746,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		ip, err := c.ipsLister.Get(key)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
-				return nil
+				continue
 			}
 			klog.Error(err)
 			return err
@@ -2760,7 +2798,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		ip, err := c.ipsLister.Get(lsp.Name)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
-				return nil
+				continue
 			}
 			klog.Error(err)
 			return err
@@ -2874,9 +2912,13 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 		lss, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 			return ls.Name == subnet.Name
 		})
-		if err != nil || len(lss) == 0 {
+		if err != nil {
 			klog.Errorf("failed to list logical switch %s: %v", subnet.Name, err)
 			return err
+		}
+		if len(lss) == 0 {
+			klog.Warningf("logical switch %s not found, skipping multicast snoop cleanup", subnet.Name)
+			return nil
 		}
 
 		multicastSnoopFlag := map[string]string{

@@ -17,7 +17,7 @@ var _ = ginkgo.Describe("[Net]", func() {
 			{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(30, 32)},
 			{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(24, 32)},
 		}
-		wants := []float64{
+		wants := []int64{
 			1,
 			2,
 			2,
@@ -27,7 +27,7 @@ var _ = ginkgo.Describe("[Net]", func() {
 
 		for i := range args {
 			gomega.Expect(args[i].IP).NotTo(gomega.BeNil())
-			gomega.Expect(util.AddressCount(args[i])).To(gomega.Equal(wants[i]))
+			gomega.Expect(util.AddressCountBigInt(args[i]).EqualInt64(wants[i])).To(gomega.BeTrue())
 		}
 	})
 
@@ -37,7 +37,7 @@ var _ = ginkgo.Describe("[Net]", func() {
 			{"10.0.0.101..10.0.0.105"},
 			{"10.0.0.101..10.0.0.105", "10.0.0.111..10.0.0.120"},
 		}
-		wants := []float64{
+		wants := []int64{
 			1,
 			5,
 			15,
@@ -45,7 +45,7 @@ var _ = ginkgo.Describe("[Net]", func() {
 		gomega.Expect(args).To(gomega.HaveLen(len(wants)))
 
 		for i := range args {
-			gomega.Expect(util.CountIPNums(args[i])).To(gomega.Equal(wants[i]))
+			gomega.Expect(util.CountIPNumsBigInt(args[i]).EqualInt64(wants[i])).To(gomega.BeTrue())
 		}
 	})
 

@@ -105,7 +105,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		isPreferLocalBackend     = false
 	)
 
-	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok && vip != "" {
 		lbVips = []string{vip}
 
 		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled
@@ -884,14 +884,11 @@ func getSubnetByProvider(pod *v1.Pod, provider string) (string, error) {
 	return subnetName, nil
 }
 
-// getVpcByProvider returns the VPC linked to a provider on a pod
-func getVpcByProvider(pod *v1.Pod, provider string) (string, error) {
-	vpcName, exists := pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, provider)]
-	if !exists {
-		return "", fmt.Errorf("couldn't find vpc linked to provider %s", provider)
-	}
-
-	return vpcName, nil
+// getVpcByProvider returns the VPC linked to a provider on a pod.
+// For underlay subnets without LogicalGateway or U2OInterconnection,
+// the logical_router annotation is not set, so an empty string is returned.
+func getVpcByProvider(pod *v1.Pod, provider string) string {
+	return pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, provider)]
 }
 
 // getEndpointVpcAndSubnet returns the VPC/subnet for a pod and a set of addresses attached to it
@@ -913,10 +910,7 @@ func (c *Controller) getEndpointVpcAndSubnet(pod *v1.Pod, addresses []string) (s
 	}
 
 	// Retrieve the VPC
-	vpc, err := getVpcByProvider(pod, provider)
-	if err != nil {
-		return "", "", err
-	}
+	vpc := getVpcByProvider(pod, provider)
 
 	return vpc, subnet, nil
 }

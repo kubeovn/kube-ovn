@@ -16,6 +16,12 @@ type SwitchLBRuleList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=switch-lb-rules
+// +kubebuilder:resource:scope="Cluster",shortName="slr",path="switch-lb-rules",singular="switch-lb-rule"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="vip",type="string",JSONPath=".spec.vip"
+// +kubebuilder:printcolumn:name="port(s)",type="string",JSONPath=".status.ports"
+// +kubebuilder:printcolumn:name="service",type="string",JSONPath=".status.service"
+// +kubebuilder:printcolumn:name="age",type="date",JSONPath=".metadata.creationTimestamp"
 type SwitchLBRule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -34,10 +40,14 @@ type SwitchLBRuleSpec struct {
 }
 
 type SwitchLBRulePort struct {
-	Name       string `json:"name"`
-	Port       int32  `json:"port"`
-	TargetPort int32  `json:"targetPort,omitempty"`
-	Protocol   string `json:"protocol"`
+	// Port name
+	Name string `json:"name"`
+	// Service port number (1-65535)
+	Port int32 `json:"port"`
+	// Target port number (1-65535)
+	TargetPort int32 `json:"targetPort,omitempty"`
+	// Protocol (TCP or UDP)
+	Protocol string `json:"protocol"`
 }
 
 type SwitchLBRuleStatus struct {
@@ -47,6 +57,8 @@ type SwitchLBRuleStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Ports   string `json:"ports" patchStrategy:"merge"`
+	// Configured ports
+	Ports string `json:"ports" patchStrategy:"merge"`
+	// Associated service name
 	Service string `json:"service" patchStrategy:"merge"`
 }

@@ -813,6 +813,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 					}
 				}
 
+				if ip == nil {
+					continue
+				}
 				rule.Src = &net.IPNet{IP: ip, Mask: net.CIDRMask(maskBits, maskBits)}
 				rules = append(rules, *rule)
 			}
@@ -820,9 +823,15 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	} else {
 		for i := range protocols {
 			rule.Family, _ = util.ProtocolToFamily(protocols[i])
-			if len(cidr) == len(protocols) {
-				_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			if i >= len(cidr) {
+				continue
 			}
+			_, ipNet, err := net.ParseCIDR(cidr[i])
+			if err != nil {
+				klog.Errorf("failed to parse CIDR %q for subnet %s policy routing: %v", cidr[i], subnet.Name, err)
+				continue
+			}
+			rule.Src = ipNet
 			rules = append(rules, *rule)
 		}
 	}
@@ -964,10 +973,24 @@ func (c *Controller) loopEncapIPCheck() {
 			klog.V(3).Infof("node tunnel interface %s not changed", nodeTunnelName)
 			return
 		}
+
+		var encapIP string
+		for _, addr := range addrs {
+			ipStr := strings.Split(addr.String(), "/")[0]
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+				continue
+			}
+			encapIP = ipStr
+			break
+		}
+		if encapIP == "" {
+			klog.Errorf("iface %s has no valid IP address", nodeTunnelName)
+			return
+		}
+
 		c.config.Iface = nodeTunnelName
 		klog.Infof("Update node tunnel interface %v", nodeTunnelName)
-
-		c.config.DefaultEncapIP = strings.Split(addrs[0].String(), "/")[0]
+		c.config.DefaultEncapIP = encapIP
 		if err = c.config.setEncapIPs(); err != nil {
 			klog.Errorf("failed to set encap ip %s for iface %s", c.config.DefaultEncapIP, c.config.Iface)
 			return

@@ -728,41 +728,38 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	var err error
-	if _, err := c.OVNSbClient.GetChassisByHost(node.Name); err == nil {
+	_, err := c.OVNSbClient.GetChassisByHost(node.Name)
+	if err == nil {
 		return nil
 	}
-	klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
-	if errors.Is(err, ovs.ErrOneNodeMultiChassis) {
-		klog.Warningf("node %s has multiple chassis", node.Name)
-		if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
-			return err
-		}
+
+	if !errors.Is(err, ovs.ErrOneNodeMultiChassis) {
+		klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
+		return err
 	}
-	return err
+
+	klog.Warningf("node %s has multiple chassis, deleting all", node.Name)
+	if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
+		klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
+		return err
+	}
+	return nil
 }
 
-func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
-	i := 0
-	for ; ; i++ {
-		err = f(node)
+func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) error {
+	for i := range attempts {
+		err := f(node)
 		if err == nil {
-			return err
+			return nil
 		}
 		klog.Errorf("failed to delete duplicated chassis for node %s: %v", node.Name, err)
-		if i >= (attempts - 1) {
-			break
+		if i < attempts-1 {
+			time.Sleep(time.Duration(sleep) * time.Second)
 		}
-		time.Sleep(time.Duration(sleep) * time.Second)
 	}
-	if i >= (attempts - 1) {
-		errMsg := errors.New("exhausting all attempts")
-		klog.Error(errMsg)
-		return errMsg
-	}
-	klog.V(3).Infof("finish check chassis")
-	return nil
+	errMsg := errors.New("exhausting all attempts")
+	klog.Error(errMsg)
+	return errMsg
 }
 
 func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
@@ -821,7 +818,11 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	klog.V(3).Infoln("start to check node port-group status")
 	var networkPolicyExists bool
 	if c.config.EnableNP {
-		np, _ := c.npsLister.List(labels.Everything())
+		np, err := c.npsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			return err
+		}
 		networkPolicyExists = len(np) != 0
 	}
 
@@ -840,6 +841,10 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	for _, node := range nodes {
 		// The port-group should already created when add node
 		pgName := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
+		if pgName == "" {
+			klog.V(2).Infof("node %s does not have port name annotation, skip port group update", node.Name)
+			continue
+		}
 
 		// use join IP only when no internal IP exists
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
@@ -927,7 +932,7 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 	if len(policyList) == 0 {
 		return strset.New(), map[string]string{}, nil
 	}
-	return strset.New(policyList[0].Nexthops...), policyList[0].ExternalIDs, nil
+	return strset.New(policyList[0].Nexthops...), maps.Clone(policyList[0].ExternalIDs), nil
 }
 
 func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
@@ -1093,16 +1098,13 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
 
-	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
-		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		klog.Errorf("failed to list logical router policies for node %q af %d: %v", nodeName, af, err)
 		return err
 	}
 
 	for _, policy := range policies {
-		if len(policy.ExternalIDs) == 0 || policy.ExternalIDs["vendor"] != util.CniTypeName || policy.ExternalIDs["isLocalDnsCache"] != "true" {
-			continue
-		}
 		if policy.Priority == util.NodeRouterPolicyPriority && policy.Action == string(action) && slices.Equal(policy.Nexthops, nextHops) && matches.Has(policy.Match) {
 			matches.Remove(policy.Match)
 			continue

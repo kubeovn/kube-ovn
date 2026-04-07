@@ -126,7 +126,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 
 	t.Run("create dhcp options", func(t *testing.T) {
 		t.Run("without options", func(t *testing.T) {
-			uuid, err := nbClient.updateDHCPv4Options(lsName, cidr, gateway, "", 1500)
+			uuid, err := nbClient.updateDHCPv4Options(lsName, "", cidr, gateway, "", 1500)
 			require.NoError(t, err)
 
 			dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -148,7 +148,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 		t.Run("with options", func(t *testing.T) {
 			lsName := "test-update-v4-dhcp-opt-ls-with-opt"
 			options := fmt.Sprintf("lease_time=%d,router=%s,server_id=%s,server_mac=%s", 7200, gateway, "169.254.0.1", "00:00:00:11:22:33")
-			uuid, err := nbClient.updateDHCPv4Options(lsName, cidr, gateway, options, 1500)
+			uuid, err := nbClient.updateDHCPv4Options(lsName, "", cidr, gateway, options, 1500)
 			require.NoError(t, err)
 
 			dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -167,7 +167,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 	})
 
 	t.Run("update dhcp options", func(t *testing.T) {
-		uuid, err := nbClient.updateDHCPv4Options(lsName, cidr, gateway, "", 1500)
+		uuid, err := nbClient.updateDHCPv4Options(lsName, "", cidr, gateway, "", 1500)
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv4", false)
@@ -185,13 +185,13 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 	})
 
 	t.Run("update dhcp options with invalid cidr", func(t *testing.T) {
-		_, err := nbClient.updateDHCPv4Options(lsName, "", gateway, "", 1500)
+		_, err := nbClient.updateDHCPv4Options(lsName, "", "", gateway, "", 1500)
 		require.ErrorContains(t, err, "must be a valid ipv4 address")
 	})
 
 	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
-		_, err := nbClient.updateDHCPv4Options("", cidr, gateway, "", 1500)
-		require.ErrorContains(t, err, "the logical router name is required")
+		_, err := nbClient.updateDHCPv4Options("", "", cidr, gateway, "", 1500)
+		require.ErrorContains(t, err, "the logical switch name is required")
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
@@ -199,7 +199,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 
-		uuid, err := nbClient.updateDHCPv4Options(lsName+"-1", cidr, gateway, "dns_server={8.8.8.8;8.8.4.4}", 1500)
+		uuid, err := nbClient.updateDHCPv4Options(lsName+"-1", "", cidr, gateway, "dns_server={8.8.8.8;8.8.4.4}", 1500)
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName+"-1", "IPv4", false)
@@ -229,7 +229,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 
 	t.Run("create dhcp options", func(t *testing.T) {
 		t.Run("without options", func(t *testing.T) {
-			uuid, err := nbClient.updateDHCPv6Options(lsName, cidr, "")
+			uuid, err := nbClient.updateDHCPv6Options(lsName, "", cidr, "")
 			require.NoError(t, err)
 
 			dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv6", false)
@@ -247,7 +247,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 		t.Run("with options", func(t *testing.T) {
 			lsName := "test-update-v6-dhcp-opt-ls-with-opt"
 			options := "server_id=" + "00:00:00:55:22:33"
-			uuid, err := nbClient.updateDHCPv6Options(lsName, cidr, options)
+			uuid, err := nbClient.updateDHCPv6Options(lsName, "", cidr, options)
 			require.NoError(t, err)
 
 			dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv6", false)
@@ -262,7 +262,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	})
 
 	t.Run("update dhcp options", func(t *testing.T) {
-		uuid, err := nbClient.updateDHCPv6Options(lsName, cidr, "")
+		uuid, err := nbClient.updateDHCPv6Options(lsName, "", cidr, "")
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName, "IPv6", false)
@@ -276,13 +276,13 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 	})
 
 	t.Run("update dhcp options with invalid cidr", func(t *testing.T) {
-		_, err := nbClient.updateDHCPv6Options(lsName, "", "")
+		_, err := nbClient.updateDHCPv6Options(lsName, "", "", "")
 		require.ErrorContains(t, err, "must be a valid ipv6 address")
 	})
 
 	t.Run("update dhcp options with invalid lsName", func(t *testing.T) {
-		_, err := nbClient.updateDHCPv6Options("", cidr, "")
-		require.ErrorContains(t, err, "the logical router name is required")
+		_, err := nbClient.updateDHCPv6Options("", "", cidr, "")
+		require.ErrorContains(t, err, "the logical switch name is required")
 	})
 
 	t.Run("append necessary options to new options", func(t *testing.T) {
@@ -290,7 +290,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPv6Options() {
 		err := nbClient.CreateDHCPOptions(lsName+"-1", cidr, options)
 		require.NoError(t, err)
 
-		uuid, err := nbClient.updateDHCPv6Options(lsName+"-1", cidr, "dns_server={fc00::0af4:01}")
+		uuid, err := nbClient.updateDHCPv6Options(lsName+"-1", "", cidr, "dns_server={fc00::0af4:01}")
 		require.NoError(t, err)
 
 		dhcpOpt, err := nbClient.GetDHCPOptions(lsName+"-1", "IPv6", false)
@@ -502,21 +502,21 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 
 		// create three ipv4 dhcp options
 		for _, cidr := range v4CidrBlock {
-			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
+			dhcpOpt, err := newDHCPOptionsEntry(lsName, "", cidr, "")
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
 		}
 
 		// create two ipv6 dhcp options
 		for _, cidr := range v6CidrBlock {
-			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
+			dhcpOpt, err := newDHCPOptionsEntry(lsName, "", cidr, "")
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
 		}
 
 		// create three ipv4 dhcp options with other logical switch name
 		for _, cidr := range v4CidrBlock {
-			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
+			dhcpOpt, err := newDHCPOptionsEntry(lsName, "", cidr, "")
 			dhcpOpt.ExternalIDs[LogicalSwitchKey] = lsName + "-test"
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
@@ -524,7 +524,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 
 		// create three ipv4 dhcp options with other vendor
 		for _, cidr := range v4CidrBlock {
-			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
+			dhcpOpt, err := newDHCPOptionsEntry(lsName, "", cidr, "")
 			dhcpOpt.ExternalIDs["vendor"] = util.CniTypeName + "-test"
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
@@ -584,7 +584,7 @@ func (suite *OvnClientTestSuite) testDhcpOptionsFilter() {
 	t.Run("result should exclude dhcp options when externalIDs's length is not equal", func(t *testing.T) {
 		t.Parallel()
 
-		dhcpOpt, err := newDHCPOptions(lsName, "192.168.30.0/24", "")
+		dhcpOpt, err := newDHCPOptionsEntry(lsName, "", "192.168.30.0/24", "")
 		require.NoError(t, err)
 
 		filterFunc := dhcpOptionsFilter(true, map[string]string{
@@ -638,5 +638,132 @@ func (suite *OvnClientTestSuite) testCreateDHCPOptions() {
 		cidr := "192.168.70.0/24"
 		err := nbClient.CreateDHCPOptions("", cidr, "")
 		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testUpdateDHCPOptionsForPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-per-port-dhcp-ls"
+	portName := "test-per-port-dhcp-port"
+	cidr := "10.33.0.0/24"
+	gateway := "10.33.0.1"
+
+	t.Run("create per-port IPv4 dhcp options", func(t *testing.T) {
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName, cidr, gateway, "lease_time=3600", "", 1500)
+		require.NoError(t, err)
+		require.NotEmpty(t, uuids.DHCPv4OptionsUUID)
+		require.Empty(t, uuids.DHCPv6OptionsUUID)
+
+		opt, err := nbClient.getDHCPOptionsEntry("", portName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, uuids.DHCPv4OptionsUUID, opt.UUID)
+		require.Equal(t, cidr, opt.Cidr)
+		require.Equal(t, portName, opt.ExternalIDs[PortKey])
+		require.Equal(t, lsName, opt.ExternalIDs[LogicalSwitchKey])
+		require.Equal(t, "169.254.0.254", opt.Options["server_id"])
+		require.Equal(t, gateway, opt.Options["router"])
+		require.Equal(t, "3600", opt.Options["lease_time"])
+		require.Equal(t, "1500", opt.Options["mtu"])
+	})
+
+	t.Run("update per-port IPv4 dhcp options is idempotent", func(t *testing.T) {
+		uuids1, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName, cidr, gateway, "lease_time=7200", "", 1500)
+		require.NoError(t, err)
+
+		uuids2, err := nbClient.UpdateDHCPOptionsForPort(lsName, portName, cidr, gateway, "lease_time=7200", "", 1500)
+		require.NoError(t, err)
+
+		// UUID must remain the same across updates.
+		require.Equal(t, uuids1.DHCPv4OptionsUUID, uuids2.DHCPv4OptionsUUID)
+
+		opt, err := nbClient.getDHCPOptionsEntry("", portName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, "7200", opt.Options["lease_time"])
+	})
+
+	t.Run("per-port dhcp options not returned by GetDHCPOptions", func(t *testing.T) {
+		// GetDHCPOptions (subnet-level) must not return per-port entries.
+		opt, err := nbClient.GetDHCPOptions(lsName, kubeovnv1.ProtocolIPv4, true)
+		require.NoError(t, err)
+		require.Nil(t, opt, "per-port DHCP entry must not be returned by subnet-level GetDHCPOptions")
+	})
+
+	t.Run("create per-port dual-stack dhcp options", func(t *testing.T) {
+		dualPortName := "test-per-port-dhcp-dual"
+		dualCIDR := "10.34.0.0/24,fd00::a:22:0:0/112"
+		dualGateway := "10.34.0.1,fd00::a:22:0:1"
+
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, dualPortName, dualCIDR, dualGateway, "lease_time=3600", "server_id=00:11:22:33:44:55", 1500)
+		require.NoError(t, err)
+		require.NotEmpty(t, uuids.DHCPv4OptionsUUID)
+		require.NotEmpty(t, uuids.DHCPv6OptionsUUID)
+
+		v4Opt, err := nbClient.getDHCPOptionsEntry("", dualPortName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, uuids.DHCPv4OptionsUUID, v4Opt.UUID)
+
+		v6Opt, err := nbClient.getDHCPOptionsEntry("", dualPortName, kubeovnv1.ProtocolIPv6, false)
+		require.NoError(t, err)
+		require.Equal(t, uuids.DHCPv6OptionsUUID, v6Opt.UUID)
+	})
+
+	t.Run("per-family annotation on dual-stack only creates per-port entry for annotated family", func(t *testing.T) {
+		v4OnlyPortName := "test-per-port-dhcp-v4only"
+		dualCIDR := "10.35.0.0/24,fd00::a:23:0:0/112"
+		dualGateway := "10.35.0.1,fd00::a:23:0:1"
+
+		// Only v4 annotation set; v6 should return empty UUID.
+		uuids, err := nbClient.UpdateDHCPOptionsForPort(lsName, v4OnlyPortName, dualCIDR, dualGateway, "lease_time=7200", "", 1500)
+		require.NoError(t, err)
+		require.NotEmpty(t, uuids.DHCPv4OptionsUUID, "per-port v4 entry must be created when v4 annotation is set")
+		require.Empty(t, uuids.DHCPv6OptionsUUID, "per-port v6 entry must NOT be created when v6 annotation is absent")
+
+		v4Opt, err := nbClient.getDHCPOptionsEntry("", v4OnlyPortName, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.Equal(t, uuids.DHCPv4OptionsUUID, v4Opt.UUID)
+
+		v6Opt, err := nbClient.getDHCPOptionsEntry("", v4OnlyPortName, kubeovnv1.ProtocolIPv6, true)
+		require.NoError(t, err)
+		require.Nil(t, v6Opt, "no per-port v6 DHCP_Options row should exist")
+	})
+
+	t.Run("delete per-port dhcp options", func(t *testing.T) {
+		err := nbClient.DeleteDHCPOptionsForPort(portName)
+		require.NoError(t, err)
+
+		opt, err := nbClient.getDHCPOptionsEntry("", portName, kubeovnv1.ProtocolIPv4, true)
+		require.NoError(t, err)
+		require.Nil(t, opt)
+	})
+
+	t.Run("delete per-port dhcp options is idempotent", func(t *testing.T) {
+		err := nbClient.DeleteDHCPOptionsForPort("nonexistent-port")
+		require.NoError(t, err)
+	})
+
+	t.Run("delete per-port does not affect subnet-level dhcp options", func(t *testing.T) {
+		subnet := mockSubnet("test-per-port-isolation-ls", true)
+		subnet.Spec.CIDRBlock = "10.35.0.0/24"
+		subnet.Spec.Gateway = "10.35.0.1"
+		subnet.Spec.Protocol = kubeovnv1.ProtocolIPv4
+
+		_, err := nbClient.UpdateDHCPOptions(subnet, 1500)
+		require.NoError(t, err)
+
+		// Create per-port entry on the same LS.
+		_, err = nbClient.UpdateDHCPOptionsForPort(subnet.Name, "isolation-port", subnet.Spec.CIDRBlock, subnet.Spec.Gateway, "lease_time=3600", "", 1500)
+		require.NoError(t, err)
+
+		// Delete per-port entry.
+		err = nbClient.DeleteDHCPOptionsForPort("isolation-port")
+		require.NoError(t, err)
+
+		// Subnet-level entry must still exist.
+		opt, err := nbClient.GetDHCPOptions(subnet.Name, kubeovnv1.ProtocolIPv4, false)
+		require.NoError(t, err)
+		require.NotNil(t, opt)
 	})
 }

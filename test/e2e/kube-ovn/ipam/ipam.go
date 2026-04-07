@@ -690,6 +690,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
 		_ = ippoolClient.CreateSync(ippool)
 
+		ginkgo.By("Waiting for namespace " + namespaceName + " to have IPPool annotation")
+		nsClient.WaitUntil(namespaceName, func(ns *corev1.Namespace) (bool, error) {
+			return strings.Contains(ns.Annotations[util.IPPoolAnnotation], ippoolName), nil
+		}, "IPPool annotation contains "+ippoolName, 2*time.Second, 30*time.Second)
+
 		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool")
 		labels := map[string]string{"app": deployName}
 		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
@@ -722,6 +727,12 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ips2 := framework.RandomIPPool(cidr2, ipsCount)
 		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ips2, []string{namespaceName})
 		_ = ippoolClient.CreateSync(ippool2)
+
+		ginkgo.By("Waiting for namespace " + namespaceName + " to have both IPPool annotations")
+		nsClient.WaitUntil(namespaceName, func(ns *corev1.Namespace) (bool, error) {
+			ann := ns.Annotations[util.IPPoolAnnotation]
+			return strings.Contains(ann, ippoolName) && strings.Contains(ann, ippoolName2), nil
+		}, "IPPool annotation contains both "+ippoolName+" and "+ippoolName2, 2*time.Second, 30*time.Second)
 
 		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool " + ippoolName)
 		labels := map[string]string{"app": deployName}

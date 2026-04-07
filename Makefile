@@ -36,12 +36,13 @@ METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:$(METALLB_VERSION)
 
 # renovate: datasource=github-releases depName=kubevirt packageName=kubevirt/kubevirt
-KUBEVIRT_VERSION = v1.7.1
+KUBEVIRT_VERSION = v1.8.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
 KUBEVIRT_HANDLER_IMAGE = quay.io/kubevirt/virt-handler:$(KUBEVIRT_VERSION)
 KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
+KUBEVIRT_CONTAINERDISK_IMAGE = quay.io/kubevirt/cirros-container-disk-demo:$(KUBEVIRT_VERSION)
 KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
@@ -50,7 +51,7 @@ CILIUM_VERSION = v1.18.6
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
-CERT_MANAGER_VERSION = v1.19.4
+CERT_MANAGER_VERSION = v1.20.1
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)

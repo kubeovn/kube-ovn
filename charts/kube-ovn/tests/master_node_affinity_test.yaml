@@ -1,0 +1,96 @@
+suite: Master node affinity
+templates:
+  - central-deploy.yaml
+  - monitor-deploy.yaml
+  - ic-controller-deploy.yaml
+tests:
+  - it: uses Exists operator when MASTER_NODES_LABEL has no value
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "node-role.kubernetes.io/control-plane"
+      func.ENABLE_IC: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions
+          content:
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+
+  - it: uses In operator when MASTER_NODES_LABEL has a value
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "node-role.kubernetes.io/control-plane=true"
+      func.ENABLE_IC: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions
+          content:
+            key: node-role.kubernetes.io/control-plane
+            operator: In
+            values:
+              - "true"
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+
+  - it: uses In operator with custom label
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "kube-ovn/role=master"
+      func.ENABLE_IC: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions
+          content:
+            key: kube-ovn/role
+            operator: In
+            values:
+              - "master"
+
+  - it: uses Exists when MASTER_NODES_LABEL has trailing equals sign
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "node-role.kubernetes.io/control-plane="
+      func.ENABLE_IC: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions
+          content:
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+
+  - it: handles value containing equals sign
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "some-label=val=ue"
+      func.ENABLE_IC: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions
+          content:
+            key: some-label
+            operator: In
+            values:
+              - "val=ue"
+
+  - it: retains only kubernetes.io/os in nodeSelector
+    set:
+      MASTER_NODES: "10.0.0.1"
+      MASTER_NODES_LABEL: "node-role.kubernetes.io/control-plane"
+      func.ENABLE_IC: true
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            kubernetes.io/os: "linux"

@@ -9,6 +9,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -78,7 +80,7 @@ func (c *VMClient) Start(name string) *v1.VirtualMachine {
 func (c *VMClient) StartSync(name string) *v1.VirtualMachine {
 	ginkgo.GinkgoHelper()
 	_ = c.Start(name)
-	ExpectNoError(c.WaitToBeReady(name, 2*time.Minute))
+	ExpectNoError(c.WaitToBeReady(name, 3*time.Minute))
 	return c.Get(name)
 }
 
@@ -174,6 +176,46 @@ func (c *VMClient) WaitToDisappear(name string, _, timeout time.Duration) error 
 		return fmt.Errorf("expected vm %s to not be found: %w", name, err)
 	}
 	return nil
+}
+
+// Patch patches the vm with the given patch data, retrying on transient API errors.
+func (c *VMClient) Patch(name string, patchType types.PatchType, data []byte) *v1.VirtualMachine {
+	ginkgo.GinkgoHelper()
+	var patchedVM *v1.VirtualMachine
+	err := wait.PollUntilContextTimeout(context.Background(), poll, timeout, true, func(ctx context.Context) (bool, error) {
+		vm, err := c.VirtualMachineInterface.Patch(ctx, name, patchType, data, metav1.PatchOptions{})
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch vm %q", name)
+		}
+		patchedVM = vm
+		return true, nil
+	})
+	ExpectNoError(err, "failed to patch vm %s", name)
+	return patchedVM.DeepCopy()
+}
+
+// MakeVMWithMultusNetwork creates a VM with an additional multus secondary network using bridge binding.
+func MakeVMWithMultusNetwork(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy, multusNetworkName string) *v1.VirtualMachine {
+	vm := MakeVM(name, image, size, runStrategy)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = append(
+		vm.Spec.Template.Spec.Domain.Devices.Interfaces,
+		v1.Interface{
+			Name:                   "multus-net",
+			InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
+		},
+	)
+	vm.Spec.Template.Spec.Networks = append(
+		vm.Spec.Template.Spec.Networks,
+		v1.Network{
+			Name: "multus-net",
+			NetworkSource: v1.NetworkSource{
+				Multus: &v1.MultusNetwork{
+					NetworkName: multusNetworkName,
+				},
+			},
+		},
+	)
+	return vm
 }
 
 func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {

@@ -6,6 +6,7 @@ import (
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 type VlanList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -16,6 +17,11 @@ type VlanList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
+// +kubebuilder:resource:scope="Cluster",shortName="vlan",path="vlans"
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="ID",type="string",JSONPath=".spec.id"
+// +kubebuilder:printcolumn:name="Provider",type="string",JSONPath=".spec.provider"
+// +kubebuilder:printcolumn:name="conflict",type="boolean",JSONPath=".status.conflict"
 type Vlan struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -26,23 +32,32 @@ type Vlan struct {
 
 type VlanSpec struct {
 	// deprecated fields, use ID & Provider instead
-	VlanID                int    `json:"vlanId,omitempty"`
+	VlanID int `json:"vlanId,omitempty"`
+	// Deprecated: in favor of provider
+	// +kubebuilder:validation:Optional
 	ProviderInterfaceName string `json:"providerInterfaceName,omitempty"`
 
-	ID       int    `json:"id"`
+	// VLAN ID (0-4095). This field is immutable after creation.
+	ID int `json:"id"`
+	// Provider network name. This field is immutable after creation.
+	// +kubebuilder:validation:Required
 	Provider string `json:"provider,omitempty"`
 }
 
 type VlanStatus struct {
+	// List of subnet names using this VLAN
 	// +optional
 	// +patchStrategy=merge
 	Subnets []string `json:"subnets,omitempty"`
 
+	// Whether there is a conflict with this VLAN
 	Conflict bool `json:"conflict,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
-	Conditions []Condition `json:"conditions,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // SetVlanError - shortcut to set error condition

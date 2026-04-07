@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"net"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
 
 // #nosec G101
@@ -214,16 +214,15 @@ func CheckProtocol(address string) string {
 	return ""
 }
 
-func AddressCount(network *net.IPNet) float64 {
+func AddressCountBigInt(network *net.IPNet) internal.BigInt {
 	prefixLen, bits := network.Mask.Size()
-	// Special case handling for /31 and /32 subnets
-	switch bits - prefixLen {
-	case 1:
-		return 2 // /31 subnet
-	case 0:
-		return 1 // /32 subnet
+	zeros := uint(bits - prefixLen) // #nosec G115
+	count := big.NewInt(0).Lsh(big.NewInt(1), zeros)
+	// Special case handling for /31 and /32 subnets.
+	if bits-prefixLen >= 2 {
+		count.Sub(count, big.NewInt(2))
 	}
-	return math.Pow(2, float64(bits-prefixLen)) - 2
+	return internal.BigInt{Int: *count}
 }
 
 func GenerateRandomIP(cidr string) string {
@@ -479,21 +478,21 @@ func ContainsIPs(excludeIP, ip string) bool {
 	return false
 }
 
-func CountIPNums(excludeIPs []string) float64 {
-	var count float64
+func CountIPNumsBigInt(excludeIPs []string) internal.BigInt {
+	count := big.NewInt(0)
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
-			var val big.Int
 			parts := strings.Split(excludeIP, "..")
 			s := IP2BigInt(parts[0])
 			e := IP2BigInt(parts[1])
-			v, _ := new(big.Float).SetInt(val.Add(val.Sub(e, s), big.NewInt(1))).Float64()
-			count += v
+			rangeCount := big.NewInt(0).Sub(e, s)
+			rangeCount.Add(rangeCount, big.NewInt(1))
+			count.Add(count, rangeCount)
 		} else {
-			count++
+			count.Add(count, big.NewInt(1))
 		}
 	}
-	return count
+	return internal.BigInt{Int: *count}
 }
 
 func GatewayContains(gatewayNodeStr, gateway string) bool {

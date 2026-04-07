@@ -172,9 +172,9 @@ while :; do
   if [ $(kubectl get pod -n kube-system -l component=network -o name | wc -l) -eq 0 ]; then
     break
   fi
-  for pod in `kubectl -n kube-system get pod -l component=network -o name`; do
+  for pod in $(kubectl -n kube-system get pod -l component=network -o name 2>/dev/null); do
     echo "$pod logs:"
-    kubectl -n kube-system logs $pod --timestamps --tail 50
+    kubectl -n kube-system logs "$pod" --timestamps --tail 50 2>/dev/null || true
   done
 done
 

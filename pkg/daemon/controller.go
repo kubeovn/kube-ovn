@@ -17,6 +17,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -361,6 +362,15 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
+	// Skip initialization if the provider network is being deleted.
+	// Without this check, a requeue from a previous error could trigger re-init
+	// during deletion, adding the NIC as a port to a dying bridge. This creates
+	// stale OVS netdev cache entries that block exchange-link-name bridge creation.
+	if !pn.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("provider network %s is being deleted, skip init", key)
+		return nil
+	}
+
 	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
 	if err != nil {
 		klog.Error(err)
@@ -374,14 +384,17 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 }
 
-func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
-	nic := pn.Spec.DefaultInterface
+func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
 	for _, item := range pn.Spec.CustomInterfaces {
-		if slices.Contains(item.Nodes, node.Name) {
-			nic = item.Interface
-			break
+		if slices.Contains(item.Nodes, nodeName) {
+			return item.Interface
 		}
 	}
+	return pn.Spec.DefaultInterface
+}
+
+func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
+	nic := providerNetworkNic(pn, node.Name)
 
 	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
@@ -522,17 +535,22 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
 		fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
 		fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   "true",
+		fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
 	}
 	if err := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
 
-	return c.ovsCleanProviderNetwork(pn.Name)
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name)); err != nil {
+		return err
+	}
+
+	return c.cleanupAutoCreatedVlanInterfaces(pn.Name, "", nil)
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
-	if err := c.ovsCleanProviderNetwork(pn.Name); err != nil {
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName)); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -592,7 +610,19 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	c.subnetQueue.Add(&subnetEvent{oldObj: obj})
+	switch t := obj.(type) {
+	case *kubeovnv1.Subnet:
+		c.subnetQueue.Add(&subnetEvent{oldObj: t})
+	case cache.DeletedFinalStateUnknown:
+		subnet, ok := t.Obj.(*kubeovnv1.Subnet)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+		c.subnetQueue.Add(&subnetEvent{oldObj: subnet})
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+	}
 }
 
 func (c *Controller) runSubnetWorker() {
@@ -609,7 +639,19 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
+	switch t := obj.(type) {
+	case *v1.Service:
+		c.serviceQueue.Add(&serviceEvent{oldObj: t})
+	case cache.DeletedFinalStateUnknown:
+		svc, ok := t.Obj.(*v1.Service)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+		c.serviceQueue.Add(&serviceEvent{oldObj: svc})
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+	}
 }
 
 func (c *Controller) runAddOrUpdateServiceWorker() {
@@ -726,6 +768,64 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 	return true
 }
 
+// isVMLauncherPodAlive checks whether any KubeVirt launcher pod exists for the given VMI name.
+// It tries multiple lookup strategies to handle different KubeVirt versions:
+//  1. VirtualMachineInstanceIDLabel (vmi.kubevirt.io/id) — unique, available in KubeVirt >= 1.7
+//  2. DeprecatedVirtualMachineNameLabel (vm.kubevirt.io/name) — may not be unique when VM hostname is set
+//  3. DomainAnnotation (kubevirt.io/domain) — always the real VMI name, handles names > 63 chars
+func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string) bool {
+	// Try the new unique label first (KubeVirt >= 1.7)
+	selector := labels.SelectorFromSet(map[string]string{kubevirtv1.VirtualMachineInstanceIDLabel: vmiName})
+	launcherPods, err := c.podsLister.Pods(namespace).List(selector)
+	if err != nil {
+		klog.Errorf("failed to list launcher pods by %s for vmi %s/%s: %v",
+			kubevirtv1.VirtualMachineInstanceIDLabel, namespace, vmiName, err)
+		return false
+	}
+	if len(launcherPods) > 0 {
+		klog.V(5).Infof("found %d launcher pod(s) by %s for vmi %s/%s, keeping ovs interface %s",
+			len(launcherPods), kubevirtv1.VirtualMachineInstanceIDLabel, namespace, vmiName, iface)
+		return true
+	}
+
+	// Fall back to the deprecated label for older KubeVirt versions
+	selector = labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: vmiName})
+	launcherPods, err = c.podsLister.Pods(namespace).List(selector)
+	if err != nil {
+		klog.Errorf("failed to list launcher pods by %s for vmi %s/%s: %v",
+			kubevirtv1.DeprecatedVirtualMachineNameLabel, namespace, vmiName, err)
+		return false
+	}
+	if len(launcherPods) > 0 {
+		klog.V(5).Infof("found %d launcher pod(s) by %s for vmi %s/%s, keeping ovs interface %s",
+			len(launcherPods), kubevirtv1.DeprecatedVirtualMachineNameLabel, namespace, vmiName, iface)
+		return true
+	}
+
+	// Final fallback: for VMI names > 63 chars where VirtualMachineInstanceIDLabel is hashed,
+	// match by kubevirt.io/domain annotation which always contains the real VMI name.
+	// Use the deprecated label as a selector to narrow down to virt-launcher pods only,
+	// then match the annotation for the exact VMI name.
+	selector = labels.Everything()
+	if req, err := labels.NewRequirement(kubevirtv1.DeprecatedVirtualMachineNameLabel, selection.Exists, nil); err == nil {
+		selector = selector.Add(*req)
+	}
+	candidates, err := c.podsLister.Pods(namespace).List(selector)
+	if err != nil {
+		klog.Errorf("failed to list virt-launcher pods in namespace %s for vmi annotation lookup: %v", namespace, err)
+		return false
+	}
+	for _, p := range candidates {
+		if p.Annotations[kubevirtv1.DomainAnnotation] == vmiName {
+			klog.V(5).Infof("found launcher pod %s by %s annotation for vmi %s/%s, keeping ovs interface %s",
+				p.Name, kubevirtv1.DomainAnnotation, namespace, vmiName, iface)
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c *Controller) gcInterfaces() {
 	interfacePodMap, err := ovs.ListInterfacePodMap()
 	if err != nil {
@@ -755,20 +855,9 @@ func (c *Controller) gcInterfaces() {
 			}
 
 			// Pod not found by name. Check if this might be a KubeVirt VM.
-			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VM name (not the launcher pod name).
-			// The actual launcher pod has the label 'vm.kubevirt.io/name' with the VM name as value.
-			// Try to find launcher pods by this label.
-			selector := labels.SelectorFromSet(map[string]string{kubevirtv1.DeprecatedVirtualMachineNameLabel: podName})
-			launcherPods, err := c.podsLister.Pods(podNamespace).List(selector)
-			if err != nil {
-				klog.Errorf("failed to list launcher pods for vm %s/%s: %v", podNamespace, podName, err)
-				continue
-			}
-
-			// If we found launcher pod(s) for this VM, keep the interface
-			if len(launcherPods) > 0 {
-				klog.V(5).Infof("found %d launcher pod(s) for vm %s/%s, keeping ovs interface %s",
-					len(launcherPods), podNamespace, podName, iface)
+			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VMI name (not the launcher pod name).
+			// Try to find launcher pods using KubeVirt labels/annotations.
+			if c.isVMLauncherPodAlive(podNamespace, podName, iface) {
 				continue
 			}
 

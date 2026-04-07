@@ -1,16 +1,19 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -171,6 +174,160 @@ func TestCheckIsPodVpcNatGw(t *testing.T) {
 		assert.False(t, isVpcNatGw, "Pod with no annotations should not be VPC NAT gateway")
 		assert.Equal(t, "", vpcGwName, "Pod with no annotations should return empty")
 	})
+}
+
+func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
+	const (
+		gwName    = "test-nat-gw"
+		subnet    = "nat-subnet"
+		provider  = "net1.default.ovn"
+		lanIP     = "10.244.0.10"
+		namespace = "default"
+	)
+
+	tests := []struct {
+		name                   string
+		gwSpecLanIP            string
+		subnetProtocol         string
+		givenGwName            string
+		podOwnerName           string
+		podNamespace           string
+		controllerPodNamespace string
+		podAnnotation          map[string]string
+		expectedLanIP          string
+	}{
+		{
+			name:                   "backfill lanIP from pod annotation",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: lanIP,
+		},
+		{
+			name:                   "derive gateway name from owner reference",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
+			givenGwName:            "",
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: lanIP,
+		},
+		{
+			name:                   "skip when spec lanIP already set",
+			gwSpecLanIP:            "10.244.0.99",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: "10.244.0.99",
+		},
+		{
+			name:                   "skip when pod namespace is different from controller namespace",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           "other-ns",
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
+			},
+			expectedLanIP: "",
+		},
+		{
+			name:                   "skip when lanIP annotation is invalid",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv4,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): "not-an-ip",
+			},
+			expectedLanIP: "",
+		},
+		{
+			name:                   "prefer IPv6 address for IPv6 subnet",
+			gwSpecLanIP:            "",
+			subnetProtocol:         kubeovnv1.ProtocolIPv6,
+			givenGwName:            gwName,
+			podOwnerName:           util.GenNatGwName(gwName),
+			podNamespace:           namespace,
+			controllerPodNamespace: namespace,
+			podAnnotation: map[string]string{
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): "10.244.0.10,fd00:10:16::10",
+			},
+			expectedLanIP: "fd00:10:16::10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &kubeovnv1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: gwName,
+				},
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Vpc:    "vpc-a",
+					Subnet: subnet,
+					LanIP:  tt.gwSpecLanIP,
+				},
+			}
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        util.GenNatGwPodName(gwName),
+					Namespace:   tt.podNamespace,
+					Annotations: tt.podAnnotation,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: appsv1.SchemeGroupVersion.String(),
+							Kind:       util.KindStatefulSet,
+							Name:       tt.podOwnerName,
+						},
+					},
+				},
+			}
+
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: []*kubeovnv1.Subnet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: subnet},
+						Spec: kubeovnv1.SubnetSpec{
+							Provider: provider,
+							Protocol: tt.subnetProtocol,
+						},
+					},
+				},
+				VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+			})
+			require.NoError(t, err)
+
+			controller := fakeController.fakeController
+			controller.config.PodNamespace = tt.controllerPodNamespace
+			err = controller.backfillVpcNatGwLanIPFromPod(pod, tt.givenGwName)
+			require.NoError(t, err)
+
+			gotGw, err := controller.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(
+				context.Background(), gwName, metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedLanIP, gotGw.Spec.LanIP)
+		})
+	}
 }
 
 func TestGetPodKubeovnNetsNonPrimaryCNI(t *testing.T) {
@@ -372,7 +529,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -381,7 +538,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 			},
 			expectError:    false,
@@ -418,7 +575,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -427,7 +584,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 			},
 			setupIPAM: func(c *Controller) {
@@ -465,7 +622,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
@@ -474,7 +631,7 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 						Protocol:  kubeovnv1.ProtocolIPv4,
 						Provider:  util.OvnProvider,
 					},
-					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: 100},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(100)},
 				},
 			},
 			expectError:    false,
@@ -514,6 +671,89 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 	}
 }
 
+func TestAcquireStaticAddressHelperPerInterfaceIPAMKey(t *testing.T) {
+	// This test verifies that when acquireStaticAddressHelper allocates a static IP
+	// for a per-interface NAD (with NadName, NadNamespace, and InterfaceName all set),
+	// the IP is registered in IPAM under the original pod key ("namespace/podName"),
+	// NOT under the annotation key ("nadName.nadNs.kubernetes.io/ip_address.ifaceName").
+	//
+	// If the IPAM key is wrong, ReleaseAddressByNic (called on pod deletion with the pod key)
+	// will fail to find and release the IP, causing an IP leak.
+
+	subnetName := "test-subnet"
+	testSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock:  "10.0.0.0/24",
+			Protocol:   kubeovnv1.ProtocolIPv4,
+			ExcludeIps: []string{"10.0.0.1"},
+		},
+	}
+
+	nadName := "my-nad"
+	nadNamespace := "default"
+	ifaceName := "net1"
+	staticIP := "10.0.0.10"
+	annotationKey := perInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationKey: staticIP,
+			},
+		},
+	}
+
+	podNet := &kubeovnNet{
+		Subnet:        testSubnet,
+		ProviderName:  nadName + "." + nadNamespace + ".ovn",
+		NadName:       nadName,
+		NadNamespace:  nadNamespace,
+		InterfaceName: ifaceName,
+	}
+
+	nsNets := []*kubeovnNet{podNet}
+	podKey := "default/test-pod"
+	portName := podKey
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{testSubnet},
+		Pods:    []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{testSubnet})
+
+	// Allocate static IP via the per-interface path
+	v4IP, _, _, subnet, err := ctrl.acquireStaticAddressHelper(pod, podNet, portName, nil, "", nsNets, false, podKey)
+	require.NoError(t, err)
+	assert.Equal(t, staticIP, v4IP)
+	assert.Equal(t, subnetName, subnet.Name)
+
+	// Verify: IPAM should have the IP registered under the pod key, not the annotation key
+	ipamSubnet := ctrl.ipam.Subnets[subnetName]
+	require.NotNil(t, ipamSubnet)
+
+	// PodToNicList should have an entry for podKey
+	assert.NotEmpty(t, ipamSubnet.PodToNicList[podKey],
+		"IPAM should register the IP under pod key %q, but PodToNicList has no entry for it", podKey)
+
+	// PodToNicList should NOT have an entry for the annotation key
+	assert.Empty(t, ipamSubnet.PodToNicList[annotationKey],
+		"IPAM should NOT register the IP under annotation key %q, but PodToNicList has an entry for it (variable shadowing bug)", annotationKey)
+
+	// Verify that ReleaseAddressByNic with pod key actually releases the IP
+	ctrl.ipam.ReleaseAddressByNic(podKey, portName, subnetName)
+
+	// After release, the IP should no longer be tracked
+	assert.Empty(t, ipamSubnet.PodToNicList[podKey],
+		"After ReleaseAddressByNic with pod key, PodToNicList should be empty for %q", podKey)
+	assert.Empty(t, ipamSubnet.V4IPToPod[staticIP],
+		"After ReleaseAddressByNic, V4IPToPod should not map %q to any pod", staticIP)
+}
+
 func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
 	ipamInstance := ipam.NewIPAM()
 	for _, subnet := range subnets {
@@ -528,4 +768,75 @@ func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
 		ipamInstance.Subnets[subnet.Name] = s
 	}
 	return ipamInstance
+}
+
+func TestGetNamedPortByNsReturnsCopy(t *testing.T) {
+	np := NewNamedPort()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+			Name:      "test-pod",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Ports: []corev1.ContainerPort{
+						{Name: "http", ContainerPort: 80},
+					},
+				},
+			},
+		},
+	}
+
+	np.AddNamedPortByPod(pod)
+
+	result := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result)
+	assert.Contains(t, result, "http")
+
+	// Mutating the returned map should not affect internal state
+	delete(result, "http")
+
+	result2 := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result2)
+	assert.Contains(t, result2, "http", "internal map should not be affected by mutation of returned copy")
+}
+
+func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
+	restartAlways := corev1.ContainerRestartPolicyAlways
+	np := NewNamedPort()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+			Name:      "test-pod",
+		},
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{
+					Name:          "sidecar",
+					RestartPolicy: &restartAlways,
+					Ports: []corev1.ContainerPort{
+						{Name: "metrics", ContainerPort: 9090},
+					},
+				},
+			},
+			Containers: []corev1.Container{
+				{
+					Ports: []corev1.ContainerPort{
+						{Name: "http", ContainerPort: 80},
+					},
+				},
+			},
+		},
+	}
+
+	np.AddNamedPortByPod(pod)
+	result := np.GetNamedPortByNs("test-ns")
+	require.NotNil(t, result)
+	assert.Contains(t, result, "http")
+	assert.Contains(t, result, "metrics")
+
+	np.DeleteNamedPortByPod(pod)
+	result = np.GetNamedPortByNs("test-ns")
+	assert.Empty(t, result, "both regular and sidecar init container named ports should be deleted")
 }

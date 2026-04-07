@@ -1,7 +1,6 @@
 package ipam
 
 import (
-	"math/big"
 	"net"
 	"reflect"
 	"testing"
@@ -71,13 +70,13 @@ func TestIPRangeCount(t *testing.T) {
 			name:  "IPv4 range",
 			start: IP(net.ParseIP("192.168.1.1")),
 			end:   IP(net.ParseIP("192.168.1.10")),
-			want:  internal.BigInt{Int: *big.NewInt(10)},
+			want:  internal.NewBigInt(10),
 		},
 		{
 			name:  "IPv6 range",
 			start: IP(net.ParseIP("2001:db8::1")),
 			end:   IP(net.ParseIP("2001:db8::10")),
-			want:  internal.BigInt{Int: *big.NewInt(16)},
+			want:  internal.NewBigInt(16),
 		},
 	}
 

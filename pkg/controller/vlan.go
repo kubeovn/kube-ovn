@@ -22,10 +22,29 @@ func (c *Controller) enqueueAddVlan(obj any) {
 	c.addVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVlan(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*kubeovnv1.Vlan)).String()
+func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
+	oldVlan := oldObj.(*kubeovnv1.Vlan)
+	newVlan := newObj.(*kubeovnv1.Vlan)
+	key := cache.MetaObjectToName(newVlan).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
 	c.updateVlanQueue.Add(key)
+
+	if oldVlan.Spec.Provider == newVlan.Spec.Provider {
+		return
+	}
+
+	klog.Infof("vlan %s provider changed from %s to %s, enqueue related subnets", newVlan.Name, oldVlan.Spec.Provider, newVlan.Spec.Provider)
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets when vlan %s provider changed: %v", newVlan.Name, err)
+		return
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == newVlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
@@ -103,6 +122,12 @@ func (c *Controller) handleAddVlan(key string) error {
 
 	if err = c.checkVlanConflict(vlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
+		// re-enqueue subnets so they can see the conflict status and reject
+		for _, subnet := range subnets {
+			if subnet.Spec.Vlan == vlan.Name {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
+		}
 		return err
 	}
 
@@ -117,7 +142,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	// re-enqueue subnets that reference this vlan, so they can proceed
-	// if they were previously blocked by the vlan not being ready
+	// now that the vlan is fully processed
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
@@ -187,11 +212,31 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 		return err
 	}
+
+	// ensure the vlan is registered in the provider network's Status.Vlans,
+	// which is used by validateSubnetVlan as a "vlan ready" signal.
+	// This is especially important after a provider change, where the vlan
+	// needs to appear in the new provider network's Vlans list.
+	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+	if err != nil {
+		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
+		return err
+	}
+	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
+		newPn := pn.DeepCopy()
+		newPn.Status.Vlans = append(newPn.Status.Vlans, vlan.Name)
+		if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+			return err
+		}
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
+
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {

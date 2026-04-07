@@ -204,47 +204,63 @@ func (c *Controller) handleUpdateNp(key string) error {
 				ingressExceptAsName := fmt.Sprintf("%s.%s.%d", ingressExceptAsNamePrefix, protocol, idx)
 				aclName := fmt.Sprintf("np/%s.%s/ingress/%s/%d", npName, np.Namespace, protocol, idx)
 
-				var allows, excepts []string
+				// Separate ipBlock peers from selector peers to avoid ipBlock.except
+				// leaking into selector addresses. Per K8s NetworkPolicy spec, peers
+				// within a rule are OR'd, so each type needs its own ACL.
+				var selectorAllows []string
+				var ipBlocks []netv1.IPBlock
 				if len(npr.From) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
-						allows = []string{"0.0.0.0/0"}
+						selectorAllows = []string{"0.0.0.0/0"}
 					} else {
-						allows = []string{"::/0"}
+						selectorAllows = []string{"::/0"}
 					}
 				} else {
-					var allow, except []string
 					for _, npp := range npr.From {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers); err != nil {
-							klog.Errorf("failed to fetch policy selected addresses, %v", err)
-							return err
+						if npp.IPBlock != nil {
+							ipBlocks = append(ipBlocks, *npp.IPBlock)
 						}
-						allows = append(allows, allow...)
-						excepts = append(excepts, except...)
+						if npp.PodSelector != nil || npp.NamespaceSelector != nil {
+							allow, _, err := c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers)
+							if err != nil {
+								klog.Errorf("failed to fetch policy selected addresses, %v", err)
+								return err
+							}
+							selectorAllows = append(selectorAllows, allow...)
+						}
 					}
 				}
-				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v, protocol %v", allows, excepts, logEnable, protocol)
+				klog.Infof("UpdateNp Ingress %s, selectorAllows is %v, ipBlocks count %d, log %v", aclName, selectorAllows, len(ipBlocks), logEnable)
 
-				if err = c.createAsForNetpol(np.Namespace, npName, "ingress", ingressAllowAsName, allows); err != nil {
+				// Create ACL for selector peers (pod/namespace selectors) using address sets
+				if err = c.createAsForNetpol(np.Namespace, npName, "ingress", ingressAllowAsName, selectorAllows); err != nil {
 					klog.Error(err)
 					return err
 				}
-				if err = c.createAsForNetpol(np.Namespace, npName, "ingress", ingressExceptAsName, excepts); err != nil {
+				if err = c.createAsForNetpol(np.Namespace, npName, "ingress", ingressExceptAsName, nil); err != nil {
 					klog.Error(err)
 					return err
 				}
 
-				npp := []netv1.NetworkPolicyPort{}
-				if len(allows) != 0 || len(excepts) != 0 {
-					npp = npr.Ports
+				if len(selectorAllows) != 0 {
+					ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					if err != nil {
+						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
+						return err
+					}
+					ingressACLOps = append(ingressACLOps, ops...)
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npp, logEnable, logActions, logRate, namedPortMap)
-				if err != nil {
-					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
-					return err
+				// Create separate ACL for ipBlock peers with inline per-CIDR except
+				if len(ipBlocks) != 0 {
+					ipBlockACLName := fmt.Sprintf("np/%s.%s/ingress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
+					ops, err := c.OVNNbClient.UpdateIngressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					if err != nil {
+						klog.Errorf("generate operations that add ingress ipBlock acls to np %s: %v", key, err)
+						return err
+					}
+					ingressACLOps = append(ingressACLOps, ops...)
 				}
-
-				ingressACLOps = append(ingressACLOps, ops...)
 			}
 			if len(np.Spec.Ingress) == 0 {
 				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
@@ -274,7 +290,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, true); err != nil {
+		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, true); err != nil {
 			// just log and do not return err here
 			klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 		}
@@ -351,47 +367,63 @@ func (c *Controller) handleUpdateNp(key string) error {
 				egressExceptAsName := fmt.Sprintf("%s.%s.%d", egressExceptAsNamePrefix, protocol, idx)
 				aclName := fmt.Sprintf("np/%s.%s/egress/%s/%d", npName, np.Namespace, protocol, idx)
 
-				var allows, excepts []string
+				// Separate ipBlock peers from selector peers to avoid ipBlock.except
+				// leaking into selector addresses. Per K8s NetworkPolicy spec, peers
+				// within a rule are OR'd, so each type needs its own ACL.
+				var selectorAllows []string
+				var ipBlocks []netv1.IPBlock
 				if len(npr.To) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
-						allows = []string{"0.0.0.0/0"}
+						selectorAllows = []string{"0.0.0.0/0"}
 					} else {
-						allows = []string{"::/0"}
+						selectorAllows = []string{"::/0"}
 					}
 				} else {
-					var allow, except []string
 					for _, npp := range npr.To {
-						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers); err != nil {
-							klog.Errorf("failed to fetch policy selected addresses, %v", err)
-							return err
+						if npp.IPBlock != nil {
+							ipBlocks = append(ipBlocks, *npp.IPBlock)
 						}
-						allows = append(allows, allow...)
-						excepts = append(excepts, except...)
+						if npp.PodSelector != nil || npp.NamespaceSelector != nil {
+							allow, _, err := c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp, providers)
+							if err != nil {
+								klog.Errorf("failed to fetch policy selected addresses, %v", err)
+								return err
+							}
+							selectorAllows = append(selectorAllows, allow...)
+						}
 					}
 				}
-				klog.Infof("UpdateNp Egress %s, allows is %v, excepts is %v, log %v", aclName, allows, excepts, logEnable)
+				klog.Infof("UpdateNp Egress %s, selectorAllows is %v, ipBlocks count %d, log %v", aclName, selectorAllows, len(ipBlocks), logEnable)
 
-				if err = c.createAsForNetpol(np.Namespace, npName, "egress", egressAllowAsName, allows); err != nil {
+				// Create ACL for selector peers (pod/namespace selectors) using address sets
+				if err = c.createAsForNetpol(np.Namespace, npName, "egress", egressAllowAsName, selectorAllows); err != nil {
 					klog.Error(err)
 					return err
 				}
-				if err = c.createAsForNetpol(np.Namespace, npName, "egress", egressExceptAsName, excepts); err != nil {
+				if err = c.createAsForNetpol(np.Namespace, npName, "egress", egressExceptAsName, nil); err != nil {
 					klog.Error(err)
 					return err
 				}
 
-				npp := []netv1.NetworkPolicyPort{}
-				if len(allows) != 0 || len(excepts) != 0 {
-					npp = npr.Ports
+				if len(selectorAllows) != 0 {
+					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					if err != nil {
+						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
+						return err
+					}
+					egressACLOps = append(egressACLOps, ops...)
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npp, logEnable, logActions, logRate, namedPortMap)
-				if err != nil {
-					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
-					return err
+				// Create separate ACL for ipBlock peers with inline per-CIDR except
+				if len(ipBlocks) != 0 {
+					ipBlockACLName := fmt.Sprintf("np/%s.%s/egress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
+					ops, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					if err != nil {
+						klog.Errorf("generate operations that add egress ipBlock acls to np %s: %v", key, err)
+						return err
+					}
+					egressACLOps = append(egressACLOps, ops...)
 				}
-
-				egressACLOps = append(egressACLOps, ops...)
 			}
 			if len(np.Spec.Egress) == 0 {
 				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
@@ -421,7 +453,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetACLLog(pgName, logEnable, false); err != nil {
+		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, false); err != nil {
 			// just log and do not return err here
 			klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 		}
@@ -507,13 +539,6 @@ func (c *Controller) handleDeleteNp(key string) error {
 
 	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
-	}
-
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
-		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "service"),
-	}); err != nil {
-		klog.Errorf("delete np %s service address set: %v", key, err)
-		return err
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
@@ -687,12 +712,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to list pod, %w", err)
 		}
-		svcs, err := c.servicesLister.Services(ns).List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list svc, %v", err)
-			return nil, nil, fmt.Errorf("failed to list svc, %w", err)
-		}
-
 		for _, pod := range pods {
 			podNets, err := c.getPodKubeovnNets(pod)
 			if err != nil {
@@ -714,18 +733,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 						selectedAddresses = append(selectedAddresses, podIP)
 					}
 				}
-				if len(svcs) == 0 {
-					continue
-				}
-				if !shouldIncludeServiceIPs(podNet) {
-					continue
-				}
-
-				svcIPs, err := svcMatchPods(svcs, pod, protocol)
-				if err != nil {
-					return nil, nil, err
-				}
-				selectedAddresses = append(selectedAddresses, svcIPs...)
 			}
 			if providers != nil && !matchedProvider {
 				klog.V(4).Infof("skip pod %s/%s: no network attachment matches network_policy_for", pod.Namespace, pod.Name)
@@ -733,39 +740,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		}
 	}
 	return selectedAddresses, exceptAddresses, nil
-}
-
-func shouldIncludeServiceIPs(podNet *kubeovnNet) bool {
-	return podNet != nil && podNet.Subnet != nil && podNet.Subnet.Spec.Vpc == util.DefaultVpc
-}
-
-func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]string, error) {
-	matchSvcs := []string{}
-	// find svc ip by pod's info
-	for _, svc := range svcs {
-		if isSvcMatchPod(svc, pod) {
-			clusterIPs := util.ServiceClusterIPs(*svc)
-			protocolClusterIPs := getProtocolSvcIP(clusterIPs, protocol)
-			if len(protocolClusterIPs) != 0 {
-				matchSvcs = append(matchSvcs, protocolClusterIPs...)
-			}
-		}
-	}
-	return matchSvcs, nil
-}
-
-func getProtocolSvcIP(clusterIPs []string, protocol string) []string {
-	protocolClusterIPs := []string{}
-	for _, clusterIP := range clusterIPs {
-		if clusterIP != "" && clusterIP != corev1.ClusterIPNone && util.CheckProtocol(clusterIP) == protocol {
-			protocolClusterIPs = append(protocolClusterIPs, clusterIP)
-		}
-	}
-	return protocolClusterIPs
-}
-
-func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) bool {
-	return labels.Set(svc.Spec.Selector).AsSelector().Matches(labels.Set(pod.Labels))
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
@@ -790,44 +764,6 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 		}
 	}
 	return match
-}
-
-func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, error) {
-	// find all match pod
-	sel := labels.Set(svc.Spec.Selector).AsSelector()
-	pods, err := c.podsLister.Pods(svc.Namespace).List(sel)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods, %w", err)
-	}
-
-	// find all match netpol
-	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		return nil, fmt.Errorf("failed to list netpols, %w", err)
-	}
-	match := set.New[string]()
-	ns, err := c.namespacesLister.Get(svc.Namespace)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.V(3).Infof("namespace %s not found when matching network policies for service %s/%s", svc.Namespace, svc.Namespace, svc.Name)
-			return match.UnsortedList(), nil
-		}
-		return nil, fmt.Errorf("failed to get namespace %s: %w", svc.Namespace, err)
-	}
-
-	for _, pod := range pods {
-		for _, np := range nps {
-			key := cache.MetaObjectToName(np).String()
-			if match.Has(key) {
-				continue
-			}
-			if isPodMatchNetworkPolicy(pod, ns, np, np.Namespace) {
-				match.Insert(key)
-				klog.V(3).Infof("svc %s/%s match np %s", svc.Namespace, svc.Name, key)
-			}
-		}
-	}
-	return match.UnsortedList(), nil
 }
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {

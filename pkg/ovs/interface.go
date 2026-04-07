@@ -105,6 +105,8 @@ type LogicalSwitchPort interface {
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
+	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
+	ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, bool, error)
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
 	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
@@ -128,7 +130,7 @@ type LogicalSwitchPort interface {
 }
 
 type LoadBalancer interface {
-	CreateLoadBalancer(lbName, protocol, selectFields string) error
+	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -171,13 +173,15 @@ type ACL interface {
 	UpdateDefaultBlockExceptionsACLOps(npName, pgName, npNamespace, direction string) ([]ovsdb.Operation, error)
 	UpdateIngressACLOps(pgName, asIngressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	UpdateEgressACLOps(pgName, asEgressName, asExceptName, protocol, aclName string, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateIngressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayACL(lsName, pgName string) error
 	CreateNodeACL(pgName, nodeIPStr, joinIPStr string) error
 	CreateSgDenyAllACL(sgName string) error
 	CreateSgBaseACL(sgName, direction string) error
 	UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction string) error
 	UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error
-	SetACLLog(pgName string, logEnable, isIngress bool) error
+	SetNetPolACLLog(pgName string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
@@ -239,7 +243,9 @@ type NAT interface {
 
 type DHCPOptions interface {
 	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName, protocol string) error
+	DeleteDHCPOptionsForPort(portName string) error
 	DeleteDHCPOptionsByUUIDs(uuidList ...string) error
 	ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error)
 }

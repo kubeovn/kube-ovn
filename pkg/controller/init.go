@@ -257,15 +257,18 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	protocol = strings.ToLower(protocol)
 
 	var (
-		selectFields string
+		selectFields []string
 		err          error
 	)
 
 	if sessionAffinity {
-		selectFields = ovnnb.LoadBalancerSelectionFieldsIPSrc
+		selectFields = []string{
+			ovnnb.LoadBalancerSelectionFieldsIPSrc,
+			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+		}
 	}
 
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
@@ -534,7 +537,13 @@ func (c *Controller) InitIPAM() error {
 				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IPAddressAnnotation], err)
 			}
 			if v4IP != "" && v6IP != "" {
-				node.Annotations[util.IPAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
+				ipStr := util.GetStringIP(v4IP, v6IP)
+				if ipStr != node.Annotations[util.IPAddressAnnotation] {
+					patch := util.KVPatch{util.IPAddressAnnotation: ipStr}
+					if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+						klog.Errorf("failed to patch node %s IP annotation: %v", node.Name, err)
+					}
+				}
 			}
 		}
 	}
@@ -805,8 +814,11 @@ func (c *Controller) syncVlanCR() error {
 			newVlan.Spec.VlanID = 0
 			needUpdate = true
 		}
+		//nolint:staticcheck // Ignore SA1019 for backward compatibility of deprecated field ProviderInterfaceName
 		if newVlan.Spec.ProviderInterfaceName != "" && newVlan.Spec.Provider == "" {
+			//nolint:staticcheck // Ignore SA1019
 			newVlan.Spec.Provider = newVlan.Spec.ProviderInterfaceName
+			//nolint:staticcheck // Ignore SA1019
 			newVlan.Spec.ProviderInterfaceName = ""
 			needUpdate = true
 		}

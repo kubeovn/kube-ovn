@@ -1,5 +1,9 @@
 name: Build x86 Image
 
+permissions:
+  contents: read
+  packages: read
+
 on:
   pull_request:
     branches:
@@ -24,13 +28,13 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.10.1
+  GOLANGCI_LINT_VERSION: v2.11.4
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.1.1
+  HELM_VERSION: v4.1.3
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.22.1
+  SUBMARINER_VERSION: 0.23.1
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.12.4
+  TALOS_VERSION: v1.12.6
 
 jobs:
   build-kube-ovn-base:
@@ -304,6 +308,7 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+          make verify-crd
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
             make build-kube-ovn
@@ -466,7 +471,7 @@ jobs:
             echo "- $f" | tee -a $filter
           done
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           base: ${{ github.base_ref || github.ref_name }}
@@ -1154,6 +1159,7 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: |
           make kube-ovn-conformance-e2e
+          make kind-install-multus
           make kind-install-kubevirt
           make kube-ovn-kubevirt-e2e
 
@@ -2362,6 +2368,7 @@ jobs:
         run: |
           make talos-install-${{ matrix.mode }}-${{ matrix.ip-family }}
           kubectl -n kube-system rollout status ds/kube-ovn-pinger
+          kubectl -n kube-system rollout restart deploy/coredns
           kubectl -n kube-system rollout status deploy/coredns
           kubectl get pod -o wide -A
           kubectl get endpointslice -A
@@ -2714,7 +2721,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v6
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.0
         with:
           version: '${{ env.HELM_VERSION }}'
 

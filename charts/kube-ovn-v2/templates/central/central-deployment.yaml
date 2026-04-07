@@ -47,7 +47,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- include "kube-ovn.affinities.nodeAffinity" (dict "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -131,7 +131,7 @@ spec:
             - name: ENABLE_COMPACT
               value: "{{ .Values.networking.enableCompact }}"
             - name: OVN_VERSION_COMPATIBILITY
-              value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
+              value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
             {{- with .Values.central.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -169,7 +169,6 @@ spec:
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
-        {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
       volumes:
         - name: host-run-ovn
           hostPath:

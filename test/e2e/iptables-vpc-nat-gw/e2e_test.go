@@ -272,11 +272,9 @@ func hairpinSnatChainExists(natGwPodName string) bool {
 }
 
 // hairpinSnatRuleExists checks if hairpin SNAT rule exists in the NAT gateway pod
-// for the given CIDR and specific EIP.
-// Uses regex with word boundaries to prevent partial IP/CIDR matching
-// (e.g. EIP 10.1.69.21 must not match rule for 10.1.69.219).
+// for the given EIP.
 // Returns true if rule exists, false otherwise (including when HAIRPIN_SNAT chain doesn't exist).
-func hairpinSnatRuleExists(natGwPodName, cidr, eip string) bool {
+func hairpinSnatRuleExists(natGwPodName, eip string) bool {
 	output := iptablesSaveNat(natGwPodName)
 	if !strings.Contains(output, ":HAIRPIN_SNAT") && !strings.Contains(output, "-N HAIRPIN_SNAT") {
 		return false
@@ -285,10 +283,52 @@ func hairpinSnatRuleExists(natGwPodName, cidr, eip string) bool {
 	// Use regex with \b word boundaries for precise matching, and allow
 	// optional trailing args like --random-fully after the EIP.
 	hairpinRulePattern := fmt.Sprintf(
-		`-A HAIRPIN_SNAT -s \b%s\b -d \b%s\b -m conntrack --ctstate DNAT -j SNAT --to-source \b%s\b`,
-		regexp.QuoteMeta(cidr), regexp.QuoteMeta(cidr), regexp.QuoteMeta(eip),
+		`-A HAIRPIN_SNAT -o \b.*\b -m mark --mark 0x1/0x1 -m conntrack --ctstate DNAT --ctorigdst \b%s\b -j SNAT --to-source \b%s\b`,
+		regexp.QuoteMeta(eip), regexp.QuoteMeta(eip),
 	)
 	re := regexp.MustCompile(hairpinRulePattern)
+	return re.MatchString(output)
+}
+
+// fipDnatRuleExists checks if the FIP DNAT rule exists in the NAT gateway pod.
+// iptables-save format: -A EXCLUSIVE_DNAT -d <eip>/32 -j DNAT --to-destination <internalIp>
+func fipDnatRuleExists(natGwPodName, eip, internalIP string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-A EXCLUSIVE_DNAT -d \b%s/32\b .* --to-destination \b%s\b`,
+		regexp.QuoteMeta(eip), regexp.QuoteMeta(internalIP))
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(output)
+}
+
+// fipSnatRuleExists checks if the FIP SNAT rule exists in the NAT gateway pod.
+// iptables-save format: -A EXCLUSIVE_SNAT -s <internalIp>/32 -j SNAT --to-source <eip>
+func fipSnatRuleExists(natGwPodName, eip, internalIP string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-A EXCLUSIVE_SNAT -s \b%s/32\b .* --to-source \b%s\b`,
+		regexp.QuoteMeta(internalIP), regexp.QuoteMeta(eip))
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(output)
+}
+
+// dnatRuleExists checks if the DNAT rule exists in the NAT gateway pod.
+// iptables-save format: -A SHARED_DNAT -d <eip>/32 -p <protocol> -m <protocol> --dport <externalPort> -j DNAT --to-destination <internalIp>:<internalPort>
+// Note: iptables-save inserts "-m <protocol>" after "-p <protocol>", use .* to absorb it.
+func dnatRuleExists(natGwPodName, eip, externalPort, protocol, internalIP, internalPort string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-A SHARED_DNAT -d \b%s/32\b -p %s .* --dport %s -j DNAT --to-destination \b%s:%s\b`,
+		regexp.QuoteMeta(eip), regexp.QuoteMeta(protocol),
+		regexp.QuoteMeta(externalPort), regexp.QuoteMeta(internalIP), regexp.QuoteMeta(internalPort))
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(output)
+}
+
+// snatRuleExists checks if the SNAT rule exists in the NAT gateway pod.
+// iptables-save format: -A SHARED_SNAT -s <internalCIDR> ... -j SNAT --to-source <eip>
+func snatRuleExists(natGwPodName, eip, internalCIDR string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-A SHARED_SNAT\b.*-s %s\b.*--to-source %s\b`,
+		regexp.QuoteMeta(internalCIDR), regexp.QuoteMeta(eip))
+	re := regexp.MustCompile(pattern)
 	return re.MatchString(output)
 }
 
@@ -588,17 +628,36 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesSnatRuleClient.DeleteSync(snatName)
 		})
 
-		// Verify hairpin SNAT rule is automatically created for internal CIDR
-		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after SNAT creation")
+		// Verify hairpin SNAT rule is automatically created for each EIP
+		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after EIP creation")
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 		snatEip = iptablesEIPClient.Get(snatEipName)
+		fipEip = iptablesEIPClient.Get(fipEipName)
+
+		// Verify FIP iptables rules exist after creation
+		ginkgo.By("Verifying FIP iptables rules exist in NAT gateway pod")
+		gomega.Eventually(func() bool {
+			return fipDnatRuleExists(vpcNatGwPodName, fipEip.Status.IP, fipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"FIP DNAT rule should exist in iptables after FIP creation")
+		gomega.Eventually(func() bool {
+			return fipSnatRuleExists(vpcNatGwPodName, fipEip.Status.IP, fipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"FIP SNAT rule should exist in iptables after FIP creation")
+
+		// Verify SNAT iptables rule exists after creation
+		ginkgo.By("Verifying SNAT iptables rule exists in NAT gateway pod")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, snatEip.Status.IP, overlaySubnetV4Cidr)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"SNAT rule should exist in iptables after SNAT creation")
 		if !hairpinSnatChainExists(vpcNatGwPodName) {
-			framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin SNAT verification (feature requires v1.15+)")
+			framework.Logf("HAIRPIN_SNAT chain not found, skipping hairpin EIP verification (feature requires v1.15+)")
 		} else {
 			gomega.Eventually(func() bool {
-				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP)
+				return hairpinSnatRuleExists(vpcNatGwPodName, snatEip.Status.IP)
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
-				"Hairpin SNAT rule should be created after SNAT creation")
+				"Hairpin SNAT rule should be created after EIP creation")
 
 			// Verify real data-path: internal pod accessing another internal pod via FIP EIP
 			// Packet flow: client -> NAT GW (DNAT to serverIP + hairpin SNAT to EIP) -> server -> NAT GW (un-SNAT/DNAT) -> client
@@ -637,6 +696,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			hairpinFipEip = iptablesEIPClient.Get(hairpinFipEipName)
 			framework.ExpectNotEmpty(hairpinFipEip.Status.IP, "hairpin FIP EIP should have an IP assigned")
 
+			gomega.Eventually(func() bool {
+				return hairpinSnatRuleExists(vpcNatGwPodName, hairpinFipEip.Status.IP)
+			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+				"Hairpin SNAT rule should be created for FIP EIP")
+
 			hairpinFip := framework.MakeIptablesFIPRule(hairpinFipName, hairpinFipEipName, serverPodIP)
 			_ = iptablesFIPClient.CreateSync(hairpinFip)
 			ginkgo.DeferCleanup(func() {
@@ -661,7 +725,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			output, _, err := framework.KubectlExec(f.Namespace.Name, clientPodName, cmd...)
 			framework.ExpectNoError(err, "[hairpin SNAT] client pod should reach server pod via FIP EIP")
 			framework.Logf("[hairpin SNAT] connectivity verified, response: %s", string(output))
-			gomega.Expect(string(output)).To(gomega.ContainSubstring(snatEip.Status.IP),
+			gomega.Expect(string(output)).To(gomega.ContainSubstring(hairpinFipEip.Status.IP),
 				"[hairpin SNAT] server should see request from SNAT EIP, not client pod IP")
 		}
 
@@ -689,6 +753,14 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			ginkgo.By("Cleaning up dnat " + dnatName)
 			iptablesDnatRuleClient.DeleteSync(dnatName)
 		})
+
+		// Verify DNAT iptables rule exists after creation
+		ginkgo.By("Verifying DNAT iptables rule exists in NAT gateway pod")
+		dnatEip = iptablesEIPClient.Get(dnatEipName)
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"DNAT rule should exist in iptables after DNAT creation")
 
 		// share eip case
 		ginkgo.By("Creating share vip")
@@ -740,15 +812,15 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesSnatRuleClient.DeleteSync(sharedEipSnatName)
 		})
 
-		// Verify hairpin SNAT rule is created for the shared SNAT (same CIDR, different EIP).
-		// Hairpin mirrors SNAT 1:1: each SNAT creates its own hairpin rule.
+		// Verify hairpin SNAT rule is created for the shared SNAT (different EIP).
+		// Hairpin mirrors EIP 1:1: each EIP creates its own hairpin rule.
 		ginkgo.By("Getting share eip")
 		shareEip = iptablesEIPClient.Get(sharedEipName)
 		framework.ExpectNotEmpty(shareEip.Status.IP, "shareEip.Status.IP should not be empty")
 		if hairpinSnatChainExists(vpcNatGwPodName) {
 			ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists for the shared SNAT EIP")
 			gomega.Eventually(func() bool {
-				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, shareEip.Status.IP)
+				return hairpinSnatRuleExists(vpcNatGwPodName, shareEip.Status.IP)
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 				"Hairpin SNAT rule should be created for shared SNAT EIP")
 		}
@@ -777,20 +849,54 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
 		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
 
-		// Verify hairpin SNAT rule cleanup when SNAT is deleted.
-		// Hairpin lifecycle is 1:1 with SNAT: created together, deleted together.
+		// Delete SNAT and EIP to verify iptables rule and hairpin cleanup.
+		// Deletion must happen unconditionally; hairpin verification is conditional on chain support.
+		snatEipIP := snatEip.Status.IP
+		ginkgo.By("Deleting SNAT and its EIP to verify rule cleanup")
+		iptablesSnatRuleClient.DeleteSync(snatName)
+		iptablesEIPClient.DeleteSync(snatEipName)
+
+		// Verify hairpin SNAT rule cleanup when EIP is deleted.
+		// Hairpin lifecycle is 1:1 with EIP: created together, deleted together.
 		if hairpinSnatChainExists(vpcNatGwPodName) {
-			ginkgo.By("[hairpin SNAT] Deleting SNAT to verify hairpin rule cleanup")
-			iptablesSnatRuleClient.DeleteSync(snatName)
 			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the deleted SNAT EIP is removed")
 			gomega.Eventually(func() bool {
-				return hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, snatEip.Status.IP)
+				return hairpinSnatRuleExists(vpcNatGwPodName, snatEipIP)
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
-				"Hairpin SNAT rule should be deleted after SNAT deletion")
+				"Hairpin SNAT rule should be deleted after EIP deletion")
 			ginkgo.By("[hairpin SNAT] Verifying hairpin rule for the shared SNAT EIP still exists")
-			gomega.Expect(hairpinSnatRuleExists(vpcNatGwPodName, overlaySubnetV4Cidr, shareEip.Status.IP)).To(gomega.BeTrue(),
+			gomega.Expect(hairpinSnatRuleExists(vpcNatGwPodName, shareEip.Status.IP)).To(gomega.BeTrue(),
 				"Hairpin SNAT rule for the shared SNAT EIP should NOT be affected by deleting a different SNAT")
 		}
+
+		// Verify SNAT iptables rule is removed after deletion (always, regardless of hairpin support)
+		ginkgo.By("Verifying SNAT iptables rule is removed from NAT gateway pod after deletion")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, snatEip.Status.IP, overlaySubnetV4Cidr)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"SNAT rule should be removed from iptables after SNAT deletion")
+
+		// Verify FIP iptables rules are removed after deletion
+		ginkgo.By("Deleting FIP to verify iptables rule cleanup")
+		iptablesFIPClient.DeleteSync(fipName)
+		ginkgo.By("Verifying FIP iptables rules are removed from NAT gateway pod after deletion")
+		gomega.Eventually(func() bool {
+			return fipDnatRuleExists(vpcNatGwPodName, fipEip.Status.IP, fipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"FIP DNAT rule should be removed from iptables after FIP deletion")
+		gomega.Eventually(func() bool {
+			return fipSnatRuleExists(vpcNatGwPodName, fipEip.Status.IP, fipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"FIP SNAT rule should be removed from iptables after FIP deletion")
+
+		// Verify DNAT iptables rule is removed after deletion
+		ginkgo.By("Deleting DNAT to verify iptables rule cleanup")
+		iptablesDnatRuleClient.DeleteSync(dnatName)
+		ginkgo.By("Verifying DNAT iptables rule is removed from NAT gateway pod after deletion")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"DNAT rule should be removed from iptables after DNAT deletion")
 
 		// All cleanup is handled by DeferCleanup above, no need for manual cleanup
 	})
@@ -858,18 +964,18 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Verify IP count and range changes
 		switch afterCreateSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(initialV4AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(initialV4UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
 				"V4AvailableIPRange should change after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4UsingIPRange, afterCreateSubnet.Status.V4UsingIPRange,
 				"V4UsingIPRange should change after IptablesEIP creation")
 		case apiv1.ProtocolIPv6:
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(initialV6AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(initialV6UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV6AvailableIPRange, afterCreateSubnet.Status.V6AvailableIPRange,
 				"V6AvailableIPRange should change after IptablesEIP creation")
@@ -877,13 +983,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V6UsingIPRange should change after IptablesEIP creation")
 		default:
 			// Dual stack
-			framework.ExpectEqual(initialV4AvailableIPs-1, afterCreateSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(initialV4AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV4UsingIPs+1, afterCreateSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(initialV4UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should increase by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6AvailableIPs-1, afterCreateSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(initialV6AvailableIPs.SubInt(1).Equal(afterCreateSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should decrease by 1 after IptablesEIP creation")
-			framework.ExpectEqual(initialV6UsingIPs+1, afterCreateSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(initialV6UsingIPs.AddInt(1).Equal(afterCreateSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should increase by 1 after IptablesEIP creation")
 			framework.ExpectNotEqual(initialV4AvailableIPRange, afterCreateSubnet.Status.V4AvailableIPRange,
 				"V4AvailableIPRange should change after IptablesEIP creation")
@@ -932,9 +1038,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		switch afterDeleteSubnet.Spec.Protocol {
 		case apiv1.ProtocolIPv4:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(afterCreateV4AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(afterCreateV4UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			// Verify IP range changed
@@ -950,9 +1056,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V4UsingIPs should return to initial value after IptablesEIP deletion")
 		case apiv1.ProtocolIPv6:
 			// Verify IP count is restored
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(afterCreateV6AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(afterCreateV6UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			// Verify IP range changed
@@ -968,13 +1074,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"V6UsingIPs should return to initial value after IptablesEIP deletion")
 		default:
 			// Dual stack
-			framework.ExpectEqual(afterCreateV4AvailableIPs+1, afterDeleteSubnet.Status.V4AvailableIPs,
+			framework.ExpectTrue(afterCreateV4AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V4AvailableIPs),
 				"V4AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV4UsingIPs-1, afterDeleteSubnet.Status.V4UsingIPs,
+			framework.ExpectTrue(afterCreateV4UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V4UsingIPs),
 				"V4UsingIPs should decrease by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6AvailableIPs+1, afterDeleteSubnet.Status.V6AvailableIPs,
+			framework.ExpectTrue(afterCreateV6AvailableIPs.AddInt(1).Equal(afterDeleteSubnet.Status.V6AvailableIPs),
 				"V6AvailableIPs should increase by 1 after IptablesEIP deletion")
-			framework.ExpectEqual(afterCreateV6UsingIPs-1, afterDeleteSubnet.Status.V6UsingIPs,
+			framework.ExpectTrue(afterCreateV6UsingIPs.SubInt(1).Equal(afterDeleteSubnet.Status.V6UsingIPs),
 				"V6UsingIPs should decrease by 1 after IptablesEIP deletion")
 
 			framework.ExpectNotEqual(afterCreateV4AvailableIPRange, afterDeleteSubnet.Status.V4AvailableIPRange,
@@ -1243,6 +1349,298 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// All cleanup is handled by DeferCleanup above
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
+	})
+
+	framework.ConformanceIt("[6] FIP/DNAT/SNAT spec update with iptables rule verification", func() {
+		f.SkipVersionPriorTo(1, 16, "FIP/DNAT/SNAT spec update was introduced in v1.16")
+
+		overlaySubnetV4Cidr := "10.0.6.0/24"
+		overlaySubnetV4Gw := "10.0.6.1"
+		lanIP := "10.0.6.254"
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, "",
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, nil,
+		)
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		// ===================== FIP spec update =====================
+		ginkgo.By("1. Creating two VIPs for FIP (old and new InternalIP)")
+		randomSuffix := framework.RandomSuffix()
+		oldFipVipName := "old-fip-vip-" + randomSuffix
+		newFipVipName := "new-fip-vip-" + randomSuffix
+		oldFipVip := framework.MakeVip(f.Namespace.Name, oldFipVipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(oldFipVip)
+		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(oldFipVipName) })
+		oldFipVip = vipClient.Get(oldFipVipName)
+
+		newFipVip := framework.MakeVip(f.Namespace.Name, newFipVipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(newFipVip)
+		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(newFipVipName) })
+		newFipVip = vipClient.Get(newFipVipName)
+
+		ginkgo.By("2. Creating two EIPs for FIP (old and new EIP)")
+		oldFipEipName := "old-fip-eip-" + randomSuffix
+		newFipEipName := "new-fip-eip-" + randomSuffix
+		oldFipEip := framework.MakeIptablesEIP(oldFipEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(oldFipEip)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(oldFipEipName) })
+		oldFipEip = iptablesEIPClient.Get(oldFipEipName)
+
+		newFipEip := framework.MakeIptablesEIP(newFipEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(newFipEip)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(newFipEipName) })
+		newFipEip = iptablesEIPClient.Get(newFipEipName)
+
+		ginkgo.By("3. Creating FIP with old EIP and old InternalIP")
+		fipName := "fip-update-" + randomSuffix
+		fip := framework.MakeIptablesFIPRule(fipName, oldFipEipName, oldFipVip.Status.V4ip)
+		_ = iptablesFIPClient.CreateSync(fip)
+		ginkgo.DeferCleanup(func() { iptablesFIPClient.DeleteSync(fipName) })
+
+		ginkgo.By("4. Verifying old FIP iptables rules exist")
+		gomega.Eventually(func() bool {
+			return fipDnatRuleExists(vpcNatGwPodName, oldFipEip.Status.IP, oldFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"FIP DNAT rule should exist with old EIP and old InternalIP")
+		gomega.Eventually(func() bool {
+			return fipSnatRuleExists(vpcNatGwPodName, oldFipEip.Status.IP, oldFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"FIP SNAT rule should exist with old EIP and old InternalIP")
+
+		ginkgo.By("5. Updating FIP: changing both EIP and InternalIP simultaneously")
+		fip = iptablesFIPClient.Get(fipName)
+		modifiedFip := fip.DeepCopy()
+		modifiedFip.Spec.EIP = newFipEipName
+		modifiedFip.Spec.InternalIP = newFipVip.Status.V4ip
+		iptablesFIPClient.PatchSync(fip, modifiedFip, nil, 2*time.Minute)
+
+		ginkgo.By("6. Verifying old FIP iptables rules are removed")
+		gomega.Eventually(func() bool {
+			return fipDnatRuleExists(vpcNatGwPodName, oldFipEip.Status.IP, oldFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Old FIP DNAT rule should be removed after spec update")
+		gomega.Eventually(func() bool {
+			return fipSnatRuleExists(vpcNatGwPodName, oldFipEip.Status.IP, oldFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Old FIP SNAT rule should be removed after spec update")
+
+		ginkgo.By("7. Verifying new FIP iptables rules exist")
+		gomega.Eventually(func() bool {
+			return fipDnatRuleExists(vpcNatGwPodName, newFipEip.Status.IP, newFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New FIP DNAT rule should exist after spec update")
+		gomega.Eventually(func() bool {
+			return fipSnatRuleExists(vpcNatGwPodName, newFipEip.Status.IP, newFipVip.Status.V4ip)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New FIP SNAT rule should exist after spec update")
+
+		ginkgo.By("8. Verifying FIP Status reflects new values (dimension 2)")
+		fip = iptablesFIPClient.Get(fipName)
+		framework.ExpectEqual(fip.Status.V4ip, newFipEip.Status.IP,
+			"FIP Status.V4ip should match new EIP IP")
+		framework.ExpectEqual(fip.Status.InternalIP, newFipVip.Status.V4ip,
+			"FIP Status.InternalIP should match new InternalIP")
+		framework.ExpectTrue(fip.Status.Ready, "FIP should be ready after update")
+
+		ginkgo.By("9. Verifying FIP Label reflects new EIP (dimension 3)")
+		framework.ExpectHaveKeyWithValue(fip.Labels, util.EipV4IpLabel, newFipEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(fip.Annotations, util.VpcEipAnnotation, newFipEipName)
+
+		// ===================== DNAT spec update =====================
+		ginkgo.By("10. Creating VIPs for DNAT (old and new InternalIP)")
+		oldDnatVipName := "old-dnat-vip-" + randomSuffix
+		newDnatVipName := "new-dnat-vip-" + randomSuffix
+		oldDnatVip := framework.MakeVip(f.Namespace.Name, oldDnatVipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(oldDnatVip)
+		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(oldDnatVipName) })
+		oldDnatVip = vipClient.Get(oldDnatVipName)
+
+		newDnatVip := framework.MakeVip(f.Namespace.Name, newDnatVipName, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(newDnatVip)
+		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(newDnatVipName) })
+		newDnatVip = vipClient.Get(newDnatVipName)
+
+		ginkgo.By("11. Creating EIPs for DNAT")
+		dnatEipName := "dnat-eip-" + randomSuffix
+		dnatEip := framework.MakeIptablesEIP(dnatEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(dnatEip)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(dnatEipName) })
+		dnatEip = iptablesEIPClient.Get(dnatEipName)
+
+		dnatEip2Name := "dnat-eip2-" + randomSuffix
+		dnatEip2 := framework.MakeIptablesEIP(dnatEip2Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(dnatEip2)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(dnatEip2Name) })
+		dnatEip2 = iptablesEIPClient.Get(dnatEip2Name)
+
+		ginkgo.By("12. Creating DNAT with old InternalIP and port 80->8080")
+		dnatName := "dnat-update-" + randomSuffix
+		dnat := framework.MakeIptablesDnatRule(dnatName, dnatEipName, "80", "tcp", oldDnatVip.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(dnat)
+		ginkgo.DeferCleanup(func() { iptablesDnatRuleClient.DeleteSync(dnatName) })
+
+		ginkgo.By("13. Verifying old DNAT iptables rule exists")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", oldDnatVip.Status.V4ip, "8080")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"DNAT rule should exist with old values")
+
+		ginkgo.By("14. Updating DNAT: changing InternalIP and InternalPort")
+		dnat = iptablesDnatRuleClient.Get(dnatName)
+		modifiedDnat := dnat.DeepCopy()
+		modifiedDnat.Spec.InternalIP = newDnatVip.Status.V4ip
+		modifiedDnat.Spec.InternalPort = "9090"
+		iptablesDnatRuleClient.PatchSync(dnat, modifiedDnat, nil, 2*time.Minute)
+
+		ginkgo.By("15. Verifying old DNAT iptables rule is removed")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", oldDnatVip.Status.V4ip, "8080")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Old DNAT rule should be removed after spec update")
+
+		ginkgo.By("16. Verifying new DNAT iptables rule exists")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", newDnatVip.Status.V4ip, "9090")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New DNAT rule should exist after spec update")
+
+		ginkgo.By("17. Verifying DNAT Status reflects new values")
+		dnat = iptablesDnatRuleClient.Get(dnatName)
+		framework.ExpectEqual(dnat.Status.InternalIP, newDnatVip.Status.V4ip,
+			"DNAT Status.InternalIP should match new InternalIP")
+		framework.ExpectEqual(dnat.Status.InternalPort, "9090",
+			"DNAT Status.InternalPort should match new InternalPort")
+		framework.ExpectTrue(dnat.Status.Ready, "DNAT should be ready after update")
+
+		// --- DNAT second update: change EIP + ExternalPort + Protocol (identity side) ---
+		ginkgo.By("17a. Updating DNAT: changing EIP to dnatEip2, ExternalPort, and Protocol (all identity fields)")
+		dnat = iptablesDnatRuleClient.Get(dnatName)
+		modifiedDnat2 := dnat.DeepCopy()
+		modifiedDnat2.Spec.EIP = dnatEip2Name
+		modifiedDnat2.Spec.ExternalPort = "443"
+		modifiedDnat2.Spec.Protocol = "udp"
+		iptablesDnatRuleClient.PatchSync(dnat, modifiedDnat2, nil, 2*time.Minute)
+
+		ginkgo.By("17b. Verifying old DNAT rule (from first update) is removed")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", newDnatVip.Status.V4ip, "9090")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Previous DNAT rule should be removed after identity change")
+
+		ginkgo.By("17c. Verifying new DNAT rule with updated identity exists")
+		gomega.Eventually(func() bool {
+			return dnatRuleExists(vpcNatGwPodName, dnatEip2.Status.IP, "443", "udp", newDnatVip.Status.V4ip, "9090")
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New DNAT rule should exist with new EIP, ExternalPort, Protocol")
+
+		ginkgo.By("17d. Verifying DNAT Status reflects all new values")
+		dnat = iptablesDnatRuleClient.Get(dnatName)
+		framework.ExpectEqual(dnat.Status.V4ip, dnatEip2.Status.IP,
+			"DNAT Status.V4ip should match new EIP IP")
+		framework.ExpectEqual(dnat.Status.ExternalPort, "443",
+			"DNAT Status.ExternalPort should match new ExternalPort")
+		framework.ExpectEqual(dnat.Status.Protocol, "udp",
+			"DNAT Status.Protocol should match new Protocol")
+		framework.ExpectTrue(dnat.Status.Ready, "DNAT should be ready after identity change")
+		framework.ExpectHaveKeyWithValue(dnat.Labels, util.EipV4IpLabel, dnatEip2.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(dnat.Annotations, util.VpcEipAnnotation, dnatEip2Name)
+
+		// ===================== SNAT spec update =====================
+		ginkgo.By("18. Creating EIPs for SNAT (old, new, and third)")
+		oldSnatEipName := "old-snat-eip-" + randomSuffix
+		newSnatEipName := "new-snat-eip-" + randomSuffix
+		snatEip3Name := "snat-eip3-" + randomSuffix
+		oldSnatEip := framework.MakeIptablesEIP(oldSnatEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(oldSnatEip)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(oldSnatEipName) })
+		oldSnatEip = iptablesEIPClient.Get(oldSnatEipName)
+
+		newSnatEip := framework.MakeIptablesEIP(newSnatEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(newSnatEip)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(newSnatEipName) })
+		newSnatEip = iptablesEIPClient.Get(newSnatEipName)
+
+		snatEip3 := framework.MakeIptablesEIP(snatEip3Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(snatEip3)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(snatEip3Name) })
+		snatEip3 = iptablesEIPClient.Get(snatEip3Name)
+
+		ginkgo.By("19. Creating SNAT with old EIP and CIDR 10.0.6.0/25")
+		snatName := "snat-update-" + randomSuffix
+		oldSnatCIDR := "10.0.6.0/25"
+		newSnatCIDR := "10.0.6.128/25"
+		snat := framework.MakeIptablesSnatRule(snatName, oldSnatEipName, oldSnatCIDR)
+		_ = iptablesSnatRuleClient.CreateSync(snat)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snatName) })
+
+		ginkgo.By("20. Verifying old SNAT iptables rule exists")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, oldSnatEip.Status.IP, oldSnatCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"SNAT rule should exist with old EIP and old CIDR")
+
+		ginkgo.By("21. Updating SNAT: changing both EIP and InternalCIDR")
+		snat = iptablesSnatRuleClient.Get(snatName)
+		modifiedSnat := snat.DeepCopy()
+		modifiedSnat.Spec.EIP = newSnatEipName
+		modifiedSnat.Spec.InternalCIDR = newSnatCIDR
+		iptablesSnatRuleClient.PatchSync(snat, modifiedSnat, nil, 2*time.Minute)
+
+		ginkgo.By("22. Verifying old SNAT iptables rule is removed")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, oldSnatEip.Status.IP, oldSnatCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Old SNAT rule should be removed after spec update")
+
+		ginkgo.By("23. Verifying new SNAT iptables rule exists")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, newSnatEip.Status.IP, newSnatCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New SNAT rule should exist after spec update")
+
+		ginkgo.By("24. Verifying SNAT Status reflects new values")
+		snat = iptablesSnatRuleClient.Get(snatName)
+		framework.ExpectEqual(snat.Status.V4ip, newSnatEip.Status.IP,
+			"SNAT Status.V4ip should match new EIP IP")
+		framework.ExpectEqual(snat.Status.InternalCIDR, newSnatCIDR,
+			"SNAT Status.InternalCIDR should match new InternalCIDR")
+		framework.ExpectTrue(snat.Status.Ready, "SNAT should be ready after update")
+		framework.ExpectHaveKeyWithValue(snat.Labels, util.EipV4IpLabel, newSnatEip.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(snat.Annotations, util.VpcEipAnnotation, newSnatEipName)
+
+		// --- SNAT second update: change only EIP, keep InternalCIDR unchanged ---
+		ginkgo.By("24a. Updating SNAT: changing only EIP, keeping InternalCIDR=" + newSnatCIDR)
+		snat = iptablesSnatRuleClient.Get(snatName)
+		modifiedSnat2 := snat.DeepCopy()
+		modifiedSnat2.Spec.EIP = snatEip3Name
+		iptablesSnatRuleClient.PatchSync(snat, modifiedSnat2, nil, 2*time.Minute)
+
+		ginkgo.By("24b. Verifying old SNAT rule (newSnatEip + newSnatCIDR) is removed")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, newSnatEip.Status.IP, newSnatCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"Previous SNAT rule should be removed after EIP-only change")
+
+		ginkgo.By("24c. Verifying new SNAT rule with third EIP exists")
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, snatEip3.Status.IP, newSnatCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"New SNAT rule should exist with third EIP and same CIDR")
+
+		ginkgo.By("24d. Verifying SNAT Status and labels reflect third EIP")
+		snat = iptablesSnatRuleClient.Get(snatName)
+		framework.ExpectEqual(snat.Status.V4ip, snatEip3.Status.IP,
+			"SNAT Status.V4ip should match third EIP IP")
+		framework.ExpectEqual(snat.Status.InternalCIDR, newSnatCIDR,
+			"SNAT Status.InternalCIDR should remain unchanged after EIP-only change")
+		framework.ExpectTrue(snat.Status.Ready, "SNAT should be ready after EIP-only change")
+		framework.ExpectHaveKeyWithValue(snat.Labels, util.EipV4IpLabel, snatEip3.Spec.V4ip)
+		framework.ExpectHaveKeyWithValue(snat.Annotations, util.VpcEipAnnotation, snatEip3Name)
 	})
 })
 

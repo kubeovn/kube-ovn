@@ -715,6 +715,18 @@ func (suite *OvnClientTestSuite) Test_UpdateEgressAclOps() {
 	suite.testUpdateEgressACLOps()
 }
 
+func (suite *OvnClientTestSuite) Test_NewIPBlockACLMatch() {
+	suite.testNewIPBlockACLMatch()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateIngressIPBlockACLOps() {
+	suite.testUpdateIngressIPBlockACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateEgressIPBlockACLOps() {
+	suite.testUpdateEgressIPBlockACLOps()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
 	suite.testCreateGatewayACL()
 }
@@ -739,8 +751,8 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
 	suite.testUpdateLogicalSwitchACL()
 }
 
-func (suite *OvnClientTestSuite) Test_SetAclLog() {
-	suite.testSetACLLog()
+func (suite *OvnClientTestSuite) Test_SetNetPolACLLog() {
+	suite.testSetNetPolACLLog()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPrivate() {
@@ -1017,6 +1029,14 @@ func (suite *OvnClientTestSuite) Test_ListDHCPOptions() {
 
 func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
 	suite.testDhcpOptionsFilter()
+}
+
+func (suite *OvnClientTestSuite) Test_ReconcilePortDHCPOptions() {
+	suite.testReconcilePortDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateDHCPOptionsForPort() {
+	suite.testUpdateDHCPOptionsForPort()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateDHCPOptions() {

@@ -86,6 +86,8 @@ const (
 	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
 	VfNameTemplate                  = "%s.kubernetes.io/vf"
 	ActivationStrategyTemplate      = "%s.kubernetes.io/activation_strategy"
+	DHCPv4OptionsAnnotationTemplate = "%s.kubernetes.io/dhcp-v4-options"
+	DHCPv6OptionsAnnotationTemplate = "%s.kubernetes.io/dhcp-v6-options"
 
 	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
 	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"
@@ -157,10 +159,19 @@ const (
 	VxlanNic  = "vxlan_sys_4789"
 	GeneveNic = "genev_sys_6081"
 
-	SecurityGroupHighestPriority = "2300"
+	// Allow 16384 priorities with base set to 2100.
+	SecurityGroupHighestPriority = "18484"
 	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
+
+	// SecurityGroup API limits for priority and tier
+	SecurityGroupPriorityMax = 16384
+	SecurityGroupPriorityMin = 1
+
+	SecurityGroupOvnTierBase    = 2
+	SecurityGroupAPITierMinimum = 0
+	SecurityGroupAPITierMaximum = 1
 
 	IngressAllowPriority = "2001"
 	IngressDefaultDrop   = "2000"

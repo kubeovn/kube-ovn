@@ -56,7 +56,7 @@ func NewOvnSnatRuleInformer(client versioned.Interface, resyncPeriod time.Durati
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredOvnSnatRuleInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -81,7 +81,7 @@ func NewFilteredOvnSnatRuleInformer(client versioned.Interface, resyncPeriod tim
 				}
 				return client.KubeovnV1().OvnSnatRules().Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apiskubeovnv1.OvnSnatRule{},
 		resyncPeriod,
 		indexers,

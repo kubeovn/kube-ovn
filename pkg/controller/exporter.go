@@ -59,11 +59,13 @@ func (c *Controller) exportSubnetAvailableIPsGauge(subnet *kubeovnv1.Subnet) {
 	var availableIPs float64
 	switch subnet.Spec.Protocol {
 	case kubeovnv1.ProtocolIPv4:
-		availableIPs = subnet.Status.V4AvailableIPs
+		availableIPs = subnet.Status.V4AvailableIPs.Float64()
 	case kubeovnv1.ProtocolIPv6:
-		availableIPs = subnet.Status.V6AvailableIPs
+		availableIPs = subnet.Status.V6AvailableIPs.Float64()
 	default:
-		availableIPs = math.Min(subnet.Status.V4AvailableIPs, subnet.Status.V6AvailableIPs)
+		v4 := subnet.Status.V4AvailableIPs.Float64()
+		v6 := subnet.Status.V6AvailableIPs.Float64()
+		availableIPs = math.Min(v4, v6)
 	}
 	metricSubnetAvailableIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(availableIPs)
 }
@@ -71,9 +73,9 @@ func (c *Controller) exportSubnetAvailableIPsGauge(subnet *kubeovnv1.Subnet) {
 func (c *Controller) exportSubnetUsedIPsGauge(subnet *kubeovnv1.Subnet) {
 	var usingIPs float64
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
-		usingIPs = subnet.Status.V6UsingIPs
+		usingIPs = subnet.Status.V6UsingIPs.Float64()
 	} else {
-		usingIPs = subnet.Status.V4UsingIPs
+		usingIPs = subnet.Status.V4UsingIPs.Float64()
 	}
 	metricSubnetUsedIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(usingIPs)
 }
