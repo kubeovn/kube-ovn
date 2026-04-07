@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -21,7 +22,11 @@ const (
 )
 
 func NewPprofServer(host string, port int) (*manager.Server, error) {
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(host), Port: port})
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse pprof server address %q", host)
+	}
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: port})
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +49,11 @@ func NewPprofServer(host string, port int) (*manager.Server, error) {
 }
 
 func NewHealthOnlyServer(addr string, port int) (*manager.Server, error) {
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(addr), Port: port})
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse health server address %q", addr)
+	}
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: port})
 	if err != nil {
 		return nil, err
 	}

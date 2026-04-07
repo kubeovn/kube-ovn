@@ -62,10 +62,11 @@ func GenerateMacWithExclusion(exclusionMACs []string) string {
 
 func IP2BigInt(ipStr string) *big.Int {
 	ipBigInt := big.NewInt(0)
-	if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
-		ipBigInt.SetBytes(net.ParseIP(ipStr).To4())
+	ip := net.ParseIP(ipStr)
+	if ip.To4() != nil {
+		ipBigInt.SetBytes(ip.To4())
 	} else {
-		ipBigInt.SetBytes(net.ParseIP(ipStr).To16())
+		ipBigInt.SetBytes(ip.To16())
 	}
 	return ipBigInt
 }
@@ -80,7 +81,11 @@ func BigInt2Ip(ipInt *big.Int) string {
 }
 
 func SubnetNumber(subnet string) string {
-	_, cidr, _ := net.ParseCIDR(subnet)
+	_, cidr, err := net.ParseCIDR(subnet)
+	if err != nil {
+		klog.Errorf("failed to parse CIDR %q in SubnetNumber: %v", subnet, err)
+		return ""
+	}
 	maskLength, length := cidr.Mask.Size()
 	if maskLength+1 == length {
 		return ""
@@ -189,6 +194,10 @@ func CheckProtocol(address string) string {
 	if len(ips) == 2 {
 		IP1 := net.ParseIP(strings.Split(ips[0], "/")[0])
 		IP2 := net.ParseIP(strings.Split(ips[1], "/")[0])
+		if IP1 == nil || IP2 == nil {
+			klog.Errorf("failed to parse dual-stack address %q", address)
+			return ""
+		}
 		if IP1.To4() != nil && IP2.To4() == nil && IP2.To16() != nil {
 			return kubeovnv1.ProtocolDual
 		}
@@ -202,6 +211,10 @@ func CheckProtocol(address string) string {
 
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)
+	if ip == nil {
+		klog.Errorf("failed to parse address %q", address)
+		return ""
+	}
 	if ip.To4() != nil {
 		return kubeovnv1.ProtocolIPv4
 	} else if ip.To16() != nil {

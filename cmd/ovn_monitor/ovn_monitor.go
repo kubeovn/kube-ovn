@@ -58,7 +58,11 @@ func CmdMain() {
 		}
 	} else {
 		klog.Info("metrics server is disabled")
-		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP(metricsAddrs[0]), Port: int(config.MetricsPort)})
+		metricsIP := net.ParseIP(metricsAddrs[0])
+		if metricsIP == nil {
+			util.LogFatalAndExit(nil, "failed to parse metrics address %q", metricsAddrs[0])
+		}
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: metricsIP, Port: int(config.MetricsPort)})
 		if err != nil {
 			util.LogFatalAndExit(err, "failed to listen on %s", util.JoinHostPort(metricsAddrs[0], config.MetricsPort))
 		}
