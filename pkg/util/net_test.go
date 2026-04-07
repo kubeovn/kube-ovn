@@ -137,6 +137,21 @@ func TestIp2BigInt(t *testing.T) {
 			ip:     "1050:0:0:0:5:600:300c:326b",
 			expect: big.NewInt(0).SetBytes(net.ParseIP("1050:0:0:0:5:600:300c:326b").To16()),
 		},
+		{
+			name:   "invalidIP",
+			ip:     "not-an-ip",
+			expect: big.NewInt(0),
+		},
+		{
+			name:   "emptyString",
+			ip:     "",
+			expect: big.NewInt(0),
+		},
+		{
+			name:   "partialIP",
+			ip:     "1.2.3",
+			expect: big.NewInt(0),
+		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
@@ -185,6 +200,16 @@ func TestSubnetNumber(t *testing.T) {
 			name:   "correct",
 			subnet: "192.168.0.1/24",
 			expect: "192.168.0.0",
+		},
+		{
+			name:   "invalidCIDR",
+			subnet: "not-a-cidr",
+			expect: "",
+		},
+		{
+			name:   "emptyString",
+			subnet: "",
+			expect: "",
 		},
 	}
 	for _, c := range tests {
@@ -433,6 +458,21 @@ func TestCheckProtocol(t *testing.T) {
 		{
 			name:    "error",
 			address: "192.168.0.23,192.168.0.24",
+			want:    "",
+		},
+		{
+			name:    "invalidSingleIP",
+			address: "not-an-ip",
+			want:    "",
+		},
+		{
+			name:    "invalidDualStack",
+			address: "not-an-ip,also-not-an-ip",
+			want:    "",
+		},
+		{
+			name:    "partialIP",
+			address: "1.2.3",
 			want:    "",
 		},
 	}
