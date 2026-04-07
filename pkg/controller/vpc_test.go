@@ -429,3 +429,48 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestDiffPolicyRouteWithLogical_NormalizesNextHopIPs(t *testing.T) {
+	t.Parallel()
+
+	target := []*kubeovnv1.PolicyRoute{{
+		Priority:  32000,
+		Match:     "ip4.src == 172.16.8.149/32",
+		Action:    kubeovnv1.PolicyRouteActionReroute,
+		NextHopIP: "172.31.255.253,172.31.255.254",
+	}}
+
+	existing := []*ovnnb.LogicalRouterPolicy{{
+		Priority: 32000,
+		Match:    "ip4.src == 172.16.8.149/32",
+		Action:   string(kubeovnv1.PolicyRouteActionReroute),
+		Nexthops: []string{"172.31.255.254", "172.31.255.253"},
+	}}
+
+	dels, adds := diffPolicyRouteWithLogical(existing, target)
+	require.Empty(t, dels)
+	require.Empty(t, adds)
+}
+
+func TestDiffPolicyRouteWithLogical_HandlesLegacyNextHopField(t *testing.T) {
+	t.Parallel()
+
+	nextHop := "172.31.255.253"
+	target := []*kubeovnv1.PolicyRoute{{
+		Priority:  32000,
+		Match:     "ip4.src == 172.16.8.149/32",
+		Action:    kubeovnv1.PolicyRouteActionReroute,
+		NextHopIP: nextHop,
+	}}
+
+	existing := []*ovnnb.LogicalRouterPolicy{{
+		Priority: 32000,
+		Match:    "ip4.src == 172.16.8.149/32",
+		Action:   string(kubeovnv1.PolicyRouteActionReroute),
+		Nexthop:  &nextHop,
+	}}
+
+	dels, adds := diffPolicyRouteWithLogical(existing, target)
+	require.Empty(t, dels)
+	require.Empty(t, adds)
+}
