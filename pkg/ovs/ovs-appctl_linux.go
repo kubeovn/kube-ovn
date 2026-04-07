@@ -13,8 +13,32 @@ const (
 	ovsRunDir = "/var/run/openvswitch"
 	ovnRunDir = "/var/run/ovn"
 
-	cmdOvsAppctl = "ovs-appctl"
+	cmdOvsAppctl   = "ovs-appctl"
+	cmdOvnAppctl   = "ovn-appctl"
+	ovnNBCtlSocket = "/var/run/ovn/ovnnb_db.ctl"
+	ovnSBCtlSocket = "/var/run/ovn/ovnsb_db.ctl"
 )
+
+// OvnDatabaseControl sends a command to the specified OVN database control
+// socket (nb or sb) via ovn-appctl and returns the combined output.
+func OvnDatabaseControl(db, command string, args ...string) (string, error) {
+	var socket string
+	switch db {
+	case "nb":
+		socket = ovnNBCtlSocket
+	case "sb":
+		socket = ovnSBCtlSocket
+	default:
+		return "", fmt.Errorf("unknown db %q", db)
+	}
+	cmdArgs := append([]string{"-t", socket, command}, args...)
+	cmd := exec.Command(cmdOvnAppctl, cmdArgs...) // #nosec G204
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to run command %q: %w", cmd.String(), err)
+	}
+	return string(out), nil
+}
 
 func appctlByTarget(target string, args ...string) (string, error) {
 	args = slices.Insert(args, 0, "-t", target)
