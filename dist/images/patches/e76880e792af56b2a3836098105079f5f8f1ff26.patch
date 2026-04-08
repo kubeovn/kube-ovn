@@ -1,13 +1,12 @@
-From e76880e792af56b2a3836098105079f5f8f1ff26 Mon Sep 17 00:00:00 2001
+From b7fe6d67fd9c6ff99ef8676a91881302ca1a4def Mon Sep 17 00:00:00 2001
 From: clyi <clyi@alauda.io>
-Date: Fri, 8 Aug 2025 17:27:38 +0800
+Date: Wed, 8 Apr 2026 23:06:04 +0800
 Subject: [PATCH] northd: add nb option version_compatibility
 
-Signed-off-by: clyi <clyi@alauda.io>
 ---
- northd/en-global-config.c |   5 +
- northd/northd.c           | 197 +++++++++++++++++++++++++-------------
- 2 files changed, 137 insertions(+), 65 deletions(-)
+ northd/en-global-config.c |   5 ++
+ northd/northd.c           | 111 +++++++++++++++++++++++++++-----------
+ 2 files changed, 86 insertions(+), 30 deletions(-)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
 index 65c060cc7..a21ba082d 100644
@@ -26,7 +25,7 @@ index 65c060cc7..a21ba082d 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index 969cefe79..a1bb7169a 100644
+index 4d803b214..4b08f41af 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
 @@ -113,6 +113,11 @@ static bool ls_ct_skip_dst_lport_ips = false;
@@ -52,7 +51,7 @@ index 969cefe79..a1bb7169a 100644
  /* Register definitions for switches and routers. */
  
  /* Registers used for LB Affinity.
-@@ -5831,8 +5840,11 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
+@@ -5836,8 +5845,11 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                                            op->key, &op->nbsp->header_,
                                            op->lflow_ref);
      } else if (queue_id) {
@@ -66,7 +65,7 @@ index 969cefe79..a1bb7169a 100644
          ovn_lflow_add_with_lport_and_hint(lflows, op->od,
                                            S_SWITCH_IN_CHECK_PORT_SEC, 70,
                                            ds_cstr(match), ds_cstr(actions),
-@@ -5893,7 +5905,7 @@ build_lswitch_learn_fdb_op(
+@@ -5898,7 +5910,7 @@ build_lswitch_learn_fdb_op(
          ds_clear(match);
          ds_clear(actions);
          ds_put_format(match, "inport == %s", op->json_key);
@@ -75,7 +74,7 @@ index 969cefe79..a1bb7169a 100644
              ds_put_cstr(actions, "flags.localnet = 1; ");
          }
          ds_put_format(actions, REGBIT_LKUP_FDB
-@@ -5950,8 +5962,10 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
+@@ -5955,8 +5967,10 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
      ovn_lflow_add(lflows, od, S_SWITCH_OUT_CHECK_PORT_SEC, 100,
                    "eth.mcast", REGBIT_PORT_SEC_DROP" = 0; next;",
                    lflow_ref);
@@ -87,57 +86,7 @@ index 969cefe79..a1bb7169a 100644
                    lflow_ref);
  
      ovn_lflow_add_drop_with_desc(
-@@ -7819,26 +7833,29 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
-          * Allow traffic that is established if the ACL has a persistent
-          * conntrack ID configured.
-          */
--        ds_clear(&match);
--        const char *pre_lb_persisted_acl_action =
--            REGBIT_ACL_HINT_ALLOW_PERSISTED" = 1; "
--            REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
--        const char *persisted_acl_action =
--            REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
--        ds_put_format(&match, "ct.est && ct_mark.allow_established == 1");
--        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
--                      ds_cstr(&match),
--                      pre_lb_persisted_acl_action,
--                      lflow_ref);
--        ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
--                      ds_cstr(&match),
--                      persisted_acl_action,
--                      lflow_ref);
--        ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB_EVAL,
--                      UINT16_MAX - 3,
--                      REGBIT_ACL_HINT_ALLOW_PERSISTED" == 1",
--                      persisted_acl_action,
--                      lflow_ref);
-+        if (!(compatible_24_03 || compatible_22_03 ||
-+              compatible_22_12)) {
-+            ds_clear(&match);
-+            const char *pre_lb_persisted_acl_action =
-+                REGBIT_ACL_HINT_ALLOW_PERSISTED" = 1; "
-+                REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
-+            const char *persisted_acl_action =
-+                REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
-+            ds_put_format(&match, "ct.est && ct_mark.allow_established == 1");
-+            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
-+                          ds_cstr(&match),
-+                          pre_lb_persisted_acl_action,
-+                          lflow_ref);
-+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
-+                          ds_cstr(&match),
-+                          persisted_acl_action,
-+                          lflow_ref);
-+            ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_AFTER_LB_EVAL,
-+                          UINT16_MAX - 3,
-+                          REGBIT_ACL_HINT_ALLOW_PERSISTED" == 1",
-+                          persisted_acl_action,
-+                          lflow_ref);
-+        }
-     }
- 
-     /* Ingress and Egress ACL Table (Priority 65532).
-@@ -8430,7 +8447,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+@@ -8435,7 +8449,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
                 struct ds *match, struct ds *action,
                 const struct shash *meter_groups,
                 const struct hmap *svc_monitor_map,
@@ -146,71 +95,7 @@ index 969cefe79..a1bb7169a 100644
  {
      const struct ovn_northd_lb *lb = lb_dps->lb;
      for (size_t i = 0; i < lb->n_vips; i++) {
-@@ -8669,6 +8686,7 @@ build_stateful(struct ovn_datapath *od,
-                struct lflow_ref *lflow_ref)
- {
-     struct ds actions = DS_EMPTY_INITIALIZER;
-+    const char *ct_block_action = "ct_mark.blocked";
- 
-     /* Ingress LB, Ingress and Egress stateful Table (Priority 0): Packets are
-      * allowed by default. */
-@@ -8684,15 +8702,22 @@ build_stateful(struct ovn_datapath *od,
-      * We always set ct_mark.blocked to 0 here as
-      * any packet that makes it this far is part of a connection we
-      * want to allow to continue. */
--    ds_put_cstr(&actions,
--                 "ct_commit { "
--                    "ct_mark.blocked = 0; "
--                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
--                    "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
--                    "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
--                    "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
--                    "ct_label.acl_id = " REG_ACL_ID "; "
--                  "}; next;");
-+    if (compatible_24_03 || compatible_22_03 || compatible_22_12) {
-+        ds_put_format(&actions, "ct_commit { %s = 0; }; next;",
-+                      ct_block_action);
-+
-+    } else {
-+        ds_put_cstr(&actions,
-+            "ct_commit { "
-+               "ct_mark.blocked = 0; "
-+               "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
-+               "ct_mark.obs_stage = " REGBIT_ACL_OBS_STAGE "; "
-+               "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
-+               "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
-+               "ct_label.acl_id = " REG_ACL_ID "; "
-+             "}; next;");
-+    }
-+
-     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                   REGBIT_CONNTRACK_COMMIT" == 1 && "
-                   REGBIT_ACL_LABEL" == 1",
-@@ -8709,12 +8734,17 @@ build_stateful(struct ovn_datapath *od,
-      * any packet that makes it this far is part of a connection we
-      * want to allow to continue. */
-     ds_clear(&actions);
--    ds_put_cstr(&actions,
--                "ct_commit { "
--                   "ct_mark.blocked = 0; "
--                   "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
--                   "ct_label.acl_id = " REG_ACL_ID "; "
--                "}; next;");
-+    if (compatible_24_03 || compatible_22_03 || compatible_22_12) {
-+        ds_put_format(&actions, "ct_commit { %s = 0; }; next;",
-+                      ct_block_action);
-+    } else {
-+        ds_put_cstr(&actions,
-+                    "ct_commit { "
-+                       "ct_mark.blocked = 0; "
-+                       "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
-+                       "ct_label.acl_id = " REG_ACL_ID "; "
-+                    "}; next;");
-+    }
-     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
-                   REGBIT_CONNTRACK_COMMIT" == 1 && "
-                   REGBIT_ACL_LABEL" == 0",
-@@ -8759,16 +8789,19 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
+@@ -8764,16 +8778,19 @@ build_lb_hairpin(const struct ls_stateful_record *ls_stateful_rec,
           * after conntrack.  It is the kernel datapath conntrack behavior.
           * We need to find a better way to handle the fragmented packets.
           * */
@@ -240,7 +125,7 @@ index 969cefe79..a1bb7169a 100644
  
          /* Set REGBIT_HAIRPIN in the original direction and
           * REGBIT_HAIRPIN_REPLY in the reply direction.
-@@ -9078,8 +9111,9 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
+@@ -9083,8 +9100,9 @@ build_lswitch_rport_arp_req_self_orig_flow(struct ovn_port *op,
  
      ds_put_format(&match,
                    "eth.src == %s && eth.dst == ff:ff:ff:ff:ff:ff && "
@@ -252,7 +137,7 @@ index 969cefe79..a1bb7169a 100644
      ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, priority, ds_cstr(&match),
                    "outport = \""MC_FLOOD_L2"\"; output;", lflow_ref);
  
-@@ -9804,12 +9838,14 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+@@ -9809,12 +9827,14 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
  {
      ovs_assert(od->nbs);
  
@@ -273,7 +158,7 @@ index 969cefe79..a1bb7169a 100644
  
      /* Logical VLANs not supported. */
      if (!is_vlan_transparent(od)) {
-@@ -9827,8 +9863,10 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
+@@ -9832,8 +9852,10 @@ build_lswitch_lflows_admission_control(struct ovn_datapath *od,
          "eth.src[40]", "Incoming Broadcast/multicast source"
          " address is invalid", lflow_ref);
  
@@ -285,7 +170,7 @@ index 969cefe79..a1bb7169a 100644
                    lflow_ref);
  
      ovn_lflow_add_drop_with_desc(
-@@ -13673,6 +13711,10 @@ build_lrouter_icmp_packet_toobig_admin_flows(
+@@ -13681,6 +13703,10 @@ build_lrouter_icmp_packet_toobig_admin_flows(
  {
      ovs_assert(op->nbrp);
  
@@ -296,7 +181,7 @@ index 969cefe79..a1bb7169a 100644
      if (!lrp_is_l3dgw(op)) {
          return;
      }
-@@ -13698,6 +13740,10 @@ build_lswitch_icmp_packet_toobig_admin_flows(
+@@ -13706,6 +13732,10 @@ build_lswitch_icmp_packet_toobig_admin_flows(
  {
      ovs_assert(op->nbsp);
  
@@ -307,7 +192,7 @@ index 969cefe79..a1bb7169a 100644
      if (!lsp_is_router(op->nbsp)) {
          for (size_t i = 0; i < op->n_lsp_addrs; i++) {
              ds_clear(match);
-@@ -13964,11 +14010,13 @@ build_adm_ctrl_flows_for_lrouter(
+@@ -13972,11 +14002,13 @@ build_adm_ctrl_flows_for_lrouter(
  {
      ovs_assert(od->nbr);
  
@@ -326,7 +211,7 @@ index 969cefe79..a1bb7169a 100644
  
      /* Logical VLANs not supported.
       * Broadcast/multicast source address is invalid. */
-@@ -14239,8 +14287,11 @@ build_neigh_learning_flows_for_lrouter(
+@@ -14247,8 +14279,11 @@ build_neigh_learning_flows_for_lrouter(
      ds_put_format(match, REGBIT_LOOKUP_NEIGHBOR_RESULT" == 1%s",
                    learn_from_arp_request ? "" :
                    " || "REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" == 0");
@@ -339,7 +224,7 @@ index 969cefe79..a1bb7169a 100644
                    lflow_ref);
  
      ovn_lflow_metered(lflows, od, S_ROUTER_IN_LEARN_NEIGHBOR, 90,
-@@ -19997,6 +20048,22 @@ ovnnb_db_run(struct northd_input *input_data,
+@@ -20005,6 +20040,22 @@ ovnnb_db_run(struct northd_input *input_data,
      ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
                                         "ls_dnat_mod_dl_dst", false);
  
@@ -364,3 +249,4 @@ index 969cefe79..a1bb7169a 100644
                      input_data->nbrec_logical_router_table,
 -- 
 2.34.1
+
