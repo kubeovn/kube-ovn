@@ -90,11 +90,22 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			}
 		}()
 	} else {
-		hostNicName, containerNicName, pfPci, vfID, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
+		hostNicName, containerNicName, pfPci, vfID, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mac)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return nil, err
 		}
+		defer func() {
+			if err != nil {
+				// Bring the representor back up so the VF is not left blackholed
+				// when configureNic fails before configureHostNic runs.
+				if link, linkErr := netlink.LinkByName(hostNicName); linkErr == nil {
+					if linkErr = netlink.LinkSetUp(link); linkErr != nil {
+						klog.Errorf("failed to bring %s back up during rollback: %v", hostNicName, linkErr)
+					}
+				}
+			}
+		}()
 	}
 
 	ipStr := util.GetIPWithoutMask(ip)
@@ -172,7 +183,19 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
+		return nil, fmt.Errorf("failed to parse mac %q: %w", mac, err)
+	}
+	// For SR-IOV interfaces, set MTU on the representor after it has been added
+	// to OVS to prevent a race with concurrent CmdDel on the same VF.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	if deviceID != "" && !yusur.IsYusurSmartNic(deviceID) {
+		link, linkErr := netlink.LinkByName(hostNicName)
+		if linkErr != nil {
+			return nil, fmt.Errorf("failed to get host link %s: %w", hostNicName, linkErr)
+		}
+		if linkErr = netlink.LinkSetMTU(link, mtu); linkErr != nil {
+			return nil, fmt.Errorf("failed to set MTU on %s: %w", hostNicName, linkErr)
+		}
 	}
 	if !yusur.IsYusurSmartNic(deviceID) {
 		if err = configureHostNic(hostNicName); err != nil {
@@ -323,6 +346,16 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	} else {
 		hostNicName, _ := generateNicName(containerID, ifName)
 		nicName = hostNicName
+	}
+	// For SR-IOV interfaces, bring the representor down before removing from OVS
+	// to prevent a race where a concurrent CmdAdd could have its representor
+	// configuration undone. See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	if deviceID != "" {
+		if link, linkErr := netlink.LinkByName(nicName); linkErr == nil {
+			if linkErr = netlink.LinkSetDown(link); linkErr != nil {
+				klog.Warningf("failed to set link %s down: %v", nicName, linkErr)
+			}
+		}
 	}
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
@@ -1669,7 +1702,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
-func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, string, int, error) {
+func setupSriovInterface(containerID, deviceID, vfDriver, ifName, mac string) (string, string, string, int, error) {
 	isVfioPciDriver := false
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
@@ -1768,17 +1801,10 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		return "", "", "", -1, fmt.Errorf("failed to rename %s to %s: %w", oldHostRepName, hostNicName, err)
 	}
 
-	link, err := netlink.LinkByName(hostNicName)
-	if err != nil {
-		return "", "", "", -1, err
-	}
-
-	// 6. set MTU on VF representor
-	if err = netlink.LinkSetMTU(link, mtu); err != nil {
-		return "", "", "", -1, fmt.Errorf("failed to set MTU on %s: %w", hostNicName, err)
-	}
-
-	// 7. set MAC address to VF
+	// 6. set MAC address to VF
+	// Note: MTU and LinkSetUp on the representor are deferred to configureNic,
+	// after OVS add-port, to prevent a CmdAdd/CmdDel race on the same VF.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
 	if err = setVfMac(deviceID, vfIndex, mac); err != nil {
 		return "", "", "", -1, err
 	}
@@ -1801,7 +1827,12 @@ func renameLink(curName, newName string) error {
 		klog.Error(err)
 		return err
 	}
-	return netlink.LinkSetUp(link)
+	// Do not bring the link up here. The representor will be brought up by
+	// configureHostNic after it has been added to OVS, to prevent a race where
+	// a concurrent CmdDel on the same VF could interfere with the representor
+	// before it is attached to br-int.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	return nil
 }
 
 func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) error {
