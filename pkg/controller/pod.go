@@ -2687,11 +2687,3 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 	klog.Infof("backfilled vpc nat gateway %s spec.lanIP with pod %s/%s ip %s", gw.Name, pod.Namespace, pod.Name, lanIP)
 	return nil
 }
-
-func perInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName string) string {
-	return fmt.Sprintf("%s.%s.kubernetes.io/ip_address.%s", nadName, nadNamespace, ifaceName)
-}
-
-func perInterfaceMACAnnotationKey(nadName, nadNamespace, ifaceName string) string {
-	return fmt.Sprintf("%s.%s.kubernetes.io/mac_address.%s", nadName, nadNamespace, ifaceName)
-}
