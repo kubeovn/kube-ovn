@@ -127,6 +127,31 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		// Defensively clean up any remaining SLRs created by this spec before
+		// deleting the subnet/VPC.  This prevents the subnet from getting stuck
+		// when VIPs created by the endpoint_slice controller haven't been fully
+		// cleaned up yet.  Filter by both suffix and namespace to avoid
+		// interfering with other specs in the cluster.
+		ginkgo.By("Cleaning up any remaining SwitchLBRules for suffix " + suffix)
+		slrs, err := switchLBRuleClient.List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			fmt.Fprintf(ginkgo.GinkgoWriter, "failed to list SwitchLBRules for suffix %q during AfterEach cleanup: %v\n", suffix, err)
+		} else {
+			for i := range slrs.Items {
+				if strings.Contains(slrs.Items[i].Name, suffix) && slrs.Items[i].Spec.Namespace == namespaceName {
+					switchLBRuleClient.Delete(slrs.Items[i].Name)
+				}
+			}
+			for i := range slrs.Items {
+				if strings.Contains(slrs.Items[i].Name, suffix) && slrs.Items[i].Spec.Namespace == namespaceName {
+					framework.ExpectNoError(
+						switchLBRuleClient.WaitToDisappear(slrs.Items[i].Name, 0, 2*time.Minute),
+						"failed to wait for SwitchLBRule %q to disappear before deleting subnet/VPC", slrs.Items[i].Name,
+					)
+				}
+			}
+		}
+
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 

@@ -284,6 +284,15 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 		belongsToThisVpc := false
 		referencedByOtherVpc := false
+		if len(lbs) == 0 && vpcLBNames != nil && subnetForVip != "" {
+			// Orphaned LBHC: no LB references it anymore (e.g. the service
+			// handler already removed the LB→LBHC reference during concurrent
+			// deletion). Only claim ownership when the LBHC's subnet matches
+			// the SLR's own subnet, preventing cross-VPC mis-deletion.
+			if lbhcSubnet := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; lbhcSubnet == subnetForVip {
+				belongsToThisVpc = true
+			}
+		}
 		for _, lb := range lbs {
 			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
 				referencedByOtherVpc = true
