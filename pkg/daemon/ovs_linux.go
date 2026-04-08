@@ -450,7 +450,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				containerGw = u2oInterconnectionIP
 			}
 
-			for gw := range strings.SplitSeq(containerGw, ",") {
+			for _, gw := range util.SplitTrimmed(containerGw, ",") {
 				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
@@ -604,8 +604,12 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 }
 
 func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxRetry int, done chan struct{}) error {
-	ips := strings.Split(ipAddr, ",")
-	for i, gw := range strings.Split(gateway, ",") {
+	ips := util.SplitTrimmed(ipAddr, ",")
+	gws := util.SplitTrimmed(gateway, ",")
+	if len(ips) != len(gws) {
+		return fmt.Errorf("the count of ip addresses and gateways mismatch: ips %q, gateways %q", ipAddr, gateway)
+	}
+	for i, gw := range gws {
 		src := strings.Split(ips[i], "/")[0]
 		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
@@ -672,7 +676,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	}
 
 	var toAdd []netlink.Route
-	for c := range strings.SplitSeq(joinCIDR, ",") {
+	for _, c := range util.SplitTrimmed(joinCIDR, ",") {
 		found := false
 		for _, r := range nodeNicRoutes {
 			if r.Dst.String() == c {
@@ -685,7 +689,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 			var src net.IP
 			var priority int
 			if protocol == kubeovnv1.ProtocolIPv4 {
-				for ip := range strings.SplitSeq(ipStr, ",") {
+				for _, ip := range util.SplitTrimmed(ipStr, ",") {
 					if util.CheckProtocol(ip) == protocol {
 						src = net.ParseIP(ip)
 						break

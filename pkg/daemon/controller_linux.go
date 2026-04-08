@@ -777,7 +777,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	}
 
 	cidr := strings.Split(subnet.Spec.CIDRBlock, ",")
-	egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+	egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
 
 	// rules
 	var rules []netlink.Rule

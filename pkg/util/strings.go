@@ -25,3 +25,13 @@ func DoubleQuotedFields(s string) []string {
 
 	return fields
 }
+
+func SplitTrimmed(s, sep string) []string {
+	var result []string
+	for item := range strings.SplitSeq(s, sep) {
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}

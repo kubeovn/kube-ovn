@@ -649,7 +649,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	} else {
 		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{
 			Name:  bfdPortName,
-			IP:    vpc.Spec.BFDPort.IP,
+			IP:    strings.Join(util.SplitTrimmed(vpc.Spec.BFDPort.IP, ","), ","),
 			Nodes: bfdPortNodes,
 		}
 	}
@@ -838,7 +838,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		nodeNames = append(nodeNames, node.Name)
 	}
 
-	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
+	networks := util.SplitTrimmed(vpc.Spec.BFDPort.IP, ",")
 	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
 		klog.Error(err)
 		return portName, nil, err
@@ -870,7 +870,7 @@ func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.Polic
 	)
 
 	if policy.NextHopIP != "" {
-		nextHops = strings.Split(policy.NextHopIP, ",")
+		nextHops = util.SplitTrimmed(policy.NextHopIP, ",")
 	}
 
 	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, nil, externalIDs); err != nil {
@@ -893,7 +893,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 	for _, policy := range policies {
 		var nextHops []string
 		if policy.NextHopIP != "" {
-			nextHops = strings.Split(policy.NextHopIP, ",")
+			nextHops = util.SplitTrimmed(policy.NextHopIP, ",")
 		}
 		routerPolicies = append(routerPolicies, &ovnnb.LogicalRouterPolicy{
 			Priority:    policy.Priority,
