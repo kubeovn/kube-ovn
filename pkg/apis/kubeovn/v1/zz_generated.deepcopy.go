@@ -1481,6 +1481,11 @@ func (in *ProviderNetworkSpec) DeepCopyInto(out *ProviderNetworkSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.VlanInterfaces != nil {
+		in, out := &in.VlanInterfaces, &out.VlanInterfaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
