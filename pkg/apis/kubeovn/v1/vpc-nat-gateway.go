@@ -47,6 +47,10 @@ type VpcNatGateway struct {
 }
 
 type VpcNatGatewaySpec struct {
+	// Namespace where the NAT gateway StatefulSet/Pod will be created.
+	// If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
 	// VPC name for the NAT gateway. This field is immutable after creation.
 	Vpc string `json:"vpc"`
 	// Subnet name for the NAT gateway. This field is immutable after creation.

@@ -56,6 +56,25 @@ const (
 	getIptablesVersion = "get-iptables-version"
 )
 
+// natGwNamespace returns the namespace where the NAT gateway StatefulSet/Pod should be created.
+// If gw.Spec.Namespace is set, it is used; otherwise the controller's own namespace is used.
+func (c *Controller) natGwNamespace(gw *kubeovnv1.VpcNatGateway) string {
+	if gw.Spec.Namespace != "" {
+		return gw.Spec.Namespace
+	}
+	return c.config.PodNamespace
+}
+
+// natGwNamespaceByName looks up the VpcNatGateway by name and returns natGwNamespace.
+// Falls back to c.config.PodNamespace when the gw is not found (e.g., already deleted).
+func (c *Controller) natGwNamespaceByName(gwName string) string {
+	gw, err := c.vpcNatGatewayLister.Get(gwName)
+	if err != nil {
+		return c.config.PodNamespace
+	}
+	return c.natGwNamespace(gw)
+}
+
 func (c *Controller) resyncVpcNatGwConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -130,7 +149,12 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 		return
 	}
 
-	key := cache.MetaObjectToName(gw).String()
+	// Use "namespace|gwName" as the queue key so the delete handler knows where the STS lives.
+	natGwNs := gw.Spec.Namespace
+	if natGwNs == "" {
+		natGwNs = c.config.PodNamespace
+	}
+	key := natGwNs + "|" + gw.Name
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 
@@ -145,10 +169,19 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 
-	name := util.GenNatGwName(key)
-	klog.Infof("delete vpc nat gw %s", name)
-	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
-		name, metav1.DeleteOptions{}); err != nil {
+	// key is "namespace|gwName" as encoded by enqueueDeleteVpcNatGw
+	parts := strings.SplitN(key, "|", 2)
+	var stsNamespace, gwName string
+	if len(parts) == 2 {
+		stsNamespace, gwName = parts[0], parts[1]
+	} else {
+		// Fallback for legacy queue entries without namespace prefix
+		stsNamespace, gwName = c.config.PodNamespace, key
+	}
+	stsName := util.GenNatGwName(gwName)
+	klog.Infof("delete vpc nat gw %s in namespace %s", stsName, stsNamespace)
+	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
+		stsName, metav1.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -209,7 +242,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	var natGwPodContainerRestartCount int32
-	pod, err := c.getNatGwPod(key)
+	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err == nil {
 		if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
 			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
@@ -226,7 +259,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 
 	// check or create statefulset
 	needToCreate := false
-	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
 		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -246,7 +279,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 
 	// Handle StatefulSet creation (early return - QoS will be handled in init flow)
 	if needToCreate {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
 			Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
 			err := fmt.Errorf("failed to create statefulset '%s', err: %w", newSts.Name, err)
 			klog.Error(err)
@@ -263,7 +296,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 	// TODO: support hot update of runtime Pod annotations directly via patch
 	if gwChanged || needRestartRecovery {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
 			klog.Error(err)
@@ -326,7 +359,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
-	pod, err := c.getNatGwPod(key)
+	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err != nil {
 		err := fmt.Errorf("failed to get nat gw %s pod: %w", gw.Name, err)
 		klog.Error(err)
@@ -618,7 +651,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
 
-	pod, err := c.getNatGwPod(natGwKey)
+	pod, err := c.getNatGwPod(natGwKey, c.natGwNamespace(gw))
 	if err != nil {
 		err = fmt.Errorf("failed to get nat gw '%s' pod, %w", natGwKey, err)
 		klog.Error(err)
@@ -1057,8 +1090,9 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	sts := &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   util.GenNatGwName(gw.Name),
-			Labels: labels,
+			Name:      util.GenNatGwName(gw.Name),
+			Namespace: c.natGwNamespace(gw),
+			Labels:    labels,
 		},
 		Spec: v1.StatefulSetSpec{
 			Replicas: new(int32(1)),
@@ -1165,14 +1199,18 @@ func (c *Controller) cleanUpVpcNatGw() error {
 		return err
 	}
 	for _, gw := range gws {
-		c.delVpcNatGatewayQueue.Add(gw.Name)
+		natGwNs := gw.Spec.Namespace
+		if natGwNs == "" {
+			natGwNs = c.config.PodNamespace
+		}
+		c.delVpcNatGatewayQueue.Add(natGwNs + "|" + gw.Name)
 	}
 	return nil
 }
 
-func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
+func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
 	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.AsSelector()
-	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(selector)
+	pods, err := c.podsLister.Pods(namespace).List(selector)
 
 	switch {
 	case err != nil:
@@ -1195,7 +1233,12 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	if natGwCreatedAT != "" {
 		return nil
 	}
-	pod, err := c.getNatGwPod(key)
+	gw, err := c.vpcNatGatewayLister.Get(key)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1360,7 +1403,7 @@ func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation st
 func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
 	var err error
 	for _, rule := range rules {
-		if err = c.execNatGwQoSInPod(gw.Name, &rule, operation); err != nil {
+		if err = c.execNatGwQoSInPod(gw, &rule, operation); err != nil {
 			klog.Errorf("failed to %s %s gw '%s' qos in pod, %v", operation, rule.Direction, gw.Name, err)
 			return err
 		}
@@ -1369,9 +1412,9 @@ func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, r
 }
 
 func (c *Controller) execNatGwQoSInPod(
-	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
+	gw *kubeovnv1.VpcNatGateway, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
 ) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(gw.Name, c.natGwNamespace(gw))
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
@@ -1430,7 +1473,7 @@ func (c *Controller) initVpcNatGw() error {
 	}
 
 	for _, gw := range gws {
-		pod, err := c.getNatGwPod(gw.Name)
+		pod, err := c.getNatGwPod(gw.Name, c.natGwNamespace(gw))
 		if err != nil {
 			// the nat gw maybe deleted
 			err := fmt.Errorf("failed to get nat gw %s pod: %w", gw.Name, err)

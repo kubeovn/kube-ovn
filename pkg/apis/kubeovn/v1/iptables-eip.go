@@ -47,6 +47,10 @@ type IptablesEIPSpec struct {
 	QoSPolicy string `json:"qosPolicy"`
 	// External subnet name. This field is immutable after creation.
 	ExternalSubnet string `json:"externalSubnet"`
+	// Namespace where the NAT gateway StatefulSet/Pod for this EIP resides.
+	// If empty, defaults to the kube-ovn controller's own namespace.
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type IptablesEIPStatus struct {

@@ -569,7 +569,7 @@ func defaultQoSCases(f *framework.Framework,
 	framework.ExpectNoError(err, "failed to delete natgw pod "+natGwPodName)
 
 	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
-	vpcNatGwClient.WaitGwPodReady(natgwName, 2*time.Minute, f.ClientSet)
+	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
@@ -631,7 +631,7 @@ func eipQoSCases(f *framework.Framework,
 	framework.ExpectNoError(err, "failed to delete natgw pod "+natGwPodName)
 
 	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
-	vpcNatGwClient.WaitGwPodReady(natgwName, 2*time.Minute, f.ClientSet)
+	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
 
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
 	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit, true)
