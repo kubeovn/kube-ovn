@@ -9,6 +9,9 @@ E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
 E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
 E2E_CILIUM_CHAINING = $(shell echo $${E2E_CILIUM_CHAINING:-false})
 
+PAUSE_IMAGE = ghcr.io/kubeovn/pause:3.9
+AGNHOST_IMAGE = ghcr.io/kubeovn/agnhost:2.47
+
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
 K8S_CONFORMANCE_E2E_SKIP =
 K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
@@ -140,8 +143,8 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/pause:3.9,1)
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(PAUSE_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -150,8 +153,8 @@ kube-ovn-conformance-e2e:
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
-	$(call kind_load_image,kube-ovn1,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
+	$(call kind_load_image,kube-ovn1,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-ic
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -186,7 +189,7 @@ kube-ovn-non-primary-cni-e2e:
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/lb-svc
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -203,7 +206,7 @@ vip-conformance-e2e:
 
 .PHONY: vpc-egress-gateway-e2e
 vpc-egress-gateway-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/vpc-egress-gateway
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -212,7 +215,7 @@ vpc-egress-gateway-e2e:
 
 .PHONY: iptables-eip-conformance-e2e
 iptables-eip-conformance-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-vpc-nat-gw
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -221,7 +224,7 @@ iptables-eip-conformance-e2e:
 
 .PHONY: iptables-eip-qos-conformance-e2e
 iptables-eip-qos-conformance-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/iptables-eip-qos
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -318,7 +321,7 @@ kube-ovn-cnp-domain-e2e:
 
 .PHONY: kube-ovn-connectivity-e2e
 kube-ovn-connectivity-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/connectivity
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -328,7 +331,7 @@ kube-ovn-connectivity-e2e:
 
 .PHONY: kube-ovn-underlay-metallb-e2e
 kube-ovn-underlay-metallb-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
@@ -337,7 +340,7 @@ kube-ovn-underlay-metallb-e2e:
 
 .PHONY: kube-ovn-slr-e2e
 kube-ovn-slr-e2e:
-	$(call kind_load_image,kube-ovn,ghcr.io/kubeovn/agnhost:2.47,1)
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
