@@ -35,6 +35,21 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
+	// On update: enforce spec.namespace immutability.
+	// Changing the namespace would create a new StatefulSet in the new namespace while
+	// leaving the old one orphaned; there is no migration path for the running workload.
+	if len(req.OldObject.Raw) > 0 {
+		gwOld := ovnv1.VpcNatGateway{}
+		if err := v.decoder.DecodeRaw(req.OldObject, &gwOld); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+		if gwOld.Spec.Namespace != gw.Spec.Namespace {
+			err := fmt.Errorf("VpcNatGateway %q: spec.namespace is immutable (old: %q, new: %q)",
+				gw.Name, gwOld.Spec.Namespace, gw.Spec.Namespace)
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+	}
+
 	if err := v.ValidateVpcNatConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}

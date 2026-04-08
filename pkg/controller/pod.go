@@ -2606,9 +2606,6 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 	if pod == nil {
 		return nil
 	}
-	if pod.Namespace != c.config.PodNamespace {
-		return nil
-	}
 
 	ownerGwName := natGwNameFromStatefulSetOwner(pod)
 	if ownerGwName == "" {

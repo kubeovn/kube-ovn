@@ -42,17 +42,30 @@ type VpcNatGateway struct {
 }
 
 type VpcNatGatewaySpec struct {
-	Vpc             string              `json:"vpc"`
-	Subnet          string              `json:"subnet"`
-	ExternalSubnets []string            `json:"externalSubnets"`
-	LanIP           string              `json:"lanIp"`
-	Selector        []string            `json:"selector"`
-	Tolerations     []corev1.Toleration `json:"tolerations"`
-	Affinity        corev1.Affinity     `json:"affinity"`
-	QoSPolicy       string              `json:"qosPolicy"`
-	BgpSpeaker      VpcBgpSpeaker       `json:"bgpSpeaker"`
-	Routes          []Route             `json:"routes"`
-	NoDefaultEIP    bool                `json:"noDefaultEIP"`
+	// Namespace where the NAT gateway StatefulSet/Pod will be created.
+	// If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
+	// VPC name for the NAT gateway. This field is immutable after creation.
+	Vpc string `json:"vpc"`
+	// Subnet name for the NAT gateway. This field is immutable after creation.
+	Subnet string `json:"subnet"`
+	// External subnets accessible through the NAT gateway
+	ExternalSubnets []string `json:"externalSubnets"`
+	// LAN IP address for the NAT gateway. This field is immutable after creation.
+	LanIP string `json:"lanIp"`
+	// Pod selector for the NAT gateway
+	Selector    []string            `json:"selector"`
+	Tolerations []corev1.Toleration `json:"tolerations"`
+	Affinity    corev1.Affinity     `json:"affinity"`
+	// QoS policy name to apply to the NAT gateway
+	QoSPolicy string `json:"qosPolicy"`
+	// BGP speaker configuration
+	BgpSpeaker VpcBgpSpeaker `json:"bgpSpeaker"`
+	// Static routes for the NAT gateway
+	Routes []Route `json:"routes"`
+	// Disable default EIP assignment
+	NoDefaultEIP bool `json:"noDefaultEIP"`
 	// User-defined annotations for the StatefulSet NAT gateway Pod template.
 	// Only effective at creation time; updates to this field are not detected.
 	Annotations map[string]string `json:"annotations,omitempty"`

@@ -262,6 +262,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 		return err
 	}
+	// patchFipLabel updated the FIP's EipV4IpLabel via the API, but the informer cache
+	// may not have synced yet when patchEipStatus called getIptablesEipNat above, causing
+	// it to miss the FIP and leave EIP.Status.Nat stale. Schedule a delayed reset.
+	c.resetIptablesEipQueue.AddAfter(fip.Spec.EIP, 3*time.Second)
 	return nil
 }
 
@@ -460,7 +464,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod", key)
-		gwPod, err := c.getNatGwPod(cachedFip.Status.NatGwDp)
+		gwPod, err := c.getNatGwPod(cachedFip.Status.NatGwDp, c.natGwNamespaceByName(cachedFip.Status.NatGwDp))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -574,6 +578,10 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to patch dnat use eip %s, %v", key, err)
 		return err
 	}
+	// patchDnatLabel updated the DNAT's EipV4IpLabel via the API, but the informer cache
+	// may not have synced yet when patchEipStatus called getIptablesEipNat above, causing
+	// it to miss the DNAT and leave EIP.Status.Nat stale. Schedule a delayed reset.
+	c.resetIptablesEipQueue.AddAfter(dnat.Spec.EIP, 3*time.Second)
 	return nil
 }
 
@@ -741,7 +749,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.Status.V4ip != "" &&
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
-		gwPod, err := c.getNatGwPod(cachedDnat.Status.NatGwDp)
+		gwPod, err := c.getNatGwPod(cachedDnat.Status.NatGwDp, c.natGwNamespaceByName(cachedDnat.Status.NatGwDp))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -856,6 +864,11 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Errorf("failed to patch snat use eip %s, %v", key, err)
 		return err
 	}
+	// patchSnatLabel updated the SNAT's EipV4IpLabel via the API, but the informer cache
+	// may not have synced yet when patchEipStatus called getIptablesEipNat above, causing
+	// it to silently miss the SNAT and leave EIP.Status.Nat stale. Schedule a delayed reset
+	// so that after the informer syncs the label, the EIP nat status is corrected.
+	c.resetIptablesEipQueue.AddAfter(snat.Spec.EIP, 3*time.Second)
 	return nil
 }
 
@@ -1011,7 +1024,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
-		gwPod, err := c.getNatGwPod(cachedSnat.Status.NatGwDp)
+		gwPod, err := c.getNatGwPod(cachedSnat.Status.NatGwDp, c.natGwNamespaceByName(cachedSnat.Status.NatGwDp))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1674,7 +1687,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 }
 
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1904,7 +1917,7 @@ func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.Ipta
 }
 
 func (c *Controller) deleteFipInPod(dp, v4ip string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1921,7 +1934,7 @@ func (c *Controller) deleteFipInPod(dp, v4ip string) error {
 }
 
 func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
@@ -1938,7 +1951,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 }
 
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1957,7 +1970,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) er
 }
 
 func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
 		return err
@@ -1983,7 +1996,7 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 }
 
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

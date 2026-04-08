@@ -235,7 +235,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			expectedLanIP: "10.244.0.99",
 		},
 		{
-			name:                   "skip when pod namespace is different from controller namespace",
+			name:                   "backfill lanIP from pod in custom namespace",
 			gwSpecLanIP:            "",
 			subnetProtocol:         kubeovnv1.ProtocolIPv4,
 			givenGwName:            gwName,
@@ -245,7 +245,7 @@ func TestBackfillVpcNatGwLanIPFromPod(t *testing.T) {
 			podAnnotation: map[string]string{
 				fmt.Sprintf(util.IPAddressAnnotationTemplate, provider): lanIP,
 			},
-			expectedLanIP: "",
+			expectedLanIP: lanIP,
 		},
 		{
 			name:                   "skip when lanIP annotation is invalid",

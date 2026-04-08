@@ -774,6 +774,11 @@ spec:
             spec:
               type: object
               properties:
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod will be created.
+                    If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
                 lanIp:
                   type: string
                   description: LAN IP address for the NAT gateway. This field is immutable after creation.
@@ -1775,6 +1780,11 @@ spec:
                 macAddress:
                   type: string
                   description: MAC address for the EIP
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod for this EIP resides.
+                    If empty, defaults to the kube-ovn controller's own namespace.
                 natGwDp:
                   type: string
                   description: NAT gateway datapath where the EIP is assigned
