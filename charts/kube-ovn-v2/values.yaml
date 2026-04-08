@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.15.0
+      tag: v1.15.9
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -312,7 +312,7 @@ natGw:
     repository: docker.io/kubeovn/vpc-nat-gateway
     # -- Image tag.
     # @section -- NAT gateways configuration
-    tag: v1.15.0
+    tag: v1.15.9
     # -- Image pull policy.
     # @section -- NAT gateways configuration
     pullPolicy: IfNotPresent
@@ -329,7 +329,7 @@ natGw:
       repository: docker.io/kubeovn/kube-ovn
       # -- Image tag.
       # @section -- NAT gateways configuration
-      tag: v1.15.0
+      tag: v1.15.9
       # -- Image pull policy.
       # @section -- NAT gateways configuration
       pullPolicy: IfNotPresent
