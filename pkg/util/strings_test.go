@@ -5,6 +5,77 @@ import (
 	"testing"
 )
 
+func TestSplitTrimmed(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		sep  string
+		want []string
+	}{
+		{
+			name: "single element",
+			s:    "10.0.0.1",
+			sep:  ",",
+			want: []string{"10.0.0.1"},
+		},
+		{
+			name: "dual stack",
+			s:    "10.0.0.1,fd00::1",
+			sep:  ",",
+			want: []string{"10.0.0.1", "fd00::1"},
+		},
+		{
+			name: "trailing separator",
+			s:    "10.0.0.1,",
+			sep:  ",",
+			want: []string{"10.0.0.1"},
+		},
+		{
+			name: "leading separator",
+			s:    ",10.0.0.1",
+			sep:  ",",
+			want: []string{"10.0.0.1"},
+		},
+		{
+			name: "consecutive separators",
+			s:    "10.0.0.1,,fd00::1",
+			sep:  ",",
+			want: []string{"10.0.0.1", "fd00::1"},
+		},
+		{
+			name: "spaces around elements",
+			s:    " 10.0.0.1 , fd00::1 ",
+			sep:  ",",
+			want: []string{"10.0.0.1", "fd00::1"},
+		},
+		{
+			name: "empty string",
+			s:    "",
+			sep:  ",",
+			want: nil,
+		},
+		{
+			name: "only separator",
+			s:    ",",
+			sep:  ",",
+			want: nil,
+		},
+		{
+			name: "only spaces and separators",
+			s:    "  ,  ,  ",
+			sep:  ",",
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if ret := SplitTrimmed(tt.s, tt.sep); !slices.Equal(ret, tt.want) {
+				t.Errorf("SplitTrimmed(%q, %q) = %v, want %v", tt.s, tt.sep, ret, tt.want)
+			}
+		})
+	}
+}
+
 func TestDoubleQuotedFields(t *testing.T) {
 	tests := []struct {
 		name string

@@ -167,7 +167,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 			MaxSize: 1048576,
 			SetID:   ipsetName,
 			Type:    ipsets.IPSetTypeHashNet,
-		}, strings.Split(rule.Match.SrcIPs, ","))
+		}, util.SplitTrimmed(rule.Match.SrcIPs, ","))
 	}
 
 	if rule.Match.DstIPs != "" {
@@ -176,7 +176,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 			MaxSize: 1048576,
 			SetID:   ipsetName,
 			Type:    ipsets.IPSetTypeHashNet,
-		}, strings.Split(rule.Match.DstIPs, ","))
+		}, util.SplitTrimmed(rule.Match.DstIPs, ","))
 	}
 }
 
@@ -281,7 +281,7 @@ func (c *Controller) setPolicyRouting() error {
 }
 
 func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalEgressGateway, ",")
+	egw := util.SplitTrimmed(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -314,7 +314,7 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway stri
 }
 
 func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalEgressGateway, ",")
+	egw := util.SplitTrimmed(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -1628,7 +1628,10 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				tableID:  subnet.Spec.PolicyRoutingTableID,
 			}
 
-			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+			egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+			if len(egw) == 0 {
+				continue
+			}
 			if util.CheckProtocol(egw[0]) == protocol {
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
@@ -1681,7 +1684,10 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			priority: subnet.Spec.PolicyRoutingPriority,
 			tableID:  subnet.Spec.PolicyRoutingTableID,
 		}
-		egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+		egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+		if len(egw) == 0 {
+			continue
+		}
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
 			if len(egw) == 2 {
 				meta.gateway = egw[1]
