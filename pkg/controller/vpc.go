@@ -607,7 +607,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			if subnet.Status.IsNotReady() {
 				c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			}
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 				custVpcEnableExternalEcmp = true
 			}
