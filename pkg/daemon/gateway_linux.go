@@ -1629,6 +1629,9 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			}
 
 			egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+			if len(egw) == 0 {
+				continue
+			}
 			if util.CheckProtocol(egw[0]) == protocol {
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
@@ -1682,6 +1685,9 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			tableID:  subnet.Spec.PolicyRoutingTableID,
 		}
 		egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+		if len(egw) == 0 {
+			continue
+		}
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
 			if len(egw) == 2 {
 				meta.gateway = egw[1]
