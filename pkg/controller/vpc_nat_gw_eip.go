@@ -68,7 +68,10 @@ func (c *Controller) natEipNamespace(eip *kubeovnv1.IptablesEIP) string {
 	if eip.Spec.Namespace != "" {
 		return eip.Spec.Namespace
 	}
-	return c.config.PodNamespace
+	// Derive the namespace from the referenced VpcNatGateway so that EIPs without an
+	// explicit spec.namespace always locate the Pod in the correct namespace.
+	// natGwNamespaceByName already falls back to c.config.PodNamespace when the GW is not found.
+	return c.natGwNamespaceByName(eip.Spec.NatGwDp)
 }
 
 func (c *Controller) handleAddIptablesEip(key string) error {

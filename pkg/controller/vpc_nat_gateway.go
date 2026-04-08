@@ -166,10 +166,10 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 }
 
 func (c *Controller) handleDelVpcNatGw(key string) error {
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-
-	// key is "namespace|gwName" as encoded by enqueueDeleteVpcNatGw
+	// key is "namespace|gwName" as encoded by enqueueDeleteVpcNatGw.
+	// Parse gwName first so we can lock by gwName — consistent with all other handlers
+	// (add/update/init) that lock by gwName alone. Using the composite key here would
+	// allow delete to run concurrently with a reconcile for the same gateway.
 	parts := strings.SplitN(key, "|", 2)
 	var stsNamespace, gwName string
 	if len(parts) == 2 {
@@ -178,6 +178,9 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		// Fallback for legacy queue entries without namespace prefix
 		stsNamespace, gwName = c.config.PodNamespace, key
 	}
+
+	c.vpcNatGwKeyMutex.LockKey(gwName)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(gwName) }()
 	stsName := util.GenNatGwName(gwName)
 	klog.Infof("delete vpc nat gw %s in namespace %s", stsName, stsNamespace)
 	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
