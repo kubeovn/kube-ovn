@@ -1079,8 +1079,8 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
-		if item.ExternalIDs["vpc-egress-gateway"] != "" ||
-			item.ExternalIDs["isU2ORoutePolicy"] != "true" {
+		if item.ExternalIDs["vpc-egress-gateway"] != "" || item.ExternalIDs["subnet"] != "" ||
+			item.ExternalIDs["isU2ORoutePolicy"] == "true" {
 			continue
 		}
 		policy := &kubeovnv1.PolicyRoute{
