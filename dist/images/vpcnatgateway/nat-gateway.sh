@@ -161,6 +161,8 @@ function init() {
     $iptables_cmd -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
     $iptables_cmd -t nat -N SHARED_DNAT
     $iptables_cmd -t nat -N SHARED_SNAT
+    $iptables_cmd -t nat -N HAIRPIN_SNAT
+    $iptables_cmd -t mangle -N VPC_MARK
 
     $iptables_cmd -t nat -A PREROUTING -j DNAT_FILTER
     $iptables_cmd -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
@@ -169,6 +171,10 @@ function init() {
     $iptables_cmd -t nat -A POSTROUTING -j SNAT_FILTER
     $iptables_cmd -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
     $iptables_cmd -t nat -A SNAT_FILTER -j SHARED_SNAT
+    $iptables_cmd -t nat -A SNAT_FILTER -j HAIRPIN_SNAT
+
+    $iptables_cmd -t mangle -A PREROUTING -j VPC_MARK
+    $iptables_cmd -t mangle -A VPC_MARK -i "$VPC_INTERFACE" -j MARK --set-xmark 0x1/0x1
 
     # Load IFB kernel module for ingress QoS traffic shaping
     # IFB (Intermediate Functional Block) is required for ingress rate limiting using HTB
@@ -247,13 +253,22 @@ function del_vpc_external_route() {
 
 function add_eip() {
     # make sure inited
-   check_inited
+    check_inited
     for rule in $@
     do
         eip=${rule}
         eip_without_prefix=(${eip//\// })
         exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
         exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
+
+        # Add hairpin SNAT rule for this EIP
+        # This rule SNATs traffic originating from the VPC and targeting an EIP back to the same EIP
+        # when it is DNAT'd and routed back to the VPC. This avoids asymmetric routing issues.
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
+        # Check if the rule already exists to maintain idempotency
+        if ! $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT $hairpin_rule --random-fully"
+        fi
     done
 
     # Use "onlink" to skip the kernel's "gateway must be directly reachable" check.
@@ -281,6 +296,12 @@ function del_eip() {
         ipCidr=`ip addr show "$EXTERNAL_INTERFACE" | grep -w "$eip" | awk '{print $2 }'`
         if [ -n "$ipCidr" ]; then
             exec_cmd "ip addr del $ipCidr dev $EXTERNAL_INTERFACE"
+        fi
+        # Remove hairpin SNAT rule for this EIP
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
+        # Check if the rule exists before attempting to delete it
+        if $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
     done
 }
@@ -403,6 +424,14 @@ function del_snat() {
 }
 
 
+# Hairpin SNAT: Enables internal VM to access another internal VM's EIP/FIP
+# Packet flow when VM A (internal) accesses VM B's EIP (external IP):
+# 1. VM A (10.0.1.6) -> EIP (10.1.69.216) arrives at NAT GW via VPC_INTERFACE
+# 2. DNAT translates destination to VM B's internal IP (10.0.1.11)
+# 3. Packet is now (src: 10.0.1.6, dst: 10.0.1.11) and routed back out VPC_INTERFACE
+# 4. Without hairpin SNAT, reply from VM B goes directly to VM A (same subnet or VPC),
+#    bypassing NAT GW. VM A expects reply from EIP, causing connection failure.
+# 5. Hairpin SNAT translates source to EIP, ensuring symmetric return path via NAT GW.
 function add_dnat() {
     # Strict validation before adding (DNAT identity = (EIP, ExternalPort, Protocol)):
     # 1. If identity does not exist -> create rule
