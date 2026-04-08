@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.15.9 (2026-04-08)
+
+ * [64eb81f53](https://github.com/kubeovn/kube-ovn/commit/64eb81f53816c54ab025650461c3c8655e31cbbc) release v1.15.9
+ * [854164e4b](https://github.com/kubeovn/kube-ovn/commit/854164e4b88a02c9eae1a71becdeae7c558f6180) chore(deps): update dependency go to v1.26.2 (#6587)
+ * [3a2264795](https://github.com/kubeovn/kube-ovn/commit/3a2264795f5229f3334e04d205c41fc985bf469d) fix(controller): preserve VPC policy route next hops during OVN diff (#6577)
+ * [541993fd7](https://github.com/kubeovn/kube-ovn/commit/541993fd7584b2c277e827f3a2c92697cc00a05f) fix(controller): reuse addPolicyRouteToVpc to handle empty NextHopIP correctly (#6472)
+ * [100933162](https://github.com/kubeovn/kube-ovn/commit/100933162e1ecc754d28da10fbe05d7016e90103) Split ECMP next-hops in custom VPC policy routes (#6405)
+ * [1099892d2](https://github.com/kubeovn/kube-ovn/commit/1099892d2df24c49e0e46795c068986ff23f98e0) deps: update k8s to v1.34.6 (#6579)
+ * [09a9e2316](https://github.com/kubeovn/kube-ovn/commit/09a9e2316f75bfe0fbab0ab91401ab5b996d40f4) fix(chart-v2): fix extraEnvs indent in controller-deployment template (#6575)
+ * [72b6b3174](https://github.com/kubeovn/kube-ovn/commit/72b6b3174881eade15948c9d94c07c9356c6acae) ci: only fail on pod restarts caused by panic or SIGSEGV (#6506) (#6568)
+ * [662100f7f](https://github.com/kubeovn/kube-ovn/commit/662100f7f8a3d51a5bc53df4d24ef78890fc5bca) fix(slr): handle orphaned ip_port_mappings and overwrites (#6558)
+ * [8ff5589a7](https://github.com/kubeovn/kube-ovn/commit/8ff5589a709f5949cc588883e3581ba640c8739e) fix(ha): adapt OvnDatabaseControl call for release-1.15 compatibility
+ * [ca652669a](https://github.com/kubeovn/kube-ovn/commit/ca652669a39e59864449d20a80413c87f013d884) fix: wrap EIP error shadowing and use uint64 for iptables counters (#6538)
+ * [b54aa2140](https://github.com/kubeovn/kube-ovn/commit/b54aa2140294d439e12910f3dd00c43cfcf8fca9) fix(ha): detect and recover from split-brain leader with incomplete cluster membership (#6363)
+ * [9a164334a](https://github.com/kubeovn/kube-ovn/commit/9a164334aeef5c5d760c65d5136a67e50851fa2a) fix(daemon): skip invalid policy routing rules when pod lacks matching protocol IP (#6522)
+ * [9ca482dfc](https://github.com/kubeovn/kube-ovn/commit/9ca482dfc4187b52468def1e2be543ebe45c217e) fix(controller): prevent invalid ACL generation for named ports and IPBlock except CIDRs (#6536)
+ * [3e7c07914](https://github.com/kubeovn/kube-ovn/commit/3e7c0791450f6a15e8c1fa8098579791f46baa7e) fix(daemon): harden protocol iteration and bounds checks in gateway (#6547)
+ * [51c9bca8b](https://github.com/kubeovn/kube-ovn/commit/51c9bca8bb233d8174f64ab65b1f0cc105ff1247) fix: protect ANP/BNP/CNP priority maps from concurrent access (#6373)
+ * [7daebcc27](https://github.com/kubeovn/kube-ovn/commit/7daebcc271d6387f68410f1328294733ef913ac0) fix(controller): use defer to protect vpcKeyMutex unlock in subnet handler (#6515)
+ * [1a9acfa50](https://github.com/kubeovn/kube-ovn/commit/1a9acfa50d2b0a55f4f16b45722af61d1b781258) fix(informer): return nil instead of error in VM indexer to prevent client-go panic (#6537)
+ * [f46c0b180](https://github.com/kubeovn/kube-ovn/commit/f46c0b1800dc9311f355330ed486b3e426c2285b) ci: install multus before kubevirt e2e tests
+ * [5f2dec037](https://github.com/kubeovn/kube-ovn/commit/5f2dec037cad2e861fbb2333ddc92d20912fa5e3) Set Kubevirt live-migrations multi-chassis options for all VM nics (#6241)
+ * [38965a6fe](https://github.com/kubeovn/kube-ovn/commit/38965a6fee0f2b42e4eb518ba1aad0cf9e509b76) prepare for next release
+
+### Contributors
+
+ * Asish Kumar
+ * ILYAS ABDELLAOUI
+ * Mengxin Liu
+ * SKALA NETWORKS
+ * Uğur Tafralı
+ * jskrill
+ * renovate[bot]
+ * 张祖建
+
 ## v1.15.8 (2026-03-26)
 
  * [0060dd23c](https://github.com/kubeovn/kube-ovn/commit/0060dd23c36f26e52517b4808570b5bcd78f19d2) release v1.15.8
