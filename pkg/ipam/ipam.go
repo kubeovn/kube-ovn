@@ -331,7 +331,17 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		for nicName, mac := range subnet.NicToMac {
 			if subnet.V4NicToIP[nicName] == nil && subnet.V6NicToIP[nicName] == nil {
 				delete(subnet.NicToMac, nicName)
-				delete(subnet.MacToPod, mac)
+				// only delete MacToPod if no other NIC still references this MAC
+				macStillInUse := false
+				for otherNicName, otherMac := range subnet.NicToMac {
+					if otherNicName != nicName && otherMac == mac {
+						macStillInUse = true
+						break
+					}
+				}
+				if !macStillInUse {
+					delete(subnet.MacToPod, mac)
+				}
 			}
 		}
 
