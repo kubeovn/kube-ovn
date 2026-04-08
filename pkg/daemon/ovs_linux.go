@@ -183,7 +183,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
+		return nil, fmt.Errorf("failed to parse mac %q: %w", mac, err)
 	}
 	// For SR-IOV interfaces, set MTU on the representor after it has been added
 	// to OVS to prevent a race with concurrent CmdDel on the same VF.
