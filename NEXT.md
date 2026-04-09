@@ -2,7 +2,9 @@
 
 This document lists the features merged into the master branch for the next minor release.
 
-## Post-v1.15.0
+## Post-v1.16.0
+
+## v1.16.0
 
 - NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)
 - Support static IP/MAC for multiple interfaces on the same logical switch. [#6060](https://github.com/kubeovn/kube-ovn/pull/6060)
@@ -38,7 +40,7 @@ This document lists the features merged into the master branch for the next mino
   - Add `external-gateway-config-ns` option for controller. [#6211](https://github.com/kubeovn/kube-ovn/pull/6211)
   - Introduce ServiceMonitor and labels to services. [#6340](https://github.com/kubeovn/kube-ovn/pull/6340)
 
-## Post-v1.14.0
+## v1.15.0
 
 - ACL log supports ratelimiting. [#5938](https://github.com/kubeovn/kube-ovn/pull/5938)
 - Subnet with centralized gateway now supports nodeSelectors. [#5956](https://github.com/kubeovn/kube-ovn/pull/5956)
