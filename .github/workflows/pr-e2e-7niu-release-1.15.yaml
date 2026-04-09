@@ -60,12 +60,51 @@ jobs:
           name: kube-ovn
           path: kube-ovn.tar
 
-  master-k8s-conformance-e2e:
-    name: Master k8s conformance e2e
+  build-vpc-nat-gateway:
+    name: Build vpc-nat-gateway image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Build image tar
+        run: |
+          make image-vpc-nat-gateway-ubuntu
+          make tar-vpc-nat-gateway
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vpc-nat-gateway
+          path: vpc-nat-gateway.tar
+
+  master-standard-e2e:
+    name: ${{ matrix.suite.name }}
     needs:
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: Master k8s conformance e2e
+            target: k8s-conformance-e2e
+          - name: Master kube-ovn conformance e2e
+            target: kube-ovn-conformance-e2e
+          - name: Master kube-ovn connectivity e2e
+            target: kube-ovn-connectivity-e2e
+          - name: Master vip conformance e2e
+            target: vip-conformance-e2e
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -132,7 +171,242 @@ jobs:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
           E2E_IP_FAMILY: ipv4
           E2E_NETWORK_MODE: overlay
-        run: make k8s-conformance-e2e
+        run: make ${{ matrix.suite.target }}
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-ha-security-e2e:
+    name: Master ha and security e2e
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION || '' }}
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-ha-ipv4
+
+      - name: Install kube-ovn
+        env:
+          NET_STACK: ipv4
+          ENABLE_SSL: "false"
+          ENABLE_BIND_LOCAL_IP: "false"
+        run: make kind-install-chart
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: |
+          make kube-ovn-security-e2e
+          make kube-ovn-ha-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-multus-e2e:
+    name: Master multus e2e
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION || '' }}
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-ipv4
+
+      - name: Install kube-ovn
+        run: make kind-install-ipv4
+
+      - name: Install multus
+        run: make kind-install-multus
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+        run: make kube-ovn-multus-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-iptables-vpc-nat-gw-e2e:
+    name: Master iptables vpc nat gw e2e
+    needs:
+      - build-kube-ovn
+      - build-vpc-nat-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION || '' }}
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v8
+        with:
+          name: vpc-nat-gateway
+
+      - name: Load images
+        run: |
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init
+
+      - name: Install kube-ovn with vpc nat gateway enabled
+        run: make kind-install-vpc-nat-gw
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+        run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: Check kube ovn pod restarts
         run: make check-kube-ovn-pod-restarts
