@@ -9,9 +9,9 @@ This document lists the features merged into the master branch for the next mino
 - MetalLB underlay integration now supports IPv6 and dual-stack. [#6159](https://github.com/kubeovn/kube-ovn/pull/6159)
 - KubeVirt live-migration multi-chassis options now apply to all VM NICs, not just the primary one. [#6241](https://github.com/kubeovn/kube-ovn/pull/6241)
 - Add human-readable descriptions to all Kube-OVN CRD fields for better `kubectl explain` output. [#6133](https://github.com/kubeovn/kube-ovn/pull/6133) [#6147](https://github.com/kubeovn/kube-ovn/pull/6147)
-- Support BGP and EVPN (L3VPN) for VPC egress gateway, running FRR in the egress gateway Pod. [#6224](https://github.com/kubeovn/kube-ovn/pull/6224)
+- Support BGP and EVPN (L3VPN) for VPC Egress Gateway, running FRR in the egress gateway Pod. [#6224](https://github.com/kubeovn/kube-ovn/pull/6224)
 - Support per-pod NIC granular DHCP control via annotations, overriding subnet-level DHCP settings. [#6475](https://github.com/kubeovn/kube-ovn/pull/6475)
-- Extend SecurityGroup API with tiers, larger priority range (1–16384), localAddress and port matches. [#6330](https://github.com/kubeovn/kube-ovn/pull/6330)
+- Extend SecurityGroup API with tiers, larger priority range (1-16384), localAddress and port matches. [#6330](https://github.com/kubeovn/kube-ovn/pull/6330)
 - Use BigInt for SubnetStatus IP count fields to support large address ranges. [#6403](https://github.com/kubeovn/kube-ovn/pull/6403)
 - Improve hairpin logic to support FIP, SNAT from any CIDR within the VPC and LoadBalancers. [#6445](https://github.com/kubeovn/kube-ovn/pull/6445)
 - VPC NAT Gateway
