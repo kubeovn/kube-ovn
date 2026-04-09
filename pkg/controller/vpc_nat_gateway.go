@@ -245,11 +245,15 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	var natGwPodContainerRestartCount int32
+	var backfillErr error
 	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err == nil {
-		if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
-			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
-			return err
+		if backfillErr = c.backfillVpcNatGwLanIPFromPod(pod, key); backfillErr != nil {
+			// backfill failed (e.g. subnet lister not synced, API patch error).
+			// Continue the reconcile so the StatefulSet is still created/updated,
+			// then return backfillErr at the end so the work queue retries with
+			// rate-limited backoff.
+			klog.Warningf("failed to backfill lanIP for vpc nat gateway %s: %v; will retry", key, backfillErr)
 		}
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name == vpcNatGwContainerName {
@@ -339,7 +343,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	return nil
+	// Return backfillErr last so the StatefulSet work above is always attempted,
+	// but the work queue still retries with rate-limited backoff if backfill failed.
+	return backfillErr
 }
 
 func (c *Controller) handleInitVpcNatGw(key string) error {

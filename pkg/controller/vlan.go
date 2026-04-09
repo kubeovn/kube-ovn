@@ -39,7 +39,6 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 		klog.Errorf("failed to list subnets when vlan %s provider changed: %v", newVlan.Name, err)
 		return
 	}
-
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == newVlan.Name {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)

@@ -362,7 +362,7 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	if owners := ip.GetOwnerReferences(); len(owners) != 0 {
 		var err error
 		var ownerExists bool
-		for owner := range slices.Values(owners) {
+		for _, owner := range owners {
 			switch owner.Kind {
 			case util.KindNode:
 				_, err = c.nodesLister.Get(owner.Name)

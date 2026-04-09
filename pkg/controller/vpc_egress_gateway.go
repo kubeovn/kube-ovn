@@ -709,7 +709,11 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	if bfdIP != "" {
 		for _, dstIP := range bfdDstIPs.UnsortedList() {
-			// values of minRX/minTX should be values of minTX/minRX set in the BFD container of the deployment
+			// BFD parameter swap: CreateBFD takes (minRx, minTx) from the OVN router's perspective,
+			// but gw.Spec.BFD defines them from the gateway container's perspective.
+			// In BFD negotiation, a peer's minTX (send interval) satisfies the local minRX requirement.
+			// Therefore: OVN minRx = container MinTX (how often the gateway sends toward OVN),
+			//            OVN minTx = container MinRX (how fast OVN must send to satisfy the gateway).
 			bfd, err := c.OVNNbClient.CreateBFD(lrpName, dstIP, int(gw.Spec.BFD.MinTX), int(gw.Spec.BFD.MinRX), int(gw.Spec.BFD.Multiplier), externalIDs)
 			if err != nil {
 				klog.Error(err)

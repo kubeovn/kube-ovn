@@ -37,7 +37,7 @@ func (c *Controller) enqueueUpdateIptablesFip(oldObj, newObj any) {
 		return
 	}
 	if newFip.Spec.EIP == "" || newFip.Spec.InternalIP == "" {
-		klog.Errorf("skip enqueue fip %s: incomplete spec (eip=%q, internalIP=%q)", key, newFip.Spec.EIP, newFip.Spec.InternalIP)
+		klog.Warningf("skip enqueue fip %s: incomplete spec (eip=%q, internalIP=%q)", key, newFip.Spec.EIP, newFip.Spec.InternalIP)
 		return
 	}
 	if oldFip.Status.V4ip != newFip.Status.V4ip ||
@@ -89,7 +89,7 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 	}
 	if newDnat.Spec.EIP == "" || newDnat.Spec.ExternalPort == "" || newDnat.Spec.Protocol == "" ||
 		newDnat.Spec.InternalIP == "" || newDnat.Spec.InternalPort == "" {
-		klog.Errorf("skip enqueue dnat %s: incomplete spec (eip=%q, externalPort=%q, protocol=%q, internalIP=%q, internalPort=%q)",
+		klog.Warningf("skip enqueue dnat %s: incomplete spec (eip=%q, externalPort=%q, protocol=%q, internalIP=%q, internalPort=%q)",
 			key, newDnat.Spec.EIP, newDnat.Spec.ExternalPort, newDnat.Spec.Protocol, newDnat.Spec.InternalIP, newDnat.Spec.InternalPort)
 		return
 	}
@@ -144,7 +144,7 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(oldObj, newObj any) {
 		return
 	}
 	if newSnat.Spec.EIP == "" || newSnat.Spec.InternalCIDR == "" {
-		klog.Errorf("skip enqueue snat %s: incomplete spec (eip=%q, internalCIDR=%q)", key, newSnat.Spec.EIP, newSnat.Spec.InternalCIDR)
+		klog.Warningf("skip enqueue snat %s: incomplete spec (eip=%q, internalCIDR=%q)", key, newSnat.Spec.EIP, newSnat.Spec.InternalCIDR)
 		return
 	}
 	if oldSnat.Status.V4ip != newSnat.Status.V4ip ||
@@ -318,17 +318,19 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 //  2. Spec change path (Status.V4ip != "" AND Status differs from Spec+EIP):
 //     Old values come from Status; new values come from Spec + EIP CR.
 //     Steps strictly ordered to maintain all 4 dimensions:
-//     a. finalDeleteFipInPod  (clean dimension 1 with old values from Status)
-//     b. createFipInPod  (create dimension 1 with new values from Spec+EIP)
-//     c. patchFipStatus  (update dimension 2 to match new iptables rule)
-//     d. patchFipLabel   (update dimension 3 to match new EIP)
-//     e. patchEipStatus  (update dimension 4 on new EIP)
-//     f. resetOldEip     (async clean dimension 4 on old EIP, if EIP changed)
+//     a. patchFipStatus(ready=false)  (mark dimension 2 dirty; crash leaves a visible not-ready signal)
+//     b. finalDeleteFipInPod  (clean dimension 1 with old values from Status)
+//     c. createFipInPod  (create dimension 1 with new values from Spec+EIP)
+//     d. patchFipStatus  (update dimension 2 to match new iptables rule, mark ready=true)
+//     e. patchFipLabel   (update dimension 3 to match new EIP)
+//     f. patchEipStatus  (update dimension 4 on new EIP)
+//     g. resetOldEip     (async clean dimension 4 on old EIP, if EIP changed)
 //     If any step fails, returns error to retry. Iptables operations are idempotent.
 //
 //  3. Redo path (gateway pod restarted):
 //     Re-creates the iptables rule using Status.V4ip (the known-good external IP)
-//     plus Spec.InternalIP. Only touches dimension 1; dimensions 2-4 are already correct.
+//     and Status.InternalIP (the destination IP recorded when the rule was originally created).
+//     Only touches dimension 1; dimensions 2-4 are already correct.
 func (c *Controller) handleUpdateIptablesFip(key string) error {
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -1225,7 +1227,7 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+	} else if fip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
 		fip.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		fip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
@@ -1572,7 +1574,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+	} else if snat.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
 		snat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		snat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp

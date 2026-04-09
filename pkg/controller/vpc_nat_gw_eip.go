@@ -935,7 +935,8 @@ func (c *Controller) patchEipLabel(eipName string) error {
 			util.QoSLabel:               eip.Spec.QoSPolicy,
 			util.EipV4IpLabel:           eip.Spec.V4ip,
 		}
-	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp || eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy {
+	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp || eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy ||
+		eip.Labels[util.SubnetNameLabel] != externalNetwork || eip.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
 		op = "replace"
 		needUpdateLabel = true
 		eip.Labels[util.SubnetNameLabel] = externalNetwork

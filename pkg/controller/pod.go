@@ -57,10 +57,9 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 	podName := pod.Name
 
 	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
-	for i := range pod.Spec.InitContainers {
-		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
-			*pod.Spec.InitContainers[i].RestartPolicy == v1.ContainerRestartPolicyAlways {
-			restartableInitContainers = append(restartableInitContainers, pod.Spec.InitContainers[i])
+	for _, ctr := range pod.Spec.InitContainers {
+		if ctr.RestartPolicy != nil && *ctr.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			restartableInitContainers = append(restartableInitContainers, ctr)
 		}
 	}
 
@@ -108,10 +107,9 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	podName := pod.Name
 
 	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
-	for i := range pod.Spec.InitContainers {
-		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
-			*pod.Spec.InitContainers[i].RestartPolicy == v1.ContainerRestartPolicyAlways {
-			restartableInitContainers = append(restartableInitContainers, pod.Spec.InitContainers[i])
+	for _, ctr := range pod.Spec.InitContainers {
+		if ctr.RestartPolicy != nil && *ctr.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			restartableInitContainers = append(restartableInitContainers, ctr)
 		}
 	}
 

@@ -1077,8 +1077,11 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 
-	c.OVNNbClient.Close()
-	c.OVNSbClient.Close()
+	// Use defer-in-closure to guarantee both clients are closed even if the first Close panics.
+	func() {
+		defer c.OVNSbClient.Close()
+		defer c.OVNNbClient.Close()
+	}()
 }
 
 func (c *Controller) dbStatus() {
