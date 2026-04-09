@@ -1171,13 +1171,15 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 		if port.Protocol != nil {
 			protoStr = string(*port.Protocol)
 		}
-		protocol := strings.ToLower(protoStr)
+		// portProto is the L4 protocol for this port rule (tcp/udp/sctp).
+		// Named portProto to avoid shadowing the outer `protocol` parameter (ip address family).
+		portProto := strings.ToLower(protoStr)
 
 		// allow all tcp or udp traffic
 		if port.Port == nil {
 			allLayer4Match := NewAndACLMatch(
 				allowedIPMatch,
-				NewACLMatch(protocol, "", "", ""),
+				NewACLMatch(portProto, "", "", ""),
 			)
 
 			matches = append(matches, allLayer4Match.String())
@@ -1186,7 +1188,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 		// allow one tcp or udp port traffic
 		if port.EndPort == nil {
-			tcpKey := protocol + ".dst"
+			tcpKey := portProto + ".dst"
 
 			var portID int32
 			if port.Port.Type == intstr.Int {
@@ -1221,7 +1223,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 		}
 
 		// allow several tcp or udp port traffic
-		tcpKey := protocol + ".dst"
+		tcpKey := portProto + ".dst"
 		severalTCPMatch := NewAndACLMatch(
 			allowedIPMatch,
 			NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort))),
@@ -1313,15 +1315,17 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 		if port.Protocol != nil {
 			protoStr = string(*port.Protocol)
 		}
-		protocol := strings.ToLower(protoStr)
+		// portProto is the L4 protocol for this port rule (tcp/udp/sctp).
+		// Named portProto to avoid shadowing the outer `protocol` parameter (ip address family).
+		portProto := strings.ToLower(protoStr)
 
 		if port.Port == nil {
-			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(protocol, "", "", "")).String())
+			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(portProto, "", "", "")).String())
 			continue
 		}
 
 		if port.EndPort == nil {
-			tcpKey := protocol + ".dst"
+			tcpKey := portProto + ".dst"
 			var portID int32
 			if port.Port.Type == intstr.Int {
 				portID = port.Port.IntVal
@@ -1346,7 +1350,7 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 			continue
 		}
 
-		tcpKey := protocol + ".dst"
+		tcpKey := portProto + ".dst"
 		matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort)))).String())
 	}
 
