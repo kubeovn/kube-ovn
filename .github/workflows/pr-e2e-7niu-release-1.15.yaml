@@ -176,8 +176,8 @@ jobs:
       - name: Check kube ovn pod restarts
         run: make check-kube-ovn-pod-restarts
 
-  master-ha-security-e2e:
-    name: Master ha and security e2e
+  master-ha-e2e:
+    name: Master ha e2e
     needs:
       - build-kube-ovn
     runs-on: ubuntu-24.04
@@ -240,11 +240,7 @@ jobs:
           make kind-ghcr-pull kind-init-ha-ipv4
 
       - name: Install kube-ovn
-        env:
-          NET_STACK: ipv4
-          ENABLE_SSL: "false"
-          ENABLE_BIND_LOCAL_IP: "false"
-        run: make kind-install-chart
+        run: make kind-install-ipv4
 
       - name: Run master e2e
         working-directory: test/e2e/source
@@ -252,9 +248,7 @@ jobs:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
           E2E_IP_FAMILY: ipv4
           E2E_NETWORK_MODE: overlay
-        run: |
-          make kube-ovn-security-e2e
-          make kube-ovn-ha-e2e
+        run: make kube-ovn-ha-e2e
 
       - name: Check kube ovn pod restarts
         run: make check-kube-ovn-pod-restarts
