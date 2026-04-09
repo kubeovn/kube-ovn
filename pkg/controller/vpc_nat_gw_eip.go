@@ -155,7 +155,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 			return err
 		}
 	}
-	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name); err != nil {
+	// Resolve the gateway namespace for spec.namespace backfill inside createOrUpdateEipCR.
+	gwNamespace := c.natGwNamespaceByName(cachedEip.Spec.NatGwDp)
+	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name, gwNamespace); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
@@ -594,7 +596,7 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	return v4, v6, nil
 }
 
-func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
+func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, externalNet, gwNamespace string) error {
 	needCreate := false
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
@@ -625,6 +627,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				NatGwDp:        natGwDp,
 				QoSPolicy:      qos,
 				ExternalSubnet: externalNet,
+				Namespace:      gwNamespace,
 			},
 			Status: kubeovnv1.IptablesEIPStatus{
 				IP:        v4ip,
@@ -660,6 +663,10 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
 			eip.Spec.ExternalSubnet = externalNet
+			// Auto-populate spec.namespace from VpcNatGateway for NAMESPACE column visibility.
+			if eip.Spec.Namespace == "" && gwNamespace != "" {
+				eip.Spec.Namespace = gwNamespace
+			}
 			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)
