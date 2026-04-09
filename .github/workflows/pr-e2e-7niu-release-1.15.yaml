@@ -157,7 +157,8 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
+          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-ipv4
@@ -234,7 +235,8 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
+          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-ha-ipv4
@@ -306,7 +308,8 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
+          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-ipv4
@@ -388,7 +391,8 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
+          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init

@@ -839,7 +839,7 @@ kind-clean-bgp-ha:
 
 .PHONY: kind-ghcr-pull
 kind-ghcr-pull:
-	@echo $${GHCR_TOKEN} | docker login ghcr.io -u github-actions --password-stdin
+	@echo $${GHCR_TOKEN} | docker login ghcr.io -u "$${GHCR_USERNAME:-github-actions}" --password-stdin
 	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
 	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 
