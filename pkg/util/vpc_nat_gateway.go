@@ -29,19 +29,37 @@ const (
 
 // GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
 func GenNatGwName(name string) string {
-	return fmt.Sprintf("%s-%s", VpcNatGwNamePrefix, name)
+	return GenNatGwNameWithPrefix(VpcNatGwNamePrefix, name)
+}
+
+// GenNatGwNameWithPrefix returns the full name of a NAT gateway StatefulSet/Deployment
+// with an explicit name prefix.
+func GenNatGwNameWithPrefix(prefix, name string) string {
+	if prefix == "" {
+		prefix = VpcNatGwNameDefaultPrefix
+	}
+	return fmt.Sprintf("%s-%s", prefix, name)
 }
 
 // GenNatGwPodName returns the full name of the NAT gateway pod within a StatefulSet
 func GenNatGwPodName(name string) string {
-	return fmt.Sprintf("%s-%s-0", VpcNatGwNamePrefix, name)
+	return GenNatGwPodNameWithPrefix(VpcNatGwNamePrefix, name)
+}
+
+// GenNatGwPodNameWithPrefix returns the full name of the NAT gateway pod within a StatefulSet
+// with an explicit name prefix.
+func GenNatGwPodNameWithPrefix(prefix, name string) string {
+	if prefix == "" {
+		prefix = VpcNatGwNameDefaultPrefix
+	}
+	return fmt.Sprintf("%s-%s-0", prefix, name)
 }
 
 // ValidateNatGwStatefulSetNameLength validates generated NAT GW StatefulSet name length.
 // This check is stricter than the plain 63-char label value limit because StatefulSet
 // controller appends a hash suffix to `controller-revision-hash` label values.
-func ValidateNatGwStatefulSetNameLength(gwName string) error {
-	statefulSetName := GenNatGwName(gwName)
+func ValidateNatGwStatefulSetNameLength(prefix, gwName string) error {
+	statefulSetName := GenNatGwNameWithPrefix(prefix, gwName)
 	if len(statefulSetName) > NatGwStatefulSetNameMaxLength {
 		return fmt.Errorf("generated NAT gateway statefulset name %q length %d exceeds max %d; choose a shorter NAT gateway name",
 			statefulSetName, len(statefulSetName), NatGwStatefulSetNameMaxLength)

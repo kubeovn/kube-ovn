@@ -224,15 +224,16 @@ func TestGenNatGwLabels(t *testing.T) {
 }
 
 func TestValidateNatGwStatefulSetNameLength(t *testing.T) {
-	maxGwNameLen := NatGwStatefulSetNameMaxLength - len(VpcNatGwNamePrefix) - 1
+	const explicitPrefix = "vpc-nat-gw"
+	maxGwNameLen := NatGwStatefulSetNameMaxLength - len(explicitPrefix) - 1
 	validGwName := strings.Repeat("a", maxGwNameLen)
 	invalidGwName := strings.Repeat("a", maxGwNameLen+1)
 
-	if err := ValidateNatGwStatefulSetNameLength(validGwName); err != nil {
+	if err := ValidateNatGwStatefulSetNameLength(explicitPrefix, validGwName); err != nil {
 		t.Fatalf("expected valid gateway name length, got error: %v", err)
 	}
 
-	err := ValidateNatGwStatefulSetNameLength(invalidGwName)
+	err := ValidateNatGwStatefulSetNameLength(explicitPrefix, invalidGwName)
 	if err == nil {
 		t.Fatalf("expected error for overly long gateway name, got nil")
 	}
