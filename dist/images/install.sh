@@ -1023,6 +1023,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
     - jsonPath: .status.ip
       name: IP
       type: string
@@ -4140,6 +4143,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
     - jsonPath: .spec.vpc
       name: Vpc
       type: string

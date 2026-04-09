@@ -23,6 +23,7 @@ type VpcNatGatewayList struct {
 // +resourceName=vpc-nat-gateways
 // +kubebuilder:resource:scope="Cluster",shortName="vpc-nat-gw",path="vpc-nat-gateways",singular="vpc-nat-gateway"
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Namespace",type="string",JSONPath=".spec.namespace"
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
 // +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
 // +kubebuilder:printcolumn:name="LanIP",type="string",JSONPath=".spec.lanIp"
