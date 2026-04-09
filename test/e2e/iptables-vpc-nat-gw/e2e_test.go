@@ -582,6 +582,22 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
 			"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
 
+		// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
+		// it from the referenced VpcNatGateway's spec.namespace.
+		ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
+		autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
+		autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(autoNsEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
+			iptablesEIPClient.DeleteSync(autoNsEipName)
+		})
+		ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
+		gomega.Eventually(func() string {
+			return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
+		}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
+			"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
+
 		// recover the image
 		cm.Data["image"] = oldImage
 		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
