@@ -9,6 +9,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -19,6 +20,13 @@ const VpcNatGwNameDefaultPrefix = "vpc-nat-gw"
 // VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
 var VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
 
+const (
+	// StatefulSet controller appends "-<10-char-hash>" to controller-revision-hash label value.
+	statefulSetRevisionHashSuffixLength = 11
+	// To keep controller-revision-hash valid, statefulset name must not exceed 52 chars.
+	NatGwStatefulSetNameMaxLength = validation.LabelValueMaxLength - statefulSetRevisionHashSuffixLength
+)
+
 // GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
 func GenNatGwName(name string) string {
 	return fmt.Sprintf("%s-%s", VpcNatGwNamePrefix, name)
@@ -27,6 +35,18 @@ func GenNatGwName(name string) string {
 // GenNatGwPodName returns the full name of the NAT gateway pod within a StatefulSet
 func GenNatGwPodName(name string) string {
 	return fmt.Sprintf("%s-%s-0", VpcNatGwNamePrefix, name)
+}
+
+// ValidateNatGwStatefulSetNameLength validates generated NAT GW StatefulSet name length.
+// This check is stricter than the plain 63-char label value limit because StatefulSet
+// controller appends a hash suffix to `controller-revision-hash` label values.
+func ValidateNatGwStatefulSetNameLength(gwName string) error {
+	statefulSetName := GenNatGwName(gwName)
+	if len(statefulSetName) > NatGwStatefulSetNameMaxLength {
+		return fmt.Errorf("generated NAT gateway statefulset name %q length %d exceeds max %d; choose a shorter NAT gateway name",
+			statefulSetName, len(statefulSetName), NatGwStatefulSetNameMaxLength)
+	}
+	return nil
 }
 
 // GetNatGwExternalNetwork returns the external network attached to a NAT gateway

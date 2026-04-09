@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -219,6 +220,21 @@ func TestGenNatGwLabels(t *testing.T) {
 				t.Errorf("got %v, but want %v", result, tc.expected)
 			}
 		})
+	}
+}
+
+func TestValidateNatGwStatefulSetNameLength(t *testing.T) {
+	maxGwNameLen := NatGwStatefulSetNameMaxLength - len(VpcNatGwNamePrefix) - 1
+	validGwName := strings.Repeat("a", maxGwNameLen)
+	invalidGwName := strings.Repeat("a", maxGwNameLen+1)
+
+	if err := ValidateNatGwStatefulSetNameLength(validGwName); err != nil {
+		t.Fatalf("expected valid gateway name length, got error: %v", err)
+	}
+
+	err := ValidateNatGwStatefulSetNameLength(invalidGwName)
+	if err == nil {
+		t.Fatalf("expected error for overly long gateway name, got nil")
 	}
 }
 

@@ -319,6 +319,10 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 }
 
 func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
+	if err := util.ValidateNatGwStatefulSetNameLength(gw.Name); err != nil {
+		return err
+	}
+
 	if gw.Spec.Vpc == "" {
 		return errors.New("parameter \"vpc\" cannot be empty")
 	}
