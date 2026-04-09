@@ -73,22 +73,8 @@ spec:
           command:
           - /kube-ovn/kube-ovn-pinger
           args:
-          - --external-address=
-          {{- if eq .Values.networking.stack "Dual" -}}
-          {{ .Values.pinger.targets.externalAddresses.v4 }},{{ .Values.pinger.targets.externalAddresses.v6 }}
-          {{- else if eq .Values.networking.stack "IPv4" -}}
-          {{ .Values.pinger.targets.externalAddresses.v4 }}
-          {{- else if eq .Values.networking.stack "IPv6" -}}
-          {{ .Values.pinger.targets.externalAddresses.v6 }}
-          {{- end }}
-          - --external-dns=
-          {{- if eq .Values.networking.stack "Dual" -}}
-          {{ .Values.pinger.targets.externalDomain.v6 }}
-          {{- else if eq .Values.networking.stack "IPv4" -}}
-          {{ .Values.pinger.targets.externalDomain.v4 }}
-          {{- else if eq .Values.networking.stack "IPv6" -}}
-          {{ .Values.pinger.targets.externalDomain.v6 }}
-          {{- end }}
+          - --external-address={{ if eq .Values.networking.stack "Dual" }}{{ .Values.pinger.targets.externalAddresses.v4 }},{{ .Values.pinger.targets.externalAddresses.v6 }}{{ else if eq .Values.networking.stack "IPv4" }}{{ .Values.pinger.targets.externalAddresses.v4 }}{{ else if eq .Values.networking.stack "IPv6" }}{{ .Values.pinger.targets.externalAddresses.v6 }}{{ end }}
+          - --external-dns={{ if eq .Values.networking.stack "Dual" }}{{ .Values.pinger.targets.externalDomain.v6 }}{{ else if eq .Values.networking.stack "IPv4" }}{{ .Values.pinger.targets.externalDomain.v4 }}{{ else if eq .Values.networking.stack "IPv6" }}{{ .Values.pinger.targets.externalDomain.v6 }}{{ end }}
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
