@@ -1166,7 +1166,12 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 	}
 
 	for _, port := range npp {
-		protocol := strings.ToLower(string(*port.Protocol))
+		// Per Kubernetes spec, nil Protocol defaults to TCP.
+		protoStr := "TCP"
+		if port.Protocol != nil {
+			protoStr = string(*port.Protocol)
+		}
+		protocol := strings.ToLower(protoStr)
 
 		// allow all tcp or udp traffic
 		if port.Port == nil {
@@ -1303,7 +1308,12 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 
 	matches := make([]string, 0, len(npp))
 	for _, port := range npp {
-		protocol := strings.ToLower(string(*port.Protocol))
+		// Per Kubernetes spec, nil Protocol defaults to TCP.
+		protoStr := "TCP"
+		if port.Protocol != nil {
+			protoStr = string(*port.Protocol)
+		}
+		protocol := strings.ToLower(protoStr)
 
 		if port.Port == nil {
 			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(protocol, "", "", "")).String())
