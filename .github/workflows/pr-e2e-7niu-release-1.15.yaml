@@ -24,8 +24,41 @@ env:
   E2E_SOURCE_BRANCH: master
 
 jobs:
+  kind-preflight:
+    name: Kind preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Create preflight kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
+          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-ipv4
+
   build-kube-ovn:
     name: Build kube-ovn image
+    needs:
+      - kind-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -62,6 +95,8 @@ jobs:
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway image
+    needs:
+      - kind-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
