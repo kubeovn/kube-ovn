@@ -1,0 +1,138 @@
+name: PR E2E for 7niu-release-1.15
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - 7niu-release-1.15
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: ''
+  KIND_VERSION: v0.31.0
+  TARGET_BRANCH: 7niu-release-1.15
+  E2E_SOURCE_BRANCH: master
+
+jobs:
+  build-kube-ovn:
+    name: Build kube-ovn image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION || '' }}
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Build image tar
+        run: |
+          make image-kube-ovn
+          make tar-kube-ovn
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kube-ovn
+          path: kube-ovn.tar
+
+  master-k8s-conformance-e2e:
+    name: Master k8s conformance e2e
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION || '' }}
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-ipv4
+
+      - name: Install kube-ovn
+        run: make kind-install-overlay-ipv4
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make k8s-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
