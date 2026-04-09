@@ -334,6 +334,14 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 }
 
 func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
+	prefix, err := v.getNatGwNamePrefix(ctx)
+	if err != nil {
+		return err
+	}
+	if err := util.ValidateNatGwStatefulSetNameLength(prefix, gw.Name); err != nil {
+		return err
+	}
+
 	if gw.Spec.Vpc == "" {
 		return errors.New("parameter \"vpc\" cannot be empty")
 	}
@@ -388,6 +396,20 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	return nil
+}
+
+func (v *ValidatingHook) getNatGwNamePrefix(ctx context.Context) (string, error) {
+	cm := &corev1.ConfigMap{}
+	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: util.VpcNatConfig}
+	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
+		return "", err
+	}
+
+	prefix := strings.TrimSpace(cm.Data["natGwNamePrefix"])
+	if prefix == "" {
+		return util.VpcNatGwNameDefaultPrefix, nil
+	}
+	return prefix, nil
 }
 
 func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error {

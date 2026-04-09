@@ -74,7 +74,10 @@ func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
 }
 
 func vegWorkloadLabels(vegName string) map[string]string {
-	return map[string]string{"app": "vpc-egress-gateway", util.VpcEgressGatewayLabel: vegName}
+	return map[string]string{
+		"app":                      "vpc-egress-gateway",
+		util.VpcEgressGatewayLabel: util.NormalizeLabelValue(vegName),
+	}
 }
 
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
