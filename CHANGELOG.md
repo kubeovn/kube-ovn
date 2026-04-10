@@ -379,6 +379,21 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.10 (2026-04-10)
+
+ * [a0e8fb099](https://github.com/kubeovn/kube-ovn/commit/a0e8fb099bcfd86a1be85b82bbb692c106a5142b) release v1.15.10
+ * [0369b997b](https://github.com/kubeovn/kube-ovn/commit/0369b997b795c121312cb1dad23b7383afdd4839) Fix/upgrade 1.15 error (#6615)
+ * [7e4b1ab31](https://github.com/kubeovn/kube-ovn/commit/7e4b1ab310abe3f70f6154a151648d153116185c) fix(deps): update module golang.org/x/tools to v0.44.0 (#6613)
+ * [e9fdb8343](https://github.com/kubeovn/kube-ovn/commit/e9fdb83430611f22e63bf0e18d4b59eb99a157f1) fix(deps): update golang (#6607)
+ * [02afa6e45](https://github.com/kubeovn/kube-ovn/commit/02afa6e45f68be0facc5a009fe6bdb84a8765bf2) fix(deps): update module golang.org/x/sys to v0.43.0 (#6597)
+ * [cfd40d97a](https://github.com/kubeovn/kube-ovn/commit/cfd40d97ad9ca818f9ed83ca71cde29038b21972) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * renovate[bot]
+
 ## v1.15.9 (2026-04-08)
 
  * [64eb81f53](https://github.com/kubeovn/kube-ovn/commit/64eb81f53816c54ab025650461c3c8655e31cbbc) release v1.15.9
