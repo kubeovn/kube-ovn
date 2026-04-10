@@ -1,0 +1,538 @@
+name: PR E2E for 7niu-release-1.15
+
+permissions:
+  contents: read
+  actions: write
+
+on:
+  pull_request:
+    branches:
+      - 7niu-release-1.15
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+env:
+  KIND_VERSION: v0.31.0
+  GINKGO_VERSION: v2.27.3
+  JINJANATOR_VERSION: '25.3.1'
+  TARGET_BRANCH: 7niu-release-1.15
+  E2E_SOURCE_BRANCH: master
+
+jobs:
+  runner-info:
+    name: Runner info
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Hardware specs
+        run: |
+          echo "=== CPU ==="
+          nproc
+          lscpu | grep -E "Model name|Socket|Core|Thread|CPU MHz"
+          echo "=== Memory ==="
+          free -h
+          echo "=== Disk ==="
+          df -h /
+
+  kind-preflight:
+    name: Kind preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Set K8S_VERSION from kind.mk
+        run: echo "K8S_VERSION=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
+  build-kube-ovn:
+    name: Build kube-ovn image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Build image tar
+        run: |
+          make image-kube-ovn
+          make tar-kube-ovn
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kube-ovn
+          path: kube-ovn.tar
+          retention-days: 1
+
+  build-vpc-nat-gateway:
+    name: Build vpc-nat-gateway image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image tar
+        run: |
+          make image-vpc-nat-gateway-ubuntu
+          make tar-vpc-nat-gateway
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vpc-nat-gateway
+          path: vpc-nat-gateway.tar
+          retention-days: 1
+
+  master-standard-e2e:
+    name: ${{ matrix.suite.name }}
+    needs:
+      - kind-preflight
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: Master k8s conformance e2e
+            target: k8s-conformance-e2e
+          - name: Master kube-ovn conformance e2e
+            target: kube-ovn-conformance-e2e
+          - name: Master kube-ovn connectivity e2e
+            target: kube-ovn-connectivity-e2e
+          - name: Master vip conformance e2e
+            target: vip-conformance-e2e
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Set K8S_VERSION from kind.mk
+        run: echo "K8S_VERSION=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
+
+      - name: Download image
+        uses: actions/download-artifact@v7
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
+          make kind-init-ipv4
+
+      - name: Install kube-ovn
+        run: make kind-install-overlay-ipv4
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+          SUITE_TARGET: ${{ matrix.suite.target }}
+        run: make "$SUITE_TARGET"
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-ha-e2e:
+    name: Master ha e2e
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Set K8S_VERSION from kind.mk
+        run: echo "K8S_VERSION=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
+
+      - name: Download image
+        uses: actions/download-artifact@v7
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
+          make kind-init-ha-ipv4
+
+      - name: Install kube-ovn
+        run: make kind-install-ipv4
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-ha-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-multus-e2e:
+    name: Master multus e2e
+    needs:
+      - kind-preflight
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Set K8S_VERSION from kind.mk
+        run: echo "K8S_VERSION=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
+
+      - name: Download image
+        uses: actions/download-artifact@v7
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
+          make kind-init-ipv4
+
+      - name: Install kube-ovn
+        run: make kind-install-overlay-ipv4
+
+      - name: Install multus
+        run: make kind-install-multus
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-multus-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
+
+  master-iptables-vpc-nat-gw-e2e:
+    name: Master iptables vpc nat gw e2e
+    needs:
+      - kind-preflight
+      - build-kube-ovn
+      - build-vpc-nat-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Set K8S_VERSION from kind.mk
+        run: echo "K8S_VERSION=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Check out master e2e source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: test/e2e/source/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Install ginkgo
+        working-directory: test/e2e/source
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v7
+        with:
+          name: kube-ovn
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v7
+        with:
+          name: vpc-nat-gateway
+
+      - name: Load images
+        run: |
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
+
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
+          make kind-init-ipv4
+
+      - name: Install kube-ovn with vpc nat gateway enabled
+        run: make kind-install-vpc-nat-gw
+
+      - name: Run master e2e
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make iptables-vpc-nat-gw-conformance-e2e
+
+      - name: Check kube ovn pod restarts
+        run: make check-kube-ovn-pod-restarts
