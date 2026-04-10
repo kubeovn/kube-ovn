@@ -1,0 +1,60 @@
+name: Mirror kindest-node to GHCR
+
+# This workflow mirrors the official kindest/node image to
+# ghcr.io/<ZBB_GHCR_USER_NAME>/kindest-node so that the PR E2E
+# workflow can pull it without requiring access to a private org registry.
+#
+# Run this workflow manually whenever K8S_VERSION in makefiles/kind.mk changes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      k8s_version:
+        description: 'Kubernetes version tag (e.g. v1.35.1). Leave empty to read from makefiles/kind.mk.'
+        required: false
+        default: ''
+  push:
+    branches:
+      - 7niu-release-1.15
+    paths:
+      - 'makefiles/kind.mk'
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: Mirror kindest-node
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve K8S version
+        id: ver
+        run: |
+          K8S_VER="${{ github.event.inputs.k8s_version }}"
+          if [ -z "$K8S_VER" ]; then
+            K8S_VER=$(grep '^K8S_VERSION' makefiles/kind.mk | awk -F'?= ' '{print $2}' | tr -d ' ')
+          fi
+          echo "k8s_version=${K8S_VER}" >> "$GITHUB_OUTPUT"
+          echo "Resolved K8S_VERSION=${K8S_VER}"
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.ZBB_GHCR_REPO_SECRET }}" | \
+            docker login ghcr.io -u "${{ secrets.ZBB_GHCR_USER_NAME }}" --password-stdin
+
+      - name: Pull, retag and push kindest-node
+        env:
+          K8S_VERSION: ${{ steps.ver.outputs.k8s_version }}
+          GHCR_USER: ${{ secrets.ZBB_GHCR_USER_NAME }}
+        run: |
+          # Pull official kindest/node from Docker Hub (public image, no auth needed).
+          docker pull kindest/node:${K8S_VERSION}
+
+          # Retag and push to the user-controlled GHCR namespace.
+          docker tag kindest/node:${K8S_VERSION} ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}
+          docker push ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}
+
+          echo "Pushed ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}"

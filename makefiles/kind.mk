@@ -11,6 +11,10 @@ CILIUM_IMAGE_REPO ?= quay.io/cilium
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
 K8S_VERSION ?= v1.35.1
 
+# GHCR organization/user that hosts the kindest-node mirror image.
+# Override to use a fork-owned mirror (e.g. KINDEST_REPO=zbb88888).
+KINDEST_REPO ?= kubeovn
+
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
 UNDERLAY_NETWORK_IPV4_SUBNET = $(UNDERLAY_NETWORK_VAR_PREFIX)_IPV4_SUBNET
@@ -840,8 +844,8 @@ kind-clean-bgp-ha:
 .PHONY: kind-ghcr-pull
 kind-ghcr-pull:
 	@echo $${GHCR_TOKEN} | docker login ghcr.io -u "$${GHCR_USERNAME:-github-actions}" --password-stdin
-	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
-	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
+	docker pull ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION)
+	docker tag ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 
 .PHONY: kind-install-multus-cilium-kubeovn-non-primary
 kind-install-multus-cilium-kubeovn-non-primary: kind-install-multus-cilium-kubeovn-non-primary-ipv4
