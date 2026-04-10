@@ -119,7 +119,7 @@ jobs:
           make image-kube-ovn
           make tar-kube-ovn
 
-      - uses: actions/upload-artifact@v8
+      - uses: actions/upload-artifact@v7
         with:
           name: kube-ovn
           path: kube-ovn.tar
@@ -150,7 +150,7 @@ jobs:
           make image-vpc-nat-gateway-ubuntu
           make tar-vpc-nat-gateway
 
-      - uses: actions/upload-artifact@v8
+      - uses: actions/upload-artifact@v7
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
@@ -216,7 +216,7 @@ jobs:
         run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: kube-ovn
 
@@ -307,7 +307,7 @@ jobs:
         run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: kube-ovn
 
@@ -397,7 +397,7 @@ jobs:
         run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: kube-ovn
 
@@ -491,12 +491,12 @@ jobs:
         run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: vpc-nat-gateway
 
