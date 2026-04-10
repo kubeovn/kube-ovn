@@ -124,15 +124,14 @@ ovs-vsctl --may-exist add-br br-int \
   -- br-set-external-id br-int bridge-id br-int \
   -- set bridge br-int fail-mode=secure
 
-
-
-# Start ovn-controller
-ovn-ctl restart_controller
-
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
+ovs-vsctl set open . external-ids:ovn-match-northd-version="true"
 ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
+
+# Start ovn-controller
+ovn-ctl restart_controller
 
 tail --follow=name --retry /var/log/openvswitch/ovs-vswitchd.log
