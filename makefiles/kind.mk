@@ -847,6 +847,10 @@ kind-ghcr-pull:
 	docker pull ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION)
 	docker tag ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 
+.PHONY: kind-dockerhub-pull
+kind-dockerhub-pull:
+	docker pull kindest/node:$(K8S_VERSION)
+
 .PHONY: kind-install-multus-cilium-kubeovn-non-primary
 kind-install-multus-cilium-kubeovn-non-primary: kind-install-multus-cilium-kubeovn-non-primary-ipv4
 

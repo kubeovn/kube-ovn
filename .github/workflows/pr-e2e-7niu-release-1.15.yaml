@@ -48,13 +48,9 @@ jobs:
           install_only: true
 
       - name: Create preflight kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
-          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
-          KINDEST_REPO: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ipv4
+          make kind-dockerhub-pull kind-init-ipv4
 
   build-kube-ovn:
     name: Build kube-ovn image
@@ -192,13 +188,9 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
-          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
-          KINDEST_REPO: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ipv4
+          make kind-dockerhub-pull kind-init-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-overlay-ipv4
@@ -271,13 +263,9 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
-          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
-          KINDEST_REPO: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ha-ipv4
+          make kind-dockerhub-pull kind-init-ha-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-ipv4
@@ -345,13 +333,9 @@ jobs:
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
-          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
-          KINDEST_REPO: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ipv4
+          make kind-dockerhub-pull kind-init-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-ipv4
@@ -429,13 +413,9 @@ jobs:
           docker load --input vpc-nat-gateway.tar
 
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.ZBB_GHCR_REPO_SECRET }}
-          GHCR_USERNAME: ${{ secrets.ZBB_GHCR_USER_NAME }}
-          KINDEST_REPO: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-dockerhub-pull kind-init
 
       - name: Install kube-ovn with vpc nat gateway enabled
         run: make kind-install-vpc-nat-gw
