@@ -50,11 +50,19 @@ jobs:
           K8S_VERSION: ${{ steps.ver.outputs.k8s_version }}
           GHCR_USER: ${{ secrets.ZBB_GHCR_USER_NAME }}
         run: |
+          TARGET="ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}"
+
+          # Skip if the image already exists in GHCR (idempotent).
+          if docker manifest inspect "${TARGET}" > /dev/null 2>&1; then
+            echo "${TARGET} already exists, skipping."
+            exit 0
+          fi
+
           # Pull official kindest/node from Docker Hub (public image, no auth needed).
           docker pull kindest/node:${K8S_VERSION}
 
           # Retag and push to the user-controlled GHCR namespace.
-          docker tag kindest/node:${K8S_VERSION} ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}
-          docker push ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}
+          docker tag kindest/node:${K8S_VERSION} "${TARGET}"
+          docker push "${TARGET}"
 
-          echo "Pushed ghcr.io/${GHCR_USER}/kindest-node:${K8S_VERSION}"
+          echo "Pushed ${TARGET}"
