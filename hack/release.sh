@@ -152,8 +152,8 @@ else
   sed -ri 's#(\s+)(- master)#\1\2\n\1- '$RELEASE_BRANCH'#' .github/workflows/scheduled-e2e.yaml
 
   echo "update renovate.json: keep only master and the latest 2 release branches"
-  PREV_RELEASE_BRANCH=$(echo $RELEASE_BRANCH | awk -F '[.-]' '{print $1"-"$2"."$3-1}')
-  OLD_RELEASE_BRANCH=$(echo $RELEASE_BRANCH | awk -F '[.-]' '{print $1"-"$2"."$3-2}')
+  PREV_RELEASE_BRANCH=$(echo $RELEASE_BRANCH | awk -F '[.-]' '{print $1"-"$2"."($3-1)}')
+  OLD_RELEASE_BRANCH=$(echo $RELEASE_BRANCH | awk -F '[.-]' '{print $1"-"$2"."($3-2)}')
   sed -i 's/"'"$PREV_RELEASE_BRANCH"'"/"'"$RELEASE_BRANCH"'"/' renovate.json
   sed -i 's/"'"$OLD_RELEASE_BRANCH"'"/"'"$PREV_RELEASE_BRANCH"'"/' renovate.json
 
