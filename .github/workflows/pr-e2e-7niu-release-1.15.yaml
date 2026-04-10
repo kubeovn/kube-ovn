@@ -22,6 +22,8 @@ env:
   GO_VERSION: ''
   KIND_VERSION: v0.31.0
   K8S_VERSION: v1.35.1
+  GINKGO_VERSION: v2.27.3
+  JINJANATOR_VERSION: '25.3.1'
   TARGET_BRANCH: 7niu-release-1.15
   E2E_SOURCE_BRANCH: master
 
@@ -81,7 +83,7 @@ jobs:
 
       - name: Create preflight kind cluster
         run: |
-          pipx install jinjanator
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
           make kind-init-ipv4
 
   build-kube-ovn:
@@ -117,7 +119,7 @@ jobs:
           make image-kube-ovn
           make tar-kube-ovn
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v8
         with:
           name: kube-ovn
           path: kube-ovn.tar
@@ -141,12 +143,14 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      - uses: docker/setup-buildx-action@v4
+
       - name: Build image tar
         run: |
           make image-vpc-nat-gateway-ubuntu
           make tar-vpc-nat-gateway
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v8
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
@@ -209,7 +213,7 @@ jobs:
 
       - name: Install ginkgo
         working-directory: test/e2e/source
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
         uses: actions/download-artifact@v8
@@ -236,7 +240,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          pipx install jinjanator
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
           make kind-init-ipv4
 
       - name: Install kube-ovn
@@ -248,7 +252,8 @@ jobs:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
           E2E_IP_FAMILY: ipv4
           E2E_NETWORK_MODE: overlay
-        run: make ${{ matrix.suite.target }}
+          SUITE_TARGET: ${{ matrix.suite.target }}
+        run: make "$SUITE_TARGET"
 
       - name: Check kube ovn pod restarts
         run: make check-kube-ovn-pod-restarts
@@ -299,7 +304,7 @@ jobs:
 
       - name: Install ginkgo
         working-directory: test/e2e/source
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
         uses: actions/download-artifact@v8
@@ -326,7 +331,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          pipx install jinjanator
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
           make kind-init-ha-ipv4
 
       - name: Install kube-ovn
@@ -376,6 +381,11 @@ jobs:
           check-latest: true
           cache: false
 
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
       - name: Install kind
         uses: helm/kind-action@v1.14.0
         with:
@@ -384,7 +394,7 @@ jobs:
 
       - name: Install ginkgo
         working-directory: test/e2e/source
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download image
         uses: actions/download-artifact@v8
@@ -411,11 +421,11 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          pipx install jinjanator
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
           make kind-init-ipv4
 
       - name: Install kube-ovn
-        run: make kind-install-ipv4
+        run: make kind-install-overlay-ipv4
 
       - name: Install multus
         run: make kind-install-multus
@@ -425,6 +435,7 @@ jobs:
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
           E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
         run: make kube-ovn-multus-conformance-e2e
 
       - name: Check kube ovn pod restarts
@@ -464,6 +475,11 @@ jobs:
           check-latest: true
           cache: false
 
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
       - name: Install kind
         uses: helm/kind-action@v1.14.0
         with:
@@ -472,7 +488,7 @@ jobs:
 
       - name: Install ginkgo
         working-directory: test/e2e/source
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+        run: go install -v github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v8
@@ -506,7 +522,7 @@ jobs:
 
       - name: Create kind cluster
         run: |
-          pipx install jinjanator
+          pipx install jinjanator==${{ env.JINJANATOR_VERSION }}
           make kind-init
 
       - name: Install kube-ovn with vpc nat gateway enabled
@@ -516,6 +532,8 @@ jobs:
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
         run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: Check kube ovn pod restarts
