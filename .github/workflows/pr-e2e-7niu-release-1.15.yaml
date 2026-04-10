@@ -26,6 +26,21 @@ env:
   E2E_SOURCE_BRANCH: master
 
 jobs:
+  check-specs:
+    name: Check runner specs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Hardware specs
+        run: |
+          echo "=== CPU ==="
+          nproc
+          lscpu | grep -E "Model name|Socket|Core|Thread|CPU MHz"
+          echo "=== Memory ==="
+          free -h
+          echo "=== Disk ==="
+          df -h /
+
   kind-preflight:
     name: Kind preflight
     runs-on: ubuntu-24.04
