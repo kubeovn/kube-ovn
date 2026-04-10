@@ -849,7 +849,7 @@ kind-ghcr-pull:
 
 .PHONY: kind-dockerhub-pull
 kind-dockerhub-pull:
-	docker pull kindest/node:$(K8S_VERSION)
+	docker image inspect kindest/node:$(K8S_VERSION) >/dev/null 2>&1 || docker pull kindest/node:$(K8S_VERSION)
 
 .PHONY: kind-install-multus-cilium-kubeovn-non-primary
 kind-install-multus-cilium-kubeovn-non-primary: kind-install-multus-cilium-kubeovn-non-primary-ipv4

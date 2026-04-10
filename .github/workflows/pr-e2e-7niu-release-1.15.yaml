@@ -2,6 +2,7 @@ name: PR E2E for 7niu-release-1.15
 
 permissions:
   contents: read
+  actions: write
 
 on:
   pull_request:
@@ -20,6 +21,7 @@ concurrency:
 env:
   GO_VERSION: ''
   KIND_VERSION: v0.31.0
+  K8S_VERSION: v1.35.1
   TARGET_BRANCH: 7niu-release-1.15
   E2E_SOURCE_BRANCH: master
 
@@ -47,10 +49,25 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           install_only: true
 
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
       - name: Create preflight kind cluster
         run: |
           pipx install jinjanator
-          make kind-dockerhub-pull kind-init-ipv4
+          make kind-init-ipv4
 
   build-kube-ovn:
     name: Build kube-ovn image
@@ -187,10 +204,25 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-dockerhub-pull kind-init-ipv4
+          make kind-init-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-overlay-ipv4
@@ -262,10 +294,25 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-dockerhub-pull kind-init-ha-ipv4
+          make kind-init-ha-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-ipv4
@@ -332,10 +379,25 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-dockerhub-pull kind-init-ipv4
+          make kind-init-ipv4
 
       - name: Install kube-ovn
         run: make kind-install-ipv4
@@ -412,10 +474,25 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-node.tar
+          key: kind-node-${{ env.K8S_VERSION }}
+
+      - name: Load or pull kind node image
+        run: |
+          if [ -f /tmp/kind-node.tar ]; then
+            docker load -i /tmp/kind-node.tar
+          else
+            make kind-dockerhub-pull
+            docker save kindest/node:${{ env.K8S_VERSION }} -o /tmp/kind-node.tar
+          fi
+
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-dockerhub-pull kind-init
+          make kind-init
 
       - name: Install kube-ovn with vpc nat gateway enabled
         run: make kind-install-vpc-nat-gw
