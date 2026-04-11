@@ -286,7 +286,7 @@ func waitForLocalnetPatchPort(subnetName string) error {
 	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
 	if _, err := ovs.Exec("wait-until", "interface", patchPort, "name="+patchPort); err != nil {
-		return fmt.Errorf("timeout waiting for localnet patch port %s: %w", patchPort, err)
+		return fmt.Errorf("failed waiting for localnet patch port %s: %w", patchPort, err)
 	}
 	klog.Infof("localnet patch port %s is ready", patchPort)
 	return nil
