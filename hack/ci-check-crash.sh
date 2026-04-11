@@ -48,4 +48,20 @@ for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
   done
 done
 
+function export_error_logs() {
+  local namespace="kube-system"
+  local components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger")
+  echo ">>> Fetching error logs for ${components[*]} using kubectl-ko..."
+  for component in "${components[@]}"; do
+    echo "--- Error logs for $component ---"
+    # Fallback to kubectl logs filtering by error, ko log might output to files
+    kubectl logs -n "$namespace" -l app="$component" --tail=-1 | grep -v -i info || true
+    echo "-----------------------------------"
+  done
+}
+
+if [ $exit_code -ne 0 ]; then
+  export_error_logs
+fi
+
 exit $exit_code
