@@ -289,9 +289,11 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 			ginkgo.By("Disabling BFD Port for VPC " + vpcName)
 			patchedVpc := updatedVpc.DeepCopy()
 			patchedVpc.Spec.BFDPort = nil
-			updatedVpc := vpcClient.PatchSync(updatedVpc, patchedVpc, 10*time.Second)
-			framework.ExpectEmpty(updatedVpc.Status.BFDPort.Name)
-			framework.ExpectEmpty(updatedVpc.Status.BFDPort.Nodes)
+			vpcClient.PatchSync(updatedVpc, patchedVpc, 10*time.Second)
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				vpc := vpcClient.Get(vpcName)
+				return vpc.Status.BFDPort.Name == "" && len(vpc.Status.BFDPort.Nodes) == 0, nil
+			}, "BFD port status to be cleared for VPC "+vpcName)
 		})
 
 		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Name)
