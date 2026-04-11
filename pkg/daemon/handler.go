@@ -322,12 +322,17 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		}
 
+		var localnetSubnet string
+		if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
+			localnetSubnet = subnet
+		}
+
 		switch nicType {
 		case util.DpdkType:
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:
-			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
