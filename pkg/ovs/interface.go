@@ -140,6 +140,7 @@ type LoadBalancer interface {
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
+	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)
 	ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error)

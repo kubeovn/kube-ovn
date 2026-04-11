@@ -286,6 +286,13 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		return err
 	}
 
+	if protocol == "udp" {
+		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
+			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
+			return err
+		}
+	}
+
 	return nil
 }
 

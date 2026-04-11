@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -110,7 +111,13 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	if cachedDnat.Status.Ready && cachedDnat.Status.V4Ip != "" {
-		// already ok
+		// backfill ct_flush for existing UDP DNAT load balancers
+		if strings.EqualFold(cachedDnat.Spec.Protocol, "udp") {
+			if err = c.OVNNbClient.SetLoadBalancerCtFlush(cachedDnat.Name, true); err != nil {
+				klog.Errorf("failed to set ct_flush for load balancer %s: %v", cachedDnat.Name, err)
+				return err
+			}
+		}
 		return nil
 	}
 	klog.Infof("handle add dnat %s", key)
@@ -604,6 +611,13 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 	if err = c.OVNNbClient.CreateLoadBalancer(dnatName, protocol); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
+	}
+
+	if strings.EqualFold(protocol, "udp") {
+		if err = c.OVNNbClient.SetLoadBalancerCtFlush(dnatName, true); err != nil {
+			klog.Errorf("failed to set ct_flush for load balancer %s: %v", dnatName, err)
+			return err
+		}
 	}
 
 	if err = c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
