@@ -52,11 +52,20 @@ function export_error_logs() {
   local components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger")
   echo ">>> Fetching logs for ${components[*]}..."
   for component in "${components[@]}"; do
+    local currentLogs=""
+    local previousLogs=""
     echo "--- Error logs for $component ---"
-    # Fallback to kubectl logs filtering by error, ko log might output to files
-    kubectl logs -n "$namespace" -l app="$component" --tail=2000 | grep -i "error\|fatal\|panic\|warn" || echo "Warning: failed to get logs for $component"
+    if currentLogs=$(kubectl logs -n "$namespace" -l app="$component" --tail=2000); then
+      echo "$currentLogs" | grep -i "error\|fatal\|panic\|warn" || true
+    else
+      echo "Warning: failed to get logs for $component"
+    fi
     echo "--- Previous error logs for $component (if any) ---"
-    kubectl logs -n "$namespace" -l app="$component" -p --tail=2000 | grep -i "error\|fatal\|panic\|warn" || echo "Warning: failed to get previous logs for $component (may not exist)"
+    if previousLogs=$(kubectl logs -n "$namespace" -l app="$component" -p --tail=2000); then
+      echo "$previousLogs" | grep -i "error\|fatal\|panic\|warn" || true
+    else
+      echo "Warning: failed to get previous logs for $component (may not exist)"
+    fi
     echo "-----------------------------------"
   done
 }
