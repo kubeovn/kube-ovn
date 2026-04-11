@@ -49,13 +49,14 @@ for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
 done
 
 function export_error_logs() {
-  local namespace="kube-system"
   local components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger")
-  echo ">>> Fetching error logs for ${components[*]} using kubectl-ko..."
+  echo ">>> Fetching logs for ${components[*]}..."
   for component in "${components[@]}"; do
     echo "--- Error logs for $component ---"
     # Fallback to kubectl logs filtering by error, ko log might output to files
-    kubectl logs -n "$namespace" -l app="$component" --tail=-1 | grep -v -i info || true
+    kubectl logs -n "$namespace" -l app="$component" --tail=2000 | grep -v -i info || echo "Warning: failed to get logs for $component"
+    echo "--- Previous error logs for $component (if any) ---"
+    kubectl logs -n "$namespace" -l app="$component" -p --tail=2000 | grep -v -i info || true
     echo "-----------------------------------"
   done
 }
