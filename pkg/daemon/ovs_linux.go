@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -256,6 +256,18 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 
+	// For underlay subnets, wait for the localnet patch port to be created by
+	// ovn-controller before configuring the container NIC. This ensures L2
+	// connectivity is established before kernel IPv6 DAD sends Neighbor
+	// Solicitation packets, preventing false DAD success due to NS packets
+	// being black-holed when the patch port does not yet exist.
+	if localnetSubnet != "" {
+		if err := waitForLocalnetPatchPort(localnetSubnet); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+	}
+
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
 		err = fmt.Errorf("failed to open netns %q: %w", netns, err)
@@ -268,6 +280,16 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 	return finalRoutes, nil
+}
+
+func waitForLocalnetPatchPort(subnetName string) error {
+	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
+	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
+	if _, err := ovs.Exec("wait-until", "interface", patchPort, "name="+patchPort); err != nil {
+		return fmt.Errorf("failed waiting for localnet patch port %s: %w", patchPort, err)
+	}
+	klog.Infof("localnet patch port %s is ready", patchPort)
+	return nil
 }
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
