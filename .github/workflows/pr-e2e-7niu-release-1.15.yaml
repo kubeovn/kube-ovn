@@ -246,6 +246,9 @@ jobs:
         run: make "$SUITE_TARGET"
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ failure() }}
         run: make check-kube-ovn-pod-restarts
 
   master-ha-e2e:
@@ -338,6 +341,9 @@ jobs:
         run: make kube-ovn-ha-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ failure() }}
         run: make check-kube-ovn-pod-restarts
 
   master-multus-e2e:
@@ -434,6 +440,9 @@ jobs:
         run: make kube-ovn-multus-conformance-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ failure() }}
         run: make check-kube-ovn-pod-restarts
 
   master-iptables-vpc-nat-gw-e2e:
@@ -535,4 +544,7 @@ jobs:
         run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ failure() }}
         run: make check-kube-ovn-pod-restarts

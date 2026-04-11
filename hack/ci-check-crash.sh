@@ -61,7 +61,7 @@ function export_error_logs() {
   done
 }
 
-if [ $exit_code -ne 0 ]; then
+if [ "${EXPORT_COMPONENT_ERROR_LOGS:-false}" = "true" ] || [ $exit_code -ne 0 ]; then
   export_error_logs
 fi
 
