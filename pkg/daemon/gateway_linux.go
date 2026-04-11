@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"slices"
@@ -818,7 +819,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		subnetNames := set.New[string]()
-		for name, subnetCidr := range subnetCidrs {
+		for _, name := range slices.Sorted(maps.Keys(subnetCidrs)) {
+			subnetCidr := subnetCidrs[name]
 			subnetNames.Insert(name)
 			iptablesRules = append(iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
@@ -895,7 +897,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
-		for cidr, ip := range centralGwNatIPs {
+		for _, cidr := range slices.Sorted(maps.Keys(centralGwNatIPs)) {
+			ip := centralGwNatIPs[cidr]
 			if util.CheckProtocol(cidr) != protocol {
 				continue
 			}
@@ -1027,7 +1030,8 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 		return err
 	}
 
-	for chainName, natPolicyRuleIptableRules := range natPolicyRuleIptablesMap {
+	for _, chainName := range slices.Sorted(maps.Keys(natPolicyRuleIptablesMap)) {
+		natPolicyRuleIptableRules := natPolicyRuleIptablesMap[chainName]
 		if err = c.updateIptablesChain(ipt, NAT, chainName, "", natPolicyRuleIptableRules); err != nil {
 			klog.Errorf("failed to update chain %s with rules %v: %v", chainName, natPolicyRuleIptableRules, err)
 			return err
