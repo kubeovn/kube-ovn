@@ -110,7 +110,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedDnat.Status.Ready && cachedDnat.Status.V4Ip != "" {
+	if cachedDnat.Status.Ready && (cachedDnat.Status.V4Ip != "" || cachedDnat.Status.V6Ip != "") {
 		// backfill ct_flush for existing UDP DNAT load balancers
 		if strings.EqualFold(cachedDnat.Spec.Protocol, "udp") {
 			if err = c.OVNNbClient.SetLoadBalancerCtFlush(cachedDnat.Name, true); err != nil {
