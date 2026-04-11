@@ -54,9 +54,9 @@ function export_error_logs() {
   for component in "${components[@]}"; do
     echo "--- Error logs for $component ---"
     # Fallback to kubectl logs filtering by error, ko log might output to files
-    kubectl logs -n "$namespace" -l app="$component" --tail=2000 | grep -v -i info || echo "Warning: failed to get logs for $component"
+    kubectl logs -n "$namespace" -l app="$component" --tail=2000 | grep -i "error\|fatal\|panic\|warn" || echo "Warning: failed to get logs for $component"
     echo "--- Previous error logs for $component (if any) ---"
-    kubectl logs -n "$namespace" -l app="$component" -p --tail=2000 | grep -v -i info || true
+    kubectl logs -n "$namespace" -l app="$component" -p --tail=2000 | grep -i "error\|fatal\|panic\|warn" || echo "Warning: failed to get previous logs for $component (may not exist)"
     echo "-----------------------------------"
   done
 }
