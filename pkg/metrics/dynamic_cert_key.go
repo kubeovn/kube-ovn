@@ -81,17 +81,8 @@ func tlsGetConfigForClient(config *tls.Config) (func(*tls.ClientHelloInfo) (*tls
 	caProvider.AddListener(controller)
 	certKeyProvider.AddListener(controller)
 
-	// generate a context from stopCh. This is to avoid modifying files which are relying on apiserver
-	// TODO: See if we can pass ctx to the current method
 	stopCh := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		select {
-		case <-stopCh:
-			cancel() // stopCh closed, so cancel our context
-		case <-ctx.Done():
-		}
-	}()
+	ctx := context.Background()
 
 	if controller, ok := certKeyProvider.(dynamiccertificates.ControllerRunner); ok {
 		if err = controller.RunOnce(ctx); err != nil {
