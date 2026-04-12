@@ -349,6 +349,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	allSubnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	var externalSubnet *kubeovnv1.Subnet
 	externalSubnetExist := false
 	externalSubnetGW := ""
@@ -459,13 +465,33 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 			}
 		}
+	} else {
+		// Add static routes created by addCustomVPCStaticRouteForSubnet
+		for _, subnet := range allSubnets {
+			if subnet.Spec.Vpc == key {
+				v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
+				if v4Gw != "" && v4Cidr != "" {
+					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
+						Policy:     kubeovnv1.PolicySrc,
+						CIDR:       v4Cidr,
+						NextHopIP:  v4Gw,
+						RouteTable: subnet.Spec.RouteTable,
+					})
+				}
+				if v6Gw != "" && v6Cidr != "" {
+					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
+						Policy:     kubeovnv1.PolicySrc,
+						CIDR:       v6Cidr,
+						NextHopIP:  v6Gw,
+						RouteTable: subnet.Spec.RouteTable,
+					})
+				}
+			}
+		}
 	}
 
-	routeNeedDel, routeNeedAdd, err := diffStaticRoute(staticExistedRoutes, staticTargetRoutes)
-	if err != nil {
-		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
-		return err
-	}
+	routeNeedDel, routeNeedAdd := diffStaticRoute(staticExistedRoutes, staticTargetRoutes)
 
 	for _, item := range routeNeedDel {
 		klog.Infof("vpc %s del static route: %+v", vpc.Name, item)
@@ -508,21 +534,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		// diff list
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
-		if vpc.Spec.PolicyRoutes == nil {
-			// do not clean default vpc policy routes
-			if err = c.OVNNbClient.ClearLogicalRouterPolicy(vpc.Name); err != nil {
-				klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
-				return err
-			}
-		} else {
-			policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
-			if err != nil {
-				klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
-				return err
-			}
-			// diff vpc policy route
-			policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithLogical(policyRouteLogical, vpc.Spec.PolicyRoutes)
+		policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
+			return err
 		}
+		// diff vpc policy route
+		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithLogical(policyRouteLogical, vpc.Spec.PolicyRoutes)
 	}
 	// delete policies non-exist
 	for _, item := range policyRouteNeedDel {
@@ -534,18 +552,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	// add new policies
 	for _, item := range policyRouteNeedAdd {
-		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, nil, externalIDs); err != nil {
-			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
+		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", vpc.Name, item.Match, string(item.Action), item.NextHopIP, externalIDs)
+		if err = c.addPolicyRouteToVpc(vpc.Name, item, externalIDs); err != nil {
 			return err
 		}
 	}
 
-	vpcSubnets, defaultSubnet, err := c.getVpcSubnets(vpc)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
+	vpcSubnets, defaultSubnet := getVpcSubnetsFromList(vpc, allSubnets)
 
 	vpc.Status.Subnets = vpcSubnets
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
@@ -586,15 +599,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	custVpcEnableExternalEcmp := false
-	for _, subnet := range subnets {
+	for _, subnet := range allSubnets {
 		if subnet.Spec.Vpc == key {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			// Accelerate subnet update when vpc config is updated.
+			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
+			if subnet.Status.IsNotReady() {
+				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			}
 			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
 				custVpcEnableExternalEcmp = true
 			}
@@ -746,7 +758,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 		}
 	}
 
-	if err := c.updateVpcExternalStatus(vpc.Name, vpc.Spec.EnableExternal); err != nil {
+	if err := c.updateVpcExternalStatus(vpc.Name); err != nil {
 		klog.Errorf("failed to update vpc external subnets status, %v", err)
 		return err
 	}
@@ -796,15 +808,15 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	nodeNames := make([]string, 0, len(nodes))
 	chassisCount = min(chassisCount, len(nodes))
 	chassisNames := make([]string, 0, chassisCount)
-	for _, nodes := range nodes[:chassisCount] {
-		chassis, err := c.OVNSbClient.GetChassisByHost(nodes.Name)
+	for _, node := range nodes[:chassisCount] {
+		chassis, err := c.OVNSbClient.GetChassisByHost(node.Name)
 		if err != nil {
-			err = fmt.Errorf("failed to get chassis of node %s: %w", nodes.Name, err)
+			err = fmt.Errorf("failed to get chassis of node %s: %w", node.Name, err)
 			klog.Error(err)
 			return portName, nil, err
 		}
 		chassisNames = append(chassisNames, chassis.Name)
-		nodeNames = append(nodeNames, nodes.Name)
+		nodeNames = append(nodeNames, node.Name)
 	}
 
 	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
@@ -882,28 +894,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 }
 
 func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, match string) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
-
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	cachedVpc, err = c.vpcsLister.Get(vpcName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
+	if err := c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -911,11 +902,6 @@ func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, matc
 }
 
 func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kubeovnv1.PolicyRoute) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
-
 	start := time.Now()
 	routerPolicies := make([]*ovnnb.LogicalRouterPolicy, 0, len(policies))
 	for _, policy := range policies {
@@ -925,26 +911,10 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 		})
 	}
 
-	if err = c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
+	if err := c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))
-
-	cachedVpc, err = c.vpcsLister.Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
@@ -986,10 +956,6 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 }
 
 func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*kubeovnv1.StaticRoute) error {
-	var (
-		vpc, cachedVpc *kubeovnv1.Vpc
-		err            error
-	)
 	start := time.Now()
 	routeCount := len(staticRoutes)
 	delRoutes := make([]*ovnnb.LogicalRouterStaticRoute, 0, routeCount)
@@ -1003,27 +969,11 @@ func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*
 		}
 		delRoutes = append(delRoutes, newRoute)
 	}
-	if err = c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
+	if err := c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
 		klog.Errorf("batch del vpc %s static route %d failed, %v", name, routeCount, err)
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete static route from vpc %s static routes %d", time.Since(start), name, len(delRoutes))
-
-	cachedVpc, err = c.vpcsLister.Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vpc = cachedVpc.DeepCopy()
-	// make sure custom policies not be deleted
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	return nil
 }
 
@@ -1063,16 +1013,24 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		key        string
 		ok         bool
 	)
+	klog.Infof("diffPolicyRouteWithLogical exists: %v, target: %v", exists, target)
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
+		klog.Infof("diffPolicyRouteWithLogical item: %+v", item)
+		if item.ExternalIDs["vpc-egress-gateway"] != "" || item.ExternalIDs["subnet"] != "" ||
+			item.ExternalIDs["isU2ORoutePolicy"] == "true" {
+			continue
+		}
 		policy := &kubeovnv1.PolicyRoute{
-			Priority: item.Priority,
-			Match:    item.Match,
-			Action:   kubeovnv1.PolicyRouteAction(item.Action),
+			Priority:  item.Priority,
+			Match:     item.Match,
+			Action:    kubeovnv1.PolicyRouteAction(item.Action),
+			NextHopIP: getLogicalPolicyNextHopKey(item),
 		}
 		existsMap[getPolicyRouteItemKey(policy)] = policy
 	}
+	klog.Infof("diffPolicyRouteWithLogical existsMap: %v", existsMap)
 
 	for _, item := range target {
 		key = getPolicyRouteItemKey(item)
@@ -1084,17 +1042,50 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		}
 	}
 
+	klog.Infof("diffPolicyRouteWithLogical existsMap after delete: %v", existsMap)
+
 	for _, item := range existsMap {
 		dels = append(dels, item)
 	}
+	klog.Infof("diffPolicyRouteWithLogical dels: %v, adds: %v", dels, adds)
 	return dels, adds
 }
 
 func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
-	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
+	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, normalizePolicyRouteNextHops(item.NextHopIP))
 }
 
-func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+func getLogicalPolicyNextHopKey(item *ovnnb.LogicalRouterPolicy) string {
+	if len(item.Nexthops) > 0 {
+		return normalizePolicyRouteNextHops(strings.Join(item.Nexthops, ","))
+	}
+	if item.Nexthop != nil {
+		return normalizePolicyRouteNextHops(*item.Nexthop)
+	}
+	return ""
+}
+
+func normalizePolicyRouteNextHops(nextHopIP string) string {
+	if nextHopIP == "" {
+		return ""
+	}
+
+	nextHops := make([]string, 0)
+	for nextHop := range strings.SplitSeq(nextHopIP, ",") {
+		nextHop = strings.TrimSpace(nextHop)
+		if nextHop != "" {
+			nextHops = append(nextHops, nextHop)
+		}
+	}
+	if len(nextHops) == 0 {
+		return ""
+	}
+
+	slices.Sort(nextHops)
+	return strings.Join(nextHops, ",")
+}
+
+func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.StaticRoute) {
 	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
 	for _, item := range exist {
 		policy := kubeovnv1.PolicyDst
@@ -1125,7 +1116,7 @@ func diffStaticRoute(exist []*ovnnb.LogicalRouterStaticRoute, target []*kubeovnv
 	for _, item := range existRouteMap {
 		routeNeedDel = append(routeNeedDel, item)
 	}
-	return routeNeedDel, routeNeedAdd, err
+	return routeNeedDel, routeNeedAdd
 }
 
 func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) string {
@@ -1252,13 +1243,17 @@ func reversePolicy(origin ovnnb.LogicalRouterStaticRoutePolicy) kubeovnv1.RouteP
 }
 
 func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaultSubnet string, err error) {
-	subnets = []string{}
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error(err)
 		return nil, "", err
 	}
+	subnets, defaultSubnet = getVpcSubnetsFromList(vpc, allSubnets)
+	return subnets, defaultSubnet, nil
+}
 
+func getVpcSubnetsFromList(vpc *kubeovnv1.Vpc, allSubnets []*kubeovnv1.Subnet) (subnets []string, defaultSubnet string) {
+	subnets = make([]string, 0, len(allSubnets))
 	for _, subnet := range allSubnets {
 		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() || !isOvnSubnet(subnet) {
 			continue
@@ -1274,7 +1269,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 		}
 	}
 	sort.Strings(subnets)
-	return subnets, defaultSubnet, err
+	return subnets, defaultSubnet
 }
 
 // createVpcRouter create router to connect logical switches in vpc
@@ -1405,14 +1400,15 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	needUpdate := false
 	newStaticRoutes := make([]*kubeovnv1.StaticRoute, 0, len(vpc.Spec.StaticRoutes))
 	for _, route := range vpc.Spec.StaticRoutes {
-		if route.ECMPMode != util.StaticRouteBfdEcmp {
-			newStaticRoutes = append(newStaticRoutes, route)
+		if route.ECMPMode == util.StaticRouteBfdEcmp {
 			needUpdate = true
+			continue
 		}
+		newStaticRoutes = append(newStaticRoutes, route)
 	}
-	// keep non ecmp bfd routes
-	vpc.Spec.StaticRoutes = newStaticRoutes
+	// keep routes except bfd ecmp routes
 	if needUpdate {
+		vpc.Spec.StaticRoutes = newStaticRoutes
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
 			return err
@@ -1482,7 +1478,7 @@ func (c *Controller) getRouteTablesByVpc(vpc *kubeovnv1.Vpc) map[string][]*kubeo
 	return rtbs
 }
 
-func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) error {
+func (c *Controller) updateVpcExternalStatus(key string) error {
 	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s, %v", key, err)
@@ -1492,7 +1488,7 @@ func (c *Controller) updateVpcExternalStatus(key string, enableExternal bool) er
 	vpc.Status.EnableExternal = vpc.Spec.EnableExternal
 	vpc.Status.EnableBfd = vpc.Spec.EnableBfd
 
-	if enableExternal {
+	if vpc.Spec.EnableExternal {
 		sort.Strings(vpc.Spec.ExtraExternalSubnets)
 		vpc.Status.ExtraExternalSubnets = vpc.Spec.ExtraExternalSubnets
 	} else {

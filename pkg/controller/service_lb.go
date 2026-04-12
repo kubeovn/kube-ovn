@@ -73,8 +73,9 @@ func (c *Controller) getAttachNetworkForService(svc *corev1.Service) (*nadv1.Net
 
 func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkAttachmentDefinition) (dp *v1.Deployment) {
 	name := genLbSvcDpName(svc.Name)
+	appLabel := util.NormalizeLabelValue(name)
 	labels := map[string]string{
-		"app":       name,
+		"app":       appLabel,
 		"namespace": svc.Namespace,
 		"service":   svc.Name,
 	}
@@ -200,7 +201,10 @@ func (c *Controller) createLbSvcPod(svc *corev1.Service, nad *nadv1.NetworkAttac
 }
 
 func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, error) {
-	selector := labels.Set{"app": genLbSvcDpName(svcName), "namespace": svcNamespace}.AsSelector()
+	selector := labels.Set{
+		"app":       util.NormalizeLabelValue(genLbSvcDpName(svcName)),
+		"namespace": svcNamespace,
+	}.AsSelector()
 	pods, err := c.podsLister.Pods(svcNamespace).List(selector)
 	switch {
 	case err != nil:

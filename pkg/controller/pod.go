@@ -57,10 +57,9 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 	podName := pod.Name
 
 	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
-	for i := range pod.Spec.InitContainers {
-		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
-			*pod.Spec.InitContainers[i].RestartPolicy == v1.ContainerRestartPolicyAlways {
-			restartableInitContainers = append(restartableInitContainers, pod.Spec.InitContainers[i])
+	for _, ctr := range pod.Spec.InitContainers {
+		if ctr.RestartPolicy != nil && *ctr.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			restartableInitContainers = append(restartableInitContainers, ctr)
 		}
 	}
 
@@ -107,12 +106,20 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	ns := pod.Namespace
 	podName := pod.Name
 
-	if pod.Spec.Containers == nil {
+	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
+	for _, ctr := range pod.Spec.InitContainers {
+		if ctr.RestartPolicy != nil && *ctr.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			restartableInitContainers = append(restartableInitContainers, ctr)
+		}
+	}
+
+	containers := slices.Concat(restartableInitContainers, pod.Spec.Containers)
+	if len(containers) == 0 {
 		return
 	}
 
-	for _, container := range pod.Spec.Containers {
-		if container.Ports == nil {
+	for _, container := range containers {
+		if len(container.Ports) == 0 {
 			continue
 		}
 
@@ -149,10 +156,8 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 	defer n.mutex.RUnlock()
 
 	if result, ok := n.namedPortMap[namespace]; ok {
-		for portName, info := range result {
-			klog.Infof("namespace %s's namedPort portname is %s with info %v", namespace, portName, info)
-		}
-		return result
+		klog.V(3).Infof("namespace %s has %d named ports", namespace, len(result))
+		return maps.Clone(result)
 	}
 	return nil
 }
@@ -537,6 +542,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 
 	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
 	if isVpcNatGw {
+		c.enqueueAddOrUpdateVpcNatGwByName(vpcGwName, "natgw-pod-update")
 		if needRestartNatGatewayPod(pod) {
 			klog.Infof("restarting vpc nat gateway %s", vpcGwName)
 			c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
@@ -706,10 +712,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
+	oldPod := pod
 	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			key := strings.Join([]string{namespace, name}, "/")
-			c.deletingPodObjMap.Store(key, pod)
+			c.deletingPodObjMap.Store(key, oldPod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
 		}
@@ -720,6 +727,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	// Check if pod is a vpc nat gateway. Annotation set will have subnet provider name as prefix
 	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
 	if isVpcNatGw {
+		c.enqueueAddOrUpdateVpcNatGwByName(vpcGwName, "natgw-pod-update")
 		klog.Infof("init vpc nat gateway pod %s/%s with name %s", namespace, name, vpcGwName)
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
@@ -1357,9 +1365,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 	for _, portNeedDel := range portsNeedToDel {
 		klog.Infof("release port %s for pod %s", portNeedDel, podName)
-		if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
-			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
-		}
+		c.ipam.ReleaseAddressByNic(key, portNeedDel, subnetUsedByPort[portNeedDel])
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, err
@@ -2241,6 +2247,7 @@ func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKi
 				return true, nil, nil
 			}
 			klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
+			return false, nil, err
 		}
 		if ss.Spec.Template.Annotations != nil {
 			ownerRefAnnotations = ss.Spec.Template.Annotations
@@ -2254,9 +2261,9 @@ func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKi
 				return true, nil, nil
 			}
 			klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
+			return false, nil, err
 		}
-		if vm != nil &&
-			vm.Spec.Template != nil &&
+		if vm.Spec.Template != nil &&
 			vm.Spec.Template.ObjectMeta.Annotations != nil {
 			ownerRefAnnotations = vm.Spec.Template.ObjectMeta.Annotations
 		}
@@ -2578,4 +2585,103 @@ func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 		klog.Infof("pod %s is vpc nat gateway %s", pod.Name, vpcGwName)
 	}
 	return isVpcNatGw, vpcGwName
+}
+
+func natGwNameFromStatefulSetOwner(pod *v1.Pod) string {
+	isStsPod, stsName, _ := isStatefulSetPod(pod)
+	if !isStsPod {
+		return ""
+	}
+
+	prefix := util.VpcNatGwNamePrefix + "-"
+	if !strings.HasPrefix(stsName, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(stsName, prefix)
+}
+
+func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) error {
+	if pod == nil {
+		return nil
+	}
+
+	ownerGwName := natGwNameFromStatefulSetOwner(pod)
+	if ownerGwName == "" {
+		return nil
+	}
+	if gwName == "" {
+		gwName = ownerGwName
+	}
+	// Use owner reference as a guard to avoid patching unrelated pods carrying a stale annotation.
+	if ownerGwName != gwName {
+		klog.Warningf("skip backfill for pod %s/%s: gw annotation %q does not match owner statefulset %q",
+			pod.Namespace, pod.Name, gwName, ownerGwName)
+		return nil
+	}
+
+	var (
+		gw  *kubeovnv1.VpcNatGateway
+		err error
+	)
+	if c.vpcNatGatewayLister != nil {
+		gw, err = c.vpcNatGatewayLister.Get(gwName)
+	} else {
+		gw, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), gwName, metav1.GetOptions{})
+	}
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if gw.Spec.LanIP != "" {
+		return nil
+	}
+
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+	if err != nil {
+		return fmt.Errorf("failed to get subnet %s: %w", gw.Spec.Subnet, err)
+	}
+	if !isOvnSubnet(subnet) {
+		return fmt.Errorf("subnet %s is not an OVN subnet", gw.Spec.Subnet)
+	}
+	provider := subnet.Spec.Provider
+
+	lanIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+	v4IP, v6IP := util.SplitStringIP(lanIP)
+	switch subnet.Spec.Protocol {
+	case kubeovnv1.ProtocolIPv6:
+		lanIP = v6IP
+	case kubeovnv1.ProtocolIPv4:
+		lanIP = v4IP
+	case kubeovnv1.ProtocolDual:
+		if v4IP != "" {
+			lanIP = v4IP
+		} else {
+			lanIP = v6IP
+		}
+	default:
+		lanIP = v4IP
+	}
+	if lanIP == "" || net.ParseIP(lanIP) == nil {
+		return nil
+	}
+
+	patchPayload := map[string]any{
+		"spec": map[string]string{
+			"lanIp": lanIP,
+		},
+	}
+	raw, err := json.Marshal(patchPayload)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(),
+		gw.Name, types.MergePatchType, raw, metav1.PatchOptions{})
+	if err != nil {
+		return err
+	}
+	klog.Infof("backfilled vpc nat gateway %s spec.lanIP with pod %s/%s ip %s", gw.Name, pod.Namespace, pod.Name, lanIP)
+	return nil
 }

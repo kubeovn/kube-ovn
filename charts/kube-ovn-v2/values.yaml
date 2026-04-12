@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.15.0
+      tag: v1.15.9
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -312,7 +312,7 @@ natGw:
     repository: docker.io/kubeovn/vpc-nat-gateway
     # -- Image tag.
     # @section -- NAT gateways configuration
-    tag: v1.15.0
+    tag: v1.15.9
     # -- Image pull policy.
     # @section -- NAT gateways configuration
     pullPolicy: IfNotPresent
@@ -329,7 +329,7 @@ natGw:
       repository: docker.io/kubeovn/kube-ovn
       # -- Image tag.
       # @section -- NAT gateways configuration
-      tag: v1.15.0
+      tag: v1.15.9
       # -- Image pull policy.
       # @section -- NAT gateways configuration
       pullPolicy: IfNotPresent
@@ -394,6 +394,13 @@ ovsOvn:
   # -- Labels to be added to ovs-ovn pods.
   # @section -- OVS/OVN daemons configuration
   podLabels: {}
+  # -- Affinity for ovs-ovn pods.
+  # @section -- OVS/OVN daemons configuration
+  affinity: {}
+  # -- Node selector to restrict the deployment of ovs-ovn to specific nodes.
+  # @section -- OVS/OVN daemons configuration
+  nodeSelector:
+    kubernetes.io/os: "linux"
 
   # -- Extra environment variables to be added to ovs-ovn pods.
   # @section -- OVS/OVN daemons configuration
@@ -411,6 +418,7 @@ ovsOvn:
     limits:
       cpu: "2"
       memory: "1000Mi"
+      ephemeral-storage: 1Gi
 
   # -- ovs-ovn DaemonSet update strategy.
   # ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/#daemonset-update-strategy
@@ -434,6 +442,15 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration
   ovnDirectory: "/etc/origin/ovn"
 
+  # -- Upgrade logic for OVS/OVN.
+  # @section -- OVS/OVN daemons configuration
+  upgrade:
+    # -- Enable post-upgrade hooks to run upgrade logic of OVS/OVN.
+    enabled: true
+    # -- Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN.
+    # This value must be updated for each new OVN version.
+    versionCompatibility: "25.03"
+
   # @section -- OVS/OVN daemons configuration.
   ovnRemoteProbeInterval: 10000
   # @section -- OVS/OVN daemons configuration.
@@ -452,6 +469,14 @@ ovsOvn:
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
     tag: "v1.15.0-dpdk"
+    # -- Affinity for the ovs-ovn-dpdk DaemonSet.
+    # @section -- OVS/OVN daemons configuration
+    affinity: {}
+    # -- Node selector to restrict the deployment of DPDK-hybrid OVS to specific nodes.
+    # @section -- OVS/OVN daemons configuration
+    nodeSelector:
+      kubernetes.io/os: "linux"
+      ovn.kubernetes.io/ovs_dp_type: "userspace"
     # -- ovs-ovn resource limits & requests when DPDK-hybrid is enabled.
     # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     # @section -- OVS/OVN daemons configuration
@@ -463,6 +488,7 @@ ovsOvn:
         hugepages-2Mi: 1Gi
         cpu: "2"
         memory: "1000Mi"
+        ephemeral-storage: 1Gi
 
 # -- Configuration for kube-ovn-speaker, the BGP speaker announcing routes to the external world.
 # @section -- BGP speaker configuration
@@ -546,6 +572,7 @@ pinger:
     limits:
       cpu: "200m"
       memory: "400Mi"
+      ephemeral-storage: 1Gi
 
   # -- kube-ovn-pinger metrics configuration.
   # @section -- Ping daemon configuration
@@ -555,6 +582,15 @@ pinger:
     # @section -- Ping daemon configuration
     port: 8080
 
+  # -- Ping daemon serviceMonitor configuration.
+  # @section -- Ping daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the pinger.
+    # @section -- Ping daemon configuration
+    enabled: false
+
+  # @section -- OVN monitoring daemon configuration
   # -- Remote targets used by the pinger daemon to determine if the CNI works and has external connectivity.
   # @section -- Ping daemon configuration
   # @default -- "{}"
@@ -615,6 +651,7 @@ monitor:
     limits:
       cpu: "200m"
       memory: "200Mi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-monitor.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -646,6 +683,14 @@ monitor:
     # -- Configure the port on which the kube-ovn-monitor service will serve metrics.
     # @section -- OVN monitoring daemon configuration
     port: 10661
+
+  # -- kube-ovn-monitor serviceMonitor configuration.
+  # @section -- OVN monitoring daemon configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.
+    # @section -- OVN monitoring daemon configuration
+    enabled: false
 
 # -- Configuration for kube-ovn-controller, the controller responsible for syncing K8s with OVN.
 # @section -- Kube-OVN controller configuration
@@ -681,6 +726,7 @@ controller:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for kube-ovn-controller.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -712,6 +758,14 @@ controller:
     # -- Configure the port on which the controller service will serve metrics.
     # @section -- Kube-OVN controller configuration
     port: 10660
+
+  # -- Controller serviceMonitor configuration.
+  # @section -- Kube-OVN controller configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the Kube-OVN controller.
+    # @section -- Kube-OVN controller configuration
+    enabled: false
 
 # -- Configuration for ovn-central, the daemon containing the northbound/southbound DBs and northd.
 # @section -- OVN-central daemon configuration
@@ -747,6 +801,7 @@ central:
     limits:
       cpu: "3"
       memory: "4Gi"
+      ephemeral-storage: 1Gi
 
   # -- Node affinity configuration for ovn-central.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
@@ -849,6 +904,7 @@ agent:
     limits:
       cpu: "1000m"
       memory: "1Gi"
+      ephemeral-storage: 1Gi
 
   # -- Agent metrics configuration.
   # @section -- CNI agent configuration
@@ -857,6 +913,14 @@ agent:
     # -- Configure the port on which the agent service will serve metrics.
     # @section -- CNI agent configuration
     port: 10665
+
+  # -- Agent serviceMonitor configuration.
+  # @section -- CNI agent configuration
+  # @default -- "{}"
+  serviceMonitor:
+    # -- Enable the deployment of the ServiceMonitor for the agent.
+    # @section -- CNI agent configuration
+    enabled: false
 
   # -- Mirroring of the traffic for debug or analysis.
   # https://kubeovn.github.io/docs/stable/en/guide/mirror/

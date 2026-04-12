@@ -22,10 +22,18 @@ func (c *Controller) enqueueAddVlan(obj any) {
 	c.addVlanQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateVlan(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*kubeovnv1.Vlan)).String()
+func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
+	oldVlan := oldObj.(*kubeovnv1.Vlan)
+	newVlan := newObj.(*kubeovnv1.Vlan)
+	key := cache.MetaObjectToName(newVlan).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
 	c.updateVlanQueue.Add(key)
+
+	if oldVlan.Spec.Provider == newVlan.Spec.Provider {
+		return
+	}
+
+	klog.Infof("vlan %s provider changed from %s to %s", newVlan.Name, oldVlan.Spec.Provider, newVlan.Spec.Provider)
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
@@ -116,6 +124,14 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 	}
 
+	// re-enqueue subnets that reference this vlan, so they can proceed
+	// if they were previously blocked by the vlan not being ready
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == vlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
+
 	return nil
 }
 
@@ -179,13 +195,16 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
 		return err
 	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
+
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
 				klog.Error(err)
 				return err

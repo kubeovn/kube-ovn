@@ -12,6 +12,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func Test_reconcileVips(t *testing.T) {
@@ -128,6 +129,54 @@ func Test_syncVirtualPort(t *testing.T) {
 	virtualParents := fmt.Sprintf("%s,%s", lspNamePrefix+"-0", lspNamePrefix+"-1")
 	mockOvnClient.EXPECT().SetLogicalSwitchPortVirtualParents(subnet.Name, virtualParents, "192.168.123.10").Return(nil)
 	mockOvnClient.EXPECT().SetLogicalSwitchPortVirtualParents(subnet.Name, virtualParents, "192.168.123.11").Return(nil)
+
+	err = ctrl.syncVirtualPort(subnet.Name)
+	require.NoError(t, err)
+}
+
+func Test_syncVirtualPort_noSubstringMatch(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	mockOvnClient := fakeController.mockOvnClient
+
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ovn-test",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Vips:      []string{"10.0.0.1"},
+		},
+	}
+
+	err := fakeinformers.subnetInformer.Informer().GetStore().Add(subnet)
+	require.NoError(t, err)
+
+	// LSP has vip "10.0.0.10" which contains "10.0.0.1" as a substring
+	// but should NOT match the vip "10.0.0.1"
+	lsps := []ovnnb.LogicalSwitchPort{
+		{
+			Name: "lsp-no-match",
+			ExternalIDs: map[string]string{
+				"ls":   "",
+				"vips": "10.0.0.10,10.0.0.2",
+			},
+		},
+		{
+			Name: "lsp-match",
+			ExternalIDs: map[string]string{
+				"ls":   "",
+				"vips": "10.0.0.1,10.0.0.3",
+			},
+		},
+	}
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(lsps, nil)
+	// Only "lsp-match" should be a virtual parent, not "lsp-no-match"
+	mockOvnClient.EXPECT().SetLogicalSwitchPortVirtualParents(subnet.Name, "lsp-match", "10.0.0.1").Return(nil)
 
 	err = ctrl.syncVirtualPort(subnet.Name)
 	require.NoError(t, err)
@@ -271,6 +320,77 @@ func Test_formatSubnet(t *testing.T) {
 			require.Equal(t, tc.output, formattedSubnet)
 			err = ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Delete(context.Background(), tc.input.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)
+		})
+	}
+}
+
+func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {
+	t.Parallel()
+
+	// Create a subnet that references a non-existent vlan
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-underlay",
+		},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Vlan:      "non-existent-vlan",
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	// handleAddOrUpdateSubnet should return an error when the vlan does not exist,
+	// so that the work queue retries the item instead of forgetting it
+	err = ctrl.handleAddOrUpdateSubnet("test-underlay")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to validate vlan")
+}
+
+func Test_isOvnSubnet(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		subnet *kubeovnv1.Subnet
+		want   bool
+	}{
+		{
+			name:   "nil subnet returns false",
+			subnet: nil,
+			want:   false,
+		},
+		{
+			name: "empty provider defaults to OVN",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: ""},
+			},
+			want: true,
+		},
+		{
+			name: "explicit OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+			},
+			want: true,
+		},
+		{
+			name: "non-OVN provider",
+			subnet: &kubeovnv1.Subnet{
+				Spec: kubeovnv1.SubnetSpec{Provider: "external.provider"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isOvnSubnet(tc.subnet))
 		})
 	}
 }

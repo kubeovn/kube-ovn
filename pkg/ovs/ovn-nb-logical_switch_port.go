@@ -146,12 +146,18 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 	if lsp != nil {
 		externalIDs[LogicalSwitchKey] = lsName
 		externalIDs["vendor"] = util.CniTypeName
-		if !maps.Equal(lsp.ExternalIDs, externalIDs) {
-			lsp.ExternalIDs = externalIDs
-			if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
-				klog.Error(err)
-				return fmt.Errorf("failed to update external-ids of logical switch port %s: %w", lspName, err)
-			}
+		options := map[string]string{
+			"network_name": provider,
+		}
+		if maps.Equal(lsp.ExternalIDs, externalIDs) && maps.Equal(lsp.Options, options) {
+			return nil
+		}
+
+		lsp.ExternalIDs = externalIDs
+		lsp.Options = options
+		if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs, &lsp.Options); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to update localnet logical switch port %s: %w", lspName, err)
 		}
 
 		return nil

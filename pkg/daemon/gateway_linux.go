@@ -76,12 +76,11 @@ type policyRouteMeta struct {
 }
 
 func (c *Controller) setIPSet() error {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -146,12 +145,11 @@ func (c *Controller) setIPSet() error {
 }
 
 func (c *Controller) gcIPSet() {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -236,12 +234,11 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
 }
 
 func (c *Controller) setPolicyRouting() error {
-	protocols := make([]string, 2)
+	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols[0] = kubeovnv1.ProtocolIPv4
-		protocols[1] = kubeovnv1.ProtocolIPv6
+		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
 	} else {
-		protocols[0] = c.protocol
+		protocols = append(protocols, c.protocol)
 	}
 
 	for _, protocol := range protocols {
@@ -1085,6 +1082,9 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 				markCode = OnOutGoingNatMark
 			case util.NatPolicyRuleActionForward:
 				markCode = OnOutGoingForwardMark
+			default:
+				klog.Warningf("skipping nat outgoing policy rule with unknown action %q in subnet %s", rule.Action, subnet.Name)
+				continue
 			}
 
 			if rule.RuleID == "" {
@@ -1358,12 +1358,12 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 				continue
 			}
 
-			currentPackets, err := strconv.Atoi(items[9])
+			currentPackets, err := strconv.ParseUint(items[9], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packets %q: %v", items[9], err)
 				continue
 			}
-			currentPacketBytes, err := strconv.Atoi(items[10])
+			currentPacketBytes, err := strconv.ParseUint(items[10], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse packet bytes %q: %v", items[10], err)
 				continue
@@ -1371,7 +1371,7 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 
 			key := strings.Join([]string{subnetName, direction, proto}, "/")
 			if c.gwCounters[key] == nil {
-				c.gwCounters[key] = new(util.GwIPtableCounters)
+				c.gwCounters[key] = new(util.GwIPTablesCounters)
 			}
 			lastPackets, lastPacketBytes := c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes
 			c.gwCounters[key].Packets, c.gwCounters[key].PacketBytes = currentPackets, currentPacketBytes
@@ -1619,7 +1619,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[0])
-				} else {
+				} else if len(ips) >= 2 {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[1])
 				}
 			} else if len(egw) == 2 && len(ips) == 2 {

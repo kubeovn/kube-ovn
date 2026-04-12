@@ -7,10 +7,11 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.ovsOvn.labels }}
   labels:
+    {{- include "kubeovn.labels" .  | nindent 4 }}
+    {{- with .Values.ovsOvn.labels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
@@ -30,6 +31,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
+        {{- include "kubeovn.labels" . | nindent 8 }}
         app.kubernetes.io/name: kube-ovn-ovs
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.ovsOvn.podLabels }}
@@ -47,6 +49,10 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
+      {{- with .Values.ovsOvn.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       priorityClassName: system-node-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -188,8 +194,10 @@ spec:
           resources:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
+      {{- with .Values.ovsOvn.nodeSelector }}
       nodeSelector:
-        kubernetes.io/os: "linux"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: usr-local-sbin
           emptyDir: {}

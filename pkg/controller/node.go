@@ -733,19 +733,22 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	var err error
-	if _, err := c.OVNSbClient.GetChassisByHost(node.Name); err == nil {
+	_, err := c.OVNSbClient.GetChassisByHost(node.Name)
+	if err == nil {
 		return nil
 	}
-	klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
-	if errors.Is(err, ovs.ErrOneNodeMultiChassis) {
-		klog.Warningf("node %s has multiple chassis", node.Name)
-		if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
-			return err
-		}
+
+	if !errors.Is(err, ovs.ErrOneNodeMultiChassis) {
+		klog.Errorf("failed to get chassis for node %s: %v", node.Name, err)
+		return err
 	}
-	return err
+
+	klog.Warningf("node %s has multiple chassis, deleting all", node.Name)
+	if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
+		klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
@@ -1134,16 +1137,13 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
 
-	policies, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "node", nodeName)
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
-		klog.Errorf("failed to list logical router policies with external-ids:node = %q: %v", nodeName, err)
+		klog.Errorf("failed to list logical router policies for node %q af %d: %v", nodeName, af, err)
 		return err
 	}
 
 	for _, policy := range policies {
-		if len(policy.ExternalIDs) == 0 || policy.ExternalIDs["vendor"] != util.CniTypeName || policy.ExternalIDs["isLocalDnsCache"] != "true" {
-			continue
-		}
 		if policy.Priority == util.NodeRouterPolicyPriority && policy.Action == string(action) && slices.Equal(policy.Nexthops, nextHops) && matches.Has(policy.Match) {
 			matches.Remove(policy.Match)
 			continue

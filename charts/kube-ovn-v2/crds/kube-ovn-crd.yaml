@@ -523,6 +523,11 @@ spec:
             spec:
               type: object
               properties:
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod will be created.
+                    If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
                 lanIp:
                   type: string
                   description: LAN IP address for the NAT gateway. This field is immutable after creation.
@@ -1358,6 +1363,77 @@ spec:
                         type: string
                     type: object
                   type: array
+                resources:
+                  description: |-
+                    `resources` are the compute resources required by this container.
+                    For more information, see https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                  properties:
+                    claims:
+                      description: |-
+                        Claims lists the names of resources, defined in spec.resourceClaims, that are used by this container.
+
+                        This field depends on the DynamicResourceAllocation feature gate.
+
+                        This field is immutable. It can only be set for containers.
+                      items:
+                        description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                        properties:
+                          name:
+                            description: |-
+                              Name must match the name of one entry in pod.spec.resourceClaims of
+                              the Pod where this field is used. It makes that resource available
+                              inside a container.
+                            type: string
+                          request:
+                            description: |-
+                              Request is the name chosen for a request in the referenced claim.
+                              If empty, everything from the claim is made available, otherwise
+                              only the result of this request.
+                            type: string
+                        required:
+                          - name
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                        - name
+                      x-kubernetes-list-type: map
+                    limits:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Limits describes the maximum amount of compute resources allowed.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                    requests:
+                      additionalProperties:
+                        anyOf:
+                          - type: integer
+                          - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Requests describes the minimum amount of compute resources required.
+                        If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                        otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                  type: object
+                bandwidth:
+                  type: object
+                  description: Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
+                  properties:
+                    ingress:
+                      type: integer
+                      format: int64
+                      description: ingress bandwidth limit in Mbps
+                    egress:
+                      type: integer
+                      format: int64
+                      description: egress bandwidth limit in Mbps
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1453,6 +1529,11 @@ spec:
                 macAddress:
                   type: string
                   description: MAC address for the EIP
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod for this EIP resides.
+                    If empty, defaults to the kube-ovn controller's own namespace.
                 natGwDp:
                   type: string
                   description: NAT gateway datapath where the EIP is assigned
@@ -2317,10 +2398,10 @@ spec:
                   type: boolean
                   description: Enable BFD (Bidirectional Forwarding Detection) for the VPC
                 namespaces:
+                  description: List of namespaces that can use this VPC
                   items:
                     type: string
                   type: array
-                  description: List of namespaces that can use this VPC
                 extraExternalSubnets:
                   description: Extra external subnets for provider-network VLAN. Immutable after creation.
                   items:
@@ -2441,6 +2522,7 @@ spec:
                     type: object
                   type: array
                 default:
+                  description: Whether this is the default subnet.
                   type: boolean
                 defaultLogicalSwitch:
                   type: string
@@ -2796,6 +2878,7 @@ spec:
                 dhcpV6OptionsUUID:
                   type: string
                 u2oInterconnectionIP:
+                  description: Underlay to overlay interconnection IP.
                   type: string
                 u2oInterconnectionMAC:
                   type: string
@@ -2816,6 +2899,7 @@ spec:
                 v6availableIPrange:
                   type: string
                 natOutgoingPolicyRules:
+                  description: NAT outgoing policy rules.
                   type: array
                   items:
                     type: object
@@ -2858,6 +2942,7 @@ spec:
                   description: VPC name for the subnet. Immutable after creation.
                   type: string
                 default:
+                  description: Whether this is the default subnet.
                   type: boolean
                 protocol:
                   description: Network protocol (IPv4, IPv6, or Dual). Immutable after creation.
@@ -2870,6 +2955,7 @@ spec:
                   description: CIDR block for the subnet. Immutable after creation.
                   type: string
                 namespaces:
+                  description: List of namespaces associated with this subnet.
                   type: array
                   items:
                     type: string
@@ -2877,24 +2963,31 @@ spec:
                   description: Gateway IP address for the subnet.
                   type: string
                 provider:
+                  description: Provider network name.
                   type: string
                 excludeIps:
+                  description: IP addresses to exclude from allocation.
                   type: array
                   items:
                     type: string
                 vips:
+                  description: Virtual IP addresses for the subnet.
                   type: array
                   items:
                     type: string
                 gatewayType:
+                  description: Gateway type (distributed or centralized).
                   type: string
                 allowSubnets:
+                  description: Allowed subnets for east-west traffic.
                   type: array
                   items:
                     type: string
                 gatewayNode:
+                  description: Gateway node for centralized gateway mode.
                   type: string
                 gatewayNodeSelectors:
+                  description: Node selectors for gateway placement.
                   type: array
                   items:
                     type: object
@@ -2920,12 +3013,15 @@ spec:
                   description: Enable NAT for outgoing traffic.
                   type: boolean
                 externalEgressGateway:
+                  description: External egress gateway for the subnet.
                   type: string
                 policyRoutingPriority:
+                  description: Policy routing priority.
                   type: integer
                   minimum: 1
                   maximum: 32765
                 policyRoutingTableID:
+                  description: Policy routing table ID.
                   type: integer
                   minimum: 1
                   maximum: 2147483647
@@ -2936,30 +3032,39 @@ spec:
                       - 254 # main
                       - 255 # local
                 mtu:
+                  description: Maximum transmission unit for the subnet.
                   type: integer
                   minimum: 68
                   maximum: 65535
                 private:
+                  description: Whether the subnet is private.
                   type: boolean
                 vlan:
                   description: VLAN ID for the subnet. Immutable after creation.
                   type: string
                 logicalGateway:
+                  description: Whether to use logical gateway.
                   type: boolean
                 disableGatewayCheck:
+                  description: Disable gateway connectivity check.
                   type: boolean
                 disableInterConnection:
+                  description: Disable subnet interconnection.
                   type: boolean
                 enableDHCP:
                   description: Enable DHCP for the subnet.
                   type: boolean
                 dhcpV4Options:
+                  description: DHCPv4 options for the subnet.
                   type: string
                 dhcpV6Options:
+                  description: DHCPv6 options for the subnet.
                   type: string
                 enableIPv6RA:
+                  description: Enable IPv6 router advertisement.
                   type: boolean
                 ipv6RAConfigs:
+                  description: IPv6 router advertisement configurations.
                   type: string
                 allowEWTraffic:
                   description: Allow east-west traffic between pods.
@@ -2990,6 +3095,7 @@ spec:
                           - drop
                           - reject
                 natOutgoingPolicyRules:
+                  description: NAT outgoing policy rules.
                   type: array
                   items:
                     type: object
@@ -3007,20 +3113,28 @@ spec:
                           dstIPs:
                             type: string
                 u2oInterconnection:
+                  description: Enable underlay to overlay interconnection.
                   type: boolean
                 u2oInterconnectionIP:
+                  description: Underlay to overlay interconnection IP.
                   type: string
                 enableLb:
+                  description: Enable load balancer for the subnet.
                   type: boolean
                 enableEcmp:
+                  description: Enable ECMP for the subnet.
                   type: boolean
                 enableMulticastSnoop:
+                  description: Enable multicast snooping.
                   type: boolean
                 enableExternalLBAddress:
+                  description: Enable external load balancer address.
                   type: boolean
                 routeTable:
+                  description: Route table for the subnet.
                   type: string
                 namespaceSelectors:
+                  description: Namespace selectors for subnet association.
                   type: array
                   items:
                     type: object
@@ -3043,6 +3157,7 @@ spec:
                               items:
                                 type: string
                 nodeNetwork:
+                  description: Node network for the subnet.
                   type: string
   scope: Cluster
   names:
@@ -3100,9 +3215,9 @@ spec:
                     - rule: "self == oldSelf"
                       message: "This field is immutable."
                 namespaces:
+                  description: Namespaces that can use this IP pool
                   type: array
                   x-kubernetes-list-type: set
-                  description: Namespaces that can use this IP pool
                   items:
                     type: string
                 ips:
@@ -3229,6 +3344,7 @@ spec:
                     type: string
                 conflict:
                   type: boolean
+                  description: Whether there is a conflict with this VLAN
       additionalPrinterColumns:
         - name: ID
           type: string
@@ -3330,7 +3446,7 @@ spec:
                     type: string
                 autoCreateVlanSubinterfaces:
                   type: boolean
-                  description: Enable automatic detection and preservation of VLAN interfaces
+                  description: Automatically create VLAN subinterfaces
                 preserveVlanInterfaces:
                   type: boolean
                   description: Enable automatic detection and preservation of VLAN interfaces
@@ -3371,18 +3487,25 @@ spec:
                     properties:
                       node:
                         type: string
+                        description: Node name
                       type:
                         type: string
+                        description: Type of the condition
                       status:
                         type: string
+                        description: Status of the condition
                       reason:
                         type: string
+                        description: Reason for the condition
                       message:
                         type: string
+                        description: Message about the condition
                       lastUpdateTime:
                         type: string
+                        description: Last update time
                       lastTransitionTime:
                         type: string
+                        description: Last transition time
       additionalPrinterColumns:
         - name: DefaultInterface
           type: string

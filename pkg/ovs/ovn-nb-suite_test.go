@@ -715,6 +715,18 @@ func (suite *OvnClientTestSuite) Test_UpdateEgressAclOps() {
 	suite.testUpdateEgressACLOps()
 }
 
+func (suite *OvnClientTestSuite) Test_NewIPBlockACLMatch() {
+	suite.testNewIPBlockACLMatch()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateIngressIPBlockACLOps() {
+	suite.testUpdateIngressIPBlockACLOps()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateEgressIPBlockACLOps() {
+	suite.testUpdateEgressIPBlockACLOps()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
 	suite.testCreateGatewayACL()
 }

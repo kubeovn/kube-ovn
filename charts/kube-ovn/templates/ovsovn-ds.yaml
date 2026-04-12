@@ -173,6 +173,7 @@ spec:
             limits:
               cpu: {{ index .Values "ovs-ovn" "limits" "cpu" }}
               memory: {{ index .Values "ovs-ovn" "limits" "memory" }}
+              ephemeral-storage: {{ index .Values "ovs-ovn" "limits" "ephemeral-storage" }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:

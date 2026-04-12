@@ -91,6 +91,11 @@ type Controller struct {
 	ControllerRuntime
 
 	k8sExec k8sexec.Interface
+
+	// channel used for fdb sync
+	fdbSyncChan   chan struct{}
+	fdbSyncMutex  sync.Mutex
+	vswitchClient ovs.Vswitch
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -163,6 +168,8 @@ func NewController(config *Configuration,
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
+
+		fdbSyncChan: make(chan struct{}, 1),
 	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
@@ -238,6 +245,10 @@ func NewController(config *Configuration,
 		}); err != nil {
 			return nil, err
 		}
+	}
+
+	if controller.vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
+		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
 	}
 
 	return controller, nil
@@ -627,9 +638,24 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
-	event := &subnetEvent{oldObj: obj}
+	var subnet *kubeovnv1.Subnet
+	switch t := obj.(type) {
+	case *kubeovnv1.Subnet:
+		subnet = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		subnet, ok = t.Obj.(*kubeovnv1.Subnet)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+	event := &subnetEvent{oldObj: subnet}
 	c.subnetQueue.Add(event)
-	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(obj) {
+	if c.config.EnableNodeLocalAccessVpcNatGwEIP && subnetHasMacvlanMaster(subnet) {
 		c.macvlanSubnetQueue.Add(event)
 	}
 }
@@ -675,7 +701,19 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	c.serviceQueue.Add(&serviceEvent{oldObj: obj})
+	switch t := obj.(type) {
+	case *v1.Service:
+		c.serviceQueue.Add(&serviceEvent{oldObj: t})
+	case cache.DeletedFinalStateUnknown:
+		svc, ok := t.Obj.(*v1.Service)
+		if !ok {
+			klog.Warningf("unexpected object type in tombstone: %T", t.Obj)
+			return
+		}
+		c.serviceQueue.Add(&serviceEvent{oldObj: svc})
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+	}
 }
 
 func (c *Controller) runAddOrUpdateServicekWorker() {
@@ -691,6 +729,7 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 
 	err := func(obj *subnetEvent) error {
 		defer c.subnetQueue.Done(obj)
+		c.requestFdbSync()
 		if err := c.reconcileRouters(obj); err != nil {
 			c.subnetQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing %v: %w, requeuing", obj, err)
@@ -936,6 +975,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updateNodeQueue.ShutDown()
 	defer c.iptablesEipQueue.ShutDown()
 	defer c.iptablesEipDeleteQueue.ShutDown()
+	defer c.vswitchClient.Close()
+
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
@@ -988,6 +1029,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// Start OpenFlow sync loop
 	go c.runFlowSync(stopCh)
+
+	// start fdb sync loop
+	go c.runFdbSync(stopCh)
 
 	<-stopCh
 	klog.Info("Shutting down workers")

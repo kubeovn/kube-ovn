@@ -35,6 +35,21 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
+	// On update: enforce spec.namespace immutability.
+	// Changing the namespace would create a new StatefulSet in the new namespace while
+	// leaving the old one orphaned; there is no migration path for the running workload.
+	if len(req.OldObject.Raw) > 0 {
+		gwOld := ovnv1.VpcNatGateway{}
+		if err := v.decoder.DecodeRaw(req.OldObject, &gwOld); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+		if gwOld.Spec.Namespace != gw.Spec.Namespace {
+			err := fmt.Errorf("VpcNatGateway %q: spec.namespace is immutable (old: %q, new: %q)",
+				gw.Name, gwOld.Spec.Namespace, gw.Spec.Namespace)
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+	}
+
 	if err := v.ValidateVpcNatConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
@@ -92,6 +107,23 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 
 	eipOld := ovnv1.IptablesEIP{}
 	if err := v.decoder.DecodeRaw(req.OldObject, &eipOld); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	// IptablesEIP is an internal resource of a NatGwDp. Once created and Ready,
+	// its Spec (including V4ip address) is immutable — the Ready check below blocks
+	// any Spec change. NatGwDp is additionally immutable once set (even before Ready),
+	// because migrating an EIP across gateways is not supported.
+	//
+	// This immutability is a key invariant for NAT rule controllers: they rely on
+	// EIP.Status.IP being stable for the lifetime of the EIP resource.
+
+	// NatGwDp is immutable once set: changing the gateway would require migrating
+	// all associated NAT rules (FIP/DNAT/SNAT) to a different gateway pod,
+	// which is not supported by the update handlers.
+	if eipOld.Spec.NatGwDp != "" && eipNew.Spec.NatGwDp != eipOld.Spec.NatGwDp {
+		err := fmt.Errorf("IptablesEIP %q: NatGwDp is immutable once set (old: %s, new: %s)",
+			eipNew.Name, eipOld.Spec.NatGwDp, eipNew.Spec.NatGwDp)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -193,19 +225,13 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if dnatOld.Spec != dnatNew.Spec {
-		if dnatOld.Status.Ready && dnatOld.Status.Redo == dnatNew.Status.Redo {
-			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready,not support change", dnatNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
+	if dnatNew.Spec != dnatOld.Spec {
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -246,19 +272,13 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if snatOld.Spec != snatNew.Spec {
-		if snatOld.Status.Ready && snatOld.Status.Redo == snatNew.Status.Redo {
-			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready,not support change", snatNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
+	if snatNew.Spec != snatOld.Spec {
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -300,26 +320,28 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 	}
 
 	if fipNew.Spec != fipOld.Spec {
-		if fipOld.Status.Ready && fipNew.Status.Redo == fipOld.Status.Redo {
-			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready,not support change", fipNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
-		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
-
 		if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
-	return ctrlwebhook.Allowed("by pass")
+	return ctrlwebhook.Allowed("bypass")
 }
 
 func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
+	prefix, err := v.getNatGwNamePrefix(ctx)
+	if err != nil {
+		return err
+	}
+	if err := util.ValidateNatGwStatefulSetNameLength(prefix, gw.Name); err != nil {
+		return err
+	}
+
 	if gw.Spec.Vpc == "" {
 		return errors.New("parameter \"vpc\" cannot be empty")
 	}
@@ -374,6 +396,20 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	return nil
+}
+
+func (v *ValidatingHook) getNatGwNamePrefix(ctx context.Context) (string, error) {
+	cm := &corev1.ConfigMap{}
+	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: util.VpcNatConfig}
+	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
+		return "", err
+	}
+
+	prefix := strings.TrimSpace(cm.Data["natGwNamePrefix"])
+	if prefix == "" {
+		return util.VpcNatGwNameDefaultPrefix, nil
+	}
+	return prefix, nil
 }
 
 func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error {
@@ -484,6 +520,18 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return err
 	}
 
+	// Check FIP/DNAT exclusivity: FIP claims all traffic to the EIP (EXCLUSIVE_DNAT),
+	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
+	if eip.Status.IP != "" {
+		fipList := &ovnv1.IptablesFIPRuleList{}
+		if err := v.cache.List(ctx, fipList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP}); err != nil {
+			return fmt.Errorf("failed to list iptables FIP rules: %w", err)
+		}
+		if len(fipList.Items) != 0 {
+			return fmt.Errorf("EIP %q is already used by FIP rule %q; floating IP requires exclusive use of the EIP (FIP matches all traffic, shadowing port-specific DNAT rules)", dnat.Spec.EIP, fipList.Items[0].Name)
+		}
+	}
+
 	return nil
 }
 
@@ -518,6 +566,18 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 	if net.ParseIP(fip.Spec.InternalIP) == nil {
 		err := fmt.Errorf("internalIP %s is not a valid", fip.Spec.InternalIP)
 		return err
+	}
+
+	// Check FIP/DNAT exclusivity: FIP claims all traffic to the EIP (EXCLUSIVE_DNAT),
+	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
+	if eip.Status.IP != "" {
+		dnatList := &ovnv1.IptablesDnatRuleList{}
+		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP}); err != nil {
+			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
+		}
+		if len(dnatList.Items) != 0 {
+			return fmt.Errorf("EIP %q is already used by DNAT rule %q; floating IP requires exclusive use of the EIP (FIP matches all traffic, shadowing port-specific DNAT rules)", fip.Spec.EIP, dnatList.Items[0].Name)
+		}
 	}
 
 	return nil

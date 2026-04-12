@@ -96,10 +96,11 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 
 	replicas := int32(1)
 	name := vpcLbDeploymentName(vpc.Name)
+	appLabel := util.NormalizeLabelValue(name)
 	allowPrivilegeEscalation := true
 	privileged := true
 	labels := map[string]string{
-		"app":           name,
+		"app":           appLabel,
 		util.VpcLbLabel: "true",
 	}
 

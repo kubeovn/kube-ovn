@@ -40,6 +40,7 @@ const (
 	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
 	DefaultProbeInterval = 5
 	MaxFailCount         = 3
+	northdDialTimeout    = 3 * time.Second
 )
 
 var failCount int
@@ -52,7 +53,7 @@ type Configuration struct {
 	KubeClient      kubernetes.Interface
 	ProbeInterval   int
 	EnableCompact   bool
-	ISICDBServer    bool
+	IsICDBServer    bool
 	localAddress    string
 	remoteAddresses []string
 }
@@ -98,7 +99,7 @@ func ParseFlags() (*Configuration, error) {
 		KubeConfigFile:  *argKubeConfigFile,
 		ProbeInterval:   *argProbeInterval,
 		EnableCompact:   *argEnableCompact,
-		ISICDBServer:    *argIsICDBServer,
+		IsICDBServer:    *argIsICDBServer,
 		localAddress:    *localAddress,
 		remoteAddresses: slices.DeleteFunc(*remoteAddresses, func(s string) bool { return s == *localAddress }),
 	}
@@ -136,13 +137,12 @@ func KubeClientInit(cfg *Configuration) error {
 }
 
 func getCmdExitCode(cmd *exec.Cmd) int {
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		klog.Errorf("getCmdExitCode run error %v", err)
 		return -1
 	}
 	if cmd.ProcessState == nil {
-		klog.Errorf("getCmdExitCode run error %v", err)
+		klog.Errorf("getCmdExitCode: process state not available")
 		return -1
 	}
 	status := cmd.ProcessState.Sys().(syscall.WaitStatus)
@@ -156,7 +156,7 @@ func checkOvnIsAlive() bool {
 	components := [...]string{"northd", "ovnnb", "ovnsb"}
 	for _, component := range components {
 		cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_"+component) // #nosec G204
-		if err := getCmdExitCode(cmd); err != 0 {
+		if exitCode := getCmdExitCode(cmd); exitCode != 0 {
 			klog.Errorf("CheckOvnIsAlive: %s is not alive", component)
 			return false
 		}
@@ -256,7 +256,7 @@ func stealLock() {
 		args = slices.Insert(args, 0, ovs.CmdSSLArgs()...)
 	}
 
-	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204
+	output, err := exec.Command("ovsdb-client", args...).CombinedOutput() // #nosec G204 G702
 	if err != nil {
 		klog.Errorf("stealLock err %v", err)
 		return
@@ -278,7 +278,7 @@ func checkNorthdSvcExist(cfg *Configuration, namespace, svcName string) bool {
 
 func checkNorthdEpAvailable(ip string) bool {
 	address := util.JoinHostPort(ip, util.NBRaftPort)
-	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	conn, err := net.DialTimeout("tcp", address, northdDialTimeout) // #nosec G704
 	if err != nil {
 		klog.Errorf("failed to connect to northd leader %s, err: %v", ip, err)
 		failCount++
@@ -293,7 +293,7 @@ func checkNorthdEpAvailable(ip string) bool {
 	return true
 }
 
-func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
+func checkNorthdEpAlive(cfg *Configuration, namespace, service string, expectedAddrType discoveryv1.AddressType) bool {
 	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		klog.Errorf("failed to list endpoint slices for service %s/%s: %v", namespace, service, err)
@@ -301,19 +301,72 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string) bool {
 	}
 
 	for _, eps := range epsList.Items {
+		// Only check endpoint slices matching the pod IP protocol
+		if eps.AddressType != expectedAddrType {
+			continue
+		}
+
 		for _, ep := range eps.Endpoints {
 			if (ep.Conditions.Ready != nil && !*ep.Conditions.Ready) || len(ep.Addresses) == 0 {
 				continue
 			}
 
-			// Found an address, check its availability. We only need one.
-			klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", ep.Addresses[0], eps.Namespace, eps.Name, service)
-			return checkNorthdEpAvailable(ep.Addresses[0])
+			for _, address := range ep.Addresses {
+				klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", address, eps.Namespace, eps.Name, service)
+				if checkNorthdEpAvailable(address) {
+					return true
+				}
+			}
 		}
 	}
 
-	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s", namespace, service)
+	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s with AddressType %s", namespace, service, expectedAddrType)
 	return false
+}
+
+// checkDBClusterIntegrity verifies that a leader node has the expected number
+// of cluster members. After a split-brain recovery with an incomplete snapshot,
+// a leader may have fewer members than expected (e.g., some servers missing from
+// its cluster configuration). This causes the missing servers to be permanently
+// excluded from the cluster.
+//
+// When detected, the corrupted db file is removed so that on restart,
+// ovn_db_pre_start can rebuild it from the raft header file and rejoin the
+// cluster with a clean state.
+func checkDBClusterIntegrity(db string, expectedMembers int) {
+	if expectedMembers <= 1 {
+		return
+	}
+
+	dbName := ovnnb.DatabaseName
+	if db == "sb" {
+		dbName = ovnsb.DatabaseName
+	}
+
+	output, err := ovs.OvnDatabaseControl(db, "cluster/status", dbName)
+	if err != nil {
+		klog.Warningf("failed to get %s cluster status: %v", db, err)
+		return
+	}
+
+	serverCount := 0
+	for line := range strings.SplitSeq(output, "\n") {
+		if slices.Contains(strings.Fields(line), "at") {
+			serverCount++
+		}
+	}
+
+	if serverCount > 0 && serverCount < expectedMembers {
+		dbFile := fmt.Sprintf("/etc/ovn/ovn%s_db.db", db)
+		klog.Errorf("ovn-%s leader has only %d cluster members, expected %d; "+
+			"cluster may have incomplete membership from a split-brain recovery; "+
+			"removing db file %s to force clean rejoin on restart",
+			db, serverCount, expectedMembers, dbFile)
+		if err := os.Remove(dbFile); err != nil && !os.IsNotExist(err) {
+			klog.Errorf("failed to remove db file %s: %v", dbFile, err)
+		}
+		klog.Fatalf("exiting to trigger re-election with clean state")
+	}
 }
 
 func compactOvnDatabase(db string) {
@@ -393,12 +446,21 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		util.LogFatalAndExit(nil, "preValidChkCfg: invalid cfg")
 	}
 
-	if !cfg.ISICDBServer && !checkOvnIsAlive() {
+	// Determine the expected AddressType based on pod IP protocol
+	podIP := os.Getenv(util.EnvPodIP)
+	var expectedAddrType discoveryv1.AddressType
+	if util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6 {
+		expectedAddrType = discoveryv1.AddressTypeIPv6
+	} else {
+		expectedAddrType = discoveryv1.AddressTypeIPv4
+	}
+
+	if !cfg.IsICDBServer && !checkOvnIsAlive() {
 		klog.Errorf("ovn is not alive")
 		return
 	}
 
-	if !cfg.ISICDBServer {
+	if !cfg.IsICDBServer {
 		nbLeader := isDBLeader(cfg.localAddress, ovnnb.DatabaseName)
 		sbLeader := isDBLeader(cfg.localAddress, ovnsb.DatabaseName)
 		northdActive := checkNorthdActive()
@@ -412,7 +474,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			return
 		}
 		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
-			if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd") {
+			if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd", expectedAddrType) {
 				klog.Warning("no available northd leader, try to release the lock")
 				stealLock()
 			}
@@ -425,6 +487,14 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			if sbLeader && isDBLeader(addr, ovnsb.DatabaseName) {
 				klog.Fatalf("found another ovn-sb leader at %s, exiting process to restart", addr)
 			}
+		}
+
+		expectedMembers := len(cfg.remoteAddresses) + 1
+		if nbLeader {
+			checkDBClusterIntegrity("nb", expectedMembers)
+		}
+		if sbLeader {
+			checkDBClusterIntegrity("sb", expectedMembers)
 		}
 
 		if cfg.EnableCompact {
@@ -469,8 +539,8 @@ func StartOvnLeaderCheck(cfg *Configuration) {
 	podNamespace := os.Getenv(util.EnvPodNamespace)
 	interval := time.Duration(cfg.ProbeInterval) * time.Second
 	for {
-		doOvnLeaderCheck(cfg, podName, podNamespace)
 		time.Sleep(interval)
+		doOvnLeaderCheck(cfg, podName, podNamespace)
 	}
 }
 
@@ -482,7 +552,7 @@ func getTSName(index int) string {
 }
 
 func getTSCidr(index int) (string, error) {
-	var proto, cidr string
+	var proto string
 	podIpsEnv := os.Getenv(util.EnvPodIPs)
 	podIps := strings.Split(podIpsEnv, ",")
 	if len(podIps) == 1 {
@@ -494,16 +564,15 @@ func getTSCidr(index int) (string, error) {
 	} else if len(podIps) == 2 {
 		proto = kubeovnv1.ProtocolDual
 	}
-
 	switch proto {
 	case kubeovnv1.ProtocolIPv4:
-		cidr = fmt.Sprintf("169.254.%d.0/24", 100+index)
+		return fmt.Sprintf("169.254.%d.0/24", 100+index), nil
 	case kubeovnv1.ProtocolIPv6:
-		cidr = fmt.Sprintf("fe80:a9fe:%02x::/112", 100+index)
+		return fmt.Sprintf("fe80:a9fe:%02x::/112", 100+index), nil
 	case kubeovnv1.ProtocolDual:
-		cidr = fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:%02x::/112", 100+index, 100+index)
+		return fmt.Sprintf("169.254.%d.0/24,fe80:a9fe:%02x::/112", 100+index, 100+index), nil
 	}
-	return cidr, nil
+	return "", fmt.Errorf("unsupported protocol %s", proto)
 }
 
 func updateTS() error {
@@ -546,8 +615,7 @@ func updateTS() error {
 				fmt.Sprintf(`external_ids:subnet="%s"`, subnet),
 				fmt.Sprintf(`external_ids:vendor="%s"`, util.CniTypeName),
 			)
-			// #nosec G204
-			cmd = exec.Command("ovn-ic-nbctl", args...)
+			cmd = exec.Command("ovn-ic-nbctl", args...) // #nosec G204 G702
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("output: %s, err: %w", output, err)

@@ -7,10 +7,12 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.agent.labels }}
   labels:
+    app.kubernetes.io/name: kube-ovn-cni
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with .Values.agent.labels }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   selector:
     app.kubernetes.io/name: kube-ovn-cni

@@ -28,12 +28,15 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/keymutex"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
+	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -41,15 +44,18 @@ type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
 	vpcNatGwInformer  kubeovninformer.VpcNatGatewayInformer
 	subnetInformer    kubeovninformer.SubnetInformer
+	ipInformer        kubeovninformer.IPInformer
+	vlanInformer      kubeovninformer.VlanInformer
 	serviceInformer   coreinformers.ServiceInformer
 	namespaceInformer coreinformers.NamespaceInformer
 	podInformer       coreinformers.PodInformer
 }
 
 type fakeController struct {
-	fakeController *Controller
-	fakeInformers  *fakeControllerInformers
-	mockOvnClient  *mockovs.MockNbClient
+	fakeController  *Controller
+	fakeInformers   *fakeControllerInformers
+	mockOvnClient   *mockovs.MockNbClient
+	mockOvnSbClient *mockovs.MockSbClient
 }
 
 func alwaysReady() bool { return true }
@@ -57,6 +63,9 @@ func alwaysReady() bool { return true }
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
 	Subnets            []*kubeovnv1.Subnet
+	VpcNatGateways     []*kubeovnv1.VpcNatGateway
+	IPs                []*kubeovnv1.IP
+	Vlans              []*kubeovnv1.Vlan
 	NetworkAttachments []*nadv1.NetworkAttachmentDefinition
 	Pods               []*corev1.Pod
 	Namespaces         []*corev1.Namespace
@@ -112,6 +121,27 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, gw := range opts.VpcNatGateways {
+		_, err := kubeovnClient.KubeovnV1().VpcNatGateways().Create(
+			context.Background(), gw, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, ip := range opts.IPs {
+		_, err := kubeovnClient.KubeovnV1().IPs().Create(
+			context.Background(), ip, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, vlan := range opts.Vlans {
+		_, err := kubeovnClient.KubeovnV1().Vlans().Create(
+			context.Background(), vlan, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
@@ -125,33 +155,48 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
+	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
 		vpcNatGwInformer:  vpcNatGwInformer,
 		subnetInformer:    subnetInformer,
+		ipInformer:        ipInformer,
+		vlanInformer:      vlanInformer,
 		serviceInformer:   serviceInformer,
 		namespaceInformer: namespaceInformer,
 		podInformer:       podInformer,
 	}
 
-	// Create mock OVN client
-	mockOvnClient := mockovs.NewMockNbClient(gomock.NewController(t))
+	// Create mock OVN clients
+	mockCtrl := gomock.NewController(t)
+	mockOvnClient := mockovs.NewMockNbClient(mockCtrl)
+	mockOvnSbClient := mockovs.NewMockSbClient(mockCtrl)
 
 	// Create controller with all informers
 	ctrl := &Controller{
-		servicesLister:        serviceInformer.Lister(),
-		namespacesLister:      namespaceInformer.Lister(),
-		podsLister:            podInformer.Lister(),
-		vpcsLister:            vpcInformer.Lister(),
-		vpcSynced:             alwaysReady,
-		subnetsLister:         subnetInformer.Lister(),
-		subnetSynced:          alwaysReady,
-		netAttachLister:       nadInformer.Lister(),
-		netAttachSynced:       alwaysReady,
-		OVNNbClient:           mockOvnClient,
-		syncVirtualPortsQueue: newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		servicesLister:          serviceInformer.Lister(),
+		namespacesLister:        namespaceInformer.Lister(),
+		podsLister:              podInformer.Lister(),
+		vpcsLister:              vpcInformer.Lister(),
+		vpcSynced:               alwaysReady,
+		subnetsLister:           subnetInformer.Lister(),
+		subnetSynced:            alwaysReady,
+		ipsLister:               ipInformer.Lister(),
+		ipSynced:                alwaysReady,
+		vlansLister:             vlanInformer.Lister(),
+		netAttachLister:         nadInformer.Lister(),
+		netAttachSynced:         alwaysReady,
+		OVNNbClient:             mockOvnClient,
+		OVNSbClient:             mockOvnSbClient,
+		ipam:                    ovnipam.NewIPAM(),
+		recorder:                record.NewFakeRecorder(100),
+		subnetKeyMutex:          keymutex.NewHashed(0),
+		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
+		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 	}
 
 	ctrl.config = &Configuration{
@@ -177,9 +222,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
 
 	return &fakeController{
-		fakeController: ctrl,
-		fakeInformers:  fakeInformers,
-		mockOvnClient:  mockOvnClient,
+		fakeController:  ctrl,
+		fakeInformers:   fakeInformers,
+		mockOvnClient:   mockOvnClient,
+		mockOvnSbClient: mockOvnSbClient,
 	}, nil
 }
 

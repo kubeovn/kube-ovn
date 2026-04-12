@@ -1166,13 +1166,20 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 	}
 
 	for _, port := range npp {
-		protocol := strings.ToLower(string(*port.Protocol))
+		// Per Kubernetes spec, nil Protocol defaults to TCP.
+		protoStr := "TCP"
+		if port.Protocol != nil {
+			protoStr = string(*port.Protocol)
+		}
+		// portProto is the L4 protocol for this port rule (tcp/udp/sctp).
+		// Named portProto to avoid shadowing the outer `protocol` parameter (ip address family).
+		portProto := strings.ToLower(protoStr)
 
 		// allow all tcp or udp traffic
 		if port.Port == nil {
 			allLayer4Match := NewAndACLMatch(
 				allowedIPMatch,
-				NewACLMatch(protocol, "", "", ""),
+				NewACLMatch(portProto, "", "", ""),
 			)
 
 			matches = append(matches, allLayer4Match.String())
@@ -1181,20 +1188,22 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 		// allow one tcp or udp port traffic
 		if port.EndPort == nil {
-			tcpKey := protocol + ".dst"
+			tcpKey := portProto + ".dst"
 
 			var portID int32
 			if port.Port.Type == intstr.Int {
 				portID = port.Port.IntVal
-			} else if namedPortMap != nil {
-				_, ok := namedPortMap[port.Port.StrVal]
-				if !ok {
-					// for cyclonus network policy test case 'should allow ingress access on one named port'
-					// this case expect all-deny if no named port defined
-					klog.Errorf("no named port with name %s found", port.Port.StrVal)
-				} else {
-					portID = namedPortMap[port.Port.StrVal].PortID
+			} else {
+				if namedPortMap == nil {
+					continue
 				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					// no allow ACL generated = deny-all for this named port
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
+					continue
+				}
+				portID = info.PortID
 			}
 
 			oneTCPMatch := NewAndACLMatch(
@@ -1207,8 +1216,14 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 			continue
 		}
 
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
+			continue
+		}
+
 		// allow several tcp or udp port traffic
-		tcpKey := protocol + ".dst"
+		tcpKey := portProto + ".dst"
 		severalTCPMatch := NewAndACLMatch(
 			allowedIPMatch,
 			NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort))),
@@ -1217,6 +1232,191 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 	}
 
 	return matches
+}
+
+// newIPBlockACLMatch builds ACL match strings for ipBlock peers with per-CIDR scoped except.
+// Unlike newNetworkPolicyACLMatch which uses shared address sets, this function inlines the
+// CIDR and except values directly in the match expression, ensuring that except entries from
+// one ipBlock do not affect other peers in the same NetworkPolicy rule.
+func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, namedPortMap map[string]*util.NamedPortInfo) []string {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport {
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
+
+	ipKey := ipSuffix + "." + srcOrDst
+
+	// Build per-ipBlock match with scoped except
+	var perBlockMatches []ACLMatch
+	for i := range ipBlocks {
+		block := ipBlocks[i]
+		if util.CheckProtocol(block.CIDR) != protocol {
+			continue
+		}
+
+		cidrMatch := NewACLMatch(ipKey, "==", block.CIDR, "")
+
+		var filteredExcepts []string
+		for _, e := range block.Except {
+			if util.CheckProtocol(e) != protocol {
+				continue
+			}
+			contained, err := util.CIDRContainsCIDR(block.CIDR, e)
+			if err != nil {
+				klog.Warningf("error checking containment for IPBlock except CIDR %s in main CIDR %s, skipping: %v", e, block.CIDR, err)
+				continue
+			}
+			if !contained {
+				klog.Warningf("IPBlock except CIDR %s is not contained in main CIDR %s, skipping", e, block.CIDR)
+				continue
+			}
+			filteredExcepts = append(filteredExcepts, e)
+		}
+
+		if len(filteredExcepts) == 0 {
+			perBlockMatches = append(perBlockMatches, cidrMatch)
+		} else {
+			exceptMatch := NewACLMatch(ipKey, "!=", "{"+strings.Join(filteredExcepts, ", ")+"}", "")
+			perBlockMatches = append(perBlockMatches, NewAndACLMatch(cidrMatch, exceptMatch))
+		}
+	}
+
+	if len(perBlockMatches) == 0 {
+		return nil
+	}
+
+	// Combine all ipBlock matches with OR
+	ipBlockL3Match := perBlockMatches[0]
+	if len(perBlockMatches) > 1 {
+		ipBlockL3Match = NewOrACLMatch(perBlockMatches...)
+	}
+
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
+
+	allowedIPMatch := NewAndACLMatch(allIPMatch, NewGroupACLMatch(ipBlockL3Match))
+
+	if len(npp) == 0 {
+		return []string{allowedIPMatch.String()}
+	}
+
+	matches := make([]string, 0, len(npp))
+	for _, port := range npp {
+		// Per Kubernetes spec, nil Protocol defaults to TCP.
+		protoStr := "TCP"
+		if port.Protocol != nil {
+			protoStr = string(*port.Protocol)
+		}
+		// portProto is the L4 protocol for this port rule (tcp/udp/sctp).
+		// Named portProto to avoid shadowing the outer `protocol` parameter (ip address family).
+		portProto := strings.ToLower(protoStr)
+
+		if port.Port == nil {
+			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(portProto, "", "", "")).String())
+			continue
+		}
+
+		if port.EndPort == nil {
+			tcpKey := portProto + ".dst"
+			var portID int32
+			if port.Port.Type == intstr.Int {
+				portID = port.Port.IntVal
+			} else {
+				if namedPortMap == nil {
+					continue
+				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
+					continue
+				}
+				portID = info.PortID
+			}
+			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "==", strconv.Itoa(int(portID)), "")).String())
+			continue
+		}
+
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
+			continue
+		}
+
+		tcpKey := portProto + ".dst"
+		matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort)))).String())
+	}
+
+	return matches
+}
+
+// UpdateIngressIPBlockACLOps returns operations that create ingress ACLs for ipBlock peers
+func (c *OVNNbClient) UpdateIngressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	meterName := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionToLport)
+	matches := newIPBlockACLMatch(pgName, protocol, ovnnb.ACLDirectionToLport, ipBlocks, npp, namedPortMap)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	acls := make([]*ovnnb.ACL, 0, len(matches))
+	for _, m := range matches {
+		options := func(acl *ovnnb.ACL) {
+			setACLName(acl, aclName)
+			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
+				acl.Log = true
+				if logRate > 0 {
+					acl.Meter = ptr.To(meterName)
+				}
+			}
+		}
+
+		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			return nil, fmt.Errorf("new ipBlock ingress acl for port group %s: %w", pgName, err)
+		}
+		acls = append(acls, allowACL)
+	}
+
+	return c.CreateAclsOps(pgName, portGroupKey, acls...)
+}
+
+// UpdateEgressIPBlockACLOps returns operations that create egress ACLs for ipBlock peers
+func (c *OVNNbClient) UpdateEgressIPBlockACLOps(pgName, protocol, aclName string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, logEnable bool, logACLActions []ovnnb.ACLAction, logRate int, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	meterName := fmt.Sprintf("%s_%s_meter", pgName, ovnnb.ACLDirectionFromLport)
+	matches := newIPBlockACLMatch(pgName, protocol, ovnnb.ACLDirectionFromLport, ipBlocks, npp, namedPortMap)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	acls := make([]*ovnnb.ACL, 0, len(matches))
+	for _, m := range matches {
+		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
+			setACLName(acl, aclName)
+			if acl.Options == nil {
+				acl.Options = make(map[string]string)
+			}
+			acl.Options["apply-after-lb"] = "true"
+			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
+				acl.Log = true
+				if logRate > 0 {
+					acl.Meter = ptr.To(meterName)
+				}
+			}
+		})
+		if err != nil {
+			return nil, fmt.Errorf("new ipBlock egress acl for port group %s: %w", pgName, err)
+		}
+		acls = append(acls, allowACL)
+	}
+
+	return c.CreateAclsOps(pgName, portGroupKey, acls...)
 }
 
 // aclFilter filter acls which match the given externalIDs,

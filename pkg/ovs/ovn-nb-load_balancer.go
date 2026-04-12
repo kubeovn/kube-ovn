@@ -20,7 +20,7 @@ import (
 )
 
 // CreateLoadBalancer create loadbalancer
-func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	var (
 		exist bool
 		err   error
@@ -50,7 +50,7 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol, selectFields string) 
 	}
 
 	if len(selectFields) != 0 {
-		lb.SelectionFields = []string{selectFields}
+		lb.SelectionFields = selectFields
 	}
 
 	if ops, err = c.Create(lb); err != nil {
@@ -492,7 +492,7 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 		return nil
 	}
 
-	unusedBackendIPs := c.findUnusedBackendIPs(lb, vipEndpoint, targetBackendIPs)
+	unusedBackendIPs := c.findUnusedBackendIPs(lb, vipEndpoint, targetBackendIPs, collectOtherVIPBackendIPs(lb, vipEndpoint))
 	return c.deleteUnusedIPPortMappings(lbName, vipEndpoint, unusedBackendIPs)
 }
 
@@ -525,26 +525,19 @@ func (c *OVNNbClient) extractBackendIPsFromVIP(lb *ovnnb.LoadBalancer, vipEndpoi
 		return nil, nil
 	}
 
-	backendIPs := make(map[string]bool)
-
-	for backend := range strings.SplitSeq(vipBackends, ",") {
-		if backendIP, _, err := net.SplitHostPort(backend); err == nil {
-			backendIPs[backendIP] = true
-		}
-	}
-
+	backendIPs := collectBackendIPs(vipBackends)
 	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
 	return backendIPs, nil
 }
 
 // findUnusedBackendIPs identifies which backend IPs are no longer used by any other VIP
-func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
+func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs, usedByOtherVIPs map[string]bool) map[string]string {
 	unusedBackendIPs := make(map[string]string)
 
 	for backendIP := range targetBackendIPs {
-		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
-			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
-				unusedBackendIPs[backendIP] = portMapping
+		if !usedByOtherVIPs[backendIP] {
+			if mappingKey, portMapping, exists := findNormalizedIPPortMapping(lb.IPPortMappings, backendIP); exists {
+				unusedBackendIPs[mappingKey] = portMapping
 			}
 		}
 	}
@@ -553,23 +546,42 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 	return unusedBackendIPs
 }
 
-// isBackendIPStillUsed checks if a backend IP is still referenced by any other VIP
-func (c *OVNNbClient) isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
+func collectOtherVIPBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string) map[string]bool {
+	backendIPs := make(map[string]bool)
 	for otherVIP, otherBackends := range lb.Vips {
 		if otherVIP == targetVIP {
 			continue
 		}
+		for backendIP := range collectBackendIPs(otherBackends) {
+			backendIPs[backendIP] = true
+		}
+	}
+	return backendIPs
+}
 
-		for otherBackend := range strings.SplitSeq(otherBackends, ",") {
-			if otherBackendIP, _, err := net.SplitHostPort(otherBackend); err == nil && otherBackendIP == backendIP {
-				klog.V(5).Infof("Backend IP %s is still used by VIP %s", backendIP, otherVIP)
-				return true
-			}
+func collectBackendIPs(backends string) map[string]bool {
+	backendIPs := make(map[string]bool)
+	for _, backend := range strings.Split(backends, ",") {
+		if backendIP, _, err := net.SplitHostPort(strings.TrimSpace(backend)); err == nil {
+			backendIPs[backendIP] = true
+		}
+	}
+	return backendIPs
+}
+
+func findNormalizedIPPortMapping(mappings map[string]string, ip string) (string, string, bool) {
+	if value, exists := mappings[ip]; exists {
+		return ip, value, true
+	}
+
+	normalizedIP := strings.Trim(ip, "[]")
+	for mappingKey, mappingValue := range mappings {
+		if strings.Trim(mappingKey, "[]") == normalizedIP {
+			return mappingKey, mappingValue, true
 		}
 	}
 
-	klog.V(5).Infof("Backend IP %s is no longer used by any other VIP", backendIP)
-	return false
+	return "", "", false
 }
 
 // deleteUnusedIPPortMappings performs the actual deletion of unused IP port mappings
@@ -618,42 +630,92 @@ func getMapKeys(m map[string]bool) []string {
 	return keys
 }
 
-// LoadBalancerUpdateIPPortMapping update load balancer ip port mapping
+// LoadBalancerUpdateIPPortMapping update the ip_port_mapping of a loadbalancer.
+// The ipPortMapping received can contain a partial update of the port mapping.
+// You must only pass the port mapping of vipEndpoint, not of every VIP on the LB.
+// Existing port mappings will be overwritten if the LSP changed for a particular IP.
+// The orphaned port mappings (for IPs that are not contained in any backend for any VIP) are deleted on update.
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
 	ops, err := c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			// Delete from the IPPortMappings any outdated mapping
-			mappingToDelete := make(map[string]string)
-			for portIP, portMapVip := range lb.IPPortMappings {
-				if _, ok := ipPortMappings[portIP]; !ok {
-					mappingToDelete[portIP] = portMapVip
+			toDelete := make(map[string]string)
+			toInsert := make(map[string]string)
+			newBackendIPs := make(map[string]bool, len(ipPortMappings))
+			existingKeyByNormalizedIP := make(map[string]string, len(lb.IPPortMappings))
+			usedByOtherVIPs := collectOtherVIPBackendIPs(lb, vipEndpoint)
+			for ip := range ipPortMappings {
+				newBackendIPs[strings.Trim(ip, "[]")] = true
+			}
+
+			for mappingKey, mappingValue := range lb.IPPortMappings {
+				normalizedKey := strings.Trim(mappingKey, "[]")
+				if _, exists := existingKeyByNormalizedIP[normalizedKey]; !exists || mappingKey == normalizedKey {
+					existingKeyByNormalizedIP[normalizedKey] = mappingKey
+				}
+				if !newBackendIPs[normalizedKey] && !usedByOtherVIPs[normalizedKey] {
+					toDelete[mappingKey] = mappingValue
 				}
 			}
 
-			if len(mappingToDelete) > 0 {
-				klog.Infof("deleting outdated entry from ipportmapping %v", mappingToDelete)
+			for ip, newLSP := range ipPortMappings {
+				existingKey := ip
+				existingLSP, found := lb.IPPortMappings[ip]
+				if !found {
+					if normalizedKey, exists := existingKeyByNormalizedIP[strings.Trim(ip, "[]")]; exists {
+						existingKey = normalizedKey
+						existingLSP = lb.IPPortMappings[existingKey]
+						found = true
+					}
+				}
+				if found && existingLSP == newLSP {
+					continue
+				}
+				if found {
+					toDelete[existingKey] = existingLSP
+				}
+				toInsert[ip] = newLSP
 			}
 
-			return []model.Mutation{
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   mappingToDelete,
-					Mutator: ovsdb.MutateOperationDelete,
-				},
-				{
-					Field:   &lb.IPPortMappings,
-					Value:   ipPortMappings,
-					Mutator: ovsdb.MutateOperationInsert,
-				},
+			mutations := make([]model.Mutation, 0, 2)
+
+			// Create delete mutation if needed
+			if len(toDelete) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toDelete,
+						Mutator: ovsdb.MutateOperationDelete,
+					},
+				)
 			}
+
+			// Create insert mutation if needed
+			if len(toInsert) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toInsert,
+						Mutator: ovsdb.MutateOperationInsert,
+					},
+				)
+			}
+
+			return mutations
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+		return fmt.Errorf("failed to generate operations when updating ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
-	if err = c.Transact("lb-add", ops); err != nil {
-		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err = c.Transact("lb-update", ops); err != nil {
+		return fmt.Errorf("failed to update ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }

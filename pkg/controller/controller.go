@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -68,12 +69,13 @@ const (
 type Controller struct {
 	config *Configuration
 
-	ipam           *ovnipam.IPAM
-	namedPort      *NamedPort
-	anpPrioNameMap map[int32]string
-	anpNamePrioMap map[string]int32
-	bnpPrioNameMap map[int32]string
-	bnpNamePrioMap map[string]int32
+	ipam             *ovnipam.IPAM
+	namedPort        *NamedPort
+	anpPrioNameMap   map[int32]string
+	anpNamePrioMap   map[string]int32
+	bnpPrioNameMap   map[int32]string
+	bnpNamePrioMap   map[string]int32
+	priorityMapMutex sync.RWMutex
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
@@ -1074,6 +1076,12 @@ func (c *Controller) Run(ctx context.Context) {
 	c.initResourceOnce()
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
+
+	// Use defer-in-closure to guarantee both clients are closed even if the first Close panics.
+	func() {
+		defer c.OVNSbClient.Close()
+		defer c.OVNNbClient.Close()
+	}()
 }
 
 func (c *Controller) dbStatus() {

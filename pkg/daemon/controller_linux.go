@@ -46,7 +46,7 @@ type ControllerRuntime struct {
 	k8siptables      map[string]k8siptables.Interface
 	k8sipsets        k8sipset.Interface
 	ipsets           map[string]*ipsets.IPSets
-	gwCounters       map[string]*util.GwIPtableCounters
+	gwCounters       map[string]*util.GwIPTablesCounters
 
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
@@ -104,7 +104,7 @@ func (c *Controller) initRuntime() error {
 
 	c.iptables = make(map[string]*iptables.IPTables)
 	c.ipsets = make(map[string]*ipsets.IPSets)
-	c.gwCounters = make(map[string]*util.GwIPtableCounters)
+	c.gwCounters = make(map[string]*util.GwIPTablesCounters)
 	c.k8siptables = make(map[string]k8siptables.Interface)
 	c.k8sipsets = k8sipset.New()
 	c.ovsClient = ovsutil.New()
@@ -813,6 +813,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 					}
 				}
 
+				if ip == nil {
+					continue
+				}
 				rule.Src = &net.IPNet{IP: ip, Mask: net.CIDRMask(maskBits, maskBits)}
 				rules = append(rules, *rule)
 			}
@@ -820,9 +823,15 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	} else {
 		for i := range protocols {
 			rule.Family, _ = util.ProtocolToFamily(protocols[i])
-			if len(cidr) == len(protocols) {
-				_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			if i >= len(cidr) {
+				continue
 			}
+			_, ipNet, err := net.ParseCIDR(cidr[i])
+			if err != nil {
+				klog.Errorf("failed to parse CIDR %q for subnet %s policy routing: %v", cidr[i], subnet.Name, err)
+				continue
+			}
+			rule.Src = ipNet
 			rules = append(rules, *rule)
 		}
 	}

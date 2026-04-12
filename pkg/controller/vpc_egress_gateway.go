@@ -13,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -27,6 +28,15 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+)
+
+var (
+	// default resource requirements for the vpc egress gateway container if not specified by the user
+	vegSleepResourceCPU         = resource.MustParse("10m")
+	vegSleepResourceMemory      = resource.MustParse("10Mi")
+	vegBFDDResourceCPU          = resource.MustParse("50m")
+	vegBFDDResourceMemory       = resource.MustParse("50Mi")
+	vegResourceEphemeralStorage = resource.MustParse("1Gi")
 )
 
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
@@ -64,7 +74,10 @@ func (c *Controller) enqueueDeleteVpcEgressGateway(obj any) {
 }
 
 func vegWorkloadLabels(vegName string) map[string]string {
-	return map[string]string{"app": "vpc-egress-gateway", util.VpcEgressGatewayLabel: vegName}
+	return map[string]string{
+		"app":                      "vpc-egress-gateway",
+		util.VpcEgressGatewayLabel: util.NormalizeLabelValue(vegName),
+	}
 }
 
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
@@ -403,6 +416,19 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
 	}
+	if gw.Spec.Bandwidth != nil {
+		// set ingress/egress bandwidth limit in Mbps
+		if gw.Spec.Bandwidth.Ingress > 0 {
+			// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
+			// From the gateway pod's perspective, this is egress traffic of the primary network interface.
+			annotations[util.EgressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Ingress, 10)
+		}
+		if gw.Spec.Bandwidth.Egress > 0 {
+			// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
+			// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
+			annotations[util.IngressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Egress, 10)
+		}
+	}
 
 	// generate init container environment variables
 	// the init container is responsible for adding routes and SNAT rules to the pod network namespace
@@ -479,6 +505,17 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						Image:           image,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Command:         []string{"sleep", "infinity"},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    vegSleepResourceCPU,
+								corev1.ResourceMemory: vegSleepResourceMemory,
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:              vegSleepResourceCPU,
+								corev1.ResourceMemory:           vegSleepResourceMemory,
+								corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
+							},
+						},
 						SecurityContext: &corev1.SecurityContext{
 							Privileged: ptr.To(false),
 							RunAsUser:  ptr.To[int64](65534),
@@ -519,6 +556,11 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
 		container := vpcEgressGatewayContainerBFDD(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers[0] = container
+	}
+
+	if gw.Spec.Resources != nil {
+		// set resources if specified, otherwise the controller will set a default value
+		deploy.Spec.Template.Spec.Containers[0].Resources = *gw.Spec.Resources
 	}
 
 	// generate hash for the workload to determine whether to update the existing workload or not
@@ -670,7 +712,12 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	if bfdIP != "" {
 		for _, dstIP := range bfdDstIPs.UnsortedList() {
-			bfd, err := c.OVNNbClient.CreateBFD(lrpName, dstIP, int(gw.Spec.BFD.MinRX), int(gw.Spec.BFD.MinTX), int(gw.Spec.BFD.Multiplier), externalIDs)
+			// BFD parameter swap: CreateBFD takes (minRx, minTx) from the OVN router's perspective,
+			// but gw.Spec.BFD defines them from the gateway container's perspective.
+			// In BFD negotiation, a peer's minTX (send interval) satisfies the local minRX requirement.
+			// Therefore: OVN minRx = container MinTX (how often the gateway sends toward OVN),
+			//            OVN minTx = container MinRX (how fast OVN must send to satisfy the gateway).
+			bfd, err := c.OVNNbClient.CreateBFD(lrpName, dstIP, int(gw.Spec.BFD.MinTX), int(gw.Spec.BFD.MinRX), int(gw.Spec.BFD.Multiplier), externalIDs)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -935,6 +982,17 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			InitialDelaySeconds: 3,
 			PeriodSeconds:       3,
 			FailureThreshold:    1,
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    vegBFDDResourceCPU,
+				corev1.ResourceMemory: vegBFDDResourceMemory,
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:              vegBFDDResourceCPU,
+				corev1.ResourceMemory:           vegBFDDResourceMemory,
+				corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
+			},
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Privileged: ptr.To(false),

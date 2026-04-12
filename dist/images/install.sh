@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGISTRY="docker.io/kubeovn"
-VERSION="v1.15.0"
+VERSION="v1.15.9"
 
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
@@ -774,6 +774,11 @@ spec:
             spec:
               type: object
               properties:
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod will be created.
+                    If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
                 lanIp:
                   type: string
                   description: LAN IP address for the NAT gateway. This field is immutable after creation.
@@ -1609,6 +1614,77 @@ spec:
                         type: string
                     type: object
                   type: array
+                resources:
+                  description: |-
+                    \`resources\` are the compute resources required by this container.
+                    For more information, see https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                  properties:
+                    claims:
+                      description: |-
+                        Claims lists the names of resources, defined in spec.resourceClaims, that are used by this container.
+
+                        This field depends on the DynamicResourceAllocation feature gate.
+
+                        This field is immutable. It can only be set for containers.
+                      items:
+                        description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                        properties:
+                          name:
+                            description: |-
+                              Name must match the name of one entry in pod.spec.resourceClaims of
+                              the Pod where this field is used. It makes that resource available
+                              inside a container.
+                            type: string
+                          request:
+                            description: |-
+                              Request is the name chosen for a request in the referenced claim.
+                              If empty, everything from the claim is made available, otherwise
+                              only the result of this request.
+                            type: string
+                        required:
+                          - name
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                        - name
+                      x-kubernetes-list-type: map
+                    limits:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Limits describes the maximum amount of compute resources allowed.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                    requests:
+                      additionalProperties:
+                        anyOf:
+                          - type: integer
+                          - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: |-
+                        Requests describes the minimum amount of compute resources required.
+                        If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                        otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                        More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                      type: object
+                  type: object
+                bandwidth:
+                  type: object
+                  description: Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
+                  properties:
+                    ingress:
+                      type: integer
+                      format: int64
+                      description: ingress bandwidth limit in Mbps
+                    egress:
+                      type: integer
+                      format: int64
+                      description: egress bandwidth limit in Mbps
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1704,6 +1780,11 @@ spec:
                 macAddress:
                   type: string
                   description: MAC address for the EIP
+                namespace:
+                  type: string
+                  description: |-
+                    Namespace where the NAT gateway StatefulSet/Pod for this EIP resides.
+                    If empty, defaults to the kube-ovn controller's own namespace.
                 natGwDp:
                   type: string
                   description: NAT gateway datapath where the EIP is assigned
@@ -4736,6 +4817,7 @@ spec:
             limits:
               cpu: 4
               memory: 4Gi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -4957,6 +5039,7 @@ spec:
             limits:
               cpu: "2"
               memory: 1000Mi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -5113,6 +5196,7 @@ spec:
               cpu: 1000m
               hugepages-2Mi: 1Gi
               memory: 800Mi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/ovs_dp_type: "userspace"
@@ -5376,6 +5460,7 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+              ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: master
@@ -5607,6 +5692,7 @@ spec:
           limits:
             cpu: 1000m
             memory: 1Gi
+            ephemeral-storage: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -5774,6 +5860,7 @@ spec:
             limits:
               cpu: 200m
               memory: 200Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -5967,6 +6054,7 @@ spec:
             limits:
               cpu: 3
               memory: 1Gi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - mountPath: /var/run/ovn
               name: host-run-ovn
@@ -6172,6 +6260,7 @@ spec:
             limits:
               cpu: 200m
               memory: 400Mi
+              ephemeral-storage: 1Gi
           livenessProbe:
             httpGet:
               path: /metrics

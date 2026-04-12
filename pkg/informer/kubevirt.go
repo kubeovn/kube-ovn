@@ -20,7 +20,6 @@
 package informer
 
 import (
-	"errors"
 	"fmt"
 	"math/rand/v2"
 	"sync"
@@ -43,8 +42,6 @@ const (
 	ByMigrationUIDIndex = "byMigrationUID"
 	UnfinishedIndex     = "unfinished"
 )
-
-var errUnexpectedObject = errors.New("unexpected object")
 
 type newSharedInformer func() cache.SharedIndexInformer
 
@@ -199,7 +196,7 @@ func GetVirtualMachineInformerIndexers() cache.Indexers {
 		"dv": func(obj any) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
-				return nil, errUnexpectedObject
+				return nil, nil
 			}
 			var dvs []string
 			for _, vol := range vm.Spec.Template.Spec.Volumes {
@@ -212,7 +209,7 @@ func GetVirtualMachineInformerIndexers() cache.Indexers {
 		"pvc": func(obj any) ([]string, error) {
 			vm, ok := obj.(*kubev1.VirtualMachine)
 			if !ok {
-				return nil, errUnexpectedObject
+				return nil, nil
 			}
 			var pvcs []string
 			for _, vol := range vm.Spec.Template.Spec.Volumes {

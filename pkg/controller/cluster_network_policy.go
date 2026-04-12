@@ -117,16 +117,20 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	klog.Infof("handle add cnp %s", cachedCnp.Name)
 	cnp := cachedCnp.DeepCopy()
 
-	// Validate the CNP is valid and can be configured
-	if err := c.validateCnpConfig(cnp); err != nil {
-		err := fmt.Errorf("failed to validate cnp %s: %w", cnp.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	// Update priority maps in case the priority/tier of the CNP has changed
-	if err := c.updateCnpPriorityMapEntries(cnp); err != nil {
-		err := fmt.Errorf("failed to update priority maps for cnp %s: %w", cnp.Name, err)
+	// Validate the CNP is valid and can be configured, and update priority maps.
+	// Wrapped in a closure to ensure the mutex is always released via defer.
+	if err := func() error {
+		c.priorityMapMutex.Lock()
+		defer c.priorityMapMutex.Unlock()
+		if err := c.validateCnpConfig(cnp); err != nil {
+			return fmt.Errorf("failed to validate cnp %s: %w", cnp.Name, err)
+		}
+		// Update priority maps in case the priority/tier of the CNP has changed
+		if err := c.updateCnpPriorityMapEntries(cnp); err != nil {
+			return fmt.Errorf("failed to update priority maps for cnp %s: %w", cnp.Name, err)
+		}
+		return nil
+	}(); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -293,7 +297,10 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 	klog.Infof("handle update cluster network policy %s", desiredCnp.Name)
 
 	// Verify the CNP is correctly written
-	if err := c.validateCnpConfig(desiredCnp); err != nil {
+	c.priorityMapMutex.RLock()
+	err = c.validateCnpConfig(desiredCnp)
+	c.priorityMapMutex.RUnlock()
+	if err != nil {
 		klog.Errorf("failed to validate cnp %s: %v", desiredCnp.Name, err)
 		return err
 	}
@@ -383,7 +390,10 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	klog.Infof("handle delete cluster network policy %s", cnp.Name)
 
 	// Delete the CNP from the priority mapping
-	if err := c.deleteCnpPriorityMapEntries(cnp); err != nil {
+	c.priorityMapMutex.Lock()
+	err := c.deleteCnpPriorityMapEntries(cnp)
+	c.priorityMapMutex.Unlock()
+	if err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete priorityMapEntries: %v", err)
 	}

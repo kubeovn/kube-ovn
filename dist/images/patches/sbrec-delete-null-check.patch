@@ -1,0 +1,39 @@
+diff --git a/northd/northd.c b/northd/northd.c
+index 74c47972a..6b195d475 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -4950,7 +4950,9 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
+             add_op_to_northd_tracked_ports(&trk_lsps->deleted, op);
+             hmap_remove(&nd->ls_ports, &op->key_node);
+             hmap_remove(&od->ports, &op->dp_node);
+-            sbrec_port_binding_delete(op->sb);
++            if (op->sb) {
++                sbrec_port_binding_delete(op->sb);
++            }
+             delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
+                                 op->tunnel_key);
+         }
+@@ -10702,7 +10704,7 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
+     }
+ 
+     HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sync_bfd_connections) {
+-        if (bfd_e->stale) {
++        if (bfd_e->stale && bfd_e->sb_bt) {
+             sbrec_bfd_delete(bfd_e->sb_bt);
+         }
+         bfd_erase_entry(bfd_e);
+diff --git a/utilities/ovn-sbctl.c b/utilities/ovn-sbctl.c
+index b00b8cd04..2b126d52f 100644
+--- a/utilities/ovn-sbctl.c
++++ b/utilities/ovn-sbctl.c
+@@ -494,7 +494,9 @@ cmd_chassis_del(struct ctl_context *ctx)
+             size_t i;
+ 
+             for (i = 0; i < sbctl_ch->ch_cfg->n_encaps; i++) {
+-                sbrec_encap_delete(sbctl_ch->ch_cfg->encaps[i]);
++                if (sbctl_ch->ch_cfg->encaps[i]) {
++                    sbrec_encap_delete(sbctl_ch->ch_cfg->encaps[i]);
++                }
+             }
+ 
+             struct sbctl_chassis_private *sbctl_ch_priv;
