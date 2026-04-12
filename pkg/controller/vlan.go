@@ -33,17 +33,7 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 		return
 	}
 
-	klog.Infof("vlan %s provider changed from %s to %s, enqueue related subnets", newVlan.Name, oldVlan.Spec.Provider, newVlan.Spec.Provider)
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets when vlan %s provider changed: %v", newVlan.Name, err)
-		return
-	}
-	for _, subnet := range subnets {
-		if subnet.Spec.Vlan == newVlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
-		}
-	}
+	klog.Infof("vlan %s provider changed from %s to %s", newVlan.Name, oldVlan.Spec.Provider, newVlan.Spec.Provider)
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
@@ -214,6 +204,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
 				klog.Error(err)
 				return err
