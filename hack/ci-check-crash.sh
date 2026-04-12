@@ -48,4 +48,30 @@ for pod in `kubectl get pod -n $namespace -l component=network -o name`; do
   done
 done
 
+function export_error_logs() {
+  local components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger")
+  echo ">>> Fetching logs for ${components[*]}..."
+  for component in "${components[@]}"; do
+    local currentLogs=""
+    local previousLogs=""
+    echo "--- Error logs for $component ---"
+    if currentLogs=$(kubectl logs -n "$namespace" -l app="$component" --tail=2000); then
+      echo "$currentLogs" | grep -i "error\|fatal\|panic\|warn" || true
+    else
+      echo "Warning: failed to get logs for $component"
+    fi
+    echo "--- Previous error logs for $component (if any) ---"
+    if previousLogs=$(kubectl logs -n "$namespace" -l app="$component" -p --tail=2000); then
+      echo "$previousLogs" | grep -i "error\|fatal\|panic\|warn" || true
+    else
+      echo "Warning: failed to get previous logs for $component (may not exist)"
+    fi
+    echo "-----------------------------------"
+  done
+}
+
+if [ "${EXPORT_COMPONENT_ERROR_LOGS:-false}" = "true" ] || [ $exit_code -ne 0 ]; then
+  export_error_logs
+fi
+
 exit $exit_code

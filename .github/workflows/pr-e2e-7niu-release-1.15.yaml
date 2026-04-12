@@ -237,6 +237,7 @@ jobs:
         run: make kind-install-overlay-ipv4
 
       - name: Run master e2e
+        id: e2e
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -246,6 +247,9 @@ jobs:
         run: make "$SUITE_TARGET"
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e.conclusion == 'failure' }}
         run: make check-kube-ovn-pod-restarts
 
   master-ha-e2e:
@@ -330,6 +334,7 @@ jobs:
         run: make kind-install-ipv4
 
       - name: Run master e2e
+        id: e2e
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -338,6 +343,9 @@ jobs:
         run: make kube-ovn-ha-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e.conclusion == 'failure' }}
         run: make check-kube-ovn-pod-restarts
 
   master-multus-e2e:
@@ -426,6 +434,7 @@ jobs:
         run: make kind-install-multus
 
       - name: Run master e2e
+        id: e2e
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -434,6 +443,9 @@ jobs:
         run: make kube-ovn-multus-conformance-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e.conclusion == 'failure' }}
         run: make check-kube-ovn-pod-restarts
 
   master-iptables-vpc-nat-gw-e2e:
@@ -527,6 +539,7 @@ jobs:
         run: make kind-install-vpc-nat-gw
 
       - name: Run master e2e
+        id: e2e
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -535,4 +548,7 @@ jobs:
         run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: Check kube ovn pod restarts
+        if: always()
+        env:
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e.conclusion == 'failure' }}
         run: make check-kube-ovn-pod-restarts
