@@ -492,7 +492,7 @@ func (c *OVNNbClient) LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint string
 		return nil
 	}
 
-	unusedBackendIPs := c.findUnusedBackendIPs(lb, vipEndpoint, targetBackendIPs)
+	unusedBackendIPs := c.findUnusedBackendIPs(lb, vipEndpoint, targetBackendIPs, collectOtherVIPBackendIPs(lb, vipEndpoint))
 	return c.deleteUnusedIPPortMappings(lbName, vipEndpoint, unusedBackendIPs)
 }
 
@@ -525,26 +525,19 @@ func (c *OVNNbClient) extractBackendIPsFromVIP(lb *ovnnb.LoadBalancer, vipEndpoi
 		return nil, nil
 	}
 
-	backendIPs := make(map[string]bool)
-
-	for backend := range strings.SplitSeq(vipBackends, ",") {
-		if backendIP, _, err := net.SplitHostPort(backend); err == nil {
-			backendIPs[backendIP] = true
-		}
-	}
-
+	backendIPs := collectBackendIPs(vipBackends)
 	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
 	return backendIPs, nil
 }
 
 // findUnusedBackendIPs identifies which backend IPs are no longer used by any other VIP
-func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
+func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs, usedByOtherVIPs map[string]bool) map[string]string {
 	unusedBackendIPs := make(map[string]string)
 
 	for backendIP := range targetBackendIPs {
-		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
-			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
-				unusedBackendIPs[backendIP] = portMapping
+		if !usedByOtherVIPs[backendIP] {
+			if mappingKey, portMapping, exists := findNormalizedIPPortMapping(lb.IPPortMappings, backendIP); exists {
+				unusedBackendIPs[mappingKey] = portMapping
 			}
 		}
 	}
@@ -553,23 +546,42 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 	return unusedBackendIPs
 }
 
-// isBackendIPStillUsed checks if a backend IP is still referenced by any other VIP
-func (c *OVNNbClient) isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
+func collectOtherVIPBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string) map[string]bool {
+	backendIPs := make(map[string]bool)
 	for otherVIP, otherBackends := range lb.Vips {
 		if otherVIP == targetVIP {
 			continue
 		}
+		for backendIP := range collectBackendIPs(otherBackends) {
+			backendIPs[backendIP] = true
+		}
+	}
+	return backendIPs
+}
 
-		for otherBackend := range strings.SplitSeq(otherBackends, ",") {
-			if otherBackendIP, _, err := net.SplitHostPort(otherBackend); err == nil && otherBackendIP == backendIP {
-				klog.V(5).Infof("Backend IP %s is still used by VIP %s", backendIP, otherVIP)
-				return true
-			}
+func collectBackendIPs(backends string) map[string]bool {
+	backendIPs := make(map[string]bool)
+	for _, backend := range strings.Split(backends, ",") {
+		if backendIP, _, err := net.SplitHostPort(strings.TrimSpace(backend)); err == nil {
+			backendIPs[backendIP] = true
+		}
+	}
+	return backendIPs
+}
+
+func findNormalizedIPPortMapping(mappings map[string]string, ip string) (string, string, bool) {
+	if value, exists := mappings[ip]; exists {
+		return ip, value, true
+	}
+
+	normalizedIP := strings.Trim(ip, "[]")
+	for mappingKey, mappingValue := range mappings {
+		if strings.Trim(mappingKey, "[]") == normalizedIP {
+			return mappingKey, mappingValue, true
 		}
 	}
 
-	klog.V(5).Infof("Backend IP %s is no longer used by any other VIP", backendIP)
-	return false
+	return "", "", false
 }
 
 // deleteUnusedIPPortMappings performs the actual deletion of unused IP port mappings
@@ -629,72 +641,40 @@ func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
 			toDelete := make(map[string]string)
 			toInsert := make(map[string]string)
-
-			// Build set of new backend IPs
 			newBackendIPs := make(map[string]bool, len(ipPortMappings))
+			existingKeyByNormalizedIP := make(map[string]string, len(lb.IPPortMappings))
+			usedByOtherVIPs := collectOtherVIPBackendIPs(lb, vipEndpoint)
 			for ip := range ipPortMappings {
-				cleanIP := strings.Trim(ip, "[]")
-				newBackendIPs[cleanIP] = true
+				newBackendIPs[strings.Trim(ip, "[]")] = true
 			}
 
-			// Find orphaned mappings: IPs in current mappings that are not in new mappings
-			// AND not used by any other VIP in the load balancer
 			for mappingKey, mappingValue := range lb.IPPortMappings {
-				cleanKey := strings.Trim(mappingKey, "[]")
-
-				// If this IP is not in the new mappings, check if it should be deleted
-				if !newBackendIPs[cleanKey] {
-					// Use the existing isBackendIPStillUsed helper to check all VIPs
-					if !c.isBackendIPStillUsed(lb, vipEndpoint, cleanKey) {
-						toDelete[mappingKey] = mappingValue
-					}
+				normalizedKey := strings.Trim(mappingKey, "[]")
+				if _, exists := existingKeyByNormalizedIP[normalizedKey]; !exists || mappingKey == normalizedKey {
+					existingKeyByNormalizedIP[normalizedKey] = mappingKey
+				}
+				if !newBackendIPs[normalizedKey] && !usedByOtherVIPs[normalizedKey] {
+					toDelete[mappingKey] = mappingValue
 				}
 			}
 
-			// For each IP in the new mappings, check if it already exists with a different value
 			for ip, newLSP := range ipPortMappings {
-				if len(lb.IPPortMappings) != 0 {
-					// Normalize the IP key for comparison (strip brackets for IPv6)
-					cleanIP := strings.Trim(ip, "[]")
-
-					// Check if an existing mapping exists for this IP (in any key format)
-					var existingKey string
-					var existingLSP string
-					var found bool
-
-					// First try exact match
-					if lsp, exists := lb.IPPortMappings[ip]; exists {
-						existingKey = ip
-						existingLSP = lsp
+				existingKey := ip
+				existingLSP, found := lb.IPPortMappings[ip]
+				if !found {
+					if normalizedKey, exists := existingKeyByNormalizedIP[strings.Trim(ip, "[]")]; exists {
+						existingKey = normalizedKey
+						existingLSP = lb.IPPortMappings[existingKey]
 						found = true
-					} else {
-						// Try to find the IP with normalized key (check both bracketed/unbracketed forms)
-						for mappingKey, mappingValue := range lb.IPPortMappings {
-							if strings.Trim(mappingKey, "[]") == cleanIP {
-								existingKey = mappingKey
-								existingLSP = mappingValue
-								found = true
-								break
-							}
-						}
 					}
-
-					if found {
-						if existingLSP == newLSP {
-							// Mapping is already correct, skip
-							continue
-						}
-						// Different value, need to delete old and insert new
-						toDelete[existingKey] = existingLSP
-						toInsert[ip] = newLSP
-					} else {
-						// New mapping
-						toInsert[ip] = newLSP
-					}
-				} else {
-					// No existing mappings, just insert
-					toInsert[ip] = newLSP
 				}
+				if found && existingLSP == newLSP {
+					continue
+				}
+				if found {
+					toDelete[existingKey] = existingLSP
+				}
+				toInsert[ip] = newLSP
 			}
 
 			mutations := make([]model.Mutation, 0, 2)
