@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -202,7 +203,24 @@ func main() {
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
-	cniConfPath := filepath.Join(configDir, confName)
+	if filepath.Base(confName) != confName {
+		return fmt.Errorf("invalid cni config name %q", confName)
+	}
+
+	cleanConfigDir, err := filepath.Abs(configDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve cni config dir %q: %w", configDir, err)
+	}
+
+	cniConfPath := filepath.Join(cleanConfigDir, confName)
+	relPath, err := filepath.Rel(cleanConfigDir, cniConfPath)
+	if err != nil {
+		return fmt.Errorf("failed to validate cni config path %q: %w", cniConfPath, err)
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("cni config path %q escapes config dir %q", cniConfPath, cleanConfigDir)
+	}
+
 	if info, err := os.Stat(cniConfPath); err == nil {
 		// File exists, check permissions.
 		if info.Mode().Perm() == 0o600 {
@@ -220,7 +238,28 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
+	tempFile, err := os.CreateTemp(cleanConfigDir, confName+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp cni config file in %q: %w", cleanConfigDir, err)
+	}
+	tempFilePath := tempFile.Name()
+	defer os.Remove(tempFilePath)
+
+	if _, err = tempFile.Write(data); err != nil {
+		tempFile.Close()
+		return fmt.Errorf("failed to write temp cni config file %q: %w", tempFilePath, err)
+	}
+	if err = tempFile.Chmod(0o600); err != nil {
+		tempFile.Close()
+		return fmt.Errorf("failed to set temp cni config file permission %q: %w", tempFilePath, err)
+	}
+	if err = tempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp cni config file %q: %w", tempFilePath, err)
+	}
+	if err = os.Rename(tempFilePath, cniConfPath); err != nil {
+		return fmt.Errorf("failed to install cni config file to %q: %w", cniConfPath, err)
+	}
+	return nil
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
