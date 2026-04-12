@@ -349,6 +349,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	allSubnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	var externalSubnet *kubeovnv1.Subnet
 	externalSubnetExist := false
 	externalSubnetGW := ""
@@ -460,13 +466,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 	} else {
-		subnets, err := c.subnetsLister.List(labels.Everything())
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
 		// Add static routes created by addCustomVPCStaticRouteForSubnet
-		for _, subnet := range subnets {
+		for _, subnet := range allSubnets {
 			if subnet.Spec.Vpc == key {
 				v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
 				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
@@ -557,11 +558,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	vpcSubnets, defaultSubnet, err := c.getVpcSubnets(vpc)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
+	vpcSubnets, defaultSubnet := getVpcSubnetsFromList(vpc, allSubnets)
 
 	vpc.Status.Subnets = vpcSubnets
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
@@ -602,13 +599,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 	custVpcEnableExternalEcmp := false
-	for _, subnet := range subnets {
+	for _, subnet := range allSubnets {
 		if subnet.Spec.Vpc == key {
 			// Accelerate subnet update when vpc config is updated.
 			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
@@ -1251,13 +1243,17 @@ func reversePolicy(origin ovnnb.LogicalRouterStaticRoutePolicy) kubeovnv1.RouteP
 }
 
 func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaultSubnet string, err error) {
-	subnets = []string{}
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error(err)
 		return nil, "", err
 	}
+	subnets, defaultSubnet = getVpcSubnetsFromList(vpc, allSubnets)
+	return subnets, defaultSubnet, nil
+}
 
+func getVpcSubnetsFromList(vpc *kubeovnv1.Vpc, allSubnets []*kubeovnv1.Subnet) (subnets []string, defaultSubnet string) {
+	subnets = make([]string, 0, len(allSubnets))
 	for _, subnet := range allSubnets {
 		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() || !isOvnSubnet(subnet) {
 			continue
@@ -1273,7 +1269,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 		}
 	}
 	sort.Strings(subnets)
-	return subnets, defaultSubnet, err
+	return subnets, defaultSubnet
 }
 
 // createVpcRouter create router to connect logical switches in vpc
