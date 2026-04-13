@@ -138,6 +138,9 @@ spec:
           {{- if .Values.networking.externalGatewayConfigNs }}
           - --external-gateway-config-ns={{- .Values.networking.externalGatewayConfigNs }}
           {{- end }}
+          {{- if .Values.networking.externalGatewaySwitch }}
+          - --external-gateway-switch={{- .Values.networking.externalGatewaySwitch }}
+          {{- end }}
           - --enable-external-vpc={{- .Values.features.enableExternalVpcs }}
           - --enable-ecmp={{- .Values.networking.enableEcmp }}
           - --logtostderr=false
