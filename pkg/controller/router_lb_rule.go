@@ -58,6 +58,20 @@ func newRouterLBRuleInfo(rlr *kubeovnv1.RouterLBRule) *RouterLBRuleInfo {
 	}
 }
 
+func (c *Controller) requeueRouterLBRulesForEip(eipName string) {
+	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list RouterLBRules for EIP %s: %v", eipName, err)
+		return
+	}
+	for _, rlr := range rlrs {
+		if rlr.Spec.OvnEip == eipName {
+			klog.Infof("re-queuing RouterLBRule %s due to EIP %s change", rlr.Name, eipName)
+			c.addRouterLBRuleQueue.Add(rlr.Name)
+		}
+	}
+}
+
 func (c *Controller) enqueueAddRouterLBRule(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.RouterLBRule)).String()
 	klog.Infof("enqueue add RouterLBRule %s", key)
@@ -183,6 +197,21 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if eip.Spec.ExternalSubnet == "" {
+		err = fmt.Errorf("RouterLBRule %s: EIP %s has no external subnet", key, eip.Name)
+		klog.Error(err)
+		return err
+	}
+	// Verify the VPC router has an active LRP on the EIP's external subnet so that
+	// OVN installs ARP proxy flows for the LB VIP on the external network.
+	lrpEipName := fmt.Sprintf("%s-%s", rlr.Spec.Vpc, eip.Spec.ExternalSubnet)
+	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
+	if err != nil || !lrpEip.Status.Ready || lrpEip.Spec.Type != util.OvnEipTypeLRP {
+		err = fmt.Errorf("vpc %s has no ready LRP on external subnet %s: ensure spec.extraExternalSubnets contains it",
+			rlr.Spec.Vpc, eip.Spec.ExternalSubnet)
+		klog.Error(err)
+		return err
+	}
 
 	vipParts := make([]string, 0, 2)
 	if v4Ip != "" {
@@ -273,6 +302,10 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 		klog.Errorf("failed to get VPC %s: %v", rlr.Spec.Vpc, err)
 		return err
 	}
+
+	// Verify the VPC router is connected to the EIP's external subnet so that
+	// OVN can install ARP proxy flows for the LB VIP on the external network.
+	// Without this connection nodes cannot reach the VIP.
 	vpcLBs := []string{
 		vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
 		vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer,

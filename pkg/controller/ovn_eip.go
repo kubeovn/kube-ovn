@@ -21,9 +21,11 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnEip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnEip)).String()
+	eip := obj.(*kubeovnv1.OvnEip)
+	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue add ovn eip %s", key)
 	c.addOvnEipQueue.Add(key)
+	c.requeueRouterLBRulesForEip(eip.Name)
 }
 
 func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
@@ -50,6 +52,9 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 		oldEip.Spec.V6Ip != newEip.Spec.V6Ip {
 		klog.Infof("enqueue update ovn eip %s", key)
 		c.updateOvnEipQueue.Add(key)
+	}
+	if oldEip.Status.V4Ip != newEip.Status.V4Ip || oldEip.Status.V6Ip != newEip.Status.V6Ip {
+		c.requeueRouterLBRulesForEip(newEip.Name)
 	}
 }
 

@@ -25,27 +25,27 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 		return &kubeovnv1.RouterLBRule{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 			Spec: kubeovnv1.RouterLBRuleSpec{
-				Vpc:      vpc,
-				OvnEip:   eip,
+				Vpc:       vpc,
+				OvnEip:    eip,
 				Namespace: ns,
-				Selector: selectors,
-				Ports:    ports,
+				Selector:  selectors,
+				Ports:     ports,
 			},
 		}
 	}
 	port80 := kubeovnv1.RouterLBRulePort{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"}
 
 	tests := []struct {
-		name        string
-		rlr         *kubeovnv1.RouterLBRule
-		oldSvc      *corev1.Service
-		svcName     string
-		namespace   string
-		vip         string
-		wantVipAnno string
-		wantRouter  string
-		wantFamilies []corev1.IPFamily
-		wantPolicy  corev1.IPFamilyPolicy
+		name          string
+		rlr           *kubeovnv1.RouterLBRule
+		oldSvc        *corev1.Service
+		svcName       string
+		namespace     string
+		vip           string
+		wantVipAnno   string
+		wantRouter    string
+		wantFamilies  []corev1.IPFamily
+		wantPolicy    corev1.IPFamilyPolicy
 		wantClusterIP string
 	}{
 		{
@@ -85,8 +85,8 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 			wantClusterIP: corev1.ClusterIPNone,
 		},
 		{
-			name: "selector parsed from colon-separated strings",
-			rlr: makeRlr("rlr4", "vpc1", "eip1", "", []string{"app: foo", "env: prod"}, []kubeovnv1.RouterLBRulePort{port80}),
+			name:      "selector parsed from colon-separated strings",
+			rlr:       makeRlr("rlr4", "vpc1", "eip1", "", []string{"app: foo", "env: prod"}, []kubeovnv1.RouterLBRulePort{port80}),
 			svcName:   "rlr-rlr4",
 			namespace: "default",
 			vip:       "10.0.0.2",
@@ -274,9 +274,9 @@ func Test_newRouterLBRuleInfo(t *testing.T) {
 // branch added alongside the fix.
 func Test_getVipIps_routerLBRule(t *testing.T) {
 	tests := []struct {
-		name     string
-		svc      *corev1.Service
-		wantIPs  []string
+		name      string
+		svc       *corev1.Service
+		wantIPs   []string
 		wantEmpty bool
 	}{
 		{
@@ -422,11 +422,18 @@ func Test_checkEipPortConflict(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
-	makeEip := func(name, v4ip, specType string) *kubeovnv1.OvnEip {
+	makeEip := func(name, v4ip, specType, externalSubnet string) *kubeovnv1.OvnEip {
 		return &kubeovnv1.OvnEip{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       kubeovnv1.OvnEipSpec{Type: specType},
+			Spec:       kubeovnv1.OvnEipSpec{Type: specType, ExternalSubnet: externalSubnet},
 			Status:     kubeovnv1.OvnEipStatus{V4Ip: v4ip},
+		}
+	}
+	makeLrpEip := func(vpc, subnet string) *kubeovnv1.OvnEip {
+		return &kubeovnv1.OvnEip{
+			ObjectMeta: metav1.ObjectMeta{Name: vpc + "-" + subnet},
+			Spec:       kubeovnv1.OvnEipSpec{Type: util.OvnEipTypeLRP, ExternalSubnet: subnet},
+			Status:     kubeovnv1.OvnEipStatus{Ready: true},
 		}
 	}
 	makeVpc := func(name, tcpLB string) *kubeovnv1.Vpc {
@@ -465,7 +472,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "", []kubeovnv1.RouterLBRulePort{{Port: 80}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT)},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "")},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -475,7 +482,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "vpc1", nil)
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT)},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "")},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -486,7 +493,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
 			// V4Ip must be non-empty to pass GetOvnEip readiness check, but Spec.Type is LSP
-			OvnEips: []*kubeovnv1.OvnEip{makeEip("lsp-eip", "10.0.0.1", util.OvnEipTypeLSP)},
+			OvnEips: []*kubeovnv1.OvnEip{makeEip("lsp-eip", "10.0.0.1", util.OvnEipTypeLSP, "")},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -496,7 +503,52 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		rlr := makeRlr("rlr1", "empty-eip", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("empty-eip", "", util.OvnEipTypeNAT)},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("empty-eip", "", util.OvnEipTypeNAT, "")},
+		})
+		require.NoError(t, err)
+		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
+	})
+
+	t.Run("EIP with no external subnet returns error", func(t *testing.T) {
+		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "")},
+		})
+		require.NoError(t, err)
+		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
+	})
+
+	t.Run("VPC has no LRP OvnEip for external subnet returns error", func(t *testing.T) {
+		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "pubnet")},
+			// No vpc1-pubnet LRP EIP present.
+		})
+		require.NoError(t, err)
+		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
+	})
+
+	t.Run("VPC LRP not ready returns error", func(t *testing.T) {
+		lrpEip := makeLrpEip("vpc1", "pubnet")
+		lrpEip.Status.Ready = false
+		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "pubnet"), lrpEip},
+		})
+		require.NoError(t, err)
+		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
+	})
+
+	t.Run("VPC LRP wrong type returns error", func(t *testing.T) {
+		lrpEip := makeLrpEip("vpc1", "pubnet")
+		lrpEip.Spec.Type = util.OvnEipTypeNAT // not LRP
+		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
+			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "pubnet"), lrpEip},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -508,8 +560,11 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 80}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{existing, rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT)},
-			Vpcs:          []*kubeovnv1.Vpc{makeVpc("vpc1", "")},
+			OvnEips: []*kubeovnv1.OvnEip{
+				makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "pubnet"),
+				makeLrpEip("vpc1", "pubnet"),
+			},
+			Vpcs: []*kubeovnv1.Vpc{makeVpc("vpc1", "")},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -527,9 +582,12 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 443}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT)},
-			Vpcs:          []*kubeovnv1.Vpc{makeVpc("vpc1", "")},
-			OvnDnatRules:  []*kubeovnv1.OvnDnatRule{dnat},
+			OvnEips: []*kubeovnv1.OvnEip{
+				makeEip("eip1", "10.0.0.1", util.OvnEipTypeNAT, "pubnet"),
+				makeLrpEip("vpc1", "pubnet"),
+			},
+			Vpcs:         []*kubeovnv1.Vpc{makeVpc("vpc1", "")},
+			OvnDnatRules: []*kubeovnv1.OvnDnatRule{dnat},
 		})
 		require.NoError(t, err)
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
@@ -541,8 +599,11 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			RouterLBRules: []*kubeovnv1.RouterLBRule{rlr},
-			OvnEips:       []*kubeovnv1.OvnEip{makeEip("eip1", "192.168.1.100", util.OvnEipTypeNAT)},
-			Vpcs:          []*kubeovnv1.Vpc{makeVpc("vpc1", "vpc1-tcp-lb")},
+			OvnEips: []*kubeovnv1.OvnEip{
+				makeEip("eip1", "192.168.1.100", util.OvnEipTypeNAT, "pubnet"),
+				makeLrpEip("vpc1", "pubnet"),
+			},
+			Vpcs: []*kubeovnv1.Vpc{makeVpc("vpc1", "vpc1-tcp-lb")},
 		})
 		require.NoError(t, err)
 
@@ -577,13 +638,13 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 
 func Test_handleDelRouterLBRule(t *testing.T) {
 	const (
-		testVpc    = "test-vpc"
-		testTCPLB  = "test-tcp-lb"
-		testEIP    = "192.168.1.100"
-		testPort   = int32(80)
-		testVip    = "192.168.1.100:80"
-		svcName    = "rlr-test-rlr"
-		svcNS      = metav1.NamespaceDefault
+		testVpc   = "test-vpc"
+		testTCPLB = "test-tcp-lb"
+		testEIP   = "192.168.1.100"
+		testPort  = int32(80)
+		testVip   = "192.168.1.100:80"
+		svcName   = "rlr-test-rlr"
+		svcNS     = metav1.NamespaceDefault
 	)
 
 	makeSvc := func(withVipAnno bool) *corev1.Service {
@@ -759,5 +820,3 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 		})
 	}
 }
-
-
