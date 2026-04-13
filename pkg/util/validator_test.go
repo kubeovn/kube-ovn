@@ -867,6 +867,41 @@ func TestValidatePodNetwork(t *testing.T) {
 			},
 			err: "a1 is not a valid " + EgressRateAnnotation,
 		},
+		{
+			name: "BurstOk",
+			annotations: map[string]string{
+				IPAddressAnnotation:    "10.16.0.15",
+				MacAddressAnnotation:   "00:00:00:54:17:2A",
+				IngressRateAnnotation:  "10",
+				EgressRateAnnotation:   "10",
+				IngressBurstAnnotation: "8",
+				EgressBurstAnnotation:  "0",
+				CidrAnnotation:         "10.16.0.0/16",
+			},
+			err: "",
+		},
+		{
+			name: "IngressBurstNotNumber",
+			annotations: map[string]string{
+				IPAddressAnnotation:    "10.16.0.15",
+				MacAddressAnnotation:   "00:00:00:54:17:2A",
+				IngressRateAnnotation:  "10",
+				IngressBurstAnnotation: "abc",
+				CidrAnnotation:         "10.16.0.0/16",
+			},
+			err: "abc is not a valid " + IngressBurstAnnotation,
+		},
+		{
+			name: "EgressBurstNegative",
+			annotations: map[string]string{
+				IPAddressAnnotation:   "10.16.0.15",
+				MacAddressAnnotation:  "00:00:00:54:17:2A",
+				EgressRateAnnotation:  "10",
+				EgressBurstAnnotation: "-1",
+				CidrAnnotation:        "10.16.0.0/16",
+			},
+			err: "-1 is not a valid " + EgressBurstAnnotation,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

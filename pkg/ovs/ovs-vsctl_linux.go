@@ -10,11 +10,38 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// computeIngressPolicingBurstKbit returns the ingress_policing_burst value (kbit) to write.
+// burstMbit is the user-supplied value in Mbit. An empty string preserves the historical
+// default of 80% of rate; an explicit "0" is honored as-is (strict policing, no burst).
+func computeIngressPolicingBurstKbit(rateKbit int, burstMbit string) int {
+	if burstMbit == "" {
+		return rateKbit * 8 / 10
+	}
+	v, _ := strconv.Atoi(burstMbit)
+	return v * 1000
+}
+
+// computeHtbBurstBytes returns the linux-htb other_config:burst value (bytes) to write.
+// burstMbit is the user-supplied value in Mbit. An empty string defaults to 80% of one
+// second worth of rate (rate*0.8/8 bytes); an explicit "0" is honored as-is.
+func computeHtbBurstBytes(rateBPS int, burstMbit string) int {
+	if burstMbit == "" {
+		return rateBPS / 10
+	}
+	v, _ := strconv.Atoi(burstMbit)
+	return v * 125000
+}
+
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
-// but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
+// but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth.
+//
+// ingress and egress are rate values in Mbps; ingressBurst and egressBurst are burst
+// values in Mbit. An empty burst falls back to 80% of the corresponding rate; an
+// explicit "0" is passed through verbatim.
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
+	ingressBurstKbit := computeIngressPolicingBurstKbit(ingressKPS, ingressBurst)
 	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
 	if err != nil {
 		klog.Error(err)
@@ -34,8 +61,8 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 	}
 
 	for _, ifName := range interfaceList {
-		// ingress_policing_rate is in Kbps
-		err := Set("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*8/10))
+		// ingress_policing_rate and ingress_policing_burst are in Kbit
+		err := Set("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressBurstKbit))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -43,9 +70,10 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 
 		egressMPS, _ := strconv.Atoi(egress)
 		egressBPS := egressMPS * 1000 * 1000
+		egressBurstBytes := computeHtbBurstBytes(egressBPS, egressBurst)
 
 		if egressBPS > 0 {
-			queueUID, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, queueIfaceUIDMap)
+			queueUID, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, egressBurstBytes, queueIfaceUIDMap)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -74,6 +102,10 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 				if _, err := Exec("remove", "queue", queueID, "other_config", "max-rate"); err != nil {
 					klog.Error(err)
 					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %w", podNamespace, podName, err)
+				}
+				// burst may not exist on legacy queues; ignore the error in that case.
+				if _, err := Exec("remove", "queue", queueID, "other_config", "burst"); err != nil {
+					klog.V(3).Infof("failed to remove burst limit for queue in pod %v/%v: %v", podNamespace, podName, err)
 				}
 			}
 		}
@@ -144,12 +176,16 @@ func IsHtbQos(iface string) (bool, error) {
 	return false, nil
 }
 
-func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, queueIfaceUIDMap map[string]string) (string, error) {
+func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int, queueIfaceUIDMap map[string]string) (string, error) {
 	var queueCommandValues []string
 	var err error
 	if maxRateBPS > 0 {
 		queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:max-rate=%d", maxRateBPS))
 	}
+	// Always write burst so an explicit "0" from the user is honored (strict
+	// shaping with no burst tolerance) and old values on existing queues are
+	// overwritten rather than silently retained.
+	queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:burst=%d", burstBytes))
 
 	if queueUID, ok := queueIfaceUIDMap[iface]; ok {
 		if err := Set("queue", queueUID, queueCommandValues...); err != nil {

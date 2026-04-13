@@ -349,6 +349,22 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		}
 	}
 
+	for _, key := range []string{IngressBurstAnnotation, EgressBurstAnnotation} {
+		burst := annotations[key]
+		if burst == "" {
+			continue
+		}
+		v, err := strconv.Atoi(burst)
+		if err != nil {
+			klog.Error(err)
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", burst, key))
+			continue
+		}
+		if v < 0 {
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", burst, key))
+		}
+	}
+
 	return utilerrors.NewAggregate(errors)
 }
 
