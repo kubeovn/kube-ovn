@@ -17,6 +17,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     iperf3 \
     iproute2 \
     iptables \
+    arptables \
+    ebtables \
     iputils-arping \
     iputils-ping \
     jq \
@@ -29,6 +31,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     telnet \
     traceroute \
     vim \
+    && update-alternatives --set iptables /usr/sbin/iptables-nft \
+    && update-alternatives --set ip6tables /usr/sbin/ip6tables-nft \
+    && update-alternatives --set arptables /usr/sbin/arptables-nft \
+    && update-alternatives --set ebtables /usr/sbin/ebtables-nft \
+    && ln -sf /bin/false /usr/sbin/iptables-legacy \
+    && ln -sf /bin/false /usr/sbin/ip6tables-legacy \
+    && ln -sf /bin/false /usr/sbin/arptables-legacy \
+    && ln -sf /bin/false /usr/sbin/ebtables-legacy \
+    && ln -sf /bin/false /usr/sbin/iptables-legacy-save \
+    && ln -sf /bin/false /usr/sbin/ip6tables-legacy-save \
+    && ln -sf /bin/false /usr/sbin/iptables-legacy-restore \
+    && ln -sf /bin/false /usr/sbin/ip6tables-legacy-restore \
     && apt remove -y --allow-remove-essential --auto-remove login && \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /usr/lib/apt/methods/mirror

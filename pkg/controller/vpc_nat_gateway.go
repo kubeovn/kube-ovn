@@ -849,8 +849,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 			if trimmedLine == "" {
 				continue
 			}
-			// Skip lines that are just warnings
-			if strings.HasPrefix(trimmedLine, "Warning:") {
+			// iptables-nft may emit stderr warnings with an optional leading '#'.
+			normalizedLine := strings.TrimSpace(strings.TrimPrefix(trimmedLine, "#"))
+			if strings.HasPrefix(strings.ToLower(normalizedLine), "warning:") {
 				klog.Warningf("NAT gateway command warning: %v", trimmedLine)
 				continue
 			}
