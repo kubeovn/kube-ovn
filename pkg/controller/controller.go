@@ -127,8 +127,8 @@ type Controller struct {
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
-	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SlrInfo]
-	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SlrInfo]
+	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
+	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
 
 	vpcDNSLister           kubeovnlister.VpcDnsLister
 	vpcDNSSynced           cache.InformerSynced
@@ -650,15 +650,15 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteSwitchLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SwitchLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SwitchLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 		controller.updateSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"UpdateSwitchLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SwitchLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SwitchLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 
@@ -1584,7 +1584,7 @@ func getWorkItemKey(obj any) string {
 		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
 		return v.key
-	case *SlrInfo:
+	case *SwitchLBRuleInfo:
 		return v.Name
 	default:
 		key, err := cache.MetaNamespaceKeyFunc(obj)
