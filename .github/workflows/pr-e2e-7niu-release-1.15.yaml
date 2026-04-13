@@ -24,6 +24,7 @@ env:
   JINJANATOR_VERSION: '25.3.1'
   TARGET_BRANCH: 7niu-release-1.15
   E2E_SOURCE_BRANCH: master
+  MASTER_E2E_NAT_GW_IMAGE: docker.io/kubeovn/vpc-nat-gateway:v1.14.25
 
 jobs:
   runner-info:
@@ -537,6 +538,21 @@ jobs:
 
       - name: Install kube-ovn with vpc nat gateway enabled
         run: make kind-install-vpc-nat-gw
+
+      - name: Preload hardcoded master nat gw image for e2e
+        run: |
+          set -euo pipefail
+          expected_image="${{ env.MASTER_E2E_NAT_GW_IMAGE }}"
+
+          local_image="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '^(docker.io/)?kubeovn/vpc-nat-gateway:' | head -n1 || true)"
+          if [ -z "$local_image" ]; then
+            echo "No local vpc-nat-gateway image found to retag" >&2
+            exit 1
+          fi
+          echo "Tagging local image $local_image as $expected_image"
+          docker tag "$local_image" "$expected_image"
+
+          kind load docker-image --name kube-ovn "$expected_image"
 
       - name: Run master e2e
         id: e2e
