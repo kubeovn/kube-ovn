@@ -245,7 +245,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// Second call: after LBHC deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -276,7 +276,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -312,7 +312,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 			}}, nil,
 		)
 
-		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -329,7 +329,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// Fallback: no LBHC for subnet after deletion check
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -355,7 +355,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// After deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1, vip2}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1, vip2}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
