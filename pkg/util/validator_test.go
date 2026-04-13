@@ -902,6 +902,16 @@ func TestValidatePodNetwork(t *testing.T) {
 			},
 			err: "-1 is not a valid " + EgressBurstAnnotation,
 		},
+		{
+			name: "ProviderScopedBurstNotNumber",
+			annotations: map[string]string{
+				IPAddressAnnotation:                    "10.16.0.15",
+				MacAddressAnnotation:                   "00:00:00:54:17:2A",
+				CidrAnnotation:                         "10.16.0.0/16",
+				"net1.ns1.kubernetes.io/ingress_burst": "abc",
+			},
+			err: "abc is not a valid net1.ns1.kubernetes.io/ingress_burst",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

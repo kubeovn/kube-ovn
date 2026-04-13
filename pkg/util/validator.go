@@ -349,19 +349,21 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		}
 	}
 
-	for _, key := range []string{IngressBurstAnnotation, EgressBurstAnnotation} {
-		burst := annotations[key]
-		if burst == "" {
+	// Validate burst annotations across both the unscoped key
+	// (ovn.kubernetes.io/{ingress,egress}_burst) and any provider-scoped
+	// variants used for multus attachment networks
+	// ({provider}.kubernetes.io/{ingress,egress}_burst). Both forms share
+	// the same suffix, so a single scan is enough.
+	for k, v := range annotations {
+		if v == "" {
 			continue
 		}
-		v, err := strconv.Atoi(burst)
-		if err != nil {
-			klog.Error(err)
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", burst, key))
+		if !strings.HasSuffix(k, ".kubernetes.io/ingress_burst") && !strings.HasSuffix(k, ".kubernetes.io/egress_burst") {
 			continue
 		}
-		if v < 0 {
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", burst, key))
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", v, k))
 		}
 	}
 

@@ -28,6 +28,8 @@ func TestComputeIngressPolicingBurstKbit(t *testing.T) {
 		{name: "literal zero is honored", rateKbit: 10000, burst: "0", want: 0},
 		{name: "explicit value in Mbit", rateKbit: 10000, burst: "5", want: 5000},
 		{name: "default with zero rate", rateKbit: 0, burst: "", want: 0},
+		{name: "non-empty burst with zero rate is forced to 0", rateKbit: 0, burst: "5", want: 0},
+		{name: "unparseable burst falls back to default", rateKbit: 10000, burst: "abc", want: 8000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,6 +50,8 @@ func TestComputeHtbBurstBytes(t *testing.T) {
 		{name: "default 80% when burst empty", rateBPS: 100_000_000, burst: "", want: 10_000_000},
 		{name: "literal zero is honored", rateBPS: 100_000_000, burst: "0", want: 0},
 		{name: "explicit value in Mbit", rateBPS: 100_000_000, burst: "5", want: 625_000},
+		{name: "non-empty burst with zero rate is forced to 0", rateBPS: 0, burst: "5", want: 0},
+		{name: "unparseable burst falls back to default", rateBPS: 100_000_000, burst: "abc", want: 10_000_000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

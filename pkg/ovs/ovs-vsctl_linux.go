@@ -13,22 +13,40 @@ import (
 // computeIngressPolicingBurstKbit returns the ingress_policing_burst value (kbit) to write.
 // burstMbit is the user-supplied value in Mbit. An empty string preserves the historical
 // default of 80% of rate; an explicit "0" is honored as-is (strict policing, no burst).
+// When the rate is non-positive the burst is forced to 0 to keep ingress_policing_rate
+// and ingress_policing_burst consistent. Unparseable input falls back to the default so
+// a typo cannot silently disable the burst budget.
 func computeIngressPolicingBurstKbit(rateKbit int, burstMbit string) int {
+	if rateKbit <= 0 {
+		return 0
+	}
 	if burstMbit == "" {
 		return rateKbit * 8 / 10
 	}
-	v, _ := strconv.Atoi(burstMbit)
+	v, err := strconv.Atoi(burstMbit)
+	if err != nil {
+		klog.Warningf("invalid ingress burst value %q, falling back to default", burstMbit)
+		return rateKbit * 8 / 10
+	}
 	return v * 1000
 }
 
 // computeHtbBurstBytes returns the linux-htb other_config:burst value (bytes) to write.
 // burstMbit is the user-supplied value in Mbit. An empty string defaults to 80% of one
-// second worth of rate (rate*0.8/8 bytes); an explicit "0" is honored as-is.
+// second worth of rate (rate*0.8/8 bytes); an explicit "0" is honored as-is. A
+// non-positive rate forces burst to 0, and unparseable input falls back to the default.
 func computeHtbBurstBytes(rateBPS int, burstMbit string) int {
+	if rateBPS <= 0 {
+		return 0
+	}
 	if burstMbit == "" {
 		return rateBPS / 10
 	}
-	v, _ := strconv.Atoi(burstMbit)
+	v, err := strconv.Atoi(burstMbit)
+	if err != nil {
+		klog.Warningf("invalid egress burst value %q, falling back to default", burstMbit)
+		return rateBPS / 10
+	}
 	return v * 125000
 }
 
