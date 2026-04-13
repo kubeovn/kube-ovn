@@ -149,12 +149,12 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 		return
 	}
 
-	// Use "namespace|gwName" as the queue key so the delete handler knows where the STS lives.
+	// Use "namespace/gwName" as the queue key so the delete handler knows where the STS lives.
 	natGwNs := gw.Spec.Namespace
 	if natGwNs == "" {
 		natGwNs = c.config.PodNamespace
 	}
-	key := natGwNs + "|" + gw.Name
+	key := natGwNs + "/" + gw.Name
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 
@@ -166,11 +166,11 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 }
 
 func (c *Controller) handleDelVpcNatGw(key string) error {
-	// key is "namespace|gwName" as encoded by enqueueDeleteVpcNatGw.
+	// key is "namespace/gwName" as encoded by enqueueDeleteVpcNatGw.
 	// Parse gwName first so we can lock by gwName — consistent with all other handlers
 	// (add/update/init) that lock by gwName alone. Using the composite key here would
 	// allow delete to run concurrently with a reconcile for the same gateway.
-	parts := strings.SplitN(key, "|", 2)
+	parts := strings.SplitN(key, "/", 2)
 	var stsNamespace, gwName string
 	if len(parts) == 2 {
 		stsNamespace, gwName = parts[0], parts[1]
@@ -1206,7 +1206,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 		if natGwNs == "" {
 			natGwNs = c.config.PodNamespace
 		}
-		c.delVpcNatGatewayQueue.Add(natGwNs + "|" + gw.Name)
+		c.delVpcNatGatewayQueue.Add(natGwNs + "/" + gw.Name)
 	}
 	return nil
 }
