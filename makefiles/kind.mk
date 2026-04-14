@@ -848,6 +848,13 @@ kind-clean-bgp-ha:
 
 .PHONY: kind-ghcr-pull
 kind-ghcr-pull:
+	@echo $${GHCR_TOKEN} | docker login ghcr.io -u "$${GHCR_USERNAME:-github-actions}" --password-stdin
+	docker pull ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION)
+	docker tag ghcr.io/$(KINDEST_REPO)/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
+
+.PHONY: kind-dockerhub-pull
+kind-dockerhub-pull:
+	docker image inspect kindest/node:$(K8S_VERSION) >/dev/null 2>&1 || docker pull kindest/node:$(K8S_VERSION)
 	@echo $${GHCR_TOKEN} | docker login ghcr.io -u github-actions --password-stdin
 	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
 	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
