@@ -151,14 +151,16 @@ Get IPs of master nodes from values
 {{- define "kubeovn.imageSpec" -}}
   {{- $root := .root -}}
   {{- $image := .image | default dict -}}
-  {{- $address := $root.Values.global.registry.address -}}
-  {{- if hasKey $image "registry" -}}
-    {{- $address = get $image "registry" -}}
-  {{- end -}}
+  {{- $address := get $image "registry" | default $root.Values.global.registry.address -}}
   {{- $repository := .defaultRepository | default $root.Values.global.images.kubeovn.repository -}}
   {{- $tag := .defaultTag | default $root.Values.global.images.kubeovn.tag -}}
+  {{- $prefix := "" -}}
+  {{- if $address -}}
+    {{- $prefix = printf "%s/" $address -}}
+  {{- end -}}
   {{- dict
       "address" $address
+      "prefix" $prefix
       "repository" (get $image "repository" | default $repository)
       "tag" (get $image "tag" | default $tag)
       "pullPolicy" (get $image "pullPolicy" | default $root.Values.image.pullPolicy)
@@ -197,3 +199,5 @@ nodeAffinity:
   {{- end }}
 {{- end -}}
 {{- end -}}
+=======
+>>>>>>> Stashed changes

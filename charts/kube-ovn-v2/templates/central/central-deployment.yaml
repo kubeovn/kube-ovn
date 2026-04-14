@@ -64,7 +64,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $centralImage.address }}/{{ $centralImage.repository }}:{{ $centralImage.tag }}
+          image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
           imagePullPolicy: {{ $centralImage.pullPolicy }}
           command:
             - sh
@@ -86,7 +86,7 @@ spec:
               name: host-log-ovn
       containers:
         - name: ovn-central
-          image: {{ $centralImage.address }}/{{ $centralImage.repository }}:{{ $centralImage.tag }}
+          image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
           imagePullPolicy: {{ $centralImage.pullPolicy }}
           command: 
           - bash

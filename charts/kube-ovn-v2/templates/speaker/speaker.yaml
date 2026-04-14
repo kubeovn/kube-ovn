@@ -51,7 +51,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $bgpSpeakerImage.address }}/{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
+          image: {{ $bgpSpeakerImage.prefix }}{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
           imagePullPolicy: {{ $bgpSpeakerImage.pullPolicy }}
           command:
             - sh
@@ -69,7 +69,7 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-speaker
-          image: {{ $bgpSpeakerImage.address }}/{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
+          image: {{ $bgpSpeakerImage.prefix }}{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
           imagePullPolicy: {{ $bgpSpeakerImage.pullPolicy }}
           command:
             - /kube-ovn/kube-ovn-speaker

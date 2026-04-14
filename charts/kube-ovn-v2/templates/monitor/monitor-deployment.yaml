@@ -62,7 +62,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $monitorImage.address }}/{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
+          image: {{ $monitorImage.prefix }}{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
           imagePullPolicy: {{ $monitorImage.pullPolicy }}
           command:
             - sh
@@ -80,7 +80,7 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-monitor
-          image: {{ $monitorImage.address }}/{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
+          image: {{ $monitorImage.prefix }}{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
           imagePullPolicy: {{ $monitorImage.pullPolicy }}
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:

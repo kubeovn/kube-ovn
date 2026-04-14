@@ -63,7 +63,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          image: {{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
           imagePullPolicy: {{ $controllerImage.pullPolicy }}
           command:
             - sh
@@ -81,7 +81,7 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-controller
-          image: {{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          image: {{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
           imagePullPolicy: {{ $controllerImage.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
@@ -160,7 +160,7 @@ spec:
           - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
           - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
-          - --image={{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          - --image={{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
           - --np-enforcement={{- .Values.networkPolicies.enforcement | quote }}
           securityContext:

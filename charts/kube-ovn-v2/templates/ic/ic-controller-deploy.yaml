@@ -49,7 +49,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $icImage.address }}/{{ $icImage.repository }}:{{ $icImage.tag }}
+          image: {{ $icImage.prefix }}{{ $icImage.repository }}:{{ $icImage.tag }}
           imagePullPolicy: {{ $icImage.pullPolicy }}
           command:
             - sh
@@ -71,7 +71,7 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: ovn-ic-controller
-          image: {{ $icImage.address }}/{{ $icImage.repository }}:{{ $icImage.tag }}
+          image: {{ $icImage.prefix }}{{ $icImage.repository }}:{{ $icImage.tag }}
           imagePullPolicy: {{ $icImage.pullPolicy }}
           command: ["/kube-ovn/start-ic-controller.sh"]
           args:

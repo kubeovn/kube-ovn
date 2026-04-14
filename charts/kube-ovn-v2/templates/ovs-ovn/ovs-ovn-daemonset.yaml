@@ -64,7 +64,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ $ovsOvnImage.address }}/{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
+          image: {{ $ovsOvnImage.prefix }}{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
           imagePullPolicy: {{ $ovsOvnImage.pullPolicy }}
           command:
             - sh
@@ -105,7 +105,7 @@ spec:
               name: host-log-ovs
       containers:
         - name: openvswitch
-          image: {{ $ovsOvnImage.address }}/{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
+          image: {{ $ovsOvnImage.prefix }}{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
           imagePullPolicy: {{ $ovsOvnImage.pullPolicy }}
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
