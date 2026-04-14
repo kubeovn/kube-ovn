@@ -11,6 +11,10 @@ CILIUM_IMAGE_REPO ?= quay.io/cilium
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
 K8S_VERSION ?= v1.35.1
 
+# GHCR organization/user that hosts the kindest-node mirror image.
+# Override to use a fork-owned mirror (e.g. KINDEST_REPO=zbb88888).
+KINDEST_REPO ?= kubeovn
+
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
 UNDERLAY_NETWORK_IPV4_SUBNET = $(UNDERLAY_NETWORK_VAR_PREFIX)_IPV4_SUBNET
@@ -909,3 +913,7 @@ kind-setup-non-primary-cni: kind-install-multus-cilium-kubeovn-non-primary
 
 .PHONY: kind-setup-non-primary-cni-v2
 kind-setup-non-primary-cni-v2: kind-install-multus-cilium-kubeovn-non-primary-v2
+
+.PHONY: kind-install-enable-record-tunnel
+kind-install-enable-record-tunnel:
+	@ENABLE_RECORD_TUNNEL_KEY=true $(MAKE) kind-install
