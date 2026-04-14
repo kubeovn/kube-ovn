@@ -570,7 +570,10 @@ func (c *Controller) handleUpdateNode(key string) error {
 		}
 
 		if util.GatewayContains(cachedSubnet.Spec.GatewayNode, node.Name) {
-			if err := c.reconcileOvnDefaultVpcRoute(cachedSubnet); err != nil {
+			err = c.withSubnetLock(cachedSubnet.Name, func() error {
+				return c.reconcileOvnDefaultVpcRoute(cachedSubnet.DeepCopy())
+			})
+			if err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -613,6 +616,12 @@ func (c *Controller) checkSubnetGateway() {
 	}
 }
 
+func (c *Controller) withSubnetLock(subnetName string, fn func() error) error {
+	c.subnetKeyMutex.LockKey(subnetName)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnetName) }()
+	return fn()
+}
+
 func (c *Controller) checkSubnetGatewayNode() error {
 	klog.V(3).Infoln("start to check subnet gateway node")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
@@ -640,87 +649,93 @@ func (c *Controller) checkSubnetGatewayNode() error {
 			continue
 		}
 
-		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-			nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
-			if err != nil {
-				klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
-				continue
-			}
-			for _, node := range nodes {
-				ipStr := node.Annotations[util.IPAddressAnnotation]
-				for ip := range strings.SplitSeq(ipStr, ",") {
-					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
-						continue
-					}
-
-					exist := nameIPMap[node.Name] == ip
-					if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-						pinger, err := goping.NewPinger(ip)
-						if err != nil {
-							return fmt.Errorf("failed to init pinger, %w", err)
-						}
-						pinger.SetPrivileged(true)
-
-						count := 5
-						pinger.Count = count
-						pinger.Timeout = time.Duration(count) * time.Second
-						pinger.Interval = 1 * time.Second
-
-						var pingSucceeded bool
-						pinger.OnRecv = func(_ *goping.Packet) {
-							pingSucceeded = true
-							pinger.Stop()
-						}
-						if err = pinger.Run(); err != nil {
-							klog.Errorf("failed to run pinger for destination %s: %v", ip, err)
-							return err
+		err = c.withSubnetLock(subnet.Name, func() error {
+			for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+				nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
+				if err != nil {
+					klog.Errorf("failed to get ecmp policy route paras for subnet %s: %v", subnet.Name, err)
+					continue
+				}
+				for _, node := range nodes {
+					ipStr := node.Annotations[util.IPAddressAnnotation]
+					for ip := range strings.SplitSeq(ipStr, ",") {
+						if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
+							continue
 						}
 
-						nodeIsReady := nodeReady(node)
-						if !pingSucceeded || !nodeIsReady {
-							if exist {
-								if !pingSucceeded {
-									klog.Warningf("failed to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
+						exist := nameIPMap[node.Name] == ip
+						if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
+							pinger, err := goping.NewPinger(ip)
+							if err != nil {
+								return fmt.Errorf("failed to init pinger, %w", err)
+							}
+							pinger.SetPrivileged(true)
+
+							count := 5
+							pinger.Count = count
+							pinger.Timeout = time.Duration(count) * time.Second
+							pinger.Interval = 1 * time.Second
+
+							var pingSucceeded bool
+							pinger.OnRecv = func(_ *goping.Packet) {
+								pingSucceeded = true
+								pinger.Stop()
+							}
+							if err = pinger.Run(); err != nil {
+								klog.Errorf("failed to run pinger for destination %s: %v", ip, err)
+								return err
+							}
+
+							nodeIsReady := nodeReady(node)
+							if !pingSucceeded || !nodeIsReady {
+								if exist {
+									if !pingSucceeded {
+										klog.Warningf("failed to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
+									}
+									if !nodeIsReady {
+										klog.Warningf("node %s is not ready", node.Name)
+									}
+									klog.Warningf("delete ecmp policy route for node %s ip %s", node.Name, ip)
+									nextHops.Remove(ip)
+									delete(nameIPMap, node.Name)
+									klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+									if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+										klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
+										return err
+									}
 								}
-								if !nodeIsReady {
-									klog.Warningf("node %s is not ready", node.Name)
-								}
-								klog.Warningf("delete ecmp policy route for node %s ip %s", node.Name, ip)
-								nextHops.Remove(ip)
-								delete(nameIPMap, node.Name)
-								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-									klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
-									return err
+							} else {
+								klog.V(3).Infof("succeeded to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
+								if !exist {
+									nextHops.Add(ip)
+									if nameIPMap == nil {
+										nameIPMap = make(map[string]string, 1)
+									}
+									nameIPMap[node.Name] = ip
+									klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+									if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+										klog.Errorf("failed to add ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
+										return err
+									}
 								}
 							}
-						} else {
-							klog.V(3).Infof("succeeded to ping %s ip %s on node %s", util.NodeNic, ip, node.Name)
-							if !exist {
-								nextHops.Add(ip)
-								if nameIPMap == nil {
-									nameIPMap = make(map[string]string, 1)
-								}
-								nameIPMap[node.Name] = ip
-								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-									klog.Errorf("failed to add ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
-									return err
-								}
+						} else if exist {
+							klog.Infof("subnet %s gateway nodes does not contain node %s, delete policy route for node ip %s", subnet.Name, node.Name, ip)
+							nextHops.Remove(ip)
+							delete(nameIPMap, node.Name)
+							klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+							if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+								klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
+								return err
 							}
-						}
-					} else if exist {
-						klog.Infof("subnet %s gateway nodes does not contain node %s, delete policy route for node ip %s", subnet.Name, node.Name, ip)
-						nextHops.Remove(ip)
-						delete(nameIPMap, node.Name)
-						klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-							klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
-							return err
 						}
 					}
 				}
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -974,44 +989,50 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 		}
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-			if subnet.Spec.EnableEcmp {
-				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-					nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-						continue
-					}
+			err = c.withSubnetLock(subnet.Name, func() error {
+				if subnet.Spec.EnableEcmp {
+					for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+						nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
+						if err != nil {
+							klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
+							continue
+						}
 
-					exist := false
-					if _, ok := nameIPMap[nodeName]; ok {
-						exist = true
-					}
+						exist := false
+						if _, ok := nameIPMap[nodeName]; ok {
+							exist = true
+						}
 
-					if exist {
-						nextHops.Remove(nameIPMap[nodeName])
-						delete(nameIPMap, nodeName)
+						if exist {
+							nextHops.Remove(nameIPMap[nodeName])
+							delete(nameIPMap, nodeName)
 
-						if nextHops.Size() == 0 {
-							klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-							if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
-								klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-								return err
-							}
-						} else {
-							klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-							if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-								klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
-								return err
+							if nextHops.Size() == 0 {
+								klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+								if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
+									klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+									return err
+								}
+							} else {
+								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+									klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
+									return err
+								}
 							}
 						}
 					}
+				} else {
+					klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
+					if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
+						klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+						return err
+					}
 				}
-			} else {
-				klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
-				if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
-					klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-					return err
-				}
+				return nil
+			})
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -1029,49 +1050,55 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(node *v1.Node, nod
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
-		nodeName := node.Name
-		if subnet.Spec.EnableEcmp {
-			if !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) &&
-				(subnet.Spec.GatewayNode != "" || !util.MatchLabelSelectors(subnet.Spec.GatewayNodeSelectors, node.Labels)) {
-				continue
-			}
+		err = c.withSubnetLock(subnet.Name, func() error {
+			nodeName := node.Name
+			if subnet.Spec.EnableEcmp {
+				if !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) &&
+					(subnet.Spec.GatewayNode != "" || !util.MatchLabelSelectors(subnet.Spec.GatewayNodeSelectors, node.Labels)) {
+					return nil
+				}
 
-			for nextHop := range strings.SplitSeq(nodeIP, ",") {
-				for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
-						continue
-					}
+				for nextHop := range strings.SplitSeq(nodeIP, ",") {
+					for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+						if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
+							continue
+						}
 
-					nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
-					if err != nil {
-						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-						continue
-					}
-					if nameIPMap[nodeName] == nextHop {
-						continue
-					}
+						nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
+						if err != nil {
+							klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
+							continue
+						}
+						if nameIPMap[nodeName] == nextHop {
+							continue
+						}
 
-					nextHops.Add(nextHop)
-					if nameIPMap == nil {
-						nameIPMap = make(map[string]string, 1)
-					}
-					nameIPMap[nodeName] = nextHop
-					klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-					if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-						klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
-						return err
+						nextHops.Add(nextHop)
+						if nameIPMap == nil {
+							nameIPMap = make(map[string]string, 1)
+						}
+						nameIPMap[nodeName] = nextHop
+						klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+							klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
+							return err
+						}
 					}
 				}
+			} else {
+				if subnet.Status.ActivateGateway != nodeName {
+					return nil
+				}
+				klog.Infof("add policy route for centralized subnet %s, on node %s, ip %s", subnet.Name, nodeName, nodeIP)
+				if err = c.addPolicyRouteForCentralizedSubnet(subnet, nodeName, nil, strings.Split(nodeIP, ",")); err != nil {
+					klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
+					return err
+				}
 			}
-		} else {
-			if subnet.Status.ActivateGateway != nodeName {
-				continue
-			}
-			klog.Infof("add policy route for centralized subnet %s, on node %s, ip %s", subnet.Name, nodeName, nodeIP)
-			if err = c.addPolicyRouteForCentralizedSubnet(subnet, nodeName, nil, strings.Split(nodeIP, ",")); err != nil {
-				klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
-				return err
-			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil
