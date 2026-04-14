@@ -1,3 +1,4 @@
+{{- $pingerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.pinger.image) | fromYaml -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -51,8 +52,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $pingerImage.address }}/{{ $pingerImage.repository }}:{{ $pingerImage.tag }}
+          imagePullPolicy: {{ $pingerImage.pullPolicy }}
           command:
             - sh
             - -c
@@ -69,7 +70,7 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: pinger
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          image: {{ $pingerImage.address }}/{{ $pingerImage.repository }}:{{ $pingerImage.tag }}
           command:
           - /kube-ovn/kube-ovn-pinger
           args:
@@ -80,7 +81,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
           - --log_file_max_size=200
           - --enable-metrics={{- .Values.networking.enableMetrics }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ $pingerImage.pullPolicy }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
             privileged: false

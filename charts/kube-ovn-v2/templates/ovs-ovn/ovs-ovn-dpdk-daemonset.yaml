@@ -1,4 +1,5 @@
 {{- if .Values.ovsOvn.dpdkHybrid.enabled }}
+{{- $ovsOvnDpdkImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ovsOvn.dpdkHybrid.image "defaultRepository" .Values.global.images.kubeovn.repository "defaultTag" .Values.ovsOvn.dpdkHybrid.tag) | fromYaml -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -54,8 +55,8 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.ovsOvn.dpdkHybrid.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $ovsOvnDpdkImage.address }}/{{ $ovsOvnDpdkImage.repository }}:{{ $ovsOvnDpdkImage.tag }}
+          imagePullPolicy: {{ $ovsOvnDpdkImage.pullPolicy }}
           command: ["/kube-ovn/start-ovs-dpdk-v2.sh"]
           securityContext:
             runAsUser: 0

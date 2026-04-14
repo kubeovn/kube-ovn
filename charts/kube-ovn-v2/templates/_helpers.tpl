@@ -148,6 +148,23 @@ Get IPs of master nodes from values
   {{- end -}}
 {{- end -}}
 
+{{- define "kubeovn.imageSpec" -}}
+  {{- $root := .root -}}
+  {{- $image := .image | default dict -}}
+  {{- $address := $root.Values.global.registry.address -}}
+  {{- if hasKey $image "registry" -}}
+    {{- $address = get $image "registry" -}}
+  {{- end -}}
+  {{- $repository := .defaultRepository | default $root.Values.global.images.kubeovn.repository -}}
+  {{- $tag := .defaultTag | default $root.Values.global.images.kubeovn.tag -}}
+  {{- dict
+      "address" $address
+      "repository" (get $image "repository" | default $repository)
+      "tag" (get $image "tag" | default $tag)
+      "pullPolicy" (get $image "pullPolicy" | default $root.Values.image.pullPolicy)
+    | toYaml -}}
+{{- end -}}
+
 {{/*
 Merge hardcoded node affinity expressions with user-provided values.
 Usage: include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedPreferred "hardcodedRequired" $hardcodedRequired "userPreferred" .Values.component.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.component.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution)

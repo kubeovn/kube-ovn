@@ -1,3 +1,4 @@
+{{- $agentImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.agent.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -50,8 +51,8 @@ spec:
           type: RuntimeDefault
       initContainers:
       - name: hostpath-init
-        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: {{ $agentImage.address }}/{{ $agentImage.repository }}:{{ $agentImage.tag }}
+        imagePullPolicy: {{ $agentImage.pullPolicy }}
         command:
           - sh
           - -xec
@@ -78,8 +79,8 @@ spec:
           - name: kube-ovn-log
             mountPath: /var/log/kube-ovn
       - name: install-cni
-        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: {{ $agentImage.address }}/{{ $agentImage.repository }}:{{ $agentImage.tag }}
+        imagePullPolicy: {{ $agentImage.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
           - --cni-conf-dir={{ .Values.cni.mountConfigDirectory }}
@@ -104,8 +105,8 @@ spec:
           {{- end }}
       containers:
       - name: cni-server
-        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: {{ $agentImage.address }}/{{ $agentImage.repository }}:{{ $agentImage.tag }}
+        imagePullPolicy: {{ $agentImage.pullPolicy }}
         command:
           - bash
           - /kube-ovn/start-cniserver.sh

@@ -1,3 +1,4 @@
+{{- $monitorImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.monitor.image) | fromYaml -}}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -61,8 +62,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $monitorImage.address }}/{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
+          imagePullPolicy: {{ $monitorImage.pullPolicy }}
           command:
             - sh
             - -c
@@ -79,8 +80,8 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-monitor
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $monitorImage.address }}/{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
+          imagePullPolicy: {{ $monitorImage.pullPolicy }}
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
           - --secure-serving={{- .Values.features.enableSecureServing }}

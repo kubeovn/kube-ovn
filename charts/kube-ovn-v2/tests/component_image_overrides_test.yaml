@@ -1,0 +1,37 @@
+suite: Component image overrides (v2)
+templates:
+  - controller/controller-deployment.yaml
+  - agent/agent-daemonset.yaml
+tests:
+  - it: overrides only the controller image
+    template: controller/controller-deployment.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      controller.image.repository: kube-ovn-controller-dev
+      controller.image.tag: custom-controller
+      controller.image.registry: ghcr.io/example
+      controller.image.pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/example/kube-ovn-controller-dev:custom-controller
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/example/kube-ovn-controller-dev:custom-controller
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image=ghcr.io/example/kube-ovn-controller-dev:custom-controller
+
+  - it: keeps other components on the global image by default
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/kubeovn/kube-ovn:v1.16.0

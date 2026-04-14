@@ -1,3 +1,4 @@
+{{- $ovsOvnImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ovsOvn.image) | fromYaml -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -63,8 +64,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $ovsOvnImage.address }}/{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
+          imagePullPolicy: {{ $ovsOvnImage.pullPolicy }}
           command:
             - sh
             - -xec
@@ -104,8 +105,8 @@ spec:
               name: host-log-ovs
       containers:
         - name: openvswitch
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $ovsOvnImage.address }}/{{ $ovsOvnImage.repository }}:{{ $ovsOvnImage.tag }}
+          imagePullPolicy: {{ $ovsOvnImage.pullPolicy }}
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}

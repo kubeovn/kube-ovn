@@ -277,6 +277,9 @@ validatingWebhook:
   # -- Enable the deployment of the validating webhook.
   # @section -- Validating webhook configuration
   enabled: false
+  # -- Override image settings for kube-ovn-webhook. Empty fields fall back to the global kube-ovn image.
+  # @section -- Validating webhook configuration
+  image: {}
   # -- Annotations to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)
   # @section -- Validating webhook configuration
   annotations: {}
@@ -383,6 +386,9 @@ apiNad:
 # @section -- OVS/OVN daemons configuration
 # @default -- "{}"
 ovsOvn:
+  # -- Override image settings for ovs-ovn. Empty fields fall back to the global kube-ovn image.
+  # @section -- OVS/OVN daemons configuration
+  image: {}
   # -- Annotations to be added to all top-level ovs-ovn objects (resources under templates/ovs-ovn)
   # @section -- OVS/OVN daemons configuration
   annotations: {}
@@ -467,6 +473,9 @@ ovsOvn:
     # -- Enables DPDK-hybrid support on OVS.
     # @section -- OVS/OVN daemons configuration
     enabled: false
+    # -- Override image settings for ovs-ovn-dpdk. Empty fields fall back to the global kube-ovn image and the DPDK tag below.
+    # @section -- OVS/OVN daemons configuration
+    image: {}
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
     tag: v1.17.0
@@ -498,6 +507,9 @@ bgpSpeaker:
   # -- Enable the kube-ovn-speaker.
   # @section -- BGP speaker configuration
   enabled: false
+  # -- Override image settings for kube-ovn-speaker. Empty fields fall back to the global kube-ovn image.
+  # @section -- BGP speaker configuration
+  image: {}
   # -- Annotations to be added to all top-level kube-ovn-speaker objects (resources under templates/speaker)
   # @section -- BGP speaker configuration
   annotations: {}
@@ -543,6 +555,9 @@ bgpSpeaker:
 # @section -- Ping daemon configuration
 # @default -- "{}"
 pinger:
+  # -- Override image settings for kube-ovn-pinger. Empty fields fall back to the global kube-ovn image.
+  # @section -- Ping daemon configuration
+  image: {}
   # -- Annotations to be added to all top-level kube-ovn-pinger objects (resources under templates/pinger)
   # @section -- Ping daemon configuration
   annotations: {}
@@ -621,6 +636,9 @@ pinger:
 # @section -- OVN monitoring daemon configuration
 # @default -- "{}"
 monitor:
+  # -- Override image settings for kube-ovn-monitor. Empty fields fall back to the global kube-ovn image.
+  # @section -- OVN monitoring daemon configuration
+  image: {}
   # -- Annotations to be added to all top-level kube-ovn-monitor objects (resources under templates/monitor)
   # @section -- OVN monitoring daemon configuration
   annotations: {}
@@ -695,6 +713,9 @@ monitor:
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
 controller:
+  # -- Override image settings for kube-ovn-controller. Empty fields fall back to the global kube-ovn image.
+  # @section -- Kube-OVN controller configuration
+  image: {}
   # -- Annotations to be added to all top-level kube-ovn-controller objects (resources under templates/controller)
   # @section -- Kube-OVN controller configuration
   annotations: {}
@@ -769,6 +790,9 @@ controller:
 # @section -- OVN-central daemon configuration
 # @default -- "{}"
 central:
+  # -- Override image settings for ovn-central. Empty fields fall back to the global kube-ovn image.
+  # @section -- OVN-central daemon configuration
+  image: {}
   # -- Annotations to be added to all top-level ovn-central objects (resources under templates/central)
   # @section -- OVN-central daemon configuration
   annotations: {}
@@ -838,6 +862,9 @@ central:
 # @section -- OVN IC controller configuration
 # @default -- "{}"
 ic:
+  # -- Override image settings for the OVN IC controller. Empty fields fall back to the global kube-ovn image.
+  # @section -- OVN IC controller configuration
+  image: {}
   # -- Node affinity configuration for the OVN IC controller.
   # -- More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
   # @section -- OVN IC controller configuration
@@ -871,6 +898,9 @@ ic:
 # @section -- CNI agent configuration
 # @default -- "{}"
 agent:
+  # -- Override image settings for kube-ovn-cni. Empty fields fall back to the global kube-ovn image.
+  # @section -- CNI agent configuration
+  image: {}
   # -- Annotations to be added to all top-level agent objects (resources under templates/agent)
   # @section -- CNI agent configuration
   annotations: {}

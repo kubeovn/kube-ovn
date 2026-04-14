@@ -1,3 +1,4 @@
+{{- $controllerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.controller.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,8 +63,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          imagePullPolicy: {{ $controllerImage.pullPolicy }}
           command:
             - sh
             - -c
@@ -80,8 +81,8 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-controller
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          imagePullPolicy: {{ $controllerImage.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
           - --default-ls={{ .Values.networking.pods.subnetName }}
@@ -159,7 +160,7 @@ spec:
           - --ovsdb-inactivity-timeout={{- .Values.features.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
           - --enable-ovn-lb-prefer-local={{- .Values.features.ENABLE_OVN_LB_PREFER_LOCAL }}
-          - --image={{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          - --image={{ $controllerImage.address }}/{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
           - --np-enforcement={{- .Values.networkPolicies.enforcement | quote }}
           securityContext:
@@ -246,4 +247,3 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-
