@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn/test/anp
 
-go 1.25.5
+go 1.26.2
 
 require (
 	golang.org/x/mod v0.33.0
