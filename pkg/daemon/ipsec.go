@@ -217,7 +217,7 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 		"-addext", "subjectAltName = DNS:"+cn,
 		"-subj", "/C=CN/O=kubeovn/OU=kube-ovn/CN="+cn,
 		"-key", newPrivKeyPath,
-		"-out", ipsecReqPath) // #nosec
+		"-out", ipsecReqPath) // #nosec G204
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to generate csr: %v, output: %s", err, string(output))
@@ -242,7 +242,7 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 		},
 		Spec: certmanagerv1.CertificateRequestSpec{
 			Request: csrBytes,
-			IssuerRef: cmmeta.ObjectReference{
+			IssuerRef: cmmeta.IssuerReference{
 				Name:  c.config.CertManagerIssuerName,
 				Kind:  util.ObjectKind[*certmanagerv1.ClusterIssuer](),
 				Group: certmanager.GroupName,
