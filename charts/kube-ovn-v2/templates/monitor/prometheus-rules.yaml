@@ -1,0 +1,103 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kube-ovn
+  namespace: {{ default .Values.namespace .Values.prometheusRule.namespace }}
+  labels:
+    app.kubernetes.io/name: kube-ovn
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.prometheusRule.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  groups:
+    - name: kube-ovn.controller
+      rules:
+        - alert: KubeOvnControllerDown
+          expr: up{job="kube-ovn-controller"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'kube-ovn-controller {{`{{ $labels.instance }}`}} is down'
+            description: 'kube-ovn-controller instance {{`{{ $labels.instance }}`}} has been failing scrape for more than 5 minutes.'
+        - alert: KubeOvnControllerAbsent
+          expr: absent(up{job="kube-ovn-controller"})
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: No kube-ovn-controller scrape target found
+            description: |
+              Prometheus has not seen any kube-ovn-controller target for 15 minutes.
+              This usually means the controller pods are gone, the Service has no
+              endpoints, or no scrape job has been configured for kube-ovn-controller.
+              If prometheusRule.enabled is true but no ServiceMonitor or external
+              scrape provides this job, either enable controller.serviceMonitor or
+              suppress this alert via prometheusRule.additionalGroups.
+        - alert: KubeOvnSubnetIPExhaustion
+          expr: |
+            (subnet_used_ip_count / (subnet_used_ip_count + subnet_available_ip_count)) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Kube-OVN subnet {{`{{ $labels.subnet_name }}`}} IP usage is above 90%'
+            description: 'Subnet {{`{{ $labels.subnet_name }}`}} ({{`{{ $labels.subnet_cidr }}`}}) has exceeded 90% IP allocation for more than 10 minutes.'
+    - name: kube-ovn.pinger
+      rules:
+        - alert: KubeOvnOvsDown
+          expr: pinger_ovs_down == 1
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'OVS is down on node {{`{{ $labels.nodeName }}`}}'
+            description: 'Pinger has reported OVS down on node {{`{{ $labels.nodeName }}`}} for more than 3 minutes.'
+        - alert: KubeOvnOvnControllerDown
+          expr: pinger_ovn_controller_down == 1
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'ovn-controller is down on node {{`{{ $labels.nodeName }}`}}'
+            description: 'Pinger has reported ovn-controller down on node {{`{{ $labels.nodeName }}`}} for more than 3 minutes.'
+        - alert: KubeOvnApiserverUnhealthy
+          expr: pinger_apiserver_unhealthy == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Pinger reports apiserver unhealthy from node {{`{{ $labels.nodeName }}`}}'
+            description: 'Pinger on node {{`{{ $labels.nodeName }}`}} has been unable to reach kube-apiserver for more than 5 minutes.'
+        - alert: KubeOvnInternalDNSUnhealthy
+          expr: pinger_internal_dns_unhealthy == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Internal DNS unhealthy from node {{`{{ $labels.nodeName }}`}}'
+            description: 'Pinger on node {{`{{ $labels.nodeName }}`}} has been unable to resolve the internal DNS target for more than 5 minutes.'
+    - name: kube-ovn.ovs
+      rules:
+        - alert: KubeOvnOvsdbSlowRequest
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, method) (rate(ovs_client_request_latency_milliseconds_bucket[5m]))
+            ) > 100
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'OVSDB p95 request latency above 100ms (method={{`{{ $labels.method }}`}})'
+            description: 'The p95 latency of OVSDB client requests for method {{`{{ $labels.method }}`}} has exceeded 100ms for more than 10 minutes.'
+    {{- with .Values.prometheusRule.additionalGroups }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
