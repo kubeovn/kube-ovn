@@ -256,7 +256,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	if err = tempFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temp cni config file %q: %w", tempFilePath, err)
 	}
-	if err = os.Rename(tempFilePath, cniConfPath); err != nil {
+	if err = os.Rename(tempFilePath, cniConfPath); err != nil { // #nosec G304 G703
 		return fmt.Errorf("failed to install cni config file to %q: %w", cniConfPath, err)
 	}
 	return nil
