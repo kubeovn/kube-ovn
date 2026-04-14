@@ -675,6 +675,10 @@ kind-install-bgp: kind-install
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
 	docker exec clab-bgp-router vtysh -c "show ip route bgp"
 
+.PHONY: kind-install-enable-record-tunnel
+kind-install-enable-record-tunnel:
+	@ENABLE_RECORD_TUNNEL_KEY=true $(MAKE) kind-install
+
 .PHONY: kind-install-node-route-bgp-eip
 kind-install-node-route-bgp-eip: kind-install-vpc-nat-gw
 	kubectl label node --all ovn.kubernetes.io/bgp=true --overwrite
