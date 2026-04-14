@@ -1023,6 +1023,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
     - jsonPath: .status.ip
       name: IP
       type: string
@@ -1066,6 +1069,11 @@ spec:
                 type: string
               macAddress:
                 description: MAC address for the EIP
+                type: string
+              namespace:
+                description: |-
+                  Namespace where the NAT gateway StatefulSet/Pod for this EIP resides.
+                  If empty, defaults to the kube-ovn controller's own namespace.
                 type: string
               natGwDp:
                 description: NAT gateway datapath where the EIP is assigned
@@ -4135,6 +4143,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
     - jsonPath: .spec.vpc
       name: Vpc
       type: string
@@ -5143,6 +5154,11 @@ spec:
               lanIp:
                 description: LAN IP address for the NAT gateway. This field is immutable
                   after creation.
+                type: string
+              namespace:
+                description: |-
+                  Namespace where the NAT gateway StatefulSet/Pod will be created.
+                  If empty, defaults to the kube-ovn controller's own namespace (typically kube-system).
                 type: string
               noDefaultEIP:
                 description: Disable default EIP assignment
