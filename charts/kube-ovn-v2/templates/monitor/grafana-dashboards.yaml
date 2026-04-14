@@ -1,6 +1,9 @@
 {{- if .Values.grafanaDashboards.enabled }}
 {{- $ns := default .Values.namespace .Values.grafanaDashboards.namespace }}
 {{- $datasource := .Values.grafanaDashboards.datasource }}
+{{- if not (regexMatch "^[A-Za-z0-9_.-]+$" $datasource) }}
+{{- fail (printf "grafanaDashboards.datasource %q must match ^[A-Za-z0-9_.-]+$; it is interpolated verbatim into dashboard JSON, and characters like quotes, backslashes or newlines would produce invalid JSON." $datasource) }}
+{{- end }}
 {{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
 ---
 apiVersion: v1

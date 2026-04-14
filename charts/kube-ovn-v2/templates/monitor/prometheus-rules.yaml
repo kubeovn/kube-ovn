@@ -37,9 +37,9 @@ spec:
               Prometheus has not seen any kube-ovn-controller target for 15 minutes.
               This usually means the controller pods are gone, the Service has no
               endpoints, or no scrape job has been configured for kube-ovn-controller.
-              If prometheusRule.enabled is true but no ServiceMonitor or external
-              scrape provides this job, either enable controller.serviceMonitor or
-              suppress this alert via prometheusRule.additionalGroups.
+              If no ServiceMonitor or external scrape provides this job yet, either
+              enable controller.serviceMonitor or silence/inhibit this alert in
+              Alertmanager until scraping is wired up.
         - alert: KubeOvnSubnetIPExhaustion
           expr: |
             (subnet_used_ip_count / (subnet_used_ip_count + subnet_available_ip_count)) > 0.9
@@ -89,14 +89,14 @@ spec:
           expr: |
             histogram_quantile(
               0.95,
-              sum by (le, method) (rate(ovs_client_request_latency_milliseconds_bucket[5m]))
+              sum by (le, job, instance, db, method) (rate(ovs_client_request_latency_milliseconds_bucket[5m]))
             ) > 100
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: 'OVSDB p95 request latency above 100ms (method={{`{{ $labels.method }}`}})'
-            description: 'The p95 latency of OVSDB client requests for method {{`{{ $labels.method }}`}} has exceeded 100ms for more than 10 minutes.'
+            summary: 'OVSDB p95 request latency above 100ms on {{`{{ $labels.instance }}`}} ({{`{{ $labels.db }}`}}/{{`{{ $labels.method }}`}})'
+            description: 'The p95 latency of OVSDB client requests for job {{`{{ $labels.job }}`}}, instance {{`{{ $labels.instance }}`}}, db {{`{{ $labels.db }}`}}, method {{`{{ $labels.method }}`}} has exceeded 100ms for more than 10 minutes.'
     {{- with .Values.prometheusRule.additionalGroups }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

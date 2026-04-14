@@ -298,16 +298,20 @@ validatingWebhook:
 # -- Configuration of the PrometheusRule shipping baseline Kube-OVN alerts.
 # Requires prometheus-operator CRDs to be installed in the cluster.
 #
-# Prerequisite: the bundled rules query metrics exposed by the controller,
-# the OVN monitor, the pinger and the agent. They will only fire when those
-# metrics are actually being scraped, which means **either**:
+# Prerequisite: most bundled rules query metrics exposed by the controller,
+# the OVN monitor, the pinger and the agent. Scrape-dependent alerts only
+# fire when those metrics are actually being scraped, which means **either**:
 #   1. enabling the matching ServiceMonitors shipped by this chart
 #      (`controller.serviceMonitor.enabled`, `monitor.serviceMonitor.enabled`,
 #      `pinger.serviceMonitor.enabled`, `agent.serviceMonitor.enabled`), **or**
 #   2. configuring an external scrape (PodMonitor, custom scrape config, etc.)
 #      that produces samples for the same job/metric labels.
 #
-# When neither is true the rules will install but never trigger.
+# When neither is true, scrape-dependent alerts stay inactive. Note however
+# that `absent()`-style alerts (e.g. KubeOvnControllerAbsent) still fire in
+# that configuration, because "no target" is precisely what they report.
+# If you want to skip them until scraping is wired up, silence/inhibit them
+# in Alertmanager or leave `prometheusRule.enabled` off.
 # @section -- PrometheusRule configuration
 # @default -- "{}"
 prometheusRule:
@@ -352,6 +356,11 @@ grafanaDashboards:
   # placeholders that are only resolved during UI import, not when loaded by
   # the sidecar. The chart rewrites those placeholders to this value at
   # render time so panels resolve to an existing datasource.
+  #
+  # Must match `^[A-Za-z0-9_.-]+$`. The value is interpolated verbatim into
+  # dashboard JSON, so characters like quotes, backslashes or newlines would
+  # produce invalid JSON; the chart fails rendering if the constraint is
+  # violated. If your datasource name contains other characters, rename it.
   # @section -- Grafana dashboards configuration
   datasource: "Prometheus"
   # -- Labels added to the dashboard ConfigMaps. The default label matches
