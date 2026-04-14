@@ -34,4 +34,4 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: docker.io/kubeovn/kube-ovn:v1.16.0
+          value: docker.io/kubeovn/kube-ovn:v1.17.0
