@@ -90,7 +90,7 @@ func parsePingStats(stdout string) (transmitted, received, lost int) {
 	received, err = strconv.Atoi(matches[2])
 	framework.ExpectNoError(err)
 	lost = transmitted - received
-	return
+	return transmitted, received, lost
 }
 
 func init() {
