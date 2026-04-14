@@ -6,8 +6,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 type RoutePolicy string
@@ -20,9 +18,9 @@ const (
 type PolicyRouteAction string
 
 var (
-	PolicyRouteActionAllow   = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionAllow)
-	PolicyRouteActionDrop    = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionDrop)
-	PolicyRouteActionReroute = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionReroute)
+	PolicyRouteActionAllow   PolicyRouteAction = "allow"
+	PolicyRouteActionDrop    PolicyRouteAction = "drop"
+	PolicyRouteActionReroute PolicyRouteAction = "reroute"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

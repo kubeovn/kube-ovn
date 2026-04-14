@@ -6,8 +6,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 type SgRemoteType string
@@ -29,10 +27,10 @@ const (
 type SgPolicy string
 
 var (
-	SgPolicyAllow = SgPolicy(ovnnb.ACLActionAllow)
-	SgPolicyDrop  = SgPolicy(ovnnb.ACLActionDrop)
+	SgPolicyAllow SgPolicy = "allow"
+	SgPolicyDrop  SgPolicy = "drop"
 	// Pass ACL processing to next tier
-	SgPolicyPass = SgPolicy(ovnnb.ACLActionPass)
+	SgPolicyPass SgPolicy = "pass"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

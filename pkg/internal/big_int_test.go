@@ -39,7 +39,7 @@ func TestBigInt_DeepCopyInto(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := BigInt{*big.NewInt(tt.value)}
+			original := BigInt{Int: *big.NewInt(tt.value)}
 			var copied BigInt
 			original.DeepCopyInto(&copied)
 
@@ -54,7 +54,7 @@ func TestBigInt_DeepCopyInto(t *testing.T) {
 }
 
 func TestBigInt_Clone(t *testing.T) {
-	original := BigInt{*big.NewInt(42)}
+	original := BigInt{Int: *big.NewInt(42)}
 	cloned := original.Clone()
 
 	assert.Equal(t, 0, original.Cmp(cloned))
@@ -64,39 +64,39 @@ func TestBigInt_Clone(t *testing.T) {
 }
 
 func TestBigInt_Equal(t *testing.T) {
-	a := BigInt{*big.NewInt(100)}
-	b := BigInt{*big.NewInt(100)}
-	c := BigInt{*big.NewInt(200)}
+	a := BigInt{Int: *big.NewInt(100)}
+	b := BigInt{Int: *big.NewInt(100)}
+	c := BigInt{Int: *big.NewInt(200)}
 
 	assert.True(t, a.Equal(b))
 	assert.False(t, a.Equal(c))
 
 	// Zero from different origins
 	z1 := BigInt{}
-	z2 := BigInt{*big.NewInt(0)}
-	z3 := BigInt{*new(big.Int).Sub(big.NewInt(5), big.NewInt(5))}
+	z2 := BigInt{Int: *big.NewInt(0)}
+	z3 := BigInt{Int: *new(big.Int).Sub(big.NewInt(5), big.NewInt(5))}
 	assert.True(t, z1.Equal(z2))
 	assert.True(t, z1.Equal(z3))
 }
 
 func TestBigInt_EqualInt64(t *testing.T) {
 	assert.True(t, BigInt{}.EqualInt64(0))
-	assert.True(t, BigInt{*big.NewInt(42)}.EqualInt64(42))
-	assert.False(t, BigInt{*big.NewInt(42)}.EqualInt64(43))
+	assert.True(t, BigInt{Int: *big.NewInt(42)}.EqualInt64(42))
+	assert.False(t, BigInt{Int: *big.NewInt(42)}.EqualInt64(43))
 }
 
 func TestBigInt_Cmp(t *testing.T) {
-	a := BigInt{*big.NewInt(10)}
-	b := BigInt{*big.NewInt(20)}
+	a := BigInt{Int: *big.NewInt(10)}
+	b := BigInt{Int: *big.NewInt(20)}
 	assert.Equal(t, -1, a.Cmp(b))
 	assert.Equal(t, 1, b.Cmp(a))
-	c := BigInt{*big.NewInt(10)}
+	c := BigInt{Int: *big.NewInt(10)}
 	assert.Equal(t, 0, a.Cmp(c))
 }
 
 func TestBigInt_Add(t *testing.T) {
-	a := BigInt{*big.NewInt(10)}
-	b := BigInt{*big.NewInt(20)}
+	a := BigInt{Int: *big.NewInt(10)}
+	b := BigInt{Int: *big.NewInt(20)}
 	result := a.Add(b)
 	assert.True(t, result.EqualInt64(30))
 	// Original unchanged
@@ -104,22 +104,22 @@ func TestBigInt_Add(t *testing.T) {
 }
 
 func TestBigInt_Sub(t *testing.T) {
-	a := BigInt{*big.NewInt(30)}
-	b := BigInt{*big.NewInt(10)}
+	a := BigInt{Int: *big.NewInt(30)}
+	b := BigInt{Int: *big.NewInt(10)}
 	result := a.Sub(b)
 	assert.True(t, result.EqualInt64(20))
 	assert.True(t, a.EqualInt64(30))
 }
 
 func TestBigInt_AddInt(t *testing.T) {
-	a := BigInt{*big.NewInt(10)}
+	a := BigInt{Int: *big.NewInt(10)}
 	result := a.AddInt(5)
 	assert.True(t, result.EqualInt64(15))
 	assert.True(t, a.EqualInt64(10))
 }
 
 func TestBigInt_SubInt(t *testing.T) {
-	a := BigInt{*big.NewInt(10)}
+	a := BigInt{Int: *big.NewInt(10)}
 	result := a.SubInt(3)
 	assert.True(t, result.EqualInt64(7))
 	assert.True(t, a.EqualInt64(10))
@@ -127,16 +127,16 @@ func TestBigInt_SubInt(t *testing.T) {
 
 func TestBigInt_Float64(t *testing.T) {
 	assert.Equal(t, float64(0), BigInt{}.Float64())
-	assert.Equal(t, float64(42), BigInt{*big.NewInt(42)}.Float64())
-	assert.Equal(t, float64(-1), BigInt{*big.NewInt(-1)}.Float64())
+	assert.Equal(t, float64(42), BigInt{Int: *big.NewInt(42)}.Float64())
+	assert.Equal(t, float64(-1), BigInt{Int: *big.NewInt(-1)}.Float64())
 	// Large value within float64 exact range
-	assert.Equal(t, float64(1<<53), BigInt{*big.NewInt(1 << 53)}.Float64())
+	assert.Equal(t, float64(1<<53), BigInt{Int: *big.NewInt(1 << 53)}.Float64())
 }
 
 func TestBigInt_String(t *testing.T) {
 	assert.Equal(t, "0", BigInt{}.String())
-	assert.Equal(t, "42", BigInt{*big.NewInt(42)}.String())
-	assert.Equal(t, "-1", BigInt{*big.NewInt(-1)}.String())
+	assert.Equal(t, "42", BigInt{Int: *big.NewInt(42)}.String())
+	assert.Equal(t, "-1", BigInt{Int: *big.NewInt(-1)}.String())
 }
 
 func TestBigInt_MarshalJSON(t *testing.T) {
@@ -151,7 +151,7 @@ func TestBigInt_MarshalJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := BigInt{*big.NewInt(tt.value)}
+			b := BigInt{Int: *big.NewInt(tt.value)}
 			data, err := b.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, string(data))
@@ -195,7 +195,7 @@ func TestBigInt_UnmarshalJSON(t *testing.T) {
 }
 
 func TestBigInt_MarshalUnmarshalRoundTrip(t *testing.T) {
-	original := BigInt{*big.NewInt(123456789)}
+	original := BigInt{Int: *big.NewInt(123456789)}
 	data, err := original.MarshalJSON()
 	require.NoError(t, err)
 
