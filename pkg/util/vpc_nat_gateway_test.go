@@ -361,7 +361,6 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				nadv1.NetworkAttachmentAnnot: "default/extra-net1, default/extra-net2, kube-system/external-subnet",
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
-				DefaultNetworkAnnotation: "namespace/subnet",
 			},
 			expectError: false,
 		},

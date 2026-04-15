@@ -85,8 +85,9 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
 	// We're using a custom provider, we need to override the default network of the pod so that the
-	// default VPC/Subnet of the cluster isn't accidentally injected.
-	if p != OvnProvider {
+	// default VPC/Subnet of the cluster isn't accidentally injected. In non-primary CNI mode
+	// (additionalNetworks != ""), Multus handles the default network, so skip this.
+	if p != OvnProvider && additionalNetworks == "" {
 		// Subdivide the provider so we can infer the namespace/name of the NetworkAttachmentDefinition
 		providerSplit := strings.Split(provider, ".")
 		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {
