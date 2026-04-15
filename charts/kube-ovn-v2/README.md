@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
+![Version: v1.17.0](https://img.shields.io/badge/Version-v1.17.0-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -12,7 +12,7 @@ Make sure to adjust your old values with the new ones and pre-generate your temp
 The Helm chart is available from GitHub Container Registry:
 
 ```bash
-helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.0
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.17.0
 ```
 
 ### From Source
@@ -762,7 +762,7 @@ false
   "images": {
     "kubeovn": {
       "repository": "kube-ovn",
-      "tag": "v1.16.0"
+      "tag": "v1.17.0"
     }
   },
   "registry": {
@@ -1236,6 +1236,73 @@ false
 		</tr>
 	</tbody>
 </table>
+<h3>Grafana dashboards configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>grafanaDashboards</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Configuration of the Grafana dashboard ConfigMaps, automatically picked up by the kube-prometheus-stack Grafana sidecar. One ConfigMap is emitted per dashboard under dist/monitoring.</td>
+		</tr>
+		<tr>
+			<td>grafanaDashboards.annotations</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Annotations added to the dashboard ConfigMaps.</td>
+		</tr>
+		<tr>
+			<td>grafanaDashboards.datasource</td>
+			<td>string</td>
+			<td><pre lang="json">
+"Prometheus"
+</pre>
+</td>
+			<td>Name of the Grafana Prometheus datasource the dashboards should use. The bundled JSON files were exported from Grafana with `${DS_PROMETHEUS}` placeholders that are only resolved during UI import, not when loaded by the sidecar. The chart rewrites those placeholders to this value at render time so panels resolve to an existing datasource.  Must match `^[A-Za-z0-9_.-]+$`. The value is interpolated verbatim into dashboard JSON, so characters like quotes, backslashes or newlines would produce invalid JSON; the chart fails rendering if the constraint is violated. If your datasource name contains other characters, rename it.</td>
+		</tr>
+		<tr>
+			<td>grafanaDashboards.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the Grafana dashboard ConfigMaps.</td>
+		</tr>
+		<tr>
+			<td>grafanaDashboards.labels</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "grafana_dashboard": "1"
+}
+</pre>
+</td>
+			<td>Labels added to the dashboard ConfigMaps. The default label matches the kube-prometheus-stack Grafana sidecar convention.</td>
+		</tr>
+		<tr>
+			<td>grafanaDashboards.namespace</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Namespace override for the dashboard ConfigMaps. Defaults to .Values.namespace when empty.</td>
+		</tr>
+	</tbody>
+</table>
 <h3>OVN IC controller configuration</h3>
 <table>
 	<thead>
@@ -1534,7 +1601,7 @@ false
 			<td>natGw.bgpSpeaker.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.17.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1570,7 +1637,7 @@ false
 			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.17.0"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -2072,7 +2139,7 @@ false
 			<td>ovsOvn.dpdkHybrid.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.17.0"
 </pre>
 </td>
 			<td>DPDK image tag.</td>
@@ -2415,6 +2482,71 @@ false
 </pre>
 </td>
 			<td>Domain name resolving to an IPv6 and IPv4 only (A/AAAA record)</td>
+		</tr>
+	</tbody>
+</table>
+<h3>PrometheusRule configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>prometheusRule</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Configuration of the PrometheusRule shipping baseline Kube-OVN alerts. Requires prometheus-operator CRDs to be installed in the cluster.  Prerequisite: most bundled rules query metrics exposed by the controller, the OVN monitor, the pinger and the agent. Scrape-dependent alerts only fire when those metrics are actually being scraped, which means **either**:   1. enabling the matching ServiceMonitors shipped by this chart      (`controller.serviceMonitor.enabled`, `monitor.serviceMonitor.enabled`,      `pinger.serviceMonitor.enabled`, `agent.serviceMonitor.enabled`), **or**   2. configuring an external scrape (PodMonitor, custom scrape config, etc.)      that produces samples for the same job/metric labels.  When neither is true, scrape-dependent alerts stay inactive. Note however that `absent()`-style alerts (e.g. KubeOvnControllerAbsent) still fire in that configuration, because "no target" is precisely what they report. If you want to skip them until scraping is wired up, silence/inhibit them in Alertmanager or leave `prometheusRule.enabled` off.</td>
+		</tr>
+		<tr>
+			<td>prometheusRule.additionalGroups</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Extra rule groups appended to the bundled groups. Each item must follow the PrometheusRule `spec.groups[]` schema.</td>
+		</tr>
+		<tr>
+			<td>prometheusRule.annotations</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Extra annotations added to the PrometheusRule.</td>
+		</tr>
+		<tr>
+			<td>prometheusRule.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the deployment of the bundled PrometheusRule.</td>
+		</tr>
+		<tr>
+			<td>prometheusRule.labels</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Extra labels added to the PrometheusRule. Typically used to match the `release` selector of a kube-prometheus-stack installation.</td>
+		</tr>
+		<tr>
+			<td>prometheusRule.namespace</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Namespace override for the PrometheusRule. Defaults to .Values.namespace when empty.</td>
 		</tr>
 	</tbody>
 </table>

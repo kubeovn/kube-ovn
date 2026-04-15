@@ -295,6 +295,83 @@ validatingWebhook:
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
 
+# -- Configuration of the PrometheusRule shipping baseline Kube-OVN alerts.
+# Requires prometheus-operator CRDs to be installed in the cluster.
+#
+# Prerequisite: most bundled rules query metrics exposed by the controller,
+# the OVN monitor, the pinger and the agent. Scrape-dependent alerts only
+# fire when those metrics are actually being scraped, which means **either**:
+#   1. enabling the matching ServiceMonitors shipped by this chart
+#      (`controller.serviceMonitor.enabled`, `monitor.serviceMonitor.enabled`,
+#      `pinger.serviceMonitor.enabled`, `agent.serviceMonitor.enabled`), **or**
+#   2. configuring an external scrape (PodMonitor, custom scrape config, etc.)
+#      that produces samples for the same job/metric labels.
+#
+# When neither is true, scrape-dependent alerts stay inactive. Note however
+# that `absent()`-style alerts (e.g. KubeOvnControllerAbsent) still fire in
+# that configuration, because "no target" is precisely what they report.
+# If you want to skip them until scraping is wired up, silence/inhibit them
+# in Alertmanager or leave `prometheusRule.enabled` off.
+# @section -- PrometheusRule configuration
+# @default -- "{}"
+prometheusRule:
+  # -- Enable the deployment of the bundled PrometheusRule.
+  # @section -- PrometheusRule configuration
+  enabled: false
+  # -- Namespace override for the PrometheusRule. Defaults to .Values.namespace when empty.
+  # @section -- PrometheusRule configuration
+  namespace: ""
+  # -- Extra labels added to the PrometheusRule. Typically used to match the
+  # `release` selector of a kube-prometheus-stack installation.
+  # @section -- PrometheusRule configuration
+  labels: {}
+  # -- Extra annotations added to the PrometheusRule.
+  # @section -- PrometheusRule configuration
+  annotations: {}
+  # -- Extra rule groups appended to the bundled groups. Each item must follow
+  # the PrometheusRule `spec.groups[]` schema.
+  # @section -- PrometheusRule configuration
+  additionalGroups: []
+  #  - name: custom.rules
+  #    rules:
+  #      - alert: CustomAlert
+  #        expr: vector(1)
+  #        labels:
+  #          severity: warning
+
+# -- Configuration of the Grafana dashboard ConfigMaps, automatically picked
+# up by the kube-prometheus-stack Grafana sidecar. One ConfigMap is emitted
+# per dashboard under dist/monitoring.
+# @section -- Grafana dashboards configuration
+# @default -- "{}"
+grafanaDashboards:
+  # -- Enable the deployment of the Grafana dashboard ConfigMaps.
+  # @section -- Grafana dashboards configuration
+  enabled: false
+  # -- Namespace override for the dashboard ConfigMaps. Defaults to .Values.namespace when empty.
+  # @section -- Grafana dashboards configuration
+  namespace: ""
+  # -- Name of the Grafana Prometheus datasource the dashboards should use.
+  # The bundled JSON files were exported from Grafana with `${DS_PROMETHEUS}`
+  # placeholders that are only resolved during UI import, not when loaded by
+  # the sidecar. The chart rewrites those placeholders to this value at
+  # render time so panels resolve to an existing datasource.
+  #
+  # Must match `^[A-Za-z0-9_.-]+$`. The value is interpolated verbatim into
+  # dashboard JSON, so characters like quotes, backslashes or newlines would
+  # produce invalid JSON; the chart fails rendering if the constraint is
+  # violated. If your datasource name contains other characters, rename it.
+  # @section -- Grafana dashboards configuration
+  datasource: "Prometheus"
+  # -- Labels added to the dashboard ConfigMaps. The default label matches
+  # the kube-prometheus-stack Grafana sidecar convention.
+  # @section -- Grafana dashboards configuration
+  labels:
+    grafana_dashboard: "1"
+  # -- Annotations added to the dashboard ConfigMaps.
+  # @section -- Grafana dashboards configuration
+  annotations: {}
+
 # -- Configuration for the NAT gateways.
 # @section -- NAT gateways configuration
 # @default -- "{}"

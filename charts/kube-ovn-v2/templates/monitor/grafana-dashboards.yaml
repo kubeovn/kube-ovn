@@ -1,0 +1,28 @@
+{{- if .Values.grafanaDashboards.enabled }}
+{{- $ns := default .Values.namespace .Values.grafanaDashboards.namespace }}
+{{- $datasource := .Values.grafanaDashboards.datasource }}
+{{- if not (regexMatch "^[A-Za-z0-9_.-]+$" $datasource) }}
+{{- fail (printf "grafanaDashboards.datasource %q must match ^[A-Za-z0-9_.-]+$; it is interpolated verbatim into dashboard JSON, and characters like quotes, backslashes or newlines would produce invalid JSON." $datasource) }}
+{{- end }}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-ovn-dashboard-{{ trimSuffix ".json" (base $path) }}
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: kube-ovn
+    app.kubernetes.io/part-of: kube-ovn
+    {{- with $.Values.grafanaDashboards.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $.Values.grafanaDashboards.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{ base $path }}: |-
+{{ $.Files.Get $path | replace "${DS_PROMETHEUS}" $datasource | indent 4 }}
+{{- end }}
+{{- end }}
