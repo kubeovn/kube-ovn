@@ -29,26 +29,8 @@ env:
   MASTER_E2E_NAT_GW_IMAGE: docker.io/kubeovn/vpc-nat-gateway:v1.14.25
 
 jobs:
-  # runner-info:
-  #   name: Runner info
-  #   needs: gatekeeper
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 5
-  #   steps:
-  #     - name: Hardware specs
-  #       run: |
-  #         echo "=== CPU ==="
-  #         nproc
-  #         lscpu | grep -E "Model name|Socket|Core|Thread|CPU MHz"
-  #         echo "=== Memory ==="
-  #         free -h
-  #         echo "=== Disk ==="
-  #         df -h /
-
   gatekeeper:
     name: E2E Approval Gatekeeper
-    needs:
-      - pre-build-checks
     environment: e2e-approval
     runs-on: ubuntu-latest
     steps:
@@ -82,6 +64,7 @@ jobs:
 
   pre-build-checks:
     name: Pre-build checks (lint and ut)
+    needs: gatekeeper
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -93,17 +76,20 @@ jobs:
           check-latest: true
           cache: false
 
-      - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: --timeout=10m
+
+      - name: Run modernize
+        run: go tool github.com/kubeovn/kube-ovn/tools/modernize -test -skipgenerated ./...
 
       - name: Install ginkgo
         run: go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
-      - name: Run lint and unit tests
-        run: |
-          make lint
-          make ut
+      - name: Run unit tests
+        run: make ut
 
   build-kube-ovn:
     name: Build kube-ovn image
@@ -146,8 +132,7 @@ jobs:
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway image
     needs:
-      - gatekeeper
-      - build-kube-ovn
+      - build-kube-ovn  # vpc-nat-gateway image is built on top of the kube-ovn base image; no need to proceed if the base build fails
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -189,16 +174,12 @@ jobs:
         suite:
           - name: Master k8s conformance e2e
             target: k8s-conformance-e2e
-            install_multus: false
           - name: Master kube-ovn conformance e2e
             target: kube-ovn-conformance-e2e
-            install_multus: false
           - name: Master kube-ovn connectivity e2e
             target: kube-ovn-connectivity-e2e
-            install_multus: false
           - name: Master vip conformance e2e
             target: vip-conformance-e2e
-            install_multus: false
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -274,10 +255,6 @@ jobs:
       - name: Install kube-ovn
         run: make kind-install-overlay-ipv4
 
-      - name: Install multus
-        if: matrix.suite.install_multus
-        run: make kind-install-multus
-
       - name: Run master e2e
         id: e2e
         working-directory: test/e2e/source
@@ -297,7 +274,6 @@ jobs:
   master-ha-e2e:
     name: Master ha e2e
     needs:
-      - gatekeeper
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -393,10 +369,12 @@ jobs:
 
   master-multus-and-iptables-vpc-nat-gw-e2e:
     name: Master multus and iptables vpc nat gw e2e
+    # Intentionally runs last: multus and vpc-nat-gw tests are resource-intensive and
+    # share the runner with other e2e jobs. By depending on master-standard-e2e and
+    # master-ha-e2e we throttle runner concurrency and ensure basic connectivity is
+    # validated before spinning up the heavier multus/NAT-GW stack.
     needs:
-      - kind-preflight
-      - build-kube-ovn
-      - build-vpc-nat-gateway
+      - build-vpc-nat-gateway   # real artifact dependency
       - master-standard-e2e
       - master-ha-e2e
     runs-on: ubuntu-24.04
@@ -498,19 +476,27 @@ jobs:
 
           kind load docker-image --name kube-ovn "$expected_image"
 
-      - name: Run master e2e (multus then iptables vpc nat gw)
-        id: e2e
+      - name: Run master e2e - multus conformance
+        id: e2e_multus
         working-directory: test/e2e/source
         env:
           E2E_BRANCH: ${{ env.TARGET_BRANCH }}
           E2E_IP_FAMILY: ipv4
           E2E_NETWORK_MODE: overlay
-        run: |
-          make kube-ovn-multus-conformance-e2e
-          make iptables-vpc-nat-gw-conformance-e2e
+        run: make kube-ovn-multus-conformance-e2e
+
+      - name: Run master e2e - iptables vpc nat gw conformance
+        id: e2e_iptables
+        if: success()
+        working-directory: test/e2e/source
+        env:
+          E2E_BRANCH: ${{ env.TARGET_BRANCH }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make iptables-vpc-nat-gw-conformance-e2e
 
       - name: Check kube ovn pod restarts
         if: always()
         env:
-          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e.conclusion == 'failure' }}
+          EXPORT_COMPONENT_ERROR_LOGS: ${{ steps.e2e_multus.conclusion == 'failure' || steps.e2e_iptables.conclusion == 'failure' }}
         run: make check-kube-ovn-pod-restarts
