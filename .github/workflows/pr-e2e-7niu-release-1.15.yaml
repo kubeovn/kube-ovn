@@ -60,16 +60,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: true
-          tool-cache: true
-          swap-storage: false
-
       - uses: actions/checkout@v6
 
       - name: Set K8S_VERSION from kind.mk
@@ -95,16 +85,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: true
-          tool-cache: true
-          swap-storage: false
-
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
@@ -116,6 +96,9 @@ jobs:
       - name: Install golangci-lint
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
+
+      - name: Install ginkgo
+        run: go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@${{ env.GINKGO_VERSION }}
 
       - name: Run lint and unit tests
         run: |
