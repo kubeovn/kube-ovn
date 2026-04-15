@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -218,8 +219,11 @@ func MakeVMWithMultusNetwork(name, image, size string, runStrategy *v1.VirtualMa
 	return vm
 }
 
-func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
-	vm := &v1.VirtualMachine{
+// makeBaseVM creates the common VM skeleton with a container disk, default pod
+// network, and no interface binding or cloud-init. Callers add the appropriate
+// interface mode (masquerade/bridge) and any extra disks/volumes.
+func makeBaseVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
+	return &v1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -243,20 +247,6 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 											Bus: v1.DiskBusVirtio,
 										},
 									},
-								},
-								{
-									Name: "cloudinitdisk",
-									DiskDevice: v1.DiskDevice{
-										Disk: &v1.DiskTarget{
-											Bus: v1.DiskBusVirtio,
-										},
-									},
-								},
-							},
-							Interfaces: []v1.Interface{
-								{
-									Name:                   "default",
-									InterfaceBindingMethod: v1.DefaultMasqueradeNetworkInterface().InterfaceBindingMethod,
 								},
 							},
 						},
@@ -282,19 +272,104 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 								},
 							},
 						},
-						{
-							Name: "cloudinitdisk",
-							VolumeSource: v1.VolumeSource{
-								CloudInitNoCloud: &v1.CloudInitNoCloudSource{
-									UserDataBase64: "SGkuXG4=",
-								},
-							},
-						},
 					},
 					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
 		},
 	}
+}
+
+// MakeVM creates a VM with masquerade networking and a cloud-init disk.
+func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
+	vm := makeBaseVM(name, image, size, runStrategy)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = []v1.Interface{
+		{
+			Name:                   "default",
+			InterfaceBindingMethod: v1.DefaultMasqueradeNetworkInterface().InterfaceBindingMethod,
+		},
+	}
+	vm.Spec.Template.Spec.Domain.Devices.Disks = append(vm.Spec.Template.Spec.Domain.Devices.Disks, v1.Disk{
+		Name: "cloudinitdisk",
+		DiskDevice: v1.DiskDevice{
+			Disk: &v1.DiskTarget{
+				Bus: v1.DiskBusVirtio,
+			},
+		},
+	})
+	vm.Spec.Template.Spec.Volumes = append(vm.Spec.Template.Spec.Volumes, v1.Volume{
+		Name: "cloudinitdisk",
+		VolumeSource: v1.VolumeSource{
+			CloudInitNoCloud: &v1.CloudInitNoCloudSource{
+				UserDataBase64: "SGkuXG4=",
+			},
+		},
+	})
+	return vm
+}
+
+// MakeVMBridge creates a VM with bridge networking and no cloud-init disk.
+// Cloud-init is excluded because it interferes with DHCP-based network
+// configuration in bridge mode.
+func MakeVMBridge(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
+	vm := makeBaseVM(name, image, size, runStrategy)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = []v1.Interface{
+		{
+			Name:                   "default",
+			InterfaceBindingMethod: v1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
+		},
+	}
+	return vm
+}
+
+// MakeVMLiveMigratable creates a VM that supports live migration.
+// It sets EvictionStrategy to LiveMigrate, RunStrategy to Always, and
+// increases memory to 128Mi to ensure the guest OS can fully boot and
+// configure networking.
+func MakeVMLiveMigratable(name, image, size string) *v1.VirtualMachine {
+	vm := MakeVM(name, image, size, ptr.To(v1.RunStrategyAlways))
+	vm.Spec.Template.Spec.EvictionStrategy = ptr.To(v1.EvictionStrategyLiveMigrate)
+	vm.Spec.Template.Spec.Domain.Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+	return vm
+}
+
+// MakeVMLiveMigratableBridge creates a VM that supports live migration using
+// a bridge interface instead of masquerade. Bridge mode requires the
+// AllowPodBridgeNetworkLiveMigrationAnnotation annotation on the VMI template.
+func MakeVMLiveMigratableBridge(name, image, size string) *v1.VirtualMachine {
+	vm := MakeVMBridge(name, image, size, ptr.To(v1.RunStrategyAlways))
+	vm.Spec.Template.Spec.EvictionStrategy = ptr.To(v1.EvictionStrategyLiveMigrate)
+	vm.Spec.Template.Spec.Domain.Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+	if vm.Spec.Template.ObjectMeta.Annotations == nil {
+		vm.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+	}
+	vm.Spec.Template.ObjectMeta.Annotations[v1.AllowPodBridgeNetworkLiveMigrationAnnotation] = "true"
+	return vm
+}
+
+// MakeVMLiveMigratableMultiNIC creates a VM that supports live migration with
+// both the default pod network (bridge) and an additional OVN NIC via Multus.
+// nadName should be in the form "namespace/name".
+// Cloud-init is excluded because the bridge interfaces rely on DHCP.
+func MakeVMLiveMigratableMultiNIC(name, image, size, nadName string) *v1.VirtualMachine {
+	vm := MakeVMLiveMigratableBridge(name, image, size)
+	vm.Spec.Template.Spec.Domain.Devices.Interfaces = append(
+		vm.Spec.Template.Spec.Domain.Devices.Interfaces,
+		v1.Interface{
+			Name:                   "secondary",
+			InterfaceBindingMethod: v1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
+		},
+	)
+	vm.Spec.Template.Spec.Networks = append(
+		vm.Spec.Template.Spec.Networks,
+		v1.Network{
+			Name: "secondary",
+			NetworkSource: v1.NetworkSource{
+				Multus: &v1.MultusNetwork{
+					NetworkName: nadName,
+				},
+			},
+		},
+	)
 	return vm
 }

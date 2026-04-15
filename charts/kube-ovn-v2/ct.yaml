@@ -1,3 +1,5 @@
+chart-dirs:
+  - charts/kube-ovn-v2
 validate-maintainers: false
 check-version-increment: false
 namespace: kube-system
