@@ -1,4 +1,5 @@
 {{- if .Values.bgpSpeaker.enabled }}
+{{- $bgpSpeakerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.bgpSpeaker.image) | fromYaml -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -50,8 +51,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: hostpath-init
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $bgpSpeakerImage.prefix }}{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
+          imagePullPolicy: {{ $bgpSpeakerImage.pullPolicy }}
           command:
             - sh
             - -c
@@ -68,8 +69,8 @@ spec:
               mountPath: /var/log/kube-ovn
       containers:
         - name: kube-ovn-speaker
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $bgpSpeakerImage.prefix }}{{ $bgpSpeakerImage.repository }}:{{ $bgpSpeakerImage.tag }}
+          imagePullPolicy: {{ $bgpSpeakerImage.pullPolicy }}
           command:
             - /kube-ovn/kube-ovn-speaker
           args:
