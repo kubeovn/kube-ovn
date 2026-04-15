@@ -32,7 +32,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.7.2"
+var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.8.1"
 
 func getVMPod(podClient *framework.PodClient, vmName string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
