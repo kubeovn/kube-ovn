@@ -1,0 +1,6 @@
+charts: charts/kube-ovn-v2
+validate-maintainers: false
+check-version-increment: false
+namespace: kube-system
+release-label: app.kubernetes.io/instance
+skip-clean-up: true
