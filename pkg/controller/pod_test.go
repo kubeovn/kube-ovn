@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -510,6 +511,57 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 				require.NoError(t, err, tt.description)
 				assert.Equal(t, tt.expectedSubnet, subnet.Name, tt.description)
 			}
+		})
+	}
+}
+
+func TestGetPodKubeovnNetsAllowLiveMigration(t *testing.T) {
+	defaultSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "ovn-default"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.244.0.0/24",
+			Provider:  util.OvnProvider,
+			Default:   true,
+		},
+	}
+
+	tests := []struct {
+		name               string
+		annotations        map[string]string
+		allowLiveMigration bool
+	}{
+		{
+			name:               "pod without migration annotation",
+			annotations:        map[string]string{},
+			allowLiveMigration: false,
+		},
+		{
+			name:               "pod with migration annotation",
+			annotations:        map[string]string{kubevirtv1.MigrationJobNameAnnotation: "migration-job-1"},
+			allowLiveMigration: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "virt-launcher-test",
+					Namespace:   "default",
+					Annotations: tt.annotations,
+				},
+			}
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: []*kubeovnv1.Subnet{defaultSubnet},
+				Pods:    []*corev1.Pod{pod},
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+
+			nets, err := controller.getPodKubeovnNets(pod)
+			require.NoError(t, err)
+			require.Len(t, nets, 1)
+			assert.Equal(t, tt.allowLiveMigration, nets[0].AllowLiveMigration)
 		})
 	}
 }

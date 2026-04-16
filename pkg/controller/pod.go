@@ -473,10 +473,11 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
 		podNets = append(attachmentNets, &kubeovnNet{
-			Type:         providerTypeOriginal,
-			ProviderName: util.OvnProvider,
-			Subnet:       defaultSubnet,
-			IsDefault:    true,
+			Type:               providerTypeOriginal,
+			ProviderName:       util.OvnProvider,
+			Subnet:             defaultSubnet,
+			IsDefault:          true,
+			AllowLiveMigration: pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] != "",
 		})
 	}
 
