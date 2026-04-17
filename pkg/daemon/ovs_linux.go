@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -90,11 +90,22 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			}
 		}()
 	} else {
-		hostNicName, containerNicName, pfPci, vfID, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mtu, mac)
+		hostNicName, containerNicName, pfPci, vfID, err = setupSriovInterface(containerID, deviceID, vfDriver, ifName, mac)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return nil, err
 		}
+		defer func() {
+			if err != nil {
+				// Bring the representor back up so the VF is not left blackholed
+				// when configureNic fails before configureHostNic runs.
+				if link, linkErr := netlink.LinkByName(hostNicName); linkErr == nil {
+					if linkErr = netlink.LinkSetUp(link); linkErr != nil {
+						klog.Errorf("failed to bring %s back up during rollback: %v", hostNicName, linkErr)
+					}
+				}
+			}
+		}()
 	}
 
 	ipStr := util.GetIPWithoutMask(ip)
@@ -172,7 +183,19 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mac %s %w", macAddr, err)
+		return nil, fmt.Errorf("failed to parse mac %q: %w", mac, err)
+	}
+	// For SR-IOV interfaces, set MTU on the representor after it has been added
+	// to OVS to prevent a race with concurrent CmdDel on the same VF.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	if deviceID != "" && !yusur.IsYusurSmartNic(deviceID) {
+		link, linkErr := netlink.LinkByName(hostNicName)
+		if linkErr != nil {
+			return nil, fmt.Errorf("failed to get host link %s: %w", hostNicName, linkErr)
+		}
+		if linkErr = netlink.LinkSetMTU(link, mtu); linkErr != nil {
+			return nil, fmt.Errorf("failed to set MTU on %s: %w", hostNicName, linkErr)
+		}
 	}
 	if !yusur.IsYusurSmartNic(deviceID) {
 		if err = configureHostNic(hostNicName); err != nil {
@@ -233,6 +256,18 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 
+	// For underlay subnets, wait for the localnet patch port to be created by
+	// ovn-controller before configuring the container NIC. This ensures L2
+	// connectivity is established before kernel IPv6 DAD sends Neighbor
+	// Solicitation packets, preventing false DAD success due to NS packets
+	// being black-holed when the patch port does not yet exist.
+	if localnetSubnet != "" {
+		if err := waitForLocalnetPatchPort(localnetSubnet); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+	}
+
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
 		err = fmt.Errorf("failed to open netns %q: %w", netns, err)
@@ -245,6 +280,16 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 	return finalRoutes, nil
+}
+
+func waitForLocalnetPatchPort(subnetName string) error {
+	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
+	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
+	if _, err := ovs.Exec("wait-until", "interface", patchPort, "name="+patchPort); err != nil {
+		return fmt.Errorf("failed waiting for localnet patch port %s: %w", patchPort, err)
+	}
+	klog.Infof("localnet patch port %s is ready", patchPort)
+	return nil
 }
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
@@ -323,6 +368,16 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 	} else {
 		hostNicName, _ := generateNicName(containerID, ifName)
 		nicName = hostNicName
+	}
+	// For SR-IOV interfaces, bring the representor down before removing from OVS
+	// to prevent a race where a concurrent CmdAdd could have its representor
+	// configuration undone. See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	if deviceID != "" {
+		if link, linkErr := netlink.LinkByName(nicName); linkErr == nil {
+			if linkErr = netlink.LinkSetDown(link); linkErr != nil {
+				klog.Warningf("failed to set link %s down: %v", nicName, linkErr)
+			}
+		}
 	}
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
@@ -450,7 +505,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				containerGw = u2oInterconnectionIP
 			}
 
-			for gw := range strings.SplitSeq(containerGw, ",") {
+			for _, gw := range util.SplitTrimmed(containerGw, ",") {
 				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
@@ -604,8 +659,12 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 }
 
 func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxRetry int, done chan struct{}) error {
-	ips := strings.Split(ipAddr, ",")
-	for i, gw := range strings.Split(gateway, ",") {
+	ips := util.SplitTrimmed(ipAddr, ",")
+	gws := util.SplitTrimmed(gateway, ",")
+	if len(ips) != len(gws) {
+		return fmt.Errorf("the count of ip addresses and gateways mismatch: ips %q, gateways %q", ipAddr, gateway)
+	}
+	for i, gw := range gws {
 		src := strings.Split(ips[i], "/")[0]
 		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
@@ -672,7 +731,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 	}
 
 	var toAdd []netlink.Route
-	for c := range strings.SplitSeq(joinCIDR, ",") {
+	for _, c := range util.SplitTrimmed(joinCIDR, ",") {
 		found := false
 		for _, r := range nodeNicRoutes {
 			if r.Dst.String() == c {
@@ -685,7 +744,7 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 			var src net.IP
 			var priority int
 			if protocol == kubeovnv1.ProtocolIPv4 {
-				for ip := range strings.SplitSeq(ipStr, ",") {
+				for _, ip := range util.SplitTrimmed(ipStr, ",") {
 					if util.CheckProtocol(ip) == protocol {
 						src = net.ParseIP(ip)
 						break
@@ -1665,7 +1724,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
-func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int, mac string) (string, string, string, int, error) {
+func setupSriovInterface(containerID, deviceID, vfDriver, ifName, mac string) (string, string, string, int, error) {
 	isVfioPciDriver := false
 	if vfDriver == "vfio-pci" {
 		matches, err := filepath.Glob(filepath.Join(util.VfioSysDir, "*"))
@@ -1764,17 +1823,10 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		return "", "", "", -1, fmt.Errorf("failed to rename %s to %s: %w", oldHostRepName, hostNicName, err)
 	}
 
-	link, err := netlink.LinkByName(hostNicName)
-	if err != nil {
-		return "", "", "", -1, err
-	}
-
-	// 6. set MTU on VF representor
-	if err = netlink.LinkSetMTU(link, mtu); err != nil {
-		return "", "", "", -1, fmt.Errorf("failed to set MTU on %s: %w", hostNicName, err)
-	}
-
-	// 7. set MAC address to VF
+	// 6. set MAC address to VF
+	// Note: MTU and LinkSetUp on the representor are deferred to configureNic,
+	// after OVS add-port, to prevent a CmdAdd/CmdDel race on the same VF.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
 	if err = setVfMac(deviceID, vfIndex, mac); err != nil {
 		return "", "", "", -1, err
 	}
@@ -1797,7 +1849,12 @@ func renameLink(curName, newName string) error {
 		klog.Error(err)
 		return err
 	}
-	return netlink.LinkSetUp(link)
+	// Do not bring the link up here. The representor will be brought up by
+	// configureHostNic after it has been added to OVS, to prevent a race where
+	// a concurrent CmdDel on the same VF could interfere with the representor
+	// before it is attached to br-int.
+	// See: https://github.com/ovn-org/ovn-kubernetes/pull/6106
+	return nil
 }
 
 func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) error {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -18,10 +19,15 @@ type VswitchClient struct {
 
 // NewVswitchClient creates a new vswitch client
 func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchClient, error) {
-	dbModel, err := vswitch.FullDatabaseModel()
+	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
+		vswitch.BridgeTable:      &vswitch.Bridge{},
+		vswitch.InterfaceTable:   &vswitch.Interface{},
+		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
+		vswitch.PortTable:        &vswitch.Port{},
+	})
 	if err != nil {
 		klog.Error(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create client db model: %w", err)
 	}
 
 	monitors := []client.MonitorOption{

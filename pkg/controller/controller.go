@@ -119,11 +119,16 @@ type Controller struct {
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
 
+	bgpConfLister  kubeovnlister.BgpConfLister
+	bgpConfSynced  cache.InformerSynced
+	evpnConfLister kubeovnlister.EvpnConfLister
+	evpnConfSynced cache.InformerSynced
+
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
-	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SlrInfo]
-	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SlrInfo]
+	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
+	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
 
 	vpcDNSLister           kubeovnlister.VpcDnsLister
 	vpcDNSSynced           cache.InformerSynced
@@ -382,6 +387,8 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
+	bgpConfInformer := kubeovnInformerFactory.Kubeovn().V1().BgpConves()
+	evpnConfInformer := kubeovnInformerFactory.Kubeovn().V1().EvpnConves()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -448,6 +455,11 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
 		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
 		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
+		bgpConfLister:  bgpConfInformer.Lister(),
+		bgpConfSynced:  bgpConfInformer.Informer().HasSynced,
+		evpnConfLister: evpnConfInformer.Lister(),
+		evpnConfSynced: evpnConfInformer.Informer().HasSynced,
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -638,15 +650,15 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteSwitchLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SwitchLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SwitchLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 		controller.updateSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"UpdateSwitchLBRule",
 			workqueue.NewTypedMaxOfRateLimiter(
-				workqueue.NewTypedItemExponentialFailureRateLimiter[*SlrInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
-				&workqueue.TypedBucketRateLimiter[*SlrInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewTypedItemExponentialFailureRateLimiter[*SwitchLBRuleInfo](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+				&workqueue.TypedBucketRateLimiter[*SwitchLBRuleInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 			),
 		)
 
@@ -712,6 +724,7 @@ func Run(ctx context.Context, config *Configuration) {
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
+		controller.bgpConfSynced, controller.evpnConfSynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
@@ -1571,7 +1584,7 @@ func getWorkItemKey(obj any) string {
 		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
 		return v.key
-	case *SlrInfo:
+	case *SwitchLBRuleInfo:
 		return v.Name
 	default:
 		key, err := cache.MetaNamespaceKeyFunc(obj)

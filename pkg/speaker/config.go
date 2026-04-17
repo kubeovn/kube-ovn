@@ -148,10 +148,7 @@ func ParseFlags() (*Configuration, error) {
 			kubeovnv1.ProtocolIPv4: nodeIPv4,
 			kubeovnv1.ProtocolIPv6: nodeIPv6,
 		},
-		PodIPs: map[string]net.IP{
-			kubeovnv1.ProtocolIPv4: net.ParseIP(podIPv4),
-			kubeovnv1.ProtocolIPv6: net.ParseIP(podIPv6),
-		},
+		PodIPs:                      make(map[string]net.IP, 2),
 		NeighborAs:                  *argNeighborAs,
 		AuthPassword:                *argAuthPassword,
 		HoldTime:                    ht,
@@ -167,6 +164,21 @@ func ParseFlags() (*Configuration, error) {
 		NatGwMode:                   *argNatGwMode,
 		EnableMetrics:               *argEnableMetrics,
 		LogPerm:                     *argLogPerm,
+	}
+
+	if podIPv4 != "" {
+		if ip := net.ParseIP(podIPv4); ip != nil {
+			config.PodIPs[kubeovnv1.ProtocolIPv4] = ip
+		} else {
+			return nil, fmt.Errorf("failed to parse pod IPv4 address %q", podIPv4)
+		}
+	}
+	if podIPv6 != "" {
+		if ip := net.ParseIP(podIPv6); ip != nil {
+			config.PodIPs[kubeovnv1.ProtocolIPv6] = ip
+		} else {
+			return nil, fmt.Errorf("failed to parse pod IPv6 address %q", podIPv6)
+		}
 	}
 
 	if err := config.validateRequiredFlags(); err != nil {

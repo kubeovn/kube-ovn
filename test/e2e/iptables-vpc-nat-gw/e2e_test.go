@@ -168,6 +168,7 @@ func setupVpcNatGwTestEnvironment(
 	provider string,
 	skipNADSetup bool,
 	annotations map[string]string,
+	gwNamespace string,
 ) {
 	ginkgo.GinkgoHelper()
 
@@ -199,6 +200,9 @@ func setupVpcNatGwTestEnvironment(
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
+	if gwNamespace != "" {
+		vpcNatGw.Spec.Namespace = gwNamespace
+	}
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -534,7 +538,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		podClient = f.PodClient()
 	})
 
-	framework.ConformanceIt("[1] change gateway image and custom annotations", func() {
+	framework.ConformanceIt("[1] change gateway image, custom annotations and custom namespace", func() {
 		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16")
 		overlaySubnetV4Cidr := "10.0.2.0/24"
 		overlaySubnetV4Gw := "10.0.2.1"
@@ -556,6 +560,17 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			framework.Logf("skip image update for this case because E2E_VPC_NAT_GW_IMAGE is empty or unchanged")
 		}
 
+		// Create a custom namespace for the NAT gateway pod.
+		// Register cleanup BEFORE setupVpcNatGwTestEnvironment so that the namespace
+		// is deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
+		customNs := "ns-" + framework.RandomSuffix()
+		ginkgo.By("Creating custom namespace " + customNs + " for NAT gateway pod")
+		_ = f.NamespaceClient().Create(framework.MakeNamespace(customNs, nil, nil))
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom namespace " + customNs)
+			f.NamespaceClient().DeleteSync(customNs)
+		})
+
 		// Test custom annotations on VpcNatGateway
 		customAnnotations := map[string]string{
 			"e2e-test.kubeovn.io/custom-annotation": "test-value",
@@ -569,10 +584,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			customAnnotations,
+			customNs, // gwNamespace: create NAT gateway pod in custom namespace
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		pod := f.PodClientNS(metav1.NamespaceSystem).GetPod(vpcNatGwPodName)
+		ginkgo.By("Verifying NAT gateway pod is in namespace " + customNs)
+		pod := f.PodClientNS(customNs).GetPod(vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
+		framework.ExpectEqual(pod.Namespace, customNs)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
 		// Verify custom annotations are present on the pod
@@ -580,6 +598,39 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		for k, v := range customAnnotations {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, k, v)
 		}
+
+		// Create an IptablesEIP with spec.namespace pointing to customNs,
+		// verify it becomes ready and its namespace matches the gw pod namespace.
+		ginkgo.By("Creating IptablesEIP with spec.namespace=" + customNs)
+		nsEipName := "ns-eip-" + framework.RandomSuffix()
+		nsEip := framework.MakeIptablesEIP(nsEipName, "", "", "", vpcNatGwName, "", "")
+		nsEip.Spec.Namespace = customNs
+		_ = iptablesEIPClient.CreateSync(nsEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up ns eip " + nsEipName)
+			iptablesEIPClient.DeleteSync(nsEipName)
+		})
+		ginkgo.By("Verifying IptablesEIP is ready and its namespace matches " + customNs)
+		nsEipCR := waitForIptablesEIPReady(iptablesEIPClient, nsEipName, 60*time.Second)
+		framework.ExpectNotNil(nsEipCR, "IptablesEIP with custom namespace should be ready")
+		framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
+			"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
+
+		// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
+		// it from the referenced VpcNatGateway's spec.namespace.
+		ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
+		autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
+		autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(autoNsEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
+			iptablesEIPClient.DeleteSync(autoNsEipName)
+		})
+		ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
+		gomega.Eventually(func() string {
+			return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
+		}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
+			"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
 
 		// recover the image
 		cm.Data["image"] = oldImage
@@ -620,6 +671,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
 		)
 
 		ginkgo.By("Creating iptables vip for fip")
@@ -880,8 +932,16 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectEqual(shareFipShouldFail.Status.Ready, false)
 
 		// make sure eip is shared
+		// Use Eventually: after SNAT CreateSync returns the controller may not have finished
+		// patching EIP.Status.Nat yet (informer cache lag between patchSnatLabel and
+		// patchEipStatus). The controller schedules a delayed reset to correct this.
 		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
-		framework.ExpectEqual(shareEip.Status.Nat, strings.Join(nats, ","))
+		expectedNat := strings.Join(nats, ",")
+		ginkgo.By("Waiting for shareEip Status.Nat to reflect all nat types: " + expectedNat)
+		gomega.Eventually(func() string {
+			shareEip = iptablesEIPClient.Get(sharedEipName)
+			return shareEip.Status.Nat
+		}, 10*time.Second, 2*time.Second).Should(gomega.Equal(expectedNat))
 
 		// Delete SNAT and EIP to verify iptables rule and hairpin cleanup.
 		// Deletion must happen unconditionally; hairpin verification is conditional on chain support.
@@ -951,6 +1011,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
 		)
 
 		ginkgo.By("1. Get initial external subnet status")
@@ -1155,6 +1216,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
 		)
 
 		ginkgo.By("1. Create a VIP for FIP")
@@ -1399,6 +1461,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			dockerExtNet1Name, networkAttachDefName, net1NicName,
 			externalSubnetProvider,
 			true, nil,
+			"", // gwNamespace: use default (PodNamespace)
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 

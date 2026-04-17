@@ -73,11 +73,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
 	}
 
-	result := generateCNIResult(response, args.Netns)
+	result, err := generateCNIResult(response, args.Netns)
+	if err != nil {
+		return err
+	}
 	return types.PrintResult(&result, cniVersion)
 }
 
-func generateCNIResult(cniResponse *request.CniResponse, netns string) current.Result {
+func generateCNIResult(cniResponse *request.CniResponse, netns string) (current.Result, error) {
 	result := current.Result{
 		CNIVersion: current.ImplementedSpecVersion,
 		DNS:        cniResponse.DNS,
@@ -92,14 +95,17 @@ func generateCNIResult(cniResponse *request.CniResponse, netns string) current.R
 
 	addRoutes := len(result.Routes) == 0
 	for _, ipCfg := range cniResponse.IPs {
-		ip, route := assignAddress(ipCfg)
+		ip, route, err := assignAddress(ipCfg)
+		if err != nil {
+			return result, fmt.Errorf("failed to assign address: %w", err)
+		}
 		result.IPs = append(result.IPs, ip)
 		if addRoutes && route != nil {
 			result.Routes = append(result.Routes, route)
 		}
 	}
 	result.Interfaces = []*current.Interface{&podIface}
-	return result
+	return result, nil
 }
 
 func parseRoutes(routes []request.Route) []*types.Route {
@@ -112,7 +118,10 @@ func parseRoutes(routes []request.Route) []*types.Route {
 				r.Destination = "::/0"
 			}
 		}
-		parsedRoutes[i] = &types.Route{GW: net.ParseIP(r.Gateway)}
+		parsedRoutes[i] = &types.Route{}
+		if gw := net.ParseIP(r.Gateway); gw != nil {
+			parsedRoutes[i].GW = gw
+		}
 		if _, cidr, err := net.ParseCIDR(r.Destination); err == nil {
 			parsedRoutes[i].Dst = *cidr
 		}
@@ -197,18 +206,41 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", key+" is required in CNI_ARGS")
 }
 
-func assignAddress(cfg request.IPConfig) (*current.IPConfig, *types.Route) {
-	_, cidr, _ := net.ParseCIDR(cfg.CIDR)
+func assignAddress(cfg request.IPConfig) (*current.IPConfig, *types.Route, error) {
+	_, cidr, err := net.ParseCIDR(cfg.CIDR)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse CIDR %q: %w", cfg.CIDR, err)
+	}
 
 	var ipAddr, gwIP net.IP
 	var defaultDst net.IPNet
 	if cfg.Protocol == kubeovnv1.ProtocolIPv6 {
-		ipAddr = net.ParseIP(cfg.IP).To16()
-		gwIP = net.ParseIP(cfg.Gateway).To16()
+		if parsed := net.ParseIP(cfg.IP); parsed != nil {
+			ipAddr = parsed.To16()
+		} else {
+			return nil, nil, fmt.Errorf("failed to parse IP %q", cfg.IP)
+		}
+		if cfg.Gateway != "" {
+			if parsed := net.ParseIP(cfg.Gateway); parsed != nil {
+				gwIP = parsed.To16()
+			} else {
+				return nil, nil, fmt.Errorf("failed to parse gateway %q", cfg.Gateway)
+			}
+		}
 		defaultDst = net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}
 	} else {
-		ipAddr = net.ParseIP(cfg.IP).To4()
-		gwIP = net.ParseIP(cfg.Gateway).To4()
+		if parsed := net.ParseIP(cfg.IP); parsed != nil {
+			ipAddr = parsed.To4()
+		} else {
+			return nil, nil, fmt.Errorf("failed to parse IP %q", cfg.IP)
+		}
+		if cfg.Gateway != "" {
+			if parsed := net.ParseIP(cfg.Gateway); parsed != nil {
+				gwIP = parsed.To4()
+			} else {
+				return nil, nil, fmt.Errorf("failed to parse gateway %q", cfg.Gateway)
+			}
+		}
 		defaultDst = net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)}
 	}
 
@@ -219,8 +251,8 @@ func assignAddress(cfg request.IPConfig) (*current.IPConfig, *types.Route) {
 	}
 
 	var route *types.Route
-	if gw := net.ParseIP(cfg.Gateway); gw != nil {
+	if gwIP != nil {
 		route = &types.Route{Dst: defaultDst, GW: gwIP}
 	}
-	return ip, route
+	return ip, route, nil
 }

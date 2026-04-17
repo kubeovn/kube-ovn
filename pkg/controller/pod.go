@@ -1651,7 +1651,11 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 	}
 
 	for ip := range strings.SplitSeq(nodeTunlIP, ",") {
-		nodeTunlIPAddr = append(nodeTunlIPAddr, net.ParseIP(ip))
+		parsed := net.ParseIP(ip)
+		if parsed == nil {
+			return nil, fmt.Errorf("failed to parse tunnel IP %q on node %s", ip, node.Name)
+		}
+		nodeTunlIPAddr = append(nodeTunlIPAddr, parsed)
 	}
 	return nodeTunlIPAddr, nil
 }
@@ -2898,9 +2902,6 @@ func natGwNameFromStatefulSetOwner(pod *v1.Pod) string {
 
 func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) error {
 	if pod == nil {
-		return nil
-	}
-	if pod.Namespace != c.config.PodNamespace {
 		return nil
 	}
 

@@ -268,6 +268,41 @@ func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLoc
 	return nil
 }
 
+// SetLoadBalancerCtFlush sets the LB's ct_flush option to flush conntrack entries when backends are removed
+func (c *OVNNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if ctFlush {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["ct_flush"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["ct_flush"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set ct_flush of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
 // DeleteLoadBalancers delete several loadbalancer once
 func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
 	var (

@@ -392,6 +392,88 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	)
 }
 
+func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-ct-flush"
+
+	err := nbClient.CreateLoadBalancer(lbName, "udp")
+	require.NoError(t, err)
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+
+	oldOptions := make(map[string]string, 1)
+	oldOptions["affinity_timeout"] = "30"
+	lb.Options = oldOptions
+	err = nbClient.UpdateLoadBalancer(lb, &lb.Options)
+	require.NoError(t, err)
+
+	t.Run("set ct_flush to true", func(t *testing.T) {
+		err := nbClient.SetLoadBalancerCtFlush(lbName, true)
+		require.NoError(t, err)
+
+		lb, err := nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Equal(t, "true", lb.Options["ct_flush"])
+		require.Equal(t, "30", lb.Options["affinity_timeout"])
+	})
+
+	t.Run("set ct_flush to true repeatedly", func(t *testing.T) {
+		err := nbClient.SetLoadBalancerCtFlush(lbName, true)
+		require.NoError(t, err)
+
+		lb, err := nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Equal(t, "true", lb.Options["ct_flush"])
+	})
+
+	t.Run("set ct_flush to false", func(t *testing.T) {
+		err := nbClient.SetLoadBalancerCtFlush(lbName, false)
+		require.NoError(t, err)
+
+		lb, err := nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Equal(t, "false", lb.Options["ct_flush"])
+	})
+
+	t.Run("set ct_flush when multiple load balancer exist",
+		func(t *testing.T) {
+			lbName := "test-set-lb-ct-flush-dup"
+
+			lb1 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolUDP),
+			}
+			ops, err := nbClient.Create(lb1)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			lb2 := &ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     lbName,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolUDP),
+			}
+			ops, err = nbClient.Create(lb2)
+			require.NoError(t, err)
+			require.NotNil(t, ops)
+			err = nbClient.Transact("lb-add", ops)
+			require.NoError(t, err)
+
+			err = nbClient.SetLoadBalancerCtFlush(lbName, true)
+			require.ErrorContains(t, err, "more than one load balancer with same name")
+		},
+	)
+}
+
 func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	t := suite.T()
 	t.Parallel()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"slices"
@@ -167,7 +168,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 			MaxSize: 1048576,
 			SetID:   ipsetName,
 			Type:    ipsets.IPSetTypeHashNet,
-		}, strings.Split(rule.Match.SrcIPs, ","))
+		}, util.SplitTrimmed(rule.Match.SrcIPs, ","))
 	}
 
 	if rule.Match.DstIPs != "" {
@@ -176,7 +177,7 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 			MaxSize: 1048576,
 			SetID:   ipsetName,
 			Type:    ipsets.IPSetTypeHashNet,
-		}, strings.Split(rule.Match.DstIPs, ","))
+		}, util.SplitTrimmed(rule.Match.DstIPs, ","))
 	}
 }
 
@@ -281,7 +282,7 @@ func (c *Controller) setPolicyRouting() error {
 }
 
 func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalEgressGateway, ",")
+	egw := util.SplitTrimmed(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -314,7 +315,7 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway stri
 }
 
 func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalEgressGateway, ",")
+	egw := util.SplitTrimmed(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -818,7 +819,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		subnetNames := set.New[string]()
-		for name, subnetCidr := range subnetCidrs {
+		for _, name := range slices.Sorted(maps.Keys(subnetCidrs)) {
+			subnetCidr := subnetCidrs[name]
 			subnetNames.Insert(name)
 			iptablesRules = append(iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
@@ -895,7 +897,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
-		for cidr, ip := range centralGwNatIPs {
+		for _, cidr := range slices.Sorted(maps.Keys(centralGwNatIPs)) {
+			ip := centralGwNatIPs[cidr]
 			if util.CheckProtocol(cidr) != protocol {
 				continue
 			}
@@ -1027,7 +1030,8 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 		return err
 	}
 
-	for chainName, natPolicyRuleIptableRules := range natPolicyRuleIptablesMap {
+	for _, chainName := range slices.Sorted(maps.Keys(natPolicyRuleIptablesMap)) {
+		natPolicyRuleIptableRules := natPolicyRuleIptablesMap[chainName]
 		if err = c.updateIptablesChain(ipt, NAT, chainName, "", natPolicyRuleIptableRules); err != nil {
 			klog.Errorf("failed to update chain %s with rules %v: %v", chainName, natPolicyRuleIptableRules, err)
 			return err
@@ -1628,7 +1632,10 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				tableID:  subnet.Spec.PolicyRoutingTableID,
 			}
 
-			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+			egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+			if len(egw) == 0 {
+				continue
+			}
 			if util.CheckProtocol(egw[0]) == protocol {
 				meta.gateway = egw[0]
 				if util.CheckProtocol(ips[0]) == protocol {
@@ -1681,7 +1688,10 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			priority: subnet.Spec.PolicyRoutingPriority,
 			tableID:  subnet.Spec.PolicyRoutingTableID,
 		}
-		egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+		egw := util.SplitTrimmed(subnet.Spec.ExternalEgressGateway, ",")
+		if len(egw) == 0 {
+			continue
+		}
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
 			if len(egw) == 2 {
 				meta.gateway = egw[1]

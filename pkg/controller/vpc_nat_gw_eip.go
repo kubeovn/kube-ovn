@@ -62,6 +62,18 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	c.delIptablesEipQueue.Add(eip)
 }
 
+// natEipNamespace returns the namespace where the NAT gateway pod for the given EIP resides.
+// Uses eip.Spec.Namespace when set; falls back to the controller's own PodNamespace.
+func (c *Controller) natEipNamespace(eip *kubeovnv1.IptablesEIP) string {
+	if eip.Spec.Namespace != "" {
+		return eip.Spec.Namespace
+	}
+	// Derive the namespace from the referenced VpcNatGateway so that EIPs without an
+	// explicit spec.namespace always locate the Pod in the correct namespace.
+	// natGwNamespaceByName already falls back to c.config.PodNamespace when the GW is not found.
+	return c.natGwNamespaceByName(eip.Spec.NatGwDp)
+}
+
 func (c *Controller) handleAddIptablesEip(key string) error {
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
@@ -100,7 +112,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 
 	// make sure vpc nat gw pod is ready before eip allocation
-	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp); err != nil {
+	if _, err := c.getNatGwPod(cachedEip.Spec.NatGwDp, c.natEipNamespace(cachedEip)); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -132,7 +144,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 
-	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4); err != nil {
+	if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4, c.natEipNamespace(cachedEip)); err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
 	}
@@ -143,7 +155,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 			return err
 		}
 	}
-	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name); err != nil {
+	// Resolve the gateway namespace for spec.namespace backfill inside createOrUpdateEipCR.
+	gwNamespace := c.natGwNamespaceByName(cachedEip.Spec.NatGwDp)
+	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name, gwNamespace); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
@@ -226,7 +240,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				klog.Error(err)
 				return err
 			}
-			if err = c.deleteEipInPod(cachedEip.Spec.NatGwDp, v4ipCidr); err != nil {
+			if err = c.deleteEipInPod(cachedEip.Spec.NatGwDp, v4ipCidr, c.natEipNamespace(cachedEip)); err != nil {
 				klog.Errorf("failed to clean eip '%s' in pod, %v", key, err)
 				return err
 			}
@@ -307,7 +321,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		cachedEip.Status.Redo != "" &&
 		cachedEip.Status.IP != "" &&
 		cachedEip.DeletionTimestamp.IsZero() {
-		gwPod, err := c.getNatGwPod(cachedEip.Spec.NatGwDp)
+		gwPod, err := c.getNatGwPod(cachedEip.Spec.NatGwDp, c.natEipNamespace(cachedEip))
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -325,7 +339,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Error(err)
 			return err
 		}
-		if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4); err != nil {
+		if err = c.createEipInPod(cachedEip.Spec.NatGwDp, addrV4, c.natEipNamespace(cachedEip)); err != nil {
 			klog.Errorf("failed to create eip, %v", err)
 			return err
 		}
@@ -375,8 +389,8 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 	return eip, nil
 }
 
-func (c *Controller) createEipInPod(dp, addrV4 string) error {
-	gwPod, err := c.getNatGwPod(dp)
+func (c *Controller) createEipInPod(dp, addrV4, ns string) error {
+	gwPod, err := c.getNatGwPod(dp, ns)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -384,8 +398,8 @@ func (c *Controller) createEipInPod(dp, addrV4 string) error {
 	return c.execNatGwRules(gwPod, natGwEipAdd, []string{addrV4})
 }
 
-func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
-	gwPod, err := c.getNatGwPod(dp)
+func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
+	gwPod, err := c.getNatGwPod(dp, ns)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -406,7 +420,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 func (c *Controller) addOrUpdateEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
-		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
+		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, c.natEipNamespace(eip), rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
 			klog.Errorf("failed to set %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
@@ -446,7 +460,7 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 func (c *Controller) delEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
 	for _, rule := range rules {
-		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction); err != nil {
+		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, c.natEipNamespace(eip), rule.Direction); err != nil {
 			klog.Errorf("failed to del %s eip '%s' qos in pod, %v", rule.Direction, eip.Name, err)
 			return err
 		}
@@ -470,7 +484,7 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 }
 
 func (c *Controller) addEipQoSInPod(
-	dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
+	dp, v4ip, ns string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
 	burst string,
 ) error {
 	if v4ip == "" {
@@ -478,7 +492,7 @@ func (c *Controller) addEipQoSInPod(
 		return nil
 	}
 	var operation string
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, ns)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -497,9 +511,9 @@ func (c *Controller) addEipQoSInPod(
 	return c.execNatGwRules(gwPod, operation, addRules)
 }
 
-func (c *Controller) delEipQoSInPod(dp, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
+func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
-	gwPod, err := c.getNatGwPod(dp)
+	gwPod, err := c.getNatGwPod(dp, ns)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -582,7 +596,7 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	return v4, v6, nil
 }
 
-func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
+func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, externalNet, gwNamespace string) error {
 	needCreate := false
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
@@ -612,6 +626,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				MacAddress: mac,
 				NatGwDp:    natGwDp,
 				QoSPolicy:  qos,
+				Namespace:  gwNamespace,
 			},
 			Status: kubeovnv1.IptablesEIPStatus{
 				IP:        v4ip,
@@ -646,6 +661,10 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
 			eip.Spec.MacAddress = mac
+			// Auto-populate spec.namespace from VpcNatGateway for NAMESPACE column visibility.
+			if eip.Spec.Namespace == "" && gwNamespace != "" {
+				eip.Spec.Namespace = gwNamespace
+			}
 			// Update with labels and spec in one call
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)

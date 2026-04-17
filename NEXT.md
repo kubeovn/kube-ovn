@@ -2,15 +2,26 @@
 
 This document lists the features merged into the master branch for the next minor release.
 
-## Post-v1.15.0
+## Post-v1.16.0
+
+## v1.16.0
 
 - NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)
 - Support static IP/MAC for multiple interfaces on the same logical switch. [#6060](https://github.com/kubeovn/kube-ovn/pull/6060)
 - MetalLB underlay integration now supports IPv6 and dual-stack. [#6159](https://github.com/kubeovn/kube-ovn/pull/6159)
 - KubeVirt live-migration multi-chassis options now apply to all VM NICs, not just the primary one. [#6241](https://github.com/kubeovn/kube-ovn/pull/6241)
 - Add human-readable descriptions to all Kube-OVN CRD fields for better `kubectl explain` output. [#6133](https://github.com/kubeovn/kube-ovn/pull/6133) [#6147](https://github.com/kubeovn/kube-ovn/pull/6147)
+- Support BGP and EVPN (L3VPN) for VPC Egress Gateway, running FRR in the egress gateway Pod. [#6224](https://github.com/kubeovn/kube-ovn/pull/6224)
+- Support per-pod NIC granular DHCP control via annotations, overriding subnet-level DHCP settings. [#6475](https://github.com/kubeovn/kube-ovn/pull/6475)
+- Extend SecurityGroup API with tiers, larger priority range (1-16384), localAddress and port matches. [#6330](https://github.com/kubeovn/kube-ovn/pull/6330)
+- Use BigInt for SubnetStatus IP count fields to support large address ranges. [#6403](https://github.com/kubeovn/kube-ovn/pull/6403)
+- Improve hairpin logic to support FIP, SNAT from any CIDR within the VPC and LoadBalancers. [#6445](https://github.com/kubeovn/kube-ovn/pull/6445)
 - VPC NAT Gateway
   - Support user-defined annotations on NAT gateway Pod template. [#6256](https://github.com/kubeovn/kube-ovn/pull/6256)
+  - Allow SNAT EIP to FIP EIP traffic. [#6329](https://github.com/kubeovn/kube-ovn/pull/6329)
+  - Allow any EIP to share external subnet gateway in one native VLAN. [#6426](https://github.com/kubeovn/kube-ovn/pull/6426)
+- VPC Egress Gateway
+  - Support custom resources and bandwidth limits. [#6407](https://github.com/kubeovn/kube-ovn/pull/6407)
 - Interconnection
   - Add vendor ID to transit switches to avoid conflicts with other OVN controllers. [#6186](https://github.com/kubeovn/kube-ovn/pull/6186)
 - Reliability
@@ -27,8 +38,9 @@ This document lists the features merged into the master branch for the next mino
   - Introduce `extraEnv` variable for all components. [#6142](https://github.com/kubeovn/kube-ovn/pull/6142)
   - Add `affinity` and `nodeSelector` support for ovs-ovn and ovs-ovn-dpdk DaemonSets. [#6308](https://github.com/kubeovn/kube-ovn/pull/6308)
   - Add `external-gateway-config-ns` option for controller. [#6211](https://github.com/kubeovn/kube-ovn/pull/6211)
+  - Introduce ServiceMonitor and labels to services. [#6340](https://github.com/kubeovn/kube-ovn/pull/6340)
 
-## Post-v1.14.0
+## v1.15.0
 
 - ACL log supports ratelimiting. [#5938](https://github.com/kubeovn/kube-ovn/pull/5938)
 - Subnet with centralized gateway now supports nodeSelectors. [#5956](https://github.com/kubeovn/kube-ovn/pull/5956)

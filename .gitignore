@@ -76,3 +76,5 @@ cmd/daemon/daemon
 
 .context/*
 yamls/gen
+# FRR build artifacts (exclude root-level frr directory, not cmd/frr)
+/frr/

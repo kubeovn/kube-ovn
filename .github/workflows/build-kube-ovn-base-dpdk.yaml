@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - master
+          - release-1.16
           - release-1.15
           - release-1.14
           - release-1.13
@@ -27,6 +28,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.16
           - release-1.15
           - release-1.14
           - release-1.13
@@ -63,6 +65,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.16
           - release-1.15
           - release-1.14
           - release-1.13

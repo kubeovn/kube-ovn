@@ -19,7 +19,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-type SlrInfo struct {
+type SwitchLBRuleInfo struct {
 	Name       string
 	Namespace  string
 	IsRecreate bool
@@ -30,7 +30,7 @@ func generateSvcName(name string) string {
 	return "slr-" + name
 }
 
-func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
+func NewSwitchLBRuleInfo(slr *kubeovnv1.SwitchLBRule) *SwitchLBRuleInfo {
 	namespace := slr.Spec.Namespace
 	if namespace == "" {
 		namespace = metav1.NamespaceDefault
@@ -41,7 +41,7 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
 		vips = append(vips, util.JoinHostPort(slr.Spec.Vip, port.Port))
 	}
 
-	return &SlrInfo{
+	return &SwitchLBRuleInfo{
 		Name:      slr.Name,
 		Namespace: namespace,
 		Vips:      vips,
@@ -58,7 +58,7 @@ func (c *Controller) enqueueUpdateSwitchLBRule(oldObj, newObj any) {
 	var (
 		oldSlr = oldObj.(*kubeovnv1.SwitchLBRule)
 		newSlr = newObj.(*kubeovnv1.SwitchLBRule)
-		info   = NewSlrInfo(oldSlr)
+		info   = NewSwitchLBRuleInfo(oldSlr)
 	)
 
 	if oldSlr.ResourceVersion == newSlr.ResourceVersion {
@@ -92,7 +92,7 @@ func (c *Controller) enqueueDeleteSwitchLBRule(obj any) {
 
 	key := cache.MetaObjectToName(slr).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
-	c.delSwitchLBRuleQueue.Add(NewSlrInfo(slr))
+	c.delSwitchLBRuleQueue.Add(NewSwitchLBRuleInfo(slr))
 }
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
@@ -203,7 +203,7 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
+func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
 
 	var (
@@ -284,6 +284,15 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 
 		belongsToThisVpc := false
 		referencedByOtherVpc := false
+		if len(lbs) == 0 && vpcLBNames != nil && subnetForVip != "" {
+			// Orphaned LBHC: no LB references it anymore (e.g. the service
+			// handler already removed the LB→LBHC reference during concurrent
+			// deletion). Only claim ownership when the LBHC's subnet matches
+			// the SLR's own subnet, preventing cross-VPC mis-deletion.
+			if lbhcSubnet := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; lbhcSubnet == subnetForVip {
+				belongsToThisVpc = true
+			}
+		}
 		for _, lb := range lbs {
 			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
 				referencedByOtherVpc = true
@@ -358,7 +367,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateSwitchLBRule(info *SlrInfo) error {
+func (c *Controller) handleUpdateSwitchLBRule(info *SwitchLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateSwitchLBRule %s", info.Name)
 	if info.IsRecreate {
 		if err := c.handleDelSwitchLBRule(info); err != nil {
