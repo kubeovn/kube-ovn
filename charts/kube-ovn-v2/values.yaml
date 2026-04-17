@@ -241,9 +241,15 @@ features:
 # @section -- CNI configuration
 # @default -- "{}"
 cni:
-  # -- Location of the CNI configuration on the node.
+  # -- Location of the CNI configuration on the node. This value controls both
+  # the hostPath source and the pod mountPath for the CNI configuration.
   # @section -- CNI configuration
   configDirectory: "/etc/cni/net.d"
+  # -- Deprecated: compatibility alias retained for chart consumers upgrading
+  # from releases that still set this value. Use `configDirectory` instead.
+  # Keep for at least one release so upgrades do not silently ignore existing configuration.
+  # @section -- CNI configuration
+  mountConfigDirectory: false
   # -- Location on the node where the agent will inject the Kube-OVN binary.
   # @section -- CNI configuration
   binaryDirectory: "/opt/cni/bin"

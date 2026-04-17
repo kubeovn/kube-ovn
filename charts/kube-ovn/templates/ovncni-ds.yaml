@@ -80,7 +80,7 @@ spec:
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
-          - mountPath: {{ .Values.cni_conf.CNI_CONF_DIR }}
+          - mountPath: {{ if and .Values.cni_conf.MOUNT_CNI_CONF_DIR (ne .Values.cni_conf.MOUNT_CNI_CONF_DIR false) }}{{ .Values.cni_conf.MOUNT_CNI_CONF_DIR }}{{ else }}{{ .Values.cni_conf.CNI_CONF_DIR }}{{ end }}
             name: cni-conf
           {{- if .Values.cni_conf.MOUNT_LOCAL_BIN_DIR }}
           - mountPath: /usr/local/bin

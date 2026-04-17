@@ -127,6 +127,10 @@ cni_conf:
   CNI_CONF_FILE: "/kube-ovn/01-kube-ovn.conflist"
   LOCAL_BIN_DIR: "/usr/local/bin"
   MOUNT_LOCAL_BIN_DIR: false
+  # -- Deprecated: compatibility alias retained for chart consumers upgrading
+  # from releases that still set this value. Keep for at least one release
+  # so upgrades do not silently ignore existing configuration.
+  MOUNT_CNI_CONF_DIR: false
   NON_PRIMARY_CNI: false
 
 kubelet_conf:
