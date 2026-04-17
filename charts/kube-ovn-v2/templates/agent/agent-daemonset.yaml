@@ -82,7 +82,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
-          - --cni-conf-dir={{ .Values.cni.mountConfigDirectory }}
+          - --cni-conf-dir={{ .Values.cni.configDirectory }}
           - --cni-conf-file={{ .Values.cni.localConfigFile }}
           - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
         env:
@@ -96,7 +96,7 @@ spec:
         volumeMounts:
           - mountPath: /opt/cni/bin
             name: cni-bin
-          - mountPath: {{ .Values.cni.mountConfigDirectory }}
+          - mountPath: {{ .Values.cni.configDirectory }}
             name: cni-conf
           {{- if .Values.cni.mountToolingDirectory }}
           - mountPath: /usr/local/bin
