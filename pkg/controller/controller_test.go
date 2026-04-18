@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/keymutex"
 
@@ -180,9 +179,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
-	if err := podInformer.Informer().AddIndexers(cache.Indexers{IndexPodByNode: indexPodByNode}); err != nil {
-		return nil, err
-	}
+	endpointSliceInformer := kubeInformerFactory.Discovery().V1().EndpointSlices()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
 		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -229,7 +226,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespacesLister:        namespaceInformer.Lister(),
 		nodesLister:             nodeInformer.Lister(),
 		podsLister:              podInformer.Lister(),
-		podIndexer:              podInformer.Informer().GetIndexer(),
+		endpointSlicesLister:    endpointSliceInformer.Lister(),
 		vpcsLister:              vpcInformer.Lister(),
 		vpcSynced:               alwaysReady,
 		subnetsLister:           subnetInformer.Lister(),
@@ -258,6 +255,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		KubeClient:           kubeClient,
 		PodNamespace:         metav1.NamespaceSystem,
 		AttachNetClient:      nadClient,
+	}
+
+	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+		return nil, err
 	}
 
 	// Start informers and wait for sync

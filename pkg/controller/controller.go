@@ -711,7 +711,7 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
-		klog.Fatalf("failed to set up informer indexers: %v", err)
+		util.LogFatalAndExit(err, "failed to set up informer indexers")
 	}
 
 	defer controller.shutdown()
