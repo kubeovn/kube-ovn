@@ -85,6 +85,7 @@ type Controller struct {
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
+	podIndexer             cache.Indexer
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
@@ -244,6 +245,7 @@ type Controller struct {
 
 	endpointSlicesLister          discoveryv1.EndpointSliceLister
 	endpointSlicesSynced          cache.InformerSynced
+	epsIndexer                    cache.Indexer
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
 
@@ -252,6 +254,7 @@ type Controller struct {
 
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
+	npIndexer     cache.Indexer
 	updateNpQueue workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue workqueue.TypedRateLimitingInterface[string]
 	npKeyMutex    keymutex.KeyMutex
@@ -671,6 +674,7 @@ func Run(ctx context.Context, config *Configuration) {
 	if config.EnableNP {
 		controller.npsLister = npInformer.Lister()
 		controller.npsSynced = npInformer.Informer().HasSynced
+		controller.npIndexer = npInformer.Informer().GetIndexer()
 		controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
 		controller.deleteNpQueue = newTypedRateLimitingQueue[string]("DeleteNetworkPolicy", nil)
 		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
@@ -704,6 +708,10 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
 		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
+	}
+
+	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+		klog.Fatalf("failed to set up informer indexers: %v", err)
 	}
 
 	defer controller.shutdown()

@@ -411,20 +411,16 @@ func (c *Controller) findStaticEndpointSlicesInNamespace(namespace string) ([]*d
 func (c *Controller) findEndpointSlicesForServices(namespace string, services []*v1.Service) ([]*discoveryv1.EndpointSlice, error) {
 	var endpointSlices []*discoveryv1.EndpointSlice
 
-	// Retrieve all the endpointSlices in the namespace of the services
-	eps, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Everything())
-	if err != nil {
-		err := fmt.Errorf("couldn't list endpointslices in namespace %s: %w", namespace, err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	// Find the EndpointSlices part of each service
+	// Look up EndpointSlices for each service via the byServiceName indexer.
 	for _, service := range services {
-		for _, endpointSlice := range eps {
-			if getServiceForEndpointSlice(endpointSlice) == service.Name {
-				endpointSlices = append(endpointSlices, endpointSlice)
-			}
+		objs, err := c.epsIndexer.ByIndex(IndexEPSByService, namespace+"/"+service.Name)
+		if err != nil {
+			err := fmt.Errorf("couldn't query endpointslices for service %s/%s: %w", namespace, service.Name, err)
+			klog.Error(err)
+			return nil, err
+		}
+		for _, obj := range objs {
+			endpointSlices = append(endpointSlices, obj.(*discoveryv1.EndpointSlice))
 		}
 	}
 

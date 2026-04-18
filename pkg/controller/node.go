@@ -791,10 +791,15 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 	return errMsg
 }
 
-func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
-	ports := make([]string, 0, len(pods))
-	for _, pod := range pods {
-		if pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || !isPodAlive(pod) {
+func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
+	objs, err := c.podIndexer.ByIndex(IndexPodByNode, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	ports := make([]string, 0, len(objs))
+	for _, obj := range objs {
+		pod := obj.(*v1.Pod)
+		if pod.Spec.HostNetwork || !isPodAlive(pod) {
 			continue
 		}
 
@@ -847,23 +852,12 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	klog.V(3).Infoln("start to check node port-group status")
 	var networkPolicyExists bool
 	if c.config.EnableNP {
-		np, err := c.npsLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list network policies: %v", err)
-			return err
-		}
-		networkPolicyExists = len(np) != 0
+		networkPolicyExists = len(c.npIndexer.ListKeys()) != 0
 	}
 
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("list nodes: %v", err)
-		return err
-	}
-
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list pods, %v", err)
 		return err
 	}
 
@@ -887,7 +881,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 		nodeIP := strings.Trim(fmt.Sprintf("%s,%s", nodeIPv4, nodeIPv6), ",")
 
-		nodePorts, err := c.fetchPodsOnNode(node.Name, pods)
+		nodePorts, err := c.fetchPodsOnNode(node.Name)
 		if err != nil {
 			klog.Errorf("fetch pods for node %v: %v", node.Name, err)
 			return err
