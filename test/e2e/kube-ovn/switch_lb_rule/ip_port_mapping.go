@@ -250,7 +250,6 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slrName)
-		serviceClient.Delete(svcName)
 		stsClient.Delete(stsName)
 		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
 	})
@@ -356,7 +355,6 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slrName)
-		serviceClient.Delete(svcName)
 		stsClient.Delete(stsName)
 		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
 	})
@@ -495,8 +493,6 @@ var _ = framework.Describe("[group:slr-ip-port-mapping]", func() {
 		ginkgo.By("Cleanup")
 		switchLBRuleClient.DeleteSync(slr1Name)
 		switchLBRuleClient.DeleteSync(slr2Name)
-		serviceClient.Delete(svc1Name)
-		serviceClient.Delete(svc2Name)
 		stsClient.Delete(stsName)
 		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
 	})
