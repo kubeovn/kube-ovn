@@ -337,6 +337,84 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted via fallback path", subnetName)
 	})
 
+	t.Run("service missing from lister falls back to info.Subnet", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+
+		// Simulate a racing service-delete event that removed the backing service
+		// from both the informer cache and the API before the SLR delete worker ran.
+		svcName := generateSvcName(slrName)
+		svc, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
+
+		// With no LBHC matching info.Vips and the service gone, the handler must
+		// still clean up the VIP via the subnet recorded on info.Subnet.
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+
+		info := &SwitchLBRuleInfo{
+			Name:      slrName,
+			Namespace: namespace,
+			Subnet:    subnetName,
+			Vips:      []string{vip1},
+		}
+		err = fc.fakeController.handleDelSwitchLBRule(info)
+		require.NoError(t, err)
+
+		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
+		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted via info.Subnet fallback", subnetName)
+	})
+
+	t.Run("service missing from lister still honours info.VPC scoping", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+
+		svcName := generateSvcName(slrName)
+		svc, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
+
+		// Matching LBHC is referenced by a DIFFERENT VPC's LB; without info.VPC the
+		// handler would fall back to unscoped deletion and remove a health check
+		// that still belongs to another VPC.  With info.VPC set we must skip it.
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
+			[]ovnnb.LoadBalancerHealthCheck{{
+				UUID:        lbhcUUID1,
+				Vip:         vip1,
+				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
+			}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(
+			[]ovnnb.LoadBalancer{{
+				Name:        "vpc-other-tcp-load",
+				HealthCheck: []string{lbhcUUID1},
+			}}, nil,
+		)
+		// Fallback VIP-by-subnet lookup still finds the foreign LBHC, so the VIP
+		// must stay.
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
+			[]ovnnb.LoadBalancerHealthCheck{{
+				UUID:        lbhcUUID1,
+				Vip:         vip1,
+				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
+			}}, nil,
+		)
+
+		info := &SwitchLBRuleInfo{
+			Name:      slrName,
+			Namespace: namespace,
+			Subnet:    subnetName,
+			VPC:       vpcName,
+			Vips:      []string{vip1},
+		}
+		err = fc.fakeController.handleDelSwitchLBRule(info)
+		require.NoError(t, err)
+
+		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
+		require.NoError(t, err, "VIP %s should still exist (other VPC owns the LBHC)", subnetName)
+	})
+
 	t.Run("multiple orphaned LBHCs for same subnet should all be cleaned up", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 
