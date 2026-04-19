@@ -343,23 +343,7 @@ func (c *Controller) initLoadBalancer() error {
 			return err
 		}
 
-		lbPatch := struct {
-			Status struct {
-				TCPLoadBalancer         string `json:"tcpLoadBalancer"`
-				TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
-				UDPLoadBalancer         string `json:"udpLoadBalancer"`
-				UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
-				SctpLoadBalancer        string `json:"sctpLoadBalancer"`
-				SctpSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
-			} `json:"status"`
-		}{}
-		lbPatch.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		lbPatch.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		lbPatch.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		lbPatch.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		lbPatch.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		lbPatch.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-		body, err := json.Marshal(lbPatch)
+		body, err := buildVpcLBStatusPatch(vpcLb)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -370,6 +354,31 @@ func (c *Controller) initLoadBalancer() error {
 		}
 	}
 	return nil
+}
+
+// buildVpcLBStatusPatch builds a merge-patch body that updates only the six
+// LB-name fields of VpcStatus. It deliberately excludes every other field so
+// the merge patch cannot overwrite state owned by InitDefaultVpc (Standby,
+// Default, Router, DefaultLogicalSwitch) when the caller reads from a stale
+// lister cache.
+func buildVpcLBStatusPatch(vpcLb *VpcLoadBalancer) ([]byte, error) {
+	patch := struct {
+		Status struct {
+			TCPLoadBalancer         string `json:"tcpLoadBalancer"`
+			TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
+			UDPLoadBalancer         string `json:"udpLoadBalancer"`
+			UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
+			SctpLoadBalancer        string `json:"sctpLoadBalancer"`
+			SctpSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
+		} `json:"status"`
+	}{}
+	patch.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
+	patch.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
+	patch.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
+	patch.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
+	patch.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
+	patch.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
+	return json.Marshal(patch)
 }
 
 func (c *Controller) InitIPAM() error {
