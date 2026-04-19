@@ -1063,30 +1063,34 @@ func BenchmarkPodInformerTrim(b *testing.B) {
 
 func reportRetainedBytesPerPod(b *testing.B, transform func(any) (any, error)) {
 	const N = 1000
-	runtime.GC()
-	var before runtime.MemStats
-	runtime.ReadMemStats(&before)
+	for b.Loop() {
+		runtime.GC()
+		var before runtime.MemStats
+		runtime.ReadMemStats(&before)
 
-	pods := make([]*corev1.Pod, N)
-	for i := range N {
-		p := fullyPopulatedPod()
-		// Make names unique so strings actually allocate rather than getting interned.
-		p.Name = fmt.Sprintf("pod-%05d", i)
-		p.Namespace = fmt.Sprintf("ns-%03d", i%100)
-		p.UID = uuid.NewUUID()
-		ret, err := transform(p)
-		if err != nil {
-			b.Fatal(err)
+		pods := make([]*corev1.Pod, N)
+		for i := range N {
+			p := fullyPopulatedPod()
+			// Make names unique so strings actually allocate rather than getting interned.
+			p.Name = fmt.Sprintf("pod-%05d", i)
+			p.Namespace = fmt.Sprintf("ns-%03d", i%100)
+			p.UID = uuid.NewUUID()
+			ret, err := transform(p)
+			if err != nil {
+				b.Fatal(err)
+			}
+			pods[i] = ret.(*corev1.Pod)
 		}
-		pods[i] = ret.(*corev1.Pod)
-	}
 
-	runtime.GC()
-	var after runtime.MemStats
-	runtime.ReadMemStats(&after)
-	retained := after.HeapAlloc - before.HeapAlloc
-	b.ReportMetric(float64(retained)/float64(N), "bytes/pod")
-	runtime.KeepAlive(pods)
+		runtime.GC()
+		var after runtime.MemStats
+		runtime.ReadMemStats(&after)
+		// HeapAlloc is unsigned; clamp so a shrinking heap between snapshots
+		// does not wrap around to a huge bogus retained size.
+		retained := max(int64(after.HeapAlloc)-int64(before.HeapAlloc), 0)
+		b.ReportMetric(float64(retained)/float64(N), "bytes/pod")
+		runtime.KeepAlive(pods)
+	}
 }
 
 func TestTrimPodForControllerNonPod(t *testing.T) {
