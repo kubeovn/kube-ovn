@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -296,7 +297,18 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	return nil
 }
 
-// InitLoadBalancer init the default tcp and udp cluster loadbalancer
+// InitLoadBalancer creates the default TCP/UDP/SCTP cluster load balancers in
+// OVN for every existing VPC and records their names in each VPC's status so
+// the subnet worker can attach them to its logical switch on its first
+// reconcile.
+//
+// The status write uses a targeted merge patch that contains only the six
+// LB-name fields. An earlier version serialized the whole VpcStatus via
+// vpc.Status.Bytes() and raced InitDefaultVpc: if the VPC lister cache still
+// held the pre-UpdateStatus copy (Standby=false) the whole-status merge patch
+// would silently overwrite the Standby/Default/Router/DefaultLogicalSwitch
+// fields that InitDefaultVpc had just written, deadlocking the subnet worker.
+// A field-scoped patch avoids that class of overwrite entirely.
 func (c *Controller) initLoadBalancer() error {
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
@@ -305,8 +317,7 @@ func (c *Controller) initLoadBalancer() error {
 	}
 
 	for _, cachedVpc := range vpcs {
-		vpc := cachedVpc.DeepCopy()
-		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
+		vpcLb := c.GenVpcLoadBalancer(cachedVpc.Name)
 		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 			klog.Error(err)
 			return err
@@ -332,23 +343,42 @@ func (c *Controller) initLoadBalancer() error {
 			return err
 		}
 
-		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-		bytes, err := vpc.Status.Bytes()
+		body, err := buildVpcLBStatusPatch(vpcLb)
 		if err != nil {
 			klog.Error(err)
 			return err
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), cachedVpc.Name, types.MergePatchType, body, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Error(err)
 			return err
 		}
 	}
 	return nil
+}
+
+// buildVpcLBStatusPatch builds a merge-patch body that updates only the six
+// LB-name fields of VpcStatus. It deliberately excludes every other field so
+// the merge patch cannot overwrite state owned by InitDefaultVpc (Standby,
+// Default, Router, DefaultLogicalSwitch) when the caller reads from a stale
+// lister cache.
+func buildVpcLBStatusPatch(vpcLb *VpcLoadBalancer) ([]byte, error) {
+	patch := struct {
+		Status struct {
+			TCPLoadBalancer         string `json:"tcpLoadBalancer"`
+			TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
+			UDPLoadBalancer         string `json:"udpLoadBalancer"`
+			UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
+			SctpLoadBalancer        string `json:"sctpLoadBalancer"`
+			SctpSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
+		} `json:"status"`
+	}{}
+	patch.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
+	patch.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
+	patch.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
+	patch.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
+	patch.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
+	patch.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
+	return json.Marshal(patch)
 }
 
 func (c *Controller) InitIPAM() error {
