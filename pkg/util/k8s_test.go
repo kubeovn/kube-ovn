@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +16,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -831,4 +834,274 @@ func TestTrimManagedFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fullyPopulatedPod() *corev1.Pod {
+	alwaysRestart := corev1.ContainerRestartPolicyAlways
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "demo",
+			Namespace:   "default",
+			Labels:      map[string]string{"app": "demo"},
+			Annotations: map[string]string{"foo": "bar"},
+			Finalizers:  []string{"kubeovn.io/controller"},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "apps/v1",
+				Kind:       "StatefulSet",
+				Name:       "demo-sts",
+				UID:        "uid-1",
+			}},
+			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kubelet"}},
+		},
+		Spec: corev1.PodSpec{
+			NodeName:                     "node-1",
+			HostNetwork:                  false,
+			RestartPolicy:                corev1.RestartPolicyAlways,
+			ServiceAccountName:           "demo-sa",
+			SchedulerName:                "default-scheduler",
+			PriorityClassName:            "system-cluster-critical",
+			Priority:                     ptr.To[int32](2000000000),
+			Hostname:                     "demo",
+			Subdomain:                    "demo-svc",
+			AutomountServiceAccountToken: new(true),
+			SecurityContext:              &corev1.PodSecurityContext{RunAsUser: ptr.To[int64](1000)},
+			NodeSelector:                 map[string]string{"kubernetes.io/os": "linux"},
+			Tolerations: []corev1.Toleration{
+				{Key: "node-role.kubernetes.io/control-plane", Operator: corev1.TolerationOpExists},
+			},
+			Volumes: []corev1.Volume{
+				{Name: "data", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			},
+			InitContainers: []corev1.Container{{
+				Name:            "sidecar",
+				Image:           "busybox:1.36",
+				Command:         []string{"sh", "-c", "echo hi"},
+				Args:            []string{"a", "b"},
+				Env:             []corev1.EnvVar{{Name: "X", Value: "1"}},
+				VolumeMounts:    []corev1.VolumeMount{{Name: "data", MountPath: "/data"}},
+				LivenessProbe:   &corev1.Probe{ProbeHandler: corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(8080)}}},
+				SecurityContext: &corev1.SecurityContext{RunAsNonRoot: new(true)},
+				RestartPolicy:   &alwaysRestart,
+				Ports:           []corev1.ContainerPort{{Name: "sidecar-http", ContainerPort: 9100}},
+			}},
+			Containers: []corev1.Container{{
+				Name:            "app",
+				Image:           "nginx:1.27",
+				Command:         []string{"nginx"},
+				Args:            []string{"-g", "daemon off;"},
+				WorkingDir:      "/",
+				Env:             []corev1.EnvVar{{Name: "FOO", Value: "BAR"}},
+				EnvFrom:         []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "cm"}}}},
+				VolumeMounts:    []corev1.VolumeMount{{Name: "data", MountPath: "/srv"}},
+				LivenessProbe:   &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}}},
+				ReadinessProbe:  &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}}},
+				Lifecycle:       &corev1.Lifecycle{PreStop: &corev1.LifecycleHandler{Exec: &corev1.ExecAction{Command: []string{"sleep", "1"}}}},
+				SecurityContext: &corev1.SecurityContext{Privileged: new(false)},
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")},
+				},
+				Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 80}},
+			}},
+		},
+		Status: corev1.PodStatus{
+			Phase:  corev1.PodRunning,
+			HostIP: "10.0.0.1",
+			PodIP:  "10.244.0.5",
+			PodIPs: []corev1.PodIP{{IP: "10.244.0.5"}},
+			Reason: "",
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:         "app",
+				Image:        "nginx:1.27",
+				ImageID:      "sha256:abc",
+				ContainerID:  "containerd://abc",
+				RestartCount: 3,
+				Ready:        true,
+				Started:      new(true),
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{
+					StartedAt: metav1.Now(),
+				}},
+			}},
+			InitContainerStatuses: []corev1.ContainerStatus{{
+				Name:         "sidecar",
+				RestartCount: 1,
+			}},
+			Conditions: []corev1.PodCondition{{
+				Type:               corev1.PodReady,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				LastProbeTime:      metav1.Now(),
+				Reason:             "Ready",
+				Message:            "all good",
+			}},
+			Message:           "noisy",
+			NominatedNodeName: "node-1",
+			QOSClass:          corev1.PodQOSBurstable,
+		},
+	}
+}
+
+func TestTrimPodForController(t *testing.T) {
+	pod := fullyPopulatedPod()
+
+	ret, err := TrimPodForController(pod)
+	require.NoError(t, err)
+	trimmed, ok := ret.(*corev1.Pod)
+	require.True(t, ok)
+
+	// preserved metadata and spec fields required by the controller
+	require.Equal(t, "demo", trimmed.Name)
+	require.Equal(t, map[string]string{"app": "demo"}, trimmed.Labels)
+	require.Equal(t, map[string]string{"foo": "bar"}, trimmed.Annotations)
+	require.Len(t, trimmed.OwnerReferences, 1)
+	require.Equal(t, "StatefulSet", trimmed.OwnerReferences[0].Kind)
+	require.Equal(t, []string{"kubeovn.io/controller"}, trimmed.Finalizers)
+	require.Nil(t, trimmed.ManagedFields)
+	require.Equal(t, "node-1", trimmed.Spec.NodeName)
+	require.Equal(t, corev1.RestartPolicyAlways, trimmed.Spec.RestartPolicy)
+
+	// container name and ports preserved (NamedPort lookup)
+	require.Len(t, trimmed.Spec.Containers, 1)
+	require.Equal(t, "app", trimmed.Spec.Containers[0].Name)
+	require.Equal(t, "http", trimmed.Spec.Containers[0].Ports[0].Name)
+	require.EqualValues(t, 80, trimmed.Spec.Containers[0].Ports[0].ContainerPort)
+
+	// init-container RestartPolicy and ports preserved (restartable sidecar)
+	require.Len(t, trimmed.Spec.InitContainers, 1)
+	require.NotNil(t, trimmed.Spec.InitContainers[0].RestartPolicy)
+	require.Equal(t, corev1.ContainerRestartPolicyAlways, *trimmed.Spec.InitContainers[0].RestartPolicy)
+	require.Equal(t, "sidecar-http", trimmed.Spec.InitContainers[0].Ports[0].Name)
+
+	// status fields required for pod alive / vpc-nat-gw restart checks
+	require.Equal(t, corev1.PodRunning, trimmed.Status.Phase)
+	require.Equal(t, "10.244.0.5", trimmed.Status.PodIP)
+	require.Equal(t, []corev1.PodIP{{IP: "10.244.0.5"}}, trimmed.Status.PodIPs)
+	require.Equal(t, "10.0.0.1", trimmed.Status.HostIP)
+	require.Len(t, trimmed.Status.ContainerStatuses, 1)
+	require.Equal(t, "app", trimmed.Status.ContainerStatuses[0].Name)
+	require.EqualValues(t, 3, trimmed.Status.ContainerStatuses[0].RestartCount)
+
+	// condition type/status/lastTransitionTime preserved
+	require.Len(t, trimmed.Status.Conditions, 1)
+	require.Equal(t, corev1.PodReady, trimmed.Status.Conditions[0].Type)
+	require.Equal(t, corev1.ConditionTrue, trimmed.Status.Conditions[0].Status)
+	require.False(t, trimmed.Status.Conditions[0].LastTransitionTime.IsZero())
+
+	// trimmed: spec volumes / tolerations / affinity / node selector / scheduler name
+	require.Nil(t, trimmed.Spec.Volumes)
+	require.Nil(t, trimmed.Spec.Tolerations)
+	require.Nil(t, trimmed.Spec.NodeSelector)
+	require.Empty(t, trimmed.Spec.SchedulerName)
+	require.Empty(t, trimmed.Spec.PriorityClassName)
+	require.Nil(t, trimmed.Spec.Priority)
+	require.Empty(t, trimmed.Spec.ServiceAccountName)
+	require.Empty(t, trimmed.Spec.Hostname)
+	require.Empty(t, trimmed.Spec.Subdomain)
+	require.Nil(t, trimmed.Spec.SecurityContext)
+	require.Nil(t, trimmed.Spec.AutomountServiceAccountToken)
+
+	// trimmed: container command/args/env/volumeMounts/probes/securityContext
+	c0 := trimmed.Spec.Containers[0]
+	require.Empty(t, c0.Image)
+	require.Nil(t, c0.Command)
+	require.Nil(t, c0.Args)
+	require.Empty(t, c0.WorkingDir)
+	require.Nil(t, c0.Env)
+	require.Nil(t, c0.EnvFrom)
+	require.Nil(t, c0.VolumeMounts)
+	require.Nil(t, c0.LivenessProbe)
+	require.Nil(t, c0.ReadinessProbe)
+	require.Nil(t, c0.Lifecycle)
+	require.Nil(t, c0.SecurityContext)
+	require.Empty(t, c0.ImagePullPolicy)
+	require.Equal(t, corev1.ResourceRequirements{}, c0.Resources)
+
+	// trimmed: init container fields except preserved ones
+	ic0 := trimmed.Spec.InitContainers[0]
+	require.Empty(t, ic0.Image)
+	require.Nil(t, ic0.Command)
+	require.Nil(t, ic0.Env)
+	require.Nil(t, ic0.VolumeMounts)
+	require.Nil(t, ic0.LivenessProbe)
+	require.Nil(t, ic0.SecurityContext)
+
+	// container status: State preserved (vpc-nat-gw redo path reads
+	// State.Running.StartedAt); other heavy fields trimmed.
+	cs0 := trimmed.Status.ContainerStatuses[0]
+	require.NotNil(t, cs0.State.Running)
+	require.False(t, cs0.State.Running.StartedAt.IsZero())
+	require.Equal(t, corev1.ContainerState{}, cs0.LastTerminationState)
+	require.False(t, cs0.Ready)
+	require.Empty(t, cs0.Image)
+	require.Empty(t, cs0.ImageID)
+	require.Empty(t, cs0.ContainerID)
+	require.Nil(t, cs0.Started)
+
+	// trimmed: init container statuses / ephemeral / QOS / messages
+	require.Nil(t, trimmed.Status.InitContainerStatuses)
+	require.Empty(t, trimmed.Status.QOSClass)
+	require.Empty(t, trimmed.Status.Message)
+	require.Empty(t, trimmed.Status.NominatedNodeName)
+
+	// trimmed: condition probe time / reason / message
+	require.True(t, trimmed.Status.Conditions[0].LastProbeTime.IsZero())
+	require.Empty(t, trimmed.Status.Conditions[0].Reason)
+	require.Empty(t, trimmed.Status.Conditions[0].Message)
+}
+
+// BenchmarkPodInformerTrim estimates the per-pod in-memory retained size
+// after each transform by building N typical pods, running the transform,
+// forcing GC, and dividing HeapAlloc delta by N.
+func BenchmarkPodInformerTrim(b *testing.B) {
+	b.Run("TrimManagedFields", func(b *testing.B) {
+		reportRetainedBytesPerPod(b, TrimManagedFields)
+	})
+	b.Run("TrimPodForController", func(b *testing.B) {
+		reportRetainedBytesPerPod(b, TrimPodForController)
+	})
+}
+
+func reportRetainedBytesPerPod(b *testing.B, transform func(any) (any, error)) {
+	const N = 1000
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	pods := make([]*corev1.Pod, N)
+	for i := range N {
+		p := fullyPopulatedPod()
+		// Make names unique so strings actually allocate rather than getting interned.
+		p.Name = fmt.Sprintf("pod-%05d", i)
+		p.Namespace = fmt.Sprintf("ns-%03d", i%100)
+		p.UID = uuid.NewUUID()
+		ret, err := transform(p)
+		if err != nil {
+			b.Fatal(err)
+		}
+		pods[i] = ret.(*corev1.Pod)
+	}
+
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	retained := after.HeapAlloc - before.HeapAlloc
+	b.ReportMetric(float64(retained)/float64(N), "bytes/pod")
+	runtime.KeepAlive(pods)
+}
+
+func TestTrimPodForControllerNonPod(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:          "s1",
+			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "ctrl"}},
+		},
+	}
+	ret, err := TrimPodForController(subnet)
+	require.NoError(t, err)
+	accessor, err := meta.Accessor(ret)
+	require.NoError(t, err)
+	require.Empty(t, accessor.GetManagedFields())
+
+	_, err = TrimPodForController("not-an-object")
+	require.Error(t, err)
 }

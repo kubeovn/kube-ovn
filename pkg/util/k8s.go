@@ -247,3 +247,130 @@ func TrimManagedFields(obj any) (any, error) {
 	}
 	return obj, nil
 }
+
+// TrimPodForController is an informer transform that strips pod fields the
+// controller never reads, in addition to clearing managed fields. It shrinks
+// the pod informer cache footprint on large clusters.
+//
+// Preserved (required by controller code paths):
+//   - ObjectMeta (labels, annotations, ownerReferences, finalizers, deletionTimestamp, ...)
+//   - Spec.NodeName, Spec.HostNetwork, Spec.RestartPolicy
+//   - Spec.Containers[].Name and .Ports (named-port policy lookup)
+//   - Spec.InitContainers[].Name, .Ports, .RestartPolicy (restartable sidecars)
+//   - Status.Phase, .PodIP, .PodIPs, .HostIP, .Reason
+//   - Status.ContainerStatuses[].{Name, RestartCount, State} (vpc-nat-gw
+//     restart detection and the FIP/DNAT/SNAT/EIP redo path which reads
+//     State.Running.StartedAt)
+//   - Status.Conditions[].{Type, Status, LastTransitionTime}
+//
+// Non-pod objects fall through to TrimManagedFields.
+func TrimPodForController(obj any) (any, error) {
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		return TrimManagedFields(obj)
+	}
+
+	pod.ManagedFields = nil
+
+	pod.Spec.Volumes = nil
+	pod.Spec.EphemeralContainers = nil
+	pod.Spec.Tolerations = nil
+	pod.Spec.Affinity = nil
+	pod.Spec.NodeSelector = nil
+	pod.Spec.TopologySpreadConstraints = nil
+	pod.Spec.ReadinessGates = nil
+	pod.Spec.HostAliases = nil
+	pod.Spec.ImagePullSecrets = nil
+	pod.Spec.ResourceClaims = nil
+	pod.Spec.SchedulingGates = nil
+	pod.Spec.Overhead = nil
+	pod.Spec.SecurityContext = nil
+	pod.Spec.DNSConfig = nil
+	pod.Spec.PriorityClassName = ""
+	pod.Spec.Priority = nil
+	pod.Spec.PreemptionPolicy = nil
+	pod.Spec.RuntimeClassName = nil
+	pod.Spec.SchedulerName = ""
+	pod.Spec.ServiceAccountName = ""
+	pod.Spec.DeprecatedServiceAccount = ""
+	pod.Spec.AutomountServiceAccountToken = nil
+	pod.Spec.Subdomain = ""
+	pod.Spec.Hostname = ""
+	pod.Spec.SetHostnameAsFQDN = nil
+
+	trimPodContainers(pod.Spec.Containers)
+	trimPodContainers(pod.Spec.InitContainers)
+
+	pod.Status.InitContainerStatuses = nil
+	pod.Status.EphemeralContainerStatuses = nil
+	pod.Status.ResourceClaimStatuses = nil
+	pod.Status.QOSClass = ""
+	pod.Status.StartTime = nil
+	pod.Status.Message = ""
+	pod.Status.NominatedNodeName = ""
+	pod.Status.Resize = ""
+
+	trimPodContainerStatuses(pod.Status.ContainerStatuses)
+	trimPodConditions(pod.Status.Conditions)
+
+	return pod, nil
+}
+
+func trimPodContainers(containers []v1.Container) {
+	for i := range containers {
+		c := &containers[i]
+		c.Image = ""
+		c.Command = nil
+		c.Args = nil
+		c.WorkingDir = ""
+		c.Env = nil
+		c.EnvFrom = nil
+		c.Resources = v1.ResourceRequirements{}
+		c.ResizePolicy = nil
+		// c.RestartPolicy is intentionally preserved: restartable init-containers
+		// are detected by the named-port code path.
+		c.VolumeMounts = nil
+		c.VolumeDevices = nil
+		c.LivenessProbe = nil
+		c.ReadinessProbe = nil
+		c.StartupProbe = nil
+		c.Lifecycle = nil
+		c.TerminationMessagePath = ""
+		c.TerminationMessagePolicy = ""
+		c.ImagePullPolicy = ""
+		c.SecurityContext = nil
+		c.Stdin = false
+		c.StdinOnce = false
+		c.TTY = false
+	}
+}
+
+func trimPodContainerStatuses(statuses []v1.ContainerStatus) {
+	for i := range statuses {
+		s := &statuses[i]
+		// s.State is preserved: the VPC NAT gateway redo path reads
+		// State.Running.StartedAt to decide whether to reapply iptables
+		// rules after a gateway pod restart.
+		s.LastTerminationState = v1.ContainerState{}
+		s.Ready = false
+		s.Image = ""
+		s.ImageID = ""
+		s.ContainerID = ""
+		s.Started = nil
+		s.AllocatedResources = nil
+		s.Resources = nil
+		s.VolumeMounts = nil
+		s.User = nil
+		s.AllocatedResourcesStatus = nil
+	}
+}
+
+func trimPodConditions(conds []v1.PodCondition) {
+	for i := range conds {
+		c := &conds[i]
+		c.LastProbeTime = metav1.Time{}
+		c.Reason = ""
+		c.Message = ""
+		c.ObservedGeneration = 0
+	}
+}
