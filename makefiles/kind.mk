@@ -614,7 +614,7 @@ kind-install-cilium-chaining-%:
 		--namespace kube-system \
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
-		--set kubeProxyReplacement=false \
+		--set kubeProxyReplacement=true \
 		--set image.useDigest=false \
 		--set operator.image.useDigest=false \
 		--set operator.replicas=1 \
