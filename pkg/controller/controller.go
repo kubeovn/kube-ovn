@@ -351,7 +351,7 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
-		kubeinformers.WithTransform(util.TrimManagedFields),
+		kubeinformers.WithTransform(util.TrimPodForController),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
