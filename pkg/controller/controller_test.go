@@ -179,6 +179,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	endpointSliceInformer := kubeInformerFactory.Discovery().V1().EndpointSlices()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
 		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -225,6 +226,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespacesLister:        namespaceInformer.Lister(),
 		nodesLister:             nodeInformer.Lister(),
 		podsLister:              podInformer.Lister(),
+		endpointSlicesLister:    endpointSliceInformer.Lister(),
 		vpcsLister:              vpcInformer.Lister(),
 		vpcSynced:               alwaysReady,
 		subnetsLister:           subnetInformer.Lister(),
@@ -253,6 +255,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		KubeClient:           kubeClient,
 		PodNamespace:         metav1.NamespaceSystem,
 		AttachNetClient:      nadClient,
+	}
+
+	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+		return nil, err
 	}
 
 	// Start informers and wait for sync
