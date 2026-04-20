@@ -44,13 +44,14 @@ func (c *Controller) setGatewayBandwidth() error {
 		return err
 	}
 	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
+	ingressBurst, egressBurst := node.Annotations[util.IngressBurstAnnotation], node.Annotations[util.EgressBurstAnnotation]
 	ifaceID := util.NodeLspName(c.config.NodeName)
 	if ingress == "" && egress == "" {
 		if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
 			return nil
 		}
 	}
-	return ovs.SetInterfaceBandwidth("", "", ifaceID, egress, ingress)
+	return ovs.SetInterfaceBandwidth("", "", ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
 func (c *Controller) setICGateway() error {

@@ -42,7 +42,7 @@ import (
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
-func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, shortSharedDir, socketName, socketConsumption string) error {
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, ingressBurst, egressBurst, shortSharedDir, socketName, socketConsumption string) error {
 	sharedDir := filepath.Join("/var", shortSharedDir)
 	hostNicName, _ := generateNicName(containerID, ifName)
 
@@ -68,10 +68,10 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %w: %q", err, output)
 	}
-	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress)
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -203,7 +203,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			return nil, err
 		}
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

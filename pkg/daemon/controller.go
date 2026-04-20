@@ -711,6 +711,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
+		oldPod.Annotations[util.IngressBurstAnnotation] != newPod.Annotations[util.IngressBurstAnnotation] ||
+		oldPod.Annotations[util.EgressBurstAnnotation] != newPod.Annotations[util.EgressBurstAnnotation] ||
 		oldPod.Annotations[util.NetemQosLatencyAnnotation] != newPod.Annotations[util.NetemQosLatencyAnnotation] ||
 		oldPod.Annotations[util.NetemQosJitterAnnotation] != newPod.Annotations[util.NetemQosJitterAnnotation] ||
 		oldPod.Annotations[util.NetemQosLimitAnnotation] != newPod.Annotations[util.NetemQosLimitAnnotation] ||
@@ -730,6 +732,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			if oldPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] ||
+				oldPod.Annotations[fmt.Sprintf(util.IngressBurstAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.IngressBurstAnnotationTemplate, provider)] ||
+				oldPod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)] ||
 				oldPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] != newPod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)] ||

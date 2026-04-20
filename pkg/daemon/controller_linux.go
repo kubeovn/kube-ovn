@@ -885,7 +885,9 @@ func (c *Controller) handleUpdatePod(key string) error {
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 	ovsIngress := pod.Annotations[util.EgressRateAnnotation]
 	ovsEgress := pod.Annotations[util.IngressRateAnnotation]
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress)
+	ovsIngressBurst := pod.Annotations[util.EgressBurstAnnotation]
+	ovsEgressBurst := pod.Annotations[util.IngressBurstAnnotation]
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress, ovsIngressBurst, ovsEgressBurst)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -919,7 +921,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
 
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID,
+				pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)],
+				pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)],
+				pod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)],
+				pod.Annotations[fmt.Sprintf(util.IngressBurstAnnotationTemplate, provider)])
 			if err != nil {
 				klog.Error(err)
 				return err

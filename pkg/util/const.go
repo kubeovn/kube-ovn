@@ -81,6 +81,8 @@ const (
 	VlanIDAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
+	IngressBurstAnnotationTemplate  = "%s.kubernetes.io/ingress_burst"
+	EgressBurstAnnotationTemplate   = "%s.kubernetes.io/egress_burst"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
 	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
 	VfRepresentorNameTemplate       = "%s.kubernetes.io/vf_representor"
@@ -102,8 +104,10 @@ const (
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
-	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
-	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"
+	IngressRateAnnotation  = "ovn.kubernetes.io/ingress_rate"
+	EgressRateAnnotation   = "ovn.kubernetes.io/egress_rate"
+	IngressBurstAnnotation = "ovn.kubernetes.io/ingress_burst"
+	EgressBurstAnnotation  = "ovn.kubernetes.io/egress_burst"
 
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"

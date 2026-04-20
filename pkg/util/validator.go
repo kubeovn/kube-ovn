@@ -333,19 +333,37 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		}
 	}
 
-	ingress := annotations[IngressRateAnnotation]
-	if ingress != "" {
-		if _, err := strconv.Atoi(ingress); err != nil {
-			klog.Error(err)
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", ingress, IngressRateAnnotation))
-		}
+	// Validate rate and burst annotations across both the unscoped keys
+	// (ovn.kubernetes.io/{ingress,egress}_{rate,burst}) and any
+	// provider-scoped variants used for multus attachment networks
+	// ({provider}.kubernetes.io/{ingress,egress}_{rate,burst}). All forms
+	// share the same suffix, so a single scan covers everything. Rate
+	// annotations historically only validated the unscoped key, leaving
+	// typos on attachment networks silently parsed as 0 and disabling the
+	// limit; treating both rates and bursts uniformly closes that gap.
+	bandwidthSuffixes := []string{
+		".kubernetes.io/ingress_rate",
+		".kubernetes.io/egress_rate",
+		".kubernetes.io/ingress_burst",
+		".kubernetes.io/egress_burst",
 	}
-
-	egress := annotations[EgressRateAnnotation]
-	if egress != "" {
-		if _, err := strconv.Atoi(egress); err != nil {
-			klog.Error(err)
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", egress, EgressRateAnnotation))
+	for k, v := range annotations {
+		if v == "" {
+			continue
+		}
+		matched := false
+		for _, s := range bandwidthSuffixes {
+			if strings.HasSuffix(k, s) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", v, k))
 		}
 	}
 
