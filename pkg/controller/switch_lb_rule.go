@@ -22,6 +22,8 @@ import (
 type SwitchLBRuleInfo struct {
 	Name       string
 	Namespace  string
+	Subnet     string
+	VPC        string
 	IsRecreate bool
 	Vips       []string
 }
@@ -44,6 +46,8 @@ func NewSwitchLBRuleInfo(slr *kubeovnv1.SwitchLBRule) *SwitchLBRuleInfo {
 	return &SwitchLBRuleInfo{
 		Name:      slr.Name,
 		Namespace: namespace,
+		Subnet:    slr.Annotations[util.LogicalSwitchAnnotation],
+		VPC:       slr.Annotations[util.LogicalRouterAnnotation],
 		Vips:      vips,
 	}
 }
@@ -227,6 +231,16 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		if vpcForSlr = svc.Annotations[util.VpcAnnotation]; vpcForSlr == "" {
 			vpcForSlr = svc.Annotations[util.LogicalRouterAnnotation]
 		}
+	}
+	// Fall back to the SLR's own annotations snapshotted at enqueue time. This keeps
+	// the VIP cleanup path robust when a concurrent service-delete event races ahead
+	// of the SLR delete worker and removes the service from the lister before we can
+	// read its annotations.
+	if subnetForVip == "" {
+		subnetForVip = info.Subnet
+	}
+	if vpcForSlr == "" {
+		vpcForSlr = info.VPC
 	}
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
