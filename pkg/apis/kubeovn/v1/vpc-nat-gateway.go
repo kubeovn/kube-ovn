@@ -59,8 +59,7 @@ type VpcNatGatewaySpec struct {
 	// External subnets accessible through the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets"`
 	// LAN IP address for the NAT gateway. This field is immutable after creation.
-	// Deprecated: Use InternalIPs for multi-instance HA support. This field is kept for backward compatibility.
-	// When Replicas > 1, InternalIPs must be specified instead.
+	// Used only when Replicas = 1 (non-HA mode). For HA mode (Replicas > 1), use InternalIPs instead.
 	LanIP string `json:"lanIp"`
 	// Number of gateway replicas for HA support.
 	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
