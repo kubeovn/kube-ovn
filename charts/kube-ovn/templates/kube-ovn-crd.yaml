@@ -4943,20 +4943,20 @@ spec:
                 items:
                   type: string
                 type: array
-              lanIp:
+              internalIPs:
                 description: |-
-                  LAN IP address for the NAT gateway. This field is immutable after creation.
-                  DEPRECATED: Use LanIPs for multi-instance HA support. This field is kept for backward compatibility.
-                  When Replicas > 1, LanIPs must be specified instead.
-                type: string
-              lanIps:
-                description: |-
-                  LAN IP addresses for multiple NAT gateway instances (HA mode).
-                  The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP.
-                  When specified, LanIP field is ignored.
+                  Internal (LAN) IP addresses for multiple NAT gateway instances (HA mode).
+                  The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP from this list.
+                  When specified, the legacy LanIP field is ignored.
                 items:
                   type: string
                 type: array
+              lanIp:
+                description: |-
+                  LAN IP address for the NAT gateway. This field is immutable after creation.
+                  DEPRECATED: Use InternalIPs for multi-instance HA support. This field is kept for backward compatibility.
+                  When Replicas > 1, InternalIPs must be specified instead.
+                type: string
               namespace:
                 description: |-
                   Namespace where the NAT gateway StatefulSet/Pod will be created.
@@ -5961,8 +5961,8 @@ spec:
                 items:
                   type: string
                 type: array
-              lanIPs:
-                description: LAN IPs currently in use by gateway instances
+              internalIPs:
+                description: Internal (LAN) IPs currently in use by gateway instances
                 items:
                   type: string
                 type: array
