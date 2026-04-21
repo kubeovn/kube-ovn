@@ -368,35 +368,35 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	// Validate IP configuration based on HA mode
-	if len(gw.Spec.LanIPs) > 0 {
-		// HA mode with LanIPs array
-		if len(gw.Spec.LanIPs) < int(replicas) {
-			return fmt.Errorf("lanIPs count (%d) must be >= replicas (%d)", len(gw.Spec.LanIPs), replicas)
+	if len(gw.Spec.InternalIPs) > 0 {
+		// HA mode with InternalIPs array
+		if len(gw.Spec.InternalIPs) < int(replicas) {
+			return fmt.Errorf("internalIPs count (%d) must be >= replicas (%d)", len(gw.Spec.InternalIPs), replicas)
 		}
 
 		// Validate each IP
-		for i, ip := range gw.Spec.LanIPs {
+		for i, ip := range gw.Spec.InternalIPs {
 			if net.ParseIP(ip) == nil {
-				return fmt.Errorf("lanIPs[%d] %s is not a valid IP", i, ip)
+				return fmt.Errorf("internalIPs[%d] %s is not a valid IP", i, ip)
 			}
 			if !util.CIDRContainIP(subnet.Spec.CIDRBlock, ip) {
-				return fmt.Errorf("lanIPs[%d] %s is not in the range of subnet %s, cidr %v",
+				return fmt.Errorf("internalIPs[%d] %s is not in the range of subnet %s, cidr %v",
 					i, ip, subnet.Name, subnet.Spec.CIDRBlock)
 			}
 		}
 
 		// Check for duplicate IPs
 		ipSet := make(map[string]bool)
-		for _, ip := range gw.Spec.LanIPs {
+		for _, ip := range gw.Spec.InternalIPs {
 			if ipSet[ip] {
-				return fmt.Errorf("duplicate IP %s in lanIPs", ip)
+				return fmt.Errorf("duplicate IP %s in internalIPs", ip)
 			}
 			ipSet[ip] = true
 		}
 	} else if gw.Spec.LanIP != "" {
 		// Legacy mode with single LanIP
 		if replicas > 1 {
-			return fmt.Errorf("replicas > 1 requires lanIPs array; single lanIp field only supports replicas=1")
+			return fmt.Errorf("replicas > 1 requires internalIPs array; single lanIp field only supports replicas=1")
 		}
 
 		if net.ParseIP(gw.Spec.LanIP) == nil {
@@ -408,26 +408,13 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 				gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
 		}
 	} else {
-		return errors.New("either lanIp or lanIps must be specified")
+		return errors.New("either lanIp or internalIPs must be specified")
 	}
 
-	// Validate BFD configuration if enabled
-	if gw.Spec.BFD.Enabled {
-		if !vpc.Spec.EnableBfd {
-			return fmt.Errorf("BFD is enabled on NAT gateway but VPC %s does not have BFD enabled (vpc.spec.enableBfd must be true)", gw.Spec.Vpc)
-		}
-
-		if gw.Spec.BFD.MinRX != 0 && (gw.Spec.BFD.MinRX < 1 || gw.Spec.BFD.MinRX > 3600000) {
-			return fmt.Errorf("bfd.minRX must be between 1 and 3600000 milliseconds, got %d", gw.Spec.BFD.MinRX)
-		}
-
-		if gw.Spec.BFD.MinTX != 0 && (gw.Spec.BFD.MinTX < 1 || gw.Spec.BFD.MinTX > 3600000) {
-			return fmt.Errorf("bfd.minTX must be between 1 and 3600000 milliseconds, got %d", gw.Spec.BFD.MinTX)
-		}
-
-		if gw.Spec.BFD.Multiplier != 0 && (gw.Spec.BFD.Multiplier < 1 || gw.Spec.BFD.Multiplier > 255) {
-			return fmt.Errorf("bfd.multiplier must be between 1 and 255, got %d", gw.Spec.BFD.Multiplier)
-		}
+	// Validate BFD configuration if enabled - only check VPC has BFD enabled
+	// CRD validation handles the range checks for minRX, minTX, and multiplier
+	if gw.Spec.BFD.Enabled && !vpc.Spec.EnableBfd {
+		return fmt.Errorf("BFD is enabled on NAT gateway but VPC %s does not have BFD enabled (vpc.spec.enableBfd must be true)", gw.Spec.Vpc)
 	}
 
 	for _, t := range gw.Spec.Tolerations {
