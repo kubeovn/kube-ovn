@@ -5202,14 +5202,6 @@ spec:
                 items:
                   type: string
                 type: array
-              internalIPs:
-                description: |-
-                  Internal (LAN) IP addresses for multiple NAT gateway instances (HA mode).
-                  The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP from this list.
-                  When specified, the legacy LanIP field is ignored.
-                items:
-                  type: string
-                type: array
               internalSubnets:
                 description: |-
                   Internal subnets by name (resolved to CIDRs) for OVN route injection.
@@ -5221,7 +5213,7 @@ spec:
               lanIp:
                 description: |-
                   LAN IP address for the NAT gateway. This field is immutable after creation.
-                  Used only when Replicas = 1 (non-HA mode). For HA mode (Replicas > 1), use InternalIPs instead.
+                  Used only when Replicas = 1 (non-HA mode).
                 type: string
               namespace:
                 description: |-
@@ -6229,11 +6221,6 @@ spec:
                 type: array
               internalCIDRs:
                 description: Internal CIDRs configured for OVN route injection
-                items:
-                  type: string
-                type: array
-              internalIPs:
-                description: Internal (LAN) IPs currently in use by gateway instances
                 items:
                   type: string
                 type: array
