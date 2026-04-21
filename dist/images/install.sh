@@ -5340,6 +5340,7 @@ spec:
                 description: |-
                   Internal CIDRs for OVN route injection.
                   Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+                  This field is cumulative with internalSubnets.
                 items:
                   type: string
                 type: array
@@ -5355,6 +5356,7 @@ spec:
                 description: |-
                   Internal subnets by name (resolved to CIDRs) for OVN route injection.
                   Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+                  This field is cumulative with internalCIDRs.
                 items:
                   type: string
                 type: array

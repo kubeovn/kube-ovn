@@ -679,13 +679,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		ovs.ExternalIDVpcEgressGateway: fmt.Sprintf("%s/%s", gw.Namespace, gw.Name),
 		"af":                           strconv.Itoa(af),
 	}
-	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 
 	// reconcile OVN port group
+	var err error
 	ports := set.New[string]()
 	for _, selector := range gw.Spec.Selectors {
 		sel := labels.Everything()
@@ -756,34 +752,18 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	// reconcile OVN BFD entries
-	bfdIDs := set.New[string]()
-	staleBFDIDs := set.New[string]()
-	bfdDstIPs := set.New(slices.Collect(maps.Values(nextHops))...)
-	bfdMap := make(map[string]string, bfdDstIPs.Len())
-	for _, bfd := range bfdList {
-		if bfdIP == "" || bfd.LogicalPort != lrpName || !bfdDstIPs.Has(bfd.DstIP) {
-			staleBFDIDs.Insert(bfd.UUID)
-		}
-		if bfdIP == "" || (bfd.LogicalPort == lrpName && bfdDstIPs.Has(bfd.DstIP)) {
-			// TODO: update min_rx, min_tx and multiplier
-			if bfdIP != "" {
-				bfdIDs.Insert(bfd.UUID)
-				bfdMap[bfd.DstIP] = bfd.UUID
-			}
-			bfdDstIPs.Delete(bfd.DstIP)
-		}
-	}
-	if bfdIP != "" {
-		for _, dstIP := range bfdDstIPs.UnsortedList() {
-			// values of minRX/minTX should be values of minTX/minRX set in the BFD container of the deployment
-			bfd, err := c.OVNNbClient.CreateBFD(lrpName, dstIP, int(gw.Spec.BFD.MinTX), int(gw.Spec.BFD.MinRX), int(gw.Spec.BFD.Multiplier), externalIDs)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			bfdIDs.Insert(bfd.UUID)
-			bfdMap[bfd.DstIP] = bfd.UUID
-		}
+	bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(
+		c.OVNNbClient,
+		bfdIP,
+		lrpName,
+		nextHops,
+		gw.Spec.BFD.MinTX,
+		gw.Spec.BFD.MinRX,
+		gw.Spec.BFD.Multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		return err
 	}
 
 	// reconcile LR policy
@@ -928,12 +908,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
-	for _, bfdID := range staleBFDIDs.UnsortedList() {
-		if err = c.OVNNbClient.DeleteBFD(bfdID); err != nil {
-			err = fmt.Errorf("failed to delete bfd %s: %w", bfdID, err)
-			klog.Error(err)
-			return err
-		}
+	// Cleanup stale BFD sessions
+	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+		return err
 	}
 
 	return nil
