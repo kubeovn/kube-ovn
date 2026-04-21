@@ -13,7 +13,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -30,14 +29,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var (
-	// default resource requirements for the vpc egress gateway container if not specified by the user
-	vegSleepResourceCPU         = resource.MustParse("10m")
-	vegSleepResourceMemory      = resource.MustParse("10Mi")
-	vegBFDDResourceCPU          = resource.MustParse("50m")
-	vegBFDDResourceMemory       = resource.MustParse("50Mi")
-	vegResourceEphemeralStorage = resource.MustParse("1Gi")
-)
 
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
@@ -524,35 +515,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 							MountPath: "/usr/local/sbin",
 						}},
 					}},
-					Containers: []corev1.Container{{
-						Name:            "gateway",
-						Image:           image,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command:         []string{"sleep", "infinity"},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    vegSleepResourceCPU,
-								corev1.ResourceMemory: vegSleepResourceMemory,
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:              vegSleepResourceCPU,
-								corev1.ResourceMemory:           vegSleepResourceMemory,
-								corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
-							},
-						},
-						SecurityContext: &corev1.SecurityContext{
-							Privileged: new(false),
-							RunAsUser:  ptr.To[int64](65534),
-							Capabilities: &corev1.Capabilities{
-								Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
-								Drop: []corev1.Capability{"ALL"},
-							},
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "usr-local-sbin",
-							MountPath: "/usr/local/sbin",
-						}},
-					}},
+					Containers: []corev1.Container{
+						genGatewaySleepContainer(image),
+					},
 					SecurityContext: &corev1.PodSecurityContext{
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
@@ -578,7 +543,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	if bfdIP != "" {
 		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
-		container := vpcEgressGatewayContainerBFDD(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		container := genGatewayBFDDContainer(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers[0] = container
 	}
 
@@ -972,86 +937,6 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 	}}, nil
 }
 
-func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
-	return corev1.Container{
-		Name:            "bfdd",
-		Image:           image,
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"bash", "/kube-ovn/start-bfdd.sh"},
-		Env: []corev1.EnvVar{{
-			Name: "POD_IPS",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "status.podIPs",
-				},
-			},
-		}, {
-			Name:  "BFD_PEER_IPS",
-			Value: bfdIP,
-		}, {
-			Name:  "BFD_MIN_TX",
-			Value: strconv.Itoa(int(minTX)),
-		}, {
-			Name:  "BFD_MIN_RX",
-			Value: strconv.Itoa(int(minRX)),
-		}, {
-			Name:  "BFD_MULTI",
-			Value: strconv.Itoa(int(multiplier)),
-		}},
-		// wait for the BFD process to be running and initialize the BFD configuration
-		StartupProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bash", "/kube-ovn/bfdd-prestart.sh"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			FailureThreshold:    1,
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			PeriodSeconds:       5,
-		},
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
-			},
-			InitialDelaySeconds: 3,
-			PeriodSeconds:       3,
-			FailureThreshold:    1,
-		},
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    vegBFDDResourceCPU,
-				corev1.ResourceMemory: vegBFDDResourceMemory,
-			},
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:              vegBFDDResourceCPU,
-				corev1.ResourceMemory:           vegBFDDResourceMemory,
-				corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
-			},
-		},
-		SecurityContext: &corev1.SecurityContext{
-			Privileged: new(false),
-			RunAsUser:  ptr.To[int64](65534),
-			Capabilities: &corev1.Capabilities{
-				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
-				Drop: []corev1.Capability{"ALL"},
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{{
-			Name:      "usr-local-sbin",
-			MountPath: "/usr/local/sbin",
-		}},
-	}
-}
 
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
 	env := []corev1.EnvVar{

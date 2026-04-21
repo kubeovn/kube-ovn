@@ -5112,6 +5112,46 @@ spec:
                   User-defined annotations for the StatefulSet NAT gateway Pod template.
                   Only effective at creation time; updates to this field are not detected.
                 type: object
+              bfd:
+                description: BFD configuration for health monitoring and automatic
+                  failover (HA mode only)
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Enable BFD health monitoring
+                      When enabled, each gateway instance establishes a BFD session with the VPC's BFD port.
+                      The VPC's spec.bfd.enabled must also be set to true.
+                    type: boolean
+                  minRX:
+                    default: 1000
+                    description: |-
+                      BFD minimum receive interval in milliseconds
+                      This is the minimum interval at which this gateway expects to receive BFD control packets.
+                    format: int32
+                    maximum: 3600000
+                    minimum: 1
+                    type: integer
+                  minTX:
+                    default: 1000
+                    description: |-
+                      BFD minimum transmit interval in milliseconds
+                      This is the minimum interval at which this gateway will send BFD control packets.
+                    format: int32
+                    maximum: 3600000
+                    minimum: 1
+                    type: integer
+                  multiplier:
+                    default: 3
+                    description: |-
+                      BFD detection multiplier
+                      Number of missed BFD packets before declaring the session down.
+                      Detection time = MinRX * Multiplier
+                    format: int32
+                    maximum: 255
+                    minimum: 1
+                    type: integer
+                type: object
               bgpSpeaker:
                 description: BGP speaker configuration
                 properties:
@@ -5155,9 +5195,19 @@ spec:
                   type: string
                 type: array
               lanIp:
-                description: LAN IP address for the NAT gateway. This field is immutable
-                  after creation.
+                description: |-
+                  LAN IP address for the NAT gateway. This field is immutable after creation.
+                  DEPRECATED: Use LanIPs for multi-instance HA support. This field is kept for backward compatibility.
+                  When Replicas > 1, LanIPs must be specified instead.
                 type: string
+              lanIps:
+                description: |-
+                  LAN IP addresses for multiple NAT gateway instances (HA mode).
+                  The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP.
+                  When specified, LanIP field is ignored.
+                items:
+                  type: string
+                type: array
               namespace:
                 description: |-
                   Namespace where the NAT gateway StatefulSet/Pod will be created.
@@ -5169,6 +5219,15 @@ spec:
               qosPolicy:
                 description: QoS policy name to apply to the NAT gateway
                 type: string
+              replicas:
+                default: 1
+                description: |-
+                  Number of gateway replicas for HA support.
+                  When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
+                  When = 1 or unset, uses StatefulSet workload (legacy mode) for backward compatibility.
+                format: int32
+                minimum: 1
+                type: integer
               routes:
                 description: Static routes for the NAT gateway
                 items:
@@ -6153,6 +6212,11 @@ spec:
                 items:
                   type: string
                 type: array
+              lanIPs:
+                description: LAN IPs currently in use by gateway instances
+                items:
+                  type: string
+                type: array
               qosPolicy:
                 description: QoS policy applied to the NAT gateway
                 type: string
@@ -6200,6 +6264,24 @@ spec:
                       type: string
                   type: object
                 type: array
+              workload:
+                description: Workload information (Deployment or StatefulSet)
+                properties:
+                  apiVersion:
+                    description: API version of the workload (e.g., "apps/v1")
+                    type: string
+                  kind:
+                    description: Kind of the workload ("Deployment" or "StatefulSet")
+                    type: string
+                  name:
+                    description: Name of the workload
+                    type: string
+                  nodes:
+                    description: Nodes where gateway instances are running
+                    items:
+                      type: string
+                    type: array
+                type: object
             type: object
         type: object
     served: true

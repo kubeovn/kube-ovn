@@ -59,7 +59,19 @@ type VpcNatGatewaySpec struct {
 	// External subnets accessible through the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets"`
 	// LAN IP address for the NAT gateway. This field is immutable after creation.
+	// DEPRECATED: Use LanIPs for multi-instance HA support. This field is kept for backward compatibility.
+	// When Replicas > 1, LanIPs must be specified instead.
 	LanIP string `json:"lanIp"`
+	// LAN IP addresses for multiple NAT gateway instances (HA mode).
+	// The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP.
+	// When specified, LanIP field is ignored.
+	LanIPs []string `json:"lanIps,omitempty"`
+	// Number of gateway replicas for HA support.
+	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
+	// When = 1 or unset, uses StatefulSet workload (legacy mode) for backward compatibility.
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	Replicas int32 `json:"replicas,omitempty"`
 	// Pod selector for the NAT gateway
 	Selector    []string            `json:"selector"`
 	Tolerations []corev1.Toleration `json:"tolerations"`
@@ -68,6 +80,8 @@ type VpcNatGatewaySpec struct {
 	QoSPolicy string `json:"qosPolicy"`
 	// BGP speaker configuration
 	BgpSpeaker VpcBgpSpeaker `json:"bgpSpeaker"`
+	// BFD configuration for health monitoring and automatic failover (HA mode only)
+	BFD VpcNatGatewayBFDConfig `json:"bfd,omitempty"`
 	// Static routes for the NAT gateway
 	Routes []Route `json:"routes"`
 	// Disable default EIP assignment
@@ -98,6 +112,35 @@ type VpcBgpSpeaker struct {
 	ExtraArgs []string `json:"extraArgs"`
 }
 
+// VpcNatGatewayBFDConfig configures BFD (Bidirectional Forwarding Detection) for health monitoring.
+// BFD enables fast failure detection and automatic failover in HA mode.
+type VpcNatGatewayBFDConfig struct {
+	// Enable BFD health monitoring
+	// When enabled, each gateway instance establishes a BFD session with the VPC's BFD port.
+	// The VPC's spec.bfd.enabled must also be set to true.
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+	// BFD minimum receive interval in milliseconds
+	// This is the minimum interval at which this gateway expects to receive BFD control packets.
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinRX int32 `json:"minRX,omitempty"`
+	// BFD minimum transmit interval in milliseconds
+	// This is the minimum interval at which this gateway will send BFD control packets.
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600000
+	MinTX int32 `json:"minTX,omitempty"`
+	// BFD detection multiplier
+	// Number of missed BFD packets before declaring the session down.
+	// Detection time = MinRX * Multiplier
+	// +kubebuilder:default=3
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=255
+	Multiplier int32 `json:"multiplier,omitempty"`
+}
+
 // TODO: Consider removing redundant Status fields since statefulset template changes always trigger Pod recreation.
 type VpcNatGatewayStatus struct {
 	// QoS policy applied to the NAT gateway
@@ -108,6 +151,22 @@ type VpcNatGatewayStatus struct {
 	Selector    []string            `json:"selector" patchStrategy:"merge"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
+	// LAN IPs currently in use by gateway instances
+	LanIPs []string `json:"lanIPs,omitempty"`
+	// Workload information (Deployment or StatefulSet)
+	Workload VpcNatWorkload `json:"workload,omitempty"`
+}
+
+// VpcNatWorkload contains information about the underlying Kubernetes workload (Deployment or StatefulSet)
+type VpcNatWorkload struct {
+	// API version of the workload (e.g., "apps/v1")
+	APIVersion string `json:"apiVersion,omitempty"`
+	// Kind of the workload ("Deployment" or "StatefulSet")
+	Kind string `json:"kind,omitempty"`
+	// Name of the workload
+	Name string `json:"name,omitempty"`
+	// Nodes where gateway instances are running
+	Nodes []string `json:"nodes,omitempty"`
 }
 
 type Route struct {
