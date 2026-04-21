@@ -124,10 +124,13 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 
-	// For HA mode, use InternalIPs with IP pool annotation; for legacy mode, use LanIP
-	if len(gw.Spec.InternalIPs) > 0 {
-		result[fmt.Sprintf(IPPoolAnnotationTemplate, p)] = strings.Join(gw.Spec.InternalIPs, ";")
-	} else {
+	// Use LanIP for IP address annotation only in non-HA mode (replicas = 1)
+	// In HA mode, IPs are dynamically allocated and don't need static assignment
+	replicas := gw.Spec.Replicas
+	if replicas == 0 {
+		replicas = 1
+	}
+	if replicas == 1 && gw.Spec.LanIP != "" {
 		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 	}
 

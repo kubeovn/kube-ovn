@@ -499,7 +499,7 @@ func reconcileGatewayRoutes(
 		if !internalCIDRSet.Has(route.IPPrefix) {
 			var policy *string
 			if route.Policy != nil {
-				p := string(*route.Policy)
+				p := *route.Policy
 				policy = &p
 			}
 			if err := ovnClient.DeleteLogicalRouterStaticRoute(lrName, &route.RouteTable, policy, route.IPPrefix, route.Nexthop); err != nil {
