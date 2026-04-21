@@ -3,8 +3,11 @@ package controller
 import (
 	"strconv"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -101,7 +104,7 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
@@ -138,7 +141,7 @@ func genGatewaySleepContainer(image string) corev1.Container {
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
@@ -161,4 +164,53 @@ type GatewayBFDConfig interface {
 	GetMinRX() int32
 	GetMinTX() int32
 	GetMultiplier() int32
+}
+
+// genGatewayPodAntiAffinity creates pod anti-affinity rules to ensure gateway instances
+// run on different nodes. This is essential for HA deployments.
+func genGatewayPodAntiAffinity(labels map[string]string) *corev1.Affinity {
+	return &corev1.Affinity{
+		PodAntiAffinity: &corev1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: labels,
+				},
+				TopologyKey: corev1.LabelHostname,
+			}},
+		},
+	}
+}
+
+// genGatewayDeploymentStrategy creates the standard rolling update strategy for gateway deployments.
+// MaxUnavailable=1 ensures only one instance is updated at a time.
+// MaxSurge=0 ensures no extra instances are created during updates.
+func genGatewayDeploymentStrategy() appsv1.DeploymentStrategy {
+	return appsv1.DeploymentStrategy{
+		Type: appsv1.RollingUpdateDeploymentStrategyType,
+		RollingUpdate: &appsv1.RollingUpdateDeployment{
+			MaxUnavailable: new(intstr.FromInt(1)),
+			MaxSurge:       new(intstr.FromInt(0)),
+		},
+	}
+}
+
+// mergeGatewayAffinity merges multiple affinity configurations into one.
+// Later affinities take precedence over earlier ones.
+func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
+	result := &corev1.Affinity{}
+	for _, aff := range affinities {
+		if aff == nil {
+			continue
+		}
+		if aff.NodeAffinity != nil {
+			result.NodeAffinity = aff.NodeAffinity
+		}
+		if aff.PodAffinity != nil {
+			result.PodAffinity = aff.PodAffinity
+		}
+		if aff.PodAntiAffinity != nil {
+			result.PodAntiAffinity = aff.PodAntiAffinity
+		}
+	}
+	return result
 }
