@@ -4940,11 +4940,25 @@ spec:
                 items:
                   type: string
                 type: array
+              internalCIDRs:
+                description: |-
+                  Internal CIDRs for OVN route injection.
+                  Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+                items:
+                  type: string
+                type: array
               internalIPs:
                 description: |-
                   Internal (LAN) IP addresses for multiple NAT gateway instances (HA mode).
                   The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP from this list.
                   When specified, the legacy LanIP field is ignored.
+                items:
+                  type: string
+                type: array
+              internalSubnets:
+                description: |-
+                  Internal subnets by name (resolved to CIDRs) for OVN route injection.
+                  Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
                 items:
                   type: string
                 type: array
@@ -5957,8 +5971,18 @@ spec:
                 items:
                   type: string
                 type: array
+              internalCIDRs:
+                description: Internal CIDRs configured for OVN route injection
+                items:
+                  type: string
+                type: array
               internalIPs:
                 description: Internal (LAN) IPs currently in use by gateway instances
+                items:
+                  type: string
+                type: array
+              internalSubnets:
+                description: Internal subnets configured for OVN route injection
                 items:
                   type: string
                 type: array

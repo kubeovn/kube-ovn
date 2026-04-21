@@ -81,6 +81,12 @@ type VpcNatGatewaySpec struct {
 	BgpSpeaker VpcBgpSpeaker `json:"bgpSpeaker"`
 	// BFD configuration for health monitoring and automatic failover (HA mode only)
 	BFD VpcNatGatewayBFDConfig `json:"bfd,omitempty"`
+	// Internal subnets by name (resolved to CIDRs) for OVN route injection.
+	// Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	InternalSubnets []string `json:"internalSubnets,omitempty"`
+	// Internal CIDRs for OVN route injection.
+	// Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
 	// Static routes for the NAT gateway
 	Routes []Route `json:"routes"`
 	// Disable default EIP assignment
@@ -154,6 +160,10 @@ type VpcNatGatewayStatus struct {
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// Workload information (Deployment or StatefulSet)
 	Workload VpcNatWorkload `json:"workload,omitempty"`
+	// Internal subnets configured for OVN route injection
+	InternalSubnets []string `json:"internalSubnets,omitempty"`
+	// Internal CIDRs configured for OVN route injection
+	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
 }
 
 // VpcNatWorkload contains information about the underlying Kubernetes workload (Deployment or StatefulSet)

@@ -23,9 +23,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -217,12 +219,26 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		return err
 	}
 
-	// Clean up BFD sessions for this NAT gateway
+	// Clean up OVN resources (routes and BFD sessions) for this NAT gateway
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
 		ovs.ExternalIDVpcNatGateway: gwName,
 	}
 
+	// Try to get gateway object from lister to get VPC name for route deletion
+	// If the object is already deleted from the lister, we skip route deletion
+	// (routes will be cleaned up when the VPC is deleted)
+	gw, err := c.vpcNatGatewayLister.Get(gwName)
+	if err == nil && gw.Spec.Vpc != "" {
+		if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(gw.Spec.Vpc, externalIDs); err != nil {
+			klog.Errorf("failed to delete static routes for nat gw %s: %v", gwName, err)
+			return err
+		}
+	} else if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get nat gw %s for OVN cleanup: %v", gwName, err)
+	}
+
+	// Clean up BFD sessions
 	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
 	if err != nil {
 		klog.Errorf("failed to find BFD sessions for nat gw %s: %v", gwName, err)
@@ -255,6 +271,12 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 		return true
 	}
 	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
+		return true
+	}
+	if !slices.Equal(gw.Spec.InternalSubnets, gw.Status.InternalSubnets) {
+		return true
+	}
+	if !slices.Equal(gw.Spec.InternalCIDRs, gw.Status.InternalCIDRs) {
 		return true
 	}
 	return false
@@ -415,51 +437,69 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	// Reconcile BFD sessions for HA mode
-	if isNatGwHAMode(gw) && gw.Spec.BFD.Enabled {
+	// Reconcile BFD sessions and OVN routes for HA mode
+	if isNatGwHAMode(gw) {
 		vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
 			return err
 		}
 
-		if vpc.Status.BFDPort.IP == "" {
-			klog.Warningf("VPC %s BFD port is not ready, skipping BFD reconciliation", vpc.Name)
-		} else {
-			// Collect nexthop IPs from running gateway pods
-			deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
-				Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
-			if err != nil {
-				klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
+		subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %v", gw.Spec.Subnet, err)
+			return err
+		}
+
+		// Collect nexthop IPs from running gateway pods
+		deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
+			return err
+		}
+
+		podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+		if err != nil {
+			klog.Errorf("failed to get pod selector: %v", err)
+			return err
+		}
+
+		pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
+		if err != nil {
+			klog.Errorf("failed to list pods: %v", err)
+			return err
+		}
+
+		nextHops := make(map[string]string, len(pods))
+		for _, pod := range pods {
+			if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
+				continue
+			}
+			// Use first IP (internal IP) as nexthop
+			nextHops[pod.Spec.NodeName] = pod.Status.PodIPs[0].IP
+		}
+
+		// Reconcile BFD sessions if enabled
+		if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" && len(nextHops) > 0 {
+			if err = c.reconcileVpcNatGatewayBFD(gw, vpc.Status.BFDPort.Name, vpc.Status.BFDPort.IP, nextHops); err != nil {
+				klog.Errorf("failed to reconcile BFD for nat gw %s: %v", key, err)
 				return err
 			}
+		}
 
-			podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-			if err != nil {
-				klog.Errorf("failed to get pod selector: %v", err)
+		// Reconcile OVN routes if internal CIDRs/subnets are configured
+		if len(gw.Spec.InternalSubnets) > 0 || len(gw.Spec.InternalCIDRs) > 0 {
+			lrName := subnet.Spec.Vpc
+			lrpName := fmt.Sprintf("%s-%s", lrName, gw.Spec.Subnet)
+			bfdIP := ""
+			if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
+				bfdIP = vpc.Status.BFDPort.IP
+			}
+
+			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, lrName, lrpName, bfdIP, nextHops); err != nil {
+				klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 				return err
-			}
-
-			pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
-			if err != nil {
-				klog.Errorf("failed to list pods: %v", err)
-				return err
-			}
-
-			nextHops := make(map[string]string, len(pods))
-			for _, pod := range pods {
-				if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
-					continue
-				}
-				// Use first IP (internal IP) as nexthop
-				nextHops[pod.Spec.NodeName] = pod.Status.PodIPs[0].IP
-			}
-
-			if len(nextHops) > 0 {
-				if err = c.reconcileVpcNatGatewayBFD(gw, vpc.Status.BFDPort.Name, vpc.Status.BFDPort.IP, nextHops); err != nil {
-					klog.Errorf("failed to reconcile BFD for nat gw %s: %v", key, err)
-					return err
-				}
 			}
 		}
 	}
@@ -1755,6 +1795,14 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.Affinity = gw.Spec.Affinity
 		changed = true
 	}
+	if !slices.Equal(gw.Spec.InternalSubnets, gw.Status.InternalSubnets) {
+		gw.Status.InternalSubnets = gw.Spec.InternalSubnets
+		changed = true
+	}
+	if !slices.Equal(gw.Spec.InternalCIDRs, gw.Status.InternalCIDRs) {
+		gw.Status.InternalCIDRs = gw.Spec.InternalCIDRs
+		changed = true
+	}
 	if changed {
 		bytes, err := gw.Status.Bytes()
 		if err != nil {
@@ -1884,9 +1932,6 @@ func (c *Controller) initVpcNatGw() error {
 }
 
 // reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway HA mode.
-// Unlike EgressGateway, NAT Gateway doesn't need OVN routing policies since NAT is performed
-// via iptables rules on the gateway pods themselves. BFD is used solely for health monitoring
-// and automatic failover of the gateway instances.
 func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string) error {
 	if len(nextHops) == 0 || bfdIP == "" {
 		return nil
@@ -1910,6 +1955,160 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 	)
 	if err != nil {
 		return err
+	}
+
+	// Cleanup stale BFD sessions
+	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// reconcileVpcNatGatewayOVNRoutes reconciles OVN static routes for VPC NAT Gateway.
+// It creates default routes (0.0.0.0/0 and ::/0) for traffic from specified internal CIDRs,
+// directing them to NAT gateway instances with ECMP load balancing and BFD-based failover.
+func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, lrName, lrpName, bfdIP string, nextHops map[string]string) error {
+	if len(nextHops) == 0 {
+		return nil
+	}
+
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:        util.CniTypeName,
+		ovs.ExternalIDVpcNatGateway: gw.Name,
+	}
+
+	// Reconcile BFD sessions (required for routes with BFD)
+	bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(
+		c.OVNNbClient,
+		bfdIP,
+		lrpName,
+		nextHops,
+		gw.Spec.BFD.MinTX,
+		gw.Spec.BFD.MinRX,
+		gw.Spec.BFD.Multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Resolve internal CIDRs from subnet names and direct CIDRs
+	internalCIDRs := make([]string, 0, len(gw.Spec.InternalSubnets)+len(gw.Spec.InternalCIDRs))
+	for _, subnetName := range gw.Spec.InternalSubnets {
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Warningf("failed to get subnet %s for NAT gateway %s: %v", subnetName, gw.Name, err)
+			continue
+		}
+		if subnet.Spec.CIDRBlock != "" {
+			v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+			if v4CIDR != "" {
+				internalCIDRs = append(internalCIDRs, v4CIDR)
+			}
+			if v6CIDR != "" {
+				internalCIDRs = append(internalCIDRs, v6CIDR)
+			}
+		}
+	}
+	internalCIDRs = append(internalCIDRs, gw.Spec.InternalCIDRs...)
+
+	if len(internalCIDRs) == 0 {
+		// No internal CIDRs configured, delete any existing routes
+		if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, externalIDs); err != nil {
+			klog.Errorf("failed to delete static routes for NAT gateway %s: %v", gw.Name, err)
+			return err
+		}
+		return nil
+	}
+
+	// Group nexthops by address family
+	v4NextHops := make([]string, 0, len(nextHops))
+	v6NextHops := make([]string, 0, len(nextHops))
+	for _, nexthop := range nextHops {
+		if util.CheckProtocol(nexthop) == kubeovnv1.ProtocolIPv4 {
+			v4NextHops = append(v4NextHops, nexthop)
+		} else {
+			v6NextHops = append(v6NextHops, nexthop)
+		}
+	}
+
+	// Create/update static routes for each internal CIDR
+	// We create src-ip policy routes where the internal CIDR matches and destination is 0.0.0.0/0 (default)
+	for _, internalCIDR := range internalCIDRs {
+		af := 4
+		routeNextHops := v4NextHops
+		if util.CheckProtocol(internalCIDR) == kubeovnv1.ProtocolIPv6 {
+			af = 6
+			routeNextHops = v6NextHops
+		}
+
+		if len(routeNextHops) == 0 {
+			klog.Warningf("no nexthops available for internal CIDR %s (af=%d) in NAT gateway %s", internalCIDR, af, gw.Name)
+			continue
+		}
+
+		// Use source-based routing policy
+		// For src-ip policy, ip_prefix is the source address to match
+		policy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+		routeTable := ""
+
+		// Build external IDs for this specific route
+		routeExternalIDs := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"internal-cidr":             internalCIDR,
+		}
+
+		// Get BFD ID for the first nexthop (for ECMP routes with BFD)
+		var bfdIDPtr *string
+		if gw.Spec.BFD.Enabled && bfdIP != "" && len(bfdIDs) > 0 {
+			// For ECMP routes, we use the BFD session of the first nexthop
+			// OVN will use all BFD sessions associated with the nexthops
+			if bfdID, exists := bfdMap[routeNextHops[0]]; exists {
+				bfdIDPtr = &bfdID
+			}
+		}
+
+		// Create/update the src-ip route
+		// ip_prefix = internalCIDR (match traffic FROM this CIDR)
+		// nexthops = NAT gateway instances (route TO these gateways)
+		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
+			lrName,
+			routeTable,
+			policy,
+			internalCIDR,
+			bfdIDPtr,
+			routeExternalIDs,
+			routeNextHops...,
+		); err != nil {
+			klog.Errorf("failed to add static route for internal CIDR %s in NAT gateway %s: %v", internalCIDR, gw.Name, err)
+			return err
+		}
+
+		klog.Infof("reconciled OVN route for NAT gateway %s: policy=src-ip ip_prefix=%s nexthops=%v", gw.Name, internalCIDR, routeNextHops)
+	}
+
+	// Cleanup stale routes (routes for CIDRs no longer in the spec)
+	existingRoutes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", externalIDs)
+	if err != nil {
+		klog.Errorf("failed to list static routes for NAT gateway %s: %v", gw.Name, err)
+		return err
+	}
+
+	internalCIDRSet := set.New(internalCIDRs...)
+	for _, route := range existingRoutes {
+		if routeInternalCIDR, ok := route.ExternalIDs["internal-cidr"]; ok {
+			if !internalCIDRSet.Has(routeInternalCIDR) {
+				// This route is for a CIDR no longer in the spec, delete it
+				policy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+				if err := c.OVNNbClient.DeleteLogicalRouterStaticRoute(lrName, &route.RouteTable, &policy, route.IPPrefix, route.Nexthop); err != nil {
+					klog.Errorf("failed to delete stale route for internal CIDR %s in NAT gateway %s: %v", routeInternalCIDR, gw.Name, err)
+					return err
+				}
+				klog.Infof("deleted stale OVN route for NAT gateway %s: internal-cidr=%s", gw.Name, routeInternalCIDR)
+			}
+		}
 	}
 
 	// Cleanup stale BFD sessions
