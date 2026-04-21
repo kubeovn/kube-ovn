@@ -255,6 +255,7 @@ const (
 	EgressGatewayDropPolicyPriority  = 29090
 	EgressGatewayPolicyPriority      = 29100
 	EgressGatewayLocalPolicyPriority = 29150
+	NatGatewayPolicyPriority         = 29200
 	NorthGatewayRoutePolicyPriority  = 29250
 	U2OSubnetPolicyPriority          = 29400
 	OvnICPolicyPriority              = 29500
