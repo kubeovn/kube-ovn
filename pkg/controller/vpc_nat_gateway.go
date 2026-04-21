@@ -68,9 +68,7 @@ func (c *Controller) natGwNamespace(gw *kubeovnv1.VpcNatGateway) string {
 }
 
 // isNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
-// HA mode is enabled when either:
-// - replicas is explicitly set to > 1, OR
-// - internalIPs array is provided (even if replicas is not set)
+// HA mode is enabled when replicas is explicitly set to > 1.
 
 // getNatGwReplicas returns the effective number of replicas for the NAT gateway.
 // Defaults to 1 if not specified.
@@ -327,19 +325,19 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if isNatGwHAMode(gw) {
 		// HA mode: use Deployment
 		needToCreate := false
-		oldDeploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+		_, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Error(err)
 				return err
 			}
-			needToCreate, oldDeploy = true, nil
+			needToCreate = true
 		}
 		gwChanged := isVpcNatGwChanged(gw)
 		needPatchStatus := gwChanged
 
-		newDeploy, err := c.genNatGwDeployment(gw, oldDeploy, natGwPodContainerRestartCount)
+		newDeploy, err := c.genNatGwDeployment(gw)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1356,7 +1354,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 // genNatGwDeployment generates a Deployment for HA mode NAT gateway (replicas > 1).
 // It reuses most of the logic from genNatGwStatefulSet but creates a Deployment instead.
-func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *v1.Deployment, natGwPodContainerRestartCount int32) (*v1.Deployment, error) {
+func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deployment, error) {
 	// Reuse all the annotation and routing logic from StatefulSet generation
 	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
 	if err != nil {
@@ -1392,14 +1390,6 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 	if gw.Spec.BFD.Enabled {
 		bfdIP = vpc.Status.BFDPort.IP
 	}
-
-	// Restart logic
-	if oldDeploy != nil && len(oldDeploy.Spec.Template.Annotations) != 0 {
-		if _, ok := oldDeploy.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
-			templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
-		}
-	}
-	klog.V(3).Infof("%s templateAnnotations:%v", gw.Name, templateAnnotations)
 
 	if gw.Spec.BgpSpeaker.Enabled {
 		if err := c.setNatGwAPIAccess(templateAnnotations); err != nil {
@@ -1541,6 +1531,12 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 							},
 						},
 					},
+					Volumes: []corev1.Volume{{
+						Name: "usr-local-sbin",
+						VolumeSource: corev1.VolumeSource{
+							EmptyDir: &corev1.EmptyDirVolumeSource{},
+						},
+					}},
 					NodeSelector: selectors,
 					Tolerations:  gw.Spec.Tolerations,
 					// Merge pod anti-affinity for HA with user-specified affinity
@@ -1553,27 +1549,15 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 		},
 	}
 
-	// Replace the default sleep container with BFD container if BFD is enabled
-	if bfdIP != "" {
-		// Run BFD in the gateway container to establish BFD session(s) with the VPC BFD LRP
+	// Set owner reference so that the workload will be deleted automatically when the VPC NAT gateway is deleted
+	if err = util.SetOwnerReference(gw, deploy); err != nil {
+		return nil, err
+	}
+
+	// Run BFD in the gateway container to establish BFD session(s) with the VPC BFD LRP
+	if gw.Spec.BFD.Enabled {
 		bfdContainer := genGatewayBFDDContainer(vpcNatImage, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
-		deploy.Spec.Template.Spec.Containers[0] = bfdContainer
-		// Preserve environment variables and security context
-		deploy.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "GATEWAY_V4", Value: eth0V4Gateway},
-			{Name: "GATEWAY_V6", Value: eth0V6Gateway},
-		}
-		deploy.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			Privileged:               new(true),
-			AllowPrivilegeEscalation: new(true),
-		}
-		deploy.Spec.Template.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
-			PostStart: &corev1.LifecycleHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
-				},
-			},
-		}
+		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, bfdContainer)
 	}
 
 	// BGP speaker is enabled on this instance
@@ -1931,7 +1915,7 @@ func (c *Controller) initVpcNatGw() error {
 	return nil
 }
 
-// reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway HA mode.
+// reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway in HA mode.
 func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string) error {
 	if len(nextHops) == 0 || bfdIP == "" {
 		return nil

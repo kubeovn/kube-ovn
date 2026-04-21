@@ -361,55 +361,18 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	// Validate replicas (default to 1 if not set)
-	replicas := gw.Spec.Replicas
-	if replicas == 0 {
-		replicas = 1
+	// Validate LanIP (required)
+	if gw.Spec.LanIP == "" {
+		return errors.New("lanIp must be specified")
 	}
 
-	// Validate IP configuration based on HA mode
-	switch {
-	case len(gw.Spec.InternalIPs) > 0:
-		// HA mode with InternalIPs array
-		if len(gw.Spec.InternalIPs) < int(replicas) {
-			return fmt.Errorf("internalIPs count (%d) must be >= replicas (%d)", len(gw.Spec.InternalIPs), replicas)
-		}
+	if net.ParseIP(gw.Spec.LanIP) == nil {
+		return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
+	}
 
-		// Validate each IP
-		for i, ip := range gw.Spec.InternalIPs {
-			if net.ParseIP(ip) == nil {
-				return fmt.Errorf("internalIPs[%d] %s is not a valid IP", i, ip)
-			}
-			if !util.CIDRContainIP(subnet.Spec.CIDRBlock, ip) {
-				return fmt.Errorf("internalIPs[%d] %s is not in the range of subnet %s, cidr %v",
-					i, ip, subnet.Name, subnet.Spec.CIDRBlock)
-			}
-		}
-
-		// Check for duplicate IPs
-		ipSet := make(map[string]bool)
-		for _, ip := range gw.Spec.InternalIPs {
-			if ipSet[ip] {
-				return fmt.Errorf("duplicate IP %s in internalIPs", ip)
-			}
-			ipSet[ip] = true
-		}
-	case gw.Spec.LanIP != "":
-		// Legacy mode with single LanIP
-		if replicas > 1 {
-			return errors.New("replicas > 1 requires internalIPs array; single lanIp field only supports replicas=1")
-		}
-
-		if net.ParseIP(gw.Spec.LanIP) == nil {
-			return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
-		}
-
-		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
-			return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
-				gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
-		}
-	default:
-		return errors.New("either lanIp or internalIPs must be specified")
+	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
+		return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
+			gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
 	}
 
 	// Validate BFD configuration if enabled - only check VPC has BFD enabled

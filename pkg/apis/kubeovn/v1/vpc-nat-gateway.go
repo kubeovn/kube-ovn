@@ -59,7 +59,7 @@ type VpcNatGatewaySpec struct {
 	// External subnets accessible through the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets"`
 	// LAN IP address for the NAT gateway. This field is immutable after creation.
-	// Used only when Replicas = 1 (non-HA mode). For HA mode (Replicas > 1), use InternalIPs instead.
+	// Used only when Replicas = 1 (non-HA mode).
 	LanIP string `json:"lanIp"`
 	// Number of gateway replicas for HA support.
 	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
@@ -67,10 +67,6 @@ type VpcNatGatewaySpec struct {
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	Replicas int32 `json:"replicas,omitempty"`
-	// Internal (LAN) IP addresses for multiple NAT gateway instances (HA mode).
-	// The number of IPs must be >= Replicas. Each gateway instance will be assigned a unique IP from this list.
-	// When specified, the legacy LanIP field is ignored.
-	InternalIPs []string `json:"internalIPs,omitempty"`
 	// Pod selector for the NAT gateway
 	Selector    []string            `json:"selector"`
 	Tolerations []corev1.Toleration `json:"tolerations"`
@@ -158,8 +154,6 @@ type VpcNatGatewayStatus struct {
 	Selector    []string            `json:"selector" patchStrategy:"merge"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
-	// Internal (LAN) IPs currently in use by gateway instances
-	InternalIPs []string `json:"internalIPs,omitempty"`
 	// Workload information (Deployment or StatefulSet)
 	Workload VpcNatWorkload `json:"workload,omitempty"`
 	// Internal subnets configured for OVN route injection
