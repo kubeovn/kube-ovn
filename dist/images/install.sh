@@ -5205,8 +5205,7 @@ spec:
               lanIp:
                 description: |-
                   LAN IP address for the NAT gateway. This field is immutable after creation.
-                  Deprecated: Use InternalIPs for multi-instance HA support. This field is kept for backward compatibility.
-                  When Replicas > 1, InternalIPs must be specified instead.
+                  Used only when Replicas = 1 (non-HA mode). For HA mode (Replicas > 1), use InternalIPs instead.
                 type: string
               namespace:
                 description: |-
