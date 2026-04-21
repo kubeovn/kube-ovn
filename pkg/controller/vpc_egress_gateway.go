@@ -15,7 +15,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -470,32 +469,21 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
-				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxUnavailable: new(intstr.FromInt(1)),
-					MaxSurge:       new(intstr.FromInt(0)),
-				},
-			},
+			Strategy: genGatewayDeploymentStrategy(),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
 					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),
+					Affinity: mergeGatewayAffinity(
+						genGatewayPodAntiAffinity(labels),
+						&corev1.Affinity{
+							NodeAffinity: &corev1.NodeAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),
+							},
 						},
-						PodAntiAffinity: &corev1.PodAntiAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-								LabelSelector: &metav1.LabelSelector{
-									MatchLabels: labels,
-								},
-								TopologyKey: corev1.LabelHostname,
-							}},
-						},
-					},
+					),
 					InitContainers: []corev1.Container{{
 						Name:            "init",
 						Image:           image,
