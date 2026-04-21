@@ -83,9 +83,11 @@ type VpcNatGatewaySpec struct {
 	BFD VpcNatGatewayBFDConfig `json:"bfd,omitempty"`
 	// Internal subnets by name (resolved to CIDRs) for OVN route injection.
 	// Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	// This field is cumulative with internalCIDRs.
 	InternalSubnets []string `json:"internalSubnets,omitempty"`
 	// Internal CIDRs for OVN route injection.
 	// Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	// This field is cumulative with internalSubnets.
 	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
 	// Static routes for the NAT gateway
 	Routes []Route `json:"routes"`
