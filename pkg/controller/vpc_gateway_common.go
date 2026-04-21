@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"strconv"
@@ -10,11 +11,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
+	appsv1listers "k8s.io/client-go/listers/apps/v1"
+	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
@@ -163,15 +170,6 @@ func genGatewaySleepContainer(image string) corev1.Container {
 	}
 }
 
-// GatewayBFDConfig represents common BFD configuration shared by VPC gateways.
-// This interface allows both VpcEgressGateway and VpcNatGateway to use shared BFD logic.
-type GatewayBFDConfig interface {
-	IsEnabled() bool
-	GetMinRX() int32
-	GetMinTX() int32
-	GetMultiplier() int32
-}
-
 // genGatewayPodAntiAffinity creates pod anti-affinity rules to ensure gateway instances
 // run on different nodes. This is essential for HA deployments.
 func genGatewayPodAntiAffinity(labels map[string]string) *corev1.Affinity {
@@ -302,6 +300,218 @@ func cleanupStaleBFD(ovnClient ovnNbClient, staleBFDIDs set.Set[string]) error {
 	return nil
 }
 
+// getWorkloadNodes returns the list of nodes where the workload's pods are currently running.
+func getWorkloadNodes(podLister v1.PodLister, namespace string, selector *metav1.LabelSelector) ([]string, error) {
+	s, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		klog.Errorf("failed to create label selector: %v", err)
+		return nil, err
+	}
+
+	pods, err := podLister.Pods(namespace).List(s)
+	if err != nil {
+		klog.Errorf("failed to list pods for namespace %s: %v", namespace, err)
+		return nil, err
+	}
+
+	nodes := make([]string, 0, len(pods))
+	for _, pod := range pods {
+		if pod.Spec.NodeName != "" {
+			nodes = append(nodes, pod.Spec.NodeName)
+		}
+	}
+	return nodes, nil
+}
+
+// isNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
+func isNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
+	return gw.Spec.Replicas > 1
+}
+
+// updateNatGwWorkloadStatus updates the workload information in the VPC NAT Gateway status.
+func updateNatGwWorkloadStatus(
+	gw *kubeovnv1.VpcNatGateway,
+	podLister v1.PodLister,
+	deployLister appsv1listers.DeploymentLister,
+	kubeClient kubernetes.Interface,
+	natGwNamespace string,
+) bool {
+	workloadName := util.GenNatGwName(gw.Name)
+	var workloadKind, workloadAPIVersion string
+	var workloadNodes []string
+	var err error
+
+	if isNatGwHAMode(gw) {
+		workloadKind = util.KindDeployment
+		workloadAPIVersion = "apps/v1"
+		var deploy *appsv1.Deployment
+		if deployLister != nil {
+			deploy, err = deployLister.Deployments(natGwNamespace).Get(workloadName)
+		}
+		if err == nil && deploy != nil {
+			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, deploy.Spec.Selector)
+		}
+	} else {
+		workloadKind = util.KindStatefulSet
+		workloadAPIVersion = "apps/v1"
+		var sts *appsv1.StatefulSet
+		if kubeClient != nil {
+			sts, err = kubeClient.AppsV1().StatefulSets(natGwNamespace).Get(context.Background(), workloadName, metav1.GetOptions{})
+		}
+		if err == nil && sts != nil {
+			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, sts.Spec.Selector)
+		}
+	}
+
+	if err != nil {
+		klog.Errorf("failed to get workload nodes for %s %s/%s: %v", workloadKind, natGwNamespace, workloadName, err)
+	}
+
+	var changed bool
+	if gw.Status.Workload.Kind != workloadKind {
+		gw.Status.Workload.Kind = workloadKind
+		changed = true
+	}
+	if gw.Status.Workload.APIVersion != workloadAPIVersion {
+		gw.Status.Workload.APIVersion = workloadAPIVersion
+		changed = true
+	}
+	if gw.Status.Workload.Name != workloadName {
+		gw.Status.Workload.Name = workloadName
+		changed = true
+	}
+	slices.Sort(workloadNodes)
+	if !slices.Equal(gw.Status.Workload.Nodes, workloadNodes) {
+		gw.Status.Workload.Nodes = workloadNodes
+		changed = true
+	}
+
+	return changed
+}
+
+// resolveInternalCIDRs resolves internal CIDRs from subnet names and direct CIDRs.
+func resolveInternalCIDRs(subnetLister kubeovnv1lister.SubnetLister, subnetNames, directCIDRs []string) []string {
+	internalCIDRs := make([]string, 0, len(subnetNames)+len(directCIDRs))
+	for _, subnetName := range subnetNames {
+		subnet, err := subnetLister.Get(subnetName)
+		if err != nil {
+			klog.Warningf("failed to get subnet %s: %v", subnetName, err)
+			continue
+		}
+		if subnet.Spec.CIDRBlock != "" {
+			v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+			if v4CIDR != "" {
+				internalCIDRs = append(internalCIDRs, v4CIDR)
+			}
+			if v6CIDR != "" {
+				internalCIDRs = append(internalCIDRs, v6CIDR)
+			}
+		}
+	}
+	internalCIDRs = append(internalCIDRs, directCIDRs...)
+	return internalCIDRs
+}
+
+// reconcileGatewayRoutes reconciles OVN static routes for a gateway.
+func reconcileGatewayRoutes(
+	ovnClient ovnNbClient,
+	gwName string,
+	lrName string,
+	bfdEnabled bool,
+	bfdIP string,
+	bfdIDs set.Set[string],
+	bfdMap map[string]string,
+	internalCIDRs []string,
+	nextHops map[string]string,
+	externalIDs map[string]string,
+) error {
+	if len(internalCIDRs) == 0 {
+		// No internal CIDRs configured, delete any existing routes
+		if err := ovnClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, externalIDs); err != nil {
+			klog.Errorf("failed to delete static routes for gateway %s: %v", gwName, err)
+			return err
+		}
+		return nil
+	}
+
+	// Group nexthops by address family
+	v4NextHops := make([]string, 0, len(nextHops))
+	v6NextHops := make([]string, 0, len(nextHops))
+	for _, nexthop := range nextHops {
+		if util.CheckProtocol(nexthop) == kubeovnv1.ProtocolIPv4 {
+			v4NextHops = append(v4NextHops, nexthop)
+		} else {
+			v6NextHops = append(v6NextHops, nexthop)
+		}
+	}
+
+	// Create/update static routes for each internal CIDR
+	for _, internalCIDR := range internalCIDRs {
+		routeNextHops := v4NextHops
+		if util.CheckProtocol(internalCIDR) == kubeovnv1.ProtocolIPv6 {
+			routeNextHops = v6NextHops
+		}
+
+		if len(routeNextHops) == 0 {
+			klog.Warningf("no nexthops available for internal CIDR %s in gateway %s", internalCIDR, gwName)
+			continue
+		}
+
+		// Use source-based routing policy
+		policy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+		routeTable := ""
+
+		// Build external IDs for this specific route
+		routeExternalIDs := maps.Clone(externalIDs)
+		routeExternalIDs["internal-cidr"] = internalCIDR
+
+		// Get BFD ID for the first nexthop (for ECMP routes with BFD)
+		var bfdIDPtr *string
+		if bfdEnabled && bfdIP != "" && len(bfdIDs) > 0 {
+			if bfdID, exists := bfdMap[routeNextHops[0]]; exists {
+				bfdIDPtr = &bfdID
+			}
+		}
+
+		if err := ovnClient.AddLogicalRouterStaticRoute(
+			lrName,
+			routeTable,
+			policy,
+			internalCIDR,
+			bfdIDPtr,
+			routeExternalIDs,
+			routeNextHops...,
+		); err != nil {
+			klog.Errorf("failed to add static route for internal CIDR %s in gateway %s: %v", internalCIDR, gwName, err)
+			return err
+		}
+	}
+
+	// Cleanup stale routes
+	existingRoutes, err := ovnClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", externalIDs)
+	if err != nil {
+		klog.Errorf("failed to list static routes for gateway %s: %v", gwName, err)
+		return err
+	}
+
+	internalCIDRSet := set.New(internalCIDRs...)
+	for _, route := range existingRoutes {
+		if !internalCIDRSet.Has(route.IPPrefix) {
+			var policy *string
+			if route.Policy != nil {
+				p := string(*route.Policy)
+				policy = &p
+			}
+			if err := ovnClient.DeleteLogicalRouterStaticRoute(lrName, &route.RouteTable, policy, route.IPPrefix, route.Nexthop); err != nil {
+				klog.Errorf("failed to delete stale static route %s for gateway %s: %v", route.IPPrefix, gwName, err)
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // ovnNbClient defines the interface for OVN northbound operations needed by gateway BFD/routing.
 // This interface allows for easier testing and abstraction.
 type ovnNbClient interface {
@@ -313,4 +523,8 @@ type ovnNbClient interface {
 	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error
 	DeleteLogicalRouterPolicyByUUID(lr, uuid string) error
 	DeleteLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string) error
+	ListLogicalRouterStaticRoutes(lrName string, routeTable, policy *string, ipPrefix string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error)
+	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error
+	DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error
+	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 }
