@@ -23,11 +23,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
-	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -73,9 +71,6 @@ func (c *Controller) natGwNamespace(gw *kubeovnv1.VpcNatGateway) string {
 // HA mode is enabled when either:
 // - replicas is explicitly set to > 1, OR
 // - internalIPs array is provided (even if replicas is not set)
-func isNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
-	return gw.Spec.Replicas > 1 || len(gw.Spec.InternalIPs) > 0
-}
 
 // getNatGwReplicas returns the effective number of replicas for the NAT gateway.
 // Defaults to 1 if not specified.
@@ -1803,6 +1798,11 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.InternalCIDRs = gw.Spec.InternalCIDRs
 		changed = true
 	}
+
+	if updateNatGwWorkloadStatus(gw, c.podsLister, c.deploymentsLister, c.config.KubeClient, c.natGwNamespace(gw)) {
+		changed = true
+	}
+
 	if changed {
 		bytes, err := gw.Status.Bytes()
 		if err != nil {
@@ -1994,125 +1994,26 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 	}
 
 	// Resolve internal CIDRs from subnet names and direct CIDRs
-	internalCIDRs := make([]string, 0, len(gw.Spec.InternalSubnets)+len(gw.Spec.InternalCIDRs))
-	for _, subnetName := range gw.Spec.InternalSubnets {
-		subnet, err := c.subnetsLister.Get(subnetName)
-		if err != nil {
-			klog.Warningf("failed to get subnet %s for NAT gateway %s: %v", subnetName, gw.Name, err)
-			continue
-		}
-		if subnet.Spec.CIDRBlock != "" {
-			v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
-			if v4CIDR != "" {
-				internalCIDRs = append(internalCIDRs, v4CIDR)
-			}
-			if v6CIDR != "" {
-				internalCIDRs = append(internalCIDRs, v6CIDR)
-			}
-		}
-	}
-	internalCIDRs = append(internalCIDRs, gw.Spec.InternalCIDRs...)
+	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
 
-	if len(internalCIDRs) == 0 {
-		// No internal CIDRs configured, delete any existing routes
-		if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, externalIDs); err != nil {
-			klog.Errorf("failed to delete static routes for NAT gateway %s: %v", gw.Name, err)
-			return err
-		}
-		return nil
-	}
-
-	// Group nexthops by address family
-	v4NextHops := make([]string, 0, len(nextHops))
-	v6NextHops := make([]string, 0, len(nextHops))
-	for _, nexthop := range nextHops {
-		if util.CheckProtocol(nexthop) == kubeovnv1.ProtocolIPv4 {
-			v4NextHops = append(v4NextHops, nexthop)
-		} else {
-			v6NextHops = append(v6NextHops, nexthop)
-		}
-	}
-
-	// Create/update static routes for each internal CIDR
-	// We create src-ip policy routes where the internal CIDR matches and destination is 0.0.0.0/0 (default)
-	for _, internalCIDR := range internalCIDRs {
-		af := 4
-		routeNextHops := v4NextHops
-		if util.CheckProtocol(internalCIDR) == kubeovnv1.ProtocolIPv6 {
-			af = 6
-			routeNextHops = v6NextHops
-		}
-
-		if len(routeNextHops) == 0 {
-			klog.Warningf("no nexthops available for internal CIDR %s (af=%d) in NAT gateway %s", internalCIDR, af, gw.Name)
-			continue
-		}
-
-		// Use source-based routing policy
-		// For src-ip policy, ip_prefix is the source address to match
-		policy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
-		routeTable := ""
-
-		// Build external IDs for this specific route
-		routeExternalIDs := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"internal-cidr":             internalCIDR,
-		}
-
-		// Get BFD ID for the first nexthop (for ECMP routes with BFD)
-		var bfdIDPtr *string
-		if gw.Spec.BFD.Enabled && bfdIP != "" && len(bfdIDs) > 0 {
-			// For ECMP routes, we use the BFD session of the first nexthop
-			// OVN will use all BFD sessions associated with the nexthops
-			if bfdID, exists := bfdMap[routeNextHops[0]]; exists {
-				bfdIDPtr = &bfdID
-			}
-		}
-
-		// Create/update the src-ip route
-		// ip_prefix = internalCIDR (match traffic FROM this CIDR)
-		// nexthops = NAT gateway instances (route TO these gateways)
-		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
-			lrName,
-			routeTable,
-			policy,
-			internalCIDR,
-			bfdIDPtr,
-			routeExternalIDs,
-			routeNextHops...,
-		); err != nil {
-			klog.Errorf("failed to add static route for internal CIDR %s in NAT gateway %s: %v", internalCIDR, gw.Name, err)
-			return err
-		}
-
-		klog.Infof("reconciled OVN route for NAT gateway %s: policy=src-ip ip_prefix=%s nexthops=%v", gw.Name, internalCIDR, routeNextHops)
-	}
-
-	// Cleanup stale routes (routes for CIDRs no longer in the spec)
-	existingRoutes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(lrName, nil, nil, "", externalIDs)
-	if err != nil {
-		klog.Errorf("failed to list static routes for NAT gateway %s: %v", gw.Name, err)
+	// Reconcile OVN static routes for each internal CIDR
+	if err := reconcileGatewayRoutes(
+		c.OVNNbClient,
+		gw.Name,
+		lrName,
+		gw.Spec.BFD.Enabled,
+		bfdIP,
+		bfdIDs,
+		bfdMap,
+		internalCIDRs,
+		nextHops,
+		externalIDs,
+	); err != nil {
 		return err
 	}
 
-	internalCIDRSet := set.New(internalCIDRs...)
-	for _, route := range existingRoutes {
-		if routeInternalCIDR, ok := route.ExternalIDs["internal-cidr"]; ok {
-			if !internalCIDRSet.Has(routeInternalCIDR) {
-				// This route is for a CIDR no longer in the spec, delete it
-				policy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
-				if err := c.OVNNbClient.DeleteLogicalRouterStaticRoute(lrName, &route.RouteTable, &policy, route.IPPrefix, route.Nexthop); err != nil {
-					klog.Errorf("failed to delete stale route for internal CIDR %s in NAT gateway %s: %v", routeInternalCIDR, gw.Name, err)
-					return err
-				}
-				klog.Infof("deleted stale OVN route for NAT gateway %s: internal-cidr=%s", gw.Name, routeInternalCIDR)
-			}
-		}
-	}
-
 	// Cleanup stale BFD sessions
-	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+	if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
 		return err
 	}
 

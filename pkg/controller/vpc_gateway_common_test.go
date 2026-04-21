@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -10,9 +11,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/set"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestGenGatewayBFDDContainer(t *testing.T) {
@@ -176,6 +181,26 @@ func (m *mockOvnNbClient) DeleteLogicalRouterPolicies(lr string, priority int, e
 	return args.Error(0)
 }
 
+func (m *mockOvnNbClient) ListLogicalRouterStaticRoutes(lrName string, routeTable, policy *string, ipPrefix string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
+	args := m.Called(lrName, routeTable, policy, ipPrefix, externalIDs)
+	return args.Get(0).([]*ovnnb.LogicalRouterStaticRoute), args.Error(1)
+}
+
+func (m *mockOvnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
+	args := m.Called(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs, nexthops)
+	return args.Error(0)
+}
+
+func (m *mockOvnNbClient) DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error {
+	args := m.Called(lrName, externalIDs)
+	return args.Error(0)
+}
+
+func (m *mockOvnNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error {
+	args := m.Called(lrName, routeTable, policy, ipPrefix, nextHop)
+	return args.Error(0)
+}
+
 func TestReconcileGatewayBFD(t *testing.T) {
 	lrpName := "test-lrp"
 	externalIDs := map[string]string{"vpc": "test-vpc"}
@@ -255,9 +280,6 @@ func TestCleanupStaleBFD(t *testing.T) {
 
 		err := cleanupStaleBFD(m, staleIDs)
 		assert.NoError(t, err)
-		// UnsortedList makes order non-deterministic, but mock handles it if we don't care about order
-		// or if we use UnsortedList to set up expectations.
-		// For simplicity, we just check if expectations are met.
 		m.AssertExpectations(t)
 	})
 
@@ -268,5 +290,206 @@ func TestCleanupStaleBFD(t *testing.T) {
 
 		err := cleanupStaleBFD(m, staleIDs)
 		assert.Error(t, err)
+	})
+}
+
+func TestReconcileGatewayRoutes(t *testing.T) {
+	m := new(mockOvnNbClient)
+	gwName := "test-gw"
+	lrName := "test-lr"
+	bfdEnabled := true
+	bfdIP := "10.0.1.1"
+	bfdIDs := set.New("bfd-uuid-1")
+	bfdMap := map[string]string{"10.0.1.10": "bfd-uuid-1"}
+	internalCIDRs := []string{"10.0.1.0/24"}
+	nextHops := map[string]string{"node1": "10.0.1.10"}
+	externalIDs := map[string]string{"vendor": "kube-ovn"}
+
+	policySrcIP := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+	m.On("AddLogicalRouterStaticRoute", lrName, "", policySrcIP, "10.0.1.0/24", mock.Anything, mock.Anything, []string{"10.0.1.10"}).Return(nil)
+
+	existingRoutes := []*ovnnb.LogicalRouterStaticRoute{
+		{IPPrefix: "10.0.1.0/24", RouteTable: "", Policy: &policySrcIP},
+		{IPPrefix: "10.0.2.0/24", RouteTable: "", Policy: &policySrcIP}, // Stale
+	}
+	m.On("ListLogicalRouterStaticRoutes", lrName, (*string)(nil), (*string)(nil), "", externalIDs).Return(existingRoutes, nil)
+	m.On("DeleteLogicalRouterStaticRoute", lrName, mock.Anything, mock.Anything, "10.0.2.0/24", mock.Anything).Return(nil)
+
+	err := reconcileGatewayRoutes(m, gwName, lrName, bfdEnabled, bfdIP, bfdIDs, bfdMap, internalCIDRs, nextHops, externalIDs)
+	assert.NoError(t, err)
+	m.AssertExpectations(t)
+}
+
+func TestGetWorkloadNodes(t *testing.T) {
+	t.Parallel()
+
+	namespace := "test-ns"
+	selector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{"app": "test-app"},
+	}
+
+	pods := []corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod1",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "test-app"},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node1",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod2",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "test-app"},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node2",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod3",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "other-app"},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node3",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod4",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "test-app"},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "", // No node assigned
+			},
+		},
+	}
+
+	client := fake.NewSimpleClientset()
+	for _, pod := range pods {
+		_, err := client.CoreV1().Pods(namespace).Create(context.Background(), &pod, metav1.CreateOptions{})
+		assert.NoError(t, err)
+	}
+
+	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	podLister := informerFactory.Core().V1().Pods().Lister()
+
+	// Fill the cache
+	_ = informerFactory.Core().V1().Pods().Informer()
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	nodes, err := getWorkloadNodes(podLister, namespace, selector)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"node1", "node2"}, nodes)
+}
+
+func TestUpdateNatGwWorkloadStatus(t *testing.T) {
+	namespace := "test-ns"
+	gwName := "test-gw"
+	workloadName := util.GenNatGwName(gwName)
+
+	t.Run("HA mode (Deployment)", func(t *testing.T) {
+		gw := &kubeovnv1.VpcNatGateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName},
+			Spec:       kubeovnv1.VpcNatGatewaySpec{Replicas: 2},
+		}
+
+		deploy := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workloadName,
+				Namespace: namespace,
+			},
+			Spec: appsv1.DeploymentSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": workloadName},
+				},
+			},
+		}
+
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-1",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": workloadName},
+			},
+			Spec: corev1.PodSpec{NodeName: "node-1"},
+		}
+
+		client := fake.NewSimpleClientset(deploy, pod)
+		informerFactory := informers.NewSharedInformerFactory(client, 0)
+		podLister := informerFactory.Core().V1().Pods().Lister()
+		deployLister := informerFactory.Apps().V1().Deployments().Lister()
+
+		// Start informers and wait for sync
+		stopCh := make(chan struct{})
+		defer close(stopCh)
+		informerFactory.Start(stopCh)
+		informerFactory.WaitForCacheSync(stopCh)
+
+		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		assert.True(t, changed)
+		assert.Equal(t, util.KindDeployment, gw.Status.Workload.Kind)
+		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
+		assert.Equal(t, workloadName, gw.Status.Workload.Name)
+		assert.Equal(t, []string{"node-1"}, gw.Status.Workload.Nodes)
+
+		// Test no change
+		changed = updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		assert.False(t, changed)
+	})
+
+	t.Run("Legacy mode (StatefulSet)", func(t *testing.T) {
+		gw := &kubeovnv1.VpcNatGateway{
+			ObjectMeta: metav1.ObjectMeta{Name: gwName},
+			Spec:       kubeovnv1.VpcNatGatewaySpec{Replicas: 1},
+		}
+
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workloadName,
+				Namespace: namespace,
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": workloadName},
+				},
+			},
+		}
+
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workloadName + "-0",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": workloadName},
+			},
+			Spec: corev1.PodSpec{NodeName: "node-1"},
+		}
+
+		client := fake.NewSimpleClientset(sts, pod)
+		informerFactory := informers.NewSharedInformerFactory(client, 0)
+		podLister := informerFactory.Core().V1().Pods().Lister()
+		deployLister := informerFactory.Apps().V1().Deployments().Lister()
+
+		// Start informers and wait for sync
+		stopCh := make(chan struct{})
+		defer close(stopCh)
+		informerFactory.Start(stopCh)
+		informerFactory.WaitForCacheSync(stopCh)
+
+		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		assert.True(t, changed)
+		assert.Equal(t, util.KindStatefulSet, gw.Status.Workload.Kind)
+		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
+		assert.Equal(t, workloadName, gw.Status.Workload.Name)
+		assert.Equal(t, []string{"node-1"}, gw.Status.Workload.Nodes)
 	})
 }
