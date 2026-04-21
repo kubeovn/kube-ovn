@@ -29,7 +29,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
@@ -936,7 +935,6 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 		Value: strings.Join(forwardSrc.SortedList(), ","),
 	}}, nil
 }
-
 
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
 	env := []corev1.EnvVar{
