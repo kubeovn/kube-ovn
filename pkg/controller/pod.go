@@ -1166,6 +1166,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		return err
 	}
 
+	var hasAliveVMSibling bool
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
 		for _, port := range ports {
@@ -1181,6 +1182,18 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			if !isOwnerRefToDel {
 				klog.Infof("try keep ip for vm pod %s", podKey)
 				keepIPCR = true
+				// The VM LSP is shared across every virt-launcher pod of the VM
+				// (ExternalIDs["pod"] is keyed by VM name). Port-group memberships,
+				// however, belong to whichever virt-launcher pod is currently
+				// running the VM. If another live sibling exists (e.g. a
+				// live-migration destination while the completed source is being
+				// GC'd), its memberships must not be wiped out.
+				siblings, listErr := c.podsLister.Pods(pod.Namespace).List(labels.Everything())
+				if listErr != nil {
+					klog.Errorf("failed to list pods in namespace %s: %v", pod.Namespace, listErr)
+					return listErr
+				}
+				hasAliveVMSibling = hasAliveSiblingVMPod(siblings, vmName, pod.Name)
 			}
 		}
 		if keepIPCR {
@@ -1236,6 +1249,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 						c.updateSubnetStatusQueue.Add(subnetName)
 					}
 				}
+			} else if hasAliveVMSibling {
+				klog.Infof("skip removing lsp %s from port groups: another alive virt-launcher pod exists for vm %s/%s", port.Name, pod.Namespace, vmName)
 			} else {
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
@@ -2667,6 +2682,27 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// hasAliveSiblingVMPod reports whether pods contains any alive virt-launcher
+// pod owned by the VMI vmName, excluding the pod with name excludePodName.
+// It is used to decide whether a VM LSP's port-group memberships are still
+// owned by another running sibling (e.g. a live-migration destination) when a
+// completed/GC'd source pod is being processed.
+func hasAliveSiblingVMPod(pods []*v1.Pod, vmName, excludePodName string) bool {
+	for _, p := range pods {
+		if p == nil || p.Name == excludePodName {
+			continue
+		}
+		isVM, name := isVMPod(p)
+		if !isVM || name != vmName {
+			continue
+		}
+		if isPodAlive(p) {
+			return true
+		}
+	}
+	return false
 }
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
