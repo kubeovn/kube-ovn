@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -63,6 +64,23 @@ func (c *Controller) natGwNamespace(gw *kubeovnv1.VpcNatGateway) string {
 		return gw.Spec.Namespace
 	}
 	return c.config.PodNamespace
+}
+
+// isNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
+// HA mode is enabled when either:
+// - replicas is explicitly set to > 1, OR
+// - internalIPs array is provided (even if replicas is not set)
+func isNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
+	return gw.Spec.Replicas > 1 || len(gw.Spec.InternalIPs) > 0
+}
+
+// getNatGwReplicas returns the effective number of replicas for the NAT gateway.
+// Defaults to 1 if not specified.
+func getNatGwReplicas(gw *kubeovnv1.VpcNatGateway) int32 {
+	if gw.Spec.Replicas > 0 {
+		return gw.Spec.Replicas
+	}
+	return 1
 }
 
 // natGwNamespaceByName looks up the VpcNatGateway by name and returns natGwNamespace.
@@ -260,57 +278,112 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 	needRestartRecovery := natGwPodContainerRestartCount > 0
 
-	// check or create statefulset
-	needToCreate := false
-	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
-		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
+	// Choose between Deployment (HA mode) or StatefulSet (legacy mode)
+	if isNatGwHAMode(gw) {
+		// HA mode: use Deployment
+		needToCreate := false
+		oldDeploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Error(err)
+				return err
+			}
+			needToCreate, oldDeploy = true, nil
+		}
+		gwChanged := isVpcNatGwChanged(gw)
+		needPatchStatus := gwChanged
+
+		newDeploy, err := c.genNatGwDeployment(gw, oldDeploy, natGwPodContainerRestartCount)
+		if err != nil {
 			klog.Error(err)
 			return err
 		}
-		needToCreate, oldSts = true, nil
-	}
-	gwChanged := isVpcNatGwChanged(gw)
-	needPatchStatus := gwChanged
 
-	newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
+		// Handle Deployment creation (early return - QoS will be handled in init flow)
+		if needToCreate {
+			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+				Create(context.Background(), newDeploy, metav1.CreateOptions{}); err != nil {
+				err := fmt.Errorf("failed to create deployment '%s', err: %w", newDeploy.Name, err)
+				klog.Error(err)
+				return err
+			}
+			if err = c.patchNatGwStatus(key); err != nil {
+				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
+				return err
+			}
+			return nil
+		}
 
-	// Handle StatefulSet creation (early return - QoS will be handled in init flow)
-	if needToCreate {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
-			Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
-			err := fmt.Errorf("failed to create statefulset '%s', err: %w", newSts.Name, err)
+		// Handle Deployment update if needed
+		if gwChanged || needRestartRecovery {
+			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+				Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
+				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
+				klog.Error(err)
+				return err
+			}
+		}
+
+		if needPatchStatus {
+			if err = c.patchNatGwStatus(key); err != nil {
+				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
+				return err
+			}
+		}
+	} else {
+		// Legacy mode: use StatefulSet
+		needToCreate := false
+		oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
+			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Error(err)
+				return err
+			}
+			needToCreate, oldSts = true, nil
+		}
+		gwChanged := isVpcNatGwChanged(gw)
+		needPatchStatus := gwChanged
+
+		newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
+		if err != nil {
 			klog.Error(err)
 			return err
 		}
-		if err = c.patchNatGwStatus(key); err != nil {
-			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
-			return err
-		}
-		return nil
-	}
 
-	// Handle StatefulSet update if needed
-	// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
-	// TODO: support hot update of runtime Pod annotations directly via patch
-	if gwChanged || needRestartRecovery {
-		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
-			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
-			klog.Error(err)
-			return err
+		// Handle StatefulSet creation (early return - QoS will be handled in init flow)
+		if needToCreate {
+			if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
+				Create(context.Background(), newSts, metav1.CreateOptions{}); err != nil {
+				err := fmt.Errorf("failed to create statefulset '%s', err: %w", newSts.Name, err)
+				klog.Error(err)
+				return err
+			}
+			if err = c.patchNatGwStatus(key); err != nil {
+				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
+				return err
+			}
+			return nil
 		}
-	}
 
-	if needPatchStatus {
-		if err = c.patchNatGwStatus(key); err != nil {
-			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
-			return err
+		// Handle StatefulSet update if needed
+		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
+		// TODO: support hot update of runtime Pod annotations directly via patch
+		if gwChanged || needRestartRecovery {
+			if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
+				Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
+				err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
+				klog.Error(err)
+				return err
+			}
+		}
+
+		if needPatchStatus {
+			if err = c.patchNatGwStatus(key); err != nil {
+				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
+				return err
+			}
 		}
 	}
 
@@ -1167,6 +1240,210 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	return sts, nil
+}
+
+// genNatGwDeployment generates a Deployment for HA mode NAT gateway (replicas > 1).
+// It reuses most of the logic from genNatGwStatefulSet but creates a Deployment instead.
+func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *v1.Deployment, natGwPodContainerRestartCount int32) (*v1.Deployment, error) {
+	// Reuse all the annotation and routing logic from StatefulSet generation
+	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
+	if err != nil {
+		klog.Errorf("failed to get gw external subnet nad: %v", err)
+		return nil, err
+	}
+
+	eth0SubnetProvider, err := c.GetSubnetProvider(gw.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get gw eth0 valid subnet provider: %v", err)
+		return nil, err
+	}
+
+	var additionalNetworks string
+	if c.config.EnableNonPrimaryCNI && gw.Annotations != nil {
+		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
+	}
+
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	if err != nil {
+		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
+		return nil, err
+	}
+
+	// Restart logic
+	if oldDeploy != nil && len(oldDeploy.Spec.Template.Annotations) != 0 {
+		if _, ok := oldDeploy.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
+			templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
+		}
+	}
+	klog.V(3).Infof("%s templateAnnotations:%v", gw.Name, templateAnnotations)
+
+	if gw.Spec.BgpSpeaker.Enabled {
+		if err := c.setNatGwAPIAccess(templateAnnotations); err != nil {
+			klog.Errorf("couldn't add an API interface to the NAT gateway: %v", err)
+			return nil, err
+		}
+	}
+
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, err
+	}
+
+	eth0V4Gateway, eth0V6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
+		return nil, err
+	}
+
+	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
+	routes := make([]request.Route, 0, 2)
+	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
+		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
+	}
+	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
+		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
+			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
+			continue
+		}
+		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if cidrV4 != "" && eth0V4Gateway != "" {
+			routes = append(routes, request.Route{Destination: cidrV4, Gateway: eth0V4Gateway})
+		}
+		if cidrV6 != "" && eth0V6Gateway != "" {
+			routes = append(routes, request.Route{Destination: cidrV6, Gateway: eth0V6Gateway})
+		}
+	}
+
+	for _, route := range gw.Spec.Routes {
+		nexthop := route.NextHopIP
+		if nexthop == "gateway" {
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
+				nexthop = eth0V4Gateway
+			} else {
+				nexthop = eth0V6Gateway
+			}
+		}
+		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
+	}
+
+	if err = setPodRoutesAnnotation(templateAnnotations, eth0SubnetProvider, routes); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	routes = routes[0:0]
+	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
+	if net1V4Gateway != "" {
+		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
+	}
+	if net1V6Gateway != "" {
+		routes = append(routes, request.Route{Destination: "::/0", Gateway: net1V6Gateway})
+	}
+
+	if !gw.Spec.NoDefaultEIP {
+		if err = setPodRoutesAnnotation(templateAnnotations, net1Subnet.Spec.Provider, routes); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("skipping IP allocation for NAT gateway %s (NoDefaultEIP enabled)", gw.Name)
+		templateAnnotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, net1Subnet.Spec.Provider)] = "true"
+	}
+
+	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
+	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
+
+	labels := util.GenNatGwLabels(gw.Name)
+	replicas := getNatGwReplicas(gw)
+
+	// Create Deployment with HA configuration
+	deploy := &v1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      util.GenNatGwName(gw.Name),
+			Namespace: c.natGwNamespace(gw),
+			Labels:    labels,
+		},
+		Spec: v1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Strategy: genGatewayDeploymentStrategy(),
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: templateAnnotations,
+				},
+				Spec: corev1.PodSpec{
+					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					Containers: []corev1.Container{
+						{
+							Name:    "vpc-nat-gw",
+							Image:   vpcNatImage,
+							Command: []string{"sleep", "infinity"},
+							Lifecycle: &corev1.Lifecycle{
+								PostStart: &corev1.LifecycleHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
+									},
+								},
+							},
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Env: []corev1.EnvVar{
+								{
+									Name:  "GATEWAY_V4",
+									Value: eth0V4Gateway,
+								},
+								{
+									Name:  "GATEWAY_V6",
+									Value: eth0V6Gateway,
+								},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
+							},
+						},
+					},
+					NodeSelector: selectors,
+					Tolerations:  gw.Spec.Tolerations,
+					// Merge pod anti-affinity for HA with user-specified affinity
+					Affinity: mergeGatewayAffinity(
+						genGatewayPodAntiAffinity(labels),
+						&gw.Spec.Affinity,
+					),
+				},
+			},
+		},
+	}
+
+	// BGP speaker is enabled on this instance
+	if gw.Spec.BgpSpeaker.Enabled {
+		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
+		deploy.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+
+		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
+		if err != nil {
+			klog.Errorf("failed to create a BGP speaker container for gateway %s: %v", gw.Name, err)
+			return nil, err
+		}
+
+		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *bgpSpeakerContainer)
+	}
+
+	return deploy, nil
 }
 
 // getExternalSubnetNad returns the namespace and name of the NetworkAttachmentDefinition associated with
