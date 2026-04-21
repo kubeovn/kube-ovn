@@ -368,7 +368,8 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	// Validate IP configuration based on HA mode
-	if len(gw.Spec.InternalIPs) > 0 {
+	switch {
+	case len(gw.Spec.InternalIPs) > 0:
 		// HA mode with InternalIPs array
 		if len(gw.Spec.InternalIPs) < int(replicas) {
 			return fmt.Errorf("internalIPs count (%d) must be >= replicas (%d)", len(gw.Spec.InternalIPs), replicas)
@@ -393,10 +394,10 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 			}
 			ipSet[ip] = true
 		}
-	} else if gw.Spec.LanIP != "" {
+	case gw.Spec.LanIP != "":
 		// Legacy mode with single LanIP
 		if replicas > 1 {
-			return fmt.Errorf("replicas > 1 requires internalIPs array; single lanIp field only supports replicas=1")
+			return errors.New("replicas > 1 requires internalIPs array; single lanIp field only supports replicas=1")
 		}
 
 		if net.ParseIP(gw.Spec.LanIP) == nil {
@@ -407,7 +408,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 			return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
 				gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
 		}
-	} else {
+	default:
 		return errors.New("either lanIp or internalIPs must be specified")
 	}
 

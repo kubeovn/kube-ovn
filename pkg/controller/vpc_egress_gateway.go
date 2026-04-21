@@ -999,7 +999,6 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 	}}, nil
 }
 
-
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
 	env := []corev1.EnvVar{
 		{
