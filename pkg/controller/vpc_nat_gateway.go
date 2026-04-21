@@ -25,6 +25,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -199,16 +200,43 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 
 	c.vpcNatGwKeyMutex.LockKey(gwName)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(gwName) }()
-	stsName := util.GenNatGwName(gwName)
-	klog.Infof("delete vpc nat gw %s in namespace %s", stsName, stsNamespace)
-	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
-		stsName, metav1.DeleteOptions{}); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
+	workloadName := util.GenNatGwName(gwName)
+	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, stsNamespace)
+
+	// Try to delete both Deployment (HA mode) and StatefulSet (legacy mode)
+	// One will succeed, the other will get NotFound error
+	if err := c.config.KubeClient.AppsV1().Deployments(stsNamespace).Delete(context.Background(),
+		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return err
 	}
+
+	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
+		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Error(err)
+		return err
+	}
+
+	// Clean up BFD sessions for this NAT gateway
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:        util.CniTypeName,
+		ovs.ExternalIDVpcNatGateway: gwName,
+	}
+
+	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
+	if err != nil {
+		klog.Errorf("failed to find BFD sessions for nat gw %s: %v", gwName, err)
+		return err
+	}
+
+	for i := range bfdList {
+		bfd := &bfdList[i]
+		if err := c.OVNNbClient.DeleteBFD(bfd.UUID); err != nil {
+			klog.Errorf("failed to delete BFD %s: %v", bfd.UUID, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -383,6 +411,55 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			if err = c.patchNatGwStatus(key); err != nil {
 				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 				return err
+			}
+		}
+	}
+
+	// Reconcile BFD sessions for HA mode
+	if isNatGwHAMode(gw) && gw.Spec.BFD.Enabled {
+		vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
+			return err
+		}
+
+		if vpc.Status.BFDPort.IP == "" {
+			klog.Warningf("VPC %s BFD port is not ready, skipping BFD reconciliation", vpc.Name)
+		} else {
+			// Collect nexthop IPs from running gateway pods
+			deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+				Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
+				return err
+			}
+
+			podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+			if err != nil {
+				klog.Errorf("failed to get pod selector: %v", err)
+				return err
+			}
+
+			pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
+			if err != nil {
+				klog.Errorf("failed to list pods: %v", err)
+				return err
+			}
+
+			nextHops := make(map[string]string, len(pods))
+			for _, pod := range pods {
+				if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
+					continue
+				}
+				// Use first IP (internal IP) as nexthop
+				nextHops[pod.Spec.NodeName] = pod.Status.PodIPs[0].IP
+			}
+
+			if len(nextHops) > 0 {
+				if err = c.reconcileVpcNatGatewayBFD(gw, vpc.Status.BFDPort.Name, vpc.Status.BFDPort.IP, nextHops); err != nil {
+					klog.Errorf("failed to reconcile BFD for nat gw %s: %v", key, err)
+					return err
+				}
 			}
 		}
 	}
@@ -1269,6 +1346,18 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 		return nil, err
 	}
 
+	// Get VPC and BFD port information for BFD session support
+	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
+		return nil, err
+	}
+
+	var bfdIP string
+	if gw.Spec.BFD.Enabled {
+		bfdIP = vpc.Status.BFDPort.IP
+	}
+
 	// Restart logic
 	if oldDeploy != nil && len(oldDeploy.Spec.Template.Annotations) != 0 {
 		if _, ok := oldDeploy.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
@@ -1427,6 +1516,29 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 				},
 			},
 		},
+	}
+
+	// Replace the default sleep container with BFD container if BFD is enabled
+	if bfdIP != "" {
+		// Run BFD in the gateway container to establish BFD session(s) with the VPC BFD LRP
+		bfdContainer := genGatewayBFDDContainer(vpcNatImage, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		deploy.Spec.Template.Spec.Containers[0] = bfdContainer
+		// Preserve environment variables and security context
+		deploy.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+			{Name: "GATEWAY_V4", Value: eth0V4Gateway},
+			{Name: "GATEWAY_V6", Value: eth0V6Gateway},
+		}
+		deploy.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			Privileged:               new(true),
+			AllowPrivilegeEscalation: new(true),
+		}
+		deploy.Spec.Template.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
+			PostStart: &corev1.LifecycleHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"sh", "-c", "sysctl -w net.ipv4.ip_forward=1"},
+				},
+			},
+		}
 	}
 
 	// BGP speaker is enabled on this instance
@@ -1768,5 +1880,42 @@ func (c *Controller) initVpcNatGw() error {
 			c.initVpcNatGatewayQueue.Add(natGateway)
 		}
 	}
+	return nil
+}
+
+// reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway HA mode.
+// Unlike EgressGateway, NAT Gateway doesn't need OVN routing policies since NAT is performed
+// via iptables rules on the gateway pods themselves. BFD is used solely for health monitoring
+// and automatic failover of the gateway instances.
+func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string) error {
+	if len(nextHops) == 0 || bfdIP == "" {
+		return nil
+	}
+
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:        util.CniTypeName,
+		ovs.ExternalIDVpcNatGateway: gw.Name,
+	}
+
+	// Reconcile OVN BFD entries using shared function
+	_, _, staleBFDIDs, err := reconcileGatewayBFD(
+		c.OVNNbClient,
+		bfdIP,
+		lrpName,
+		nextHops,
+		gw.Spec.BFD.MinTX,
+		gw.Spec.BFD.MinRX,
+		gw.Spec.BFD.Multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Cleanup stale BFD sessions
+	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+		return err
+	}
+
 	return nil
 }

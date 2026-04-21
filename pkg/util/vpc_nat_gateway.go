@@ -120,7 +120,13 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
-	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+
+	// For HA mode, use InternalIPs with IP pool annotation; for legacy mode, use LanIP
+	if len(gw.Spec.InternalIPs) > 0 {
+		result[fmt.Sprintf(IPPoolAnnotationTemplate, p)] = strings.Join(gw.Spec.InternalIPs, ";")
+	} else {
+		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+	}
 
 	// We're using a custom provider, we need to override the default network of the pod so that the
 	// default VPC/Subnet of the cluster isn't accidentally injected.
