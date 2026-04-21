@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:experimental
+# syntax=docker/dockerfile:1
 # renovate: datasource=golang-version depName=go
 ARG GO_VERSION=1.26.2
 
