@@ -82,6 +82,10 @@ spec:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
           env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: POD_IP
               valueFrom:
                 fieldRef:
