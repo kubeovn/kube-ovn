@@ -10,6 +10,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -212,12 +213,20 @@ func TestInitLB_SkipsCtFlushForSessionAffinityUDP(t *testing.T) {
 
 			lbName := "cluster-" + tt.protocol + "-test-loadbalancer"
 
-			mockOvnClient.EXPECT().
-				CreateLoadBalancer(lbName, tt.protocol, gomock.Any()).
-				Return(nil)
 			if tt.sessionAffinity {
 				mockOvnClient.EXPECT().
+					CreateLoadBalancer(
+						lbName, tt.protocol,
+						ovnnb.LoadBalancerSelectionFieldsIPSrc,
+						ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+					).
+					Return(nil)
+				mockOvnClient.EXPECT().
 					SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).
+					Return(nil)
+			} else {
+				mockOvnClient.EXPECT().
+					CreateLoadBalancer(lbName, tt.protocol).
 					Return(nil)
 			}
 			mockOvnClient.EXPECT().
