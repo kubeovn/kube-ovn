@@ -23,6 +23,7 @@ type IptablesEIPList struct {
 // +kubebuilder:resource:scope="Cluster",shortName="eip",path="iptables-eips",singular="iptables-eip"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Namespace",type="string",JSONPath=".spec.namespace"
+// +kubebuilder:printcolumn:name="ExternalSubnet",type="string",JSONPath=".spec.externalSubnet"
 // +kubebuilder:printcolumn:name="IP",type="string",JSONPath=".status.ip"
 // +kubebuilder:printcolumn:name="Mac",type="string",JSONPath=".spec.macAddress"
 // +kubebuilder:printcolumn:name="Nat",type="string",JSONPath=".status.nat"

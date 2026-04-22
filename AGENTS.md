@@ -8,11 +8,13 @@
 
 ## Build, Test, and Development Commands
 - `make build-go` – tidy modules and compile Go binaries for linux/amd64 into `dist/images/`.  
-- `make lint` – run `golangci-lint` plus Go “modernize”; auto-fixes when not in CI.  
+- `make gen-crd` – regenerate CRD YAMLs from kubebuilder annotations in `pkg/apis/kubeovn/v1/`; syncs `charts/`, `yamls/gen/`, and `dist/images/install.sh`.  
+- `make lint` – run `golangci-lint` plus Go "modernize"; auto-fixes when not in CI.  
 - `make ut` – run unit tests: Ginkgo suites in `test/unittest` and `go test` with coverage for `pkg`.  
 
 ## General Coding Guidlines
 - Every time after editing code. MUST run `make lint` to detect and fix potential lint issues.
+- After modifying kubebuilder annotations or CRD-related types in `pkg/apis/kubeovn/v1/`, MUST run `make gen-crd` before `make lint` (lint calls `verify-crd` internally and will fail if CRDs are out of sync).
 - When modifying code, try to clean up any related code logic that is no longer needed.
 - Follow `CODE_STYLE.md`: camelCase identifiers, keep functions short (~100 lines), return/log errors instead of discarding, and prefer `if err := ...; err != nil` patterns. 
 
