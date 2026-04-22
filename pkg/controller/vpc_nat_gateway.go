@@ -429,71 +429,12 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	// Reconcile BFD sessions and OVN routes for HA mode
+	// what happens if gw goes from non-ha to ha or the opposite?
 	if isNatGwHAMode(gw) {
-		vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
-		if err != nil {
-			klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
+		// Reconcile routes to the NAT gateways so that the traffic from internal subnets is routed to it
+		if err = c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
+			klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 			return err
-		}
-
-		// Collect nexthop IPs from running gateway pods
-		deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
-			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
-			return err
-		}
-
-		podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-		if err != nil {
-			klog.Errorf("failed to get pod selector: %v", err)
-			return err
-		}
-
-		pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
-		if err != nil {
-			klog.Errorf("failed to list pods: %v", err)
-			return err
-		}
-
-		// Split next hops by address family
-		nextHopsV4 := make(map[string]string)
-		nextHopsV6 := make(map[string]string)
-		for _, pod := range pods {
-			if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
-				continue
-			}
-			// Collect all pod IPs and split by address family
-			for _, podIP := range pod.Status.PodIPs {
-				if util.CheckProtocol(podIP.IP) == kubeovnv1.ProtocolIPv4 {
-					nextHopsV4[pod.Spec.NodeName] = podIP.IP
-				} else if util.CheckProtocol(podIP.IP) == kubeovnv1.ProtocolIPv6 {
-					nextHopsV6[pod.Spec.NodeName] = podIP.IP
-				}
-			}
-		}
-
-		// Reconcile OVN routes if internal CIDRs/subnets are configured
-		if len(gw.Spec.InternalSubnets) > 0 || len(gw.Spec.InternalCIDRs) > 0 {
-			bfdIP := ""
-			if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
-				bfdIP = vpc.Status.BFDPort.IP
-			}
-
-			// Merge v4 and v6 nexthops for OVN routes (routes are protocol-specific)
-			nextHops := make(map[string]string)
-			maps.Copy(nextHops, nextHopsV4)
-			for node, ip := range nextHopsV6 {
-				// For dual-stack, prefer v4 or concatenate both
-				if _, exists := nextHops[node]; !exists {
-					nextHops[node] = ip
-				}
-			}
-
-			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
-				klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
-				return err
-			}
 		}
 	}
 
@@ -1314,7 +1255,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			Labels:    labels,
 		},
 		Spec: v1.StatefulSetSpec{
-			Replicas: new(int32(1)),
+			Replicas: ptr.To(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -1324,7 +1265,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					Annotations: templateAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					TerminationGracePeriodSeconds: new(int64(0)),
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
@@ -1349,8 +1290,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
@@ -1369,7 +1310,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		sts.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
 
 		// Craft a BGP speaker container to add to our statefulset
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
@@ -1523,8 +1464,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
@@ -1561,7 +1502,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	// BGP speaker is enabled on this instance
 	if gw.Spec.BgpSpeaker.Enabled {
 		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		deploy.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		deploy.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
 
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
 		if err != nil {
@@ -1930,64 +1871,123 @@ func (c *Controller) initVpcNatGw() error {
 	return nil
 }
 
+///////////
+// TODO: WORKING PATH
+
 // reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateways.
 // It creates policy-based routes for traffic from specified internal CIDRs,
 // directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
 // Stale routes (and stale BFD entries) are removed during the reconciliation process.
-func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, bfdLrp, bfdIP string, nextHops map[string]string) error {
+func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway) error {
 	// Resolve internal CIDRs from subnet names and direct CIDRs. We'll inject routes to redirect traffic coming from those CIDRs into the VPC NAT gateway.
 	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
+
+	// Retrieve the VPC in which the gateway is running
+	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
+		return err
+	}
+
+	// Collect nexthop IPs from running gateway pods
+	nextHops, err := c.getNatGwNextHops(gw)
+	if err != nil {
+		klog.Errorf("failed to collect next hops for nat gw %s: %v", gw.Name, err)
+		return err
+	}
 
 	// Group internal CIDRs and nexthops by address family
 	cidrsByAF, nextHopsByAF := util.GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
 
 	// Split the BFD IP into IPv4 and IPv6 components
-	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+	bfdIPv4, bfdIPv6 := util.SplitStringIP(vpc.Status.BFDPort.IP)
 	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
 
 	// Process each address family
 	for _, af := range []int{4, 6} {
-		internalCIDRsAF := cidrsByAF[af]
-		nextHopsAF := nextHopsByAF[af]
-
-		externalIDs := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"af":                        strconv.Itoa(af),
-		}
-
-		// Reconcile BFD sessions for this address family
-		bfdIDs, err := reconcileGatewayBFDWithCleanup(
-			c.OVNNbClient,
-			bfdIPs[af],
-			bfdLrp,
-			nextHops,
-			gw.Spec.BFD.MinTX,
-			gw.Spec.BFD.MinRX,
-			gw.Spec.BFD.Multiplier,
-			externalIDs,
-		)
-		if err != nil {
-			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
-			return err
-		}
-
-		// Reconcile the OVN policy routes for this address family
-		if err := reconcileNatGatewayPolicies(
-			c.OVNNbClient,
-			gw.Name,
-			gw.Spec.Vpc,
-			af,
-			gw.Spec.BFD.Enabled,
-			bfdIDs,
-			internalCIDRsAF,
-			nextHopsAF,
-			externalIDs,
-		); err != nil {
-			klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
+		if err := c.reconcileVpcNatGatewayOVNRoutesAF(gw, af, vpc.Status.BFDPort.Name, bfdIPs[af], cidrsByAF[af], nextHopsByAF[af]); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGateway, af int, bfdLrp, bfdIP string, internalCIDRsAF []string, nextHopsAF map[string]string) error {
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:        util.CniTypeName,
+		ovs.ExternalIDVpcNatGateway: gw.Name,
+		"af":                        strconv.Itoa(af),
+	}
+
+	// Reconcile BFD sessions for this address family
+	bfdIDs, err := reconcileGatewayBFDWithCleanup(
+		c.OVNNbClient,
+		bfdIP,
+		bfdLrp,
+		nextHopsAF,
+		gw.Spec.BFD.MinTX,
+		gw.Spec.BFD.MinRX,
+		gw.Spec.BFD.Multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
+		return err
+	}
+
+	// Reconcile the OVN policy routes for this address family
+	if err := reconcileNatGatewayPolicies(
+		c.OVNNbClient,
+		gw.Name,
+		gw.Spec.Vpc,
+		af,
+		gw.Spec.BFD.Enabled,
+		bfdIDs,
+		internalCIDRsAF,
+		nextHopsAF,
+		externalIDs,
+	); err != nil {
+		klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]string, error) {
+	deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
+		return nil, err
+	}
+
+	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		klog.Errorf("failed to get pod selector: %v", err)
+		return nil, err
+	}
+
+	pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
+	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return nil, err
+	}
+
+	nextHops := make(map[string]string)
+	for _, pod := range pods {
+		if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
+			continue
+		}
+		for _, podIP := range pod.Status.PodIPs {
+			// For dual-stack, prefer v4 or concatenate both
+			if _, exists := nextHops[pod.Spec.NodeName]; !exists {
+				nextHops[pod.Spec.NodeName] = podIP.IP
+			} else if util.CheckProtocol(podIP.IP) == kubeovnv1.ProtocolIPv4 {
+				nextHops[pod.Spec.NodeName] = podIP.IP
+			}
+		}
+	}
+	return nextHops, nil
 }
