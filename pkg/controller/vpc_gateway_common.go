@@ -303,6 +303,55 @@ func cleanupStaleBFD(ovnClient ovnNbClient, staleBFDIDs set.Set[string]) error {
 	return nil
 }
 
+// reconcileGatewayBFDWithCleanup reconciles OVN BFD sessions for a gateway and cleans up stale sessions.
+// This is a convenience wrapper around reconcileGatewayBFD that also handles cleanup.
+//
+// Parameters:
+//   - ovnClient: OVN northbound client for BFD operations
+//   - bfdIP: BFD port IP (empty string disables BFD)
+//   - lrpName: Logical router port name for BFD sessions
+//   - nextHops: Map of node names to nexthop IPs
+//   - minTX, minRX, multiplier: BFD timing parameters
+//   - externalIDs: External IDs for tagging BFD sessions (should include gateway-specific identifiers)
+//
+// Returns:
+//   - bfdIDs: Set of active BFD UUIDs
+//   - error: Any error encountered during reconciliation or cleanup
+func reconcileGatewayBFDWithCleanup(
+	ovnClient ovnNbClient,
+	bfdIP string,
+	lrpName string,
+	nextHops map[string]string,
+	minTX, minRX, multiplier int32,
+	externalIDs map[string]string,
+) (set.Set[string], error) {
+	if len(nextHops) == 0 || bfdIP == "" {
+		return nil, nil
+	}
+
+	// Reconcile OVN BFD entries
+	bfdIDs, _, staleBFDIDs, err := reconcileGatewayBFD(
+		ovnClient,
+		bfdIP,
+		lrpName,
+		nextHops,
+		minTX,
+		minRX,
+		multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cleanup stale BFD sessions
+	if err = cleanupStaleBFD(ovnClient, staleBFDIDs); err != nil {
+		return nil, err
+	}
+
+	return bfdIDs, nil
+}
+
 // getWorkloadNodes returns the list of nodes where the workload's pods are currently running.
 func getWorkloadNodes(podLister v1.PodLister, namespace string, selector *metav1.LabelSelector) ([]string, error) {
 	s, err := metav1.LabelSelectorAsSelector(selector)
