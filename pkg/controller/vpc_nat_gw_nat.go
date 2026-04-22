@@ -1687,7 +1687,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 }
 
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1695,9 +1695,11 @@ func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
 	addRules = append(addRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwSubnetFipAdd, addRules); err != nil {
-		klog.Errorf("failed to create fip, err: %v", err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwSubnetFipAdd, addRules); err != nil {
+			klog.Errorf("failed to create fip in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -1917,7 +1919,7 @@ func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.Ipta
 }
 
 func (c *Controller) deleteFipInPod(dp, v4ip string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1926,32 +1928,36 @@ func (c *Controller) deleteFipInPod(dp, v4ip string) error {
 		return err
 	}
 	// del_floating_ip matches by EIP only (FIP is 1:1, identity = EIP)
-	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, []string{v4ip}); err != nil {
-		klog.Errorf("failed to delete fip, err: %v", err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, []string{v4ip}); err != nil {
+			klog.Errorf("failed to delete fip in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
+		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
 	}
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIP, internalPort)
 	addRules = append(addRules, rule)
 
-	if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
-		klog.Errorf("failed to create dnat, err: %v", err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
+			klog.Errorf("failed to create dnat in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1962,41 +1968,46 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) er
 
 	// del_dnat matches by identity triplet (EIP, ExternalPort, Protocol) only
 	rule := fmt.Sprintf("%s,%s,%s", v4ip, externalPort, protocol)
-	if err = c.execNatGwRules(gwPod, natGwDnatDel, []string{rule}); err != nil {
-		klog.Errorf("failed to delete dnat, err: %v", err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwDnatDel, []string{rule}); err != nil {
+			klog.Errorf("failed to delete dnat in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
+		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
 	}
-	var rules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 
-	version, err := c.getIptablesVersion(gwPod)
-	if err != nil {
-		version = "1.0.0"
-		klog.Warningf("failed to checking iptables version, assuming version at least %s: %v", version, err)
-	}
-	if util.CompareVersion(version, "1.6.2") >= 1 {
-		rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
-	}
+	for _, gwPod := range gwPods {
+		var rules []string
+		rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 
-	rules = append(rules, rule)
-	if err = c.execNatGwRules(gwPod, natGwSnatAdd, rules); err != nil {
-		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
-		return err
+		version, err := c.getIptablesVersion(gwPod)
+		if err != nil {
+			version = "1.0.0"
+			klog.Warningf("failed to checking iptables version, assuming version at least %s: %v", version, err)
+		}
+		if util.CompareVersion(version, "1.6.2") >= 1 {
+			rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
+		}
+
+		rules = append(rules, rule)
+		if err = c.execNatGwRules(gwPod, natGwSnatAdd, rules); err != nil {
+			klog.Errorf("failed to exec nat gateway rule in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -2008,9 +2019,11 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	var delRules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwSnatDel, delRules); err != nil {
-		klog.Errorf("failed to delete snat, err: %v", err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwSnatDel, delRules); err != nil {
+			klog.Errorf("failed to delete snat in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }

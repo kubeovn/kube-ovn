@@ -390,16 +390,22 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 }
 
 func (c *Controller) createEipInPod(dp, addrV4, ns string) error {
-	gwPod, err := c.getNatGwPod(dp, ns)
+	gwPods, err := c.getNatGwPods(dp, ns)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	return c.execNatGwRules(gwPod, natGwEipAdd, []string{addrV4})
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwEipAdd, []string{addrV4}); err != nil {
+			klog.Errorf("failed to create eip in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
-	gwPod, err := c.getNatGwPod(dp, ns)
+	gwPods, err := c.getNatGwPods(dp, ns)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -410,9 +416,11 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
 	var delRules []string
 	rule := v4Cidr
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, natGwEipDel, delRules); err != nil {
-		klog.Error(err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, natGwEipDel, delRules); err != nil {
+			klog.Errorf("failed to delete eip in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -492,7 +500,7 @@ func (c *Controller) addEipQoSInPod(
 		return nil
 	}
 	var operation string
-	gwPod, err := c.getNatGwPod(dp, ns)
+	gwPods, err := c.getNatGwPods(dp, ns)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -508,13 +516,22 @@ func (c *Controller) addEipQoSInPod(
 		operation = natGwEipEgressQoSAdd
 	}
 
-	return c.execNatGwRules(gwPod, operation, addRules)
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
+			klog.Errorf("failed to add eip qos in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
-	gwPod, err := c.getNatGwPod(dp, ns)
+	gwPods, err := c.getNatGwPods(dp, ns)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		klog.Error(err)
 		return err
 	}
@@ -528,7 +545,13 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoS
 		operation = natGwEipEgressQoSDel
 	}
 
-	return c.execNatGwRules(gwPod, operation, delRules)
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, operation, delRules); err != nil {
+			klog.Errorf("failed to del eip qos in pod %s/%s, err: %v", gwPod.Namespace, gwPod.Name, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) acquireStaticEip(name, _, nicName, ip, externalSubnet string) (string, string, string, error) {

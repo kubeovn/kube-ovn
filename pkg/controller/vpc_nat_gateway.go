@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,9 +67,6 @@ func (c *Controller) natGwNamespace(gw *kubeovnv1.VpcNatGateway) string {
 	}
 	return c.config.PodNamespace
 }
-
-// isNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
-// HA mode is enabled when replicas is explicitly set to > 1.
 
 // getNatGwReplicas returns the effective number of replicas for the NAT gateway.
 // Defaults to 1 if not specified.
@@ -464,33 +462,61 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 
-		nextHops := make(map[string]string, len(pods))
+		// Split next hops by address family
+		nextHopsV4 := make(map[string]string)
+		nextHopsV6 := make(map[string]string)
 		for _, pod := range pods {
 			if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
 				continue
 			}
-			// Use first IP (internal IP) as nexthop
-			nextHops[pod.Spec.NodeName] = pod.Status.PodIPs[0].IP
+			// Collect all pod IPs and split by address family
+			for _, podIP := range pod.Status.PodIPs {
+				if util.CheckProtocol(podIP.IP) == kubeovnv1.ProtocolIPv4 {
+					nextHopsV4[pod.Spec.NodeName] = podIP.IP
+				} else if util.CheckProtocol(podIP.IP) == kubeovnv1.ProtocolIPv6 {
+					nextHopsV6[pod.Spec.NodeName] = podIP.IP
+				}
+			}
 		}
 
-		// Reconcile BFD sessions if enabled
-		if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" && len(nextHops) > 0 {
-			if err = c.reconcileVpcNatGatewayBFD(gw, vpc.Status.BFDPort.Name, vpc.Status.BFDPort.IP, nextHops); err != nil {
-				klog.Errorf("failed to reconcile BFD for nat gw %s: %v", key, err)
-				return err
+		// Reconcile BFD sessions if enabled (split by address family)
+		if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
+			bfdIPv4, bfdIPv6 := util.SplitStringIP(vpc.Status.BFDPort.IP)
+			lrpName := vpc.Status.BFDPort.Name
+
+			if bfdIPv4 != "" && len(nextHopsV4) > 0 {
+				if err = c.reconcileVpcNatGatewayBFD(gw, lrpName, bfdIPv4, nextHopsV4, 4); err != nil {
+					klog.Errorf("failed to reconcile IPv4 BFD for nat gw %s: %v", key, err)
+					return err
+				}
+			}
+			if bfdIPv6 != "" && len(nextHopsV6) > 0 {
+				if err = c.reconcileVpcNatGatewayBFD(gw, lrpName, bfdIPv6, nextHopsV6, 6); err != nil {
+					klog.Errorf("failed to reconcile IPv6 BFD for nat gw %s: %v", key, err)
+					return err
+				}
 			}
 		}
 
 		// Reconcile OVN routes if internal CIDRs/subnets are configured
 		if len(gw.Spec.InternalSubnets) > 0 || len(gw.Spec.InternalCIDRs) > 0 {
 			lrName := subnet.Spec.Vpc
-			lrpName := fmt.Sprintf("%s-%s", lrName, gw.Spec.Subnet)
 			bfdIP := ""
 			if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
 				bfdIP = vpc.Status.BFDPort.IP
 			}
 
-			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, lrName, lrpName, bfdIP, nextHops); err != nil {
+			// Merge v4 and v6 nexthops for OVN routes (routes are protocol-specific)
+			nextHops := make(map[string]string)
+			maps.Copy(nextHops, nextHopsV4)
+			for node, ip := range nextHopsV6 {
+				// For dual-stack, prefer v4 or concatenate both
+				if _, exists := nextHops[node]; !exists {
+					nextHops[node] = ip
+				}
+			}
+
+			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, lrName, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
 				klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 				return err
 			}
@@ -545,73 +571,68 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
-	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw))
 	if err != nil {
-		err := fmt.Errorf("failed to get nat gw %s pod: %w", gw.Name, err)
+		err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	if pod.Status.Phase != corev1.PodRunning {
-		time.Sleep(10 * time.Second)
-		err = fmt.Errorf("failed to init vpc nat gateway %s, pod is not ready", key)
-		klog.Error(err)
-		return err
-	}
+	for _, pod := range pods {
+		if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+			continue
+		}
+		natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+		klog.V(3).Infof("nat gw pod '%s/%s' inited at %s", pod.Namespace, pod.Name, natGwCreatedAT)
+		// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
+		// are properly configured. We extract the interfaces from the runtime Pod annotations (network-status).
+		var interfaces []string
+		if c.config.EnableNonPrimaryCNI {
+			// extract external nad interface name
+			externalNadNs, externalNadName, nadErr := c.getExternalSubnetNad(gw)
+			if nadErr != nil {
+				klog.Errorf("failed to get external subnet NAD for gateway %s: %v", gw.Name, nadErr)
+				return nadErr
+			}
+			networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
+			externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
+			externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
+			if err != nil {
+				klog.Errorf("failed to extract external nad interface name from runtime Pod annotation network-status, %v", err)
+				return err
+			}
+			// extract vpc nad interface name
+			providers, err := c.getPodProviders(pod)
+			if err != nil || len(providers) == 0 {
+				klog.Errorf("failed to get providers for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				return fmt.Errorf("failed to get providers for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			// if more than one provider exists, use the first one
+			provider := providers[0]
+			providerParts := strings.Split(provider, ".")
+			if len(providerParts) < 2 {
+				klog.Errorf("failed to format provider %s for pod %s/%s", provider, pod.Namespace, pod.Name)
+				return fmt.Errorf("failed to format provider %s parts for pod %s/%s", provider, pod.Namespace, pod.Name)
+			}
+			vpcNadName, vpcNadNamespace := providerParts[0], providerParts[1]
+			vpcNadFullName := fmt.Sprintf("%s/%s", vpcNadNamespace, vpcNadName)
+			vpcNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
+			if err != nil {
+				klog.Errorf("failed to extract internal nad interface name from runtime Pod annotation network-status, %v", err)
+				return err
+			}
 
-	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
-		return nil
-	}
-	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
-	// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
-	// are properly configured. We extract the interfaces from the runtime Pod annotations (network-status).
-	var interfaces []string
-	if c.config.EnableNonPrimaryCNI {
-		// extract external nad interface name
-		externalNadNs, externalNadName, nadErr := c.getExternalSubnetNad(gw)
-		if nadErr != nil {
-			klog.Errorf("failed to get external subnet NAD for gateway %s: %v", gw.Name, nadErr)
-			return nadErr
+			klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interface %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfName)
+			interfaces = []string{
+				strings.Join([]string{vpcNadIfName, externalNadIfName}, ","),
+			}
 		}
-		networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
-		externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
-		externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
-		if err != nil {
-			klog.Errorf("failed to extract external nad interface name from runtime Pod annotation network-status, %v", err)
-			return err
+		if err = c.execNatGwRules(pod, natGwInit, interfaces); err != nil {
+			// Check if this is a transient initialization error (e.g., first attempt before iptables chains are created)
+			// The init script may fail on first run but succeed on retry after chains are established
+			klog.Warningf("vpc nat gateway %s pod %s/%s init attempt failed (will retry): %v", key, pod.Namespace, pod.Name, err)
+			return fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		}
-		// extract vpc nad interface name
-		providers, err := c.getPodProviders(pod)
-		if err != nil || len(providers) == 0 {
-			klog.Errorf("failed to get providers for pod %s/%s: %v", pod.Namespace, pod.Name, err)
-			return fmt.Errorf("failed to get providers for pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		}
-		// if more than one provider exists, use the first one
-		provider := providers[0]
-		providerParts := strings.Split(provider, ".")
-		if len(providerParts) < 2 {
-			klog.Errorf("failed to format provider %s for pod %s/%s", provider, pod.Namespace, pod.Name)
-			return fmt.Errorf("failed to format provider %s parts for pod %s/%s", provider, pod.Namespace, pod.Name)
-		}
-		vpcNadName, vpcNadNamespace := providerParts[0], providerParts[1]
-		vpcNadFullName := fmt.Sprintf("%s/%s", vpcNadNamespace, vpcNadName)
-		vpcNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, vpcNadFullName)
-		if err != nil {
-			klog.Errorf("failed to extract internal nad interface name from runtime Pod annotation network-status, %v", err)
-			return err
-		}
-
-		klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interface %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfName)
-		interfaces = []string{
-			strings.Join([]string{vpcNadIfName, externalNadIfName}, ","),
-		}
-	}
-	if err = c.execNatGwRules(pod, natGwInit, interfaces); err != nil {
-		// Check if this is a transient initialization error (e.g., first attempt before iptables chains are created)
-		// The init script may fail on first run but succeed on retry after chains are established
-		klog.Warningf("vpc nat gateway %s init attempt failed (will retry): %v", key, err)
-		return fmt.Errorf("failed to init vpc nat gateway, %w", err)
 	}
 
 	if gw.Spec.QoSPolicy != "" {
@@ -640,11 +661,13 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	c.updateVpcSubnetQueue.Add(key)
 	c.updateVpcEipQueue.Add(key)
 
-	patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
-	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
-		err := fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		klog.Error(err)
-		return err
+	for _, pod := range pods {
+		patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
+			err := fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			klog.Error(err)
+			return err
+		}
 	}
 	return nil
 }
@@ -837,12 +860,14 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
 
-	pod, err := c.getNatGwPod(natGwKey, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(natGwKey, c.natGwNamespace(gw))
 	if err != nil {
-		err = fmt.Errorf("failed to get nat gw '%s' pod, %w", natGwKey, err)
+		err = fmt.Errorf("failed to get nat gw '%s' pods, %w", natGwKey, err)
 		klog.Error(err)
 		return err
 	}
+	// Use the first pod to read annotations (they should be consistent across pods)
+	pod := pods[0]
 
 	v4InternalGw, _, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
@@ -915,20 +940,24 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 			}
 		}
 		if len(rules) > 0 {
-			if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
-				err = fmt.Errorf("failed to exec nat gateway rule, err: %w", err)
-				klog.Error(err)
-				return err
+			for _, p := range pods {
+				if err = c.execNatGwRules(p, natGwSubnetRouteAdd, rules); err != nil {
+					err = fmt.Errorf("failed to exec nat gateway rule in pod %s/%s, err: %w", p.Namespace, p.Name, err)
+					klog.Error(err)
+					return err
+				}
 			}
 		}
 	}
 
 	if len(toBeDelCIDRs) > 0 {
 		for _, cidr := range toBeDelCIDRs {
-			if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidr}); err != nil {
-				err = fmt.Errorf("failed to exec nat gateway rule, err: %w", err)
-				klog.Error(err)
-				return err
+			for _, p := range pods {
+				if err = c.execNatGwRules(p, natGwSubnetRouteDel, []string{cidr}); err != nil {
+					err = fmt.Errorf("failed to exec nat gateway rule in pod %s/%s, err: %w", p.Namespace, p.Name, err)
+					klog.Error(err)
+					return err
+				}
 			}
 		}
 	}
@@ -1129,6 +1158,76 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 	return subnet.Spec.Provider, nil
 }
 
+// generateNatGwRoutes generates route annotations for NAT gateway pods using util.NewPodRoutes().
+// This ensures routes are added to reach the VPC BFD port for BFD session establishment,
+// along with routes to service CIDRs, VPC subnets, and custom user routes.
+func (c *Controller) generateNatGwRoutes(
+	gw *kubeovnv1.VpcNatGateway,
+	bfdIP string,
+	eth0SubnetProvider string,
+	eth0V4Gateway, eth0V6Gateway string,
+	net1SubnetProvider string,
+	net1V4Gateway, net1V6Gateway string,
+) (map[string]string, error) {
+	routes := util.NewPodRoutes()
+
+	// Add routes for the VPC BFD Port so the gateway can establish BFD sessions with it
+	if bfdIP != "" {
+		bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+		routes.Add(eth0SubnetProvider, bfdIPv4, eth0V4Gateway)
+		routes.Add(eth0SubnetProvider, bfdIPv6, eth0V6Gateway)
+	}
+
+	// Add routes to reach service cluster IP range
+	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
+	routes.Add(eth0SubnetProvider, v4ClusterIPRange, eth0V4Gateway)
+	routes.Add(eth0SubnetProvider, v6ClusterIPRange, eth0V6Gateway)
+
+	// Add routes to reach all subnets in the same VPC (might be unnecessary now as they're loaded dynamically)
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, err
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
+			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
+			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
+			continue
+		}
+		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		routes.Add(eth0SubnetProvider, cidrV4, eth0V4Gateway)
+		routes.Add(eth0SubnetProvider, cidrV6, eth0V6Gateway)
+	}
+
+	// Add custom user-specified routes
+	for _, route := range gw.Spec.Routes {
+		nexthop := route.NextHopIP
+		if nexthop == "gateway" {
+			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
+				nexthop = eth0V4Gateway
+			} else {
+				nexthop = eth0V6Gateway
+			}
+		}
+		routes.Add(eth0SubnetProvider, route.CIDR, nexthop)
+	}
+
+	// Add default routes to the external network
+	routes.Add(net1SubnetProvider, "0.0.0.0/0", net1V4Gateway)
+	routes.Add(net1SubnetProvider, "::/0", net1V6Gateway)
+
+	// Convert routes to annotations
+	annotations, err := routes.ToAnnotations()
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	return annotations, nil
+}
+
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
 	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
 	if err != nil {
@@ -1140,6 +1239,18 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if err != nil {
 		klog.Errorf("failed to get gw eth0 valid subnet provider: %v", err)
 		return nil, err
+	}
+
+	// Get VPC and BFD port information for BFD session support
+	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
+		return nil, err
+	}
+
+	var bfdIP string
+	if gw.Spec.BFD.Enabled {
+		bfdIP = vpc.Status.BFDPort.IP
 	}
 
 	// Get additional networks specified by user in VpcNatGateway CR metadata.annotations (for secondary CNI mode)
@@ -1174,14 +1285,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		}
 	}
 
-	// Retrieve all subnets in existence
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
-	}
-
-	// Configure eth0 (OVN internal network) routes
 	// Retrieve the gateways of the subnet sitting behind the NAT gateway
 	eth0V4Gateway, eth0V6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
@@ -1189,84 +1292,40 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	// Add routes to join the services (is this still needed?)
-	// It seems like the script inside the NAT GW already does that
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes := make([]request.Route, 0, 2)
-	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
-	}
-	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
-	}
-
-	// Add gateway to join every subnet in the same VPC? (is this still needed?)
-	// Are we trying to give the NAT gateway access to every subnet in the VPC?
-	// I suspect this is to solve a problem where a static route is inserted to redirect all the traffic
-	// from a VPC into the NAT GW. When that happens, the GW has no return path to the other subnets.
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
-			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
-			continue
-		}
-		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if cidrV4 != "" && eth0V4Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV4, Gateway: eth0V4Gateway})
-		}
-		if cidrV6 != "" && eth0V6Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV6, Gateway: eth0V6Gateway})
-		}
-	}
-
-	// Users can specify custom routes to inject in the NAT GW
-	for _, route := range gw.Spec.Routes {
-		nexthop := route.NextHopIP
-
-		// Users can specify "gateway" instead of an actual IP as the next hop, and
-		// we will auto-determine the address of the gateway based on the protocol
-		if nexthop == "gateway" {
-			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
-				nexthop = eth0V4Gateway
-			} else {
-				nexthop = eth0V6Gateway
-			}
-		}
-
-		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
-	}
-
-	if err = setPodRoutesAnnotation(templateAnnotations, eth0SubnetProvider, routes); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	// Set the default routes to the external network
+	// Get the external subnet for default routes
 	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	routes = routes[0:0]
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
-	if net1V4Gateway != "" {
-		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
+
+	// Generate route annotations using the new helper function
+	routeAnnotations, err := c.generateNatGwRoutes(
+		gw,
+		bfdIP,
+		eth0SubnetProvider,
+		eth0V4Gateway, eth0V6Gateway,
+		net1Subnet.Spec.Provider,
+		net1V4Gateway, net1V6Gateway,
+	)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
 	}
-	if net1V6Gateway != "" {
-		routes = append(routes, request.Route{Destination: "::/0", Gateway: net1V6Gateway})
+
+	// Merge route annotations into template annotations
+	for k, v := range routeAnnotations {
+		templateAnnotations[k] = v
 	}
-	// TODO:// check NAD if has ipam to disable ipam
-	if !gw.Spec.NoDefaultEIP {
-		if err = setPodRoutesAnnotation(templateAnnotations, net1Subnet.Spec.Provider, routes); err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-	} else {
-		// NAT gateway uses no-IPAM mode in network attachment definition when NoDefaultEIP is enabled
-		// This allows macvlan/other CNI plugins to work without IP allocation from Kube-OVN
+
+	// Handle NoDefaultEIP case
+	if gw.Spec.NoDefaultEIP {
 		klog.Infof("skipping IP allocation for NAT gateway %s (NoDefaultEIP enabled)", gw.Name)
 		templateAnnotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, net1Subnet.Spec.Provider)] = "true"
+		// Remove default route annotations for external network when NoDefaultEIP is set
+		delete(templateAnnotations, fmt.Sprintf(util.RoutesAnnotationTemplate, net1Subnet.Spec.Provider))
 	}
 
 	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
@@ -1398,82 +1457,46 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		}
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
-	}
-
 	eth0V4Gateway, eth0V6Gateway, err := c.GetGwBySubnet(gw.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
 		return nil, err
 	}
 
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes := make([]request.Route, 0, 2)
-	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
-	}
-	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
-	}
-
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
-			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
-			continue
-		}
-		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if cidrV4 != "" && eth0V4Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV4, Gateway: eth0V4Gateway})
-		}
-		if cidrV6 != "" && eth0V6Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV6, Gateway: eth0V6Gateway})
-		}
-	}
-
-	for _, route := range gw.Spec.Routes {
-		nexthop := route.NextHopIP
-		if nexthop == "gateway" {
-			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
-				nexthop = eth0V4Gateway
-			} else {
-				nexthop = eth0V6Gateway
-			}
-		}
-		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
-	}
-
-	if err = setPodRoutesAnnotation(templateAnnotations, eth0SubnetProvider, routes); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
+	// Get the external subnet for default routes
 	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
 	if err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	routes = routes[0:0]
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
-	if net1V4Gateway != "" {
-		routes = append(routes, request.Route{Destination: "0.0.0.0/0", Gateway: net1V4Gateway})
-	}
-	if net1V6Gateway != "" {
-		routes = append(routes, request.Route{Destination: "::/0", Gateway: net1V6Gateway})
+
+	// Generate route annotations using the new helper function
+	routeAnnotations, err := c.generateNatGwRoutes(
+		gw,
+		bfdIP,
+		eth0SubnetProvider,
+		eth0V4Gateway, eth0V6Gateway,
+		net1Subnet.Spec.Provider,
+		net1V4Gateway, net1V6Gateway,
+	)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 
-	if !gw.Spec.NoDefaultEIP {
-		if err = setPodRoutesAnnotation(templateAnnotations, net1Subnet.Spec.Provider, routes); err != nil {
-			klog.Error(err)
-			return nil, err
-		}
-	} else {
+	// Merge route annotations into template annotations
+	for k, v := range routeAnnotations {
+		templateAnnotations[k] = v
+	}
+
+	// Handle NoDefaultEIP case
+	if gw.Spec.NoDefaultEIP {
 		klog.Infof("skipping IP allocation for NAT gateway %s (NoDefaultEIP enabled)", gw.Name)
 		templateAnnotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, net1Subnet.Spec.Provider)] = "true"
+		// Remove default route annotations for external network when NoDefaultEIP is set
+		delete(templateAnnotations, fmt.Sprintf(util.RoutesAnnotationTemplate, net1Subnet.Spec.Provider))
 	}
 
 	selectors := util.GenNatGwSelectors(gw.Spec.Selector)
@@ -1555,8 +1578,9 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	}
 
 	// Run BFD in the gateway container to establish BFD session(s) with the VPC BFD LRP
+	// Use the main kube-ovn image which contains bfdd binaries (vpc-nat-gateway image doesn't have them)
 	if gw.Spec.BFD.Enabled {
-		bfdContainer := genGatewayBFDDContainer(vpcNatImage, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		bfdContainer := genGatewayBFDDContainer(c.config.Image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, bfdContainer)
 	}
 
@@ -1620,24 +1644,37 @@ func (c *Controller) cleanUpVpcNatGw() error {
 }
 
 func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
+	pods, err := c.getNatGwPods(name, namespace)
+	if err != nil {
+		return nil, err
+	}
+	if len(pods) == 0 {
+		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
+	}
+	return pods[0], nil
+}
+
+func (c *Controller) getNatGwPods(name, namespace string) ([]*corev1.Pod, error) {
 	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.AsSelector()
 	pods, err := c.podsLister.Pods(namespace).List(selector)
-
-	switch {
-	case err != nil:
+	if err != nil {
 		klog.Error(err)
 		return nil, err
-	case len(pods) == 0:
-		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
-	case len(pods) != 1:
-		time.Sleep(5 * time.Second)
-		return nil, errors.New("too many pod")
-	case pods[0].Status.Phase != corev1.PodRunning:
-		time.Sleep(5 * time.Second)
-		return nil, errors.New("pod is not active now")
 	}
 
-	return pods[0], nil
+	activePods := make([]*corev1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+			activePods = append(activePods, pod)
+		}
+	}
+
+	if len(activePods) == 0 {
+		time.Sleep(5 * time.Second)
+		return nil, errors.New("no active pod now")
+	}
+
+	return activePods, nil
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
@@ -1838,9 +1875,9 @@ func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, r
 func (c *Controller) execNatGwQoSInPod(
 	gw *kubeovnv1.VpcNatGateway, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
 ) error {
-	gwPod, err := c.getNatGwPod(gw.Name, c.natGwNamespace(gw))
+	gwPods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
 	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
+		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
 	}
 	var addRules []string
@@ -1870,10 +1907,12 @@ func (c *Controller) execNatGwQoSInPod(
 		cidr, r.RateMax, r.BurstMax)
 	addRules = append(addRules, rule)
 
-	if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
-		err = fmt.Errorf("failed to exec nat gateway rule, err: %w", err)
-		klog.Error(err)
-		return err
+	for _, gwPod := range gwPods {
+		if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
+			err = fmt.Errorf("failed to exec nat gateway rule in pod %s/%s, err: %w", gwPod.Namespace, gwPod.Name, err)
+			klog.Error(err)
+			return err
+		}
 	}
 	return nil
 }
@@ -1897,26 +1936,29 @@ func (c *Controller) initVpcNatGw() error {
 	}
 
 	for _, gw := range gws {
-		pod, err := c.getNatGwPod(gw.Name, c.natGwNamespace(gw))
+		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
 		if err != nil {
 			// the nat gw maybe deleted
-			err := fmt.Errorf("failed to get nat gw %s pod: %w", gw.Name, err)
+			err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
 			klog.Error(err)
 			continue
 		}
 
-		if isNatGateway, natGateway := c.checkIsPodVpcNatGw(pod); isNatGateway {
-			if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
-				return nil
+		for _, pod := range pods {
+			if isNatGateway, natGateway := c.checkIsPodVpcNatGw(pod); isNatGateway {
+				if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+					continue
+				}
+				c.initVpcNatGatewayQueue.Add(natGateway)
 			}
-			c.initVpcNatGatewayQueue.Add(natGateway)
 		}
 	}
 	return nil
 }
 
 // reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway in HA mode.
-func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string) error {
+// The af parameter specifies the address family (4 for IPv4, 6 for IPv6).
+func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string, af int) error {
 	if len(nextHops) == 0 || bfdIP == "" {
 		return nil
 	}
@@ -1924,6 +1966,7 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
 		ovs.ExternalIDVpcNatGateway: gw.Name,
+		"af":                        strconv.Itoa(af),
 	}
 
 	// Reconcile OVN BFD entries using shared function
@@ -1949,55 +1992,196 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 	return nil
 }
 
-// reconcileVpcNatGatewayOVNRoutes reconciles OVN static routes for VPC NAT Gateway.
-// It creates default routes (0.0.0.0/0 and ::/0) for traffic from specified internal CIDRs,
-// directing them to NAT gateway instances with ECMP load balancing and BFD-based failover.
+// reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateway.
+// It creates policy-based routes for traffic from specified internal CIDRs,
+// directing them to NAT gateway instances with BFD-based automatic failover.
 func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, lrName, lrpName, bfdIP string, nextHops map[string]string) error {
-	if len(nextHops) == 0 {
+	// Resolve internal CIDRs from subnet names and direct CIDRs
+	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
+
+	if len(internalCIDRs) == 0 && len(nextHops) == 0 {
+		// Nothing to configure, cleanup any existing policies
+		/*externalIDs := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+		}*/
+
+		// Delete policies for both address families
+		for _, af := range []int{4, 6} {
+			externalIDsAF := map[string]string{
+				ovs.ExternalIDVendor:        util.CniTypeName,
+				ovs.ExternalIDVpcNatGateway: gw.Name,
+				"af":                        strconv.Itoa(af),
+			}
+			if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsAF); err != nil {
+				klog.Errorf("failed to delete policies for nat gw %s af %d: %v", gw.Name, af, err)
+				return err
+			}
+			klog.V(3).Infof("deleted policies for nat gw %s af %d", gw.Name, af)
+			if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsAF); err != nil {
+				klog.Errorf("failed to delete drop policies for nat gw %s af %d: %v", gw.Name, af, err)
+				return err
+			}
+			klog.V(3).Infof("deleted drop policies for nat gw %s af %d", gw.Name, af)
+		}
 		return nil
 	}
 
+	// Split internal CIDRs by address family
+	internalCIDRsV4 := []string{}
+	internalCIDRsV6 := []string{}
+	for _, cidr := range internalCIDRs {
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
+			internalCIDRsV4 = append(internalCIDRsV4, cidr)
+		} else {
+			internalCIDRsV6 = append(internalCIDRsV6, cidr)
+		}
+	}
+
+	// Split nexthops by address family
+	nextHopsV4 := make(map[string]string)
+	nextHopsV6 := make(map[string]string)
+	for node, ip := range nextHops {
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
+			nextHopsV4[node] = ip
+		} else {
+			nextHopsV6[node] = ip
+		}
+	}
+
+	// Split BFD IP by address family
+	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+
+	// Reconcile IPv4 policies
+	if len(internalCIDRsV4) > 0 && len(nextHopsV4) > 0 {
+		externalIDsV4 := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"af":                        "4",
+		}
+
+		// Reconcile BFD sessions for IPv4
+		bfdIDsV4, _, staleBFDIDsV4, err := reconcileGatewayBFD(
+			c.OVNNbClient,
+			bfdIPv4,
+			lrpName,
+			nextHopsV4,
+			gw.Spec.BFD.MinTX,
+			gw.Spec.BFD.MinRX,
+			gw.Spec.BFD.Multiplier,
+			externalIDsV4,
+		)
+		if err != nil {
+			return err
+		}
+
+		klog.Infof("bfd %s", gw.Name)
+		// Reconcile policies for IPv4
+		if err := reconcileNatGatewayPolicies(
+			c.OVNNbClient,
+			gw.Name,
+			lrName,
+			4,
+			gw.Spec.BFD.Enabled,
+			bfdIDsV4,
+			internalCIDRsV4,
+			nextHopsV4,
+			externalIDsV4,
+		); err != nil {
+			return err
+		}
+
+		// Cleanup stale BFD sessions for IPv4
+		if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDsV4); err != nil {
+			return err
+		}
+	} else {
+		// No IPv4 routes needed, cleanup any existing IPv4 policies
+		externalIDsV4 := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"af":                        "4",
+		}
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsV4); err != nil {
+			klog.Errorf("failed to delete IPv4 policies for nat gw %s: %v", gw.Name, err)
+			return err
+		}
+		klog.V(3).Infof("deleted IPv4 policies for nat gw %s", gw.Name)
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsV4); err != nil {
+			klog.Errorf("failed to delete IPv4 drop policies for nat gw %s: %v", gw.Name, err)
+			return err
+		}
+		klog.V(3).Infof("deleted IPv4 drop policies for nat gw %s", gw.Name)
+	}
+
+	// Reconcile IPv6 policies
+	if len(internalCIDRsV6) > 0 && len(nextHopsV6) > 0 {
+		externalIDsV6 := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"af":                        "6",
+		}
+
+		// Reconcile BFD sessions for IPv6
+		bfdIDsV6, _, staleBFDIDsV6, err := reconcileGatewayBFD(
+			c.OVNNbClient,
+			bfdIPv6,
+			lrpName,
+			nextHopsV6,
+			gw.Spec.BFD.MinTX,
+			gw.Spec.BFD.MinRX,
+			gw.Spec.BFD.Multiplier,
+			externalIDsV6,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Reconcile policies for IPv6
+		if err := reconcileNatGatewayPolicies(
+			c.OVNNbClient,
+			gw.Name,
+			lrName,
+			6,
+			gw.Spec.BFD.Enabled,
+			bfdIDsV6,
+			internalCIDRsV6,
+			nextHopsV6,
+			externalIDsV6,
+		); err != nil {
+			return err
+		}
+
+		// Cleanup stale BFD sessions for IPv6
+		if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDsV6); err != nil {
+			return err
+		}
+	} else {
+		// No IPv6 routes needed, cleanup any existing IPv6 policies
+		externalIDsV6 := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"af":                        "6",
+		}
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsV6); err != nil {
+			klog.Errorf("failed to delete IPv6 policies for nat gw %s: %v", gw.Name, err)
+			return err
+		}
+		klog.V(3).Infof("deleted IPv6 policies for nat gw %s", gw.Name)
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsV6); err != nil {
+			klog.Errorf("failed to delete IPv6 drop policies for nat gw %s: %v", gw.Name, err)
+			return err
+		}
+		klog.V(3).Infof("deleted IPv6 drop policies for nat gw %s", gw.Name)
+	}
+
+	// Migration cleanup: Delete old static routes (without af external ID)
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
 		ovs.ExternalIDVpcNatGateway: gw.Name,
 	}
-
-	// Reconcile BFD sessions (required for routes with BFD)
-	bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(
-		c.OVNNbClient,
-		bfdIP,
-		lrpName,
-		nextHops,
-		gw.Spec.BFD.MinTX,
-		gw.Spec.BFD.MinRX,
-		gw.Spec.BFD.Multiplier,
-		externalIDs,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Resolve internal CIDRs from subnet names and direct CIDRs
-	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
-
-	// Reconcile OVN static routes for each internal CIDR
-	if err := reconcileGatewayRoutes(
-		c.OVNNbClient,
-		gw.Name,
-		lrName,
-		gw.Spec.BFD.Enabled,
-		bfdIP,
-		bfdIDs,
-		bfdMap,
-		internalCIDRs,
-		nextHops,
-		externalIDs,
-	); err != nil {
-		return err
-	}
-
-	// Cleanup stale BFD sessions
-	if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+	if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, externalIDs); err != nil {
+		klog.Errorf("failed to delete static routes for nat gw %s: %v", gw.Name, err)
 		return err
 	}
 
