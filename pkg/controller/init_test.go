@@ -6,8 +6,12 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestHasAllocatedAnnotation(t *testing.T) {
@@ -157,4 +161,89 @@ func keysOf(m map[string]json.RawMessage) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// TestInitLB_SkipsCtFlushForSessionAffinityUDP is the regression guard for a
+// cross-namespace UDP session-affinity breakage. ct_flush wipes all conntrack
+// entries on the LB's datapath whenever any vip is mutated. Since the session
+// UDP LB (UDPSessLoadBalancer) is shared by every service in the VPC, enabling
+// ct_flush on it lets an unrelated service's backend change invalidate the
+// affinity state of any concurrently running session-affinity service, landing
+// subsequent packets on a different backend. initLB must therefore only set
+// ct_flush=true on the non-session UDP LB.
+func TestInitLB_SkipsCtFlushForSessionAffinityUDP(t *testing.T) {
+	tests := []struct {
+		name              string
+		protocol          string
+		sessionAffinity   bool
+		expectCtFlushCall bool
+	}{
+		{
+			name:              "udp non-session LB enables ct_flush",
+			protocol:          "udp",
+			sessionAffinity:   false,
+			expectCtFlushCall: true,
+		},
+		{
+			name:              "udp session-affinity LB skips ct_flush",
+			protocol:          "udp",
+			sessionAffinity:   true,
+			expectCtFlushCall: false,
+		},
+		{
+			name:              "tcp non-session LB skips ct_flush",
+			protocol:          "tcp",
+			sessionAffinity:   false,
+			expectCtFlushCall: false,
+		},
+		{
+			name:              "tcp session-affinity LB skips ct_flush",
+			protocol:          "tcp",
+			sessionAffinity:   true,
+			expectCtFlushCall: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeCtrl, err := newFakeControllerWithOptions(t, nil)
+			require.NoError(t, err)
+			ctrl := fakeCtrl.fakeController
+			mockOvnClient := fakeCtrl.mockOvnClient
+
+			lbName := "cluster-" + tt.protocol + "-test-loadbalancer"
+
+			if tt.sessionAffinity {
+				mockOvnClient.EXPECT().
+					CreateLoadBalancer(
+						lbName, tt.protocol,
+						ovnnb.LoadBalancerSelectionFieldsIPSrc,
+						ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+					).
+					Return(nil)
+				mockOvnClient.EXPECT().
+					SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).
+					Return(nil)
+			} else {
+				mockOvnClient.EXPECT().
+					CreateLoadBalancer(lbName, tt.protocol).
+					Return(nil)
+			}
+			mockOvnClient.EXPECT().
+				SetLoadBalancerPreferLocalBackend(lbName, gomock.Any()).
+				Return(nil)
+
+			if tt.expectCtFlushCall {
+				mockOvnClient.EXPECT().
+					SetLoadBalancerCtFlush(lbName, true).
+					Return(nil)
+			} else {
+				mockOvnClient.EXPECT().
+					SetLoadBalancerCtFlush(gomock.Any(), gomock.Any()).
+					Times(0)
+			}
+
+			require.NoError(t, ctrl.initLB(lbName, tt.protocol, tt.sessionAffinity))
+		})
+	}
 }
