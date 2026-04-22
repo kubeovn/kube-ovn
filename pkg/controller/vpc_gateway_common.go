@@ -541,8 +541,8 @@ func reconcileNatGatewayPolicies(
 	nextHops map[string]string,
 	externalIDs map[string]string,
 ) error {
-	if len(internalCIDRs) == 0 {
-		// No internal CIDRs configured, delete any existing policies
+	if len(internalCIDRs) == 0 || len(nextHops) == 0 {
+		// No internal CIDRs/nexthops configured, delete any existing policies
 		if err := ovnClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs); err != nil {
 			klog.Errorf("failed to delete policies for NAT gateway %s: %v", gwName, err)
 			return err
