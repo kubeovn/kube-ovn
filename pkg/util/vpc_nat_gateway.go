@@ -276,23 +276,14 @@ type NbClient interface {
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 }
 
-// CleanUpNatGwOVNRoutes deletes all OVN logical router policies associated with a VPC NAT Gateway.
-func CleanUpNatGwOVNRoutes(nbClient NbClient, gwName, vpcName string) error {
-	for _, af := range []int{4, 6} {
-		if err := CleanupNatGwRoutesAF(nbClient, gwName, vpcName, af); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// CleanupNatGwRoutesAF deletes OVN logical router policies associated with a VPC NAT Gateway for a specific address family.
+// CleanupNatGwRoutesAF deletes OVN logical router policies and BFD sessions associated with a VPC NAT Gateway for a specific address family.
 func CleanupNatGwRoutesAF(nbClient NbClient, gwName, vpcName string, af int) error {
 	externalIDsAF := map[string]string{
 		"vendor":     CniTypeName,
 		"vpc-nat-gw": gwName,
 		"af":         strconv.Itoa(af),
 	}
+
 	// Delete routing policies and drop policies for the given address family
 	if err := nbClient.DeleteLogicalRouterPolicies(vpcName, NatGatewayPolicyPriority, externalIDsAF); err != nil {
 		klog.Errorf("failed to delete policies for nat gw %s af %d: %v", gwName, af, err)
@@ -302,7 +293,21 @@ func CleanupNatGwRoutesAF(nbClient NbClient, gwName, vpcName string, af int) err
 		klog.Errorf("failed to delete drop policies for nat gw %s af %d: %v", gwName, af, err)
 		return err
 	}
-	klog.V(3).Infof("deleted policies for nat gw %s af %d", gwName, af)
+
+	// Delete BFD sessions for the given address family
+	bfds, err := nbClient.FindBFD(externalIDsAF)
+	if err != nil {
+		klog.Errorf("failed to find BFD sessions for nat gw %s af %d: %v", gwName, af, err)
+		return err
+	}
+	for _, bfd := range bfds {
+		if err := nbClient.DeleteBFD(bfd.UUID); err != nil {
+			klog.Errorf("failed to delete BFD session %s for nat gw %s af %d: %v", bfd.UUID, gwName, af, err)
+			return err
+		}
+	}
+
+	klog.V(3).Infof("deleted policies and BFD sessions for nat gw %s af %d", gwName, af)
 	return nil
 }
 
