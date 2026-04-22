@@ -4,14 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
@@ -249,4 +253,135 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	return bgpSpeakerContainer, nil
+}
+
+type NbClient interface {
+	FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error)
+	CreateBFD(lrp, dstIP string, minRX, minTX, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error)
+	DeleteBFD(uuid string) error
+	ListLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
+	AddLogicalRouterPolicy(lr string, priority int, match, action string, nexthops, bfdSessions []string, externalIDs map[string]string) error
+	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error
+	DeleteLogicalRouterPolicyByUUID(lr, uuid string) error
+	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
+}
+
+// CleanUpNatGwOVNRoutes deletes all OVN logical router policies associated with a VPC NAT Gateway.
+func CleanUpNatGwOVNRoutes(nbClient NbClient, gwName, vpcName string) error {
+	for _, af := range []int{4, 6} {
+		if err := CleanupNatGwRoutesAF(nbClient, gwName, vpcName, af); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CleanupNatGwRoutesAF deletes OVN logical router policies associated with a VPC NAT Gateway for a specific address family.
+func CleanupNatGwRoutesAF(nbClient NbClient, gwName, vpcName string, af int) error {
+	externalIDsAF := map[string]string{
+		"vendor":     CniTypeName,
+		"vpc-nat-gw": gwName,
+		"af":         strconv.Itoa(af),
+	}
+	// Delete routing policies and drop policies for the given address family
+	if err := nbClient.DeleteLogicalRouterPolicies(vpcName, NatGatewayPolicyPriority, externalIDsAF); err != nil {
+		klog.Errorf("failed to delete policies for nat gw %s af %d: %v", gwName, af, err)
+		return err
+	}
+	if err := nbClient.DeleteLogicalRouterPolicies(vpcName, NatGatewayDropPolicyPriority, externalIDsAF); err != nil {
+		klog.Errorf("failed to delete drop policies for nat gw %s af %d: %v", gwName, af, err)
+		return err
+	}
+	klog.V(3).Infof("deleted policies for nat gw %s af %d", gwName, af)
+	return nil
+}
+
+// GroupInternalCIDRsAndNextHops groups internal CIDRs and next hops by address family.
+func GroupInternalCIDRsAndNextHops(internalCIDRs []string, nextHops map[string]string) (map[int][]string, map[int]map[string]string) {
+	cidrsByAF := map[int][]string{4: {}, 6: {}}
+	for _, cidr := range internalCIDRs {
+		af := 4
+		if CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
+			af = 6
+		}
+		cidrsByAF[af] = append(cidrsByAF[af], cidr)
+	}
+
+	nextHopsByAF := map[int]map[string]string{4: {}, 6: {}}
+	for node, ip := range nextHops {
+		af := 4
+		if CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+			af = 6
+		}
+		nextHopsByAF[af][node] = ip
+	}
+
+	return cidrsByAF, nextHopsByAF
+}
+
+type ReconcileNatGwRoutesAFArgs struct {
+	NbClient        NbClient
+	GwName          string
+	VpcName         string
+	LrpName         string
+	BfdIP           string
+	Af              int
+	MinTX           int32
+	MinRX           int32
+	Multiplier      int32
+	BfdEnabled      bool
+	InternalCIDRsAF []string
+	NextHopsAF      map[string]string
+	ExternalIDsAF   map[string]string
+	ReconcileBFD    func(NbClient, string, string, map[string]string, int32, int32, int32, map[string]string) (set.Set[string], map[string]string, set.Set[string], error)
+	ReconcilePolicy func(NbClient, string, string, int, bool, set.Set[string], []string, map[string]string, map[string]string) error
+	CleanupStaleBFD func(NbClient, set.Set[string]) error
+}
+
+func ReconcileNatGwRoutesAF(args ReconcileNatGwRoutesAFArgs) error {
+	if len(args.InternalCIDRsAF) > 0 && len(args.NextHopsAF) > 0 {
+		// Reconcile BFD sessions for this address family
+		bfdIDs, _, staleBFDIDs, err := args.ReconcileBFD(
+			args.NbClient,
+			args.BfdIP,
+			args.LrpName,
+			args.NextHopsAF,
+			args.MinTX,
+			args.MinRX,
+			args.Multiplier,
+			args.ExternalIDsAF,
+		)
+		if err != nil {
+			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", args.GwName, args.Af, err)
+			return err
+		}
+
+		// Reconcile logical router policies (PBR) for this address family
+		if err := args.ReconcilePolicy(
+			args.NbClient,
+			args.GwName,
+			args.VpcName,
+			args.Af,
+			args.BfdEnabled,
+			bfdIDs,
+			args.InternalCIDRsAF,
+			args.NextHopsAF,
+			args.ExternalIDsAF,
+		); err != nil {
+			klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", args.GwName, args.Af, err)
+			return err
+		}
+
+		// Clean up any BFD sessions that are no longer needed
+		if err := args.CleanupStaleBFD(args.NbClient, staleBFDIDs); err != nil {
+			klog.Errorf("failed to cleanup stale BFD for nat gw %s af %d: %v", args.GwName, args.Af, err)
+			return err
+		}
+	} else {
+		// No routes needed for this address family, ensure any existing ones are removed
+		if err := CleanupNatGwRoutesAF(args.NbClient, args.GwName, args.VpcName, args.Af); err != nil {
+			return err
+		}
+	}
+	return nil
 }

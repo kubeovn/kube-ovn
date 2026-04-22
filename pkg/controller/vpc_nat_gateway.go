@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -436,12 +437,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 
-		subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
-		if err != nil {
-			klog.Errorf("failed to get subnet %s: %v", gw.Spec.Subnet, err)
-			return err
-		}
-
 		// Collect nexthop IPs from running gateway pods
 		deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
@@ -479,28 +474,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			}
 		}
 
-		// Reconcile BFD sessions if enabled (split by address family)
-		if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
-			bfdIPv4, bfdIPv6 := util.SplitStringIP(vpc.Status.BFDPort.IP)
-			lrpName := vpc.Status.BFDPort.Name
-
-			if bfdIPv4 != "" && len(nextHopsV4) > 0 {
-				if err = c.reconcileVpcNatGatewayBFD(gw, lrpName, bfdIPv4, nextHopsV4, 4); err != nil {
-					klog.Errorf("failed to reconcile IPv4 BFD for nat gw %s: %v", key, err)
-					return err
-				}
-			}
-			if bfdIPv6 != "" && len(nextHopsV6) > 0 {
-				if err = c.reconcileVpcNatGatewayBFD(gw, lrpName, bfdIPv6, nextHopsV6, 6); err != nil {
-					klog.Errorf("failed to reconcile IPv6 BFD for nat gw %s: %v", key, err)
-					return err
-				}
-			}
-		}
-
 		// Reconcile OVN routes if internal CIDRs/subnets are configured
 		if len(gw.Spec.InternalSubnets) > 0 || len(gw.Spec.InternalCIDRs) > 0 {
-			lrName := subnet.Spec.Vpc
 			bfdIP := ""
 			if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP != "" {
 				bfdIP = vpc.Status.BFDPort.IP
@@ -516,7 +491,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 				}
 			}
 
-			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, lrName, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
+			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, gw.Spec.Vpc, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
 				klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 				return err
 			}
@@ -1958,9 +1933,10 @@ func (c *Controller) initVpcNatGw() error {
 
 // reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway in HA mode.
 // The af parameter specifies the address family (4 for IPv4, 6 for IPv6).
-func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string, af int) error {
+// Returns the set of BFD IDs that were created/updated.
+func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string, af int) (set.Set[string], error) {
 	if len(nextHops) == 0 || bfdIP == "" {
-		return nil
+		return nil, nil
 	}
 
 	externalIDs := map[string]string{
@@ -1970,7 +1946,7 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 	}
 
 	// Reconcile OVN BFD entries using shared function
-	_, _, staleBFDIDs, err := reconcileGatewayBFD(
+	bfdIDs, _, staleBFDIDs, err := reconcileGatewayBFD(
 		c.OVNNbClient,
 		bfdIP,
 		lrpName,
@@ -1981,208 +1957,77 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 		externalIDs,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Cleanup stale BFD sessions
 	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return bfdIDs, nil
 }
 
-// reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateway.
+// reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateways.
 // It creates policy-based routes for traffic from specified internal CIDRs,
-// directing them to NAT gateway instances with BFD-based automatic failover.
-func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, lrName, lrpName, bfdIP string, nextHops map[string]string) error {
-	// Resolve internal CIDRs from subnet names and direct CIDRs
+// directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
+// Stale routes are removed during the reconciliation process.
+func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, vpcName, bfdLrp, bfdIP string, nextHops map[string]string) error {
+	// Resolve internal CIDRs from subnet names and direct CIDRs. We'll inject routes to redirect traffic
+	// coming from those CIDRs into the VPC NAT gateway.
 	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
 
-	if len(internalCIDRs) == 0 && len(nextHops) == 0 {
-		// Nothing to configure, cleanup any existing policies
-		/*externalIDs := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-		}*/
+	// If no internal CIDRs or nexthops are defined, clean up all existing policies and exit
+	if len(internalCIDRs) == 0 || len(nextHops) == 0 {
+		return util.CleanUpNatGwOVNRoutes(c.OVNNbClient, gw.Name, gw.Spec.Vpc)
+	}
 
-		// Delete policies for both address families
-		for _, af := range []int{4, 6} {
-			externalIDsAF := map[string]string{
+	// Group internal CIDRs and nexthops by address family
+	cidrsByAF, nextHopsByAF := util.GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
+
+	// Split the BFD IP into IPv4 and IPv6 components
+	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
+
+	// Process each address family
+	for _, af := range []int{4, 6} {
+		internalCIDRsAF := cidrsByAF[af]
+		nextHopsAF := nextHopsByAF[af]
+
+		if len(internalCIDRsAF) > 0 && len(nextHopsAF) > 0 {
+			// Reconcile BFD sessions for this address family
+			bfdIDs, err := c.reconcileVpcNatGatewayBFD(gw, bfdLrp, bfdIPs[af], nextHopsAF, af)
+			if err != nil {
+				klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
+				return err
+			}
+
+			// Reconcile logical router policies (PBR) for this address family
+			externalIDs := map[string]string{
 				ovs.ExternalIDVendor:        util.CniTypeName,
 				ovs.ExternalIDVpcNatGateway: gw.Name,
 				"af":                        strconv.Itoa(af),
 			}
-			if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsAF); err != nil {
-				klog.Errorf("failed to delete policies for nat gw %s af %d: %v", gw.Name, af, err)
+			if err := reconcileNatGatewayPolicies(
+				c.OVNNbClient,
+				gw.Name,
+				vpcName,
+				af,
+				gw.Spec.BFD.Enabled,
+				bfdIDs,
+				internalCIDRsAF,
+				nextHopsAF,
+				externalIDs,
+			); err != nil {
+				klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
 				return err
 			}
-			klog.V(3).Infof("deleted policies for nat gw %s af %d", gw.Name, af)
-			if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsAF); err != nil {
-				klog.Errorf("failed to delete drop policies for nat gw %s af %d: %v", gw.Name, af, err)
+		} else {
+			// No routes needed for this address family, ensure any existing ones are removed
+			if err := util.CleanupNatGwRoutesAF(c.OVNNbClient, gw.Name, vpcName, af); err != nil {
 				return err
 			}
-			klog.V(3).Infof("deleted drop policies for nat gw %s af %d", gw.Name, af)
 		}
-		return nil
-	}
-
-	// Split internal CIDRs by address family
-	internalCIDRsV4 := []string{}
-	internalCIDRsV6 := []string{}
-	for _, cidr := range internalCIDRs {
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
-			internalCIDRsV4 = append(internalCIDRsV4, cidr)
-		} else {
-			internalCIDRsV6 = append(internalCIDRsV6, cidr)
-		}
-	}
-
-	// Split nexthops by address family
-	nextHopsV4 := make(map[string]string)
-	nextHopsV6 := make(map[string]string)
-	for node, ip := range nextHops {
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
-			nextHopsV4[node] = ip
-		} else {
-			nextHopsV6[node] = ip
-		}
-	}
-
-	// Split BFD IP by address family
-	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
-
-	// Reconcile IPv4 policies
-	if len(internalCIDRsV4) > 0 && len(nextHopsV4) > 0 {
-		externalIDsV4 := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"af":                        "4",
-		}
-
-		// Reconcile BFD sessions for IPv4
-		bfdIDsV4, _, staleBFDIDsV4, err := reconcileGatewayBFD(
-			c.OVNNbClient,
-			bfdIPv4,
-			lrpName,
-			nextHopsV4,
-			gw.Spec.BFD.MinTX,
-			gw.Spec.BFD.MinRX,
-			gw.Spec.BFD.Multiplier,
-			externalIDsV4,
-		)
-		if err != nil {
-			return err
-		}
-
-		klog.Infof("bfd %s", gw.Name)
-		// Reconcile policies for IPv4
-		if err := reconcileNatGatewayPolicies(
-			c.OVNNbClient,
-			gw.Name,
-			lrName,
-			4,
-			gw.Spec.BFD.Enabled,
-			bfdIDsV4,
-			internalCIDRsV4,
-			nextHopsV4,
-			externalIDsV4,
-		); err != nil {
-			return err
-		}
-
-		// Cleanup stale BFD sessions for IPv4
-		if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDsV4); err != nil {
-			return err
-		}
-	} else {
-		// No IPv4 routes needed, cleanup any existing IPv4 policies
-		externalIDsV4 := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"af":                        "4",
-		}
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsV4); err != nil {
-			klog.Errorf("failed to delete IPv4 policies for nat gw %s: %v", gw.Name, err)
-			return err
-		}
-		klog.V(3).Infof("deleted IPv4 policies for nat gw %s", gw.Name)
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsV4); err != nil {
-			klog.Errorf("failed to delete IPv4 drop policies for nat gw %s: %v", gw.Name, err)
-			return err
-		}
-		klog.V(3).Infof("deleted IPv4 drop policies for nat gw %s", gw.Name)
-	}
-
-	// Reconcile IPv6 policies
-	if len(internalCIDRsV6) > 0 && len(nextHopsV6) > 0 {
-		externalIDsV6 := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"af":                        "6",
-		}
-
-		// Reconcile BFD sessions for IPv6
-		bfdIDsV6, _, staleBFDIDsV6, err := reconcileGatewayBFD(
-			c.OVNNbClient,
-			bfdIPv6,
-			lrpName,
-			nextHopsV6,
-			gw.Spec.BFD.MinTX,
-			gw.Spec.BFD.MinRX,
-			gw.Spec.BFD.Multiplier,
-			externalIDsV6,
-		)
-		if err != nil {
-			return err
-		}
-
-		// Reconcile policies for IPv6
-		if err := reconcileNatGatewayPolicies(
-			c.OVNNbClient,
-			gw.Name,
-			lrName,
-			6,
-			gw.Spec.BFD.Enabled,
-			bfdIDsV6,
-			internalCIDRsV6,
-			nextHopsV6,
-			externalIDsV6,
-		); err != nil {
-			return err
-		}
-
-		// Cleanup stale BFD sessions for IPv6
-		if err := cleanupStaleBFD(c.OVNNbClient, staleBFDIDsV6); err != nil {
-			return err
-		}
-	} else {
-		// No IPv6 routes needed, cleanup any existing IPv6 policies
-		externalIDsV6 := map[string]string{
-			ovs.ExternalIDVendor:        util.CniTypeName,
-			ovs.ExternalIDVpcNatGateway: gw.Name,
-			"af":                        "6",
-		}
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDsV6); err != nil {
-			klog.Errorf("failed to delete IPv6 policies for nat gw %s: %v", gw.Name, err)
-			return err
-		}
-		klog.V(3).Infof("deleted IPv6 policies for nat gw %s", gw.Name)
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDsV6); err != nil {
-			klog.Errorf("failed to delete IPv6 drop policies for nat gw %s: %v", gw.Name, err)
-			return err
-		}
-		klog.V(3).Infof("deleted IPv6 drop policies for nat gw %s", gw.Name)
-	}
-
-	// Migration cleanup: Delete old static routes (without af external ID)
-	externalIDs := map[string]string{
-		ovs.ExternalIDVendor:        util.CniTypeName,
-		ovs.ExternalIDVpcNatGateway: gw.Name,
-	}
-	if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lrName, externalIDs); err != nil {
-		klog.Errorf("failed to delete static routes for nat gw %s: %v", gw.Name, err)
-		return err
 	}
 
 	return nil
