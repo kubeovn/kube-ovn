@@ -491,7 +491,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 				}
 			}
 
-			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, gw.Spec.Vpc, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
+			if err = c.reconcileVpcNatGatewayOVNRoutes(gw, vpc.Status.BFDPort.Name, bfdIP, nextHops); err != nil {
 				klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 				return err
 			}
@@ -1931,14 +1931,64 @@ func (c *Controller) initVpcNatGw() error {
 	return nil
 }
 
+// reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateways.
+// It creates policy-based routes for traffic from specified internal CIDRs,
+// directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
+// Stale routes (and stale BFD entries) are removed during the reconciliation process.
+func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, bfdLrp, bfdIP string, nextHops map[string]string) error {
+	// Resolve internal CIDRs from subnet names and direct CIDRs. We'll inject routes to redirect traffic coming from those CIDRs into the VPC NAT gateway.
+	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
+
+	// Group internal CIDRs and nexthops by address family
+	cidrsByAF, nextHopsByAF := util.GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
+
+	// Split the BFD IP into IPv4 and IPv6 components
+	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
+
+	// Process each address family
+	for _, af := range []int{4, 6} {
+		internalCIDRsAF := cidrsByAF[af]
+		nextHopsAF := nextHopsByAF[af]
+
+		// Reconcile BFD sessions for this address family
+		bfdIDs, err := c.reconcileVpcNatGatewayBFD(gw, bfdLrp, bfdIPs[af], nextHopsAF, af)
+		if err != nil {
+			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
+			return err
+		}
+
+		// Reconcile logical router policies (PBR) for this address family
+		externalIDs := map[string]string{
+			ovs.ExternalIDVendor:        util.CniTypeName,
+			ovs.ExternalIDVpcNatGateway: gw.Name,
+			"af":                        strconv.Itoa(af),
+		}
+
+		if err := reconcileNatGatewayPolicies(
+			c.OVNNbClient,
+			gw.Name,
+			gw.Spec.Vpc,
+			af,
+			gw.Spec.BFD.Enabled,
+			bfdIDs,
+			internalCIDRsAF,
+			nextHopsAF,
+			externalIDs,
+		); err != nil {
+			klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 // reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway in HA mode.
 // The af parameter specifies the address family (4 for IPv4, 6 for IPv6).
 // Returns the set of BFD IDs that were created/updated.
+// The stale BFD entries are deleted during reconciliation.
 func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string, af int) (set.Set[string], error) {
-	if len(nextHops) == 0 || bfdIP == "" {
-		return nil, nil
-	}
-
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
 		ovs.ExternalIDVpcNatGateway: gw.Name,
@@ -1966,69 +2016,4 @@ func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpN
 	}
 
 	return bfdIDs, nil
-}
-
-// reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateways.
-// It creates policy-based routes for traffic from specified internal CIDRs,
-// directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
-// Stale routes are removed during the reconciliation process.
-func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, vpcName, bfdLrp, bfdIP string, nextHops map[string]string) error {
-	// Resolve internal CIDRs from subnet names and direct CIDRs. We'll inject routes to redirect traffic
-	// coming from those CIDRs into the VPC NAT gateway.
-	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
-
-	// If no internal CIDRs or nexthops are defined, clean up all existing policies and exit
-	if len(internalCIDRs) == 0 || len(nextHops) == 0 {
-		return util.CleanUpNatGwOVNRoutes(c.OVNNbClient, gw.Name, gw.Spec.Vpc)
-	}
-
-	// Group internal CIDRs and nexthops by address family
-	cidrsByAF, nextHopsByAF := util.GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
-
-	// Split the BFD IP into IPv4 and IPv6 components
-	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
-	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
-
-	// Process each address family
-	for _, af := range []int{4, 6} {
-		internalCIDRsAF := cidrsByAF[af]
-		nextHopsAF := nextHopsByAF[af]
-
-		if len(internalCIDRsAF) > 0 && len(nextHopsAF) > 0 {
-			// Reconcile BFD sessions for this address family
-			bfdIDs, err := c.reconcileVpcNatGatewayBFD(gw, bfdLrp, bfdIPs[af], nextHopsAF, af)
-			if err != nil {
-				klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
-				return err
-			}
-
-			// Reconcile logical router policies (PBR) for this address family
-			externalIDs := map[string]string{
-				ovs.ExternalIDVendor:        util.CniTypeName,
-				ovs.ExternalIDVpcNatGateway: gw.Name,
-				"af":                        strconv.Itoa(af),
-			}
-			if err := reconcileNatGatewayPolicies(
-				c.OVNNbClient,
-				gw.Name,
-				vpcName,
-				af,
-				gw.Spec.BFD.Enabled,
-				bfdIDs,
-				internalCIDRsAF,
-				nextHopsAF,
-				externalIDs,
-			); err != nil {
-				klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
-				return err
-			}
-		} else {
-			// No routes needed for this address family, ensure any existing ones are removed
-			if err := util.CleanupNatGwRoutesAF(c.OVNNbClient, gw.Name, vpcName, af); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
