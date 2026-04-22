@@ -232,6 +232,9 @@ func (config *Configuration) validateRequiredFlags() error {
 	if config.NeighborAs == 0 {
 		missingFlags = append(missingFlags, "--neighbor-as must be specified")
 	}
+	if config.NodeName == "" {
+		missingFlags = append(missingFlags, "--node-name must be specified (usually via NODE_NAME env from downward API)")
+	}
 
 	if len(missingFlags) > 0 {
 		return fmt.Errorf("missing required flags: %s", strings.Join(missingFlags, "; "))

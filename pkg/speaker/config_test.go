@@ -20,6 +20,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},
 				ClusterAs:         65000,
 				NeighborAs:        65001,
+				NodeName:          "node1",
 			},
 			expectError: false,
 		},
@@ -29,6 +30,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 				NeighborIPv6Addresses: []net.IP{net.ParseIP("2001:db8::1")},
 				ClusterAs:             65000,
 				NeighborAs:            65001,
+				NodeName:              "node1",
 			},
 			expectError: false,
 		},
@@ -39,6 +41,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 				NeighborIPv6Addresses: []net.IP{net.ParseIP("2001:db8::1")},
 				ClusterAs:             65000,
 				NeighborAs:            65001,
+				NodeName:              "node1",
 			},
 			expectError: false,
 		},
@@ -47,6 +50,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 			config: &Configuration{
 				ClusterAs:  65000,
 				NeighborAs: 65001,
+				NodeName:   "node1",
 			},
 			expectError: true,
 			errContains: []string{"neighbor-address", "neighbor-ipv6-address"},
@@ -56,6 +60,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 			config: &Configuration{
 				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},
 				NeighborAs:        65001,
+				NodeName:          "node1",
 			},
 			expectError: true,
 			errContains: []string{"cluster-as"},
@@ -65,15 +70,26 @@ func TestValidateRequiredFlags(t *testing.T) {
 			config: &Configuration{
 				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},
 				ClusterAs:         65000,
+				NodeName:          "node1",
 			},
 			expectError: true,
 			errContains: []string{"neighbor-as"},
 		},
 		{
+			name: "missing node-name",
+			config: &Configuration{
+				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},
+				ClusterAs:         65000,
+				NeighborAs:        65001,
+			},
+			expectError: true,
+			errContains: []string{"node-name"},
+		},
+		{
 			name:        "missing all required flags",
 			config:      &Configuration{},
 			expectError: true,
-			errContains: []string{"neighbor-address", "cluster-as", "neighbor-as"},
+			errContains: []string{"neighbor-address", "cluster-as", "neighbor-as", "node-name"},
 		},
 	}
 
