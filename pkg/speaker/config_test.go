@@ -86,6 +86,16 @@ func TestValidateRequiredFlags(t *testing.T) {
 			errContains: []string{"node-name"},
 		},
 		{
+			name: "nat-gw mode does not require node-name",
+			config: &Configuration{
+				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},
+				ClusterAs:         65000,
+				NeighborAs:        65001,
+				NatGwMode:         true,
+			},
+			expectError: false,
+		},
+		{
 			name:        "missing all required flags",
 			config:      &Configuration{},
 			expectError: true,

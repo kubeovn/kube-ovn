@@ -232,7 +232,10 @@ func (config *Configuration) validateRequiredFlags() error {
 	if config.NeighborAs == 0 {
 		missingFlags = append(missingFlags, "--neighbor-as must be specified")
 	}
-	if config.NodeName == "" {
+	// NodeName is only used for the BGP "local" policy match in syncSubnetRoutes;
+	// NAT GW mode runs syncEIPRoutes exclusively and never reads NodeName, so skip
+	// the requirement there to stay compatible with GenNatGwBgpSpeakerContainer.
+	if !config.NatGwMode && config.NodeName == "" {
 		missingFlags = append(missingFlags, "--node-name must be specified (usually via NODE_NAME env from downward API)")
 	}
 
