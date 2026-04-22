@@ -24,7 +24,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
-	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -1951,20 +1950,29 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 		internalCIDRsAF := cidrsByAF[af]
 		nextHopsAF := nextHopsByAF[af]
 
-		// Reconcile BFD sessions for this address family
-		bfdIDs, err := c.reconcileVpcNatGatewayBFD(gw, bfdLrp, bfdIPs[af], nextHopsAF, af)
-		if err != nil {
-			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
-			return err
-		}
-
-		// Reconcile logical router policies (PBR) for this address family
 		externalIDs := map[string]string{
 			ovs.ExternalIDVendor:        util.CniTypeName,
 			ovs.ExternalIDVpcNatGateway: gw.Name,
 			"af":                        strconv.Itoa(af),
 		}
 
+		// Reconcile BFD sessions for this address family
+		bfdIDs, err := reconcileGatewayBFDWithCleanup(
+			c.OVNNbClient,
+			bfdIPs[af],
+			bfdLrp,
+			nextHops,
+			gw.Spec.BFD.MinTX,
+			gw.Spec.BFD.MinRX,
+			gw.Spec.BFD.Multiplier,
+			externalIDs,
+		)
+		if err != nil {
+			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
+			return err
+		}
+
+		// Reconcile the OVN policy routes for this address family
 		if err := reconcileNatGatewayPolicies(
 			c.OVNNbClient,
 			gw.Name,
@@ -1982,38 +1990,4 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 	}
 
 	return nil
-}
-
-// reconcileVpcNatGatewayBFD reconciles OVN BFD sessions for VPC NAT Gateway in HA mode.
-// The af parameter specifies the address family (4 for IPv4, 6 for IPv6).
-// Returns the set of BFD IDs that were created/updated.
-// The stale BFD entries are deleted during reconciliation.
-func (c *Controller) reconcileVpcNatGatewayBFD(gw *kubeovnv1.VpcNatGateway, lrpName, bfdIP string, nextHops map[string]string, af int) (set.Set[string], error) {
-	externalIDs := map[string]string{
-		ovs.ExternalIDVendor:        util.CniTypeName,
-		ovs.ExternalIDVpcNatGateway: gw.Name,
-		"af":                        strconv.Itoa(af),
-	}
-
-	// Reconcile OVN BFD entries using shared function
-	bfdIDs, _, staleBFDIDs, err := reconcileGatewayBFD(
-		c.OVNNbClient,
-		bfdIP,
-		lrpName,
-		nextHops,
-		gw.Spec.BFD.MinTX,
-		gw.Spec.BFD.MinRX,
-		gw.Spec.BFD.Multiplier,
-		externalIDs,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cleanup stale BFD sessions
-	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
-		return nil, err
-	}
-
-	return bfdIDs, nil
 }
