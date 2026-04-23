@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -210,38 +211,22 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		return err
 	}
 
-	// Clean up OVN resources (routes and BFD sessions) for this NAT gateway
-	externalIDs := map[string]string{
-		ovs.ExternalIDVendor:        util.CniTypeName,
-		ovs.ExternalIDVpcNatGateway: gwName,
-	}
-
-	// Try to get gateway object from lister to get VPC name for route deletion
-	// If the object is already deleted from the lister, we skip route deletion
-	// (routes will be cleaned up when the VPC is deleted)
 	gw, err := c.vpcNatGatewayLister.Get(gwName)
-	if err == nil && gw.Spec.Vpc != "" {
-		if err := c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(gw.Spec.Vpc, externalIDs); err != nil {
-			klog.Errorf("failed to delete static routes for nat gw %s: %v", gwName, err)
-			return err
-		}
-	} else if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get nat gw %s for OVN cleanup: %v", gwName, err)
-	}
-
-	// Clean up BFD sessions
-	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
 	if err != nil {
-		klog.Errorf("failed to find BFD sessions for nat gw %s: %v", gwName, err)
+		klog.Error(err)
 		return err
 	}
 
-	for i := range bfdList {
-		bfd := &bfdList[i]
-		if err := c.OVNNbClient.DeleteBFD(bfd.UUID); err != nil {
-			klog.Errorf("failed to delete BFD %s: %v", bfd.UUID, err)
-			return err
-		}
+	// Reconcile the routes to clean up everything (policies, BFD, ...)
+	if err := c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// Remove the finalizer on the gateway to let the object get deleted
+	if err := c.handleDeleteVpcNatGwFinalizer(gw); err != nil {
+		klog.Errorf("failed to remove finalizer for vpc nat gateway %s: %v", gwName, err)
+		return err
 	}
 
 	return nil
@@ -270,6 +255,9 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	if !slices.Equal(gw.Spec.InternalCIDRs, gw.Status.InternalCIDRs) {
 		return true
 	}
+	if gw.Spec.Replicas != gw.Status.Replicas {
+		return true
+	}
 	return false
 }
 
@@ -283,9 +271,19 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return err
 	}
 
+	if !gw.DeletionTimestamp.IsZero() {
+		return nil
+	}
+
 	// create nat gw statefulset
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+
+	if err := c.handleAddVpcNatGwFinalizer(gw); err != nil {
+		klog.Errorf("failed to add vpc nat gateway finalizer for %s: %v", key, err)
+		return err
+	}
+
 	klog.Infof("handle add/update vpc nat gateway %s", key)
 
 	if vpcNatEnabled != "true" {
@@ -333,7 +331,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			needToCreate = true
 		}
 		gwChanged := isVpcNatGwChanged(gw)
-		needPatchStatus := gwChanged
 
 		newDeploy, err := c.genNatGwDeployment(gw)
 		if err != nil {
@@ -362,13 +359,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 				Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
 				klog.Error(err)
-				return err
-			}
-		}
-
-		if needPatchStatus {
-			if err = c.patchNatGwStatus(key); err != nil {
-				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
 				return err
 			}
 		}
@@ -461,6 +451,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Errorf("failed to patch nat gw qos status for nat gw %s, %v", key, err)
 			return err
 		}
+	}
+
+	if err = c.patchNatGwStatus(key); err != nil {
+		klog.Errorf("failed to patch nat gw status for nat gw %s, %v", key, err)
+		return err
 	}
 
 	return nil
@@ -1066,6 +1061,7 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get subnet %s: %w", subnetName, err)
 	}
+
 	// Make sure the subnet is an OVN subnet
 	if !isOvnSubnet(subnet) {
 		return "", fmt.Errorf("subnet %s is not an OVN subnet", subnetName)
@@ -1231,9 +1227,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	// Merge route annotations into template annotations
-	for k, v := range routeAnnotations {
-		templateAnnotations[k] = v
-	}
+	maps.Copy(templateAnnotations, routeAnnotations)
 
 	// Handle NoDefaultEIP case
 	if gw.Spec.NoDefaultEIP {
@@ -1255,7 +1249,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 			Labels:    labels,
 		},
 		Spec: v1.StatefulSetSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: ptr.To[int32](1),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -1265,7 +1259,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					Annotations: templateAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					TerminationGracePeriodSeconds: ptr.To(int64(0)),
+					TerminationGracePeriodSeconds: ptr.To[int64](0),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
@@ -1387,7 +1381,6 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
-	// Generate route annotations using the new helper function
 	routeAnnotations, err := c.generateNatGwRoutes(
 		gw,
 		bfdIP,
@@ -1402,9 +1395,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	}
 
 	// Merge route annotations into template annotations
-	for k, v := range routeAnnotations {
-		templateAnnotations[k] = v
-	}
+	maps.Copy(templateAnnotations, routeAnnotations)
 
 	// Handle NoDefaultEIP case
 	if gw.Spec.NoDefaultEIP {
@@ -1734,6 +1725,10 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.InternalCIDRs = gw.Spec.InternalCIDRs
 		changed = true
 	}
+	if gw.Status.Replicas != gw.Spec.Replicas {
+		gw.Status.Replicas = gw.Spec.Replicas
+		changed = true
+	}
 
 	if updateNatGwWorkloadStatus(gw, c.podsLister, c.deploymentsLister, c.config.KubeClient, c.natGwNamespace(gw)) {
 		changed = true
@@ -1871,9 +1866,6 @@ func (c *Controller) initVpcNatGw() error {
 	return nil
 }
 
-///////////
-// TODO: WORKING PATH
-
 // reconcileVpcNatGatewayOVNRoutes reconciles OVN routing policies for VPC NAT Gateways.
 // It creates policy-based routes for traffic from specified internal CIDRs,
 // directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
@@ -1913,6 +1905,7 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 	return nil
 }
 
+// reconcileVpcNatGatewayOVNRoutesAF reconciles OVN routing policies and BFD sessions for a specific address family.
 func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGateway, af int, bfdLrp, bfdIP string, internalCIDRsAF []string, nextHopsAF map[string]string) error {
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:        util.CniTypeName,
@@ -1955,6 +1948,7 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 	return nil
 }
 
+// getNatGwNextHops collects the IP addresses of the running NAT gateway pods to be used as next hops in OVN routes.
 func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]string, error) {
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
@@ -1990,4 +1984,54 @@ func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]s
 		}
 	}
 	return nextHops, nil
+}
+
+// handleAddVpcNatGwFinalizer adds a finalizer to the VpcNatGateway resource to ensure proper cleanup before deletion.
+func (c *Controller) handleAddVpcNatGwFinalizer(gw *kubeovnv1.VpcNatGateway) error {
+	if !gw.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(gw, util.KubeOVNControllerFinalizer) {
+		return nil
+	}
+
+	newGw := gw.DeepCopy()
+	controllerutil.AddFinalizer(newGw, util.KubeOVNControllerFinalizer)
+	patch, err := util.GenerateMergePatchPayload(gw, newGw)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for vpc nat gateway '%s', %v", gw.Name, err)
+		return err
+	}
+
+	if _, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to add finalizer for vpc nat gateway '%s', %v", gw.Name, err)
+		return err
+	}
+	return nil
+}
+
+// handleDeleteVpcNatGwFinalizer performs cleanup for the VpcNatGateway and removes the finalizer.
+func (c *Controller) handleDeleteVpcNatGwFinalizer(gw *kubeovnv1.VpcNatGateway) error {
+	if !controllerutil.ContainsFinalizer(gw, util.KubeOVNControllerFinalizer) {
+		return nil
+	}
+
+	newGw := gw.DeepCopy()
+	controllerutil.RemoveFinalizer(newGw, util.KubeOVNControllerFinalizer)
+	patch, err := util.GenerateMergePatchPayload(gw, newGw)
+	if err != nil {
+		klog.Errorf("failed to generate patch payload for vpc nat gateway '%s', %v", gw.Name, err)
+		return err
+	}
+
+	if _, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name,
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to remove finalizer from vpc nat gateway '%s', %v", gw.Name, err)
+		return err
+	}
+	return nil
 }
