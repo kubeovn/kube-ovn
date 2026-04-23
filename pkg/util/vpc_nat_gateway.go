@@ -127,16 +127,7 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
-
-	// Use LanIP for IP address annotation only in non-HA mode (replicas = 1)
-	// In HA mode, IPs are dynamically allocated and don't need static assignment
-	replicas := gw.Spec.Replicas
-	if replicas == 0 {
-		replicas = 1
-	}
-	if replicas == 1 && gw.Spec.LanIP != "" {
-		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
-	}
+	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of
 	// the CNI mode, so that malformed providers are caught early rather than producing bogus
