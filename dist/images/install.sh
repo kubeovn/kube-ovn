@@ -1026,6 +1026,9 @@ spec:
     - jsonPath: .spec.namespace
       name: Namespace
       type: string
+    - jsonPath: .spec.externalSubnet
+      name: ExternalSubnet
+      type: string
     - jsonPath: .status.ip
       name: IP
       type: string
