@@ -166,7 +166,8 @@ func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kub
 
 // collectSvcBgpPrefixes announces external IPs of LoadBalancer Services that carry
 // the ovn.kubernetes.io/bgp annotation and have a non-empty status.loadBalancer.ingress.
-// This is the speaker-side of the enable-bgp-lb-vip feature.
+// This is the speaker-side of the enable-bgp-lb-vip feature: speaker consumes the
+// final Service state written by the controller, not the Vip CR directly.
 //
 // Policy semantics:
 //   - "true" / "cluster": all speaker nodes announce the IP.
@@ -189,11 +190,13 @@ func collectSvcBgpPrefixes(services []*corev1.Service, _ string, bgpExpected pre
 			}
 			switch policy {
 			case "true", announcePolicyCluster:
+				klog.Infof("service %s/%s announces LoadBalancer ingress IP %s via BGP (policy=%s)", svc.Namespace, svc.Name, ingress.IP, policy)
 				addExpectedPrefix(ingress.IP, bgpExpected)
 			case announcePolicyLocal:
 				// For LB Services the "local" policy announces on all nodes:
 				// there is no single pod node to pin to, and the external router
 				// performs ECMP over all BGP peers anyway.
+				klog.Infof("service %s/%s announces LoadBalancer ingress IP %s via BGP (policy=%s)", svc.Namespace, svc.Name, ingress.IP, policy)
 				addExpectedPrefix(ingress.IP, bgpExpected)
 			default:
 				klog.Warningf("service %s/%s: invalid bgp annotation value %q", svc.Namespace, svc.Name, policy)

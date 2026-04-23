@@ -156,8 +156,10 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	// bgp_lb_vip: IPAM-only VIP — no OVN LSP, no virtual parents.
-	// The IP is set in status.loadBalancer.ingress by the service controller,
-	// and announced by the BGP speaker via the ovn.kubernetes.io/bgp annotation.
+	// This CRD is only the IP resource source for the BGP LB VIP flow:
+	// Vip(spec/status) -> service controller -> Service annotation/status -> speaker -> BGP announce.
+	// The service controller writes the allocated IP into Service.status.loadBalancer.ingress
+	// and marks ovn.kubernetes.io/bgp so the speaker can publish it.
 	if vip.Spec.Type == util.BgpLbVip {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac); err != nil {
 			klog.Errorf("failed to create or update bgp-lb vip '%s': %v", vip.Name, err)

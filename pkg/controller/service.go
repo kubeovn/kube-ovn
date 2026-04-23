@@ -682,7 +682,11 @@ outer:
 }
 
 // handleAddBgpLbVipService binds a pre-allocated VIP (type=bgp_lb_vip) to a
-// LoadBalancer Service. The VIP is identified by the ovn.kubernetes.io/bgp-vip annotation.
+// LoadBalancer Service. Control flow:
+//
+//	Vip(spec/status) -> service controller -> Service annotation/status -> speaker -> BGP announce.
+//
+// The VIP is identified by the ovn.kubernetes.io/bgp-vip annotation.
 // Once bound:
 //   - svc.status.loadBalancer.ingress is set so the BGP speaker announces the IP and
 //     kube-proxy installs DNAT rules (for type=LoadBalancer, kube-proxy processes ingress
