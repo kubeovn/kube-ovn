@@ -1222,7 +1222,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	}
 	if keepIPCR {
 		for _, port := range ports {
-			if vmOrphanedPorts[port.Name] {
+			switch {
+			case vmOrphanedPorts[port.Name]:
 				// Orphaned attachment LSP from NAD hotplug: delete and release its IP.
 				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
 				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
@@ -1249,9 +1250,9 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 						c.updateSubnetStatusQueue.Add(subnetName)
 					}
 				}
-			} else if hasAliveVMSibling {
+			case hasAliveVMSibling:
 				klog.Infof("skip removing lsp %s from port groups: another alive virt-launcher pod exists for vm %s/%s", port.Name, pod.Namespace, vmName)
-			} else {
+			default:
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
 					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
