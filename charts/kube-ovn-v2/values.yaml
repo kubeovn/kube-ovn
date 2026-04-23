@@ -624,6 +624,10 @@ bgpSpeaker:
   # -- Enable announcing LoadBalancer Service ingress IPs for Services bound by ovn.kubernetes.io/bgp-vip.
   # @section -- BGP speaker configuration
   enableLbSvcAnnounce: false
+  # -- Enable announcing BGP LB VIP Service ingress IPs.
+  # Alias of enableLbSvcAnnounce; either one enables Service VIP announcements.
+  # @section -- BGP speaker configuration
+  enableBgpLbVip: false
   # -- Override image settings for kube-ovn-speaker. Empty fields fall back to the global kube-ovn image.
   # @section -- BGP speaker configuration
   image:

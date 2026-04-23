@@ -98,18 +98,40 @@ func (c *Controller) syncSubnetRoutes() {
 
 	collectPodExpectedPrefixes(pods, subnetByName, c.config.NodeName, bgpExpected)
 
-	if c.config.EnableLbSvcAnnounce {
-		// Announce LoadBalancer Service external IPs only for Services bound to bgp-vip.
+	if c.config.EnableLbSvcAnnounce || c.config.EnableBgpLbVip {
+		// Service VIP plane: announce LoadBalancer ingress IPs for Services bound by
+		// ovn.kubernetes.io/bgp-vip. This is independent from EIP resources:
+		// - Service VIP plane (this block): Service.status.loadBalancer.ingress on nodes.
+		// - EIP plane (nat-gw / node-route): IptablesEIP resources for NAT gateway traffic.
+		//
+		// Keep a dedicated set for Service VIP prefixes, then merge into the final expected
+		// prefixes to preserve composability with other announcement sources.
+		expectedBgpLbServiceEip := make(prefixMap)
 		services, err := c.servicesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list services for bgp-lb-eip, %v", err)
 			return
 		}
-		collectSvcBgpPrefixes(services, c.config.NodeName, bgpExpected)
+		collectSvcBgpPrefixes(services, c.config.NodeName, expectedBgpLbServiceEip)
+		mergePrefixMap(expectedBgpLbServiceEip, bgpExpected)
 	}
 
 	if err := c.reconcileRoutes(bgpExpected); err != nil {
 		klog.Errorf("failed to reconcile routes: %s", err.Error())
+	}
+}
+
+func mergePrefixMap(src, dst prefixMap) {
+	for afi, prefixes := range src {
+		if len(prefixes) == 0 {
+			continue
+		}
+		if dst[afi] == nil {
+			dst[afi] = set.New[string]()
+		}
+		for prefix := range prefixes {
+			dst[afi].Insert(prefix)
+		}
 	}
 }
 
