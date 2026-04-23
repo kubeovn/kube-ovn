@@ -4158,6 +4158,18 @@ spec:
     - jsonPath: .spec.lanIp
       name: LanIP
       type: string
+    - jsonPath: .spec.replicas
+      name: REPLICAS
+      type: integer
+    - jsonPath: .status.ready
+      name: READY
+      type: boolean
+    - jsonPath: .spec.bfd.enabled
+      name: BFD ENABLED
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
