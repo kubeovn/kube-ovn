@@ -424,6 +424,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		return err
 	}
 
+	vipSubnets := make(map[string]struct{})
 	lbhcUUIDsToDelete := set.New[string]()
 	for _, lbhc := range lbhcs {
 		lbs, e := c.OVNNbClient.ListLoadBalancers(
@@ -458,6 +459,11 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		if (belongsToThisVpc || vpcLBNames == nil) && !referencedByOtherVpc {
 			lbhcUUIDsToDelete.Insert(lbhc.UUID)
 		}
+		if belongsToThisVpc || vpcLBNames == nil {
+			if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
+				vipSubnets[vip] = struct{}{}
+			}
+		}
 	}
 
 	if lbhcUUIDsToDelete.Len() > 0 {
@@ -468,6 +474,23 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete LBHCs for RLR %s: %v", info.Name, err)
 			return err
+		}
+	}
+
+	for vip := range vipSubnets {
+		remaining, e := c.OVNNbClient.ListLoadBalancerHealthChecks(
+			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
+			},
+		)
+		if e != nil && !k8serrors.IsNotFound(e) {
+			klog.Errorf("failed to list remaining LBHCs for health-check vip %s: %v", vip, e)
+			continue
+		}
+		if len(remaining) == 0 {
+			if e = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{}); e != nil && !k8serrors.IsNotFound(e) {
+				klog.Errorf("failed to delete health-check vip %s for RLR %s: %v", vip, info.Name, e)
+			}
 		}
 	}
 
