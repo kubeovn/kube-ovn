@@ -741,7 +741,10 @@ func (c *Controller) reconcileBgpLbVipServiceLocked(key string, svc *v1.Service)
 		return fmt.Errorf("vip %s has type %q, expected %q", vipName, vip.Spec.Type, util.BgpLbVip)
 	}
 	if vip.Status.V4ip == "" {
-		return fmt.Errorf("vip %s has no IP allocated yet", vipName)
+		// IP not yet allocated. enqueueUpdateVirtualIP in vip.go will re-enqueue this
+		// Service once the VIP receives its IP, so return nil to avoid retry noise.
+		klog.Infof("bgp-lb-vip service %s: vip %s has no IP yet, skip", key, vipName)
+		return nil
 	}
 
 	vipIP := vip.Status.V4ip
