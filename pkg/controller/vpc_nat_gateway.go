@@ -178,6 +178,11 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	}
 }
 
+// handleDelVpcNatGw handles NAT gateways when they've been deleted
+// This function should soon not be needed anymore, due to the introduction of the finalizer
+// If the finalizer is present, deletions are handled by the update workflow which will detect
+// the new deletionTimestamp set on the resource.
+// This is still useful for legacy NAT gateways which have not been updated with one.
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	// key is "namespace/gwName" as encoded by enqueueDeleteVpcNatGw.
 	// Parse gwName first so we can lock by gwName — consistent with all other handlers
@@ -197,22 +202,17 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	workloadName := util.GenNatGwName(gwName)
 	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, stsNamespace)
 
-	// Try to delete both Deployment (HA mode) and StatefulSet (legacy mode)
-	// One will succeed, the other will get NotFound error
-	if err := c.config.KubeClient.AppsV1().Deployments(stsNamespace).Delete(context.Background(),
-		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Error(err)
-		return err
-	}
-
+	// STS are legacy NAT gateways, which might not have the finalizer yet.
 	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
 		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return err
 	}
 
+	// Get the gateway to reconcile routes
+	// It might already have been deleted. If so, the finalizer guarantees we cleaned up properly.
 	gw, err := c.vpcNatGatewayLister.Get(gwName)
-	if err != nil {
+	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return err
 	}
@@ -261,6 +261,8 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	return false
 }
 
+// handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
+// If a VPC NAT gateway is deleted, the deletionTimestamp will be updated and this function will also be called.
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -272,10 +274,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	if !gw.DeletionTimestamp.IsZero() {
-		return nil
+		return c.handleDelVpcNatGw(key)
 	}
 
-	// create nat gw statefulset
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 
@@ -354,7 +355,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 
 		// Handle Deployment update if needed
-		if gwChanged || needRestartRecovery {
+		if gwChanged {
 			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 				Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
@@ -1284,8 +1285,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
@@ -1304,7 +1305,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		sts.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
 
 		// Craft a BGP speaker container to add to our statefulset
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
@@ -1315,6 +1316,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 		// Add our container to the list of containers in the statefulset
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, *bgpSpeakerContainer)
+	}
+
+	// Set owner reference so that the workload will be deleted automatically when the VPC NAT gateway is deleted
+	if err := util.SetOwnerReference(gw, sts); err != nil {
+		return nil, err
 	}
 
 	return sts, nil
@@ -1455,8 +1461,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
+								Privileged:               ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 						},
 					},
@@ -1493,7 +1499,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	// BGP speaker is enabled on this instance
 	if gw.Spec.BgpSpeaker.Enabled {
 		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		deploy.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		deploy.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
 
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
 		if err != nil {
@@ -1950,6 +1956,12 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 
 // getNatGwNextHops collects the IP addresses of the running NAT gateway pods to be used as next hops in OVN routes.
 func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]string, error) {
+	// The gateway is getting deleted, do not return any next hop as we don't want to send the
+	// traffic to the gateway pods anymore.
+	if !gw.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
 	if err != nil {
@@ -1971,6 +1983,20 @@ func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]s
 
 	nextHops := make(map[string]string)
 	for _, pod := range pods {
+		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
+			continue
+		}
+		ready := true
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status != corev1.ConditionTrue {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			continue
+		}
+
 		if len(pod.Status.PodIPs) == 0 || pod.Spec.NodeName == "" {
 			continue
 		}
