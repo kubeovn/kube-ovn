@@ -1284,8 +1284,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(true),
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
 							},
 						},
 					},
@@ -1304,7 +1304,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		sts.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
+		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
 
 		// Craft a BGP speaker container to add to our statefulset
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
@@ -1455,8 +1455,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(true),
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
 							},
 						},
 					},
@@ -1493,7 +1493,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	// BGP speaker is enabled on this instance
 	if gw.Spec.BgpSpeaker.Enabled {
 		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		deploy.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)
+		deploy.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
 
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
 		if err != nil {
