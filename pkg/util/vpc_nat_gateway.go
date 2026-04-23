@@ -125,19 +125,24 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
-	// We're using a custom provider under primary CNI mode: override the default network of the
-	// pod so that the default VPC/Subnet of the cluster isn't accidentally injected.
-	// In non-primary CNI mode eth0 belongs to the cluster's primary CNI, and overriding it with a
-	// tenant NAD would break pod/control-plane connectivity (see issue #6632).
-	if p != OvnProvider && !enableNonPrimaryCNI {
+	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of
+	// the CNI mode, so that malformed providers are caught early rather than producing bogus
+	// annotation keys for LogicalSwitch/IPAddress.
+	if p != OvnProvider {
 		// Subdivide the provider so we can infer the namespace/name of the NetworkAttachmentDefinition
 		providerSplit := strings.Split(provider, ".")
 		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {
 			return nil, fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", provider)
 		}
 
-		name, namespace := providerSplit[0], providerSplit[1]
-		result[DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", namespace, name)
+		// Override the default network of the pod only under primary CNI mode, so the default
+		// VPC/Subnet of the cluster isn't accidentally injected. In non-primary CNI mode eth0
+		// belongs to the cluster's primary CNI and overriding it with a tenant NAD would break
+		// pod/control-plane connectivity (see issue #6632).
+		if !enableNonPrimaryCNI {
+			name, namespace := providerSplit[0], providerSplit[1]
+			result[DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", namespace, name)
+		}
 	}
 
 	return result, nil

@@ -472,6 +472,25 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expected:             nil,
 			expectError:          true,
 		},
+		{
+			name: "Invalid provider syntax under non-primary CNI still returns error",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "invalid-provider",
+			additionalNetworks:   "",
+			enableNonPrimaryCNI:  true,
+			expected:             nil,
+			expectError:          true,
+		},
 	}
 
 	for _, tc := range tests {
