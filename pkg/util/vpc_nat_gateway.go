@@ -100,8 +100,11 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 // GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
 // userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
 // are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
-// users specify extra NADs in gw.Annotations.
-func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string) (map[string]string, error) {
+// users specify extra NADs in gw.Annotations. enableNonPrimaryCNI indicates whether Kube-OVN is
+// running as a non-primary CNI; in that mode eth0 must stay on the cluster's primary CNI pod
+// network (e.g. Calico) so the gateway pod can reach the Kubernetes control plane, so the
+// v1.multus-cni.io/default-network override is skipped.
+func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string, enableNonPrimaryCNI bool) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
@@ -122,9 +125,11 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 
-	// We're using a custom provider, we need to override the default network of the pod so that the
-	// default VPC/Subnet of the cluster isn't accidentally injected.
-	if p != OvnProvider {
+	// We're using a custom provider under primary CNI mode: override the default network of the
+	// pod so that the default VPC/Subnet of the cluster isn't accidentally injected.
+	// In non-primary CNI mode eth0 belongs to the cluster's primary CNI, and overriding it with a
+	// tenant NAD would break pod/control-plane connectivity (see issue #6632).
+	if p != OvnProvider && !enableNonPrimaryCNI {
 		// Subdivide the provider so we can infer the namespace/name of the NetworkAttachmentDefinition
 		providerSplit := strings.Split(provider, ".")
 		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {

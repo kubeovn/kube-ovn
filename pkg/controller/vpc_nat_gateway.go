@@ -969,7 +969,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Generate StatefulSet Pod template annotations.
 	// User-defined annotations (gw.Spec.Annotations) are used as base, system annotations are set on top.
-	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
 	if err != nil {
 		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
 		return nil, err
