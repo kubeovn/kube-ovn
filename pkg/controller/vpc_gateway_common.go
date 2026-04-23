@@ -190,11 +190,13 @@ func genGatewayPodAntiAffinity(labels map[string]string) *corev1.Affinity {
 // MaxUnavailable=1 ensures only one instance is updated at a time.
 // MaxSurge=0 ensures no extra instances are created during updates.
 func genGatewayDeploymentStrategy() appsv1.DeploymentStrategy {
+	maxUnavailable := intstr.FromInt(1)
+	maxSurge := intstr.FromInt(0)
 	return appsv1.DeploymentStrategy{
 		Type: appsv1.RollingUpdateDeploymentStrategyType,
 		RollingUpdate: &appsv1.RollingUpdateDeployment{
-			MaxUnavailable: new(intstr.FromInt(1)),
-			MaxSurge:       new(intstr.FromInt(0)),
+			MaxUnavailable: &maxUnavailable,
+			MaxSurge:       &maxSurge,
 		},
 	}
 }
