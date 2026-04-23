@@ -4152,8 +4152,8 @@ spec:
     - jsonPath: .spec.subnet
       name: Subnet
       type: string
-    - jsonPath: .spec.lanIp
-      name: LanIP
+    - jsonPath: .status.lanIp
+      name: IPs
       type: string
     - jsonPath: .spec.replicas
       name: REPLICAS
@@ -6238,6 +6238,12 @@ spec:
                 items:
                   type: string
                 type: array
+              lanIp:
+                description: |-
+                  LAN IP address(es) for the NAT gateway.
+                  For non-HA, this is the single LanIP from spec.
+                  For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+                type: string
               qosPolicy:
                 description: QoS policy applied to the NAT gateway
                 type: string
