@@ -2915,7 +2915,7 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		}
 		return err
 	}
-	if gw.Spec.LanIP != "" {
+	if gw.Spec.LanIP != "" || gw.Spec.Replicas > 1 {
 		return nil
 	}
 

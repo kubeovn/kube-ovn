@@ -218,7 +218,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	}
 
 	// Gateway doesn't exist anymore, there's nothing to clean
-	if !k8serrors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		return nil
 	}
 
@@ -310,9 +310,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	var natGwPodContainerRestartCount int32
 	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err == nil {
-		if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
-			klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
-			return err
+		if !isNatGwHAMode(gw) {
+			if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
+				klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
+				return err
+			}
 		}
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name == "vpc-nat-gw" {
@@ -1310,7 +1312,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
 		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		sts.Spec.Template.Spec.AutomountServiceAccountToken = newTrue()
 
 		// Craft a BGP speaker container to add to our statefulset
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
@@ -1466,8 +1468,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
+								Privileged:               newTrue(),
+								AllowPrivilegeEscalation: newTrue(),
 							},
 						},
 					},
@@ -1504,7 +1506,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	// BGP speaker is enabled on this instance
 	if gw.Spec.BgpSpeaker.Enabled {
 		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
-		deploy.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
+		deploy.Spec.Template.Spec.AutomountServiceAccountToken = newTrue()
 
 		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
 		if err != nil {
@@ -1738,6 +1740,33 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	}
 	if gw.Status.Replicas != gw.Spec.Replicas {
 		gw.Status.Replicas = gw.Spec.Replicas
+		changed = true
+	}
+	var lanIPs []string
+	if !isNatGwHAMode(gw) {
+		lanIPs = []string{gw.Spec.LanIP}
+	} else {
+		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
+		if err != nil {
+			klog.Errorf("failed to get nat gw pods, %v", err)
+			return err
+		}
+		subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s, %v", gw.Spec.Subnet, err)
+			return err
+		}
+		for _, pod := range pods {
+			podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, subnet.Spec.Provider)]
+			if podIP != "" {
+				lanIPs = append(lanIPs, podIP)
+			}
+		}
+		slices.Sort(lanIPs)
+	}
+	lanIP := strings.Join(lanIPs, ",")
+	if gw.Status.LanIP != lanIP {
+		gw.Status.LanIP = lanIP
 		changed = true
 	}
 

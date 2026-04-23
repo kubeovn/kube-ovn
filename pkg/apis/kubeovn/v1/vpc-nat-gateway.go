@@ -26,7 +26,7 @@ type VpcNatGatewayList struct {
 // +kubebuilder:printcolumn:name="Namespace",type="string",JSONPath=".spec.namespace"
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
 // +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
-// +kubebuilder:printcolumn:name="LanIP",type="string",JSONPath=".spec.lanIp"
+// +kubebuilder:printcolumn:name="IPs",type="string",JSONPath=".status.lanIp"
 // +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
 // +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
 // +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
@@ -159,7 +159,11 @@ type VpcNatGatewayStatus struct {
 	// Number of gateway replicas
 	Replicas int32 `json:"replicas"`
 	// Ready state of the NAT gateway
-	Ready       bool                `json:"ready"`
+	Ready bool `json:"ready"`
+	// LAN IP address(es) for the NAT gateway.
+	// For non-HA, this is the single LanIP from spec.
+	// For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+	LanIP       string              `json:"lanIp"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 	// Workload information (Deployment or StatefulSet)
