@@ -28,7 +28,7 @@ type RouterLBRuleClient struct {
 
 func (f *Framework) RouterLBRuleClient() *RouterLBRuleClient {
 	return &RouterLBRuleClient{
-		f:                    f,
+		f:                     f,
 		RouterLBRuleInterface: f.KubeOVNClientSet.KubeovnV1().RouterLBRules(),
 	}
 }

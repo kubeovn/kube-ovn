@@ -77,13 +77,13 @@ var _ = framework.Describe("[group:rlr]", func() {
 	var rlrClient *framework.RouterLBRuleClient
 
 	var (
-		namespaceName                                          string
-		suffix                                                 string
-		providerNetworkName, vlanName                          string
-		externalSubnetName, vpcName, overlaySubnetName         string
-		eipName, lrpEipName                                    string
-		stsName, stsSvcName, clientPodName                     string
-		selRlrName, epRlrName                                  string
+		namespaceName                                  string
+		suffix                                         string
+		providerNetworkName, vlanName                  string
+		externalSubnetName, vpcName, overlaySubnetName string
+		eipName, lrpEipName                            string
+		stsName, stsSvcName, clientPodName             string
+		selRlrName, epRlrName                          string
 	)
 
 	ginkgo.BeforeEach(func() {
@@ -340,7 +340,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		newSts := sts.DeepCopy()
 		replicas := int32(3)
 		newSts.Spec.Replicas = &replicas
-		sts = stsClient.PatchSync(sts, newSts)
+		_ = stsClient.PatchSync(sts, newSts)
 
 		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			eps, err := endpointsClient.EndpointsInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
