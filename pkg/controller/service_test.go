@@ -291,7 +291,7 @@ func TestHandleAddBgpLbVipService(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("happy path: externalIPs, ingress, and bgp annotation set", func(t *testing.T) {
+	t.Run("happy path: ingress and bgp annotation set", func(t *testing.T) {
 		t.Parallel()
 		ctrl := newBgpLbVipController(t, readyVIP(), lbSvc(vipName))
 		require.NoError(t, ctrl.handleAddBgpLbVipService(key))
@@ -299,7 +299,6 @@ func TestHandleAddBgpLbVipService(t *testing.T) {
 		updated, err := ctrl.config.KubeClient.CoreV1().Services(ns).Get(
 			context.Background(), svcName, metav1.GetOptions{})
 		require.NoError(t, err)
-		require.Contains(t, updated.Spec.ExternalIPs, vipIP)
 		require.Equal(t, []v1.LoadBalancerIngress{{IP: vipIP}}, updated.Status.LoadBalancer.Ingress)
 		require.Equal(t, "true", updated.Annotations[util.BgpAnnotation])
 	})

@@ -758,7 +758,7 @@ func (c *Controller) reconcileBgpLbVipServiceLocked(key string, svc *v1.Service)
 	// API calls because the Kubernetes API server treats them as independent sub-resources.
 	// A bootstrap reconcile will produce two watch events and one extra (idempotent) reconcile
 	// iteration — this is intentional.
-	if svc.Annotations[util.BgpAnnotation] != "true" {
+	if targetSvc.Annotations[util.BgpAnnotation] != "true" {
 		klog.Infof("bgp-lb-vip service %s setting bgp annotation", key)
 		targetSvc.Annotations[util.BgpAnnotation] = "true"
 		updatedSvc, updateErr := c.config.KubeClient.CoreV1().Services(namespace).Update(
