@@ -118,7 +118,7 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
@@ -155,7 +155,7 @@ func genGatewaySleepContainer(image string) corev1.Container {
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: ptr.To(false),
+			Privileged: new(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
@@ -193,8 +193,8 @@ func genGatewayDeploymentStrategy() appsv1.DeploymentStrategy {
 	return appsv1.DeploymentStrategy{
 		Type: appsv1.RollingUpdateDeploymentStrategyType,
 		RollingUpdate: &appsv1.RollingUpdateDeployment{
-			MaxUnavailable: ptr.To(intstr.FromInt(1)),
-			MaxSurge:       ptr.To(intstr.FromInt(0)),
+			MaxUnavailable: new(intstr.FromInt(1)),
+			MaxSurge:       new(intstr.FromInt(0)),
 		},
 	}
 }
