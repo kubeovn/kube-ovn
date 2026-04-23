@@ -151,7 +151,11 @@ type VpcNatGatewayStatus struct {
 	// External subnets configured for the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets" patchStrategy:"merge"`
 	// Pod selector configured for the NAT gateway
-	Selector    []string            `json:"selector" patchStrategy:"merge"`
+	Selector []string `json:"selector" patchStrategy:"merge"`
+	// Number of gateway replicas
+	Replicas int32 `json:"replicas"`
+	// Ready state of the NAT gateway
+	Ready       bool                `json:"ready"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 	// Workload information (Deployment or StatefulSet)
