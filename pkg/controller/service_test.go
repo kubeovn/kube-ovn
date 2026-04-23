@@ -338,8 +338,7 @@ func TestReconcileBgpLbVipServiceLocked(t *testing.T) {
 			},
 		},
 		Spec: v1.ServiceSpec{
-			Type:        v1.ServiceTypeLoadBalancer,
-			ExternalIPs: []string{"198.51.100.9"},
+			Type: v1.ServiceTypeLoadBalancer,
 		},
 	}
 
@@ -351,7 +350,7 @@ func TestReconcileBgpLbVipServiceLocked(t *testing.T) {
 	updated, err := ctrl.config.KubeClient.CoreV1().Services(ns).Get(
 		context.Background(), svcName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, []string{vipIP}, updated.Spec.ExternalIPs)
+	require.Empty(t, updated.Spec.ExternalIPs)
 	require.Equal(t, []v1.LoadBalancerIngress{{IP: vipIP}}, updated.Status.LoadBalancer.Ingress)
 	require.Equal(t, "true", updated.Annotations[util.BgpAnnotation])
 }
