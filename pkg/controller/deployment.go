@@ -11,7 +11,6 @@ import (
 
 func (c *Controller) enqueueAddDeployment(obj any) {
 	deploy := obj.(*appsv1.Deployment)
-	klog.Infof("enqueue update blabla")
 	for _, ref := range deploy.OwnerReferences {
 		if ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() {
 			if ref.Kind == util.KindVpcEgressGateway {
