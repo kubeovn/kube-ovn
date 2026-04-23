@@ -42,6 +42,7 @@ spec:
             - --alsologtostderr=true
             - --log_file=/var/log/kube-ovn/kube-ovn-speaker.log
             - --log_file_max_size=200
+            - --enable-lb-svc-announce=false
             - --neighbor-address=10.32.32.1
             - --neighbor-as=65030
             - --cluster-as=65000

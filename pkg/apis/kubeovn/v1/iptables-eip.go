@@ -42,7 +42,7 @@ type IptablesEIPSpec struct {
 	V6ip string `json:"v6ip"`
 	// MAC address for the EIP
 	MacAddress string `json:"macAddress"`
-	// NAT gateway datapath where the EIP is assigned
+	// NAT gateway datapath where the EIP is assigned.
 	NatGwDp string `json:"natGwDp"`
 	// QoS policy name to apply to the EIP
 	QoSPolicy string `json:"qosPolicy"`

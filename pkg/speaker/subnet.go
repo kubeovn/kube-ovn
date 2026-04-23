@@ -27,6 +27,11 @@ const (
 	announcePolicyLocal = "local"
 )
 
+// ipAddrAnnotationSuffix is the suffix of pod annotation keys that carry IP addresses
+// (e.g. "ovn.kubernetes.io/ip_address"). Computed once at startup to avoid repeated
+// fmt.Sprintf calls on the hot syncSubnetRoutes path.
+var ipAddrAnnotationSuffix = fmt.Sprintf(util.IPAddressAnnotationTemplate, "")
+
 func (c *Controller) syncSubnetRoutes() {
 	bgpExpected := make(prefixMap)
 
@@ -93,6 +98,16 @@ func (c *Controller) syncSubnetRoutes() {
 
 	collectPodExpectedPrefixes(pods, subnetByName, c.config.NodeName, bgpExpected)
 
+	if c.config.EnableLbSvcAnnounce {
+		// Announce LoadBalancer Service external IPs only for Services bound to bgp-vip.
+		services, err := c.servicesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list services for bgp-lb-eip, %v", err)
+			return
+		}
+		collectSvcBgpPrefixes(services, c.config.NodeName, bgpExpected)
+	}
+
 	if err := c.reconcileRoutes(bgpExpected); err != nil {
 		klog.Errorf("failed to reconcile routes: %s", err.Error())
 	}
@@ -102,7 +117,6 @@ func (c *Controller) syncSubnetRoutes() {
 // It reads IPs from pod annotations ({provider}.kubernetes.io/ip_address) instead of pod.Status.PodIPs,
 // so that attachment network IPs and non-primary CNI IPs are correctly announced.
 func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kubeovnv1.Subnet, nodeName string, bgpExpected prefixMap) {
-	ipAddrSuffix := fmt.Sprintf(util.IPAddressAnnotationTemplate, "")
 	for _, pod := range pods {
 		if len(pod.Annotations) == 0 || !isPodAlive(pod) {
 			continue
@@ -111,10 +125,10 @@ func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kub
 		podBgpPolicy := pod.Annotations[util.BgpAnnotation]
 
 		for key, ipStr := range pod.Annotations {
-			if ipStr == "" || !strings.HasSuffix(key, ipAddrSuffix) {
+			if ipStr == "" || !strings.HasSuffix(key, ipAddrAnnotationSuffix) {
 				continue
 			}
-			provider := strings.TrimSuffix(key, ipAddrSuffix)
+			provider := strings.TrimSuffix(key, ipAddrAnnotationSuffix)
 			if provider == "" {
 				continue
 			}
@@ -145,6 +159,44 @@ func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kub
 						addExpectedPrefix(strings.TrimSpace(ip), bgpExpected)
 					}
 				}
+			}
+		}
+	}
+}
+
+// collectSvcBgpPrefixes announces external IPs of LoadBalancer Services that carry
+// the ovn.kubernetes.io/bgp annotation and have a non-empty status.loadBalancer.ingress.
+// This is the speaker-side of the enable-bgp-lb-vip feature.
+//
+// Policy semantics:
+//   - "true" / "cluster": all speaker nodes announce the IP.
+//   - "local": currently announces on all speaker nodes for Services.
+func collectSvcBgpPrefixes(services []*corev1.Service, _ string, bgpExpected prefixMap) {
+	for _, svc := range services {
+		if len(svc.Annotations) == 0 {
+			continue
+		}
+		if svc.Annotations[util.BgpVipAnnotation] == "" {
+			continue
+		}
+		policy := svc.Annotations[util.BgpAnnotation]
+		if policy == "" {
+			continue
+		}
+		for _, ingress := range svc.Status.LoadBalancer.Ingress {
+			if ingress.IP == "" {
+				continue
+			}
+			switch policy {
+			case "true", announcePolicyCluster:
+				addExpectedPrefix(ingress.IP, bgpExpected)
+			case announcePolicyLocal:
+				// For LB Services the "local" policy announces on all nodes:
+				// there is no single pod node to pin to, and the external router
+				// performs ECMP over all BGP peers anyway.
+				addExpectedPrefix(ingress.IP, bgpExpected)
+			default:
+				klog.Warningf("service %s/%s: invalid bgp annotation value %q", svc.Namespace, svc.Name, policy)
 			}
 		}
 	}
