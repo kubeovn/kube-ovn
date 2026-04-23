@@ -285,6 +285,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 		externalNadName      string
 		provider             string
 		additionalNetworks   string
+		enableNonPrimaryCNI  bool
 		expected             map[string]string
 		expectError          bool
 	}{
@@ -335,7 +336,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "All fields provided with NAD provider",
+			name: "Primary CNI with NAD provider overrides default network",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
@@ -359,7 +360,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "With additional networks for secondary CNI",
+			name: "Primary CNI with NAD provider and additional networks",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
@@ -379,6 +380,54 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 				DefaultNetworkAnnotation: "namespace/subnet",
+			},
+			expectError: false,
+		},
+		{
+			name: "Non-primary CNI with NAD provider skips default network override",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "subnet.namespace.ovn",
+			additionalNetworks:   "",
+			enableNonPrimaryCNI:  true,
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
+				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
+				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
+			},
+			expectError: false,
+		},
+		{
+			name: "Non-primary CNI with NAD provider and additional networks",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "subnet.namespace.ovn",
+			additionalNetworks:   "default/tenant-nad",
+			enableNonPrimaryCNI:  true,
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "default/tenant-nad, kube-system/external-subnet",
+				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
+				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 			},
 			expectError: false,
 		},
@@ -406,7 +455,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "Invalid provider syntax",
+			name: "Invalid provider syntax under primary CNI returns error",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
@@ -423,11 +472,30 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expected:             nil,
 			expectError:          true,
 		},
+		{
+			name: "Invalid provider syntax under non-primary CNI still returns error",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "invalid-provider",
+			additionalNetworks:   "",
+			enableNonPrimaryCNI:  true,
+			expected:             nil,
+			expectError:          true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := GenNatGwPodAnnotations(nil, &tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks)
+			result, err := GenNatGwPodAnnotations(nil, &tc.gw, tc.externalNadNamespace, tc.externalNadName, tc.provider, tc.additionalNetworks, tc.enableNonPrimaryCNI)
 			if (err != nil) != tc.expectError {
 				t.Errorf("expected error: %v, but got: %v", tc.expectError, err)
 			}

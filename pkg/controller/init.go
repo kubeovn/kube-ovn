@@ -287,7 +287,12 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		return err
 	}
 
-	if protocol == "udp" {
+	// ct_flush wipes all conntrack entries on the LB's datapath whenever a vip
+	// is mutated. Session-affinity LBs are shared across services, and their
+	// per-client affinity binding is carried in conntrack; enabling ct_flush on
+	// those LBs lets an unrelated service's backend change invalidate another
+	// service's active affinity. Only enable ct_flush on non-session UDP LBs.
+	if protocol == "udp" && !sessionAffinity {
 		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
 			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
 			return err
