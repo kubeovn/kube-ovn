@@ -391,6 +391,7 @@ func updateNatGwWorkloadStatus(
 	workloadName := util.GenNatGwName(gw.Name)
 	var workloadKind, workloadAPIVersion string
 	var workloadNodes []string
+	var ready bool
 	var err error
 
 	if isNatGwHAMode(gw) {
@@ -402,6 +403,7 @@ func updateNatGwWorkloadStatus(
 		}
 		if err == nil && deploy != nil {
 			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, deploy.Spec.Selector)
+			ready = util.DeploymentIsReady(deploy)
 		}
 	} else {
 		workloadKind = util.KindStatefulSet
@@ -412,6 +414,7 @@ func updateNatGwWorkloadStatus(
 		}
 		if err == nil && sts != nil {
 			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, sts.Spec.Selector)
+			ready = util.StatefulSetIsReady(sts)
 		}
 	}
 
@@ -435,6 +438,10 @@ func updateNatGwWorkloadStatus(
 	slices.Sort(workloadNodes)
 	if !slices.Equal(gw.Status.Workload.Nodes, workloadNodes) {
 		gw.Status.Workload.Nodes = workloadNodes
+		changed = true
+	}
+	if gw.Status.Ready != ready {
+		gw.Status.Ready = ready
 		changed = true
 	}
 

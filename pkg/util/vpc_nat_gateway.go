@@ -101,7 +101,7 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
-// GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
+// GenNatGwPodAnnotations generates Pod template annotations for a NAT gateway.
 // userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
 // are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
 // users specify extra NADs in gw.Annotations. enableNonPrimaryCNI indicates whether Kube-OVN is
