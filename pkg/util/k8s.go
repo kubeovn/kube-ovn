@@ -189,6 +189,18 @@ func DeploymentIsReady(deployment *appsv1.Deployment) bool {
 	return true
 }
 
+func StatefulSetIsReady(sts *appsv1.StatefulSet) bool {
+	if sts.Generation > sts.Status.ObservedGeneration {
+		return false
+	}
+	if (sts.Spec.Replicas != nil && sts.Status.ReadyReplicas < *sts.Spec.Replicas) ||
+		sts.Status.CurrentReplicas > sts.Status.ReadyReplicas ||
+		sts.Status.UpdatedReplicas < sts.Status.ReadyReplicas {
+		return false
+	}
+	return true
+}
+
 func SetNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName string, status v1.ConditionStatus, reason, message string) error {
 	now := metav1.NewTime(time.Now())
 	patch := map[string]map[string][]v1.NodeCondition{

@@ -6229,6 +6229,13 @@ spec:
               qosPolicy:
                 description: QoS policy applied to the NAT gateway
                 type: string
+              ready:
+                description: Ready state of the NAT gateway
+                type: boolean
+              replicas:
+                description: Number of gateway replicas
+                format: int32
+                type: integer
               selector:
                 description: Pod selector configured for the NAT gateway
                 items:
