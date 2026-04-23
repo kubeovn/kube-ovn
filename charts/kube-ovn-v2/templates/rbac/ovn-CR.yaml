@@ -125,6 +125,7 @@ rules:
     resources:
       - deployments
       - deployments/scale
+      - deployments/status
     verbs:
       - get
       - list
