@@ -182,9 +182,7 @@ func DeploymentIsReady(deployment *appsv1.Deployment) bool {
 		}
 	}
 	if (deployment.Spec.Replicas != nil && deployment.Status.UpdatedReplicas < *deployment.Spec.Replicas) ||
-		deployment.Status.Replicas > deployment.Status.UpdatedReplicas ||
-		deployment.Status.AvailableReplicas < deployment.Status.UpdatedReplicas ||
-		deployment.Status.ReadyReplicas < deployment.Status.UpdatedReplicas {
+		deployment.Status.Replicas > deployment.Status.UpdatedReplicas {
 		return false
 	}
 	return true
