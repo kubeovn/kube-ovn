@@ -380,18 +380,18 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	// Validate LanIP (required)
-	if gw.Spec.LanIP == "" && gw.Spec.Replicas > 1 {
-		return errors.New("lanIp must be specified")
-	}
-
-	if net.ParseIP(gw.Spec.LanIP) == nil {
-		return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
-	}
-
-	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
-		return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
-			gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
+	// Validate LanIP: required only for non-HA mode
+	if isHA := gw.Spec.Replicas > 1; !isHA {
+		if gw.Spec.LanIP == "" {
+			return errors.New("lanIp must be specified")
+		}
+		if net.ParseIP(gw.Spec.LanIP) == nil {
+			return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
+		}
+		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
+			return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
+				gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
+		}
 	}
 
 	// Validate BFD configuration if enabled - only check VPC has BFD enabled
