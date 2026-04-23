@@ -1354,7 +1354,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
 	}
 
-	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
 	if err != nil {
 		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
 		return nil, err
