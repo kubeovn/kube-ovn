@@ -58,15 +58,22 @@ func newRouterLBRuleInfo(rlr *kubeovnv1.RouterLBRule) *RouterLBRuleInfo {
 	}
 }
 
-func (c *Controller) requeueRouterLBRulesForEip(eipName string) {
+func (c *Controller) requeueRouterLBRulesForEip(eipName string, isRecreate bool) {
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list RouterLBRules for EIP %s: %v", eipName, err)
 		return
 	}
 	for _, rlr := range rlrs {
-		if rlr.Spec.OvnEip == eipName {
-			klog.Infof("re-queuing RouterLBRule %s due to EIP %s change", rlr.Name, eipName)
+		if rlr.Spec.OvnEip != eipName {
+			continue
+		}
+		klog.Infof("re-queuing RouterLBRule %s due to EIP %s change", rlr.Name, eipName)
+		if isRecreate {
+			info := newRouterLBRuleInfo(rlr)
+			info.IsRecreate = true
+			c.updateRouterLBRuleQueue.Add(info)
+		} else {
 			c.addRouterLBRuleQueue.Add(rlr.Name)
 		}
 	}

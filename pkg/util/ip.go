@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 func Uint32ToIPv4(n uint32) string {
@@ -21,4 +22,9 @@ func Uint32ToIPv6(n [4]uint32) string {
 		n[2]>>16, n[2]&0xffff,
 		n[3]>>16, n[3]&0xffff,
 	)
+}
+
+// IPv6ToLabelValue sanitizes an IPv6 address for use as a Kubernetes label value (colons are not allowed).
+func IPv6ToLabelValue(ip string) string {
+	return strings.ReplaceAll(ip, ":", "-")
 }

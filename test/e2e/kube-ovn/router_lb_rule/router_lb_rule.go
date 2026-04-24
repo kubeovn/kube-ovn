@@ -26,7 +26,6 @@ const (
 	backendLabel      = "rlr-backend"
 	backendPort       = int32(80)
 	rlrFrontPort      = int32(8090)
-	rlrFrontPortEP    = int32(8091)
 )
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *kubeovnv1.ProviderNetwork {
@@ -48,11 +47,16 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 func curlRLR(f *framework.Framework, clientPodName, eipIP string, port int32) {
 	ginkgo.GinkgoHelper()
 	cmd := "curl -q -s --connect-timeout 5 --max-time 5 " + util.JoinHostPort(eipIP, port)
-	ginkgo.By(fmt.Sprintf("Executing %q in pod %s/%s", cmd, f.Namespace.Name, clientPodName))
+	ginkgo.By(fmt.Sprintf("Waiting for %s:%d to be reachable from pod %s/%s", eipIP, port, f.Namespace.Name, clientPodName))
 	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		_, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd)
 		return err == nil, nil
 	}, fmt.Sprintf("%s:%d is reachable", eipIP, port))
+	ginkgo.By(fmt.Sprintf("Verifying %s:%d with 5 sequential requests", eipIP, port))
+	for i := range 5 {
+		_, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd)
+		framework.ExpectNoError(err, "request %d/5 to %s:%d failed", i+1, eipIP, port)
+	}
 }
 
 var _ = framework.Describe("[group:rlr]", func() {
@@ -81,9 +85,9 @@ var _ = framework.Describe("[group:rlr]", func() {
 		suffix                                         string
 		providerNetworkName, vlanName                  string
 		externalSubnetName, vpcName, overlaySubnetName string
-		eipName, lrpEipName                            string
+		eipName, lrpEipName, newEipName                string
 		stsName, stsSvcName, clientPodName             string
-		selRlrName, epRlrName                          string
+		selRlrName                                     string
 	)
 
 	ginkgo.BeforeEach(func() {
@@ -109,12 +113,12 @@ var _ = framework.Describe("[group:rlr]", func() {
 		vpcName = "vpc-" + suffix
 		overlaySubnetName = "overlay-" + suffix
 		eipName = "rlr-eip-" + suffix
+		newEipName = "rlr-eip-new-" + suffix
 		lrpEipName = vpcName + "-" + externalSubnetName
 		stsName = "rlr-sts-" + suffix
 		stsSvcName = stsName
 		clientPodName = "rlr-client-" + suffix
 		selRlrName = "sel-rlr-" + suffix
-		epRlrName = "ep-rlr-" + suffix
 
 		if skip {
 			ginkgo.Skip("RouterLBRule e2e only runs on Kind clusters")
@@ -135,7 +139,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		}
 
 		ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, false, true)
+		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, f.HasIPv6(), false)
 		framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
 
 		ginkgo.By("Getting Kind nodes")
@@ -171,17 +175,16 @@ var _ = framework.Describe("[group:rlr]", func() {
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Cleaning up RouterLBRule resources")
 		rlrClient.Delete(selRlrName)
-		rlrClient.Delete(epRlrName)
 		podClient.DeleteGracefully(clientPodName)
 		stsClient.Delete(stsName)
 		serviceClient.Delete(stsSvcName)
 
 		framework.ExpectNoError(rlrClient.WaitToDisappear(selRlrName, 0, 2*time.Minute))
-		framework.ExpectNoError(rlrClient.WaitToDisappear(epRlrName, 0, 2*time.Minute))
 		podClient.WaitForNotFound(clientPodName)
 		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
 
 		ovnEipClient.DeleteSync(eipName)
+		ovnEipClient.DeleteSync(newEipName)
 		ovnEipClient.DeleteSync(lrpEipName)
 
 		// Health-check VIP (named after the subnet) is created by the endpoint-slice
@@ -205,7 +208,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should create Service and Endpoints for selector and direct-endpoint modes, and update on scale", func() {
+	framework.ConformanceIt("should create Service and Endpoints for selector mode, update on scale, and clean up on delete", func() {
 		// --- Setup underlay networking ---
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
@@ -219,23 +222,45 @@ var _ = framework.Describe("[group:rlr]", func() {
 		dockerNetwork, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err)
 
-		var cidr, gateway string
-		excludeIPs := make([]string, 0)
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
 		for _, config := range dockerNetwork.IPAM.Config {
-			if util.CheckProtocol(config.Subnet.String()) == kubeovnv1.ProtocolIPv4 && f.HasIPv4() {
-				cidr = config.Subnet.String()
-				gateway = config.Gateway.String()
+			switch util.CheckProtocol(config.Subnet.String()) {
+			case kubeovnv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
+				}
+			case kubeovnv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
+				}
 			}
 		}
+		cidrParts := make([]string, 0, 2)
+		gatewayParts := make([]string, 0, 2)
+		if f.HasIPv4() {
+			framework.ExpectNotEmpty(cidrV4, "docker network must have an IPv4 subnet")
+			cidrParts = append(cidrParts, cidrV4)
+			gatewayParts = append(gatewayParts, gatewayV4)
+		}
+		if f.HasIPv6() {
+			framework.ExpectNotEmpty(cidrV6, "docker network must have an IPv6 subnet")
+			cidrParts = append(cidrParts, cidrV6)
+			gatewayParts = append(gatewayParts, gatewayV6)
+		}
+		excludeIPs := make([]string, 0)
 		for _, container := range dockerNetwork.Containers {
 			if container.IPv4Address.IsValid() && f.HasIPv4() {
 				excludeIPs = append(excludeIPs, container.IPv4Address.Addr().String())
 			}
+			if container.IPv6Address.IsValid() && f.HasIPv6() {
+				excludeIPs = append(excludeIPs, container.IPv6Address.Addr().String())
+			}
 		}
-		framework.ExpectNotEmpty(cidr, "docker network must have an IPv4 subnet")
 
 		ginkgo.By("Creating external underlay subnet " + externalSubnetName)
-		externalSubnet := framework.MakeSubnet(externalSubnetName, vlanName, cidr, gateway, "", "", excludeIPs, nil, nil)
+		externalSubnet := framework.MakeSubnet(externalSubnetName, vlanName, strings.Join(cidrParts, ","), strings.Join(gatewayParts, ","), "", "", excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(externalSubnet)
 
 		// --- Setup VPC ---
@@ -252,7 +277,11 @@ var _ = framework.Describe("[group:rlr]", func() {
 		ginkgo.By("Creating NAT OvnEip " + eipName)
 		eip := framework.MakeOvnEip(eipName, externalSubnetName, "", "", "", util.OvnEipTypeNAT)
 		eip = ovnEipClient.CreateSync(eip)
-		framework.ExpectNotEmpty(eip.Status.V4Ip, "EIP must have an IPv4 address")
+		eipIP := eip.Status.V4Ip
+		if eipIP == "" {
+			eipIP = eip.Status.V6Ip
+		}
+		framework.ExpectNotEmpty(eipIP, "EIP must have an IP address")
 
 		// --- Wait for LRP EIP auto-created by VPC controller ---
 		ginkgo.By("Waiting for LRP EIP " + lrpEipName + " to become ready")
@@ -306,7 +335,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		svc, err := serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		framework.ExpectEqual(svc.Spec.ClusterIP, corev1.ClusterIPNone)
-		framework.ExpectEqual(svc.Annotations[util.RouterLBRuleVipsAnnotation], eip.Status.V4Ip)
+		framework.ExpectEqual(svc.Annotations[util.RouterLBRuleVipsAnnotation], eipIP)
 		framework.ExpectEqual(svc.Annotations[util.LogicalRouterAnnotation], vpcName)
 
 		ginkgo.By("Verifying Endpoints contain backend pod IPs")
@@ -331,7 +360,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		framework.ExpectEqual(eps.Subsets[0].Ports[0].Port, backendPort)
 
 		ginkgo.By("Checking TCP connectivity via EIP (selector mode)")
-		curlRLR(f, clientPodName, eip.Status.V4Ip, rlrFrontPort)
+		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
 
 		// =========================================================
 		// 2. Scale backends: 2 → 3
@@ -350,6 +379,9 @@ var _ = framework.Describe("[group:rlr]", func() {
 			return len(eps.Subsets[0].Addresses) == 3, nil
 		}, "Endpoints has 3 addresses after scale-up")
 
+		ginkgo.By("Checking TCP connectivity with 3 replicas")
+		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
+
 		ginkgo.By("Scaling StatefulSet back to 1 replica")
 		curSts := stsClient.Get(stsName)
 		newSts = curSts.DeepCopy()
@@ -365,58 +397,69 @@ var _ = framework.Describe("[group:rlr]", func() {
 			return len(eps.Subsets[0].Addresses) == 1, nil
 		}, "Endpoints has 1 address after scale-down")
 
+		ginkgo.By("Checking TCP connectivity with 1 replica")
+		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
+
 		// =========================================================
-		// 3. Direct endpoint mode
+		// 3. Detach EIP, verify drop, attach new EIP, verify restore
 		// =========================================================
-		ginkgo.By("3. Creating RouterLBRule with direct endpoints")
-		livePods := stsClient.GetPods(sts)
-		presetEndpoints := make([]string, 0, len(livePods.Items))
-		for _, pod := range livePods.Items {
-			presetEndpoints = append(presetEndpoints, pod.Status.PodIP)
+		ginkgo.By("3. Detaching EIP from RLR by clearing Spec.OvnEip")
+		curRule := rlrClient.Get(selRlrName)
+		detRule := curRule.DeepCopy()
+		detRule.Spec.OvnEip = ""
+		_ = rlrClient.Patch(curRule, detRule)
+
+		ginkgo.By("Verifying connectivity drops after EIP detach")
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
+				"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(eipIP, rlrFrontPort))
+			return err != nil, nil
+		}, fmt.Sprintf("%s:%d unreachable after EIP detach", eipIP, rlrFrontPort))
+
+		ginkgo.By("Creating new EIP " + newEipName)
+		newEip := framework.MakeOvnEip(newEipName, externalSubnetName, "", "", "", util.OvnEipTypeNAT)
+		newEip = ovnEipClient.CreateSync(newEip)
+		newEipIP := newEip.Status.V4Ip
+		if newEipIP == "" {
+			newEipIP = newEip.Status.V6Ip
 		}
+		framework.ExpectNotEmpty(newEipIP, "new EIP must have an IP address")
 
-		epPorts := []kubeovnv1.RouterLBRulePort{{
-			Name:       "http",
-			Port:       rlrFrontPortEP,
-			TargetPort: backendPort,
-			Protocol:   "TCP",
-		}}
-		epRule := framework.MakeRouterLBRule(epRlrName, vpcName, eipName, namespaceName,
-			string(corev1.ServiceAffinityClientIP), nil, presetEndpoints, epPorts)
-		epRule = rlrClient.CreateSync(epRule, framework.RouterLBRuleIsReady, "Status.Service is set")
+		ginkgo.By("Attaching new EIP " + newEipName + " to RLR")
+		curRule = rlrClient.Get(selRlrName)
+		updRule := curRule.DeepCopy()
+		updRule.Spec.OvnEip = newEipName
+		_ = rlrClient.Patch(curRule, updRule)
 
-		ginkgo.By("Verifying direct-endpoint RLR Status.Service")
-		framework.ExpectEqual(epRule.Status.Service, fmt.Sprintf("%s/rlr-%s", namespaceName, epRlrName))
-
-		ginkgo.By("Verifying Endpoints contain preset IPs")
-		epSvcName := "rlr-" + epRlrName
-		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			eps, err := endpointsClient.EndpointsInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
-			if err != nil || len(eps.Subsets) == 0 {
+		ginkgo.By("Waiting for Service annotation to reflect new EIP IP " + newEipIP)
+		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			svc, err := serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
+			if err != nil {
 				return false, nil
 			}
-			return len(eps.Subsets[0].Addresses) == len(presetEndpoints), nil
-		}, "Endpoints has preset addresses")
+			return svc.Annotations[util.RouterLBRuleVipsAnnotation] == newEipIP, nil
+		}, "Service annotation has new EIP IP")
 
-		eps, err = endpointsClient.EndpointsInterface.Get(context.TODO(), epSvcName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(eps.Subsets, 1)
-		epIPs = make([]string, 0, len(eps.Subsets[0].Addresses))
-		for _, addr := range eps.Subsets[0].Addresses {
-			epIPs = append(epIPs, addr.IP)
-		}
-		for _, ip := range presetEndpoints {
-			framework.ExpectContainElement(epIPs, ip)
-		}
-		framework.ExpectEqual(eps.Subsets[0].Ports[0].Port, backendPort)
-
-		ginkgo.By("Checking TCP connectivity via EIP (direct endpoint mode)")
-		curlRLR(f, clientPodName, eip.Status.V4Ip, rlrFrontPortEP)
+		ginkgo.By("Verifying connectivity via new EIP")
+		curlRLR(f, clientPodName, newEipIP, rlrFrontPort)
 
 		// =========================================================
-		// 4. Delete cleans up Service
+		// 4. Delete new EIP, verify connectivity drops
 		// =========================================================
-		ginkgo.By("4. Deleting selector RLR and verifying Service is removed")
+		ginkgo.By("4. Deleting new EIP " + newEipName)
+		ovnEipClient.DeleteSync(newEipName)
+
+		ginkgo.By("Verifying connectivity drops after EIP deletion")
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
+				"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(newEipIP, rlrFrontPort))
+			return err != nil, nil
+		}, fmt.Sprintf("%s:%d unreachable after EIP deletion", newEipIP, rlrFrontPort))
+
+		// =========================================================
+		// 5. Delete cleans up Service
+		// =========================================================
+		ginkgo.By("5. Deleting selector RLR and verifying Service is removed")
 		rlrClient.DeleteSync(selRlrName)
 
 		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {

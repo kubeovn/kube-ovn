@@ -25,7 +25,7 @@ func (c *Controller) enqueueAddOvnEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue add ovn eip %s", key)
 	c.addOvnEipQueue.Add(key)
-	c.requeueRouterLBRulesForEip(eip.Name)
+	c.requeueRouterLBRulesForEip(eip.Name, false)
 }
 
 func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
@@ -54,7 +54,7 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 		c.updateOvnEipQueue.Add(key)
 	}
 	if oldEip.Status.V4Ip != newEip.Status.V4Ip || oldEip.Status.V6Ip != newEip.Status.V6Ip {
-		c.requeueRouterLBRulesForEip(newEip.Name)
+		c.requeueRouterLBRulesForEip(newEip.Name, false)
 	}
 }
 
@@ -78,6 +78,7 @@ func (c *Controller) enqueueDelOvnEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del ovn eip %s", key)
 	c.delOvnEipQueue.Add(eip)
+	c.requeueRouterLBRulesForEip(eip.Name, true)
 }
 
 func (c *Controller) handleAddOvnEip(key string) error {
@@ -313,7 +314,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 						util.SubnetNameLabel: subnet,
 						util.OvnEipTypeLabel: usageType,
 						util.EipV4IpLabel:    v4ip,
-						util.EipV6IpLabel:    v6ip,
+						util.EipV6IpLabel:    util.IPv6ToLabelValue(v6ip),
 					},
 				},
 				Spec: kubeovnv1.OvnEipSpec{
@@ -353,7 +354,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		ovnEip.Labels[util.SubnetNameLabel] = subnet
 		ovnEip.Labels[util.OvnEipTypeLabel] = usageType
 		ovnEip.Labels[util.EipV4IpLabel] = v4ip
-		ovnEip.Labels[util.EipV6IpLabel] = v6ip
+		ovnEip.Labels[util.EipV6IpLabel] = util.IPv6ToLabelValue(v6ip)
 
 		needUpdate := false
 		if mac != "" && ovnEip.Spec.MacAddress != mac {
