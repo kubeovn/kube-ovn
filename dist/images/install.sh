@@ -4165,7 +4165,7 @@ spec:
       name: Ready
       type: boolean
     - jsonPath: .spec.bfd.enabled
-      name: bfd
+      name: BFD
       type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -6366,6 +6366,9 @@ spec:
     - jsonPath: .status.defaultLogicalSwitch
       name: DefaultSubnet
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
