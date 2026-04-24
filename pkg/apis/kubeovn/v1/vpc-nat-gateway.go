@@ -27,10 +27,10 @@ type VpcNatGatewayList struct {
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
 // +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
 // +kubebuilder:printcolumn:name="IPs",type="string",JSONPath=".status.lanIp"
-// +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
-// +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
-// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
+// +kubebuilder:printcolumn:name="BFD",type="boolean",JSONPath=".spec.bfd.enabled"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //
 // VpcNatGateway represents a NAT gateway for a VPC, implemented as a StatefulSet Pod.
 //

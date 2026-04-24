@@ -3571,37 +3571,37 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.vpc
-      name: VPC
+      name: Vpc
       type: string
     - jsonPath: .spec.replicas
-      name: REPLICAS
+      name: Replicas
       type: integer
     - jsonPath: .spec.bfd.enabled
-      name: BFD ENABLED
+      name: bfd
       type: boolean
     - jsonPath: .spec.externalSubnet
-      name: EXTERNAL SUBNET
+      name: External Subnet
       type: string
     - jsonPath: .status.phase
-      name: PHASE
+      name: Phase
       type: string
     - jsonPath: .status.ready
-      name: READY
+      name: Ready
       type: boolean
     - jsonPath: .status.internalIPs
-      name: INTERNAL IPS
+      name: Internal IPs
       priority: 1
       type: string
     - jsonPath: .status.externalIPs
-      name: EXTERNAL IPS
+      name: External IPs
       priority: 1
       type: string
     - jsonPath: .status.workload.nodes
-      name: WORKING NODES
+      name: Working Nodes
       priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
-      name: AGE
+      name: Age
       type: date
     name: v1
     schema:
@@ -4159,16 +4159,16 @@ spec:
       name: IPs
       type: string
     - jsonPath: .spec.replicas
-      name: REPLICAS
+      name: Replicas
       type: integer
     - jsonPath: .status.ready
-      name: READY
+      name: Ready
       type: boolean
     - jsonPath: .spec.bfd.enabled
-      name: BFD ENABLED
+      name: bfd
       type: boolean
     - jsonPath: .metadata.creationTimestamp
-      name: AGE
+      name: Age
       type: date
     name: v1
     schema:

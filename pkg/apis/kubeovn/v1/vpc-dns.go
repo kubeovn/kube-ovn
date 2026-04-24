@@ -21,7 +21,7 @@ type VpcDnsList struct {
 // +kubebuilder:printcolumn:name="Active",type="boolean",JSONPath=".status.active"
 // +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
 // +kubebuilder:printcolumn:name="Subnet",type="string",JSONPath=".spec.subnet"
-// +kubebuilder:printcolumn:name="Corefile",type="string",JSONPath=".spec.corefile"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type VpcDns struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
