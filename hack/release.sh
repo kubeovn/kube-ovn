@@ -126,6 +126,7 @@ else
   echo "create and push base images for the master branch"
   git checkout master
   git pull
+  PATCH_NEXT_VERSION=${NEXT_VERSION}
   NEXT_VERSION=$(cat VERSION | awk -F '.' '{print $1"."$2+1"."$3}')
   set +e
   docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}
@@ -185,6 +186,8 @@ else
     kubeovn/kube-ovn-base:${VERSION}-dpdk \
     kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
     kubeovn/kube-ovn-base:${VERSION}-debug-arm64 \
+    kubeovn/kube-ovn-base:${PATCH_NEXT_VERSION}-amd64-legacy \
+    kubeovn/kube-ovn-base:${PATCH_NEXT_VERSION}-dpdk \
     kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
