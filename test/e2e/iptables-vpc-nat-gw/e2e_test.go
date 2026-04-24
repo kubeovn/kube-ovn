@@ -526,11 +526,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		time.Sleep(3 * time.Second)
 
 		// Custom namespace for the NAT gateway pod is a v1.17+ feature; on older
-		// versions the pod always lives in the controller PodNamespace (kube-system).
+		// versions the pod always lives in the controller PodNamespace.
 		// Register the namespace cleanup BEFORE setupVpcNatGwTestEnvironment so it is
 		// deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
 		var customNs string
-		expectedPodNs := metav1.NamespaceSystem
+		expectedPodNs := framework.KubeOvnNamespace
 		if !f.VersionPriorTo(1, 17) {
 			customNs = "ns-" + framework.RandomSuffix()
 			expectedPodNs = customNs
