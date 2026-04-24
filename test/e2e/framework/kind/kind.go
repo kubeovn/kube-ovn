@@ -3,6 +3,7 @@ package kind
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
@@ -176,4 +177,50 @@ func NetworkDisconnect(networkID string, nodes []Node) error {
 		}
 	}
 	return nil
+}
+
+// execOnNodesUntilFirstError runs a given operation on nodes and stops at the first error.
+func execOnNodesUntilFirstError(nodes []Node, op func(n Node) error) error {
+	for _, node := range nodes {
+		if err := op(node); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// CopyFileToNodes copies a file from the local filesystem to all specified nodes.
+func CopyFileToNodes(srcPath, dstPath string, nodes []Node) error {
+	return execOnNodesUntilFirstError(nodes, func(n Node) error {
+		if err := docker.CopyFileToContainer(n.ID, srcPath, dstPath); err != nil {
+			return fmt.Errorf("failed to copy file to node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
+}
+
+// CopyContentToNodes copies content to all specified nodes at the given path.
+func CopyContentToNodes(content []byte, filename, dstPath string, nodes []Node) error {
+	return execOnNodesUntilFirstError(nodes, func(n Node) error {
+		if err := docker.CopyToContainer(n.ID, dstPath, content, filename); err != nil {
+			return fmt.Errorf("failed to copy content to node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
+}
+
+// EnsureDirectoryOnNodes ensures the specified directory exists on all nodes.
+func EnsureDirectoryOnNodes(dirPath string, nodes []Node) error {
+	return ExecOnNodes(nodes, "mkdir", "-p", dirPath)
+}
+
+// ExecOnNodes executes a command on nodes and stops at the first error.
+func ExecOnNodes(nodes []Node, cmd ...string) error {
+	return execOnNodesUntilFirstError(nodes, func(n Node) error {
+		if _, _, err := n.Exec(cmd...); err != nil {
+			return fmt.Errorf("failed to exec command on node %s: %w", n.Name(), err)
+		}
+		return nil
+	})
 }

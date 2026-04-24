@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -98,6 +99,176 @@ func TestIsVpcNatGwChanged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isVpcNatGwChanged(tt.gw)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestSanitizeNatGwScriptHostPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{
+			name:        "empty path",
+			input:       "",
+			expected:    "",
+			expectError: false,
+		},
+		{
+			name:        "space only path",
+			input:       "   ",
+			expected:    "",
+			expectError: false,
+		},
+		{
+			name:        "valid absolute path",
+			input:       "/var/lib/kube-ovn/scripts",
+			expected:    "/var/lib/kube-ovn/scripts",
+			expectError: false,
+		},
+		{
+			name:        "absolute path with trailing slash",
+			input:       "/var/lib/kube-ovn/scripts/",
+			expected:    "/var/lib/kube-ovn/scripts",
+			expectError: false,
+		},
+		{
+			name:        "relative path",
+			input:       "var/lib/kube-ovn/scripts",
+			expected:    "",
+			expectError: true,
+		},
+		{
+			name:        "path with whitespace",
+			input:       "/var/lib/kube ovn/scripts",
+			expected:    "",
+			expectError: true,
+		},
+		{
+			name:     "path traversal is cleaned by filepath.Clean",
+			input:    "/var/../etc/shadow",
+			expected: "/etc/shadow",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := sanitizeNatGwScriptHostPath(tt.input)
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestMountNatGwScriptHostPath(t *testing.T) {
+	newStatefulSet := func(containerName string) *v1.StatefulSet {
+		return &v1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-sts"},
+			Spec: v1.StatefulSetSpec{
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{Name: containerName}},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("skip when host path empty", func(t *testing.T) {
+		sts := newStatefulSet(util.VpcNatGwContainerName)
+
+		err := mountNatGwScriptHostPath(sts, "gw-test", "")
+		require.NoError(t, err)
+		assert.Empty(t, sts.Spec.Template.Spec.Volumes)
+		assert.Empty(t, sts.Spec.Template.Spec.Containers[0].VolumeMounts)
+	})
+
+	t.Run("mount host path to nat gateway container", func(t *testing.T) {
+		scriptHostPath := "/var/lib/kube-ovn/scripts"
+		sts := newStatefulSet(util.VpcNatGwContainerName)
+
+		err := mountNatGwScriptHostPath(sts, "gw-test", scriptHostPath)
+		require.NoError(t, err)
+		require.Len(t, sts.Spec.Template.Spec.Volumes, 1)
+		assert.Equal(t, util.VpcNatGwScriptVolumeName, sts.Spec.Template.Spec.Volumes[0].Name)
+		require.NotNil(t, sts.Spec.Template.Spec.Volumes[0].HostPath)
+		assert.Equal(t, scriptHostPath, sts.Spec.Template.Spec.Volumes[0].HostPath.Path)
+		require.NotNil(t, sts.Spec.Template.Spec.Volumes[0].HostPath.Type)
+		assert.Equal(t, corev1.HostPathDirectory, *sts.Spec.Template.Spec.Volumes[0].HostPath.Type)
+
+		require.Len(t, sts.Spec.Template.Spec.Containers[0].VolumeMounts, 1)
+		assert.Equal(t, util.VpcNatGwScriptVolumeName, sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].Name)
+		assert.Equal(t, util.VpcNatGwScriptMountPath, sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath)
+		assert.True(t, sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].ReadOnly)
+	})
+
+	t.Run("return error when nat gateway container missing", func(t *testing.T) {
+		sts := newStatefulSet("other-container")
+
+		err := mountNatGwScriptHostPath(sts, "gw-test", "/var/lib/kube-ovn/scripts")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "container vpc-nat-gw not found")
+	})
+}
+
+func TestShouldSyncVpcNatGwScriptHostPath(t *testing.T) {
+	tests := []struct {
+		name           string
+		currentConfig  vpcNatRuntimeConfig
+		scriptHostPath string
+		expected       bool
+	}{
+		{
+			name:           "startup with empty path does not sync",
+			currentConfig:  vpcNatRuntimeConfig{},
+			scriptHostPath: "",
+			expected:       false,
+		},
+		{
+			name:           "startup with non-empty path syncs",
+			currentConfig:  vpcNatRuntimeConfig{},
+			scriptHostPath: "/var/lib/kube-ovn/scripts",
+			expected:       true,
+		},
+		{
+			name: "same non-empty path already synced does not sync",
+			currentConfig: vpcNatRuntimeConfig{
+				scriptHostPath:   "/var/lib/kube-ovn/scripts",
+				scriptPathSynced: true,
+			},
+			scriptHostPath: "/var/lib/kube-ovn/scripts",
+			expected:       false,
+		},
+		{
+			name: "same non-empty path not yet synced retries",
+			currentConfig: vpcNatRuntimeConfig{
+				scriptHostPath:   "/var/lib/kube-ovn/scripts",
+				scriptPathSynced: false,
+			},
+			scriptHostPath: "/var/lib/kube-ovn/scripts",
+			expected:       true,
+		},
+		{
+			name: "path change to empty syncs to remove mount",
+			currentConfig: vpcNatRuntimeConfig{
+				scriptHostPath:   "/var/lib/kube-ovn/scripts",
+				scriptPathSynced: true,
+			},
+			scriptHostPath: "",
+			expected:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, shouldSyncVpcNatGwScriptHostPath(tt.currentConfig, tt.scriptHostPath))
 		})
 	}
 }

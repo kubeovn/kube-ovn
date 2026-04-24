@@ -252,7 +252,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.Name == "vpc-nat-gw" {
+			if containerStatus.Name == util.VpcNatGwContainerName {
 				natGwPodContainerRestartCount = containerStatus.RestartCount
 				break
 			}
@@ -605,9 +605,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err error) {
 	operation := getIptablesVersion
-	cmd := "bash /kube-ovn/nat-gateway.sh " + operation
+	cmd := fmt.Sprintf("bash %s %s", util.VpcNatGwScriptPath, operation)
 	klog.V(3).Info(cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, util.VpcNatGwContainerName, []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
@@ -815,9 +815,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		_ = c.vpcNatGwExecKeyMutex.UnlockKey(lockKey)
 	}()
 
-	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
+	cmd := fmt.Sprintf("bash %s %s %s", util.VpcNatGwScriptPath, operation, strings.Join(rules, " "))
 	klog.V(3).Infof("executing NAT gateway command: %s", cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, util.VpcNatGwContainerName, []string{"/bin/bash", "-c", cmd}...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("NAT gateway command failed - stderr: %v", errOutput)
@@ -864,15 +864,16 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 // It attaches the standard externalNetwork to the gateway via a NetworkAttachmentDefinition (NAD) with a provider
 // corresponding to one that is configured on a subnet part of the default VPC (the K8S apiserver runs in the default VPC).
 func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
+	cfg := currentVpcNatRuntimeConfig()
 	// Check the NetworkAttachmentDefinition provider exists, must be user-configured
-	if vpcNatAPINadProvider == "" {
+	if cfg.apiNadProvider == "" {
 		return errors.New("no NetworkAttachmentDefinition provided to access apiserver, check configmap ovn-vpc-nat-config and field 'apiNadProvider'")
 	}
 
 	// Subdivide provider so we can infer the name of the NetworkAttachmentDefinition
-	providerSplit := strings.Split(vpcNatAPINadProvider, ".")
+	providerSplit := strings.Split(cfg.apiNadProvider, ".")
 	if len(providerSplit) != 3 || providerSplit[2] != util.OvnProvider {
-		return fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", vpcNatAPINadProvider)
+		return fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", cfg.apiNadProvider)
 	}
 
 	// Extract the name of the provider and its namespace
@@ -888,11 +889,11 @@ func (c *Controller) setNatGwAPIAccess(annotations map[string]string) error {
 	annotations[nadv1.NetworkAttachmentAnnot] = strings.Join(networkAttachments, ",")
 
 	// Set the network route to the API, so we can reach it
-	return c.setNatGwAPIRoute(annotations, namespace, name)
+	return c.setNatGwAPIRoute(annotations, namespace, name, cfg.apiNadProvider)
 }
 
 // setNatGwAPIRoute modifies StatefulSet Pod template annotations to add routes for reaching the K8S API server.
-func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespace, nadName string) error {
+func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespace, nadName, apiNadProvider string) error {
 	dst := os.Getenv(util.EnvKubernetesServiceHost)
 
 	protocol := util.CheckProtocol(dst)
@@ -926,7 +927,7 @@ func (c *Controller) setNatGwAPIRoute(annotations map[string]string, nadNamespac
 				return fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
 			}
 
-			annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, vpcNatAPINadProvider)] = string(buf)
+			annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, apiNadProvider)] = string(buf)
 			break
 		}
 	}
@@ -947,6 +948,7 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 }
 
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
+	cfg := currentVpcNatRuntimeConfig()
 	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
 	if err != nil {
 		klog.Errorf("failed to get gw external subnet nad: %v", err)
@@ -1111,8 +1113,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					TerminationGracePeriodSeconds: new(int64(0)),
 					Containers: []corev1.Container{
 						{
-							Name:    "vpc-nat-gw",
-							Image:   vpcNatImage,
+							Name:  util.VpcNatGwContainerName,
+							Image: cfg.image,
+							// Keep an explicit command for backward compatibility with old NAT gateway images
+							// that do not define CMD.
 							Command: []string{"sleep", "infinity"},
 							Lifecycle: &corev1.Lifecycle{
 								PostStart: &corev1.LifecycleHandler{
@@ -1152,11 +1156,11 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	// BGP speaker is enabled on this instance, add a BGP speaker to the statefulset
 	if gw.Spec.BgpSpeaker.Enabled {
 		// We need to connect to the K8S API to make the BGP speaker work, this implies a ServiceAccount
-		sts.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
+		sts.Spec.Template.Spec.ServiceAccountName = util.VpcNatGwServiceAccountName
 		sts.Spec.Template.Spec.AutomountServiceAccountToken = new(true)
 
 		// Craft a BGP speaker container to add to our statefulset
-		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, vpcNatGwBgpSpeakerImage, gw.Name)
+		bgpSpeakerContainer, err := util.GenNatGwBgpSpeakerContainer(gw.Spec.BgpSpeaker, cfg.bgpSpeakerImage, gw.Name)
 		if err != nil {
 			klog.Errorf("failed to create a BGP speaker container for gateway %s: %v", gw.Name, err)
 			return nil, err
@@ -1166,7 +1170,50 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, *bgpSpeakerContainer)
 	}
 
+	// Mount NAT gateway scripts from host path if configured.
+	// This allows operators to update scripts without rebuilding the container image,
+	// enabling hot-reload of NAT gateway logic by simply updating the script on the host.
+	// The script is re-read on each exec call, so changes take effect immediately.
+	if err = mountNatGwScriptHostPath(sts, gw.Name, cfg.scriptHostPath); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
 	return sts, nil
+}
+
+func mountNatGwScriptHostPath(sts *v1.StatefulSet, gwName, scriptHostPath string) error {
+	if scriptHostPath == "" {
+		return nil
+	}
+
+	hostPathType := corev1.HostPathDirectory
+	sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: util.VpcNatGwScriptVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			HostPath: &corev1.HostPathVolumeSource{
+				Path: scriptHostPath,
+				Type: &hostPathType,
+			},
+		},
+	})
+
+	for i := range sts.Spec.Template.Spec.Containers {
+		if sts.Spec.Template.Spec.Containers[i].Name == util.VpcNatGwContainerName {
+			sts.Spec.Template.Spec.Containers[i].VolumeMounts = append(
+				sts.Spec.Template.Spec.Containers[i].VolumeMounts,
+				corev1.VolumeMount{
+					Name:      util.VpcNatGwScriptVolumeName,
+					MountPath: util.VpcNatGwScriptMountPath,
+					ReadOnly:  true,
+				},
+			)
+			klog.V(2).Infof("NAT gateway %s will mount scripts from host path %s to %s", gwName, scriptHostPath, util.VpcNatGwScriptMountPath)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("container %s not found in StatefulSet %s, cannot mount hostPath script", util.VpcNatGwContainerName, sts.Name)
 }
 
 // getExternalSubnetNad returns the namespace and name of the NetworkAttachmentDefinition associated with

@@ -1714,7 +1714,7 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 
 func needRestartNatGatewayPod(pod *v1.Pod) bool {
 	for _, psc := range pod.Status.ContainerStatuses {
-		if psc.Name != "vpc-nat-gw" {
+		if psc.Name != util.VpcNatGwContainerName {
 			continue
 		}
 		if psc.RestartCount > 0 {
@@ -2930,7 +2930,7 @@ func natGwNameFromStatefulSetOwner(pod *v1.Pod) string {
 		return ""
 	}
 
-	prefix := util.VpcNatGwNamePrefix + "-"
+	prefix := util.GetVpcNatGwNamePrefix() + "-"
 	if !strings.HasPrefix(stsName, prefix) {
 		return ""
 	}
