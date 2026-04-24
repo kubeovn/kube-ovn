@@ -1587,7 +1587,19 @@ func (c *Controller) getNatGwPods(name, namespace string) ([]*corev1.Pod, error)
 		return nil, err
 	}
 
-	return pods, nil
+	activePods := make([]*corev1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+			activePods = append(activePods, pod)
+		}
+	}
+
+	if len(activePods) == 0 {
+		time.Sleep(5 * time.Second)
+		return nil, errors.New("no active pod now")
+	}
+
+	return activePods, nil
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
