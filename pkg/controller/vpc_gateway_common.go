@@ -373,11 +373,6 @@ func getWorkloadNodes(podLister v1.PodLister, namespace string, selector *metav1
 	return nodes, nil
 }
 
-// isNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
-func isNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
-	return gw.Spec.Replicas > 1
-}
-
 // updateNatGwWorkloadStatus updates the workload information in the VPC NAT Gateway status.
 func updateNatGwWorkloadStatus(
 	gw *kubeovnv1.VpcNatGateway,
@@ -392,7 +387,7 @@ func updateNatGwWorkloadStatus(
 	var ready bool
 	var err error
 
-	if isNatGwHAMode(gw) {
+	if util.IsNatGwHAMode(gw) {
 		workloadKind = util.KindDeployment
 		workloadAPIVersion = "apps/v1"
 		var deploy *appsv1.Deployment

@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -127,7 +126,11 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
-	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+
+	// Don't set a static IP for HA gateways
+	if !IsNatGwHAMode(gw) {
+		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+	}
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of
 	// the CNI mode, so that malformed providers are caught early rather than producing bogus
@@ -302,6 +305,11 @@ func CleanupNatGwRoutesAF(nbClient NbClient, gwName, vpcName string, af int) err
 	return nil
 }
 
+// IsNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
+func IsNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
+	return gw.Spec.Replicas > 1
+}
+
 // GroupInternalCIDRsAndNextHops groups internal CIDRs and next hops by address family.
 func GroupInternalCIDRsAndNextHops(internalCIDRs []string, nextHops map[string]string) (map[int][]string, map[int]map[string]string) {
 	cidrsByAF := map[int][]string{4: {}, 6: {}}
@@ -323,71 +331,4 @@ func GroupInternalCIDRsAndNextHops(internalCIDRs []string, nextHops map[string]s
 	}
 
 	return cidrsByAF, nextHopsByAF
-}
-
-type ReconcileNatGwRoutesAFArgs struct {
-	NbClient        NbClient
-	GwName          string
-	VpcName         string
-	LrpName         string
-	BfdIP           string
-	Af              int
-	MinTX           int32
-	MinRX           int32
-	Multiplier      int32
-	BfdEnabled      bool
-	InternalCIDRsAF []string
-	NextHopsAF      map[string]string
-	ExternalIDsAF   map[string]string
-	ReconcileBFD    func(NbClient, string, string, map[string]string, int32, int32, int32, map[string]string) (set.Set[string], map[string]string, set.Set[string], error)
-	ReconcilePolicy func(NbClient, string, string, int, bool, set.Set[string], []string, map[string]string, map[string]string) error
-	CleanupStaleBFD func(NbClient, set.Set[string]) error
-}
-
-func ReconcileNatGwRoutesAF(args ReconcileNatGwRoutesAFArgs) error {
-	if len(args.InternalCIDRsAF) > 0 && len(args.NextHopsAF) > 0 {
-		// Reconcile BFD sessions for this address family
-		bfdIDs, _, staleBFDIDs, err := args.ReconcileBFD(
-			args.NbClient,
-			args.BfdIP,
-			args.LrpName,
-			args.NextHopsAF,
-			args.MinTX,
-			args.MinRX,
-			args.Multiplier,
-			args.ExternalIDsAF,
-		)
-		if err != nil {
-			klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", args.GwName, args.Af, err)
-			return err
-		}
-
-		// Reconcile logical router policies (PBR) for this address family
-		if err := args.ReconcilePolicy(
-			args.NbClient,
-			args.GwName,
-			args.VpcName,
-			args.Af,
-			args.BfdEnabled,
-			bfdIDs,
-			args.InternalCIDRsAF,
-			args.NextHopsAF,
-			args.ExternalIDsAF,
-		); err != nil {
-			klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", args.GwName, args.Af, err)
-			return err
-		}
-
-		// Clean up any BFD sessions that are no longer needed
-		if err := args.CleanupStaleBFD(args.NbClient, staleBFDIDs); err != nil {
-			klog.Errorf("failed to cleanup stale BFD for nat gw %s af %d: %v", args.GwName, args.Af, err)
-			return err
-		}
-	} else {
-		// No routes needed for this address family, ensure any existing ones are removed
-		if err := CleanupNatGwRoutesAF(args.NbClient, args.GwName, args.VpcName, args.Af); err != nil {
-			return err
-		}
-	}
-	return nil
 }

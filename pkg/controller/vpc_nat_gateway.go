@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
@@ -310,7 +309,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	var natGwPodContainerRestartCount int32
 	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
 	if err == nil {
-		if !isNatGwHAMode(gw) {
+		if !util.IsNatGwHAMode(gw) {
 			if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
 				klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
 				return err
@@ -326,7 +325,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	needRestartRecovery := natGwPodContainerRestartCount > 0
 
 	// Choose between Deployment (HA mode) or StatefulSet (legacy mode)
-	if isNatGwHAMode(gw) {
+	if util.IsNatGwHAMode(gw) {
 		// HA mode: use Deployment
 		needToCreate := false
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
@@ -428,7 +427,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 
 	// Reconcile BFD sessions and OVN routes for HA mode
 	// what happens if gw goes from non-ha to ha or the opposite?
-	if isNatGwHAMode(gw) {
+	if util.IsNatGwHAMode(gw) {
 		// Reconcile routes to the NAT gateways so that the traffic from internal subnets is routed to it
 		if err = c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
 			klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
@@ -580,6 +579,10 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	c.updateVpcEipQueue.Add(key)
 
 	for _, pod := range pods {
+		if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+			continue
+		}
+
 		patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
 		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
 			err := fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
@@ -1460,11 +1463,11 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 							Env: []corev1.EnvVar{
 								{
 									Name:  "GATEWAY_V4",
-									Value: eth0V4Gateway,
+									Value: net1V4Gateway,
 								},
 								{
 									Name:  "GATEWAY_V6",
-									Value: eth0V6Gateway,
+									Value: net1V6Gateway,
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
@@ -1581,19 +1584,7 @@ func (c *Controller) getNatGwPods(name, namespace string) ([]*corev1.Pod, error)
 		return nil, err
 	}
 
-	activePods := make([]*corev1.Pod, 0, len(pods))
-	for _, pod := range pods {
-		if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
-			activePods = append(activePods, pod)
-		}
-	}
-
-	if len(activePods) == 0 {
-		time.Sleep(5 * time.Second)
-		return nil, errors.New("no active pod now")
-	}
-
-	return activePods, nil
+	return pods, nil
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
@@ -1743,7 +1734,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		changed = true
 	}
 	var lanIPs []string
-	if !isNatGwHAMode(gw) {
+	if !util.IsNatGwHAMode(gw) {
 		lanIPs = []string{gw.Spec.LanIP}
 	} else {
 		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
