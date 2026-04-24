@@ -277,11 +277,23 @@ var _ = framework.Describe("[group:rlr]", func() {
 		ginkgo.By("Creating NAT OvnEip " + eipName)
 		eip := framework.MakeOvnEip(eipName, externalSubnetName, "", "", "", util.OvnEipTypeNAT)
 		eip = ovnEipClient.CreateSync(eip)
-		eipIP := eip.Status.V4Ip
-		if eipIP == "" {
-			eipIP = eip.Status.V6Ip
+		eipIPs := make([]string, 0, 2)
+		if eip.Status.V4Ip != "" {
+			eipIPs = append(eipIPs, eip.Status.V4Ip)
 		}
-		framework.ExpectNotEmpty(eipIP, "EIP must have an IP address")
+		if eip.Status.V6Ip != "" {
+			eipIPs = append(eipIPs, eip.Status.V6Ip)
+		}
+		framework.ExpectNotEmpty(eipIPs, "EIP must have at least one IP address")
+		// eipVip matches the controller's annotation format: "v4" or "v6" or "v4,v6"
+		eipVipParts := make([]string, 0, 2)
+		if eip.Status.V4Ip != "" {
+			eipVipParts = append(eipVipParts, eip.Status.V4Ip)
+		}
+		if eip.Status.V6Ip != "" {
+			eipVipParts = append(eipVipParts, eip.Status.V6Ip)
+		}
+		eipVip := strings.Join(eipVipParts, ",")
 
 		// --- Wait for LRP EIP auto-created by VPC controller ---
 		ginkgo.By("Waiting for LRP EIP " + lrpEipName + " to become ready")
@@ -335,7 +347,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		svc, err := serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		framework.ExpectEqual(svc.Spec.ClusterIP, corev1.ClusterIPNone)
-		framework.ExpectEqual(svc.Annotations[util.RouterLBRuleVipsAnnotation], eipIP)
+		framework.ExpectEqual(svc.Annotations[util.RouterLBRuleVipsAnnotation], eipVip)
 		framework.ExpectEqual(svc.Annotations[util.LogicalRouterAnnotation], vpcName)
 
 		ginkgo.By("Verifying Endpoints contain backend pod IPs")
@@ -360,7 +372,9 @@ var _ = framework.Describe("[group:rlr]", func() {
 		framework.ExpectEqual(eps.Subsets[0].Ports[0].Port, backendPort)
 
 		ginkgo.By("Checking TCP connectivity via EIP (selector mode)")
-		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
+		for _, ip := range eipIPs {
+			curlRLR(f, clientPodName, ip, rlrFrontPort)
+		}
 
 		// =========================================================
 		// 2. Scale backends: 2 → 3
@@ -380,7 +394,9 @@ var _ = framework.Describe("[group:rlr]", func() {
 		}, "Endpoints has 3 addresses after scale-up")
 
 		ginkgo.By("Checking TCP connectivity with 3 replicas")
-		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
+		for _, ip := range eipIPs {
+			curlRLR(f, clientPodName, ip, rlrFrontPort)
+		}
 
 		ginkgo.By("Scaling StatefulSet back to 1 replica")
 		curSts := stsClient.Get(stsName)
@@ -398,7 +414,9 @@ var _ = framework.Describe("[group:rlr]", func() {
 		}, "Endpoints has 1 address after scale-down")
 
 		ginkgo.By("Checking TCP connectivity with 1 replica")
-		curlRLR(f, clientPodName, eipIP, rlrFrontPort)
+		for _, ip := range eipIPs {
+			curlRLR(f, clientPodName, ip, rlrFrontPort)
+		}
 
 		// =========================================================
 		// 3. Detach EIP, verify drop, attach new EIP, verify restore
@@ -411,19 +429,35 @@ var _ = framework.Describe("[group:rlr]", func() {
 
 		ginkgo.By("Verifying connectivity drops after EIP detach")
 		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
-				"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(eipIP, rlrFrontPort))
-			return err != nil, nil
-		}, fmt.Sprintf("%s:%d unreachable after EIP detach", eipIP, rlrFrontPort))
+			for _, ip := range eipIPs {
+				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
+					"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(ip, rlrFrontPort))
+				if err == nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, fmt.Sprintf("all EIP IPs %v unreachable after EIP detach", eipIPs))
 
 		ginkgo.By("Creating new EIP " + newEipName)
 		newEip := framework.MakeOvnEip(newEipName, externalSubnetName, "", "", "", util.OvnEipTypeNAT)
 		newEip = ovnEipClient.CreateSync(newEip)
-		newEipIP := newEip.Status.V4Ip
-		if newEipIP == "" {
-			newEipIP = newEip.Status.V6Ip
+		newEipIPs := make([]string, 0, 2)
+		if newEip.Status.V4Ip != "" {
+			newEipIPs = append(newEipIPs, newEip.Status.V4Ip)
 		}
-		framework.ExpectNotEmpty(newEipIP, "new EIP must have an IP address")
+		if newEip.Status.V6Ip != "" {
+			newEipIPs = append(newEipIPs, newEip.Status.V6Ip)
+		}
+		framework.ExpectNotEmpty(newEipIPs, "new EIP must have at least one IP address")
+		newEipVipParts := make([]string, 0, 2)
+		if newEip.Status.V4Ip != "" {
+			newEipVipParts = append(newEipVipParts, newEip.Status.V4Ip)
+		}
+		if newEip.Status.V6Ip != "" {
+			newEipVipParts = append(newEipVipParts, newEip.Status.V6Ip)
+		}
+		newEipVip := strings.Join(newEipVipParts, ",")
 
 		ginkgo.By("Attaching new EIP " + newEipName + " to RLR")
 		curRule = rlrClient.Get(selRlrName)
@@ -431,17 +465,19 @@ var _ = framework.Describe("[group:rlr]", func() {
 		updRule.Spec.OvnEip = newEipName
 		_ = rlrClient.Patch(curRule, updRule)
 
-		ginkgo.By("Waiting for Service annotation to reflect new EIP IP " + newEipIP)
+		ginkgo.By("Waiting for Service annotation to reflect new EIP VIP " + newEipVip)
 		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			svc, err := serviceClient.ServiceInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
 			if err != nil {
 				return false, nil
 			}
-			return svc.Annotations[util.RouterLBRuleVipsAnnotation] == newEipIP, nil
-		}, "Service annotation has new EIP IP")
+			return svc.Annotations[util.RouterLBRuleVipsAnnotation] == newEipVip, nil
+		}, "Service annotation has new EIP VIP")
 
 		ginkgo.By("Verifying connectivity via new EIP")
-		curlRLR(f, clientPodName, newEipIP, rlrFrontPort)
+		for _, ip := range newEipIPs {
+			curlRLR(f, clientPodName, ip, rlrFrontPort)
+		}
 
 		// =========================================================
 		// 4. Delete new EIP, verify connectivity drops
@@ -451,10 +487,15 @@ var _ = framework.Describe("[group:rlr]", func() {
 
 		ginkgo.By("Verifying connectivity drops after EIP deletion")
 		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
-				"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(newEipIP, rlrFrontPort))
-			return err != nil, nil
-		}, fmt.Sprintf("%s:%d unreachable after EIP deletion", newEipIP, rlrFrontPort))
+			for _, ip := range newEipIPs {
+				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
+					"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(ip, rlrFrontPort))
+				if err == nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, fmt.Sprintf("all EIP IPs %v unreachable after EIP deletion", newEipIPs))
 
 		// =========================================================
 		// 5. Delete cleans up Service
