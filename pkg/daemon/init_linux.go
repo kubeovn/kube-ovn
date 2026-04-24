@@ -6,6 +6,8 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var routeScopeOrders = [...]netlink.Scope{
@@ -69,7 +71,7 @@ func (c *Controller) changeProviderNicName(current, target string) (bool, error)
 		return true, nil
 	}
 
-	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	addresses, err := util.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		klog.Errorf("failed to list addresses of link %s: %v", current, err)
 		return false, err
