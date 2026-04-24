@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
@@ -426,7 +427,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	// Reconcile BFD sessions and OVN routes for HA mode
-	// what happens if gw goes from non-ha to ha or the opposite?
 	if util.IsNatGwHAMode(gw) {
 		// Reconcile routes to the NAT gateways so that the traffic from internal subnets is routed to it
 		if err = c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
@@ -499,7 +499,10 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 			continue
 		}
-		natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+		last, _ := time.Parse("2006-01-02T15:04:05", natGwCreatedAT)
+		if pod.CreationTimestamp.Unix() > last.Unix() {
+			natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+		}
 		klog.V(3).Infof("nat gw pod '%s/%s' inited at %s", pod.Namespace, pod.Name, natGwCreatedAT)
 		// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
 		// are properly configured. We extract the interfaces from the runtime Pod annotations (network-status).
@@ -1596,12 +1599,20 @@ func (c *Controller) initCreateAt(key string) (err error) {
 		klog.Error(err)
 		return err
 	}
-	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw))
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+
+	natGwCreatedAT = pods[0].CreationTimestamp.Format("2006-01-02T15:04:05")
+	for _, pod := range pods {
+		last, _ := time.Parse("2006-01-02T15:04:05", natGwCreatedAT)
+		if pod.CreationTimestamp.Unix() > last.Unix() {
+			natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+		}
+	}
+
 	return nil
 }
 
