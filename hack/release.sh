@@ -109,7 +109,9 @@ if [ "$current_branch" != "master" ]; then
     kubeovn/kube-ovn-base:${VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${VERSION}-dpdk \
     kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
-    kubeovn/kube-ovn-base:${VERSION}-debug-arm64
+    kubeovn/kube-ovn-base:${VERSION}-debug-arm64 \
+    kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy \
+    kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
   echo "Manually update the release note with the new changelog"
 else
@@ -169,6 +171,22 @@ else
   git add .github/workflows/scheduled-e2e.yaml
   git commit -m "prepare for next release"
   git push
+
+  echo "clean up images"
+  docker rmi kubeovn/kube-ovn:${VERSION}-x86 \
+    kubeovn/kube-ovn:${VERSION}-arm \
+    kubeovn/vpc-nat-gateway:${VERSION}-x86 \
+    kubeovn/vpc-nat-gateway:${VERSION}-arm \
+    kubeovn/kube-ovn:${VERSION}-debug-x86 \
+    kubeovn/kube-ovn:${VERSION}-debug-arm \
+    kubeovn/kube-ovn-base:${VERSION}-amd64 \
+    kubeovn/kube-ovn-base:${VERSION}-arm64 \
+    kubeovn/kube-ovn-base:${VERSION}-amd64-legacy \
+    kubeovn/kube-ovn-base:${VERSION}-dpdk \
+    kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
+    kubeovn/kube-ovn-base:${VERSION}-debug-arm64 \
+    kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy \
+    kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
   echo "prepare next release in release branch"
   git checkout $RELEASE_BRANCH
