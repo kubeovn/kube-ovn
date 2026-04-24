@@ -387,7 +387,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		newSts = curSts.DeepCopy()
 		one := int32(1)
 		newSts.Spec.Replicas = &one
-		sts = stsClient.PatchSync(curSts, newSts)
+		_ = stsClient.PatchSync(curSts, newSts)
 
 		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			eps, err := endpointsClient.EndpointsInterface.Get(context.TODO(), svcName, metav1.GetOptions{})
