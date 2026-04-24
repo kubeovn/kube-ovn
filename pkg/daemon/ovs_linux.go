@@ -1272,7 +1272,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 
 	ipDelMap := make(map[string]netlink.Addr)
 	ipAddMap := make(map[string]netlink.Addr)
-	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
+	ipAddrs, err := util.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
 		err = fmt.Errorf("failed to list addresses on link %s: %w", link, err)
 		klog.Error(err)
@@ -1395,7 +1395,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		return 0, fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
-	addrs, err := netlink.AddrList(nic, netlink.FAMILY_ALL)
+	addrs, err := util.AddrList(nic, netlink.FAMILY_ALL)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get addresses on nic %s: %w", nicName, err)
 	}
@@ -1404,7 +1404,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 		return 0, fmt.Errorf("failed to get routes on nic %s: %w", nicName, err)
 	}
 
-	brAddrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
+	brAddrs, err := util.AddrList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get addresses on OVS bridge %s: %w", brName, err)
 	}
@@ -1627,7 +1627,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		return fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
-	addrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
+	addrs, err := util.AddrList(bridge, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses on bridge %s: %w", brName, err)
 	}
@@ -2005,7 +2005,7 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 			return nil, err
 		}
 
-		addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		addrs, err := util.AddrList(link, netlink.FAMILY_V6)
 		if err != nil {
 			klog.Errorf("failed to get IPv6 addresses on interface %s: %v", interfaceName, err)
 			return nil, err
@@ -2199,7 +2199,7 @@ func (c *Controller) transferVlanAddrsToInternalPort(srcName, dstName string) er
 		return fmt.Errorf("failed to get destination interface %s: %w", dstName, err)
 	}
 
-	addrs, err := netlink.AddrList(src, netlink.FAMILY_ALL)
+	addrs, err := util.AddrList(src, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses on source %s: %w", srcName, err)
 	}
@@ -2265,7 +2265,7 @@ func (c *Controller) removeProviderVlanInterface(internalPortName, brName string
 		return fmt.Errorf("failed to get VLAN internal port %s: %w", internalPortName, err)
 	}
 
-	addrs, err := netlink.AddrList(internalPort, netlink.FAMILY_ALL)
+	addrs, err := util.AddrList(internalPort, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses on VLAN internal port %s: %w", internalPortName, err)
 	}

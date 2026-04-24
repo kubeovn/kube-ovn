@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.16.1 (2026-04-24)
+
+ * [aa9c04821](https://github.com/kubeovn/kube-ovn/commit/aa9c0482122f7db39e4c8627d750dffbdb8fd0c5) release v1.16.1
+ * [904e461ff](https://github.com/kubeovn/kube-ovn/commit/904e461ffe00f4af232408783d7117d40da15a85) update dependency
+ * [d1a541c1e](https://github.com/kubeovn/kube-ovn/commit/d1a541c1e86bd97d00bd46babc2bebc3131ee2b4) fix(controller): keep VM LSP port-group memberships when a sibling pod is alive (#6666)
+ * [d466ededb](https://github.com/kubeovn/kube-ovn/commit/d466ededb39c144d88c1c40f1c6e627b8ee6b60e) fix(vpcnatgw): keep eth0 on primary CNI in non-primary CNI mode (#6675)
+ * [46f86f05c](https://github.com/kubeovn/kube-ovn/commit/46f86f05c54e3f0e2b44c31e61bc4c76531a34b5) fix(speaker): require NODE_NAME and inject POD_IPS in v2 chart (#6669)
+ * [cb57670f0](https://github.com/kubeovn/kube-ovn/commit/cb57670f0109e65b23a02c296471f5a0d41311c5) fix: add env NODE_NAME in spicker pod (#6664)
+ * [6fbbbadbc](https://github.com/kubeovn/kube-ovn/commit/6fbbbadbc161daffd664bdc59b0d8827cd2e86d2) fix: docker timeout always (#6662)
+ * [964070c78](https://github.com/kubeovn/kube-ovn/commit/964070c78bc73ffbfd51a017bdbd649a5daa9458) fix(controller): serialize centralized subnet reconcile in node update path (#6627)
+ * [45efed7f6](https://github.com/kubeovn/kube-ovn/commit/45efed7f668a540b6393c11fd50ac2cb37a01675) fix(deps): update golang (#6618)
+ * [18562c70e](https://github.com/kubeovn/kube-ovn/commit/18562c70eaa06f8465900ad651a293afdf8957a2) Fix/upgrade 1.15 error (#6615)
+ * [d1ebeafd0](https://github.com/kubeovn/kube-ovn/commit/d1ebeafd02edeb74e1abdc16fbf3d2b321b2dc6e) prepare for next release
+
+### Contributors
+
+ * Andrei Kvapil
+ * Mengxin Liu
+ * Vitaly
+ * changluyi
+ * renovate[bot]
+ * zbb88888
+
 ## v1.16.0 (2026-04-09)
 
  * [7162bc4af](https://github.com/kubeovn/kube-ovn/commit/7162bc4afda1aee29c67addc2badc73b8c7227cf) fix(controller): prevalidate nat gw name and normalize long labels (#6604)

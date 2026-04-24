@@ -513,7 +513,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[1] change gateway image, custom annotations and custom namespace", func() {
-		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16")
 		overlaySubnetV4Cidr := "10.0.2.0/24"
 		overlaySubnetV4Gw := "10.0.2.1"
 		lanIP := "10.0.2.254"
@@ -526,16 +525,22 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
 
-		// Create a custom namespace for the NAT gateway pod.
-		// Register cleanup BEFORE setupVpcNatGwTestEnvironment so that the namespace
-		// is deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
-		customNs := "ns-" + framework.RandomSuffix()
-		ginkgo.By("Creating custom namespace " + customNs + " for NAT gateway pod")
-		_ = f.NamespaceClient().Create(framework.MakeNamespace(customNs, nil, nil))
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up custom namespace " + customNs)
-			f.NamespaceClient().DeleteSync(customNs)
-		})
+		// Custom namespace for the NAT gateway pod is a v1.17+ feature; on older
+		// versions the pod always lives in the controller PodNamespace.
+		// Register the namespace cleanup BEFORE setupVpcNatGwTestEnvironment so it is
+		// deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
+		var customNs string
+		expectedPodNs := framework.KubeOvnNamespace
+		if !f.VersionPriorTo(1, 17) {
+			customNs = "ns-" + framework.RandomSuffix()
+			expectedPodNs = customNs
+			ginkgo.By("Creating custom namespace " + customNs + " for NAT gateway pod")
+			_ = f.NamespaceClient().Create(framework.MakeNamespace(customNs, nil, nil))
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up custom namespace " + customNs)
+				f.NamespaceClient().DeleteSync(customNs)
+			})
+		}
 
 		// Test custom annotations on VpcNatGateway
 		customAnnotations := map[string]string{
@@ -550,13 +555,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			customAnnotations,
-			customNs, // gwNamespace: create NAT gateway pod in custom namespace
+			customNs, // gwNamespace: empty falls back to PodNamespace on pre-v1.17
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		ginkgo.By("Verifying NAT gateway pod is in namespace " + customNs)
-		pod := f.PodClientNS(customNs).GetPod(vpcNatGwPodName)
+		ginkgo.By("Verifying NAT gateway pod is in namespace " + expectedPodNs)
+		pod := f.PodClientNS(expectedPodNs).GetPod(vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
-		framework.ExpectEqual(pod.Namespace, customNs)
+		framework.ExpectEqual(pod.Namespace, expectedPodNs)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
 		// Verify custom annotations are present on the pod
@@ -565,38 +570,42 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, k, v)
 		}
 
-		// Create an IptablesEIP with spec.namespace pointing to customNs,
-		// verify it becomes ready and its namespace matches the gw pod namespace.
-		ginkgo.By("Creating IptablesEIP with spec.namespace=" + customNs)
-		nsEipName := "ns-eip-" + framework.RandomSuffix()
-		nsEip := framework.MakeIptablesEIP(nsEipName, "", "", "", vpcNatGwName, "", "")
-		nsEip.Spec.Namespace = customNs
-		_ = iptablesEIPClient.CreateSync(nsEip)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up ns eip " + nsEipName)
-			iptablesEIPClient.DeleteSync(nsEipName)
-		})
-		ginkgo.By("Verifying IptablesEIP is ready and its namespace matches " + customNs)
-		nsEipCR := waitForIptablesEIPReady(iptablesEIPClient, nsEipName, 60*time.Second)
-		framework.ExpectNotNil(nsEipCR, "IptablesEIP with custom namespace should be ready")
-		framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
-			"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
+		// IptablesEIP spec.namespace plumbing and auto-backfill from the referenced
+		// VpcNatGateway are also v1.17+ features.
+		if !f.VersionPriorTo(1, 17) {
+			// Create an IptablesEIP with spec.namespace pointing to customNs,
+			// verify it becomes ready and its namespace matches the gw pod namespace.
+			ginkgo.By("Creating IptablesEIP with spec.namespace=" + customNs)
+			nsEipName := "ns-eip-" + framework.RandomSuffix()
+			nsEip := framework.MakeIptablesEIP(nsEipName, "", "", "", vpcNatGwName, "", "")
+			nsEip.Spec.Namespace = customNs
+			_ = iptablesEIPClient.CreateSync(nsEip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up ns eip " + nsEipName)
+				iptablesEIPClient.DeleteSync(nsEipName)
+			})
+			ginkgo.By("Verifying IptablesEIP is ready and its namespace matches " + customNs)
+			nsEipCR := waitForIptablesEIPReady(iptablesEIPClient, nsEipName, 60*time.Second)
+			framework.ExpectNotNil(nsEipCR, "IptablesEIP with custom namespace should be ready")
+			framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
+				"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
 
-		// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
-		// it from the referenced VpcNatGateway's spec.namespace.
-		ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
-		autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
-		autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(autoNsEip)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
-			iptablesEIPClient.DeleteSync(autoNsEipName)
-		})
-		ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
-		gomega.Eventually(func() string {
-			return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
-		}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
-			"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
+			// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
+			// it from the referenced VpcNatGateway's spec.namespace.
+			ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
+			autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
+			autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
+			_ = iptablesEIPClient.CreateSync(autoNsEip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
+				iptablesEIPClient.DeleteSync(autoNsEipName)
+			})
+			ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
+			gomega.Eventually(func() string {
+				return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
+			}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
+				"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
+		}
 
 		// recover the image
 		cm.Data["image"] = oldImage
