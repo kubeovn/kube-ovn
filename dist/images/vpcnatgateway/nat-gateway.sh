@@ -386,6 +386,13 @@ function add_snat() {
     # NOTE: Current SNAT CRD/controller path sends one rule per invocation.
     # The for-loop is currently of limited practical value.
     # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
+    #
+    # Ordering: iptables evaluates rules in a chain top-down (first-match wins).
+    # When multiple SHARED_SNAT rules have overlapping CIDRs (e.g., 10.0.0.0/16 and
+    # 10.0.1.0/24), the more specific rule must come first to honor longest-prefix
+    # match. We therefore insert each new rule at the position right after all
+    # existing rules whose prefix length is equal to or greater (more specific)
+    # than the new rule's prefix, yielding a descending-prefix order in the chain.
     # make sure inited
     check_inited
     local all_shared_snat_rules
@@ -398,9 +405,32 @@ function add_snat() {
         randomFullyOption=${arr[2]}
         # check if exact (eip, internalCIDR) pair already exists (idempotent)
         ruleMatch=$(echo "$all_shared_snat_rules" | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
-        if [ -z "$ruleMatch" ]; then
-            exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        if [ -n "$ruleMatch" ]; then
+            continue
         fi
+        # Compute insert position: 1 + number of existing SHARED_SNAT rules whose
+        # source CIDR prefix length is >= new rule's prefix length. This keeps the
+        # chain sorted by descending prefix length so longer/more-specific matches
+        # are evaluated first. The controller normalizes bare IPv4 inputs to
+        # "<ip>/32" before sending (see normalizeSnatInternalCIDR), so every
+        # internalCIDR here is guaranteed to carry an explicit prefix length.
+        local new_prefix=${internalCIDR##*/}
+        local pos
+        pos=$(echo "$all_shared_snat_rules" | awk -v p="$new_prefix" '
+            /^-A SHARED_SNAT / {
+                if (match($0, /-s [0-9.]+\/[0-9]+/)) {
+                    s = substr($0, RSTART, RLENGTH)
+                    sub(/.*\//, "", s)
+                    if (s + 0 >= p + 0) n++
+                }
+            }
+            END { print n + 1 }
+        ')
+        exec_cmd "$iptables_cmd -t nat -I SHARED_SNAT $pos -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        # Keep the local snapshot in sync so subsequent iterations in this
+        # invocation compute position correctly.
+        all_shared_snat_rules="$all_shared_snat_rules
+-A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
