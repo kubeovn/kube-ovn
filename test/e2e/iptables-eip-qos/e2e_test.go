@@ -213,6 +213,9 @@ func setupVpcNatGwTestEnvironment(
 	nicName string,
 	provider string,
 	skipNADSetup bool,
+	annotations map[string]string,
+	gwNamespace string,
+	replicas int32,
 ) {
 	ginkgo.GinkgoHelper()
 
@@ -244,7 +247,13 @@ func setupVpcNatGwTestEnvironment(
 	})
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
-	vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy)
+	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
+	if gwNamespace != "" {
+		vpcNatGw.Spec.Namespace = gwNamespace
+	}
+	if replicas > 0 {
+		vpcNatGw.Spec.Replicas = replicas
+	}
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -1188,6 +1197,9 @@ func setupQosTestResources(
 		dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 		vpcQosParams.subnetProvider,
 		true,
+		nil,
+		"",
+		0,
 	)
 
 	// Create noQosVpc + noQosNatGw (clean endpoint without QoS)
@@ -1199,6 +1211,9 @@ func setupQosTestResources(
 		dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 		vpcQosParams.subnetProvider,
 		true,
+		nil,
+		"",
+		0,
 	)
 
 	// Create qosPod (traffic source/destination in qosVpc)
