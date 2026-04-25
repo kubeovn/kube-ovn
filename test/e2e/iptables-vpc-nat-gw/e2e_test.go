@@ -337,7 +337,7 @@ func fipSnatRuleExists(natGwPodName, eip, internalIP string) bool {
 // Note: iptables-save inserts "-m <protocol>" after "-p <protocol>", use .* to absorb it.
 func dnatRuleExists(natGwPodName, eip, externalPort, protocol, internalIP, internalPort string) bool {
 	output := iptablesSaveNat(natGwPodName)
-	pattern := fmt.Sprintf(`-A SHARED_DNAT -d %s/32 -p %s .* --dport %s -j DNAT --to-destination %s:%s\b`,
+	pattern := fmt.Sprintf(`-A SHARED_DNAT -d \b%s/32\b -p %s .* --dport %s -j DNAT --to-destination \b%s:%s\b`,
 		regexp.QuoteMeta(eip), regexp.QuoteMeta(protocol),
 		regexp.QuoteMeta(externalPort), regexp.QuoteMeta(internalIP), regexp.QuoteMeta(internalPort))
 	re := regexp.MustCompile(pattern)
@@ -737,11 +737,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Verify hairpin SNAT rule is automatically created for each EIP
 		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after EIP creation")
 		vpcNatGwPodName := getNatGwPodName(f, vpcNatGwName, "")
-		snatEip = iptablesEIPClient.Get(snatEipName)
-		fipEip = iptablesEIPClient.Get(fipEipName)
 
-		// Verify FIP iptables rules exist after creation
 		ginkgo.By("Verifying FIP iptables rules exist in NAT gateway pod")
+		fipEip = iptablesEIPClient.Get(fipEipName)
+		framework.ExpectNotEmpty(fipEip.Status.IP, "fipEip.Status.IP should not be empty")
 		gomega.Eventually(func() bool {
 			return fipDnatRuleExists(vpcNatGwPodName, fipEip.Status.IP, fipVip.Status.V4ip)
 		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
@@ -753,6 +752,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// Verify SNAT iptables rule exists after creation
 		ginkgo.By("Verifying SNAT iptables rule exists in NAT gateway pod")
+		snatEip = iptablesEIPClient.Get(snatEipName)
+		framework.ExpectNotEmpty(snatEip.Status.IP, "snatEip.Status.IP should not be empty")
 		gomega.Eventually(func() bool {
 			return snatRuleExists(vpcNatGwPodName, snatEip.Status.IP, overlaySubnetV4Cidr)
 		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
@@ -863,6 +864,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Verify DNAT iptables rule exists after creation
 		ginkgo.By("Verifying DNAT iptables rule exists in NAT gateway pod")
 		vpcNatGwPodName = getNatGwPodName(f, vpcNatGwName, "")
+		dnatEip = iptablesEIPClient.Get(dnatEipName)
+		framework.ExpectNotEmpty(dnatEip.Status.IP, "dnatEip.Status.IP should not be empty")
 		gomega.Eventually(func() bool {
 			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
