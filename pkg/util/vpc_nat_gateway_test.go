@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -585,4 +586,65 @@ func TestGenNatGwBgpSpeakerContainer(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsNatGwHAMode(t *testing.T) {
+	tests := []struct {
+		name string
+		gw   *v1.VpcNatGateway
+		want bool
+	}{
+		{
+			name: "HA mode (replicas > 1)",
+			gw: &v1.VpcNatGateway{
+				Spec: v1.VpcNatGatewaySpec{
+					Replicas: 2,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "Non-HA mode (replicas = 1)",
+			gw: &v1.VpcNatGateway{
+				Spec: v1.VpcNatGatewaySpec{
+					Replicas: 1,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Non-HA mode (replicas = 0, which defaults to 1)",
+			gw: &v1.VpcNatGateway{
+				Spec: v1.VpcNatGatewaySpec{
+					Replicas: 0,
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsNatGwHAMode(tt.gw); got != tt.want {
+				t.Errorf("IsNatGwHAMode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGroupInternalCIDRsAndNextHops(t *testing.T) {
+	internalCIDRs := []string{"10.0.0.0/24", "fd00::/64", "10.0.1.0/24"}
+	nextHops := map[string]string{
+		"node1": "192.168.1.1",
+		"node2": "fd00:1::1",
+		"node3": "192.168.1.2",
+	}
+
+	cidrsByAF, nextHopsByAF := GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
+
+	require.Equal(t, []string{"10.0.0.0/24", "10.0.1.0/24"}, cidrsByAF[4])
+	require.Equal(t, []string{"fd00::/64"}, cidrsByAF[6])
+
+	require.Equal(t, map[string]string{"node1": "192.168.1.1", "node3": "192.168.1.2"}, nextHopsByAF[4])
+	require.Equal(t, map[string]string{"node2": "fd00:1::1"}, nextHopsByAF[6])
 }
