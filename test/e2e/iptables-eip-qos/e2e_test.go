@@ -956,7 +956,7 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	ginkgo.By("Deleting remaining IPs for natgw " + natgwName)
 	labels := util.GenNatGwLabels(natgwName)
 	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
-	ips, err := f.IPClient().IPInterface.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	ips, err := f.IPClient().List(context.Background(), metav1.ListOptions{LabelSelector: selector})
 	framework.ExpectNoError(err)
 	for _, ip := range ips.Items {
 		ginkgo.By("Deleting ip " + ip.Name)
