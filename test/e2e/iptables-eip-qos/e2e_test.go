@@ -27,7 +27,6 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -295,12 +294,26 @@ func waitForIptablesEIPReady(eipClient *framework.IptablesEIPClient, eipName str
 	return nil
 }
 
+// getNatGwPodName returns the name of the first NAT gateway pod found by labels.
+func getNatGwPodName(f *framework.Framework, name, namespace string) string {
+	ginkgo.GinkgoHelper()
+	if namespace == "" {
+		namespace = framework.KubeOvnNamespace
+	}
+	labels := util.GenNatGwLabels(name)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+	pods, err := f.ClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	framework.ExpectTrue(len(pods.Items) > 0, "no NAT gateway pods found for "+name)
+	return pods.Items[0].Name
+}
+
 // dumpTcRulesOnNatGw dumps tc qdisc, class, and filter rules on NAT Gateway pod for debugging
 // This helps diagnose QoS issues by showing the actual tc configuration
 func dumpTcRulesOnNatGw(f *framework.Framework, natgwName, eipIP string) {
 	ginkgo.GinkgoHelper()
 
-	natGwPodName := util.GenNatGwPodName(natgwName)
+	natGwPodName := getNatGwPodName(f, natgwName, "")
 	framework.Logf("=== Dumping tc rules on NAT GW pod %s for EIP %s ===", natGwPodName, eipIP)
 
 	// Dump egress rules on net1
@@ -571,11 +584,15 @@ func defaultQoSCases(f *framework.Framework,
 	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
 	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
 
-	ginkgo.By("Delete natgw pod " + natgwName + "-0")
-	natGwPodName := util.GenNatGwPodName(natgwName)
-	// Use Delete instead of DeleteSync because StatefulSet will recreate the pod
-	err := podClient.Delete(natGwPodName)
-	framework.ExpectNoError(err, "failed to delete natgw pod "+natGwPodName)
+	ginkgo.By("Delete natgw pods for " + natgwName)
+	labels := util.GenNatGwLabels(natgwName)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	for _, pod := range pods.Items {
+		err = podClient.Delete(pod.Name)
+		framework.ExpectNoError(err, "failed to delete natgw pod "+pod.Name)
+	}
 
 	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
 	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
@@ -633,11 +650,15 @@ func eipQoSCases(f *framework.Framework,
 	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
 	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit, true)
 
-	ginkgo.By("Delete natgw pod " + natgwName + "-0")
-	natGwPodName := util.GenNatGwPodName(natgwName)
-	// Use Delete instead of DeleteSync because StatefulSet will recreate the pod
-	err := podClient.Delete(natGwPodName)
-	framework.ExpectNoError(err, "failed to delete natgw pod "+natGwPodName)
+	ginkgo.By("Delete natgw pods for " + natgwName)
+	labels := util.GenNatGwLabels(natgwName)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	for _, pod := range pods.Items {
+		err = podClient.Delete(pod.Name)
+		framework.ExpectNoError(err, "failed to delete natgw pod "+pod.Name)
+	}
 
 	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
 	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
@@ -919,7 +940,6 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	ipClient := f.IPClient()
 	eipClient := f.IptablesEIPClient()
 	fipClient := f.IptablesFIPClient()
-	subnetClient := f.SubnetClient()
 	qosPolicyClient := f.QoSPolicyClient()
 
 	// delete fip
@@ -929,21 +949,19 @@ func createNatGwAndSetQosCases(f *framework.Framework,
 	ginkgo.By("Deleting eip " + eipName)
 	eipClient.DeleteSync(eipName)
 
-	// the only pod for vpc nat gateway
-	vpcNatGw1PodName := util.GenNatGwPodName(natgwName)
-
-	// delete vpc nat gw statefulset remaining ip for eth0 and net2
+	// delete vpc nat gw statefulset/deployment remaining ip for eth0 and net2
 	ginkgo.By("Deleting custom vpc nat gw " + natgwName)
 	vpcNatGwClient.DeleteSync(natgwName)
 
-	overlaySubnet1 := subnetClient.Get(overlaySubnetName)
-	macvlanSubnet := subnetClient.Get(attachDefName)
-	eth0IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, overlaySubnet1.Spec.Provider)
-	net1IpName := ovs.PodNameToPortName(vpcNatGw1PodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
-	ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
-	ipClient.DeleteSync(eth0IpName)
-	ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
-	ipClient.DeleteSync(net1IpName)
+	ginkgo.By("Deleting remaining IPs for natgw " + natgwName)
+	labels := util.GenNatGwLabels(natgwName)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+	ips, err := f.IPClient().IPInterface.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	for _, ip := range ips.Items {
+		ginkgo.By("Deleting ip " + ip.Name)
+		ipClient.DeleteSync(ip.Name)
+	}
 
 	natgwQoSPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + natgwQoSPolicyName)
