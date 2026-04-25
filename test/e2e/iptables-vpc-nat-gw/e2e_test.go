@@ -1505,6 +1505,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			}
 			if len(pods.Items) != 2 {
 				framework.Logf("Expected 2 pods, got %d", len(pods.Items))
+				for _, pod := range pods.Items {
+					framework.Logf("Found pod %s", pod.Name)
+				}
 				return false
 			}
 			natGwPods = nil // reset
