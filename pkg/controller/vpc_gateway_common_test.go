@@ -113,14 +113,24 @@ func TestMergeGatewayAffinity(t *testing.T) {
 			}},
 		},
 	}
+	aff3 := &corev1.Affinity{
+		PodAffinity: &corev1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app2": "test2"},
+				},
+				TopologyKey: corev1.LabelHostname,
+			}},
+		},
+	}
 
-	merged := mergeGatewayAffinity(aff1, aff2)
+	merged := mergeGatewayAffinity(aff1, aff2, aff3, nil)
 	assert.NotNil(t, merged.NodeAffinity)
 	assert.NotNil(t, merged.PodAntiAffinity)
-	assert.Nil(t, merged.PodAffinity)
+	assert.NotNil(t, merged.PodAffinity)
 
 	// Test precedence
-	aff3 := &corev1.Affinity{
+	aff4 := &corev1.Affinity{
 		NodeAffinity: &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
@@ -133,8 +143,8 @@ func TestMergeGatewayAffinity(t *testing.T) {
 			},
 		},
 	}
-	merged2 := mergeGatewayAffinity(aff1, aff3)
-	assert.Equal(t, aff3.NodeAffinity, merged2.NodeAffinity)
+	merged2 := mergeGatewayAffinity(aff1, aff4)
+	assert.Equal(t, aff4.NodeAffinity, merged2.NodeAffinity)
 }
 
 type mockOvnNbClient struct {
@@ -590,6 +600,34 @@ func TestReconcileNatGatewayPolicies(t *testing.T) {
 		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
 
 		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, nil, internalCIDRs, nil, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("bfd enabled, remove stale drop rules", func(t *testing.T) {
+		m := new(mockOvnNbClient)
+		staleDropPolicy := &ovnnb.LogicalRouterPolicy{
+			UUID:     "stale-drop-uuid",
+			Priority: util.NatGatewayDropPolicyPriority,
+			Match:    "ip4.src == 10.0.2.0/24",
+			Action:   ovnnb.LogicalRouterPolicyActionDrop,
+		}
+		validDropPolicy := &ovnnb.LogicalRouterPolicy{
+			UUID:     "valid-drop-uuid",
+			Priority: util.NatGatewayDropPolicyPriority,
+			Match:    "ip4.src == 10.0.1.0/24",
+			Action:   ovnnb.LogicalRouterPolicyActionDrop,
+		}
+
+		// Main policies
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return([]*ovnnb.LogicalRouterPolicy{}, nil).Once()
+		m.On("AddLogicalRouterPolicy", lrName, util.NatGatewayPolicyPriority, "ip4.src == 10.0.1.0/24", ovnnb.LogicalRouterPolicyActionReroute, mock.Anything, []string{"bfd-uuid-1"}, externalIDs).Return(nil).Once()
+
+		// Drop policies
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs, false).Return([]*ovnnb.LogicalRouterPolicy{staleDropPolicy, validDropPolicy}, nil).Once()
+		m.On("DeleteLogicalRouterPolicyByUUID", lrName, "stale-drop-uuid").Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, true, bfdIDs, internalCIDRs, nextHops, externalIDs)
 		assert.NoError(t, err)
 		m.AssertExpectations(t)
 	})
