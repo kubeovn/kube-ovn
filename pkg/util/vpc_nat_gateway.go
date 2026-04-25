@@ -4,17 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strconv"
 	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
@@ -257,52 +254,6 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	return bgpSpeakerContainer, nil
-}
-
-type NbClient interface {
-	FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error)
-	CreateBFD(lrp, dstIP string, minRX, minTX, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error)
-	DeleteBFD(uuid string) error
-	ListLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
-	AddLogicalRouterPolicy(lr string, priority int, match, action string, nexthops, bfdSessions []string, externalIDs map[string]string) error
-	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error
-	DeleteLogicalRouterPolicyByUUID(lr, uuid string) error
-	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
-}
-
-// CleanupNatGwRoutesAF deletes OVN logical router policies and BFD sessions associated with a VPC NAT Gateway for a specific address family.
-func CleanupNatGwRoutesAF(nbClient NbClient, gwName, vpcName string, af int) error {
-	externalIDsAF := map[string]string{
-		"vendor":     CniTypeName,
-		"vpc-nat-gw": gwName,
-		"af":         strconv.Itoa(af),
-	}
-
-	// Delete routing policies and drop policies for the given address family
-	if err := nbClient.DeleteLogicalRouterPolicies(vpcName, NatGatewayPolicyPriority, externalIDsAF); err != nil {
-		klog.Errorf("failed to delete policies for nat gw %s af %d: %v", gwName, af, err)
-		return err
-	}
-	if err := nbClient.DeleteLogicalRouterPolicies(vpcName, NatGatewayDropPolicyPriority, externalIDsAF); err != nil {
-		klog.Errorf("failed to delete drop policies for nat gw %s af %d: %v", gwName, af, err)
-		return err
-	}
-
-	// Delete BFD sessions for the given address family
-	bfds, err := nbClient.FindBFD(externalIDsAF)
-	if err != nil {
-		klog.Errorf("failed to find BFD sessions for nat gw %s af %d: %v", gwName, af, err)
-		return err
-	}
-	for _, bfd := range bfds {
-		if err := nbClient.DeleteBFD(bfd.UUID); err != nil {
-			klog.Errorf("failed to delete BFD session %s for nat gw %s af %d: %v", bfd.UUID, gwName, af, err)
-			return err
-		}
-	}
-
-	klog.V(3).Infof("deleted policies and BFD sessions for nat gw %s af %d", gwName, af)
-	return nil
 }
 
 // IsNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
