@@ -529,6 +529,7 @@ type mockSubnetLister struct {
 }
 
 func (m *mockSubnetLister) List(selector labels.Selector) (ret []*kubeovnv1.Subnet, err error) {
+	_ = selector
 	return m.subnets, nil
 }
 
