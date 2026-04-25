@@ -337,7 +337,7 @@ func fipSnatRuleExists(natGwPodName, eip, internalIP string) bool {
 // Note: iptables-save inserts "-m <protocol>" after "-p <protocol>", use .* to absorb it.
 func dnatRuleExists(natGwPodName, eip, externalPort, protocol, internalIP, internalPort string) bool {
 	output := iptablesSaveNat(natGwPodName)
-	pattern := fmt.Sprintf(`-A SHARED_DNAT -d \b%s/32\b -p %s .* --dport %s -j DNAT --to-destination \b%s:%s\b`,
+	pattern := fmt.Sprintf(`-A SHARED_DNAT -d %s/32 -p %s .* --dport %s -j DNAT --to-destination %s:%s\b`,
 		regexp.QuoteMeta(eip), regexp.QuoteMeta(protocol),
 		regexp.QuoteMeta(externalPort), regexp.QuoteMeta(internalIP), regexp.QuoteMeta(internalPort))
 	re := regexp.MustCompile(pattern)
