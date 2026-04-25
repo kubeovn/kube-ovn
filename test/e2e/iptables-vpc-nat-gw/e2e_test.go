@@ -258,6 +258,20 @@ func verifySubnetStatusAfterEIPOperation(subnetClient *framework.SubnetClient, s
 	}
 }
 
+// getNatGwPodName returns the name of the first NAT gateway pod found by labels.
+func getNatGwPodName(f *framework.Framework, name, namespace string) string {
+	ginkgo.GinkgoHelper()
+	if namespace == "" {
+		namespace = framework.KubeOvnNamespace
+	}
+	labels := util.GenNatGwLabels(name)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+	pods, err := f.ClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	framework.ExpectTrue(len(pods.Items) > 0, "no NAT gateway pods found for "+name)
+	return pods.Items[0].Name
+}
+
 // iptablesSaveNat returns the iptables-save output from the NAT gateway pod,
 // using the exact same detection logic as nat-gateway.sh to determine whether
 // to use iptables-legacy-save or iptables-save (nft backend).
@@ -562,10 +576,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			customNs, // gwNamespace: empty falls back to PodNamespace on pre-v1.17
 			0,
 		)
-		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 		ginkgo.By("Verifying NAT gateway pod is in namespace " + expectedPodNs)
-		pod := f.PodClientNS(expectedPodNs).GetPod(vpcNatGwPodName)
-		framework.ExpectNotNil(pod)
+		labels := util.GenNatGwLabels(vpcNatGwName)
+		selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+		pods, err := f.ClientSet.CoreV1().Pods(expectedPodNs).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+		framework.ExpectNoError(err)
+		framework.ExpectTrue(len(pods.Items) > 0, "no NAT gateway pods found")
+		pod := pods.Items[0]
 		framework.ExpectEqual(pod.Namespace, expectedPodNs)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
@@ -697,7 +714,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// Verify hairpin SNAT rule is automatically created for each EIP
 		ginkgo.By("[hairpin SNAT] Verifying hairpin SNAT rule exists after EIP creation")
-		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		vpcNatGwPodName := getNatGwPodName(f, vpcNatGwName, "")
 		snatEip = iptablesEIPClient.Get(snatEipName)
 		fipEip = iptablesEIPClient.Get(fipEipName)
 
@@ -823,7 +840,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// Verify DNAT iptables rule exists after creation
 		ginkgo.By("Verifying DNAT iptables rule exists in NAT gateway pod")
-		dnatEip = iptablesEIPClient.Get(dnatEipName)
+		vpcNatGwPodName = getNatGwPodName(f, vpcNatGwName, "")
 		gomega.Eventually(func() bool {
 			return dnatRuleExists(vpcNatGwPodName, dnatEip.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
@@ -1758,7 +1775,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"", // gwNamespace: use default (PodNamespace)
 			0,
 		)
-		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		vpcNatGwPodName := getNatGwPodName(f, vpcNatGwName, "")
 
 		// ===================== FIP spec update =====================
 		ginkgo.By("1. Creating two VIPs for FIP (old and new InternalIP)")
