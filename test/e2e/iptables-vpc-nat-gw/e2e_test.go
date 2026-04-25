@@ -165,6 +165,7 @@ func setupVpcNatGwTestEnvironment(
 	skipNADSetup bool,
 	annotations map[string]string,
 	gwNamespace string,
+	replicas int32,
 ) {
 	ginkgo.GinkgoHelper()
 
@@ -198,6 +199,9 @@ func setupVpcNatGwTestEnvironment(
 	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
 	if gwNamespace != "" {
 		vpcNatGw.Spec.Namespace = gwNamespace
+	}
+	if replicas > 0 {
+		vpcNatGw.Spec.Replicas = replicas
 	}
 	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 	ginkgo.DeferCleanup(func() {
@@ -556,6 +560,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			customAnnotations,
 			customNs, // gwNamespace: empty falls back to PodNamespace on pre-v1.17
+			0,
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 		ginkgo.By("Verifying NAT gateway pod is in namespace " + expectedPodNs)
@@ -647,6 +652,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
 			"",   // gwNamespace: use default (PodNamespace)
+			0,
 		)
 
 		ginkgo.By("Creating iptables vip for fip")
@@ -987,6 +993,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
 			"",   // gwNamespace: use default (PodNamespace)
+			0,
 		)
 
 		ginkgo.By("1. Get initial external subnet status")
@@ -1192,6 +1199,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			nil,  // no custom annotations
 			"",   // gwNamespace: use default (PodNamespace)
+			0,
 		)
 
 		ginkgo.By("1. Create a VIP for FIP")
@@ -1447,12 +1455,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, nil,
 			"", // gwNamespace: use default (PodNamespace)
+			2,
 		)
 
-		ginkgo.By("1. Setting NAT gateway replicas to 2 for HA mode")
+		ginkgo.By("1. Setting NAT gateway HA mode")
 		natGw := vpcNatGwClient.Get(haVpcNatGwName)
 		modifiedNatGw := natGw.DeepCopy()
-		modifiedNatGw.Spec.Replicas = 2
 		modifiedNatGw.Spec.BFD.Enabled = true
 		modifiedNatGw.Spec.BFD.MinRX = 1000
 		modifiedNatGw.Spec.BFD.MinTX = 1000
@@ -1748,6 +1756,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, nil,
 			"", // gwNamespace: use default (PodNamespace)
+			0,
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
 
