@@ -586,15 +586,7 @@ func TestReconcileNatGatewayPolicies(t *testing.T) {
 
 	t.Run("no nextHops", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		existing := []*ovnnb.LogicalRouterPolicy{
-			{
-				UUID:     "existing-uuid",
-				Priority: util.NatGatewayPolicyPriority,
-				Match:    "ip4.src == 10.0.1.0/24",
-			},
-		}
-		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return(existing, nil).Once()
-		m.On("DeleteLogicalRouterPolicyByUUID", lrName, "existing-uuid").Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs).Return(nil).Once()
 		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
 
 		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, nil, internalCIDRs, nil, externalIDs)
