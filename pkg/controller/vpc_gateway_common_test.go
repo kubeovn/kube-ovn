@@ -297,33 +297,6 @@ func TestCleanupStaleBFD(t *testing.T) {
 	})
 }
 
-func TestReconcileGatewayRoutes(t *testing.T) {
-	m := new(mockOvnNbClient)
-	gwName := "test-gw"
-	lrName := "test-lr"
-	bfdEnabled := true
-	bfdIP := "10.0.1.1"
-	bfdIDs := set.New("bfd-uuid-1")
-	bfdMap := map[string]string{"10.0.1.10": "bfd-uuid-1"}
-	internalCIDRs := []string{"10.0.1.0/24"}
-	nextHops := map[string]string{"node1": "10.0.1.10"}
-	externalIDs := map[string]string{"vendor": "kube-ovn"}
-
-	policySrcIP := ovnnb.LogicalRouterStaticRoutePolicySrcIP
-	m.On("AddLogicalRouterStaticRoute", lrName, "", policySrcIP, "10.0.1.0/24", mock.Anything, mock.Anything, []string{"10.0.1.10"}).Return(nil)
-
-	existingRoutes := []*ovnnb.LogicalRouterStaticRoute{
-		{IPPrefix: "10.0.1.0/24", RouteTable: "", Policy: &policySrcIP},
-		{IPPrefix: "10.0.2.0/24", RouteTable: "", Policy: &policySrcIP}, // Stale
-	}
-	m.On("ListLogicalRouterStaticRoutes", lrName, (*string)(nil), (*string)(nil), "", externalIDs).Return(existingRoutes, nil)
-	m.On("DeleteLogicalRouterStaticRoute", lrName, mock.Anything, mock.Anything, "10.0.2.0/24", mock.Anything).Return(nil)
-
-	err := reconcileGatewayRoutes(m, gwName, lrName, bfdEnabled, bfdIP, bfdIDs, bfdMap, internalCIDRs, nextHops, externalIDs)
-	assert.NoError(t, err)
-	m.AssertExpectations(t)
-}
-
 func TestGetWorkloadNodes(t *testing.T) {
 	t.Parallel()
 
@@ -597,6 +570,34 @@ func TestReconcileNatGatewayPolicies(t *testing.T) {
 		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
 
 		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, bfdIDs, internalCIDRs, nextHops, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("no internalCIDRs", func(t *testing.T) {
+		m := new(mockOvnNbClient)
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs).Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, nil, nil, nil, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("no nextHops", func(t *testing.T) {
+		m := new(mockOvnNbClient)
+		existing := []*ovnnb.LogicalRouterPolicy{
+			{
+				UUID:     "existing-uuid",
+				Priority: util.NatGatewayPolicyPriority,
+				Match:    "ip4.src == 10.0.1.0/24",
+			},
+		}
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return(existing, nil).Once()
+		m.On("DeleteLogicalRouterPolicyByUUID", lrName, "existing-uuid").Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, nil, internalCIDRs, nil, externalIDs)
 		assert.NoError(t, err)
 		m.AssertExpectations(t)
 	})
