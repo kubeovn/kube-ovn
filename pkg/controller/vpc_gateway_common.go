@@ -21,6 +21,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -118,7 +119,7 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: new(false),
+			Privileged: ptr.To(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
@@ -155,7 +156,7 @@ func genGatewaySleepContainer(image string) corev1.Container {
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: new(false),
+			Privileged: ptr.To(false),
 			RunAsUser:  ptr.To[int64](65534),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
@@ -239,7 +240,7 @@ func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
 //   - bfdMap: Map of nexthop IP to BFD UUID
 //   - staleBFDIDs: Set of stale BFD UUIDs to delete
 func reconcileGatewayBFD(
-	ovnClient ovnNbClient,
+	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
 	nextHops map[string]string,
@@ -294,7 +295,7 @@ func reconcileGatewayBFD(
 }
 
 // cleanupStaleBFD deletes stale BFD sessions that are no longer needed.
-func cleanupStaleBFD(ovnClient ovnNbClient, staleBFDIDs set.Set[string]) error {
+func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error {
 	for _, bfdID := range staleBFDIDs.UnsortedList() {
 		if err := ovnClient.DeleteBFD(bfdID); err != nil {
 			klog.Errorf("failed to delete bfd %s: %v", bfdID, err)
@@ -320,7 +321,7 @@ func cleanupStaleBFD(ovnClient ovnNbClient, staleBFDIDs set.Set[string]) error {
 //   - bfdIDs: Set of active BFD UUIDs
 //   - error: Any error encountered during reconciliation or cleanup
 func reconcileGatewayBFDWithCleanup(
-	ovnClient ovnNbClient,
+	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
 	nextHops map[string]string,
@@ -466,7 +467,7 @@ func resolveInternalCIDRs(subnetLister kubeovnv1lister.SubnetLister, subnetNames
 
 // reconcileGatewayRoutes reconciles OVN static routes for a gateway.
 func reconcileGatewayRoutes(
-	ovnClient ovnNbClient,
+	ovnClient ovs.NbClient,
 	gwName string,
 	lrName string,
 	bfdEnabled bool,
@@ -580,7 +581,7 @@ func reconcileGatewayRoutes(
 //
 // Returns error if any OVN operation fails.
 func reconcileNatGatewayPolicies(
-	ovnClient ovnNbClient,
+	ovnClient ovs.NbClient,
 	gwName string,
 	lrName string,
 	af int,
@@ -695,21 +696,4 @@ func reconcileNatGatewayPolicies(
 	}
 
 	return nil
-}
-
-// ovnNbClient defines the interface for OVN northbound operations needed by gateway BFD/routing.
-// This interface allows for easier testing and abstraction.
-type ovnNbClient interface {
-	FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error)
-	CreateBFD(lrp, dstIP string, minRX, minTX, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error)
-	DeleteBFD(uuid string) error
-	ListLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
-	AddLogicalRouterPolicy(lr string, priority int, match, action string, nexthops, bfdSessions []string, externalIDs map[string]string) error
-	UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error
-	DeleteLogicalRouterPolicyByUUID(lr, uuid string) error
-	DeleteLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string) error
-	ListLogicalRouterStaticRoutes(lrName string, routeTable, policy *string, ipPrefix string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error)
-	AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error
-	DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error
-	DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error
 }
