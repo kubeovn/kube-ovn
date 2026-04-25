@@ -1573,9 +1573,6 @@ func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(pods) == 0 {
-		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
-	}
 	return pods[0], nil
 }
 

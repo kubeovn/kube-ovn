@@ -10,12 +10,15 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -135,6 +138,7 @@ func TestMergeGatewayAffinity(t *testing.T) {
 }
 
 type mockOvnNbClient struct {
+	ovs.NbClient
 	mock.Mock
 }
 
@@ -156,14 +160,14 @@ func (m *mockOvnNbClient) DeleteBFD(uuid string) error {
 	return args.Error(0)
 }
 
-func (m *mockOvnNbClient) ListLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error) {
-	args := m.Called(lr, priority, externalIDs, ignoreNotFound)
-	return args.Get(0).([]*ovnnb.LogicalRouterPolicy), args.Error(1)
+func (m *mockOvnNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error {
+	args := m.Called(lrName, routeTable, policy, ipPrefix, nextHop)
+	return args.Error(0)
 }
 
-func (m *mockOvnNbClient) AddLogicalRouterPolicy(lr string, priority int, match, action string, nexthops, bfdSessions []string, externalIDs map[string]string) error {
-	args := m.Called(lr, priority, match, action, nexthops, bfdSessions, externalIDs)
-	return args.Error(0)
+func (m *mockOvnNbClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error) {
+	args := m.Called(lrName, priority, externalIDs, ignoreExtIDEmptyValue)
+	return args.Get(0).([]*ovnnb.LogicalRouterPolicy), args.Error(1)
 }
 
 func (m *mockOvnNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error {
@@ -171,13 +175,18 @@ func (m *mockOvnNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterP
 	return args.Error(0)
 }
 
-func (m *mockOvnNbClient) DeleteLogicalRouterPolicyByUUID(lr, uuid string) error {
-	args := m.Called(lr, uuid)
+func (m *mockOvnNbClient) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
+	args := m.Called(lrName, uuid)
 	return args.Error(0)
 }
 
-func (m *mockOvnNbClient) DeleteLogicalRouterPolicies(lr string, priority int, externalIDs map[string]string) error {
-	args := m.Called(lr, priority, externalIDs)
+func (m *mockOvnNbClient) AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops, bfdSessions []string, externalIDs map[string]string) error {
+	args := m.Called(lrName, priority, match, action, nextHops, bfdSessions, externalIDs)
+	return args.Error(0)
+}
+
+func (m *mockOvnNbClient) DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error {
+	args := m.Called(lrName, priority, externalIDs)
 	return args.Error(0)
 }
 
@@ -193,11 +202,6 @@ func (m *mockOvnNbClient) AddLogicalRouterStaticRoute(lrName, routeTable, policy
 
 func (m *mockOvnNbClient) DeleteLogicalRouterStaticRouteByExternalIDs(lrName string, externalIDs map[string]string) error {
 	args := m.Called(lrName, externalIDs)
-	return args.Error(0)
-}
-
-func (m *mockOvnNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nextHop string) error {
-	args := m.Called(lrName, routeTable, policy, ipPrefix, nextHop)
 	return args.Error(0)
 }
 
@@ -491,5 +495,108 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
 		assert.Equal(t, workloadName, gw.Status.Workload.Name)
 		assert.Equal(t, []string{"node-1"}, gw.Status.Workload.Nodes)
+	})
+}
+
+func TestResolveInternalCIDRs(t *testing.T) {
+	subnets := []*kubeovnv1.Subnet{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "subnet1"},
+			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "10.0.1.0/24"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
+			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "10.0.2.0/24,fd00:10:16::/64"},
+		},
+	}
+
+	fakeSubnetLister := &mockSubnetLister{subnets: subnets}
+
+	t.Run("resolve subnets and direct CIDRs", func(t *testing.T) {
+		subnetNames := []string{"subnet1", "subnet2", "non-existent"}
+		directCIDRs := []string{"192.168.1.0/24"}
+
+		result := resolveInternalCIDRs(fakeSubnetLister, subnetNames, directCIDRs)
+
+		expected := []string{"10.0.1.0/24", "10.0.2.0/24", "fd00:10:16::/64", "192.168.1.0/24"}
+		assert.ElementsMatch(t, expected, result)
+	})
+}
+
+type mockSubnetLister struct {
+	kubeovnv1lister.SubnetLister
+	subnets []*kubeovnv1.Subnet
+}
+
+func (m *mockSubnetLister) List(selector labels.Selector) (ret []*kubeovnv1.Subnet, err error) {
+	return m.subnets, nil
+}
+
+func (m *mockSubnetLister) Get(name string) (*kubeovnv1.Subnet, error) {
+	for _, s := range m.subnets {
+		if s.Name == name {
+			return s, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
+func TestReconcileNatGatewayPolicies(t *testing.T) {
+	m := new(mockOvnNbClient)
+
+	gwName := "test-gw"
+	lrName := "test-lr"
+	af := 4
+	externalIDs := map[string]string{"vendor": "kube-ovn", "af": "4"}
+	internalCIDRs := []string{"10.0.1.0/24"}
+	nextHops := map[string]string{"node1": "10.0.1.10"}
+	bfdIDs := set.New("bfd-uuid-1")
+
+	t.Run("create new policy", func(t *testing.T) {
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return([]*ovnnb.LogicalRouterPolicy{}, nil).Once()
+		m.On("AddLogicalRouterPolicy", lrName, util.NatGatewayPolicyPriority, "ip4.src == 10.0.1.0/24", ovnnb.LogicalRouterPolicyActionReroute, mock.Anything, []string{"bfd-uuid-1"}, externalIDs).Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, bfdIDs, internalCIDRs, nextHops, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("update existing policy", func(t *testing.T) {
+		existing := []*ovnnb.LogicalRouterPolicy{
+			{
+				UUID:        "policy-uuid",
+				Priority:    util.NatGatewayPolicyPriority,
+				Match:       "ip4.src == 10.0.1.0/24",
+				Action:      ovnnb.LogicalRouterPolicyActionReroute,
+				Nexthops:    []string{"10.0.1.11"}, // Old nexthop
+				BFDSessions: []string{"old-bfd"},
+			},
+		}
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return(existing, nil).Once()
+		m.On("UpdateLogicalRouterPolicy", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, bfdIDs, internalCIDRs, nextHops, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("cleanup stale policy", func(t *testing.T) {
+		existing := []*ovnnb.LogicalRouterPolicy{
+			{
+				UUID:     "stale-uuid",
+				Priority: util.NatGatewayPolicyPriority,
+				Match:    "ip4.src == 10.0.2.0/24",
+			},
+		}
+		m.On("ListLogicalRouterPolicies", lrName, util.NatGatewayPolicyPriority, externalIDs, false).Return(existing, nil).Once()
+		m.On("DeleteLogicalRouterPolicyByUUID", lrName, "stale-uuid").Return(nil).Once()
+		m.On("AddLogicalRouterPolicy", lrName, util.NatGatewayPolicyPriority, "ip4.src == 10.0.1.0/24", ovnnb.LogicalRouterPolicyActionReroute, mock.Anything, []string{"bfd-uuid-1"}, externalIDs).Return(nil).Once()
+		m.On("DeleteLogicalRouterPolicies", lrName, util.NatGatewayDropPolicyPriority, externalIDs).Return(nil).Once()
+
+		err := reconcileNatGatewayPolicies(m, gwName, lrName, af, false, bfdIDs, internalCIDRs, nextHops, externalIDs)
+		assert.NoError(t, err)
+		m.AssertExpectations(t)
 	})
 }
