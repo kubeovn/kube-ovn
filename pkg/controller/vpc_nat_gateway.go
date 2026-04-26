@@ -329,7 +329,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if util.IsNatGwHAMode(gw) {
 		// HA mode: use Deployment
 		needToCreate := false
-		_, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
+		oldDeploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 			Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
@@ -338,7 +338,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			}
 			needToCreate = true
 		}
-		gwChanged := isVpcNatGwChanged(gw)
 
 		newDeploy, err := c.genNatGwDeployment(gw)
 		if err != nil {
@@ -361,8 +360,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return nil
 		}
 
-		// Handle Deployment update if needed
-		if gwChanged {
+		hashChanged := oldDeploy.Annotations[util.GenerateHashAnnotation] != newDeploy.Annotations[util.GenerateHashAnnotation]
+		parametersChanged := isVpcNatGwChanged(gw)
+
+		if hashChanged || parametersChanged {
 			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 				Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
@@ -435,7 +436,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	// Handle QoS update (independent of StatefulSet changes)
+	// Handle QoS update (independent of StatefulSet/Deployment changes)
 	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
 		if gw.Status.QoSPolicy != "" {
 			if err = c.execNatGwQoS(gw, gw.Status.QoSPolicy, QoSDel); err != nil {
@@ -1166,18 +1167,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	// Get VPC and BFD port information for BFD session support
-	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s: %v", gw.Spec.Vpc, err)
-		return nil, err
-	}
-
-	var bfdIP string
-	if gw.Spec.BFD.Enabled {
-		bfdIP = vpc.Status.BFDPort.IP
-	}
-
 	// Get additional networks specified by user in VpcNatGateway CR metadata.annotations (for secondary CNI mode)
 	// TODO: the EnableNonPrimaryCNI check may not be necessary, as additional NADs could also
 	// be useful in primary CNI mode. Consider removing this condition in the future.
@@ -1229,7 +1218,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	// Generate route annotations using the new helper function
 	routeAnnotations, err := c.generateNatGwRoutes(
 		gw,
-		bfdIP,
+		"",
 		eth0SubnetProvider,
 		eth0V4Gateway, eth0V6Gateway,
 		net1Subnet.Spec.Provider,
@@ -1522,6 +1511,19 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *bgpSpeakerContainer)
 	}
+
+	// Generate hash for the workload to determine whether to update the existing workload or not
+	// Only take the specs to prevent reloading the deployments for annotations/labels/status updates
+	hash, err := util.Sha256HashObject(deploy.Spec)
+	if err != nil {
+		klog.Errorf("failed to hash generated deployment %s/%s: %v", deploy.Namespace, deploy.Name, err)
+		return nil, err
+	}
+
+	if deploy.Annotations == nil {
+		deploy.Annotations = make(map[string]string)
+	}
+	deploy.Annotations[util.GenerateHashAnnotation] = hash[:12]
 
 	return deploy, nil
 }
@@ -1932,6 +1934,16 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 		return err
 	}
 
+	// Collect the BFD IP(s) if it's enabled on the NAT gateway
+	var bfdIP string
+	if gw.Spec.BFD.Enabled {
+		bfdIP = vpc.Status.BFDPort.IP
+	}
+
+	// Split the BFD IP into IPv4 and IPv6 components
+	bfdIPv4, bfdIPv6 := util.SplitStringIP(bfdIP)
+	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
+
 	// Collect nexthop IPs from running gateway pods
 	nextHops, err := c.getNatGwNextHops(gw)
 	if err != nil {
@@ -1941,10 +1953,6 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 
 	// Group internal CIDRs and nexthops by address family
 	cidrsByAF, nextHopsByAF := util.GroupInternalCIDRsAndNextHops(internalCIDRs, nextHops)
-
-	// Split the BFD IP into IPv4 and IPv6 components
-	bfdIPv4, bfdIPv6 := util.SplitStringIP(vpc.Status.BFDPort.IP)
-	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
 
 	// Process each address family
 	for _, af := range []int{4, 6} {
