@@ -1475,10 +1475,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	framework.ConformanceIt("[6] HA VPC NAT Gateway with 2 replicas", func() {
 		f.SkipVersionPriorTo(1, 16, "HA NAT gateway support was introduced in v1.16")
 
-		// Initialize podClient if not already done
-		if podClient == nil {
-			podClient = f.PodClientNS(framework.KubeOvnNamespace)
-		}
+		// NAT gateway pods are in kube-system namespace
+		natGwPodClient := f.PodClientNS(framework.KubeOvnNamespace)
 
 		overlaySubnetV4Cidr := "10.0.7.0/24"
 		overlaySubnetV4Gw := "10.0.7.1"
@@ -1651,7 +1649,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 			// Get pod's LAN IP and verify BFD session is UP
 			gomega.Eventually(func() bool {
-				podObj := podClient.GetPod(podName)
+				podObj := natGwPodClient.GetPod(podName)
 				if podObj.Annotations[util.LogicalRouterAnnotation] != haVpcName {
 					framework.Logf("Pod %s not attached to VPC %s yet", podName, haVpcName)
 					return false
@@ -1702,7 +1700,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			framework.Logf("Checking static routes for pod %s", podName)
 
 			gomega.Eventually(func() bool {
-				podObj := podClient.GetPod(podName)
+				podObj := natGwPodClient.GetPod(podName)
 				podIP := podObj.Annotations[util.IPAddressAnnotation]
 				if podIP == "" {
 					return false
@@ -1735,7 +1733,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("15. Verifying all NAT gateway pods are deleted")
 		gomega.Eventually(func() bool {
 			for _, podName := range natGwPods {
-				_, err := podClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
+				_, err := natGwPodClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
 				if err == nil || !k8serrors.IsNotFound(err) {
 					framework.Logf("Pod %s still exists", podName)
 					return false
@@ -1765,7 +1763,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("17. Verifying static routes are removed")
 		gomega.Eventually(func() bool {
 			for _, podName := range natGwPods {
-				podObj := podClient.GetPod(podName)
+				podObj := natGwPodClient.GetPod(podName)
 				if podObj != nil {
 					podIP := podObj.Annotations[util.IPAddressAnnotation]
 					if podIP != "" {
