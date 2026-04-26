@@ -97,7 +97,7 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
-// GenNatGwPodAnnotations generates StatefulSet Pod template annotations for a NAT gateway.
+// GenNatGwPodAnnotations generates Pod template annotations for a NAT gateway.
 // userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
 // are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
 // users specify extra NADs in gw.Annotations. enableNonPrimaryCNI indicates whether Kube-OVN is
@@ -123,7 +123,11 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
-	result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+
+	// Don't set a static IP for HA gateways
+	if !IsNatGwHAMode(gw) {
+		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+	}
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of
 	// the CNI mode, so that malformed providers are caught early rather than producing bogus
@@ -250,4 +254,32 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 	}
 
 	return bgpSpeakerContainer, nil
+}
+
+// IsNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
+func IsNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
+	return gw.Spec.Replicas > 1
+}
+
+// GroupInternalCIDRsAndNextHops groups internal CIDRs and next hops by address family.
+func GroupInternalCIDRsAndNextHops(internalCIDRs []string, nextHops map[string]string) (map[int][]string, map[int]map[string]string) {
+	cidrsByAF := map[int][]string{4: {}, 6: {}}
+	for _, cidr := range internalCIDRs {
+		af := 4
+		if CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
+			af = 6
+		}
+		cidrsByAF[af] = append(cidrsByAF[af], cidr)
+	}
+
+	nextHopsByAF := map[int]map[string]string{4: {}, 6: {}}
+	for node, ip := range nextHops {
+		af := 4
+		if CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+			af = 6
+		}
+		nextHopsByAF[af][node] = ip
+	}
+
+	return cidrsByAF, nextHopsByAF
 }

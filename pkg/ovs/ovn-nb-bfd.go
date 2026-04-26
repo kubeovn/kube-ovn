@@ -214,7 +214,7 @@ func (c *OVNNbClient) bfdAddL3HAHandler(table string, model model.Model) {
 	}
 
 	bfd := model.(*ovnnb.BFD)
-	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" || bfd.ExternalIDs[ExternalIDVpcNatGateway] != "" {
 		return
 	}
 
@@ -249,7 +249,7 @@ func (c *OVNNbClient) bfdUpdateL3HAHandler(table string, oldModel, newModel mode
 	oldBfd := oldModel.(*ovnnb.BFD)
 	newBfd := newModel.(*ovnnb.BFD)
 
-	if newBfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+	if newBfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" || newBfd.ExternalIDs[ExternalIDVpcNatGateway] != "" {
 		return
 	}
 	if oldBfd.Status == nil || newBfd.Status == nil {
@@ -365,7 +365,7 @@ func (c *OVNNbClient) bfdDelL3HAHandler(table string, model model.Model) {
 		return
 	}
 	bfd := model.(*ovnnb.BFD)
-	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" {
+	if bfd.ExternalIDs[ExternalIDVpcEgressGateway] != "" || bfd.ExternalIDs[ExternalIDVpcNatGateway] != "" {
 		return
 	}
 	klog.Infof("lrp %s del BFD to dst ip %s", bfd.LogicalPort, bfd.DstIP)

@@ -3571,37 +3571,37 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.vpc
-      name: VPC
+      name: Vpc
       type: string
     - jsonPath: .spec.replicas
-      name: REPLICAS
+      name: Replicas
       type: integer
     - jsonPath: .spec.bfd.enabled
-      name: BFD ENABLED
+      name: bfd
       type: boolean
     - jsonPath: .spec.externalSubnet
-      name: EXTERNAL SUBNET
+      name: External Subnet
       type: string
     - jsonPath: .status.phase
-      name: PHASE
+      name: Phase
       type: string
     - jsonPath: .status.ready
-      name: READY
+      name: Ready
       type: boolean
     - jsonPath: .status.internalIPs
-      name: INTERNAL IPS
+      name: Internal IPs
       priority: 1
       type: string
     - jsonPath: .status.externalIPs
-      name: EXTERNAL IPS
+      name: External IPs
       priority: 1
       type: string
     - jsonPath: .status.workload.nodes
-      name: WORKING NODES
+      name: Working Nodes
       priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
-      name: AGE
+      name: Age
       type: date
     name: v1
     schema:
@@ -4155,9 +4155,21 @@ spec:
     - jsonPath: .spec.subnet
       name: Subnet
       type: string
-    - jsonPath: .spec.lanIp
-      name: LanIP
+    - jsonPath: .status.lanIp
+      name: IPs
       type: string
+    - jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .spec.bfd.enabled
+      name: BFD
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
@@ -5112,6 +5124,46 @@ spec:
                   User-defined annotations for the StatefulSet NAT gateway Pod template.
                   Only effective at creation time; updates to this field are not detected.
                 type: object
+              bfd:
+                description: BFD configuration for health monitoring and automatic
+                  failover (HA mode only)
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Enable BFD health monitoring
+                      When enabled, each gateway instance establishes a BFD session with the VPC's BFD port.
+                      The VPC's spec.bfd.enabled must also be set to true.
+                    type: boolean
+                  minRX:
+                    default: 1000
+                    description: |-
+                      BFD minimum receive interval in milliseconds
+                      This is the minimum interval at which this gateway expects to receive BFD control packets.
+                    format: int32
+                    maximum: 3600000
+                    minimum: 1
+                    type: integer
+                  minTX:
+                    default: 1000
+                    description: |-
+                      BFD minimum transmit interval in milliseconds
+                      This is the minimum interval at which this gateway will send BFD control packets.
+                    format: int32
+                    maximum: 3600000
+                    minimum: 1
+                    type: integer
+                  multiplier:
+                    default: 3
+                    description: |-
+                      BFD detection multiplier
+                      Number of missed BFD packets before declaring the session down.
+                      Detection time = MinRX * Multiplier
+                    format: int32
+                    maximum: 255
+                    minimum: 1
+                    type: integer
+                type: object
               bgpSpeaker:
                 description: BGP speaker configuration
                 properties:
@@ -5154,9 +5206,26 @@ spec:
                 items:
                   type: string
                 type: array
+              internalCIDRs:
+                description: |-
+                  Internal CIDRs for OVN route injection.
+                  Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+                  This field is cumulative with internalSubnets.
+                items:
+                  type: string
+                type: array
+              internalSubnets:
+                description: |-
+                  Internal subnets by name (resolved to CIDRs) for OVN route injection.
+                  Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+                  This field is cumulative with internalCIDRs.
+                items:
+                  type: string
+                type: array
               lanIp:
-                description: LAN IP address for the NAT gateway. This field is immutable
-                  after creation.
+                description: |-
+                  LAN IP address for the NAT gateway. This field is immutable after creation.
+                  Used only when Replicas = 1 (non-HA mode).
                 type: string
               namespace:
                 description: |-
@@ -5169,6 +5238,15 @@ spec:
               qosPolicy:
                 description: QoS policy name to apply to the NAT gateway
                 type: string
+              replicas:
+                default: 1
+                description: |-
+                  Number of gateway replicas for HA support.
+                  When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
+                  When = 1 or unset, uses StatefulSet workload (legacy mode) for backward compatibility.
+                format: int32
+                minimum: 1
+                type: integer
               routes:
                 description: Static routes for the NAT gateway
                 items:
@@ -6153,9 +6231,32 @@ spec:
                 items:
                   type: string
                 type: array
+              internalCIDRs:
+                description: Internal CIDRs configured for OVN route injection
+                items:
+                  type: string
+                type: array
+              internalSubnets:
+                description: Internal subnets configured for OVN route injection
+                items:
+                  type: string
+                type: array
+              lanIp:
+                description: |-
+                  LAN IP address(es) for the NAT gateway.
+                  For non-HA, this is the single LanIP from spec.
+                  For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+                type: string
               qosPolicy:
                 description: QoS policy applied to the NAT gateway
                 type: string
+              ready:
+                description: Ready state of the NAT gateway
+                type: boolean
+              replicas:
+                description: Number of gateway replicas
+                format: int32
+                type: integer
               selector:
                 description: Pod selector configured for the NAT gateway
                 items:
@@ -6200,6 +6301,24 @@ spec:
                       type: string
                   type: object
                 type: array
+              workload:
+                description: Workload information (Deployment or StatefulSet)
+                properties:
+                  apiVersion:
+                    description: API version of the workload (e.g., "apps/v1")
+                    type: string
+                  kind:
+                    description: Kind of the workload ("Deployment" or "StatefulSet")
+                    type: string
+                  name:
+                    description: Name of the workload
+                    type: string
+                  nodes:
+                    description: Nodes where gateway instances are running
+                    items:
+                      type: string
+                    type: array
+                type: object
             type: object
         type: object
     served: true
@@ -6247,6 +6366,9 @@ spec:
     - jsonPath: .status.defaultLogicalSwitch
       name: DefaultSubnet
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1
     schema:
       openAPIV3Schema:
