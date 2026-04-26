@@ -464,7 +464,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod", key)
-		gwPods, err := c.getNatGwPods(cachedFip.Status.NatGwDp, c.natGwNamespaceByName(cachedFip.Status.NatGwDp))
+		gwPods, err := c.getNatGwPods(cachedFip.Status.NatGwDp, c.natGwNamespaceByName(cachedFip.Status.NatGwDp), false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -755,7 +755,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.Status.V4ip != "" &&
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
-		gwPods, err := c.getNatGwPods(cachedDnat.Status.NatGwDp, c.natGwNamespaceByName(cachedDnat.Status.NatGwDp))
+		gwPods, err := c.getNatGwPods(cachedDnat.Status.NatGwDp, c.natGwNamespaceByName(cachedDnat.Status.NatGwDp), false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1036,7 +1036,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
-		gwPods, err := c.getNatGwPods(cachedSnat.Status.NatGwDp, c.natGwNamespaceByName(cachedSnat.Status.NatGwDp))
+		gwPods, err := c.getNatGwPods(cachedSnat.Status.NatGwDp, c.natGwNamespaceByName(cachedSnat.Status.NatGwDp), false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1705,7 +1705,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 }
 
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1941,7 +1941,7 @@ func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.Ipta
 }
 
 func (c *Controller) deleteFipInPod(dp, v4ip string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1964,7 +1964,7 @@ func (c *Controller) deleteFipInPod(dp, v4ip string) error {
 }
 
 func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPort, internalPort string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
@@ -1987,7 +1987,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 }
 
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -2012,7 +2012,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) er
 }
 
 func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
@@ -2045,7 +2045,7 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 }
 
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
-	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp))
+	gwPods, err := c.getNatGwPods(dp, c.natGwNamespaceByName(dp), false)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

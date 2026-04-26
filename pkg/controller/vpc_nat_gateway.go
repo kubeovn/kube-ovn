@@ -489,7 +489,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
-	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw), true)
 	if err != nil {
 		err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
 		klog.Error(err)
@@ -785,7 +785,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update subnet route for nat gateway %s", natGwKey)
 
-	pods, err := c.getNatGwPods(natGwKey, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(natGwKey, c.natGwNamespace(gw), false)
 	if err != nil {
 		err = fmt.Errorf("failed to get nat gw '%s' pods, %w", natGwKey, err)
 		klog.Error(err)
@@ -1571,14 +1571,14 @@ func (c *Controller) cleanUpVpcNatGw() error {
 }
 
 func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
-	pods, err := c.getNatGwPods(name, namespace)
+	pods, err := c.getNatGwPods(name, namespace, false)
 	if err != nil {
 		return nil, err
 	}
 	return pods[0], nil
 }
 
-func (c *Controller) getNatGwPods(name, namespace string) ([]*corev1.Pod, error) {
+func (c *Controller) getNatGwPods(name, namespace string, allPods bool) ([]*corev1.Pod, error) {
 	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.AsSelector()
 	pods, err := c.podsLister.Pods(namespace).List(selector)
 	if err != nil {
@@ -1588,7 +1588,7 @@ func (c *Controller) getNatGwPods(name, namespace string) ([]*corev1.Pod, error)
 
 	activePods := make([]*corev1.Pod, 0, len(pods))
 	for _, pod := range pods {
-		if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+		if allPods || (pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil) {
 			activePods = append(activePods, pod)
 		}
 	}
@@ -1610,7 +1610,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 		klog.Error(err)
 		return err
 	}
-	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw))
+	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw), false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1759,7 +1759,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	if !util.IsNatGwHAMode(gw) {
 		lanIPs = []string{gw.Spec.LanIP}
 	} else {
-		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
+		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), false)
 		if err != nil {
 			klog.Errorf("failed to get nat gw pods, %v", err)
 			return err
@@ -1838,7 +1838,7 @@ func (c *Controller) execNatGwBandwidthLimitRules(gw *kubeovnv1.VpcNatGateway, r
 func (c *Controller) execNatGwQoSInPod(
 	gw *kubeovnv1.VpcNatGateway, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string,
 ) error {
-	gwPods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
+	gwPods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), false)
 	if err != nil {
 		klog.Errorf("failed to get nat gw pods, %v", err)
 		return err
@@ -1899,7 +1899,7 @@ func (c *Controller) initVpcNatGw() error {
 	}
 
 	for _, gw := range gws {
-		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw))
+		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), false)
 		if err != nil {
 			// the nat gw maybe deleted
 			err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
