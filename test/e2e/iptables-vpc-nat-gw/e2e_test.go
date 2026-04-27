@@ -336,6 +336,28 @@ func snatRuleExists(natGwPodName, eip, internalCIDR string) bool {
 	return re.MatchString(output)
 }
 
+// snatRulePosition returns the 1-based index of the SHARED_SNAT rule matching
+// (eip, internalCIDR) as it appears in iptables-save output. Returns 0 if the
+// rule is not present. Used to verify ordering (longest-prefix-first) across
+// multiple SNAT rules on the same NAT gateway.
+func snatRulePosition(natGwPodName, eip, internalCIDR string) int {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-s %s\b.*--to-source %s\b`,
+		regexp.QuoteMeta(internalCIDR), regexp.QuoteMeta(eip))
+	re := regexp.MustCompile(pattern)
+	idx := 0
+	for line := range strings.SplitSeq(output, "\n") {
+		if !strings.HasPrefix(line, "-A SHARED_SNAT ") {
+			continue
+		}
+		idx++
+		if re.MatchString(line) {
+			return idx
+		}
+	}
+	return 0
+}
+
 var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
@@ -1713,6 +1735,156 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectTrue(snat.Status.Ready, "SNAT should be ready after EIP-only change")
 		framework.ExpectHaveKeyWithValue(snat.Labels, util.EipV4IpLabel, snatEip3.Spec.V4ip)
 		framework.ExpectHaveKeyWithValue(snat.Annotations, util.VpcEipAnnotation, snatEip3Name)
+	})
+
+	framework.ConformanceIt("[7] SHARED_SNAT rules are ordered by longest-prefix-first", func() {
+		// When multiple IptablesSnatRule share overlapping CIDRs, iptables evaluates
+		// SHARED_SNAT rules top-down (first-match wins). A less-specific rule (e.g.,
+		// /16) placed before a more-specific one (e.g., /24) would shadow the /24,
+		// producing the wrong SNAT source IP. The NAT gateway script therefore
+		// inserts each new rule at a position computed from existing prefix lengths
+		// so the chain is kept sorted by descending prefix length.
+		f.SkipVersionPriorTo(1, 18, "Longest-prefix-first SNAT ordering was introduced in v1.18")
+
+		overlaySubnetV4Cidr := "10.0.7.0/24"
+		overlaySubnetV4Gw := "10.0.7.1"
+		lanIP := "10.0.7.254"
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, "",
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, nil,
+			"", // gwNamespace: use default (PodNamespace)
+		)
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		randomSuffix := framework.RandomSuffix()
+		// Use CIDRs that are unrelated to any real subnet; they only drive the
+		// iptables -s match, so the SNAT rule works regardless of whether pods
+		// actually exist in these ranges. The three CIDRs are chosen so each
+		// strictly contains the next one, making ordering observable.
+		cidr16 := "172.31.0.0/16"
+		cidr20 := "172.31.0.0/20"
+		cidr24 := "172.31.0.0/24"
+
+		eip16Name := "order-eip-16-" + randomSuffix
+		eip20Name := "order-eip-20-" + randomSuffix
+		eip24Name := "order-eip-24-" + randomSuffix
+		snat16Name := "order-snat-16-" + randomSuffix
+		snat20Name := "order-snat-20-" + randomSuffix
+		snat24Name := "order-snat-24-" + randomSuffix
+
+		ginkgo.By("Creating three EIPs for overlapping SNAT rules")
+		eip16 := framework.MakeIptablesEIP(eip16Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip16)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip16Name) })
+		eip16 = iptablesEIPClient.Get(eip16Name)
+
+		eip20 := framework.MakeIptablesEIP(eip20Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip20)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip20Name) })
+		eip20 = iptablesEIPClient.Get(eip20Name)
+
+		eip24 := framework.MakeIptablesEIP(eip24Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip24)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip24Name) })
+		eip24 = iptablesEIPClient.Get(eip24Name)
+
+		// Create rules in the worst order for iptables first-match semantics:
+		// broadest first, then increasingly specific. Without prefix-based
+		// ordering the /16 would sit at the top and shadow the /20 and /24.
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr16 + " (broadest) first")
+		snat16 := framework.MakeIptablesSnatRule(snat16Name, eip16Name, cidr16)
+		_ = iptablesSnatRuleClient.CreateSync(snat16)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat16Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip16.Status.IP, cidr16)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"broadest SNAT rule should be installed")
+
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr20)
+		snat20 := framework.MakeIptablesSnatRule(snat20Name, eip20Name, cidr20)
+		_ = iptablesSnatRuleClient.CreateSync(snat20)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat20Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip20.Status.IP, cidr20)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"mid-prefix SNAT rule should be installed")
+
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr24 + " (most specific) last")
+		snat24 := framework.MakeIptablesSnatRule(snat24Name, eip24Name, cidr24)
+		_ = iptablesSnatRuleClient.CreateSync(snat24)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat24Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip24.Status.IP, cidr24)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"most-specific SNAT rule should be installed")
+
+		ginkgo.By("Verifying SHARED_SNAT chain is ordered /24 -> /20 -> /16")
+		gomega.Eventually(func() bool {
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p20 := snatRulePosition(vpcNatGwPodName, eip20.Status.IP, cidr20)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			framework.Logf("SHARED_SNAT positions: /24=%d /20=%d /16=%d", p24, p20, p16)
+			return p24 > 0 && p20 > 0 && p16 > 0 && p24 < p20 && p20 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"more-specific SNAT rules must appear before less-specific ones in SHARED_SNAT")
+
+		ginkgo.By("Removing the middle (/20) rule and verifying remaining order /24 -> /16 is preserved")
+		iptablesSnatRuleClient.DeleteSync(snat20Name)
+		gomega.Eventually(func() bool {
+			return !snatRuleExists(vpcNatGwPodName, eip20.Status.IP, cidr20)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"/20 SNAT rule should be removed")
+		gomega.Eventually(func() bool {
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			return p24 > 0 && p16 > 0 && p24 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"remaining SNAT rules must retain longest-prefix-first ordering after deletion")
+
+		// Bare-IP InternalCIDR (e.g., "10.0.0.5" without "/len") is a supported
+		// input shape per validateSnatRule in vpc_nat_gw_nat.go. iptables normalizes
+		// it to /32 in iptables-save output, so the host rule must sort before the
+		// /24 rule (most specific first).
+		//
+		// The chosen IP has a small leading octet (10) on purpose. If the shell
+		// extracts new_prefix via `${internalCIDR##*/}` on a bare IP (the original
+		// bug), awk parses "10.0.0.5" as 10, so existing /16 and /24 rules all
+		// satisfy `existing_prefix >= 10` and the host rule ends up at the tail of
+		// the chain (shadowed). A bare IP with a large leading octet such as
+		// 172.31.0.5 would be parsed as ~172 by awk and accidentally sort first,
+		// masking the regression — hence 10.0.0.5 here.
+		ginkgo.By("Creating a host SNAT rule with bare IPv4 InternalCIDR")
+		eipHostName := "order-eip-host-" + randomSuffix
+		snatHostName := "order-snat-host-" + randomSuffix
+		bareHostIP := "10.0.0.5"
+		normalizedHostCIDR := bareHostIP + "/32"
+		eipHost := framework.MakeIptablesEIP(eipHostName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eipHost)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eipHostName) })
+		eipHost = iptablesEIPClient.Get(eipHostName)
+
+		snatHost := framework.MakeIptablesSnatRule(snatHostName, eipHostName, bareHostIP)
+		_ = iptablesSnatRuleClient.CreateSync(snatHost)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snatHostName) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eipHost.Status.IP, normalizedHostCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"host SNAT rule should be installed and normalized to /32 in iptables")
+
+		ginkgo.By("Verifying bare-IP host rule sorts before the /24 rule (treated as /32)")
+		gomega.Eventually(func() bool {
+			pHost := snatRulePosition(vpcNatGwPodName, eipHost.Status.IP, normalizedHostCIDR)
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			framework.Logf("SHARED_SNAT positions: host=%d /24=%d /16=%d", pHost, p24, p16)
+			return pHost > 0 && p24 > 0 && p16 > 0 && pHost < p24 && p24 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"bare-IP SNAT rule must be treated as /32 and sort before less-specific rules")
 	})
 })
 
