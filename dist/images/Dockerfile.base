@@ -2,7 +2,7 @@
 # renovate: datasource=golang-version depName=go
 ARG GO_VERSION=1.26.2
 
-FROM ubuntu:24.04 AS openssl-builder
+FROM ubuntu:26.04 AS openssl-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -30,7 +30,7 @@ RUN cd openssl-* && \
 RUN mkdir /packages/ && \
     cp *fips*.deb /packages
 
-FROM ubuntu:24.04 AS ovs-builder
+FROM ubuntu:26.04 AS ovs-builder
 
 ARG ARCH
 ARG LEGACY
@@ -206,7 +206,7 @@ ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
     bash -x /rebuild-go-deps.sh
 
-FROM ubuntu:24.04 AS ubuntu
+FROM ubuntu:26.04 AS ubuntu
 
 RUN rm -rf /etc/localtime
 RUN rm -f /usr/lib/apt/methods/mirror
