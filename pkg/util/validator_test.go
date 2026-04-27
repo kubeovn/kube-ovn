@@ -732,6 +732,80 @@ func TestValidateSubnet(t *testing.T) {
 			},
 			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 or /128 netmask",
 		},
+		{
+			name: "IPv6MTUBelowMinimum",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-v6-mtu-low",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					CIDRBlock:   "fd00:10:16::/64",
+					Gateway:     "fd00:10:16::1",
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Mtu:         1200,
+				},
+			},
+			err: "subnet utest-v6-mtu-low mtu 1200 is below the IPv6 minimum 1280",
+		},
+		{
+			name: "DualStackMTUBelowMinimum",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-dual-mtu-low",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolDual,
+					CIDRBlock:   "10.16.0.0/16,fd00:10:16::/64",
+					Gateway:     "10.16.0.1,fd00:10:16::1",
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Mtu:         1000,
+				},
+			},
+			err: "subnet utest-dual-mtu-low mtu 1000 is below the IPv6 minimum 1280",
+		},
+		{
+			name: "IPv4MTUBelowIPv6MinimumAllowed",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-v4-mtu-low",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Mtu:         1000,
+				},
+			},
+		},
+		{
+			name: "IPv6MTUAtMinimumAllowed",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "utest-v6-mtu-min",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv6,
+					CIDRBlock:   "fd00:10:16::/64",
+					Gateway:     "fd00:10:16::1",
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Mtu:         1280,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
