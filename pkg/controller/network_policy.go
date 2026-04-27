@@ -107,7 +107,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	defer func() {
 		if err != nil {
-			c.recorder.Eventf(np, corev1.EventTypeWarning, "CreateACLFailed", err.Error())
+			c.recorder.Eventf(np, corev1.EventTypeWarning, "CreateACLFailed", "%s", err.Error())
 		}
 	}()
 
