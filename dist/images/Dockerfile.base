@@ -15,7 +15,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-src install openssl
 
 RUN cd openssl-* && \
-    sed -i '/^CONFARGS/a CONFARGS += enable-fips no-unit-test' debian/rules && \
+    sed -i 's/\bno-fips\b/enable-fips/; s/\benable-unit-test\b/no-unit-test/' debian/rules && \
+    sed -i '1i#ifndef FIPS_MODULE' crypto/fips_mode.c && \
+    echo '#endif /* !FIPS_MODULE */' >> crypto/fips_mode.c && \
     echo >> debian/control && \
     echo 'Package: libssl3t64-fips' >> debian/control && \
     echo 'Section: libs' >> debian/control && \
@@ -249,7 +251,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
     setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
     setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
-    setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
+    nice_path=$(readlink -f $(which nice)) && cp --remove-destination "$nice_path" "$nice_path.tmp" && mv "$nice_path.tmp" "$nice_path" && \
+    setcap CAP_SYS_NICE+eip "$nice_path" && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /etc/localtime && \
     rm -f /usr/bin/nc && \
