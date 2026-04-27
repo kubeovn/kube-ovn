@@ -347,7 +347,15 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		// link, and forcing the value above it would replace silent IPv6
 		// drops with silent IPv4 fragmentation/blackholing.
 		if encapIsIPv6 && config.MTU < util.IPv6MinMTU {
-			klog.Warningf("auto-computed MTU %d on interface %s is below the IPv6 minimum %d; IPv6 traffic on default subnets will be dropped", config.MTU, config.Iface, util.IPv6MinMTU)
+			// tunnelIface is only set when the user pinned config.Iface and
+			// the resolved nic may differ (bridge mapping); fall back to
+			// config.Iface for the auto-discovery path where tunnelIface is
+			// empty.
+			ifaceName := config.tunnelIface
+			if ifaceName == "" {
+				ifaceName = config.Iface
+			}
+			klog.Warningf("auto-computed MTU %d on interface %s is below the IPv6 minimum %d; IPv6 traffic on default subnets will be dropped", config.MTU, ifaceName, util.IPv6MinMTU)
 		}
 	}
 
