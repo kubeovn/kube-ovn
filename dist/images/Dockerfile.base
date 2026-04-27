@@ -234,7 +234,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
         kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
         uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+        logrotate dnsutils net-tools strongswan strongswan-pki strongswan-starter libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         -y --no-install-recommends --auto-remove && \
     apt remove -y --allow-remove-essential --auto-remove login && \
