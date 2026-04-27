@@ -537,7 +537,10 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 				constants.LabelNodeRoleControlPlane: "",
 			},
 		}}
-		veg.Spec.Tolerations = []corev1.Toleration{constants.ControlPlaneToleration}
+		veg.Spec.Tolerations = []corev1.Toleration{{
+			Key:    constants.LabelNodeRoleControlPlane,
+			Effect: corev1.TaintEffectNoSchedule,
+		}}
 	}
 	if vpcName == util.DefaultVpc {
 		veg.Spec.VPC = "" // test whether the veg works without specifying VPC
