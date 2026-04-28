@@ -43,6 +43,9 @@ networking:
   # Namespace where ovn-external-gw-config ConfigMap is located.
   # Default is empty, which means it will use the same namespace as the controller (PodNamespace).
   EXTERNAL_GATEWAY_CONFIG_NS: ""
+  # The name of the external gateway switch (OVS bridge providing external network).
+  # Default is empty, which means the default "external" is used.
+  EXTERNAL_GATEWAY_SWITCH: ""
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
   NODE_SUBNET: "join"

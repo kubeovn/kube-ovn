@@ -134,6 +134,9 @@ spec:
           - --dpdk-tunnel-iface={{- .Values.agent.dpdkTunnelInterface }}
           - --network-type={{- .Values.networking.tunnelType }}
           - --default-interface-name={{- .Values.networking.vlan.interfaceName }}
+          {{- if .Values.networking.externalGatewaySwitch }}
+          - --external-gateway-switch={{- .Values.networking.externalGatewaySwitch }}
+          {{- end }}
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
