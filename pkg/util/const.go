@@ -53,6 +53,7 @@ const (
 	EipV4IpLabel                            = "ovn.kubernetes.io/eip_v4_ip"
 	EipV6IpLabel                            = "ovn.kubernetes.io/eip_v6_ip"
 
+	RouterLBRuleVipsAnnotation = "ovn.kubernetes.io/router_lb_vip"
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
 	KubeHostVMVip              = "kube_host_vm_vip"

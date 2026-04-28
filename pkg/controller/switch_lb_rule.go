@@ -535,7 +535,7 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 			corev1.EndpointAddress{
 				IP: endpoint,
 				TargetRef: &corev1.ObjectReference{
-					Namespace: slr.Namespace,
+					Namespace: slr.Spec.Namespace,
 				},
 			},
 		)

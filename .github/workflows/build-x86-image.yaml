@@ -4096,6 +4096,143 @@ jobs:
           name: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log
           path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
+  router-lb-rule-e2e:
+    name: Router LB Rule E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v6
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load images
+        run: docker load -i kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install
+
+      - name: Run Router LB Rule E2E
+        id: rlr-e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: make kube-ovn-rlr-e2e
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > router-lb-rule-e2e-events.yaml
+          tar zcf router-lb-rule-e2e-events.tar.gz router-lb-rule-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
+        with:
+          name: router-lb-rule-e2e-events
+          path: router-lb-rule-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf router-lb-rule-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
+        with:
+          name: router-lb-rule-e2e-audit-log
+          path: router-lb-rule-e2e-audit-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz router-lb-rule-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: router-lb-rule-e2e-ko-log
+          path: router-lb-rule-e2e-ko-log.tar.gz
+
   push:
     name: Push Images
     needs:
@@ -4123,6 +4260,7 @@ jobs:
       - cilium-chaining-e2e
       - kube-ovn-ha-e2e
       - kube-ovn-submariner-conformance-e2e
+      - router-lb-rule-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
