@@ -435,23 +435,37 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 
 // getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
 func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
+	var mtu int
 	if subnet.Spec.Mtu > 0 {
-		return int(subnet.Spec.Mtu), nil
+		mtu = int(subnet.Spec.Mtu)
+	} else {
+		mtu = util.DefaultMTU
+		if subnet.Spec.Vlan == "" {
+			switch c.config.NetworkType {
+			case util.NetworkTypeVlan:
+				// default to geneve
+				fallthrough
+			case util.NetworkTypeGeneve:
+				mtu -= util.GeneveHeaderLength
+			case util.NetworkTypeVxlan:
+				mtu -= util.VxlanHeaderLength
+			case util.NetworkTypeStt:
+				mtu -= util.SttHeaderLength
+			default:
+				return 0, fmt.Errorf("invalid network type: %s", c.config.NetworkType)
+			}
+		}
 	}
-	mtu := util.DefaultMTU
-	if subnet.Spec.Vlan == "" {
-		switch c.config.NetworkType {
-		case util.NetworkTypeVlan:
-			// default to geneve
-			fallthrough
-		case util.NetworkTypeGeneve:
-			mtu -= util.GeneveHeaderLength
-		case util.NetworkTypeVxlan:
-			mtu -= util.VxlanHeaderLength
-		case util.NetworkTypeStt:
-			mtu -= util.SttHeaderLength
-		default:
-			return 0, fmt.Errorf("invalid network type: %s", c.config.NetworkType)
+	// Surface IPv6 MTU misconfiguration without rewriting the value: the path
+	// MTU is set by the underlying link, so silently raising it would only
+	// shift the failure to fragmentation/blackholing of IPv4 traffic. The
+	// webhook rejects new subnets that violate the floor; this branch warns
+	// for upgraded subnets and auto-computed values that can no longer carry
+	// IPv6.
+	if mtu < util.IPv6MinMTU {
+		protocol := util.CheckProtocol(subnet.Spec.CIDRBlock)
+		if protocol == kubeovnv1.ProtocolIPv6 || protocol == kubeovnv1.ProtocolDual {
+			klog.Warningf("subnet %s mtu %d is below the IPv6 minimum %d; IPv6 traffic will be dropped on pod interfaces", subnet.Name, mtu, util.IPv6MinMTU)
 		}
 	}
 	return mtu, nil

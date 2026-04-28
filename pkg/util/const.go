@@ -210,6 +210,10 @@ const (
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72
 	TCPIPHeaderLength  = 40
+	// IPv6MinMTU is the minimum MTU required by IPv6 (RFC 8200).
+	// Linux refuses to initialize inet6_dev on interfaces below this value,
+	// silently dropping every IPv6 packet.
+	IPv6MinMTU = 1280
 
 	OvnProvider                         = "ovn"
 	DefaultNetworkAnnotation            = "v1.multus-cni.io/default-network"
