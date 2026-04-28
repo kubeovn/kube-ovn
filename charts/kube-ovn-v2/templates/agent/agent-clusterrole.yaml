@@ -19,6 +19,7 @@ rules:
       - subnets
       - vlans
       - provider-networks
+      - security-groups
     verbs:
       - get
       - list

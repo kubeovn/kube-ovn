@@ -84,6 +84,7 @@ type Configuration struct {
 	SetVxlanTxOff             bool
 	LogPerm                   string
 	EnableNonPrimaryCNI       bool
+	EnableSGCTFlush           bool
 
 	// TLS configuration for secure serving
 	TLSMinVersion   string
@@ -147,6 +148,7 @@ func ParseFlags() *Configuration {
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
 		argNonPrimaryCNI   = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
+		argEnableSGCTFlush = pflag.Bool("enable-sg-ct-flush", false, "Flush stale conntrack entries when SecurityGroup rules change")
 	)
 
 	// mute info log for ipset lib
@@ -218,6 +220,7 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
+		EnableSGCTFlush:           *argEnableSGCTFlush,
 	}
 
 	return config

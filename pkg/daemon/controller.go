@@ -69,6 +69,10 @@ type Controller struct {
 	servicesSynced cache.InformerSynced
 	serviceQueue   workqueue.TypedRateLimitingInterface[*serviceEvent]
 
+	sgsLister      kubeovnlister.SecurityGroupLister
+	sgsSynced      cache.InformerSynced
+	sgCTFlushQueue workqueue.TypedRateLimitingInterface[string]
+
 	caSecretLister listerv1.SecretLister
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
@@ -110,6 +114,7 @@ func NewController(config *Configuration,
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	servicesInformer := nodeInformerFactory.Core().V1().Services()
@@ -132,6 +137,10 @@ func NewController(config *Configuration,
 
 		ovnEipsLister: ovnEipInformer.Lister(),
 		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
+
+		sgsLister:      sgInformer.Lister(),
+		sgsSynced:      sgInformer.Informer().HasSynced,
+		sgCTFlushQueue: newTypedRateLimitingQueue[string]("SGCTFlush", nil),
 
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
@@ -172,7 +181,8 @@ func NewController(config *Configuration,
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
-		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced) {
+		controller.podsSynced, controller.nodesSynced, controller.servicesSynced, controller.caSecretSynced,
+		controller.sgsSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -220,6 +230,14 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 
+	if config.EnableSGCTFlush {
+		if _, err = sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			UpdateFunc: controller.enqueueUpdateSGCTFlush,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
 	if controller.vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
 		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
 	}
@@ -256,6 +274,23 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 		klog.V(3).Infof("enqueue update node %s for node networks change", newNode.Name)
 		c.updateNodeQueue.Add(newNode.Name)
 	}
+}
+
+func (c *Controller) enqueueUpdateSGCTFlush(oldObj, newObj any) {
+	oldSG := oldObj.(*kubeovnv1.SecurityGroup)
+	newSG := newObj.(*kubeovnv1.SecurityGroup)
+	klog.V(4).Infof("SG update event: %s ingressMd5: %s->%s egressMd5: %s->%s", newSG.Name,
+		oldSG.Status.IngressMd5, newSG.Status.IngressMd5,
+		oldSG.Status.EgressMd5, newSG.Status.EgressMd5)
+	// Only enqueue when rules actually change, detected via the status MD5 fields
+	// which the controller updates after each successful rule sync.
+	if oldSG.Status.IngressMd5 == newSG.Status.IngressMd5 &&
+		oldSG.Status.EgressMd5 == newSG.Status.EgressMd5 &&
+		oldSG.Spec.AllowSameGroupTraffic == newSG.Spec.AllowSameGroupTraffic {
+		return
+	}
+	klog.Infof("enqueue SG conntrack flush for %s (ingressMd5: %s->%s)", newSG.Name, oldSG.Status.IngressMd5, newSG.Status.IngressMd5)
+	c.sgCTFlushQueue.Add(newSG.Name)
 }
 
 func (c *Controller) enqueueAddProviderNetwork(obj any) {
@@ -952,6 +987,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
+	defer c.sgCTFlushQueue.ShutDown()
 	defer c.vswitchClient.Close()
 
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
@@ -973,6 +1009,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
+	if c.config.EnableSGCTFlush {
+		go wait.Until(c.runSGCTFlushWorker, time.Second, stopCh)
+	}
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
