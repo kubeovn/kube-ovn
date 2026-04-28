@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/apis/types"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -56,19 +56,19 @@ type IPPoolSpec struct {
 
 type IPPoolStatus struct {
 	// Number of available IPv4 addresses
-	V4AvailableIPs internal.BigInt `json:"v4AvailableIPs"`
+	V4AvailableIPs types.BigInt `json:"v4AvailableIPs"`
 	// Available IPv4 address range
 	V4AvailableIPRange string `json:"v4AvailableIPRange"`
 	// Number of using IPv4 addresses
-	V4UsingIPs internal.BigInt `json:"v4UsingIPs"`
+	V4UsingIPs types.BigInt `json:"v4UsingIPs"`
 	// IPv4 address range in use
 	V4UsingIPRange string `json:"v4UsingIPRange"`
 	// Number of available IPv6 addresses
-	V6AvailableIPs internal.BigInt `json:"v6AvailableIPs"`
+	V6AvailableIPs types.BigInt `json:"v6AvailableIPs"`
 	// Available IPv6 address range
 	V6AvailableIPRange string `json:"v6AvailableIPRange"`
 	// Number of using IPv6 addresses
-	V6UsingIPs internal.BigInt `json:"v6UsingIPs"`
+	V6UsingIPs types.BigInt `json:"v6UsingIPs"`
 	// IPv6 address range in use
 	V6UsingIPRange string `json:"v6UsingIPRange"`
 
