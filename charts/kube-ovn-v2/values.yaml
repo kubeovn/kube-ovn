@@ -202,6 +202,7 @@ features:
   # -- Enable Kube-OVN loadbalancer services
   # @section -- Opt-in/out Features
   enableLoadbalancerService: false
+  enableBgpLbVip: false
   # -- Enable persistent VM IPs
   # @section -- Opt-in/out Features
   enableKeepVmIps: true
@@ -620,6 +621,13 @@ bgpSpeaker:
   # -- Enable the kube-ovn-speaker.
   # @section -- BGP speaker configuration
   enabled: false
+  # -- Enable announcing LoadBalancer Service ingress IPs for Services bound by ovn.kubernetes.io/bgp-vip.
+  # @section -- BGP speaker configuration
+  enableLbSvcAnnounce: false
+  # -- Enable announcing BGP LB VIP Service ingress IPs.
+  # Alias of enableLbSvcAnnounce; either one enables Service VIP announcements.
+  # @section -- BGP speaker configuration
+  enableBgpLbVip: false
   # -- Override image settings for kube-ovn-speaker. Empty fields fall back to the global kube-ovn image.
   # @section -- BGP speaker configuration
   image:

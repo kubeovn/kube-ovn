@@ -24,6 +24,7 @@ LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
+ENABLE_BGP_LB_VIP=${ENABLE_BGP_LB_VIP:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
@@ -200,11 +201,18 @@ if [[ $NETWORK_TYPE = "vlan" ]];then
 fi
 echo "Default Subnet CIDR:  $POD_CIDR"
 echo "Join Subnet CIDR:     $JOIN_CIDR"
-echo "Enable SVC LB:        $ENABLE_LB"
+echo "Enable LB:            $ENABLE_LB"
+echo "Enable LB SVC:        $ENABLE_LB_SVC"
+echo "Enable BGP LB VIP:    $ENABLE_BGP_LB_VIP"
 echo "Enable Networkpolicy: $ENABLE_NP"
 echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
 echo "Enable Mirror:        $ENABLE_MIRROR"
 echo "-------------------------------"
+
+if [[ "$ENABLE_BGP_LB_VIP" = "true" && "$ENABLE_LB_SVC" = "true" ]]; then
+  echo "ERROR: ENABLE_BGP_LB_VIP and ENABLE_LB_SVC are mutually exclusive"
+  exit 1
+fi
 
 if [[ $ENABLE_SSL = "true" ]];then
   echo "[Step 0/6] Generate SSL key and cert"
@@ -1079,7 +1087,7 @@ spec:
                   If empty, defaults to the kube-ovn controller's own namespace.
                 type: string
               natGwDp:
-                description: NAT gateway datapath where the EIP is assigned
+                description: NAT gateway datapath where the EIP is assigned.
                 type: string
               qosPolicy:
                 description: QoS policy name to apply to the EIP
@@ -7830,6 +7838,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
+          - --enable-bgp-lb-vip=$ENABLE_BGP_LB_VIP
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP

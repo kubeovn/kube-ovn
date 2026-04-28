@@ -51,6 +51,8 @@ type Configuration struct {
 	HoldTime                    float64
 	BgpServer                   *gobgp.BgpServer
 	AnnounceClusterIP           bool
+	EnableLbSvcAnnounce         bool
+	EnableBgpLbVip              bool
 	GracefulRestart             bool
 	GracefulRestartDeferralTime time.Duration
 	GracefulRestartTime         time.Duration
@@ -75,6 +77,8 @@ func ParseFlags() (*Configuration, error) {
 		argGracefulRestartDeferralTime = pflag.Duration("graceful-restart-deferral-time", DefaultGracefulRestartDeferralTime, "BGP Graceful restart deferral time according to RFC4724 4.1, maximum 18h.")
 		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart so that routes are preserved on unexpected restarts")
 		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to announce to the BGP peers.")
+		argEnableLbSvcAnnounce         = pflag.BoolP("enable-lb-svc-announce", "", false, "Whether to announce LoadBalancer Service ingress IPs bound by ovn.kubernetes.io/bgp-vip.")
+		argEnableBgpLbVip              = pflag.BoolP("enable-bgp-lb-vip", "", false, "Whether to announce BGP LB VIP Service ingress IPs (alias for --enable-lb-svc-announce; either flag enables Service VIP announcements).")
 		argGrpcHost                    = pflag.IP("grpc-host", net.IP{127, 0, 0, 1}, "The host address for grpc to listen, default: 127.0.0.1")
 		argGrpcPort                    = pflag.Int32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
 		argClusterAs                   = pflag.Uint32("cluster-as", 0, "The AS number of the local BGP speaker (required)")
@@ -138,6 +142,8 @@ func ParseFlags() (*Configuration, error) {
 
 	config := &Configuration{
 		AnnounceClusterIP:     *argAnnounceClusterIP,
+		EnableLbSvcAnnounce:   *argEnableLbSvcAnnounce,
+		EnableBgpLbVip:        *argEnableBgpLbVip,
 		GrpcHost:              *argGrpcHost,
 		GrpcPort:              *argGrpcPort,
 		ClusterAs:             *argClusterAs,

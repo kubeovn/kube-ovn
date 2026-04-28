@@ -139,6 +139,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
+          - --enable-bgp-lb-vip={{- .Values.func.ENABLE_BGP_LB_VIP }}
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}

@@ -63,6 +63,11 @@ const (
 	baselineAdminNetworkPolicyKey = "banp"
 	ippoolKey                     = "ippool"
 	clusterNetworkPolicyKey       = "cnp"
+
+	// bgpVipIndexName is the informer indexer key used to look up Services by their
+	// ovn.kubernetes.io/bgp-vip annotation value. Shared between controller.go (indexer
+	// registration) and vip.go (ByIndex call) so a rename is caught at compile time.
+	bgpVipIndexName = "bgpVipAnnotation"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -236,8 +241,11 @@ type Controller struct {
 	deleteNodeQueue workqueue.TypedRateLimitingInterface[string]
 	nodeKeyMutex    keymutex.KeyMutex
 
-	servicesLister     v1.ServiceLister
-	serviceSynced      cache.InformerSynced
+	servicesLister v1.ServiceLister
+	serviceSynced  cache.InformerSynced
+	// svcByBgpVipIndexer indexes Services by their ovn.kubernetes.io/bgp-vip annotation value,
+	// enabling O(k) lookup of Services bound to a specific bgp_lb_vip instead of a full list scan.
+	svcByBgpVipIndexer cache.Indexer
 	addServiceQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteServiceQueue workqueue.TypedRateLimitingInterface[*vpcService]
 	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
@@ -757,6 +765,9 @@ func Run(ctx context.Context, config *Configuration) {
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
+	if controller.config.EnableBgpLbVip {
+		klog.Infof("BGP LB VIP mode active: Service/VIP informer caches are synced and service handlers will start")
+	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
@@ -781,6 +792,22 @@ func Run(ctx context.Context, config *Configuration) {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add node event handler")
 	}
+
+	if err = serviceInformer.Informer().AddIndexers(cache.Indexers{
+		bgpVipIndexName: func(obj any) ([]string, error) {
+			svc, ok := obj.(*corev1.Service)
+			if !ok {
+				return nil, nil
+			}
+			if v := svc.Annotations[util.BgpVipAnnotation]; v != "" {
+				return []string{v}, nil
+			}
+			return nil, nil
+		},
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add bgpVip indexer to service informer")
+	}
+	controller.svcByBgpVipIndexer = serviceInformer.Informer().GetIndexer()
 
 	if _, err = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddService,
@@ -1351,11 +1378,19 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableLb {
+	// K8s LB workers are needed by both the classic OVN LB mode and the
+	// Service-based LB modes (lb-svc / bgp-lb-vip).
+	k8sLBWorker := c.config.EnableLb || c.config.EnableLbSvc || c.config.EnableBgpLbVip
+	// OVN LB workers are only needed by the classic OVN LB mode.
+	ovnLBWorker := c.config.EnableLb
+
+	if k8sLBWorker {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+	}
 
+	if ovnLBWorker {
 		go wait.Until(runWorker("add/update switch lb rule", c.addSwitchLBRuleQueue, c.handleAddOrUpdateSwitchLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete switch lb rule", c.delSwitchLBRuleQueue, c.handleDelSwitchLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete switch lb rule", c.updateSwitchLBRuleQueue, c.handleUpdateSwitchLBRule), time.Second, ctx.Done())
@@ -1378,8 +1413,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableLb {
+		if k8sLBWorker {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
+		}
+
+		if ovnLBWorker {
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
 
