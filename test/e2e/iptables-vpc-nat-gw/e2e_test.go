@@ -2112,8 +2112,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, nil,
 			"", // gwNamespace: use default (PodNamespace)
+			0,
 		)
-		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		vpcNatGwPodName := getNatGwPodName(f, vpcNatGwName, "")
 
 		randomSuffix := framework.RandomSuffix()
 		// Use CIDRs that are unrelated to any real subnet; they only drive the
