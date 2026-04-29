@@ -362,7 +362,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	}
 
 	// Validate LanIP (required)
-	if gw.Spec.LanIP == "" {
+	if gw.Spec.LanIP == "" && gw.Spec.Replicas > 1 {
 		return errors.New("lanIp must be specified")
 	}
 
