@@ -226,6 +226,9 @@ features:
   # -- Enable optimized live migrations for VMs
   # @section -- Opt-in/out Features
   enableLiveMigrationOptimization: true
+  # -- Enable targeted conntrack flush when SecurityGroup rules change
+  # @section -- Opt-in/out Features
+  enableSGCTFlush: false
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true
