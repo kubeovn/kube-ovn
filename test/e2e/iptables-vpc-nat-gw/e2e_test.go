@@ -1472,8 +1472,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
 	})
 
-	ginkgo.FIt("[6] HA VPC NAT Gateway with 2 replicas", func() {
-		f.SkipVersionPriorTo(1, 16, "HA NAT gateway support was introduced in v1.16")
+	framework.ConformanceIt("[6] HA VPC NAT Gateway with 2 replicas", func() {
+		f.SkipVersionPriorTo(1, 17, "HA NAT gateway support was introduced in v1.17")
 
 		// NAT gateway pods are in kube-system namespace
 		natGwPodClient := f.PodClientNS(framework.KubeOvnNamespace)
@@ -1707,10 +1707,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"BFD session should exist and be UP for pod %s", podName)
 		}
 
-		ginkgo.By("12. Verifying static routes are added for each NAT gateway instance")
+		ginkgo.By("12. Verifying policy routes are added for each NAT gateway instance")
 		natGwPods = getNatGwPodNames()
 		for _, podName := range natGwPods {
-			framework.Logf("Checking static routes for pod %s", podName)
+			framework.Logf("Checking policy routes for pod %s", podName)
 
 			gomega.Eventually(func() bool {
 				podObj := natGwPodClient.GetPod(podName)
@@ -1730,7 +1730,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				// Should have routes with this pod as nexthop
 				return strings.Contains(output, podIP)
 			}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
-				"Static routes should exist for pod %s", podName)
+				"Policy routes should exist for pod %s", podName)
 		}
 
 		ginkgo.By("Cleaning up: Deleting SNAT rule")
