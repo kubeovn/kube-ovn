@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:24.04 AS ovs-builder
+FROM ubuntu:26.04 AS ovs-builder
 
 ARG ARCH
 # Available DPDK versions: http://core.dpdk.org/download/
@@ -102,7 +102,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/ovn-*deb /packages && \
     cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
