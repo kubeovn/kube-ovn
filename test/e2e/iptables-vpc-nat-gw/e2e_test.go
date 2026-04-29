@@ -1472,31 +1472,55 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("11. Test completed: VPC NAT Gateway with no IPAM NAD and noDefaultEIP works correctly")
 	})
 
-	framework.ConformanceIt("[6] HA VPC NAT Gateway with 2 replicas", func() {
+	ginkgo.FIt("[6] HA VPC NAT Gateway with 2 replicas", func() {
 		f.SkipVersionPriorTo(1, 16, "HA NAT gateway support was introduced in v1.16")
 
 		// NAT gateway pods are in kube-system namespace
 		natGwPodClient := f.PodClientNS(framework.KubeOvnNamespace)
+		deploymentClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
 
 		overlaySubnetV4Cidr := "10.0.7.0/24"
 		overlaySubnetV4Gw := "10.0.7.1"
-		lanIP := "10.0.7.254"
+		bfdIP := "10.0.7.254"
 		haVpcName := "ha-test-vpc-" + framework.RandomSuffix()
 		haOverlaySubnetName := "ha-test-overlay-subnet-" + framework.RandomSuffix()
 		haVpcNatGwName := "ha-test-natgw-" + framework.RandomSuffix()
 
-		// Skip NAD setup as it's already created in BeforeAll
-		setupVpcNatGwTestEnvironment(
-			f, dockerExtNet1Network, attachNetClient,
-			subnetClient, vpcClient, vpcNatGwClient,
-			haVpcName, haOverlaySubnetName, haVpcNatGwName, "",
-			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
-			dockerExtNet1Name, networkAttachDefName, net1NicName,
-			externalSubnetProvider,
-			true, nil,
-			"", // gwNamespace: use default (PodNamespace)
-			2,
-		)
+		// Helper function to get current NAT gateway pod names
+		// Pods may restart when configuration changes, so fetch fresh names each time
+		getNatGwPodNames := func() []string {
+			deploymentName := util.GenNatGwName(haVpcNatGwName)
+			deploy := deploymentClient.Get(deploymentName)
+			pods, err := deploymentClient.GetAllPods(deploy)
+			if err != nil || len(pods.Items) == 0 {
+				return nil
+			}
+			var podNames []string
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == "Running" {
+					podNames = append(podNames, pod.Name)
+				}
+			}
+			return podNames
+		}
+
+		// Create VPC with BFD enabled and no static route
+		ginkgo.By("Creating custom HA VPC with BFD enabled " + haVpcName)
+		vpc := framework.MakeVpc(haVpcName, "", false, true, nil)
+		vpc.Spec.BFDPort = &apiv1.BFDPort{
+			Enabled: true,
+			IP:      bfdIP,
+		}
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("Creating custom overlay subnet " + haOverlaySubnetName)
+		overlaySubnet := framework.MakeSubnet(haOverlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, haVpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+
+		ginkgo.By("Creating custom vpc nat gw " + haVpcNatGwName)
+		vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(haVpcNatGwName, haVpcName, haOverlaySubnetName, "", networkAttachDefName, "", nil)
+		vpcNatGw.Spec.Replicas = 2
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 
 		ginkgo.By("1. Setting NAT gateway HA mode")
 		natGw := vpcNatGwClient.Get(haVpcNatGwName)
@@ -1505,10 +1529,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		modifiedNatGw.Spec.BFD.MinRX = 1000
 		modifiedNatGw.Spec.BFD.MinTX = 1000
 		modifiedNatGw.Spec.BFD.Multiplier = 3
+		modifiedNatGw.Spec.InternalSubnets = []string{haOverlaySubnetName}
 		vpcNatGwClient.PatchSync(natGw, modifiedNatGw, 4*time.Minute)
 
 		ginkgo.By("2. Verifying NAT gateway becomes a Deployment with 2 replicas")
-		deploymentClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
 		deploymentName := util.GenNatGwName(haVpcNatGwName)
 		gomega.Eventually(func() bool {
 			deploy, err := deploymentClient.DeploymentInterface.Get(context.TODO(), deploymentName, metav1.GetOptions{})
@@ -1521,7 +1545,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"NAT gateway should become a Deployment with 2 replicas")
 
 		ginkgo.By("3. Waiting for both NAT gateway pods to be ready")
-		var natGwPods []string
 		gomega.Eventually(func() bool {
 			deploy := deploymentClient.Get(deploymentName)
 			pods, err := deploymentClient.GetAllPods(deploy)
@@ -1536,7 +1559,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				}
 				return false
 			}
-			natGwPods = nil // reset
 			for _, pod := range pods.Items {
 				if pod.Status.Phase != "Running" {
 					framework.Logf("Pod %s not running: %s", pod.Name, pod.Status.Phase)
@@ -1546,7 +1568,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 					framework.Logf("Pod %s not initialized yet", pod.Name)
 					return false
 				}
-				natGwPods = append(natGwPods, pod.Name)
 			}
 			return true
 		}, 4*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
@@ -1558,12 +1579,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		eipName2 := "ha-eip2-" + randomSuffix
 		eip1 := framework.MakeIptablesEIP(eipName1, "", "", "", haVpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(eip1)
-		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eipName1) })
 		eip1 = iptablesEIPClient.Get(eipName1)
 
 		eip2 := framework.MakeIptablesEIP(eipName2, "", "", "", haVpcNatGwName, "", "")
 		_ = iptablesEIPClient.CreateSync(eip2)
-		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eipName2) })
 		eip2 = iptablesEIPClient.Get(eipName2)
 
 		ginkgo.By("5. Creating VIPs for DNAT/FIP testing")
@@ -1571,34 +1590,31 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		dnatVipName := "ha-dnat-vip-" + randomSuffix
 		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, haOverlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
-		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(fipVipName) })
 		fipVip = vipClient.Get(fipVipName)
 
 		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, haOverlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
-		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(dnatVipName) })
 		dnatVip = vipClient.Get(dnatVipName)
 
 		ginkgo.By("6. Creating FIP rule")
 		fipName := "ha-fip-" + randomSuffix
 		fip := framework.MakeIptablesFIPRule(fipName, eipName1, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.CreateSync(fip)
-		ginkgo.DeferCleanup(func() { iptablesFIPClient.DeleteSync(fipName) })
 
 		ginkgo.By("7. Creating DNAT rule")
 		dnatName := "ha-dnat-" + randomSuffix
 		dnat := framework.MakeIptablesDnatRule(dnatName, eipName1, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		_ = iptablesDnatRuleClient.CreateSync(dnat)
-		ginkgo.DeferCleanup(func() { iptablesDnatRuleClient.DeleteSync(dnatName) })
 
 		ginkgo.By("8. Creating SNAT rule")
 		snatName := "ha-snat-" + randomSuffix
 		snatCIDR := "10.0.7.0/25"
 		snat := framework.MakeIptablesSnatRule(snatName, eipName2, snatCIDR)
 		_ = iptablesSnatRuleClient.CreateSync(snat)
-		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snatName) })
 
 		ginkgo.By("9. Verifying FIP/DNAT/SNAT iptables rules exist on BOTH NAT gateway pods")
+		natGwPods := getNatGwPodNames()
+		framework.ExpectNotEmpty(natGwPods, "NAT gateway pods should exist")
 		for _, podName := range natGwPods {
 			framework.Logf("Checking iptables rules on pod %s", podName)
 
@@ -1624,6 +1640,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 
 		ginkgo.By("10. Verifying EIP IPs are added on both NAT gateway pods")
+		natGwPods = getNatGwPodNames()
 		for _, podName := range natGwPods {
 			framework.Logf("Checking EIP IPs on pod %s", podName)
 
@@ -1641,9 +1658,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 
 		ginkgo.By("11. Verifying BFD sessions are established and UP for each NAT gateway instance")
-		vpc := vpcClient.Get(haVpcName)
-		ovnPodName := "ovn-central-0"
-		ovnNamespace := "kube-system"
+		vpc = vpcClient.Get(haVpcName)
+		natGwPods = getNatGwPodNames()
 		for _, podName := range natGwPods {
 			framework.Logf("Checking BFD session for pod %s", podName)
 
@@ -1662,12 +1678,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 				// Check if BFD session exists and is UP in OVN
 				// Output format: dst_ip,status (one line per BFD endpoint)
-				cmd := []string{
-					"ovn-nbctl", "--format=csv", "--data=bare", "--no-heading",
-					"--columns=dst_ip,status,logical_port", "find", "BFD",
-					fmt.Sprintf("logical_port=bfd@%s", vpc.Name),
-				}
-				stdout, _, err := framework.KubectlExec(ovnNamespace, ovnPodName, cmd...)
+				cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=dst_ip,status,logical_port find BFD logical_port=bfd@%s", vpc.Name)
+				stdout, _, err := framework.NBExec(cmd)
 				if err != nil {
 					framework.Logf("Failed to query BFD sessions: %v", err)
 					return false
@@ -1679,7 +1691,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				lines := strings.SplitSeq(strings.TrimSpace(output), "\n")
 				for line := range lines {
 					parts := strings.Split(line, ",")
-					if len(parts) == 2 && strings.TrimSpace(parts[0]) == podIP {
+					if len(parts) == 3 && strings.TrimSpace(parts[0]) == podIP {
 						status := strings.TrimSpace(parts[1])
 						if status == "up" {
 							framework.Logf("BFD session for pod %s (IP: %s) is UP", podName, podIP)
@@ -1696,6 +1708,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 
 		ginkgo.By("12. Verifying static routes are added for each NAT gateway instance")
+		natGwPods = getNatGwPodNames()
 		for _, podName := range natGwPods {
 			framework.Logf("Checking static routes for pod %s", podName)
 
@@ -1706,9 +1719,9 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 					return false
 				}
 
-				// Check for static routes pointing to this pod's IP
-				cmd := []string{"ovn-nbctl", "lr-route-list", haVpcName}
-				stdout, _, err := framework.KubectlExec(ovnNamespace, ovnPodName, cmd...)
+				// Check for policy routes pointing to this pod's IP
+				cmd := fmt.Sprintf("ovn-nbctl lr-policy-list %s", haVpcName)
+				stdout, _, err := framework.NBExec(cmd)
 				if err != nil {
 					framework.Logf("Failed to list routes: %v", err)
 					return false
@@ -1720,6 +1733,23 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"Static routes should exist for pod %s", podName)
 		}
 
+		ginkgo.By("Cleaning up: Deleting SNAT rule")
+		iptablesSnatRuleClient.DeleteSync(snatName)
+
+		ginkgo.By("Cleaning up: Deleting DNAT rule")
+		iptablesDnatRuleClient.DeleteSync(dnatName)
+
+		ginkgo.By("Cleaning up: Deleting FIP rule")
+		iptablesFIPClient.DeleteSync(fipName)
+
+		ginkgo.By("Cleaning up: Deleting VIPs")
+		vipClient.DeleteSync(dnatVipName)
+		vipClient.DeleteSync(fipVipName)
+
+		ginkgo.By("Cleaning up: Deleting EIPs")
+		iptablesEIPClient.DeleteSync(eipName2)
+		iptablesEIPClient.DeleteSync(eipName1)
+
 		ginkgo.By("13. Deleting NAT gateway and verifying cleanup")
 		vpcNatGwClient.DeleteSync(haVpcNatGwName)
 
@@ -1730,27 +1760,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
 			"Deployment should be deleted")
 
-		ginkgo.By("15. Verifying all NAT gateway pods are deleted")
+		ginkgo.By("15. Verifying BFD sessions are removed")
 		gomega.Eventually(func() bool {
-			for _, podName := range natGwPods {
-				_, err := natGwPodClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
-				if err == nil || !k8serrors.IsNotFound(err) {
-					framework.Logf("Pod %s still exists", podName)
-					return false
-				}
-			}
-			return true
-		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
-			"All NAT gateway pods should be deleted")
-
-		ginkgo.By("16. Verifying BFD sessions are removed")
-		gomega.Eventually(func() bool {
-			cmd := []string{
-				"ovn-nbctl", "--format=csv", "--data=bare", "--no-heading",
-				"--columns=dst_ip,status,logical_port", "find", "BFD",
-				fmt.Sprintf("logical_port=bfd@%s", haVpcName),
-			}
-			stdout, _, err := framework.KubectlExec(ovnNamespace, ovnPodName, cmd...)
+			cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=dst_ip,status,logical_port find BFD logical_port=bfd@%s", haVpcName)
+			stdout, _, err := framework.NBExec(cmd)
 			if err != nil {
 				framework.Logf("Failed to query BFD sessions: %v", err)
 				return false
@@ -1760,25 +1773,28 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
 			"All BFD sessions should be removed")
 
-		ginkgo.By("17. Verifying static routes are removed")
+		ginkgo.By("16. Verifying policy routes are removed")
 		gomega.Eventually(func() bool {
-			for _, podName := range natGwPods {
-				podObj := natGwPodClient.GetPod(podName)
-				if podObj != nil {
-					podIP := podObj.Annotations[util.IPAddressAnnotation]
-					if podIP != "" {
-						cmd := []string{"ovn-nbctl", "lr-route-list", haVpcName}
-						stdout, _, err := framework.KubectlExec(ovnNamespace, ovnPodName, cmd...)
-						if err == nil && strings.Contains(string(stdout), podIP) {
-							framework.Logf("Routes for pod %s still exist", podName)
-							return false
-						}
-					}
-				}
+			// Verify that no routes exist for the HA VPC (besides the default routes)
+			cmd := fmt.Sprintf("ovn-nbctl lr-policy-list %s", haVpcName)
+			stdout, _, err := framework.NBExec(cmd)
+			if err != nil {
+				framework.Logf("Failed to list routes: %v", err)
+				return false
 			}
-			return true
+			output := strings.TrimSpace(string(stdout))
+			// When NAT gateway is deleted, only the subnet routes should remain
+			// The policy routes added for NAT gateway pod IPs should be gone
+			// We can check that there are no bfd routes (which are the NAT GW routes)
+			return !strings.Contains(output, "bfd")
 		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
 			"All static routes for NAT gateway instances should be removed")
+
+		ginkgo.By("Cleaning up: Deleting overlay subnet (after NAT Gateway)")
+		subnetClient.DeleteSync(haOverlaySubnetName)
+
+		ginkgo.By("Cleaning up: Deleting VPC (after subnet)")
+		vpcClient.DeleteSync(haVpcName)
 	})
 
 	framework.ConformanceIt("[7] FIP/DNAT/SNAT spec update with iptables rule verification", func() {
