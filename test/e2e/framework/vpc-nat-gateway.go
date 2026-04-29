@@ -135,7 +135,8 @@ func (c *VpcNatGatewayClient) DeleteSync(name string) {
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.
 func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Spec.LanIP != "" {
+		gw := c.Get(name)
+		if gw.Status.LanIP != "" {
 			return true
 		}
 	}
