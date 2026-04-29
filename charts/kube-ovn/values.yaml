@@ -67,6 +67,7 @@ func:
   ENABLE_EXTERNAL_VPC: false
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
+  ENABLE_BGP_LB_VIP: false
   ENABLE_KEEP_VM_IP: true
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true

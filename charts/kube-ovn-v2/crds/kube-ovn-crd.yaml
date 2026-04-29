@@ -828,7 +828,7 @@ spec:
                   If empty, defaults to the kube-ovn controller's own namespace.
                 type: string
               natGwDp:
-                description: NAT gateway datapath where the EIP is assigned
+                description: NAT gateway datapath where the EIP is assigned.
                 type: string
               qosPolicy:
                 description: QoS policy name to apply to the EIP

@@ -17,6 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	v1 "k8s.io/api/core/v1"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -42,6 +44,33 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
+	}
+	// When a bgp_lb_vip gets its IP for the first time (status.V4ip: "" → non-empty),
+	// actively re-enqueue any Services that reference this VIP so they bind immediately
+	// instead of waiting for the next retry backoff interval.
+	// The informer calls UpdateFunc for all updates including status-only ones, so this
+	// handler fires whenever the VIP object is modified. The spec-change block above only
+	// enqueues to updateVirtualIPQueue on Spec field changes; this block is independent
+	// and fires on any update where oldVip.Status.V4ip was empty and newVip.Status.V4ip
+	// is now set (the first IP allocation event).
+	if c.config.EnableBgpLbVip &&
+		newVip.Spec.Type == util.BgpLbVip &&
+		oldVip.Status.V4ip == "" && newVip.Status.V4ip != "" {
+		// Use the bgpVipIndexName indexer for O(k) lookup instead of a full Service list scan.
+		objs, err := c.svcByBgpVipIndexer.ByIndex(bgpVipIndexName, newVip.Name)
+		if err != nil {
+			klog.Errorf("failed to index services for vip %s re-enqueue: %v", newVip.Name, err)
+			return
+		}
+		for _, obj := range objs {
+			svc, ok := obj.(*v1.Service)
+			if !ok {
+				continue
+			}
+			svcKey := cache.MetaObjectToName(svc).String()
+			klog.Infof("re-enqueue service %s: vip %s got IP %s", svcKey, newVip.Name, newVip.Status.V4ip)
+			c.addServiceQueue.Add(svcKey)
+		}
 	}
 }
 
@@ -93,7 +122,16 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
 		return err
 	}
-	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	// ipamKey is the key used for IPAM allocation and must be consistent with the
+	// corresponding ReleaseAddressByPod call in handleUpdateVirtualIP.
+	// - Non-BgpLbVip types: use the OVN port name (<name>.<ns>.<provider>) because
+	//   they have an associated LSP and the IPAM entry must match the port.
+	// - BgpLbVip: use the bare VIP name because there is no OVN LSP; the IP is
+	//   held in IPAM only and released with the same bare name on deletion.
+	ipamKey := vip.Name
+	if vip.Spec.Type != util.BgpLbVip {
+		ipamKey = ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	}
 	sourceV4Ip = vip.Spec.V4ip
 	sourceV6Ip = vip.Spec.V6ip
 	// v6 ip address can not use upper case
@@ -108,15 +146,31 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		if vip.Spec.MacAddress != "" {
 			macPointer = &vip.Spec.MacAddress
 		}
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, ipamKey, ipStr, macPointer)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
+		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, ipamKey)
 	}
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
+	// bgp_lb_vip: IPAM-only VIP — no OVN LSP, no virtual parents.
+	// This CRD is only the IP resource source for the BGP LB VIP flow:
+	// Vip(spec/status) -> service controller -> Service annotation/status -> speaker -> BGP announce.
+	// The service controller writes the allocated IP into Service.status.loadBalancer.ingress
+	// and marks ovn.kubernetes.io/bgp so the speaker can publish it.
+	if vip.Spec.Type == util.BgpLbVip {
+		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac); err != nil {
+			klog.Errorf("failed to create or update bgp-lb vip '%s': %v", vip.Name, err)
+			return err
+		}
+		c.updateSubnetStatusQueue.Add(subnetName)
+		return nil
+	}
+
+	portName := ipamKey
+
 	if vip.Spec.Type == util.SwitchLBRuleVip {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
@@ -189,25 +243,48 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	// should delete
 	if !vip.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting vip %s", vip.Name)
-		// Clean up resources before removing finalizer
-		if vip.Spec.Type != "" {
-			subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
-			if err != nil {
-				klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
-				return err
-			}
-			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-			klog.Infof("delete vip lsp %s", portName)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
-				klog.Error(err)
+		if vip.Spec.Type == util.BgpLbVip {
+			// Clean up bound Services before releasing IPAM and removing the finalizer.
+			// Ordering guarantee: Service spec is written first, then status. If the
+			// status write fails, a retry re-enters with targetSvc = updatedSvc.DeepCopy()
+			// (which already carries the new resourceVersion), so the stale-object
+			// conflict is avoided. IPAM release happens after this block; if cleanup
+			// fails here, the finalizer is not removed and the VIP is retried safely.
+			if err := c.cleanupBgpLbVipServiceBindingByVip(vip.Name); err != nil {
+				klog.Errorf("failed to cleanup bound services for bgp-lb-vip %s: %v", vip.Name, err)
 				return err
 			}
 		}
-		// delete virtual ports
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
-			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
-			return err
+		// bgp_lb_vip holds no OVN LSP; skip all OVN cleanup.
+		if vip.Spec.Type != util.BgpLbVip {
+			// Clean up resources before removing finalizer
+			switch vip.Spec.Type {
+			case util.SwitchLBRuleVip, util.KubeHostVMVip:
+				subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+				if err != nil {
+					klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
+					return err
+				}
+				portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+				klog.Infof("delete vip lsp %s", portName)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+					err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
+					klog.Error(err)
+					return err
+				}
+
+				if vip.Spec.Type == util.SwitchLBRuleVip || vip.Spec.Type == util.KubeHostVMVip {
+					if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+						klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
+						return err
+					}
+				}
+			default:
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+					klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
+					return err
+				}
+			}
 		}
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
@@ -254,6 +331,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		klog.Errorf("failed to handle vip finalizer %v", err)
 		return err
 	}
+
 	return nil
 }
 
@@ -283,6 +361,10 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	if cachedVip.Spec.Type == util.KubeHostVMVip {
 		// vm use the vip as its real ip
 		klog.Infof("created host network pod vm ip %s", key)
+		return nil
+	}
+	if cachedVip.Spec.Type == util.BgpLbVip {
+		// bgp_lb_vip holds no OVN virtual port
 		return nil
 	}
 	// only pods in the same namespace as vip are allowed to use aap

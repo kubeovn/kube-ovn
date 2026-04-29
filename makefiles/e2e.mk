@@ -105,6 +105,7 @@ e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	$(GINKGO_E2E_BUILD) ./test/e2e/anp-domain
 	$(GINKGO_E2E_BUILD) ./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/bgp-lb-eip
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -195,6 +196,15 @@ kube-ovn-lb-svc-conformance-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test -- $(TEST_BIN_ARGS)
+
+.PHONY: bgp-lb-eip-e2e
+bgp-lb-eip-e2e:
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
+	$(GINKGO_E2E_BUILD) ./test/e2e/bgp-lb-eip
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN) --focus="group:bgp-lb-eip" ./test/e2e/bgp-lb-eip/bgp-lb-eip.test -- $(TEST_BIN_ARGS)
 
 .PHONY: vip-conformance-e2e
 vip-conformance-e2e:
