@@ -324,6 +324,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		eipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedEip.Status.Redo, time.Local)
 		allReady := true
 		for _, gwPod := range gwPods {
+			if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
+				allReady = false
+				break
+			}
+
 			if !gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: eipRedo}) {
 				allReady = false
 				break

@@ -1770,7 +1770,11 @@ func (c *Controller) patchNatGwStatus(key string) error {
 			return err
 		}
 		for _, pod := range pods {
-			podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, subnet.Spec.Provider)]
+			provider := subnet.Spec.Provider
+			if provider == "" {
+				provider = util.OvnProvider
+			}
+			podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
 			if podIP != "" {
 				lanIPs = append(lanIPs, podIP)
 			}
