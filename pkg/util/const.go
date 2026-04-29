@@ -17,6 +17,7 @@ const (
 	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
 	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
+	ServiceCIDRHashAnnotation    = "ovn.kubernetes.io/service-cidr-hash"
 	RoutedAnnotation             = "ovn.kubernetes.io/routed"
 	RoutesAnnotation             = "ovn.kubernetes.io/routes"
 	MacAddressAnnotation         = "ovn.kubernetes.io/mac_address"

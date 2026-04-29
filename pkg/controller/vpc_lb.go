@@ -22,26 +22,38 @@ func vpcLbDeploymentName(vpc string) string {
 }
 
 func (c *Controller) createVpcLb(vpc *kubeovnv1.Vpc) error {
-	deployment, err := c.genVpcLbDeployment(vpc)
-	if deployment == nil || err != nil {
+	desired, err := c.genVpcLbDeployment(vpc)
+	if desired == nil || err != nil {
 		klog.Errorf("failed to generate vpc lb deployment for %s: %v", vpc.Name, err)
 		return err
 	}
-	klog.Infof("create vpc lb deployment %s", deployment.Name)
-	_, err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Get(context.Background(), deployment.Name, metav1.GetOptions{})
-	if err == nil {
+	deployments := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace)
+	existing, err := deployments.Get(context.Background(), desired.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		klog.Infof("create vpc lb deployment %s", desired.Name)
+		if _, err = deployments.Create(context.Background(), desired, metav1.CreateOptions{}); err != nil {
+			klog.Errorf("failed to create LB deployment for VPC %s: %v", vpc.Name, err)
+			return err
+		}
 		return nil
 	}
-	if !k8serrors.IsNotFound(err) {
+	if err != nil {
 		klog.Errorf("failed to check LB deployment for VPC %s: %v", vpc.Name, err)
 		return err
 	}
-
-	if _, err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Create(context.Background(), deployment, metav1.CreateOptions{}); err != nil {
-		klog.Errorf("failed to create LB deployment for VPC %s: %v", vpc.Name, err)
+	if existing.Annotations[util.ServiceCIDRHashAnnotation] == desired.Annotations[util.ServiceCIDRHashAnnotation] {
+		return nil
+	}
+	klog.Infof("update vpc lb deployment %s for ServiceCIDR change", desired.Name)
+	existing.Spec = desired.Spec
+	if existing.Annotations == nil {
+		existing.Annotations = map[string]string{}
+	}
+	existing.Annotations[util.ServiceCIDRHashAnnotation] = desired.Annotations[util.ServiceCIDRHashAnnotation]
+	if _, err = deployments.Update(context.Background(), existing, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("failed to update LB deployment for VPC %s: %v", vpc.Name, err)
 		return err
 	}
-
 	return nil
 }
 
@@ -152,53 +164,66 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	}
 
 	v4Gw, v6Gw := util.SplitStringIP(defaultSubnet.Spec.Gateway)
-	v4Svc, v6Svc := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	if v4Gw != "" && v4Svc != "" {
-		deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
-			Name:            "init-ipv4-route",
-			Image:           vpcNatImage,
-			Command:         []string{"ip"},
-			Args:            strings.Fields(fmt.Sprintf("-4 route replace %s via %s", v4Svc, v4Gw)),
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: &corev1.SecurityContext{
-				Privileged:               &privileged,
-				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-			},
-		}, corev1.Container{
-			Name:            "init-ipv4-iptables",
-			Image:           vpcNatImage,
-			Command:         []string{"iptables"},
-			Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v4Svc)),
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: &corev1.SecurityContext{
-				Privileged:               &privileged,
-				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-			},
-		})
+	if v4Gw != "" {
+		for i, v4Svc := range c.serviceCIDRStore.V4CIDRs() {
+			deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
+				Name:            fmt.Sprintf("init-ipv4-route-%d", i),
+				Image:           vpcNatImage,
+				Command:         []string{"ip"},
+				Args:            strings.Fields(fmt.Sprintf("-4 route replace %s via %s", v4Svc, v4Gw)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               &privileged,
+					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+				},
+			}, corev1.Container{
+				Name:            fmt.Sprintf("init-ipv4-iptables-%d", i),
+				Image:           vpcNatImage,
+				Command:         []string{"iptables"},
+				Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v4Svc)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               &privileged,
+					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+				},
+			})
+		}
 	}
-	if v6Gw != "" && v6Svc != "" {
-		deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
-			Name:            "init-ipv6-route",
-			Image:           vpcNatImage,
-			Command:         []string{"ip"},
-			Args:            strings.Fields(fmt.Sprintf("-6 route replace %s via %s", v6Svc, v6Gw)),
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: &corev1.SecurityContext{
-				Privileged:               &privileged,
-				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-			},
-		}, corev1.Container{
-			Name:            "init-ipv6-iptables",
-			Image:           vpcNatImage,
-			Command:         []string{"ip6tables"},
-			Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v6Svc)),
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: &corev1.SecurityContext{
-				Privileged:               &privileged,
-				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-			},
-		})
+	if v6Gw != "" {
+		for i, v6Svc := range c.serviceCIDRStore.V6CIDRs() {
+			deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
+				Name:            fmt.Sprintf("init-ipv6-route-%d", i),
+				Image:           vpcNatImage,
+				Command:         []string{"ip"},
+				Args:            strings.Fields(fmt.Sprintf("-6 route replace %s via %s", v6Svc, v6Gw)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               &privileged,
+					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+				},
+			}, corev1.Container{
+				Name:            fmt.Sprintf("init-ipv6-iptables-%d", i),
+				Image:           vpcNatImage,
+				Command:         []string{"ip6tables"},
+				Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v6Svc)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               &privileged,
+					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+				},
+			})
+		}
 	}
+
+	if deployment.Annotations == nil {
+		deployment.Annotations = map[string]string{}
+	}
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = map[string]string{}
+	}
+	hash := c.serviceCIDRStore.Hash()
+	deployment.Annotations[util.ServiceCIDRHashAnnotation] = hash
+	deployment.Spec.Template.Annotations[util.ServiceCIDRHashAnnotation] = hash
 
 	return deployment, nil
 }

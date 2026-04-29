@@ -6676,6 +6676,14 @@ rules:
       - list
       - watch
   - apiGroups:
+      - networking.k8s.io
+    resources:
+      - servicecidrs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - apps
     resources:
       - daemonsets
@@ -6943,6 +6951,14 @@ rules:
       - "list"
       - "watch"
       - "delete"
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - servicecidrs
+    verbs:
+      - get
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

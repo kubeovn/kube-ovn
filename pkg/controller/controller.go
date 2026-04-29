@@ -14,12 +14,10 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/discovery"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -33,7 +31,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
-	"k8s.io/utils/set"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
@@ -313,6 +310,11 @@ type Controller struct {
 	netAttachSynced          cache.InformerSynced
 	netAttachInformerFactory netAttach.SharedInformerFactory
 
+	serviceCIDRStore           *util.ServiceCIDRStore
+	serviceCIDRLister          netv1.ServiceCIDRLister
+	serviceCIDRSynced          cache.InformerSynced
+	serviceCIDRInformerFactory kubeinformers.SharedInformerFactory
+
 	recorder               record.EventRecorder
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
@@ -385,6 +387,13 @@ func Run(ctx context.Context, config *Configuration) {
 	)
 	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(config.KubevirtClient.RestClient(), config.KubevirtClient,
 		informer.WithTransform(util.TrimManagedFields),
+	)
+	// Dedicated factory so that on clusters without the ServiceCIDR API the
+	// failed list/watch does not contaminate the main informer factory.
+	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}),
 	)
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
@@ -620,6 +629,9 @@ func Run(ctx context.Context, config *Configuration) {
 		netAttachSynced:          netAttachInformer.Informer().HasSynced,
 		netAttachInformerFactory: attachNetInformerFactory,
 
+		serviceCIDRStore:           util.NewServiceCIDRStore(config.ServiceClusterIPRange),
+		serviceCIDRInformerFactory: serviceCIDRInformerFactory,
+
 		recorder:               recorder,
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
@@ -720,6 +732,10 @@ func Run(ctx context.Context, config *Configuration) {
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
 	controller.StartNetAttachInformerFactory(ctx)
+
+	// ServiceCIDR (networking.k8s.io/v1) is GA in K8s 1.33; older clusters
+	// don't have the API at all. Best-effort start with periodic retry.
+	controller.StartServiceCIDRInformerFactory(ctx)
 
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
@@ -1609,27 +1625,4 @@ func runWorker[T comparable](action string, queue workqueue.TypedRateLimitingInt
 		for processNextWorkItem(action, queue, handler, getWorkItemKey) {
 		}
 	}
-}
-
-// apiResourceExists checks if all specified kinds exist in the given group version.
-// It returns true if all kinds are found, false otherwise.
-// Parameters:
-// - discoveryClient: The discovery client to use for querying API resources.
-// - gv: The group version string (e.g., "apps/v1").
-// - kinds: A variadic list of kind names to check for existence (e.g., "Deployment", "StatefulSet").
-func apiResourceExists(discoveryClient discovery.DiscoveryInterface, gv string, kinds ...string) (bool, error) {
-	apiResourceLists, err := discoveryClient.ServerResourcesForGroupVersion(gv)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed to discover api resources for %s: %w", gv, err)
-	}
-
-	existingKinds := set.New[string]()
-	for _, apiResource := range apiResourceLists.APIResources {
-		existingKinds.Insert(apiResource.Kind)
-	}
-
-	return existingKinds.HasAll(kinds...), nil
 }
