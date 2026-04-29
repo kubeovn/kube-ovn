@@ -119,6 +119,16 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("%s is not a valid protocol type", protocol)
 	}
 
+	// Reject MTU values that would break IPv6 on the subnet. Linux silently
+	// drops IPv6 traffic on interfaces below 1280 (RFC 8200), so the user
+	// cannot tell apart a misconfiguration from a real network outage.
+	if subnet.Spec.Mtu > 0 && subnet.Spec.Mtu < IPv6MinMTU {
+		cidrProtocol := CheckProtocol(subnet.Spec.CIDRBlock)
+		if cidrProtocol == kubeovnv1.ProtocolIPv6 || cidrProtocol == kubeovnv1.ProtocolDual {
+			return fmt.Errorf("subnet %s mtu %d is below the IPv6 minimum %d", subnet.Name, subnet.Spec.Mtu, IPv6MinMTU)
+		}
+	}
+
 	if subnet.Spec.Vpc == subnet.Name {
 		return fmt.Errorf("subnet %s and vpc %s cannot have the same name", subnet.Name, subnet.Spec.Vpc)
 	}

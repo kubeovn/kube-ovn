@@ -307,6 +307,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		}
 
+		// Warn but keep the configured value: the provider-network or subnet
+		// MTU reflects the real link MTU, and inflating it would push pods
+		// to emit packets that the underlay cannot carry, breaking IPv4 too.
+		if mtu > 0 && mtu < util.IPv6MinMTU {
+			subnetProtocol := util.CheckProtocol(podSubnet.Spec.CIDRBlock)
+			if subnetProtocol == kubeovnv1.ProtocolIPv6 || subnetProtocol == kubeovnv1.ProtocolDual {
+				klog.Warningf("subnet %s mtu %d is below the IPv6 minimum %d; IPv6 traffic on pod %s/%s will be dropped", podSubnet.Name, mtu, util.IPv6MinMTU, pod.Namespace, pod.Name)
+			}
+		}
+
 		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		podNicName = ifName

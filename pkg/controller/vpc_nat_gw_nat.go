@@ -954,10 +954,14 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 
 	// spec change: compare Status (old, what's in Pod) vs Spec+EIP (new, desired)
 	// SNAT identity = (v4ip, internalCIDR), all fields are identity — no non-identity fields.
+	// Both sides are normalized so a user edit from "10.0.0.5" to "10.0.0.5/32"
+	// (same rule, different surface form) does not trigger a spurious redo.
 	oldV4ip := cachedSnat.Status.V4ip
 	oldV4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
+	oldV4Cidr = normalizeSnatInternalCIDR(oldV4Cidr)
 	newV4ip := eip.Status.IP
 	newV4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+	newV4Cidr = normalizeSnatInternalCIDR(newV4Cidr)
 
 	// Warn if we are modifying a resource that might be in a dirty state from a previous failed update.
 	if !cachedSnat.Status.Ready {
@@ -1632,9 +1636,15 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		changed = true
 	}
 	if ready && snat.Spec.InternalCIDR != "" {
+		// Status.InternalCIDR is always stored in canonical "<ip>/len" form so that
+		// subsequent reads (spec-change diff, cleanup paths) never have to treat a
+		// bare IPv4 specially. The compare side is normalized too, so flipping
+		// between "10.0.0.5" and "10.0.0.5/32" in Spec produces no Status churn.
 		v4CidrSpec, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
+		v4CidrSpec = normalizeSnatInternalCIDR(v4CidrSpec)
 		if v4CidrSpec != "" {
 			v4Cidr, _ := util.SplitStringIP(snat.Status.InternalCIDR)
+			v4Cidr = normalizeSnatInternalCIDR(v4Cidr)
 			if v4Cidr != v4CidrSpec {
 				snat.Status.InternalCIDR = v4CidrSpec
 				changed = true
@@ -1970,6 +1980,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) er
 }
 
 func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
+	internalCIDR = normalizeSnatInternalCIDR(internalCIDR)
 	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		klog.Errorf("failed to get nat gw pod, %v", err)
@@ -1996,6 +2007,7 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 }
 
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
+	internalCIDR = normalizeSnatInternalCIDR(internalCIDR)
 	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -2201,4 +2213,16 @@ func (c *Controller) validateSnatRule(snat *kubeovnv1.IptablesSnatRule) error {
 		return err
 	}
 	return nil
+}
+
+// normalizeSnatInternalCIDR converts a bare IPv4 (e.g. "10.0.0.5") — a shape
+// accepted by validateSnatRule — to its canonical "<ip>/32" form so the NAT
+// gateway script can assume every SNAT rule carries an explicit prefix length.
+// This keeps downstream logic (longest-prefix ordering, idempotency checks)
+// free of bare-IP special cases.
+func normalizeSnatInternalCIDR(cidr string) string {
+	if cidr == "" || strings.Contains(cidr, "/") {
+		return cidr
+	}
+	return cidr + "/32"
 }
