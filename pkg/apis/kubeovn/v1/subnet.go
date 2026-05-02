@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/apis/types"
 )
 
 const (
@@ -181,13 +181,13 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	V4AvailableIPs     internal.BigInt `json:"v4availableIPs"`
+	V4AvailableIPs     types.BigInt `json:"v4availableIPs"`
 	V4AvailableIPRange string          `json:"v4availableIPrange"`
-	V4UsingIPs         internal.BigInt `json:"v4usingIPs"`
+	V4UsingIPs         types.BigInt `json:"v4usingIPs"`
 	V4UsingIPRange     string          `json:"v4usingIPrange"`
-	V6AvailableIPs     internal.BigInt `json:"v6availableIPs"`
+	V6AvailableIPs     types.BigInt `json:"v6availableIPs"`
 	V6AvailableIPRange string          `json:"v6availableIPrange"`
-	V6UsingIPs         internal.BigInt `json:"v6usingIPs"`
+	V6UsingIPs         types.BigInt `json:"v6usingIPs"`
 	V6UsingIPRange     string          `json:"v6usingIPrange"`
 	ActivateGateway    string          `json:"activateGateway"`
 	DHCPv4OptionsUUID  string          `json:"dhcpV4OptionsUUID"`
