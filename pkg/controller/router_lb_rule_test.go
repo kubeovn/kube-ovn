@@ -11,6 +11,8 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -696,6 +698,9 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		fc.mockOvnClient.EXPECT().
+			LogicalRouterUpdateLoadBalancers(testVpc, ovsdb.MutateOperationDelete, testTCPLB).
+			Return(nil)
 		fc.mockOvnClient.EXPECT().
 			LoadBalancerDeleteVip(testTCPLB, testVip, true).
 			Return(nil)
