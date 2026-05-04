@@ -66,7 +66,7 @@ func lrpChassisList(vpcName, subnetName string) []string {
 		return nil
 	}
 	var result []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if strings.TrimSpace(line) != "" {
 			result = append(result, line)
 		}
@@ -380,19 +380,19 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 		)
 
 		var (
-			suffix                    string
-			node1                     string
-			vpcName                   string
-			extra1SubnetName          string
-			extra2SubnetName          string
-			disconnectMain            func()
-			disconnectExtra1          func()
-			disconnectExtra2          func()
-			providerNetworkClient     *framework.ProviderNetworkClient
-			vlanClient                *framework.VlanClient
-			subnetClient              *framework.SubnetClient
-			vpcClient                 *framework.VpcClient
-			ovnEipClient              *framework.OvnEipClient
+			suffix                string
+			node1                 string
+			vpcName               string
+			extra1SubnetName      string
+			extra2SubnetName      string
+			disconnectMain        func()
+			disconnectExtra1      func()
+			disconnectExtra2      func()
+			providerNetworkClient *framework.ProviderNetworkClient
+			vlanClient            *framework.VlanClient
+			subnetClient          *framework.SubnetClient
+			vpcClient             *framework.VpcClient
+			ovnEipClient          *framework.OvnEipClient
 		)
 
 		ginkgo.BeforeEach(func() {
