@@ -384,10 +384,6 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		}
 	}
 
-	if len(vips) == 0 {
-		return nil
-	}
-
 	var vpcLBNames set.Set[string]
 	if vpcForRlr != "" {
 		vpc, e := c.vpcsLister.Get(vpcForRlr)
@@ -405,6 +401,29 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 			klog.Errorf("failed to get VPC %s for RLR %s: %v", vpcForRlr, info.Name, e)
 			return e
 		}
+	}
+
+	// Detach shared LBs from the router when the last RouterLBRule for this VPC is deleted.
+	if vpcForRlr != "" && vpcLBNames != nil {
+		remaining, err := c.routerLBRuleLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list RouterLBRules: %v", err)
+			return err
+		}
+		if !slices.ContainsFunc(remaining, func(r *kubeovnv1.RouterLBRule) bool {
+			return r.Spec.Vpc == vpcForRlr && r.Name != info.Name
+		}) {
+			lbs := vpcLBNames.UnsortedList()
+			if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcForRlr, ovsdb.MutateOperationDelete, lbs...); err != nil {
+				klog.Errorf("failed to detach LBs from router %s: %v", vpcForRlr, err)
+				return err
+			}
+			klog.Infof("detached LBs from router %s after last RouterLBRule %s deleted", vpcForRlr, info.Name)
+		}
+	}
+
+	if len(vips) == 0 {
+		return nil
 	}
 
 	// Explicitly remove VIP entries from the VPC shared load balancers.
