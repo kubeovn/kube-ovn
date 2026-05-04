@@ -385,16 +385,14 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			vpcName                   string
 			extra1SubnetName          string
 			extra2SubnetName          string
-
-			disconnectMain   func()
-			disconnectExtra1 func()
-			disconnectExtra2 func()
-
-			providerNetworkClient *framework.ProviderNetworkClient
-			vlanClient            *framework.VlanClient
-			subnetClient          *framework.SubnetClient
-			vpcClient             *framework.VpcClient
-			ovnEipClient          *framework.OvnEipClient
+			disconnectMain            func()
+			disconnectExtra1          func()
+			disconnectExtra2          func()
+			providerNetworkClient     *framework.ProviderNetworkClient
+			vlanClient                *framework.VlanClient
+			subnetClient              *framework.SubnetClient
+			vpcClient                 *framework.VpcClient
+			ovnEipClient              *framework.OvnEipClient
 		)
 
 		ginkgo.BeforeEach(func() {

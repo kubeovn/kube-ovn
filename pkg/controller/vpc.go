@@ -675,11 +675,12 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	// Compute the desired set of external subnets for this VPC.
 	var desiredSubnets []string
 	if vpc.Spec.EnableExternal {
-		if len(vpc.Spec.ExtraExternalSubnets) > 0 {
+		switch {
+		case len(vpc.Spec.ExtraExternalSubnets) > 0:
 			desiredSubnets = vpc.Spec.ExtraExternalSubnets
-		} else if defaultExternalSubnetExist {
+		case defaultExternalSubnetExist:
 			desiredSubnets = []string{c.config.ExternalGatewaySwitch}
-		} else {
+		default:
 			err := fmt.Errorf("failed to get external subnet for enable external vpc %s", vpc.Name)
 			klog.Error(err)
 			return err
