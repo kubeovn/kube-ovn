@@ -13,10 +13,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -28,15 +26,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-)
-
-var (
-	// default resource requirements for the vpc egress gateway container if not specified by the user
-	vegSleepResourceCPU         = resource.MustParse("10m")
-	vegSleepResourceMemory      = resource.MustParse("10Mi")
-	vegBFDDResourceCPU          = resource.MustParse("50m")
-	vegBFDDResourceMemory       = resource.MustParse("50Mi")
-	vegResourceEphemeralStorage = resource.MustParse("1Gi")
 )
 
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
@@ -186,7 +175,11 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	}
 
 	// update gateway status including the internal/external IPs and the nodes where the pods are running
-	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+	gw.Status.Workload.Nodes, err = getWorkloadNodes(c.podsLister, deploy.Namespace, deploy.Spec.Selector)
+	if err != nil {
+		klog.Errorf("failed to get workload nodes for deployment %s/%s: %v", deploy.Namespace, deploy.Name, err)
+	}
+
 	for _, pod := range pods {
 		if len(pod.Status.PodIPs) == 0 {
 			continue
@@ -207,7 +200,6 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		}
 		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
 		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
-		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
 	}
 	if gw, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
 		klog.Error(err)
@@ -480,32 +472,21 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
-				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxUnavailable: new(intstr.FromInt(1)),
-					MaxSurge:       new(intstr.FromInt(0)),
-				},
-			},
+			Strategy: genGatewayDeploymentStrategy(),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
 					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),
+					Affinity: mergeGatewayAffinity(
+						genGatewayPodAntiAffinity(labels),
+						&corev1.Affinity{
+							NodeAffinity: &corev1.NodeAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),
+							},
 						},
-						PodAntiAffinity: &corev1.PodAntiAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-								LabelSelector: &metav1.LabelSelector{
-									MatchLabels: labels,
-								},
-								TopologyKey: corev1.LabelHostname,
-							}},
-						},
-					},
+					),
 					InitContainers: []corev1.Container{{
 						Name:            "init",
 						Image:           image,
@@ -524,35 +505,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 							MountPath: "/usr/local/sbin",
 						}},
 					}},
-					Containers: []corev1.Container{{
-						Name:            "gateway",
-						Image:           image,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command:         []string{"sleep", "infinity"},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    vegSleepResourceCPU,
-								corev1.ResourceMemory: vegSleepResourceMemory,
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:              vegSleepResourceCPU,
-								corev1.ResourceMemory:           vegSleepResourceMemory,
-								corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
-							},
-						},
-						SecurityContext: &corev1.SecurityContext{
-							Privileged: new(false),
-							RunAsUser:  ptr.To[int64](65534),
-							Capabilities: &corev1.Capabilities{
-								Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
-								Drop: []corev1.Capability{"ALL"},
-							},
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "usr-local-sbin",
-							MountPath: "/usr/local/sbin",
-						}},
-					}},
+					Containers: []corev1.Container{
+						genGatewaySleepContainer(image),
+					},
 					SecurityContext: &corev1.PodSecurityContext{
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
@@ -578,7 +533,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	if bfdIP != "" {
 		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
-		container := vpcEgressGatewayContainerBFDD(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		container := genGatewayBFDDContainer(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
 		deploy.Spec.Template.Spec.Containers[0] = container
 	}
 
@@ -664,13 +619,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		ovs.ExternalIDVpcEgressGateway: fmt.Sprintf("%s/%s", gw.Namespace, gw.Name),
 		"af":                           strconv.Itoa(af),
 	}
-	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
 
 	// reconcile OVN port group
+	var err error
 	ports := set.New[string]()
 	for _, selector := range gw.Spec.Selectors {
 		sel := labels.Everything()
@@ -741,34 +692,18 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	// reconcile OVN BFD entries
-	bfdIDs := set.New[string]()
-	staleBFDIDs := set.New[string]()
-	bfdDstIPs := set.New(slices.Collect(maps.Values(nextHops))...)
-	bfdMap := make(map[string]string, bfdDstIPs.Len())
-	for _, bfd := range bfdList {
-		if bfdIP == "" || bfd.LogicalPort != lrpName || !bfdDstIPs.Has(bfd.DstIP) {
-			staleBFDIDs.Insert(bfd.UUID)
-		}
-		if bfdIP == "" || (bfd.LogicalPort == lrpName && bfdDstIPs.Has(bfd.DstIP)) {
-			// TODO: update min_rx, min_tx and multiplier
-			if bfdIP != "" {
-				bfdIDs.Insert(bfd.UUID)
-				bfdMap[bfd.DstIP] = bfd.UUID
-			}
-			bfdDstIPs.Delete(bfd.DstIP)
-		}
-	}
-	if bfdIP != "" {
-		for _, dstIP := range bfdDstIPs.UnsortedList() {
-			// values of minRX/minTX should be values of minTX/minRX set in the BFD container of the deployment
-			bfd, err := c.OVNNbClient.CreateBFD(lrpName, dstIP, int(gw.Spec.BFD.MinTX), int(gw.Spec.BFD.MinRX), int(gw.Spec.BFD.Multiplier), externalIDs)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			bfdIDs.Insert(bfd.UUID)
-			bfdMap[bfd.DstIP] = bfd.UUID
-		}
+	bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(
+		c.OVNNbClient,
+		bfdIP,
+		lrpName,
+		nextHops,
+		gw.Spec.BFD.MinTX,
+		gw.Spec.BFD.MinRX,
+		gw.Spec.BFD.Multiplier,
+		externalIDs,
+	)
+	if err != nil {
+		return err
 	}
 
 	// reconcile LR policy
@@ -913,12 +848,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
-	for _, bfdID := range staleBFDIDs.UnsortedList() {
-		if err = c.OVNNbClient.DeleteBFD(bfdID); err != nil {
-			err = fmt.Errorf("failed to delete bfd %s: %w", bfdID, err)
-			klog.Error(err)
-			return err
-		}
+	// Cleanup stale BFD sessions
+	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+		return err
 	}
 
 	return nil
@@ -970,87 +902,6 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 		Name:  fmt.Sprintf("NO_SNAT_SOURCES_IPV%d", af),
 		Value: strings.Join(forwardSrc.SortedList(), ","),
 	}}, nil
-}
-
-func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
-	return corev1.Container{
-		Name:            "bfdd",
-		Image:           image,
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"bash", "/kube-ovn/start-bfdd.sh"},
-		Env: []corev1.EnvVar{{
-			Name: "POD_IPS",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "status.podIPs",
-				},
-			},
-		}, {
-			Name:  "BFD_PEER_IPS",
-			Value: bfdIP,
-		}, {
-			Name:  "BFD_MIN_TX",
-			Value: strconv.Itoa(int(minTX)),
-		}, {
-			Name:  "BFD_MIN_RX",
-			Value: strconv.Itoa(int(minRX)),
-		}, {
-			Name:  "BFD_MULTI",
-			Value: strconv.Itoa(int(multiplier)),
-		}},
-		// wait for the BFD process to be running and initialize the BFD configuration
-		StartupProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bash", "/kube-ovn/bfdd-prestart.sh"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			FailureThreshold:    1,
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			PeriodSeconds:       5,
-		},
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
-			},
-			InitialDelaySeconds: 3,
-			PeriodSeconds:       3,
-			FailureThreshold:    1,
-		},
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    vegBFDDResourceCPU,
-				corev1.ResourceMemory: vegBFDDResourceMemory,
-			},
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:              vegBFDDResourceCPU,
-				corev1.ResourceMemory:           vegBFDDResourceMemory,
-				corev1.ResourceEphemeralStorage: vegResourceEphemeralStorage,
-			},
-		},
-		SecurityContext: &corev1.SecurityContext{
-			Privileged: new(false),
-			RunAsUser:  ptr.To[int64](65534),
-			Capabilities: &corev1.Capabilities{
-				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
-				Drop: []corev1.Capability{"ALL"},
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{{
-			Name:      "usr-local-sbin",
-			MountPath: "/usr/local/sbin",
-		}},
-	}
 }
 
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {

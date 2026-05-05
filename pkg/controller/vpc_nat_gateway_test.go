@@ -92,6 +92,42 @@ func TestIsVpcNatGwChanged(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			name: "InternalSubnets changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					InternalSubnets: []string{"subnet1"},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					InternalSubnets: []string{"subnet2"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "InternalCIDRs changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					InternalCIDRs: []string{"10.0.0.0/24"},
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					InternalCIDRs: []string{"10.0.1.0/24"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Replicas changed returns true",
+			gw: &kubeovnv1.VpcNatGateway{
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Replicas: 2,
+				},
+				Status: kubeovnv1.VpcNatGatewayStatus{
+					Replicas: 1,
+				},
+			},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {

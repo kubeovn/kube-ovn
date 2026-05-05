@@ -345,11 +345,7 @@ func Run(ctx context.Context, config *Configuration) {
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
-	selector, err := labels.Parse(util.VpcEgressGatewayLabel)
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to create label selector for vpc egress gateway workload")
-	}
-
+	var err error
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTransform(util.TrimPodForController),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -361,12 +357,11 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	// deployment informer used to list/watch vpc egress gateway workloads
+	// deployment informer used to list/watch vpc egress gateway and nat gateway workloads
 	deployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
-			listOption.LabelSelector = selector.String()
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTransform(util.TrimManagedFields),
