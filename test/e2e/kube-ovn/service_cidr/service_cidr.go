@@ -25,10 +25,13 @@ import (
 // store, so the test is gated on both fronts.
 const skipVersionMajor, skipVersionMinor uint = 1, 17
 
-// extraCIDR sits well outside the kind default (10.96.0.0/12) and the
-// 10.0.0.0/16 pool used by RandomCIDR for subnet tests, so it never collides
-// with parallel cases.
-const extraCIDR = "10.250.0.0/24"
+// extraCIDRs sit well outside the kind defaults (10.96.0.0/12 / fd00:10:96::/112)
+// and the per-family pools used by RandomCIDR for subnet tests, so they never
+// collide with parallel cases.
+const (
+	extraCIDRv4 = "10.250.0.0/24"
+	extraCIDRv6 = "fd99:cafe::/108"
+)
 
 var _ = framework.Describe("[group:service-cidr]", func() {
 	f := framework.NewDefaultFramework("service-cidr")
@@ -52,10 +55,21 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 		f.SkipVersionPriorTo(skipVersionMajor, skipVersionMinor, "ServiceCIDR support landed in v1.17")
 		skipIfNoServiceCIDRAPI(cs)
 
-		ginkgo.By("Creating ServiceCIDR " + name + " (" + extraCIDR + ")")
+		// One CIDR per cluster family. Daemon only manages an ipset for a
+		// family when that family is enabled on the node, so probing the
+		// "wrong" family on a single-stack cluster would deadlock the wait.
+		var cidrs []string
+		if f.HasIPv4() {
+			cidrs = append(cidrs, extraCIDRv4)
+		}
+		if f.HasIPv6() {
+			cidrs = append(cidrs, extraCIDRv6)
+		}
+
+		ginkgo.By(fmt.Sprintf("Creating ServiceCIDR %s with cidrs %v", name, cidrs))
 		sc := &networkingv1.ServiceCIDR{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       networkingv1.ServiceCIDRSpec{CIDRs: []string{extraCIDR}},
+			Spec:       networkingv1.ServiceCIDRSpec{CIDRs: cidrs},
 		}
 		_, err := cs.NetworkingV1().ServiceCIDRs().Create(context.Background(), sc, metav1.CreateOptions{})
 		framework.ExpectNoError(err)
@@ -79,17 +93,21 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodeList.Items)
 
-		ginkgo.By("Asserting ipset ovn40services contains " + extraCIDR + " on every node")
+		ginkgo.By("Asserting node ipsets contain the new CIDRs")
 		for _, n := range nodeList.Items {
-			expectIPSetContains(f, n, extraCIDR, true)
+			for _, c := range cidrs {
+				expectIPSetContains(f, n, c, true)
+			}
 		}
 
 		ginkgo.By("Deleting ServiceCIDR " + name)
 		framework.ExpectNoError(cs.NetworkingV1().ServiceCIDRs().Delete(context.Background(), name, metav1.DeleteOptions{}))
 
-		ginkgo.By("Asserting ipset ovn40services no longer contains " + extraCIDR + " on every node")
+		ginkgo.By("Asserting node ipsets no longer contain the CIDRs")
 		for _, n := range nodeList.Items {
-			expectIPSetContains(f, n, extraCIDR, false)
+			for _, c := range cidrs {
+				expectIPSetContains(f, n, c, false)
+			}
 		}
 	})
 })
@@ -116,9 +134,19 @@ func skipIfNoServiceCIDRAPI(cs clientset.Interface) {
 	ginkgo.Skip("networking.k8s.io/v1 ServiceCIDR API is not present in this cluster")
 }
 
+// ipsetForCIDR picks the kube-ovn services ipset that matches the given CIDR's
+// IP family. v4 CIDRs land in ovn40services, v6 in ovn60services.
+func ipsetForCIDR(cidr string) string {
+	if strings.Contains(cidr, ":") {
+		return "ovn60services"
+	}
+	return "ovn40services"
+}
+
 // expectIPSetContains polls the ovs-ovn pod on the given node and verifies
-// the membership of cidr in ovn40services. The 3-second daemon reconcile loop
-// means the assertion needs a generous window; 30s comfortably covers it.
+// the membership of cidr in the family-appropriate services ipset. The
+// 3-second daemon reconcile loop means the assertion needs a generous window;
+// 30s comfortably covers it.
 func expectIPSetContains(f *framework.Framework, node corev1.Node, cidr string, want bool) {
 	ginkgo.GinkgoHelper()
 
@@ -127,7 +155,8 @@ func expectIPSetContains(f *framework.Framework, node corev1.Node, cidr string, 
 	pod, err := dsClient.GetPodOnNode(ds, node.Name)
 	framework.ExpectNoError(err)
 
-	cmd := "ipset list ovn40services | sed -n '/^Members:/,$p' | tail -n +2"
+	setName := ipsetForCIDR(cidr)
+	cmd := fmt.Sprintf("ipset list %s | sed -n '/^Members:/,$p' | tail -n +2", setName)
 	framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 		out, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
 		if err != nil {
@@ -136,5 +165,5 @@ func expectIPSetContains(f *framework.Framework, node corev1.Node, cidr string, 
 		members := strings.Fields(out)
 		has := slices.Contains(members, cidr)
 		return has == want, nil
-	}, fmt.Sprintf("ipset on node %s contains %s == %v", node.Name, cidr, want))
+	}, fmt.Sprintf("ipset %s on node %s contains %s == %v", setName, node.Name, cidr, want))
 }
