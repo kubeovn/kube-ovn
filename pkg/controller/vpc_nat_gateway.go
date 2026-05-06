@@ -797,16 +797,6 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	return nil
 }
 
-// TODO: Refactor to avoid shell command injection vulnerability.
-// Current implementation uses "bash -c" with string concatenation, which could be exploited
-// if any element in the rules slice contains shell metacharacters.
-// Recommended fix: Pass arguments directly as a slice instead of joining them into a shell command:
-//
-//	args := append([]string{"/kube-ovn/nat-gateway.sh", operation}, rules...)
-//	util.ExecuteCommandInContainer(..., args...)
-//
-// This requires updating nat-gateway.sh to accept arguments via $@ instead of parsing a single string.
-// Current risk is mitigated by CIDR format validation on all data sources reaching this function.
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	lockKey := fmt.Sprintf("nat-gw-exec:%s/%s", pod.Namespace, pod.Name)
 
@@ -815,9 +805,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		_ = c.vpcNatGwExecKeyMutex.UnlockKey(lockKey)
 	}()
 
-	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
-	klog.V(3).Infof("executing NAT gateway command: %s", cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	args := append([]string{"bash", "/kube-ovn/nat-gateway.sh", operation}, rules...)
+	klog.V(3).Infof("executing NAT gateway command: %s", strings.Join(args, " "))
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", args...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("NAT gateway command failed - stderr: %v", errOutput)
