@@ -68,10 +68,14 @@ func (c *Controller) enqueueDeleteService(obj any) {
 
 	ips := getVipIps(svc)
 	if len(ips) != 0 {
+		vpc := svc.Annotations[util.VpcAnnotation]
+		if vpc == "" {
+			vpc = svc.Annotations[util.LogicalRouterAnnotation]
+		}
 		for _, port := range svc.Spec.Ports {
 			vpcSvc := &vpcService{
 				Protocol: port.Protocol,
-				Vpc:      svc.Annotations[util.VpcAnnotation],
+				Vpc:      vpc,
 				Svc:      svc,
 			}
 			for _, ip := range ips {
@@ -505,6 +509,12 @@ func (c *Controller) handleAddService(key string) error {
 func getVipIps(svc *v1.Service) []string {
 	var ips []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+		for ip := range strings.SplitSeq(vip, ",") {
+			if ip != "" {
+				ips = append(ips, ip)
+			}
+		}
+	} else if vip, ok := svc.Annotations[util.RouterLBRuleVipsAnnotation]; ok {
 		for ip := range strings.SplitSeq(vip, ",") {
 			if ip != "" {
 				ips = append(ips, ip)

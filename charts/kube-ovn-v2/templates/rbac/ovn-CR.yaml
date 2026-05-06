@@ -46,6 +46,8 @@ rules:
       - ovn-dnat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - router-lb-rules
+      - router-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - dnsnameresolvers
