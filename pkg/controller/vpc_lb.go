@@ -164,56 +164,12 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	}
 
 	v4Gw, v6Gw := util.SplitStringIP(defaultSubnet.Spec.Gateway)
-	if v4Gw != "" {
-		for i, v4Svc := range c.serviceCIDRStore.V4CIDRs() {
-			deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
-				Name:            fmt.Sprintf("init-ipv4-route-%d", i),
-				Image:           vpcNatImage,
-				Command:         []string{"ip"},
-				Args:            strings.Fields(fmt.Sprintf("-4 route replace %s via %s", v4Svc, v4Gw)),
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				SecurityContext: &corev1.SecurityContext{
-					Privileged:               &privileged,
-					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-				},
-			}, corev1.Container{
-				Name:            fmt.Sprintf("init-ipv4-iptables-%d", i),
-				Image:           vpcNatImage,
-				Command:         []string{"iptables"},
-				Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v4Svc)),
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				SecurityContext: &corev1.SecurityContext{
-					Privileged:               &privileged,
-					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-				},
-			})
-		}
-	}
-	if v6Gw != "" {
-		for i, v6Svc := range c.serviceCIDRStore.V6CIDRs() {
-			deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers, corev1.Container{
-				Name:            fmt.Sprintf("init-ipv6-route-%d", i),
-				Image:           vpcNatImage,
-				Command:         []string{"ip"},
-				Args:            strings.Fields(fmt.Sprintf("-6 route replace %s via %s", v6Svc, v6Gw)),
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				SecurityContext: &corev1.SecurityContext{
-					Privileged:               &privileged,
-					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-				},
-			}, corev1.Container{
-				Name:            fmt.Sprintf("init-ipv6-iptables-%d", i),
-				Image:           vpcNatImage,
-				Command:         []string{"ip6tables"},
-				Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", v6Svc)),
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				SecurityContext: &corev1.SecurityContext{
-					Privileged:               &privileged,
-					AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-				},
-			})
-		}
-	}
+	deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers,
+		vpcLbInitContainers(4, v4Gw, vpcNatImage, c.serviceCIDRStore.V4CIDRs(), &privileged, &allowPrivilegeEscalation)...,
+	)
+	deployment.Spec.Template.Spec.InitContainers = append(deployment.Spec.Template.Spec.InitContainers,
+		vpcLbInitContainers(6, v6Gw, vpcNatImage, c.serviceCIDRStore.V6CIDRs(), &privileged, &allowPrivilegeEscalation)...,
+	)
 
 	if deployment.Annotations == nil {
 		deployment.Annotations = map[string]string{}
@@ -226,4 +182,46 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	deployment.Spec.Template.Annotations[util.ServiceCIDRHashAnnotation] = hash
 
 	return deployment, nil
+}
+
+// vpcLbInitContainers returns the route + MASQUERADE init containers for one
+// IP family. The container names embed the family and CIDR index so that
+// adding/removing ServiceCIDRs translates into a stable, deterministic name
+// list that the Deployment controller can diff cleanly.
+func vpcLbInitContainers(family int, gateway, image string, cidrs []string, privileged, allowPrivEsc *bool) []corev1.Container {
+	if gateway == "" || len(cidrs) == 0 {
+		return nil
+	}
+	iptablesCmd := "iptables"
+	if family == 6 {
+		iptablesCmd = "ip6tables"
+	}
+	out := make([]corev1.Container, 0, len(cidrs)*2)
+	for i, cidr := range cidrs {
+		out = append(out,
+			corev1.Container{
+				Name:            fmt.Sprintf("init-ipv%d-route-%d", family, i),
+				Image:           image,
+				Command:         []string{"ip"},
+				Args:            strings.Fields(fmt.Sprintf("-%d route replace %s via %s", family, cidr, gateway)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               privileged,
+					AllowPrivilegeEscalation: allowPrivEsc,
+				},
+			},
+			corev1.Container{
+				Name:            fmt.Sprintf("init-ipv%d-iptables-%d", family, i),
+				Image:           image,
+				Command:         []string{iptablesCmd},
+				Args:            strings.Fields(fmt.Sprintf("-t nat -I POSTROUTING -d %s -j MASQUERADE", cidr)),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged:               privileged,
+					AllowPrivilegeEscalation: allowPrivEsc,
+				},
+			},
+		)
+	}
+	return out
 }

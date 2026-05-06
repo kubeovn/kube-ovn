@@ -3,13 +3,35 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
+
+// ReadyServiceCIDRs returns Spec.CIDRs when the ServiceCIDR object's Ready
+// condition is True. Objects still being initialized or already terminating
+// are skipped, matching the apiserver allocator's own behavior.
+func ReadyServiceCIDRs(sc *networkingv1.ServiceCIDR) []string {
+	if sc == nil {
+		return nil
+	}
+	for _, cond := range sc.Status.Conditions {
+		if cond.Type == networkingv1.ServiceCIDRConditionReady {
+			if cond.Status == metav1.ConditionTrue {
+				return sc.Spec.CIDRs
+			}
+			return nil
+		}
+	}
+	return nil
+}
 
 // ServiceCIDRStore is the merged source of truth for Service CIDRs known to
 // kube-ovn. It combines the values from --service-cluster-ip-range (fallback)
@@ -140,7 +162,7 @@ func (s *ServiceCIDRStore) UpsertFromAPI(name string, cidrs []string) bool {
 			cleaned = append(cleaned, c)
 		}
 	}
-	if equalStringSlice(s.fromAPI[name], cleaned) {
+	if slices.Equal(s.fromAPI[name], cleaned) {
 		s.mu.Unlock()
 		return false
 	}
@@ -173,7 +195,7 @@ func (s *ServiceCIDRStore) DeleteFromAPI(name string) bool {
 // Returns true if the slice content changed.
 func (s *ServiceCIDRStore) recomputeLocked() bool {
 	next := s.merged()
-	if equalStringSlice(s.cached, next) {
+	if slices.Equal(s.cached, next) {
 		return false
 	}
 	s.cached = next
@@ -207,16 +229,4 @@ func (s *ServiceCIDRStore) fireOnChange() {
 	for _, h := range handlers {
 		go h()
 	}
-}
-
-func equalStringSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

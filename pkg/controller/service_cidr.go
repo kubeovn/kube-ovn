@@ -6,7 +6,6 @@ import (
 	"time"
 
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -14,19 +13,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) isServiceCIDRAPIInstalled() (bool, error) {
-	return util.APIResourceExists(
-		c.config.KubeClient.Discovery(),
-		networkingv1.SchemeGroupVersion.String(),
-		"ServiceCIDR",
-	)
-}
-
 func (c *Controller) startServiceCIDRInformer(ctx context.Context) {
 	informer := c.serviceCIDRInformerFactory.Networking().V1().ServiceCIDRs()
 	if _, err := informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.onServiceCIDRAdd,
-		UpdateFunc: c.onServiceCIDRUpdate,
+		AddFunc:    c.onServiceCIDRChange,
+		UpdateFunc: func(_, newObj any) { c.onServiceCIDRChange(newObj) },
 		DeleteFunc: c.onServiceCIDRDelete,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add ServiceCIDR event handler")
@@ -49,12 +40,16 @@ func (c *Controller) startServiceCIDRInformer(ctx context.Context) {
 		return
 	}
 	for _, sc := range scs {
-		c.serviceCIDRStore.UpsertFromAPI(sc.Name, readyServiceCIDRs(sc))
+		c.serviceCIDRStore.UpsertFromAPI(sc.Name, util.ReadyServiceCIDRs(sc))
 	}
 }
 
 func (c *Controller) tryStartServiceCIDRInformer(ctx context.Context) bool {
-	exists, err := c.isServiceCIDRAPIInstalled()
+	exists, err := util.APIResourceExists(
+		c.config.KubeClient.Discovery(),
+		networkingv1.SchemeGroupVersion.String(),
+		util.ObjectKind[*networkingv1.ServiceCIDR](),
+	)
 	if err != nil {
 		klog.Warningf("failed to check ServiceCIDR API: %v", err)
 		return false
@@ -92,20 +87,12 @@ func (c *Controller) StartServiceCIDRInformerFactory(ctx context.Context) {
 	}()
 }
 
-func (c *Controller) onServiceCIDRAdd(obj any) {
+func (c *Controller) onServiceCIDRChange(obj any) {
 	sc, ok := obj.(*networkingv1.ServiceCIDR)
 	if !ok {
 		return
 	}
-	c.serviceCIDRStore.UpsertFromAPI(sc.Name, readyServiceCIDRs(sc))
-}
-
-func (c *Controller) onServiceCIDRUpdate(_, newObj any) {
-	sc, ok := newObj.(*networkingv1.ServiceCIDR)
-	if !ok {
-		return
-	}
-	c.serviceCIDRStore.UpsertFromAPI(sc.Name, readyServiceCIDRs(sc))
+	c.serviceCIDRStore.UpsertFromAPI(sc.Name, util.ReadyServiceCIDRs(sc))
 }
 
 func (c *Controller) onServiceCIDRDelete(obj any) {
@@ -123,29 +110,14 @@ func (c *Controller) onServiceCIDRDelete(obj any) {
 	c.serviceCIDRStore.DeleteFromAPI(sc.Name)
 }
 
-// readyServiceCIDRs returns Spec.CIDRs when the object's Ready condition is
-// True. ServiceCIDRs that are still being initialized or already terminating
-// are skipped, matching the apiserver allocator's own behavior.
-func readyServiceCIDRs(sc *networkingv1.ServiceCIDR) []string {
-	if sc == nil {
-		return nil
-	}
-	ready := false
-	for _, cond := range sc.Status.Conditions {
-		if cond.Type == networkingv1.ServiceCIDRConditionReady {
-			ready = cond.Status == metav1.ConditionTrue
-			break
-		}
-	}
-	if !ready {
-		return nil
-	}
-	return sc.Spec.CIDRs
-}
-
 // reconcileForServiceCIDRChange enqueues every object whose data-plane artifact
 // embeds a Service CIDR so that its existing reconciler rebuilds the artifact
 // against the freshly merged set.
+//
+// VpcNatGateways are deliberately skipped: handleAddOrUpdateVpcNatGw only diffs
+// Spec, and handleInitVpcNatGw bails on VpcNatGatewayInitAnnotation. Existing
+// NAT GWs need pod recreation to pick up new routes; new ones already render
+// against the current store.
 func (c *Controller) reconcileForServiceCIDRChange() {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -161,21 +133,11 @@ func (c *Controller) reconcileForServiceCIDRChange() {
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpcs: %v", err)
-	} else {
-		for _, v := range vpcs {
-			if strings.ToLower(v.Annotations[util.VpcLbAnnotation]) == "on" {
-				c.addOrUpdateVpcQueue.Add(v.Name)
-			}
+		return
+	}
+	for _, v := range vpcs {
+		if strings.ToLower(v.Annotations[util.VpcLbAnnotation]) == "on" {
+			c.addOrUpdateVpcQueue.Add(v.Name)
 		}
 	}
-
-	// VpcNatGateways are intentionally NOT re-enqueued here. The route
-	// annotation is written into the StatefulSet template by
-	// genNatGwStatefulSet, but handleAddOrUpdateVpcNatGw only updates the
-	// StatefulSet when isVpcNatGwChanged() returns true (Spec-only diff),
-	// and handleInitVpcNatGw bails out as soon as the pod carries
-	// VpcNatGatewayInitAnnotation. Newly created NAT gateways still pick up
-	// the current store because their add path runs genNatGwStatefulSet
-	// against c.serviceCIDRStore; existing NAT gateways keep their original
-	// service routes until the pod is recreated by other means.
 }

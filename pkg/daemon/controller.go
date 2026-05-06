@@ -156,6 +156,11 @@ func NewController(config *Configuration,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
 		serviceCIDRStore: util.NewServiceCIDRStore(config.ServiceClusterIPRange),
+		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+			informers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+				listOption.AllowWatchBookmarks = true
+			}),
+		),
 
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
