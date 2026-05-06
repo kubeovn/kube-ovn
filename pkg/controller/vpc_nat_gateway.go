@@ -1008,13 +1008,18 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Add routes to join the services (is this still needed?)
 	// It seems like the script inside the NAT GW already does that
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes := make([]request.Route, 0, 2)
-	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
+	v4ClusterIPRanges := c.serviceCIDRStore.V4CIDRs()
+	v6ClusterIPRanges := c.serviceCIDRStore.V6CIDRs()
+	routes := make([]request.Route, 0, len(v4ClusterIPRanges)+len(v6ClusterIPRanges))
+	if eth0V4Gateway != "" {
+		for _, cidr := range v4ClusterIPRanges {
+			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V4Gateway})
+		}
 	}
-	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
+	if eth0V6Gateway != "" {
+		for _, cidr := range v6ClusterIPRanges {
+			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V6Gateway})
+		}
 	}
 
 	// Add gateway to join every subnet in the same VPC? (is this still needed?)

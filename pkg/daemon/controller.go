@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	netv1lister "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -72,6 +73,11 @@ type Controller struct {
 	caSecretLister listerv1.SecretLister
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
+
+	serviceCIDRStore           *util.ServiceCIDRStore
+	serviceCIDRLister          netv1lister.ServiceCIDRLister
+	serviceCIDRSynced          cache.InformerSynced
+	serviceCIDRInformerFactory informers.SharedInformerFactory
 
 	recorder record.EventRecorder
 
@@ -149,6 +155,13 @@ func NewController(config *Configuration,
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
+		serviceCIDRStore: util.NewServiceCIDRStore(config.ServiceClusterIPRange),
+		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+			informers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+				listOption.AllowWatchBookmarks = true
+			}),
+		),
+
 		recorder: recorder,
 		k8sExec:  k8sexec.New(),
 
@@ -169,6 +182,7 @@ func NewController(config *Configuration,
 	nodeInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 	caSecretInformerFactory.Start(stopCh)
+	controller.StartServiceCIDRInformerFactory(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh,
 		controller.providerNetworksSynced, controller.vlansSynced, controller.subnetsSynced,
