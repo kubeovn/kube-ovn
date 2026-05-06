@@ -34,7 +34,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
-	github.com/osrg/gobgp/v4 v4.4.0
+	github.com/osrg/gobgp/v4 v4.5.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.8.0
