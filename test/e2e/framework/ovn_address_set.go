@@ -49,7 +49,7 @@ var (
 func validateModelStructure(model model.Model, table string, expectedFields map[string]reflect.Type) {
 	ginkgo.GinkgoHelper()
 
-	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Ptr, "model for table %s is not a pointer type", table)
+	ExpectEqual(reflect.TypeOf(model).Kind(), reflect.Pointer, "model for table %s is not a pointer type", table)
 	ExpectEqual(reflect.TypeOf(model).Elem().Kind(), reflect.Struct, "model for table %s is not a struct type", table)
 
 	for name, typ := range expectedFields {
