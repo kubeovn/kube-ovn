@@ -120,18 +120,21 @@ rules:
       - daemonsets
     verbs:
       - get
+      - patch
+      - update
   - apiGroups:
       - apps
     resources:
       - deployments
       - deployments/scale
     verbs:
+      - create
+      - delete
       - get
       - list
-      - watch
-      - create
+      - patch
       - update
-      - delete
+      - watch
   - apiGroups:
       - ""
     resources:

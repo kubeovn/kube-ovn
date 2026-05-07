@@ -74,7 +74,8 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
 		kubeOvnAnnotationsChanged(oldNode.Annotations, newNode.Annotations) ||
-		!reflect.DeepEqual(oldNode.Labels, newNode.Labels) {
+		!reflect.DeepEqual(oldNode.Labels, newNode.Labels) ||
+		!reflect.DeepEqual(oldNode.Status.Addresses, newNode.Status.Addresses) {
 		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.V(3).Infof("enqueue add node %s", key)
@@ -292,6 +293,13 @@ func (c *Controller) handleAddNode(key string) error {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}
+
+	if node.Labels["kube-ovn/role"] == "master" {
+		if err := c.reconcileMasterNodeIPs(context.Background()); err != nil {
+			klog.Errorf("failed to reconcile master node IPs after adding node %s: %v", node.Name, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -402,7 +410,16 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
 		return nil
 	}
-	return c.deleteNode(key)
+	if err = c.deleteNode(key); err != nil {
+		return err
+	}
+	if node.Labels["kube-ovn/role"] == "master" {
+		if err = c.reconcileMasterNodeIPs(context.Background()); err != nil {
+			klog.Errorf("failed to reconcile master node IPs after deleting node %s: %v", key, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) deleteNode(key string) error {
@@ -465,6 +482,115 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
+	return nil
+}
+
+// containerEnvVarValue returns the current value of envName in the named container,
+// or an empty string if not found.
+func containerEnvVarValue(containers []v1.Container, containerName, envName string) string {
+	for _, ctr := range containers {
+		if ctr.Name == containerName {
+			for _, e := range ctr.Env {
+				if e.Name == envName {
+					return e.Value
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// reconcileMasterNodeIPs collects the internal IPs of all master nodes (label
+// "kube-ovn/role=master") and patches the NODE_IPS / OVN_DB_IPS env vars in
+// the workloads that depend on them so that cluster membership stays correct
+// after nodes are added, removed, or rescheduled.
+func (c *Controller) reconcileMasterNodeIPs(ctx context.Context) error {
+	masterSelector := labels.SelectorFromSet(labels.Set{"kube-ovn/role": "master"})
+	masterNodes, err := c.nodesLister.List(masterSelector)
+	if err != nil {
+		return fmt.Errorf("failed to list master nodes: %w", err)
+	}
+
+	var v4IPs, v6IPs []string
+	for _, n := range masterNodes {
+		v4, v6 := util.GetNodeInternalIP(*n)
+		if v4 != "" {
+			v4IPs = append(v4IPs, v4)
+		}
+		if v6 != "" {
+			v6IPs = append(v6IPs, v6)
+		}
+	}
+	slices.Sort(v4IPs)
+	slices.Sort(v6IPs)
+	allIPs := slices.Concat(v4IPs, v6IPs)
+	if len(allIPs) == 0 {
+		klog.Warning("reconcileMasterNodeIPs: no master node IPs found, skipping patch")
+		return nil
+	}
+	ipStr := strings.Join(allIPs, ",")
+
+	type workloadPatch struct {
+		name          string
+		containerName string
+		envVarName    string
+		isDaemonSet   bool
+	}
+	targets := []workloadPatch{
+		{"ovn-central", "ovn-central", "NODE_IPS", false},
+		{"kube-ovn-controller", "kube-ovn-controller", "OVN_DB_IPS", false},
+		{"ovs-ovn", "openvswitch", "OVN_DB_IPS", true},
+		{"ovs-ovn-dpdk", "openvswitch", "OVN_DB_IPS", true},
+		{"ovn-ic-controller", "ovn-ic-controller", "OVN_DB_IPS", false},
+	}
+
+	patchTemplate := `{"spec":{"template":{"spec":{"containers":[{"name":%q,"env":[{"name":%q,"value":%q}]}]}}}}`
+
+	for _, t := range targets {
+		var currentValue string
+		if t.isDaemonSet {
+			ds, err := c.config.KubeClient.AppsV1().DaemonSets(c.config.PodNamespace).Get(ctx, t.name, metav1.GetOptions{})
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					klog.V(4).Infof("reconcileMasterNodeIPs: daemonset %s not found, skipping", t.name)
+					continue
+				}
+				return fmt.Errorf("failed to get daemonset %s/%s: %w", c.config.PodNamespace, t.name, err)
+			}
+			currentValue = containerEnvVarValue(ds.Spec.Template.Spec.Containers, t.containerName, t.envVarName)
+		} else {
+			dep, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Get(ctx, t.name, metav1.GetOptions{})
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					klog.V(4).Infof("reconcileMasterNodeIPs: deployment %s not found, skipping", t.name)
+					continue
+				}
+				return fmt.Errorf("failed to get deployment %s/%s: %w", c.config.PodNamespace, t.name, err)
+			}
+			currentValue = containerEnvVarValue(dep.Spec.Template.Spec.Containers, t.containerName, t.envVarName)
+		}
+		if currentValue == ipStr {
+			klog.V(4).Infof("reconcileMasterNodeIPs: %s/%s env %s already set to %s, skipping", c.config.PodNamespace, t.name, t.envVarName, ipStr)
+			continue
+		}
+		payload := []byte(fmt.Sprintf(patchTemplate, t.containerName, t.envVarName, ipStr))
+		var patchErr error
+		if t.isDaemonSet {
+			_, patchErr = c.config.KubeClient.AppsV1().DaemonSets(c.config.PodNamespace).Patch(
+				ctx, t.name, types.StrategicMergePatchType, payload, metav1.PatchOptions{})
+		} else {
+			_, patchErr = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Patch(
+				ctx, t.name, types.StrategicMergePatchType, payload, metav1.PatchOptions{})
+		}
+		if patchErr != nil {
+			resourceKind := "deployment"
+			if t.isDaemonSet {
+				resourceKind = "daemonset"
+			}
+			return fmt.Errorf("failed to patch %s %s/%s env %s: %w", resourceKind, c.config.PodNamespace, t.name, t.envVarName, patchErr)
+		}
+		klog.Infof("reconcileMasterNodeIPs: patched %s/%s env %s=%s", c.config.PodNamespace, t.name, t.envVarName, ipStr)
+	}
 	return nil
 }
 
@@ -579,6 +705,13 @@ func (c *Controller) handleUpdateNode(key string) error {
 				klog.Error(err)
 				return err
 			}
+		}
+	}
+
+	if node.Labels["kube-ovn/role"] == "master" {
+		if err := c.reconcileMasterNodeIPs(context.Background()); err != nil {
+			klog.Errorf("failed to reconcile master node IPs after updating node %s: %v", node.Name, err)
+			return err
 		}
 	}
 

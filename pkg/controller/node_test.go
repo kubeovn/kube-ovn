@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -315,4 +318,327 @@ func TestGetPolicyRouteParams_ClonedExternalIDs(t *testing.T) {
 		"node-2": "10.0.0.2",
 	}, originalExternalIDs)
 	require.Contains(t, policy.ExternalIDs, "node-1")
+}
+
+func TestEnqueueUpdateNode(t *testing.T) {
+	makeNode := func(readyStatus corev1.ConditionStatus, labels map[string]string, annotations map[string]string, addresses []corev1.NodeAddress) *corev1.Node {
+		return &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "test-node",
+				Labels:      maps.Clone(labels),
+				Annotations: maps.Clone(annotations),
+			},
+			Status: corev1.NodeStatus{
+				Addresses: append([]corev1.NodeAddress(nil), addresses...),
+				Conditions: []corev1.NodeCondition{
+					{Type: corev1.NodeReady, Status: readyStatus},
+				},
+			},
+		}
+	}
+
+	baseAddresses := []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.1"}}
+	newAddresses := []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.2"}}
+	baseLabels := map[string]string{"kube-ovn/role": "master"}
+	baseAnnotations := map[string]string{util.AllocatedAnnotation: "true"}
+
+	tests := []struct {
+		name        string
+		oldNode     *corev1.Node
+		newNode     *corev1.Node
+		expectQueue bool // true = something should be enqueued
+	}{
+		{
+			name:        "no change",
+			oldNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, baseAddresses),
+			newNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, baseAddresses),
+			expectQueue: false,
+		},
+		{
+			name:        "readiness changed",
+			oldNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, baseAddresses),
+			newNode:     makeNode(corev1.ConditionFalse, baseLabels, baseAnnotations, baseAddresses),
+			expectQueue: true,
+		},
+		{
+			name:        "label changed",
+			oldNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, baseAddresses),
+			newNode:     makeNode(corev1.ConditionTrue, map[string]string{"kube-ovn/role": "worker"}, baseAnnotations, baseAddresses),
+			expectQueue: true,
+		},
+		{
+			name:        "address changed in-place",
+			oldNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, baseAddresses),
+			newNode:     makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, newAddresses),
+			expectQueue: true,
+		},
+		{
+			name: "address removed",
+			oldNode: makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+				{Type: corev1.NodeInternalIP, Address: "fd00::1"},
+			}),
+			newNode: makeNode(corev1.ConditionTrue, baseLabels, baseAnnotations, []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+			}),
+			expectQueue: true,
+		},
+		{
+			name: "annotation changed",
+			oldNode: makeNode(corev1.ConditionTrue, baseLabels, map[string]string{
+				util.IPAddressAnnotation: "10.0.0.1",
+				util.AllocatedAnnotation: "true",
+			}, baseAddresses),
+			newNode: makeNode(corev1.ConditionTrue, baseLabels, map[string]string{
+				util.IPAddressAnnotation: "10.0.0.2",
+				util.AllocatedAnnotation: "true",
+			}, baseAddresses),
+			expectQueue: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeCtrl := newFakeController(t)
+			ctrl := fakeCtrl.fakeController
+			ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+			ctrl.updateNodeQueue = newTypedRateLimitingQueue[string]("UpdateNode", nil)
+			t.Cleanup(func() {
+				ctrl.addNodeQueue.ShutDown()
+				ctrl.updateNodeQueue.ShutDown()
+			})
+
+			ctrl.enqueueUpdateNode(tt.oldNode, tt.newNode)
+
+			totalLen := ctrl.addNodeQueue.Len() + ctrl.updateNodeQueue.Len()
+			if tt.expectQueue {
+				require.Equal(t, 1, totalLen, "expected one item to be enqueued")
+			} else {
+				require.Equal(t, 0, totalLen, "expected no items to be enqueued")
+			}
+		})
+	}
+}
+
+func TestReconcileMasterNodeIPs(t *testing.T) {
+	const ns = metav1.NamespaceSystem
+
+	makeDeployment := func(name, containerName, envName, envValue string) *appsv1.Deployment {
+		return &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+			Spec: appsv1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name: containerName,
+							Env:  []corev1.EnvVar{{Name: envName, Value: envValue}},
+						}},
+					},
+				},
+			},
+		}
+	}
+
+	makeDaemonSet := func(name, containerName, envName, envValue string) *appsv1.DaemonSet {
+		return &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+			Spec: appsv1.DaemonSetSpec{
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{
+							Name: containerName,
+							Env:  []corev1.EnvVar{{Name: envName, Value: envValue}},
+						}},
+					},
+				},
+			},
+		}
+	}
+
+	masterNode := func(name, ip string) *corev1.Node {
+		return &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   name,
+				Labels: map[string]string{"kube-ovn/role": "master"},
+			},
+			Status: corev1.NodeStatus{
+				Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: ip}},
+			},
+		}
+	}
+
+	t.Run("patches stale value", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{masterNode("node1", "10.0.0.2")},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "10.0.0.1"), metav1.CreateOptions{})
+		require.NoError(t, err)
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("kube-ovn-controller", "kube-ovn-controller", "OVN_DB_IPS", "10.0.0.1"), metav1.CreateOptions{})
+		require.NoError(t, err)
+		_, err = kubeClient.AppsV1().DaemonSets(ns).Create(context.Background(),
+			makeDaemonSet("ovs-ovn", "openvswitch", "OVN_DB_IPS", "10.0.0.1"), metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		dep, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.2", dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+
+		dep, err = kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "kube-ovn-controller", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.2", dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+
+		ds, err := kubeClient.AppsV1().DaemonSets(ns).Get(context.Background(), "ovs-ovn", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.2", ds.Spec.Template.Spec.Containers[0].Env[0].Value)
+	})
+
+	t.Run("patches all workloads across 3-node cluster", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{
+				masterNode("node1", "10.0.0.3"),
+				masterNode("node2", "10.0.0.1"),
+				masterNode("node3", "10.0.0.2"),
+			},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "stale"), metav1.CreateOptions{})
+		require.NoError(t, err)
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("kube-ovn-controller", "kube-ovn-controller", "OVN_DB_IPS", "stale"), metav1.CreateOptions{})
+		require.NoError(t, err)
+		_, err = kubeClient.AppsV1().DaemonSets(ns).Create(context.Background(),
+			makeDaemonSet("ovs-ovn", "openvswitch", "OVN_DB_IPS", "stale"), metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		wantIPs := "10.0.0.1,10.0.0.2,10.0.0.3"
+		dep, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, wantIPs, dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+
+		dep, err = kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "kube-ovn-controller", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, wantIPs, dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+
+		ds, err := kubeClient.AppsV1().DaemonSets(ns).Get(context.Background(), "ovs-ovn", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, wantIPs, ds.Spec.Template.Spec.Containers[0].Env[0].Value)
+	})
+
+	t.Run("skips patch when value already current", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{masterNode("node1", "10.0.0.1")},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		dep := makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "10.0.0.1")
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(), dep, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// Capture the resource version before reconcile
+		before, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		after, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, before.ResourceVersion, after.ResourceVersion, "no patch should have been issued")
+	})
+
+	t.Run("skips absent workloads (e.g. ovs-ovn-dpdk not deployed)", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{masterNode("node1", "10.0.0.1")},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "stale"), metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// No ovs-ovn-dpdk present — reconcile should not error, and present workloads should still be patched
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		dep, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.1", dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+	})
+
+	t.Run("sorts IPs v4 before v6", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{"kube-ovn/role": "master"}},
+					Status: corev1.NodeStatus{
+						Addresses: []corev1.NodeAddress{
+							{Type: corev1.NodeInternalIP, Address: "10.0.0.2"},
+							{Type: corev1.NodeInternalIP, Address: "fd00::2"},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "node2", Labels: map[string]string{"kube-ovn/role": "master"}},
+					Status: corev1.NodeStatus{
+						Addresses: []corev1.NodeAddress{
+							{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+							{Type: corev1.NodeInternalIP, Address: "fd00::1"},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "stale"), metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		dep, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		// v4 IPs sorted first, then v6 IPs sorted
+		require.Equal(t, "10.0.0.1,10.0.0.2,fd00::1,fd00::2", dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+	})
+
+	t.Run("skips all patches when no master nodes found", func(t *testing.T) {
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{Name: "worker1"}}, // no master label
+			},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		kubeClient := ctrl.config.KubeClient
+
+		_, err = kubeClient.AppsV1().Deployments(ns).Create(context.Background(),
+			makeDeployment("ovn-central", "ovn-central", "NODE_IPS", "10.0.0.1"), metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.reconcileMasterNodeIPs(context.Background()))
+
+		// Value should be unchanged since nothing was patched
+		dep, err := kubeClient.AppsV1().Deployments(ns).Get(context.Background(), "ovn-central", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.1", dep.Spec.Template.Spec.Containers[0].Env[0].Value)
+	})
 }
