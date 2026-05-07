@@ -228,7 +228,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 }
 
 func (c *Controller) isKubevirtCRDInstalled() (bool, error) {
-	return apiResourceExists(c.config.KubevirtClient.Discovery(),
+	return util.APIResourceExists(c.config.KubevirtClient.Discovery(),
 		kubevirtv1.GroupVersion.String(),
 		util.KindVirtualMachine,
 		util.KindVirtualMachineInstance,

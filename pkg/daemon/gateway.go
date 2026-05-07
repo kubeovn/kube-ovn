@@ -151,13 +151,10 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 }
 
 func (c *Controller) getServicesCIDR(protocol string) []string {
-	ret := make([]string, 0)
-	for cidr := range strings.SplitSeq(c.config.ServiceClusterIPRange, ",") {
-		if util.CheckProtocol(cidr) == protocol {
-			ret = append(ret, cidr)
-		}
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		return c.serviceCIDRStore.V6CIDRs()
 	}
-	return ret
+	return c.serviceCIDRStore.V4CIDRs()
 }
 
 func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[string]string, error) {
