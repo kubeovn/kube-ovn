@@ -255,6 +255,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		KubeClient:           kubeClient,
 		PodNamespace:         metav1.NamespaceSystem,
 		AttachNetClient:      nadClient,
+		MasterNodesLabel:     "kube-ovn/role=master",
 	}
 
 	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {

@@ -58,6 +58,8 @@ type Configuration struct {
 	NodeSwitchCIDR    string
 	NodeSwitchGateway string
 
+	MasterNodesLabel string
+
 	ServiceClusterIPRange string
 
 	ClusterTCPLoadBalancer         string
@@ -167,6 +169,8 @@ func ParseFlags() (*Configuration, error) {
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch")
 		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch (default the first ip in node-switch-cidr)")
 
+		argMasterNodesLabel = pflag.String("master-nodes-label", "kube-ovn/role=master", "Label selector used to identify master nodes (key=value or key-only for Exists). Must match the MASTER_NODES_LABEL Helm value.")
+
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 
 		argClusterTCPLoadBalancer         = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
@@ -274,6 +278,7 @@ func ParseFlags() (*Configuration, error) {
 		NodeSwitch:                     *argNodeSwitch,
 		NodeSwitchCIDR:                 *argNodeSwitchCIDR,
 		NodeSwitchGateway:              *argNodeSwitchGateway,
+		MasterNodesLabel:               *argMasterNodesLabel,
 		ServiceClusterIPRange:          *argServiceClusterIPRange,
 		ClusterTCPLoadBalancer:         *argClusterTCPLoadBalancer,
 		ClusterUDPLoadBalancer:         *argClusterUDPLoadBalancer,

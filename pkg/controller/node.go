@@ -500,12 +500,16 @@ func containerEnvVarValue(containers []v1.Container, containerName, envName stri
 	return ""
 }
 
-// reconcileMasterNodeIPs collects the internal IPs of all master nodes (label
-// "kube-ovn/role=master") and patches the NODE_IPS / OVN_DB_IPS env vars in
-// the workloads that depend on them so that cluster membership stays correct
-// after nodes are added, removed, or rescheduled.
+// reconcileMasterNodeIPs collects the internal IPs of all master nodes and
+// patches the NODE_IPS / OVN_DB_IPS env vars in the workloads that depend on
+// them so that cluster membership stays correct after nodes are added, removed,
+// or rescheduled. The master node selector is read from config.MasterNodesLabel
+// (default "kube-ovn/role=master"), matching the MASTER_NODES_LABEL Helm value.
 func (c *Controller) reconcileMasterNodeIPs(ctx context.Context) error {
-	masterSelector := labels.SelectorFromSet(labels.Set{"kube-ovn/role": "master"})
+	masterSelector, err := labels.Parse(c.config.MasterNodesLabel)
+	if err != nil {
+		return fmt.Errorf("invalid master-nodes-label %q: %w", c.config.MasterNodesLabel, err)
+	}
 	masterNodes, err := c.nodesLister.List(masterSelector)
 	if err != nil {
 		return fmt.Errorf("failed to list master nodes: %w", err)
@@ -708,11 +712,9 @@ func (c *Controller) handleUpdateNode(key string) error {
 		}
 	}
 
-	if node.Labels["kube-ovn/role"] == "master" {
-		if err := c.reconcileMasterNodeIPs(context.Background()); err != nil {
-			klog.Errorf("failed to reconcile master node IPs after updating node %s: %v", node.Name, err)
-			return err
-		}
+	if err := c.reconcileMasterNodeIPs(context.Background()); err != nil {
+		klog.Errorf("failed to reconcile master node IPs after updating node %s: %v", node.Name, err)
+		return err
 	}
 
 	return nil
