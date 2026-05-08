@@ -56,6 +56,7 @@ jobs:
           cat > "$tmp_dir/on_changes.txt" <<EOF
           dist/images/Dockerfile.base
           dist/images/OpenBFDD-compile.patch
+          dist/images/patches/
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF
