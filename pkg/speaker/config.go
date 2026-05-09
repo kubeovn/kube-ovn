@@ -501,10 +501,6 @@ func (config *Configuration) initNeighborLocalAddresses() error {
 		}
 	}
 
-	for neighbor, localAddr := range config.NeighborLocalAddresses {
-		klog.Infof("Using BGP local address %s for neighbor %s", localAddr, neighbor)
-	}
-
 	return nil
 }
 
@@ -512,41 +508,82 @@ func (config *Configuration) getNeighborLocalAddress(neighborAddress net.IP) net
 	if localAddr := config.NeighborLocalAddresses[neighborAddress.String()]; localAddr != nil {
 		return localAddr
 	}
+
+	neighborIsIPv4 := neighborAddress.To4() != nil
+	if neighborIsIPv4 && len(config.AllowedSourceAddresses) > 0 {
+		panic(fmt.Sprintf("invariant violated: failed to determine local address for BGP neighbor %s: no allowed source address matched the whitelist", neighborAddress))
+	}
+	if !neighborIsIPv4 && len(config.AllowedSourceIPv6Addresses) > 0 {
+		panic(fmt.Sprintf("invariant violated: failed to determine local address for BGP neighbor %s: no allowed IPv6 source address matched the whitelist", neighborAddress))
+	}
+
 	return nil
 }
 
 func (config *Configuration) resolveWhitelistedNeighborLocalAddress(neighborAddress net.IP, allowedLocalAddresses []net.IP) (net.IP, error) {
-	var localAddr net.IP
 	routes, err := netlink.RouteGet(neighborAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s from route lookup: %w", neighborAddress, err)
 	}
+	localAddr, err := selectNeighborLocalAddressFromRoutes(neighborAddress, routes, allowedLocalAddresses)
+	if err != nil {
+		return nil, err
+	}
+	klog.Infof("Route lookup selected BGP local address %s for neighbor %s from whitelist %v", localAddr, neighborAddress, allowedLocalAddresses)
+	return localAddr, nil
+}
+
+func selectNeighborLocalAddressFromRoutes(neighborAddress net.IP, routes []netlink.Route, allowedLocalAddresses []net.IP) (net.IP, error) {
+	// Track the most useful failure reason across all route candidates so callers get
+	// a deterministic error when no source address satisfies the whitelist.
+	var (
+		sawSource         bool
+		firstFamilyErr    error
+		firstWhitelistErr error
+	)
+
 	// RouteGet reflects the kernel's effective route decision for this neighbor.
-	// We only need the first non-nil source address from the returned routes.
+	// Prefer the first source address that matches both the neighbor family and the whitelist.
 	for _, route := range routes {
-		if route.Src != nil {
-			localAddr = route.Src
-			break
+		if route.Src == nil {
+			continue
 		}
+		sawSource = true
+		if err := validateLocalAddressFamily(neighborAddress, route.Src); err != nil {
+			if firstFamilyErr == nil {
+				firstFamilyErr = err
+			}
+			klog.V(4).Infof("Skipping candidate BGP local address %s for neighbor %s: %v", route.Src, neighborAddress, err)
+			continue
+		}
+		if err := validateAllowedLocalAddress(neighborAddress, route.Src, allowedLocalAddresses); err != nil {
+			if firstWhitelistErr == nil {
+				firstWhitelistErr = err
+			}
+			klog.V(4).Infof("Skipping candidate BGP local address %s for neighbor %s: %v", route.Src, neighborAddress, err)
+			continue
+		}
+		return route.Src, nil
 	}
 
-	if localAddr == nil {
+	if !sawSource {
 		return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s: route lookup returned no source address", neighborAddress)
 	}
-	klog.Infof("Route lookup selected BGP local address %s for neighbor %s", localAddr, neighborAddress)
-	if err := validateLocalAddressFamily(neighborAddress, localAddr); err != nil {
-		return nil, err
+	if firstWhitelistErr != nil {
+		return nil, firstWhitelistErr
 	}
-	if err := validateAllowedLocalAddress(neighborAddress, localAddr, allowedLocalAddresses); err != nil {
-		return nil, err
+	if firstFamilyErr != nil {
+		if len(allowedLocalAddresses) > 0 {
+			return nil, fmt.Errorf("no route source matched the required address family for whitelist evaluation; first family error: %w", firstFamilyErr)
+		}
+		return nil, firstFamilyErr
 	}
-	klog.Infof("Selected BGP local address %s for neighbor %s is allowed by whitelist %v", localAddr, neighborAddress, allowedLocalAddresses)
-	return localAddr, nil
+	return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s: route lookup returned no valid source address", neighborAddress)
 }
 
 func validateLocalAddressFamily(neighborAddress, localAddr net.IP) error {
 	if neighborAddress == nil {
-		return fmt.Errorf("invalid nil BGP neighbor address")
+		return errors.New("invalid nil BGP neighbor address")
 	}
 	if localAddr == nil {
 		return fmt.Errorf("invalid nil local address for BGP neighbor %s", neighborAddress)

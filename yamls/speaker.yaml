@@ -45,7 +45,8 @@ spec:
             - --neighbor-address=10.32.32.1
             - --neighbor-as=65030
             - --cluster-as=65000
-            - --allowed-source-addresses=10.32.32.2,10.32.32.3,10.32.32.4,10.32.32.5
+            # Optional: set --allowed-source-addresses to make sure nexthop in the allowed-source-addresses is valid.
+            # - --allowed-source-addresses=10.32.32.2,10.32.32.3,10.32.32.4,10.32.32.5
           env:
             - name: NODE_NAME
               valueFrom:
