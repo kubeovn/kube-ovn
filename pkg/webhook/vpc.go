@@ -62,8 +62,13 @@ func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Reques
 	if err := v.cache.List(ctx, dnatList); err != nil {
 		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
 	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
 	for _, item := range dnatList.Items {
-		if item.Spec.Vpc == vpc.Name {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
 			return ctrlwebhook.Denied("can't delete vpc when OvnDnatRules still reference it, delete them first")
 		}
 	}
@@ -72,8 +77,13 @@ func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Reques
 	if err := v.cache.List(ctx, snatList); err != nil {
 		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
 	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
 	for _, item := range snatList.Items {
-		if item.Spec.Vpc == vpc.Name {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
 			return ctrlwebhook.Denied("can't delete vpc when OvnSnatRules still reference it, delete them first")
 		}
 	}
