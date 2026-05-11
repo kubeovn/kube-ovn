@@ -49,7 +49,7 @@ func (v *ValidatingHook) VpcUpdateHook(_ context.Context, req admission.Request)
 	return ctrlwebhook.Allowed("bypass")
 }
 
-func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Request) admission.Response {
 	vpc := ovnv1.Vpc{}
 	if err := v.decoder.DecodeRaw(req.OldObject, &vpc); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -57,5 +57,26 @@ func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request)
 	if len(vpc.Status.Subnets) != 0 {
 		return ctrlwebhook.Denied("can't delete vpc when any subnet in the vpc")
 	}
+
+	dnatList := &ovnv1.OvnDnatRuleList{}
+	if err := v.cache.List(ctx, dnatList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	for _, item := range dnatList.Items {
+		if item.Spec.Vpc == vpc.Name {
+			return ctrlwebhook.Denied("can't delete vpc when OvnDnatRules still reference it, delete them first")
+		}
+	}
+
+	snatList := &ovnv1.OvnSnatRuleList{}
+	if err := v.cache.List(ctx, snatList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	for _, item := range snatList.Items {
+		if item.Spec.Vpc == vpc.Name {
+			return ctrlwebhook.Denied("can't delete vpc when OvnSnatRules still reference it, delete them first")
+		}
+	}
+
 	return ctrlwebhook.Allowed("bypass")
 }
