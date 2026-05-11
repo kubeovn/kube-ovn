@@ -112,7 +112,7 @@ func (c *Controller) syncSubnetRoutes() {
 			klog.Errorf("failed to list services for bgp-lb-eip, %v", err)
 			return
 		}
-		collectSvcBgpPrefixes(services, c.config.NodeName, expectedBgpLbServiceEip)
+		collectSvcBgpPrefixes(services, c.getLocalNode(), expectedBgpLbServiceEip)
 		mergePrefixMap(expectedBgpLbServiceEip, bgpExpected)
 	}
 
@@ -133,6 +133,19 @@ func mergePrefixMap(src, dst prefixMap) {
 			dst[afi].Insert(prefix)
 		}
 	}
+}
+
+func (c *Controller) getLocalNode() *corev1.Node {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Warningf("failed to get local node %s for LB service announcement: %v", c.config.NodeName, err)
+		return nil
+	}
+	return node
+}
+
+func shouldAnnounceLbSvcIngressOnNode(node *corev1.Node) bool {
+	return node != nil && node.Labels[util.BgpSpeakLbVipLabel] == "true"
 }
 
 // collectPodExpectedPrefixes iterates over pods and collects IPs that should be announced via BGP.
@@ -188,6 +201,8 @@ func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kub
 
 // collectSvcBgpPrefixes announces external IPs of LoadBalancer Services that carry
 // the ovn.kubernetes.io/bgp annotation and have a non-empty status.loadBalancer.ingress.
+// The current node must first pass the node-level gate
+// ovn.kubernetes.io/bgp-speak-lb-vip=true before any Service-level policy is evaluated.
 //
 // Producer/consumer relationship with the controller:
 //   - Controller side (--enable-bgp-lb-vip): binds a bgp_lb_vip VIP to the Service and
@@ -245,7 +260,12 @@ func collectPodExpectedPrefixes(pods []*corev1.Pod, subnetByName map[string]*kub
 //
 //	TODO: add EndpointSlice-aware local announcement to automatically update
 //	the BGP path on VM live migration. Use bgp=cluster for production until then.
-func collectSvcBgpPrefixes(services []*corev1.Service, nodeName string, bgpExpected prefixMap) {
+func collectSvcBgpPrefixes(services []*corev1.Service, node *corev1.Node, bgpExpected prefixMap) {
+	if !shouldAnnounceLbSvcIngressOnNode(node) {
+		return
+	}
+	nodeName := node.Name
+
 	for _, svc := range services {
 		if len(svc.Annotations) == 0 {
 			continue

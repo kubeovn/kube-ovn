@@ -27,6 +27,9 @@ const controllerAgentName = "ovn-speaker"
 type Controller struct {
 	config *Configuration
 
+	nodesLister listerv1.NodeLister
+	nodesSynced cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 
@@ -96,6 +99,7 @@ func NewController(config *Configuration) *Controller {
 		}))
 
 	podInformer := podInformerFactory.Core().V1().Pods()
+	nodeInformer := informerFactory.Core().V1().Nodes()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	serviceInformer := informerFactory.Core().V1().Services()
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
@@ -104,6 +108,8 @@ func NewController(config *Configuration) *Controller {
 	controller := &Controller{
 		config: config,
 
+		nodesLister:      nodeInformer.Lister(),
+		nodesSynced:      nodeInformer.Informer().HasSynced,
 		podsLister:       podInformer.Lister(),
 		podsSynced:       podInformer.Informer().HasSynced,
 		subnetsLister:    subnetInformer.Lister(),
@@ -146,7 +152,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.gwPodsInformerFactory.Start(stopCh)
 	}
 
-	cacheSyncs := []cache.InformerSynced{c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced}
+	cacheSyncs := []cache.InformerSynced{c.nodesSynced, c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced}
 	if c.gwPodsSynced != nil {
 		cacheSyncs = append(cacheSyncs, c.gwPodsSynced)
 	}
@@ -186,14 +192,18 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 // The two modes above are mutually exclusive because they both claim ownership of IptablesEIP
 // BGP routes and would conflict if run together.
 //
-// Service VIP announcement (independent — composable with either EIP mode):
+// Service VIP announcement (independent from IptablesEIP, but not enabled in every mode):
 //
 //	--enable-lb-svc-announce:
 //	    Announces LoadBalancer Service ingress IPs (VIPs live on kube-ipvs0 on
 //	    every node, managed by kube-proxy/iptables). This plane is orthogonal to
 //	    IptablesEIP — different resources, different network plane, no conflict.
-//	    When node-route-eip-mode is active, syncNodeRouteEIPs() merges Service VIP
-//	    prefixes (expectedBgpLbServiceEip) into the expected set before reconciling.
+//	    Supported execution paths:
+//	    1. Default mode: syncSubnetRoutes() includes Service VIP prefixes.
+//	    2. node-route-eip-mode: syncNodeRouteEIPs() merges Service VIP prefixes
+//	       (expectedBgpLbServiceEip) into the expected set before reconciling.
+//	    nat-gw-mode does not participate in Service VIP announcement; it only
+//	    announces NAT gateway EIPs from inside the gateway pod.
 func (c *Controller) Reconcile() {
 	switch {
 	case c.config.NatGwMode:

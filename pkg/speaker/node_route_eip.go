@@ -323,7 +323,7 @@ func (c *Controller) syncNodeRouteEIPs() error {
 			return fmt.Errorf("failed to list services for bgp-lb-vip: %w", err)
 		}
 		expectedBgpLbServiceEip := make(prefixMap)
-		collectSvcBgpPrefixes(services, c.config.NodeName, expectedBgpLbServiceEip)
+		collectSvcBgpPrefixes(services, c.getLocalNode(), expectedBgpLbServiceEip)
 		mergePrefixMap(expectedBgpLbServiceEip, expectedPrefixes)
 	}
 

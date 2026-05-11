@@ -259,20 +259,54 @@ func makeService(name, ns, bgpPolicy string, ingressIPs ...string) *corev1.Servi
 	return svc
 }
 
+func makeNode(name string, labels map[string]string) *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels,
+		},
+	}
+}
+
 func TestCollectSvcBgpPrefixes(t *testing.T) {
 	cases := []struct {
 		name     string
+		node     *corev1.Node
 		services []*corev1.Service
 		wantIPs  []string
 		wantNot  []string
 	}{
 		{
+			name: "node without bgp-speak-lb-vip label: not announced",
+			node: makeNode("node1", map[string]string{
+				util.BgpAnnotation: "true",
+			}),
+			services: []*corev1.Service{makeService("svc1", "default", "true", "1.2.3.4")},
+			wantNot:  []string{"1.2.3.4/32"},
+		},
+		{
+			name: "node with bgp-speak-lb-vip=true label: announced",
+			node: makeNode("node1", map[string]string{
+				util.BgpAnnotation:      "true",
+				util.BgpSpeakLbVipLabel: "true",
+			}),
+			services: []*corev1.Service{makeService("svc1", "default", "true", "1.2.3.4")},
+			wantIPs:  []string{"1.2.3.4/32"},
+		},
+		{
+			name:     "nil node: not announced",
+			services: []*corev1.Service{makeService("svc1", "default", "true", "1.2.3.4")},
+			wantNot:  []string{"1.2.3.4/32"},
+		},
+		{
 			name:     "no annotation: not announced",
+			node:     makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{makeService("svc1", "default", "", "1.2.3.4")},
 			wantNot:  []string{"1.2.3.4/32"},
 		},
 		{
 			name: "bgp annotation without bgp-vip: not announced",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -287,21 +321,25 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name:     "bgp=true: announced",
+			node:     makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{makeService("svc1", "default", "true", "1.2.3.4")},
 			wantIPs:  []string{"1.2.3.4/32"},
 		},
 		{
 			name:     "bgp=cluster: announced",
+			node:     makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{makeService("svc1", "default", "cluster", "10.0.0.1")},
 			wantIPs:  []string{"10.0.0.1/32"},
 		},
 		{
 			name:     "bgp=local: announced on all nodes for LB service",
+			node:     makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{makeService("svc1", "default", "local", "192.168.100.5")},
 			wantIPs:  []string{"192.168.100.5/32"},
 		},
 		{
 			name: "bgp-speaker-node matches this node: announced (Test Mode)",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -317,7 +355,27 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 			wantIPs: []string{"5.5.5.5/32"},
 		},
 		{
+			name: "bgp-speaker-node matches this node but node lacks bgp-speak-lb-vip label: skipped",
+			node: makeNode("node1", map[string]string{
+				util.BgpAnnotation: "true",
+			}),
+			services: []*corev1.Service{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.BgpVipAnnotation:         "vip1",
+						util.BgpSpeakerNodeAnnotation: "node1",
+					},
+				},
+				Spec:   corev1.ServiceSpec{Type: corev1.ServiceTypeLoadBalancer},
+				Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "5.5.5.5"}}}},
+			}},
+			wantNot: []string{"5.5.5.5/32"},
+		},
+		{
 			name: "bgp-speaker-node does NOT match this node: skipped (Test Mode)",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -333,12 +391,14 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name:     "no ingress IP: nothing announced",
+			node:     makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{makeService("svc1", "default", "true")},
 			wantNot:  []string{},
 		},
 		// MetalLB compatibility: metallb.universe.tf/allow-shared-ip
 		{
 			name: "MetalLB compat: allow-shared-ip only, no bgp annotations: announced as cluster (Default Mode)",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -354,6 +414,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name: "MetalLB compat: allow-shared-ip present, bgp-vip absent: MetalLB key wins",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -370,6 +431,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name: "MetalLB compat: allow-shared-ip present, bgp-vip also set: MetalLB key takes priority, bgp-vip ignored",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -386,6 +448,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name: "MetalLB compat: allow-shared-ip with bgp-speaker-node matching this node: Test Mode wins",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -402,6 +465,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name: "MetalLB compat: allow-shared-ip with bgp-speaker-node NOT matching: skipped",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc1",
@@ -417,6 +481,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 		},
 		{
 			name: "multiple services: each contributes independently",
+			node: makeNode("node1", map[string]string{util.BgpSpeakLbVipLabel: "true"}),
 			services: []*corev1.Service{
 				makeService("svc1", "default", "true", "1.1.1.1"),
 				makeService("svc2", "default", "", "2.2.2.2"),
@@ -440,7 +505,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bgpExpected := make(prefixMap)
-			collectSvcBgpPrefixes(tc.services, "node1", bgpExpected)
+			collectSvcBgpPrefixes(tc.services, tc.node, bgpExpected)
 
 			for _, wantIP := range tc.wantIPs {
 				found := false
