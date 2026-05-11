@@ -106,14 +106,17 @@ func (c *Controller) syncSubnetRoutes() {
 		//
 		// Keep a dedicated set for Service VIP prefixes, then merge into the final expected
 		// prefixes to preserve composability with other announcement sources.
-		expectedBgpLbServiceEip := make(prefixMap)
-		services, err := c.servicesLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list services for bgp-lb-eip, %v", err)
-			return
+		node := c.getLocalNode()
+		if shouldAnnounceLbSvcIngressOnNode(node) {
+			services, err := c.servicesLister.List(labels.Everything())
+			if err != nil {
+				klog.Errorf("failed to list services for bgp-lb-eip, %v", err)
+				return
+			}
+			expectedBgpLbServiceEip := make(prefixMap)
+			collectSvcBgpPrefixes(services, node, expectedBgpLbServiceEip)
+			mergePrefixMap(expectedBgpLbServiceEip, bgpExpected)
 		}
-		collectSvcBgpPrefixes(services, c.getLocalNode(), expectedBgpLbServiceEip)
-		mergePrefixMap(expectedBgpLbServiceEip, bgpExpected)
 	}
 
 	if err := c.reconcileRoutes(bgpExpected); err != nil {
@@ -136,6 +139,9 @@ func mergePrefixMap(src, dst prefixMap) {
 }
 
 func (c *Controller) getLocalNode() *corev1.Node {
+	if c.config.NodeName == "" || c.nodesLister == nil {
+		return nil
+	}
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Warningf("failed to get local node %s for LB service announcement: %v", c.config.NodeName, err)

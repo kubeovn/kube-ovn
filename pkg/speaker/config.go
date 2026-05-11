@@ -277,6 +277,12 @@ func (config *Configuration) validateRequiredFlags() error {
 		missingFlags = append(missingFlags, "--neighbor-as must be specified")
 	}
 
+	// EnableLbSvcAnnounce requires NodeName so the speaker can read the local
+	// node label gate for Service VIP announcements.
+	if config.EnableLbSvcAnnounce && config.NodeName == "" {
+		missingFlags = append(missingFlags, "--enable-lb-svc-announce requires --node-name to be specified")
+	}
+
 	// NodeRouteEIPMode requires NodeName to identify local NAT gateway pods
 	if config.NodeRouteEIPMode && config.NodeName == "" {
 		missingFlags = append(missingFlags, "--node-route-eip-mode requires --node-name to be specified")

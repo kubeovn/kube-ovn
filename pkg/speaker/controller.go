@@ -54,6 +54,7 @@ type Controller struct {
 	eipQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory        kubeinformers.SharedInformerFactory
+	nodeInformerFactory    kubeinformers.SharedInformerFactory
 	podInformerFactory     kubeinformers.SharedInformerFactory
 	gwPodsInformerFactory  kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
@@ -73,6 +74,15 @@ func NewController(config *Configuration) *Controller {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	var nodeInformerFactory kubeinformers.SharedInformerFactory
+	if config.EnableLbSvcAnnounce {
+		nodeInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+			kubeinformers.WithTransform(util.TrimManagedFields),
+			kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+				listOption.FieldSelector = "metadata.name=" + config.NodeName
+				listOption.AllowWatchBookmarks = true
+			}))
+	}
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -99,17 +109,24 @@ func NewController(config *Configuration) *Controller {
 		}))
 
 	podInformer := podInformerFactory.Core().V1().Pods()
-	nodeInformer := informerFactory.Core().V1().Nodes()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	serviceInformer := informerFactory.Core().V1().Services()
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	natgatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 
+	var nodesLister listerv1.NodeLister
+	nodesSynced := cache.InformerSynced(func() bool { return true })
+	if nodeInformerFactory != nil {
+		nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+		nodesLister = nodeInformer.Lister()
+		nodesSynced = nodeInformer.Informer().HasSynced
+	}
+
 	controller := &Controller{
 		config: config,
 
-		nodesLister:      nodeInformer.Lister(),
-		nodesSynced:      nodeInformer.Informer().HasSynced,
+		nodesLister:      nodesLister,
+		nodesSynced:      nodesSynced,
 		podsLister:       podInformer.Lister(),
 		podsSynced:       podInformer.Informer().HasSynced,
 		subnetsLister:    subnetInformer.Lister(),
@@ -122,6 +139,7 @@ func NewController(config *Configuration) *Controller {
 		natgatewaySynced: natgatewayInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
+		nodeInformerFactory:    nodeInformerFactory,
 		podInformerFactory:     podInformerFactory,
 		gwPodsInformerFactory:  gwPodsInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
@@ -144,6 +162,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.shutdownNodeRouteEIPWorkers()
 
 	c.informerFactory.Start(stopCh)
+	if c.nodeInformerFactory != nil {
+		c.nodeInformerFactory.Start(stopCh)
+	}
 	c.podInformerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
@@ -152,7 +173,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.gwPodsInformerFactory.Start(stopCh)
 	}
 
-	cacheSyncs := []cache.InformerSynced{c.nodesSynced, c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced}
+	cacheSyncs := []cache.InformerSynced{c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced}
+	cacheSyncs = append(cacheSyncs, c.nodesSynced)
 	if c.gwPodsSynced != nil {
 		cacheSyncs = append(cacheSyncs, c.gwPodsSynced)
 	}

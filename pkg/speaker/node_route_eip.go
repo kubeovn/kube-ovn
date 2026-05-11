@@ -318,13 +318,16 @@ func (c *Controller) syncNodeRouteEIPs() error {
 	// Merging both into expectedPrefixes ensures reconcileRoutes does not withdraw
 	// Service VIP routes that are legitimately announced.
 	if c.config.EnableLbSvcAnnounce {
-		services, err := c.servicesLister.List(labels.Everything())
-		if err != nil {
-			return fmt.Errorf("failed to list services for bgp-lb-vip: %w", err)
+		node := c.getLocalNode()
+		if shouldAnnounceLbSvcIngressOnNode(node) {
+			services, err := c.servicesLister.List(labels.Everything())
+			if err != nil {
+				return fmt.Errorf("failed to list services for bgp-lb-vip: %w", err)
+			}
+			expectedBgpLbServiceEip := make(prefixMap)
+			collectSvcBgpPrefixes(services, node, expectedBgpLbServiceEip)
+			mergePrefixMap(expectedBgpLbServiceEip, expectedPrefixes)
 		}
-		expectedBgpLbServiceEip := make(prefixMap)
-		collectSvcBgpPrefixes(services, c.getLocalNode(), expectedBgpLbServiceEip)
-		mergePrefixMap(expectedBgpLbServiceEip, expectedPrefixes)
 	}
 
 	return c.reconcileRoutes(expectedPrefixes)

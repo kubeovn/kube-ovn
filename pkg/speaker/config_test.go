@@ -86,6 +86,17 @@ func TestValidateRequiredFlags(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "enable lb svc announce requires node-name",
+			config: &Configuration{
+				NeighborAddresses:   []net.IP{net.ParseIP("192.168.1.1")},
+				ClusterAs:           65000,
+				NeighborAs:          65001,
+				EnableLbSvcAnnounce: true,
+			},
+			expectError: true,
+			errContains: []string{"enable-lb-svc-announce", "node-name"},
+		},
+		{
 			name: "nat-gw mode does not require node-name",
 			config: &Configuration{
 				NeighborAddresses: []net.IP{net.ParseIP("192.168.1.1")},

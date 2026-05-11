@@ -486,6 +486,9 @@ const (
 
 	// BgpSpeakLbVipLabel gates whether the local node's BGP speaker is allowed
 	// to announce LoadBalancer Service ingress IPs via BGP.
+	// It intentionally uses the Label suffix to match the file-wide naming
+	// convention for labels (for example, NodeNameLabel and VpcNatGatewayLabel),
+	// unlike BgpAnnotation and BgpSpeakerNodeAnnotation which are annotations.
 	// This is a node label, separate from BgpAnnotation which controls whether
 	// the bgp-speaker Pod is scheduled onto the node.
 	BgpSpeakLbVipLabel = "ovn.kubernetes.io/bgp-speak-lb-vip"
