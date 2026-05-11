@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -281,6 +282,7 @@ func reconcileGatewayBFD(
 				klog.Error(err)
 				return nil, nil, nil, err
 			}
+			klog.V(3).Infof("created BFD session for nexthop %s: UUID %s", dstIP, bfd.UUID)
 			bfdIDs.Insert(bfd.UUID)
 			bfdMap[bfd.DstIP] = bfd.UUID
 		}
@@ -296,6 +298,7 @@ func cleanupStaleBFD(ovnClient ovnNbClient, staleBFDIDs set.Set[string]) error {
 			klog.Errorf("failed to delete bfd %s: %v", bfdID, err)
 			return err
 		}
+		klog.V(3).Infof("deleted stale BFD session %s", bfdID)
 	}
 	return nil
 }
@@ -507,6 +510,139 @@ func reconcileGatewayRoutes(
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+// reconcileNatGatewayPolicies reconciles OVN logical router policies for NAT gateway routing.
+// Uses policy-based routing with BFD sessions for automatic failover.
+//
+// Parameters:
+//   - ovnClient: OVN northbound client for policy operations
+//   - gwName: NAT gateway name (for logging)
+//   - lrName: Logical router name
+//   - af: Address family (4 for IPv4, 6 for IPv6)
+//   - bfdEnabled: Whether BFD is enabled
+//   - bfdIDs: Set of active BFD UUIDs
+//   - internalCIDRs: List of internal CIDRs to route to the gateway
+//   - nextHops: Map of node names to nexthop IPs
+//   - externalIDs: External IDs for tagging policies
+//
+// Returns error if any OVN operation fails.
+func reconcileNatGatewayPolicies(
+	ovnClient ovnNbClient,
+	gwName string,
+	lrName string,
+	af int,
+	bfdEnabled bool,
+	bfdIDs set.Set[string],
+	internalCIDRs []string,
+	nextHops map[string]string,
+	externalIDs map[string]string,
+) error {
+	if len(internalCIDRs) == 0 {
+		// No internal CIDRs configured, delete any existing policies
+		if err := ovnClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs); err != nil {
+			klog.Errorf("failed to delete policies for NAT gateway %s: %v", gwName, err)
+			return err
+		}
+		klog.V(3).Infof("deleted policies for NAT gateway %s", gwName)
+		if err := ovnClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs); err != nil {
+			klog.Errorf("failed to delete drop policies for NAT gateway %s: %v", gwName, err)
+			return err
+		}
+		klog.V(3).Infof("deleted drop policies for NAT gateway %s", gwName)
+		return nil
+	}
+
+	// Get existing main policies
+	policies, err := ovnClient.ListLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// Build match expressions for each internal CIDR
+	matches := set.New[string]()
+	for _, cidr := range internalCIDRs {
+		matches.Insert(fmt.Sprintf("ip%d.src == %s", af, cidr))
+	}
+
+	bfdIPs := set.New(slices.Collect(maps.Values(nextHops))...)
+	bfdSessions := bfdIDs.UnsortedList()
+
+	// Update existing policies or mark for deletion
+	for _, policy := range policies {
+		if matches.Has(policy.Match) {
+			// Policy exists, check if nexthops or BFD sessions need updating
+			if !bfdIPs.Equal(set.New(policy.Nexthops...)) || !bfdIDs.Equal(set.New(policy.BFDSessions...)) {
+				policy.Nexthops, policy.BFDSessions = bfdIPs.UnsortedList(), bfdSessions
+				if err = ovnClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+					err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
+					klog.Error(err)
+					return err
+				}
+				klog.V(3).Infof("updated policy for NAT gateway %s: match %s, nexthops %v, bfdSessions %v", gwName, policy.Match, policy.Nexthops, policy.BFDSessions)
+			}
+			matches.Delete(policy.Match)
+			continue
+		}
+		// Stale policy, delete it
+		if err = ovnClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+			err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
+			klog.Error(err)
+			return err
+		}
+		klog.V(3).Infof("deleted policy for NAT gateway %s: match %s", gwName, policy.Match)
+	}
+
+	// Create missing policies
+	for _, match := range matches.UnsortedList() {
+		if err = ovnClient.AddLogicalRouterPolicy(lrName, util.NatGatewayPolicyPriority, match,
+			ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
+			klog.Error(err)
+			return err
+		}
+		klog.V(3).Infof("added policy for NAT gateway %s: match %s, nexthops %v, bfdSessions %v", gwName, match, bfdIPs.UnsortedList(), bfdSessions)
+	}
+
+	// Handle drop policies (only when BFD is enabled)
+	if bfdEnabled {
+		// drop traffic if no nexthop is available
+		if policies, err = ovnClient.ListLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs, false); err != nil {
+			klog.Error(err)
+			return err
+		}
+		matches = set.New[string]()
+		for _, cidr := range internalCIDRs {
+			matches.Insert(fmt.Sprintf("ip%d.src == %s", af, cidr))
+		}
+		for _, policy := range policies {
+			if matches.Has(policy.Match) {
+				matches.Delete(policy.Match)
+				continue
+			}
+			if err = ovnClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+				err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
+				klog.Error(err)
+				return err
+			}
+			klog.V(3).Infof("deleted drop policy for NAT gateway %s: match %s", gwName, policy.Match)
+		}
+		for _, match := range matches.UnsortedList() {
+			if err = ovnClient.AddLogicalRouterPolicy(lrName, util.NatGatewayDropPolicyPriority, match,
+				ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
+				klog.Error(err)
+				return err
+			}
+			klog.V(3).Infof("added drop policy for NAT gateway %s: match %s", gwName, match)
+		}
+	} else if err = ovnClient.DeleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs); err != nil {
+		klog.Error(err)
+		return err
+	} else {
+		klog.V(3).Infof("deleted drop policies for NAT gateway %s (BFD disabled)", gwName)
 	}
 
 	return nil
