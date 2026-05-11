@@ -276,9 +276,9 @@ func (c *Controller) deleteLbSvc(svc *corev1.Service) error {
 }
 
 func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []string) error {
-	cmd := fmt.Sprintf("bash /kube-ovn/lb-svc.sh %s %s", operation, strings.Join(rules, " "))
-	klog.V(3).Info(cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "lb-svc", []string{"/bin/bash", "-c", cmd}...)
+	args := append([]string{"bash", "/kube-ovn/lb-svc.sh", operation}, rules...)
+	klog.V(3).Info(strings.Join(args, " "))
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "lb-svc", args...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)

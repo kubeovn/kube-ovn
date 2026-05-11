@@ -1356,10 +1356,26 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	}
 
 	if setUfoOff {
-		cmd := fmt.Sprintf("if ethtool -k %s | grep -q ^udp-fragmentation-offload; then ethtool -K %s ufo off; fi", link, link)
-		if output, err := exec.Command("sh", "-xc", cmd).CombinedOutput(); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
+		// Probe is best-effort: some kernels/devices reject `ethtool -k` (e.g. restricted netns,
+		// certain veth setups). Treat probe failure or absence of the udp-fragmentation-offload
+		// feature as "nothing to disable" and continue, matching the previous shell behavior.
+		probe, probeErr := exec.Command("ethtool", "-k", link).CombinedOutput() // #nosec G204
+		if probeErr != nil {
+			klog.Warningf("failed to query offload features of device %s, skip disabling ufo: %v, %s", link, probeErr, probe)
+		} else {
+			var hasUFO bool
+			for line := range strings.SplitSeq(string(probe), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "udp-fragmentation-offload") {
+					hasUFO = true
+					break
+				}
+			}
+			if hasUFO {
+				if output, err := exec.Command("ethtool", "-K", link, "ufo", "off").CombinedOutput(); err != nil { // #nosec G204
+					klog.Error(err)
+					return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
+				}
+			}
 		}
 	}
 

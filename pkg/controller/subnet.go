@@ -2750,6 +2750,21 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
+	// Drop any policies belonging to a previous Service CIDR set so that
+	// shrinking the merged set (e.g. ServiceCIDR object deleted) does not
+	// leave stale OVN entries behind. Port groups are reused, not touched.
+	if c.logicalRouterExists(subnet.Spec.Vpc) {
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
+			"isU2ONoLBRoutePolicy": "true",
+			"vendor":               util.CniTypeName,
+			"subnet":               subnet.Name,
+		}); err != nil {
+			klog.Errorf("failed to clean stale u2o no-lb policies for subnet %s: %v", subnet.Name, err)
+			return err
+		}
+	}
+	v4Svcs := c.serviceCIDRStore.V4CIDRs()
+	v6Svcs := c.serviceCIDRStore.V6CIDRs()
 	for _, node := range nodes {
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 		if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}); err != nil {
@@ -2765,41 +2780,43 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 			klog.Error(err)
 			return err
 		}
-		v4Svc, v6Svc := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 			ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
 			nodeIP := ip.Spec.V4IPAddress
-			svcCIDR := v4Svc
+			svcCIDRs := v4Svcs
 			if ipSuffix == "ip6" {
 				nodeIP = ip.Spec.V6IPAddress
-				svcCIDR = v6Svc
+				svcCIDRs = v6Svcs
 			}
-			if nodeIP == "" || svcCIDR == "" {
+			if nodeIP == "" || len(svcCIDRs) == 0 {
 				continue
 			}
 
 			pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcCIDR)
 			action := kubeovnv1.PolicyRouteActionReroute
-			externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
-				"isU2ORoutePolicy":     "true",
-				"isU2ONoLBRoutePolicy": "true",
-				"node":                 node.Name,
-			})
+			for _, svcCIDR := range svcCIDRs {
+				match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, svcCIDR)
+				externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+					"isU2ORoutePolicy":     "true",
+					"isU2ONoLBRoutePolicy": "true",
+					"node":                 node.Name,
+					"svcCidr":              svcCIDR,
+				})
 
-			klog.Infof("add u2o interconnection policy without enabling loadbalancer for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match, action, nodeIP)
-			if err := c.addPolicyRouteToVpc(
-				c.config.ClusterRouter,
-				&kubeovnv1.PolicyRoute{
-					Priority:  util.U2OSubnetPolicyPriority,
-					Match:     match,
-					Action:    action,
-					NextHopIP: nodeIP,
-				},
-				externalIDs,
-			); err != nil {
-				klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
-				return err
+				klog.Infof("add u2o interconnection policy without enabling loadbalancer for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match, action, nodeIP)
+				if err := c.addPolicyRouteToVpc(
+					c.config.ClusterRouter,
+					&kubeovnv1.PolicyRoute{
+						Priority:  util.U2OSubnetPolicyPriority,
+						Match:     match,
+						Action:    action,
+						NextHopIP: nodeIP,
+					},
+					externalIDs,
+				); err != nil {
+					klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
+					return err
+				}
 			}
 		}
 	}

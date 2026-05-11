@@ -16,16 +16,42 @@ import (
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 )
+
+// APIResourceExists checks if all specified kinds exist in the given group version.
+// It returns true if all kinds are found, false otherwise.
+// Parameters:
+// - discoveryClient: The discovery client to use for querying API resources.
+// - gv: The group version string (e.g., "apps/v1").
+// - kinds: A variadic list of kind names to check for existence (e.g., "Deployment", "StatefulSet").
+func APIResourceExists(discoveryClient discovery.DiscoveryInterface, gv string, kinds ...string) (bool, error) {
+	apiResourceLists, err := discoveryClient.ServerResourcesForGroupVersion(gv)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to discover api resources for %s: %w", gv, err)
+	}
+
+	existingKinds := set.New[string]()
+	for _, apiResource := range apiResourceLists.APIResources {
+		existingKinds.Insert(apiResource.Kind)
+	}
+
+	return existingKinds.HasAll(kinds...), nil
+}
 
 // ObjectMatchesLabelSelector checks if the given object matches the provided label selector.
 // It returns true if the object has labels that match the selector, otherwise false.

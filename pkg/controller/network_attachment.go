@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Controller) isNetAttachCRDInstalled() (bool, error) {
-	return apiResourceExists(
+	return util.APIResourceExists(
 		c.config.AttachNetClient.Discovery(),
 		nadv1.SchemeGroupVersion.String(),
 		util.ObjectKind[*nadv1.NetworkAttachmentDefinition](),
