@@ -27,6 +27,9 @@ const controllerAgentName = "ovn-speaker"
 type Controller struct {
 	config *Configuration
 
+	// nodesLister/nodesSynced are only initialized when EnableLbSvcAnnounce is enabled,
+	// because the node cache is used solely for the local node label gate on Service VIP
+	// announcements.
 	nodesLister listerv1.NodeLister
 	nodesSynced cache.InformerSynced
 

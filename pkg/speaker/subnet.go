@@ -139,6 +139,7 @@ func mergePrefixMap(src, dst prefixMap) {
 }
 
 func (c *Controller) getLocalNode() *corev1.Node {
+	// The local node cache is only wired when Service VIP announcement is enabled.
 	if c.config.NodeName == "" || c.nodesLister == nil {
 		return nil
 	}
