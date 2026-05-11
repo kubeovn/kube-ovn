@@ -338,7 +338,7 @@ func TestCollectSvcBgpPrefixes(t *testing.T) {
 			wantIPs:  []string{"192.168.100.5/32"},
 		},
 		{
-			name: "bgp=local with node gate closed: not announced",
+			name:     "bgp=local with node gate closed: not announced",
 			node:     makeNode("node1", map[string]string{}),
 			services: []*corev1.Service{makeService("svc1", "default", "local", "192.168.100.5")},
 			wantNot:  []string{"192.168.100.5/32"},
