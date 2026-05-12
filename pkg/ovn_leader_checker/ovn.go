@@ -343,9 +343,7 @@ func checkDBClusterIntegrity(db string, expectedMembers int) {
 		dbName = ovnsb.DatabaseName
 	}
 
-	ctlFile := fmt.Sprintf("/var/run/ovn/ovn%s_db.ctl", db)
-	out, err := exec.Command("ovn-appctl", "-t", ctlFile, "cluster/status", dbName).CombinedOutput() // #nosec G204
-	output := string(out)
+	output, err := ovs.OvnDatabaseControl(db, "cluster/status", dbName)
 	if err != nil {
 		klog.Warningf("failed to get %s cluster status: %v", db, err)
 		return
