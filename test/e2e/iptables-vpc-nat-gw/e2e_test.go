@@ -336,6 +336,28 @@ func snatRuleExists(natGwPodName, eip, internalCIDR string) bool {
 	return re.MatchString(output)
 }
 
+// snatRulePosition returns the 1-based index of the SHARED_SNAT rule matching
+// (eip, internalCIDR) as it appears in iptables-save output. Returns 0 if the
+// rule is not present. Used to verify ordering (longest-prefix-first) across
+// multiple SNAT rules on the same NAT gateway.
+func snatRulePosition(natGwPodName, eip, internalCIDR string) int {
+	output := iptablesSaveNat(natGwPodName)
+	pattern := fmt.Sprintf(`-s %s\b.*--to-source %s\b`,
+		regexp.QuoteMeta(internalCIDR), regexp.QuoteMeta(eip))
+	re := regexp.MustCompile(pattern)
+	idx := 0
+	for line := range strings.SplitSeq(output, "\n") {
+		if !strings.HasPrefix(line, "-A SHARED_SNAT ") {
+			continue
+		}
+		idx++
+		if re.MatchString(line) {
+			return idx
+		}
+	}
+	return 0
+}
+
 var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
@@ -513,7 +535,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[1] change gateway image, custom annotations and custom namespace", func() {
-		f.SkipVersionPriorTo(1, 16, "This feature was introduced in v1.16")
+		f.SkipVersionPriorTo(1, 16, "VpcNatGateway image override and custom annotations were introduced in v1.16")
 		overlaySubnetV4Cidr := "10.0.2.0/24"
 		overlaySubnetV4Gw := "10.0.2.1"
 		lanIP := "10.0.2.254"
@@ -526,16 +548,22 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
 
-		// Create a custom namespace for the NAT gateway pod.
-		// Register cleanup BEFORE setupVpcNatGwTestEnvironment so that the namespace
-		// is deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
-		customNs := "ns-" + framework.RandomSuffix()
-		ginkgo.By("Creating custom namespace " + customNs + " for NAT gateway pod")
-		_ = f.NamespaceClient().Create(framework.MakeNamespace(customNs, nil, nil))
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up custom namespace " + customNs)
-			f.NamespaceClient().DeleteSync(customNs)
-		})
+		// Custom namespace for the NAT gateway pod is a v1.17+ feature; on older
+		// versions the pod always lives in the controller PodNamespace.
+		// Register the namespace cleanup BEFORE setupVpcNatGwTestEnvironment so it is
+		// deleted last (after gw/vpc/subnet cleanup) due to Ginkgo's LIFO DeferCleanup.
+		var customNs string
+		expectedPodNs := framework.KubeOvnNamespace
+		if !f.VersionPriorTo(1, 17) {
+			customNs = "ns-" + framework.RandomSuffix()
+			expectedPodNs = customNs
+			ginkgo.By("Creating custom namespace " + customNs + " for NAT gateway pod")
+			_ = f.NamespaceClient().Create(framework.MakeNamespace(customNs, nil, nil))
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up custom namespace " + customNs)
+				f.NamespaceClient().DeleteSync(customNs)
+			})
+		}
 
 		// Test custom annotations on VpcNatGateway
 		customAnnotations := map[string]string{
@@ -550,13 +578,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			externalSubnetProvider,
 			true, // skipNADSetup: shared NAD created in BeforeAll
 			customAnnotations,
-			customNs, // gwNamespace: create NAT gateway pod in custom namespace
+			customNs, // gwNamespace: empty falls back to PodNamespace on pre-v1.17
 		)
 		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
-		ginkgo.By("Verifying NAT gateway pod is in namespace " + customNs)
-		pod := f.PodClientNS(customNs).GetPod(vpcNatGwPodName)
+		ginkgo.By("Verifying NAT gateway pod is in namespace " + expectedPodNs)
+		pod := f.PodClientNS(expectedPodNs).GetPod(vpcNatGwPodName)
 		framework.ExpectNotNil(pod)
-		framework.ExpectEqual(pod.Namespace, customNs)
+		framework.ExpectEqual(pod.Namespace, expectedPodNs)
 		framework.ExpectEqual(pod.Spec.Containers[0].Image, cm.Data["image"])
 
 		// Verify custom annotations are present on the pod
@@ -565,38 +593,42 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, k, v)
 		}
 
-		// Create an IptablesEIP with spec.namespace pointing to customNs,
-		// verify it becomes ready and its namespace matches the gw pod namespace.
-		ginkgo.By("Creating IptablesEIP with spec.namespace=" + customNs)
-		nsEipName := "ns-eip-" + framework.RandomSuffix()
-		nsEip := framework.MakeIptablesEIP(nsEipName, "", "", "", vpcNatGwName, "", "")
-		nsEip.Spec.Namespace = customNs
-		_ = iptablesEIPClient.CreateSync(nsEip)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up ns eip " + nsEipName)
-			iptablesEIPClient.DeleteSync(nsEipName)
-		})
-		ginkgo.By("Verifying IptablesEIP is ready and its namespace matches " + customNs)
-		nsEipCR := waitForIptablesEIPReady(iptablesEIPClient, nsEipName, 60*time.Second)
-		framework.ExpectNotNil(nsEipCR, "IptablesEIP with custom namespace should be ready")
-		framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
-			"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
+		// IptablesEIP spec.namespace plumbing and auto-backfill from the referenced
+		// VpcNatGateway are also v1.17+ features.
+		if !f.VersionPriorTo(1, 17) {
+			// Create an IptablesEIP with spec.namespace pointing to customNs,
+			// verify it becomes ready and its namespace matches the gw pod namespace.
+			ginkgo.By("Creating IptablesEIP with spec.namespace=" + customNs)
+			nsEipName := "ns-eip-" + framework.RandomSuffix()
+			nsEip := framework.MakeIptablesEIP(nsEipName, "", "", "", vpcNatGwName, "", "")
+			nsEip.Spec.Namespace = customNs
+			_ = iptablesEIPClient.CreateSync(nsEip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up ns eip " + nsEipName)
+				iptablesEIPClient.DeleteSync(nsEipName)
+			})
+			ginkgo.By("Verifying IptablesEIP is ready and its namespace matches " + customNs)
+			nsEipCR := waitForIptablesEIPReady(iptablesEIPClient, nsEipName, 60*time.Second)
+			framework.ExpectNotNil(nsEipCR, "IptablesEIP with custom namespace should be ready")
+			framework.ExpectEqual(nsEipCR.Spec.Namespace, customNs,
+				"IptablesEIP spec.namespace should match the custom namespace of the NAT gateway pod")
 
-		// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
-		// it from the referenced VpcNatGateway's spec.namespace.
-		ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
-		autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
-		autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
-		_ = iptablesEIPClient.CreateSync(autoNsEip)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
-			iptablesEIPClient.DeleteSync(autoNsEipName)
-		})
-		ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
-		gomega.Eventually(func() string {
-			return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
-		}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
-			"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
+			// Create an IptablesEIP WITHOUT spec.namespace set; the controller should auto-backfill
+			// it from the referenced VpcNatGateway's spec.namespace.
+			ginkgo.By("Creating IptablesEIP without spec.namespace to verify auto-backfill from VpcNatGateway")
+			autoNsEipName := "auto-ns-eip-" + framework.RandomSuffix()
+			autoNsEip := framework.MakeIptablesEIP(autoNsEipName, "", "", "", vpcNatGwName, "", "")
+			_ = iptablesEIPClient.CreateSync(autoNsEip)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up auto ns eip " + autoNsEipName)
+				iptablesEIPClient.DeleteSync(autoNsEipName)
+			})
+			ginkgo.By("Verifying IptablesEIP spec.namespace is auto-backfilled to " + customNs)
+			gomega.Eventually(func() string {
+				return iptablesEIPClient.Get(autoNsEipName).Spec.Namespace
+			}, 30*time.Second, 2*time.Second).Should(gomega.Equal(customNs),
+				"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
+		}
 
 		// recover the image
 		cm.Data["image"] = oldImage
@@ -1704,6 +1736,156 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectTrue(snat.Status.Ready, "SNAT should be ready after EIP-only change")
 		framework.ExpectHaveKeyWithValue(snat.Labels, util.EipV4IpLabel, snatEip3.Spec.V4ip)
 		framework.ExpectHaveKeyWithValue(snat.Annotations, util.VpcEipAnnotation, snatEip3Name)
+	})
+
+	framework.ConformanceIt("[7] SHARED_SNAT rules are ordered by longest-prefix-first", func() {
+		// When multiple IptablesSnatRule share overlapping CIDRs, iptables evaluates
+		// SHARED_SNAT rules top-down (first-match wins). A less-specific rule (e.g.,
+		// /16) placed before a more-specific one (e.g., /24) would shadow the /24,
+		// producing the wrong SNAT source IP. The NAT gateway script therefore
+		// inserts each new rule at a position computed from existing prefix lengths
+		// so the chain is kept sorted by descending prefix length.
+		f.SkipVersionPriorTo(1, 18, "Longest-prefix-first SNAT ordering was introduced in v1.18")
+
+		overlaySubnetV4Cidr := "10.0.7.0/24"
+		overlaySubnetV4Gw := "10.0.7.1"
+		lanIP := "10.0.7.254"
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, "",
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, nil,
+			"", // gwNamespace: use default (PodNamespace)
+		)
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+
+		randomSuffix := framework.RandomSuffix()
+		// Use CIDRs that are unrelated to any real subnet; they only drive the
+		// iptables -s match, so the SNAT rule works regardless of whether pods
+		// actually exist in these ranges. The three CIDRs are chosen so each
+		// strictly contains the next one, making ordering observable.
+		cidr16 := "172.31.0.0/16"
+		cidr20 := "172.31.0.0/20"
+		cidr24 := "172.31.0.0/24"
+
+		eip16Name := "order-eip-16-" + randomSuffix
+		eip20Name := "order-eip-20-" + randomSuffix
+		eip24Name := "order-eip-24-" + randomSuffix
+		snat16Name := "order-snat-16-" + randomSuffix
+		snat20Name := "order-snat-20-" + randomSuffix
+		snat24Name := "order-snat-24-" + randomSuffix
+
+		ginkgo.By("Creating three EIPs for overlapping SNAT rules")
+		eip16 := framework.MakeIptablesEIP(eip16Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip16)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip16Name) })
+		eip16 = iptablesEIPClient.Get(eip16Name)
+
+		eip20 := framework.MakeIptablesEIP(eip20Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip20)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip20Name) })
+		eip20 = iptablesEIPClient.Get(eip20Name)
+
+		eip24 := framework.MakeIptablesEIP(eip24Name, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip24)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eip24Name) })
+		eip24 = iptablesEIPClient.Get(eip24Name)
+
+		// Create rules in the worst order for iptables first-match semantics:
+		// broadest first, then increasingly specific. Without prefix-based
+		// ordering the /16 would sit at the top and shadow the /20 and /24.
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr16 + " (broadest) first")
+		snat16 := framework.MakeIptablesSnatRule(snat16Name, eip16Name, cidr16)
+		_ = iptablesSnatRuleClient.CreateSync(snat16)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat16Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip16.Status.IP, cidr16)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"broadest SNAT rule should be installed")
+
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr20)
+		snat20 := framework.MakeIptablesSnatRule(snat20Name, eip20Name, cidr20)
+		_ = iptablesSnatRuleClient.CreateSync(snat20)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat20Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip20.Status.IP, cidr20)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"mid-prefix SNAT rule should be installed")
+
+		ginkgo.By("Creating SNAT rule with CIDR " + cidr24 + " (most specific) last")
+		snat24 := framework.MakeIptablesSnatRule(snat24Name, eip24Name, cidr24)
+		_ = iptablesSnatRuleClient.CreateSync(snat24)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snat24Name) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eip24.Status.IP, cidr24)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"most-specific SNAT rule should be installed")
+
+		ginkgo.By("Verifying SHARED_SNAT chain is ordered /24 -> /20 -> /16")
+		gomega.Eventually(func() bool {
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p20 := snatRulePosition(vpcNatGwPodName, eip20.Status.IP, cidr20)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			framework.Logf("SHARED_SNAT positions: /24=%d /20=%d /16=%d", p24, p20, p16)
+			return p24 > 0 && p20 > 0 && p16 > 0 && p24 < p20 && p20 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"more-specific SNAT rules must appear before less-specific ones in SHARED_SNAT")
+
+		ginkgo.By("Removing the middle (/20) rule and verifying remaining order /24 -> /16 is preserved")
+		iptablesSnatRuleClient.DeleteSync(snat20Name)
+		gomega.Eventually(func() bool {
+			return !snatRuleExists(vpcNatGwPodName, eip20.Status.IP, cidr20)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"/20 SNAT rule should be removed")
+		gomega.Eventually(func() bool {
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			return p24 > 0 && p16 > 0 && p24 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"remaining SNAT rules must retain longest-prefix-first ordering after deletion")
+
+		// Bare-IP InternalCIDR (e.g., "10.0.0.5" without "/len") is a supported
+		// input shape per validateSnatRule in vpc_nat_gw_nat.go. iptables normalizes
+		// it to /32 in iptables-save output, so the host rule must sort before the
+		// /24 rule (most specific first).
+		//
+		// The chosen IP has a small leading octet (10) on purpose. If the shell
+		// extracts new_prefix via `${internalCIDR##*/}` on a bare IP (the original
+		// bug), awk parses "10.0.0.5" as 10, so existing /16 and /24 rules all
+		// satisfy `existing_prefix >= 10` and the host rule ends up at the tail of
+		// the chain (shadowed). A bare IP with a large leading octet such as
+		// 172.31.0.5 would be parsed as ~172 by awk and accidentally sort first,
+		// masking the regression — hence 10.0.0.5 here.
+		ginkgo.By("Creating a host SNAT rule with bare IPv4 InternalCIDR")
+		eipHostName := "order-eip-host-" + randomSuffix
+		snatHostName := "order-snat-host-" + randomSuffix
+		bareHostIP := "10.0.0.5"
+		normalizedHostCIDR := bareHostIP + "/32"
+		eipHost := framework.MakeIptablesEIP(eipHostName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eipHost)
+		ginkgo.DeferCleanup(func() { iptablesEIPClient.DeleteSync(eipHostName) })
+		eipHost = iptablesEIPClient.Get(eipHostName)
+
+		snatHost := framework.MakeIptablesSnatRule(snatHostName, eipHostName, bareHostIP)
+		_ = iptablesSnatRuleClient.CreateSync(snatHost)
+		ginkgo.DeferCleanup(func() { iptablesSnatRuleClient.DeleteSync(snatHostName) })
+		gomega.Eventually(func() bool {
+			return snatRuleExists(vpcNatGwPodName, eipHost.Status.IP, normalizedHostCIDR)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"host SNAT rule should be installed and normalized to /32 in iptables")
+
+		ginkgo.By("Verifying bare-IP host rule sorts before the /24 rule (treated as /32)")
+		gomega.Eventually(func() bool {
+			pHost := snatRulePosition(vpcNatGwPodName, eipHost.Status.IP, normalizedHostCIDR)
+			p24 := snatRulePosition(vpcNatGwPodName, eip24.Status.IP, cidr24)
+			p16 := snatRulePosition(vpcNatGwPodName, eip16.Status.IP, cidr16)
+			framework.Logf("SHARED_SNAT positions: host=%d /24=%d /16=%d", pHost, p24, p16)
+			return pHost > 0 && p24 > 0 && p16 > 0 && pHost < p24 && p24 < p16
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"bare-IP SNAT rule must be treated as /32 and sort before less-specific rules")
 	})
 })
 

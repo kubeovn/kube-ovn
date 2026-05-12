@@ -56,10 +56,10 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 			subnet.Status.Validated(reason, "")
 		}
 		subnet.Status.NotReady(reason, errStr)
-		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
+		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, "%s", errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
-		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
+		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, "%s", errStr)
 		if reason == "SetPrivateLogicalSwitchSuccess" ||
 			reason == "ResetLogicalSwitchAclSuccess" ||
 			reason == "ReconcileCentralizedGatewaySuccess" ||

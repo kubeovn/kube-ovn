@@ -386,6 +386,13 @@ function add_snat() {
     # NOTE: Current SNAT CRD/controller path sends one rule per invocation.
     # The for-loop is currently of limited practical value.
     # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
+    #
+    # Ordering: iptables evaluates rules in a chain top-down (first-match wins).
+    # When multiple SHARED_SNAT rules have overlapping CIDRs (e.g., 10.0.0.0/16 and
+    # 10.0.1.0/24), the more specific rule must come first to honor longest-prefix
+    # match. We therefore insert each new rule at the position right after all
+    # existing rules whose prefix length is equal to or greater (more specific)
+    # than the new rule's prefix, yielding a descending-prefix order in the chain.
     # make sure inited
     check_inited
     local all_shared_snat_rules
@@ -398,9 +405,32 @@ function add_snat() {
         randomFullyOption=${arr[2]}
         # check if exact (eip, internalCIDR) pair already exists (idempotent)
         ruleMatch=$(echo "$all_shared_snat_rules" | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
-        if [ -z "$ruleMatch" ]; then
-            exec_cmd "$iptables_cmd -t nat -A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        if [ -n "$ruleMatch" ]; then
+            continue
         fi
+        # Compute insert position: 1 + number of existing SHARED_SNAT rules whose
+        # source CIDR prefix length is >= new rule's prefix length. This keeps the
+        # chain sorted by descending prefix length so longer/more-specific matches
+        # are evaluated first. The controller normalizes bare IPv4 inputs to
+        # "<ip>/32" before sending (see normalizeSnatInternalCIDR), so every
+        # internalCIDR here is guaranteed to carry an explicit prefix length.
+        local new_prefix=${internalCIDR##*/}
+        local pos
+        pos=$(echo "$all_shared_snat_rules" | awk -v p="$new_prefix" '
+            /^-A SHARED_SNAT / {
+                if (match($0, /-s [0-9.]+\/[0-9]+/)) {
+                    s = substr($0, RSTART, RLENGTH)
+                    sub(/.*\//, "", s)
+                    if (s + 0 >= p + 0) n++
+                }
+            }
+            END { print n + 1 }
+        ')
+        exec_cmd "$iptables_cmd -t nat -I SHARED_SNAT $pos -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        # Keep the local snapshot in sync so subsequent iterations in this
+        # invocation compute position correctly.
+        all_shared_snat_rules="$all_shared_snat_rules
+-A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
@@ -1505,84 +1535,87 @@ function eip_egress_qos_del() {
 }
 
 
-rules=${@:2:${#}}
 opt=$1
+shift
 case $opt in
     init)
         # get user interfaces if provided from input
-        interfaces="$rules"
-        init "$interfaces"
+        # Use "$*" so manual invocations like `init net1, net2` (with whitespace
+        # after the comma, as documented in show_help) get re-joined into a single
+        # comma-separated argument. Controller-driven calls always pass a single
+        # pre-joined arg, so behavior is unchanged for them.
+        init "$*"
         ;;
     subnet-route-add)
-        echo "subnet-route-add $rules"
-        add_vpc_internal_route $rules
+        echo "subnet-route-add $*"
+        add_vpc_internal_route "$@"
         ;;
     subnet-route-del)
-        echo "subnet-route-del $rules"
-        del_vpc_internal_route $rules
+        echo "subnet-route-del $*"
+        del_vpc_internal_route "$@"
         ;;
     eip-add)
-        echo "eip-add $rules"
-        add_eip $rules
+        echo "eip-add $*"
+        add_eip "$@"
         ;;
     eip-del)
-        echo "eip-del $rules"
-        del_eip $rules
+        echo "eip-del $*"
+        del_eip "$@"
         ;;
     dnat-add)
-        echo "dnat-add $rules"
-        add_dnat $rules
+        echo "dnat-add $*"
+        add_dnat "$@"
         ;;
     dnat-del)
-        echo "dnat-del $rules"
-        del_dnat $rules
+        echo "dnat-del $*"
+        del_dnat "$@"
         ;;
     snat-add)
-        echo "snat-add $rules"
-        add_snat $rules
+        echo "snat-add $*"
+        add_snat "$@"
         ;;
     snat-del)
-        echo "snat-del $rules"
-        del_snat $rules
+        echo "snat-del $*"
+        del_snat "$@"
         ;;
     floating-ip-add)
-        echo "floating-ip-add $rules"
-        add_floating_ip $rules
+        echo "floating-ip-add $*"
+        add_floating_ip "$@"
         ;;
     floating-ip-del)
-        echo "floating-ip-del $rules"
-        del_floating_ip $rules
+        echo "floating-ip-del $*"
+        del_floating_ip "$@"
         ;;
     get-iptables-version)
-        echo "get-iptables-version $rules"
-        get_iptables_version $rules
+        echo "get-iptables-version $*"
+        get_iptables_version "$@"
         ;;
     help|--help|-h)
         show_help
         ;;
     eip-ingress-qos-add)
-        echo "eip-ingress-qos-add $rules"
-        eip_ingress_qos_add $rules
+        echo "eip-ingress-qos-add $*"
+        eip_ingress_qos_add "$@"
         ;;
     eip-egress-qos-add)
-        echo "eip-egress-qos-add $rules"
-        eip_egress_qos_add $rules
+        echo "eip-egress-qos-add $*"
+        eip_egress_qos_add "$@"
         ;;
     eip-ingress-qos-del)
-        echo "eip-ingress-qos-del $rules"
-        eip_ingress_qos_del $rules
+        echo "eip-ingress-qos-del $*"
+        eip_ingress_qos_del "$@"
         ;;
     eip-egress-qos-del)
-        echo "eip-egress-qos-del $rules"
-        eip_egress_qos_del $rules
+        echo "eip-egress-qos-del $*"
+        eip_egress_qos_del "$@"
         ;;
     qos-add)
-        echo "qos-add $rules"
-        qos_add $rules
+        echo "qos-add $*"
+        qos_add "$@"
         ;;
     qos-del)
-        echo "qos-del $rules"
-        qos_del $rules
+        echo "qos-del $*"
+        qos_del "$@"
         ;;
     *)
         echo "Unknown command: $opt"

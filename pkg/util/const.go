@@ -16,19 +16,16 @@ const (
 	DeprecatedFinalizerName    = "kube-ovn-controller"
 	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
 
-	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
-	RoutedAnnotation     = "ovn.kubernetes.io/routed"
-	RoutesAnnotation     = "ovn.kubernetes.io/routes"
-	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
-	IPAddressAnnotation  = "ovn.kubernetes.io/ip_address"
-	CidrAnnotation       = "ovn.kubernetes.io/cidr"
-	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
-	IPPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
-	BgpAnnotation        = "ovn.kubernetes.io/bgp"
-	// BgpVipAnnotation is set on a LoadBalancer Service to specify the VIP name
-	// (type=bgp_lb_vip) whose allocated IP will be written into spec.externalIPs
-	// and status.loadBalancer.ingress so the BGP speaker can announce it.
-	BgpVipAnnotation             = "ovn.kubernetes.io/bgp-vip"
+	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
+	ServiceCIDRHashAnnotation    = "ovn.kubernetes.io/service-cidr-hash"
+	RoutedAnnotation             = "ovn.kubernetes.io/routed"
+	RoutesAnnotation             = "ovn.kubernetes.io/routes"
+	MacAddressAnnotation         = "ovn.kubernetes.io/mac_address"
+	IPAddressAnnotation          = "ovn.kubernetes.io/ip_address"
+	CidrAnnotation               = "ovn.kubernetes.io/cidr"
+	GatewayAnnotation            = "ovn.kubernetes.io/gateway"
+	IPPoolAnnotation             = "ovn.kubernetes.io/ip_pool"
+	BgpAnnotation                = "ovn.kubernetes.io/bgp"
 	SnatAnnotation               = "ovn.kubernetes.io/snat"
 	EipAnnotation                = "ovn.kubernetes.io/eip"
 	FipFinalizer                 = "ovn.kubernetes.io/fip"
@@ -60,6 +57,11 @@ const (
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
 	KubeHostVMVip              = "kube_host_vm_vip"
+  
+  // BgpVipAnnotation is set on a LoadBalancer Service to specify the VIP name
+	// (type=bgp_lb_vip) whose allocated IP will be written into spec.externalIPs
+	// and status.loadBalancer.ingress so the BGP speaker can announce it.
+	BgpVipAnnotation             = "ovn.kubernetes.io/bgp-lb-vip"
 	// BgpLbVip marks a VIP reserved as a BGP-announced external IP for a LoadBalancer Service.
 	// Unlike SwitchLBRuleVip and KubeHostVMVip, no OVN logical switch port is created;
 	// the IP is held in IPAM only, and the controller writes it into the Service
@@ -219,6 +221,10 @@ const (
 	VxlanHeaderLength  = 50
 	SttHeaderLength    = 72
 	TCPIPHeaderLength  = 40
+	// IPv6MinMTU is the minimum MTU required by IPv6 (RFC 8200).
+	// Linux refuses to initialize inet6_dev on interfaces below this value,
+	// silently dropping every IPv6 packet.
+	IPv6MinMTU = 1280
 
 	OvnProvider                         = "ovn"
 	DefaultNetworkAnnotation            = "v1.multus-cni.io/default-network"

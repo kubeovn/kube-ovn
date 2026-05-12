@@ -797,16 +797,6 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	return nil
 }
 
-// TODO: Refactor to avoid shell command injection vulnerability.
-// Current implementation uses "bash -c" with string concatenation, which could be exploited
-// if any element in the rules slice contains shell metacharacters.
-// Recommended fix: Pass arguments directly as a slice instead of joining them into a shell command:
-//
-//	args := append([]string{"/kube-ovn/nat-gateway.sh", operation}, rules...)
-//	util.ExecuteCommandInContainer(..., args...)
-//
-// This requires updating nat-gateway.sh to accept arguments via $@ instead of parsing a single string.
-// Current risk is mitigated by CIDR format validation on all data sources reaching this function.
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	lockKey := fmt.Sprintf("nat-gw-exec:%s/%s", pod.Namespace, pod.Name)
 
@@ -815,9 +805,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		_ = c.vpcNatGwExecKeyMutex.UnlockKey(lockKey)
 	}()
 
-	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))
-	klog.V(3).Infof("executing NAT gateway command: %s", cmd)
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+	args := append([]string{"bash", "/kube-ovn/nat-gateway.sh", operation}, rules...)
+	klog.V(3).Infof("executing NAT gateway command: %s", strings.Join(args, " "))
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", args...)
 	if err != nil {
 		if len(errOutput) > 0 {
 			klog.Errorf("NAT gateway command failed - stderr: %v", errOutput)
@@ -969,7 +959,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Generate StatefulSet Pod template annotations.
 	// User-defined annotations (gw.Spec.Annotations) are used as base, system annotations are set on top.
-	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks)
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
 	if err != nil {
 		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
 		return nil, err
@@ -1008,13 +998,18 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Add routes to join the services (is this still needed?)
 	// It seems like the script inside the NAT GW already does that
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes := make([]request.Route, 0, 2)
-	if eth0V4Gateway != "" && v4ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v4ClusterIPRange, Gateway: eth0V4Gateway})
+	v4ClusterIPRanges := c.serviceCIDRStore.V4CIDRs()
+	v6ClusterIPRanges := c.serviceCIDRStore.V6CIDRs()
+	routes := make([]request.Route, 0, len(v4ClusterIPRanges)+len(v6ClusterIPRanges))
+	if eth0V4Gateway != "" {
+		for _, cidr := range v4ClusterIPRanges {
+			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V4Gateway})
+		}
 	}
-	if eth0V6Gateway != "" && v6ClusterIPRange != "" {
-		routes = append(routes, request.Route{Destination: v6ClusterIPRange, Gateway: eth0V6Gateway})
+	if eth0V6Gateway != "" {
+		for _, cidr := range v6ClusterIPRanges {
+			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V6Gateway})
+		}
 	}
 
 	// Add gateway to join every subnet in the same VPC? (is this still needed?)

@@ -683,6 +683,7 @@ bgpSpeaker:
   #  - --neighbor-address=10.32.32.1
   #  - --neighbor-as=65030
   #  - --cluster-as=65000
+  #  - --allowed-source-addresses=10.32.32.2,10.32.32.3,10.32.32.4,10.32.32.5
 
 # -- Configuration for kube-ovn-pinger, the agent monitoring and returning metrics for OVS/external connectivity.
 # @section -- Ping daemon configuration

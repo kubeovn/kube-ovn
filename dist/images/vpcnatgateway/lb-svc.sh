@@ -80,24 +80,24 @@ function del_dnat() {
     done
 }
 
-rules=${@:2:${#}}
 opt=$1
+shift
 case $opt in
     init)
-        echo "init $rules"
-        init $rules
+        echo "init $*"
+        init "$@"
         ;;
     eip-add)
-        echo "eip-add $rules"
-        add_eip $rules
+        echo "eip-add $*"
+        add_eip "$@"
         ;;
     dnat-add)
-        echo "dnat-add $rules"
-        add_dnat $rules
+        echo "dnat-add $*"
+        add_dnat "$@"
         ;;
     dnat-del)
-        echo "dnat-del $rules"
-        del_dnat $rules
+        echo "dnat-del $*"
+        del_dnat "$@"
         ;;
     *)
         echo "Usage: $0 [init|eip-add|dnat-add] ..."

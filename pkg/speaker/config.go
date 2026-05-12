@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -46,6 +48,9 @@ type Configuration struct {
 	NodeIPs                     map[string]net.IP
 	NeighborAddresses           []net.IP
 	NeighborIPv6Addresses       []net.IP
+	AllowedSourceAddresses      []net.IP
+	AllowedSourceIPv6Addresses  []net.IP
+	NeighborLocalAddresses      map[string]net.IP
 	NeighborAs                  uint32
 	AuthPassword                string
 	HoldTime                    float64
@@ -86,6 +91,8 @@ func ParseFlags() (*Configuration, error) {
 		argNodeIPs                     = pflag.IPSlice("node-ips", nil, "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
 		argNeighborAddress             = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
 		argNeighborIPv6Address         = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
+		argAllowedSourceAddresses      = pflag.IPSlice("allowed-source-addresses", nil, "Comma separated IPv4 source addresses allowed for BGP peering and next-hop advertisement.")
+		argAllowedSourceIPv6Addresses  = pflag.IPSlice("allowed-source-ipv6-addresses", nil, "Comma separated IPv6 source addresses allowed for BGP peering and next-hop advertisement.")
 		argNeighborAs                  = pflag.Uint32("neighbor-as", 0, "The AS number of the BGP neighbor/peer (required)")
 		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
@@ -141,15 +148,17 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	config := &Configuration{
-		AnnounceClusterIP:     *argAnnounceClusterIP,
-		EnableLbSvcAnnounce:   *argEnableLbSvcAnnounce,
-		EnableBgpLbVip:        *argEnableBgpLbVip,
-		GrpcHost:              *argGrpcHost,
-		GrpcPort:              *argGrpcPort,
-		ClusterAs:             *argClusterAs,
-		RouterID:              *argRouterID,
-		NeighborAddresses:     *argNeighborAddress,
-		NeighborIPv6Addresses: *argNeighborIPv6Address,
+		AnnounceClusterIP:          *argAnnounceClusterIP,
+		GrpcHost:                   *argGrpcHost,
+		GrpcPort:                   *argGrpcPort,
+		ClusterAs:                  *argClusterAs,
+		RouterID:                   *argRouterID,
+		NeighborAddresses:          *argNeighborAddress,
+		NeighborIPv6Addresses:      *argNeighborIPv6Address,
+		EnableLbSvcAnnounce:        *argEnableLbSvcAnnounce,
+		EnableBgpLbVip:             *argEnableBgpLbVip,
+		AllowedSourceAddresses:     *argAllowedSourceAddresses,
+		AllowedSourceIPv6Addresses: *argAllowedSourceIPv6Addresses,
 		NodeIPs: map[string]net.IP{
 			kubeovnv1.ProtocolIPv4: nodeIPv4,
 			kubeovnv1.ProtocolIPv6: nodeIPv6,
@@ -201,6 +210,16 @@ func ParseFlags() (*Configuration, error) {
 			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s is not an IPv6 address", addr)
 		}
 	}
+	for _, addr := range config.AllowedSourceAddresses {
+		if addr.To4() == nil {
+			return nil, fmt.Errorf("invalid allowed-source-addresses format: %s is not an IPv4 address", addr)
+		}
+	}
+	for _, addr := range config.AllowedSourceIPv6Addresses {
+		if addr.To4() != nil {
+			return nil, fmt.Errorf("invalid allowed-source-ipv6-addresses format: %s is not an IPv6 address", addr)
+		}
+	}
 
 	if config.RouterID == nil {
 		if podIPv4 != "" {
@@ -237,6 +256,12 @@ func (config *Configuration) validateRequiredFlags() error {
 	}
 	if config.NeighborAs == 0 {
 		missingFlags = append(missingFlags, "--neighbor-as must be specified")
+	}
+	// NodeName is only used for the BGP "local" policy match in syncSubnetRoutes;
+	// NAT GW mode runs syncEIPRoutes exclusively and never reads NodeName, so skip
+	// the requirement there to stay compatible with GenNatGwBgpSpeakerContainer.
+	if !config.NatGwMode && config.NodeName == "" {
+		missingFlags = append(missingFlags, "--node-name must be specified (usually via NODE_NAME env from downward API)")
 	}
 
 	if len(missingFlags) > 0 {
@@ -323,6 +348,12 @@ func (config *Configuration) initBgpServer() error {
 		listenPort = bgp.BGP_PORT
 	}
 
+	if err := config.initNeighborLocalAddresses(); err != nil {
+		err = fmt.Errorf("failed to initialize BGP peer local addresses: %w", err)
+		klog.Error(err)
+		return err
+	}
+
 	klog.Infof("Starting bgp server with asn %d, routerId %s on port %d",
 		config.ClusterAs,
 		config.RouterID,
@@ -342,15 +373,19 @@ func (config *Configuration) initBgpServer() error {
 	}
 	for ipFamily, addresses := range peersMap {
 		for _, addr := range addresses {
+			transport := &api.Transport{
+				PassiveMode: config.PassiveMode,
+			}
+			if localAddr := config.getNeighborLocalAddress(addr); localAddr != nil {
+				transport.LocalAddress = localAddr.String()
+			}
 			peer := &api.Peer{
 				Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
 				Conf: &api.PeerConf{
 					NeighborAddress: addr.String(),
 					PeerAsn:         config.NeighborAs,
 				},
-				Transport: &api.Transport{
-					PassiveMode: config.PassiveMode,
-				},
+				Transport: transport,
 			}
 			if config.EbgpMultihopTTL != DefaultEbgpMultiHop {
 				peer.EbgpMultihop = &api.EbgpMultihop{
@@ -436,12 +471,148 @@ func addPeerWithRetry(s *gobgp.BgpServer, peer *api.Peer) error {
 
 // logBgpPeer logs the BGP peer configuration for debugging purposes.
 func logBgpPeer(peer *api.Peer) {
-	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, PeerAsn=%d, HoldTime=%d, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v",
+	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, LocalAddress=%s, PeerAsn=%d, HoldTime=%d, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v",
 		peer.Conf.NeighborAddress,
+		peer.Transport.LocalAddress,
 		peer.Conf.PeerAsn,
 		peer.Timers.Config.HoldTime,
 		peer.Transport.PassiveMode,
 		peer.EbgpMultihop,
 		peer.GracefulRestart,
 		peer.AfiSafis)
+}
+
+func (config *Configuration) initNeighborLocalAddresses() error {
+	config.NeighborLocalAddresses = make(map[string]net.IP, len(config.NeighborAddresses)+len(config.NeighborIPv6Addresses))
+
+	for _, neighbor := range config.NeighborAddresses {
+		if len(config.AllowedSourceAddresses) != 0 {
+			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv4 source addresses %v", neighbor, config.AllowedSourceAddresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceAddresses)
+			if err != nil {
+				return err
+			}
+			config.NeighborLocalAddresses[neighbor.String()] = localAddr
+		}
+	}
+
+	for _, neighbor := range config.NeighborIPv6Addresses {
+		if len(config.AllowedSourceIPv6Addresses) != 0 {
+			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv6 source addresses %v", neighbor, config.AllowedSourceIPv6Addresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceIPv6Addresses)
+			if err != nil {
+				return err
+			}
+			config.NeighborLocalAddresses[neighbor.String()] = localAddr
+		}
+	}
+
+	return nil
+}
+
+func (config *Configuration) getNeighborLocalAddress(neighborAddress net.IP) net.IP {
+	if localAddr := config.NeighborLocalAddresses[neighborAddress.String()]; localAddr != nil {
+		return localAddr
+	}
+
+	neighborIsIPv4 := neighborAddress.To4() != nil
+	if neighborIsIPv4 && len(config.AllowedSourceAddresses) > 0 {
+		panic(fmt.Sprintf("invariant violated: failed to determine local address for BGP neighbor %s: no allowed source address matched the whitelist", neighborAddress))
+	}
+	if !neighborIsIPv4 && len(config.AllowedSourceIPv6Addresses) > 0 {
+		panic(fmt.Sprintf("invariant violated: failed to determine local address for BGP neighbor %s: no allowed IPv6 source address matched the whitelist", neighborAddress))
+	}
+
+	return nil
+}
+
+func (config *Configuration) resolveWhitelistedNeighborLocalAddress(neighborAddress net.IP, allowedLocalAddresses []net.IP) (net.IP, error) {
+	routes, err := netlink.RouteGet(neighborAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s from route lookup: %w", neighborAddress, err)
+	}
+	localAddr, err := selectNeighborLocalAddressFromRoutes(neighborAddress, routes, allowedLocalAddresses)
+	if err != nil {
+		return nil, err
+	}
+	klog.Infof("Route lookup selected BGP local address %s for neighbor %s from whitelist %v", localAddr, neighborAddress, allowedLocalAddresses)
+	return localAddr, nil
+}
+
+func selectNeighborLocalAddressFromRoutes(neighborAddress net.IP, routes []netlink.Route, allowedLocalAddresses []net.IP) (net.IP, error) {
+	// Track the most useful failure reason across all route candidates so callers get
+	// a deterministic error when no source address satisfies the whitelist.
+	var (
+		sawSource         bool
+		firstFamilyErr    error
+		firstWhitelistErr error
+	)
+
+	// RouteGet reflects the kernel's effective route decision for this neighbor.
+	// Prefer the first source address that matches both the neighbor family and the whitelist.
+	for _, route := range routes {
+		if route.Src == nil {
+			continue
+		}
+		sawSource = true
+		if err := validateLocalAddressFamily(neighborAddress, route.Src); err != nil {
+			if firstFamilyErr == nil {
+				firstFamilyErr = err
+			}
+			klog.V(4).Infof("Skipping candidate BGP local address %s for neighbor %s: %v", route.Src, neighborAddress, err)
+			continue
+		}
+		if err := validateAllowedLocalAddress(neighborAddress, route.Src, allowedLocalAddresses); err != nil {
+			if firstWhitelistErr == nil {
+				firstWhitelistErr = err
+			}
+			klog.V(4).Infof("Skipping candidate BGP local address %s for neighbor %s: %v", route.Src, neighborAddress, err)
+			continue
+		}
+		return route.Src, nil
+	}
+
+	if !sawSource {
+		return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s: route lookup returned no source address", neighborAddress)
+	}
+	if firstWhitelistErr != nil {
+		return nil, firstWhitelistErr
+	}
+	if firstFamilyErr != nil {
+		if len(allowedLocalAddresses) > 0 {
+			return nil, fmt.Errorf("no route source matched the required address family for whitelist evaluation; first family error: %w", firstFamilyErr)
+		}
+		return nil, firstFamilyErr
+	}
+	return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s: route lookup returned no valid source address", neighborAddress)
+}
+
+func validateLocalAddressFamily(neighborAddress, localAddr net.IP) error {
+	if neighborAddress == nil {
+		return errors.New("invalid nil BGP neighbor address")
+	}
+	if localAddr == nil {
+		return fmt.Errorf("invalid nil local address for BGP neighbor %s", neighborAddress)
+	}
+
+	neighborIsIPv4 := neighborAddress.To4() != nil
+	localIsIPv4 := localAddr.To4() != nil
+	if neighborIsIPv4 == localIsIPv4 {
+		return nil
+	}
+
+	if neighborIsIPv4 {
+		return fmt.Errorf("invalid local address %s for IPv4 BGP neighbor %s", localAddr, neighborAddress)
+	}
+	return fmt.Errorf("invalid local address %s for IPv6 BGP neighbor %s", localAddr, neighborAddress)
+}
+
+func validateAllowedLocalAddress(neighborAddress, localAddr net.IP, allowedLocalAddresses []net.IP) error {
+	if len(allowedLocalAddresses) == 0 {
+		return nil
+	}
+	if slices.ContainsFunc(allowedLocalAddresses, localAddr.Equal) {
+		return nil
+	}
+	return fmt.Errorf("selected local address %s for BGP neighbor %s is not in allowed source address list %v; speaker startup is rejected until route lookup selects an allowed source address", localAddr, neighborAddress, allowedLocalAddresses)
 }

@@ -343,6 +343,20 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			// IPv6 header size is 40
 			config.MTU -= 20
 		}
+		// Warn but do not raise: the path MTU is dictated by the underlying
+		// link, and forcing the value above it would replace silent IPv6
+		// drops with silent IPv4 fragmentation/blackholing.
+		if encapIsIPv6 && config.MTU < util.IPv6MinMTU {
+			// tunnelIface is only set when the user pinned config.Iface and
+			// the resolved nic may differ (bridge mapping); fall back to
+			// config.Iface for the auto-discovery path where tunnelIface is
+			// empty.
+			ifaceName := config.tunnelIface
+			if ifaceName == "" {
+				ifaceName = config.Iface
+			}
+			klog.Warningf("auto-computed MTU %d on interface %s is below the IPv6 minimum %d; IPv6 traffic on default subnets will be dropped", config.MTU, ifaceName, util.IPv6MinMTU)
+		}
 	}
 
 	config.MSS = config.MTU - util.TCPIPHeaderLength

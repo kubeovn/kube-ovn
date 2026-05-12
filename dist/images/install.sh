@@ -1034,6 +1034,9 @@ spec:
     - jsonPath: .spec.namespace
       name: Namespace
       type: string
+    - jsonPath: .spec.externalSubnet
+      name: ExternalSubnet
+      type: string
     - jsonPath: .status.ip
       name: IP
       type: string
@@ -6681,6 +6684,14 @@ rules:
       - list
       - watch
   - apiGroups:
+      - networking.k8s.io
+    resources:
+      - servicecidrs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - apps
     resources:
       - daemonsets
@@ -6948,6 +6959,14 @@ rules:
       - "list"
       - "watch"
       - "delete"
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - servicecidrs
+    verbs:
+      - get
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

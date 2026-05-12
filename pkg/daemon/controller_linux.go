@@ -871,7 +871,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", "%s", err.Error())
 		return err
 	}
 

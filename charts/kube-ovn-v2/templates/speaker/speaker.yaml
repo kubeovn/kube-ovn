@@ -84,10 +84,18 @@ spec:
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
           env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
             {{- with .Values.bgpSpeaker.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

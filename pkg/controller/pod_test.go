@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
@@ -839,4 +840,106 @@ func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
 	np.DeleteNamedPortByPod(pod)
 	result = np.GetNamedPortByNs("test-ns")
 	assert.Empty(t, result, "both regular and sidecar init container named ports should be deleted")
+}
+
+func TestHasAliveSiblingVMPod(t *testing.T) {
+	vmiOwner := func(vmName string) []metav1.OwnerReference {
+		return []metav1.OwnerReference{
+			{
+				APIVersion: kubevirtv1.SchemeGroupVersion.String(),
+				Kind:       util.KindVirtualMachineInstance,
+				Name:       vmName,
+			},
+		}
+	}
+	vmPod := func(name, vmName string, phase corev1.PodPhase, deleted bool) *corev1.Pod {
+		p := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:       "ns",
+				Name:            name,
+				OwnerReferences: vmiOwner(vmName),
+			},
+			Status: corev1.PodStatus{Phase: phase},
+		}
+		if deleted {
+			now := metav1.Now()
+			p.DeletionTimestamp = &now
+			grace := int64(0)
+			p.DeletionGracePeriodSeconds = &grace
+		}
+		return p
+	}
+
+	tests := []struct {
+		name           string
+		pods           []*corev1.Pod
+		vmName         string
+		excludePodName string
+		want           bool
+	}{
+		{
+			name:           "no siblings",
+			pods:           []*corev1.Pod{vmPod("virt-launcher-vm-aaa", "vm", corev1.PodRunning, false)},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+		{
+			name: "alive sibling exists",
+			pods: []*corev1.Pod{
+				vmPod("virt-launcher-vm-aaa", "vm", corev1.PodSucceeded, true),
+				vmPod("virt-launcher-vm-bbb", "vm", corev1.PodRunning, false),
+			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           true,
+		},
+		{
+			name: "only completed siblings",
+			pods: []*corev1.Pod{
+				vmPod("virt-launcher-vm-aaa", "vm", corev1.PodSucceeded, true),
+				vmPod("virt-launcher-vm-bbb", "vm", corev1.PodSucceeded, false),
+			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+		{
+			name: "sibling belongs to different vm",
+			pods: []*corev1.Pod{
+				vmPod("virt-launcher-other-xxx", "other", corev1.PodRunning, false),
+			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+		{
+			name: "non-vm pod ignored",
+			pods: []*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "plain-pod"},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+		{
+			name: "excluded pod ignored even when alive",
+			pods: []*corev1.Pod{
+				vmPod("virt-launcher-vm-aaa", "vm", corev1.PodRunning, false),
+			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasAliveSiblingVMPod(tt.pods, tt.vmName, tt.excludePodName)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

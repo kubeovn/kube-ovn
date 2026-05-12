@@ -517,7 +517,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", "%s", err.Error())
 		return err
 	}
 
@@ -641,7 +641,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		// the subnet may changed when alloc static ip from the latter subnet after ns supports multi subnets
 		v4IP, v6IP, mac, subnet, err := c.acquireAddress(pod, podNet)
 		if err != nil {
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 			klog.Error(err)
 			return nil, err
 		}
@@ -669,7 +669,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		}
 		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", "%s", err.Error())
 			return nil, err
 		}
 
@@ -682,7 +682,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
 					klog.Error(err)
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", "%s", err.Error())
 					return nil, err
 				}
 				patch[fmt.Sprintf(util.VlanIDAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
@@ -747,14 +747,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, enableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", "%s", err.Error())
 				klog.Errorf("%v", err)
 				return nil, err
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
 				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", err.Error())
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "%s", err.Error())
 					klog.Errorf("%v", err)
 					return nil, err
 				}
@@ -1166,6 +1166,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		return err
 	}
 
+	var hasAliveVMSibling bool
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
 		for _, port := range ports {
@@ -1181,6 +1182,18 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			if !isOwnerRefToDel {
 				klog.Infof("try keep ip for vm pod %s", podKey)
 				keepIPCR = true
+				// The VM LSP is shared across every virt-launcher pod of the VM
+				// (ExternalIDs["pod"] is keyed by VM name). Port-group memberships,
+				// however, belong to whichever virt-launcher pod is currently
+				// running the VM. If another live sibling exists (e.g. a
+				// live-migration destination while the completed source is being
+				// GC'd), its memberships must not be wiped out.
+				siblings, listErr := c.podsLister.Pods(pod.Namespace).List(labels.Everything())
+				if listErr != nil {
+					klog.Errorf("failed to list pods in namespace %s: %v", pod.Namespace, listErr)
+					return listErr
+				}
+				hasAliveVMSibling = hasAliveSiblingVMPod(siblings, vmName, pod.Name)
 			}
 		}
 		if keepIPCR {
@@ -1209,7 +1222,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	}
 	if keepIPCR {
 		for _, port := range ports {
-			if vmOrphanedPorts[port.Name] {
+			switch {
+			case vmOrphanedPorts[port.Name]:
 				// Orphaned attachment LSP from NAD hotplug: delete and release its IP.
 				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
 				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
@@ -1236,7 +1250,9 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 						c.updateSubnetStatusQueue.Add(subnetName)
 					}
 				}
-			} else {
+			case hasAliveVMSibling:
+				klog.Infof("skip removing lsp %s from port groups: another alive virt-launcher pod exists for vm %s/%s", port.Name, pod.Namespace, vmName)
+			default:
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
 					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
@@ -2667,6 +2683,27 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// hasAliveSiblingVMPod reports whether pods contains any alive virt-launcher
+// pod owned by the VMI vmName, excluding the pod with name excludePodName.
+// It is used to decide whether a VM LSP's port-group memberships are still
+// owned by another running sibling (e.g. a live-migration destination) when a
+// completed/GC'd source pod is being processed.
+func hasAliveSiblingVMPod(pods []*v1.Pod, vmName, excludePodName string) bool {
+	for _, p := range pods {
+		if p == nil || p.Name == excludePodName {
+			continue
+		}
+		isVM, name := isVMPod(p)
+		if !isVM || name != vmName {
+			continue
+		}
+		if isPodAlive(p) {
+			return true
+		}
+	}
+	return false
 }
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {

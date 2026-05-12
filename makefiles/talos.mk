@@ -71,7 +71,7 @@ talos-registry-mirror:
 talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
 	@for image in ghcr.io/siderolabs/installer:$(TALOS_VERSION) $$(talosctl image default | grep -v flannel); do \
-		if echo "$$image" | grep -q kube; then \
+		if echo "$$image" | grep -qE '/(kube-(apiserver|controller-manager|scheduler|proxy)|kubelet):'; then \
 			image=$$(echo $$image | sed -e 's/:v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
 		fi; \
 		if [ -z $$(docker images -q $$image) ]; then \

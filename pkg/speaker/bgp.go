@@ -198,11 +198,17 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 	return paths, nil
 }
 
-// getNextHopAttribute returns the next hop we should advertise for a specific BGP neighbor
+// getNextHopAttribute returns the next hop we should advertise for a specific BGP neighbor.
+// When source address whitelisting is enabled, the startup-selected local address is reused.
+// Otherwise, keep the historical behavior and resolve the source address dynamically.
 func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
+	if localAddr := c.config.getNeighborLocalAddress(neighborAddress); localAddr != nil {
+		return localAddr
+	}
+
 	nextHop := c.config.RouterID // If no route is found, fallback to router ID
 
-	// Retrieve the route we use to speak to this neighbor and consider the source as next hop
+	// Retrieve the route we use to speak to this neighbor and consider the source as next hop.
 	routes, err := netlink.RouteGet(neighborAddress)
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {
 		nextHop = routes[0].Src
@@ -210,9 +216,7 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 
 	proto := util.CheckProtocol(nextHop.String()) // Is next hop IPv4 or IPv6
 
-	// This takes care of a special case where the speaker might not be running in host mode
-	// If this happens, the nextHopIP will be the IP of a Pod (probably unreachable for the neighbors)
-	// For this case, the configuration allows for manually specifying the IPs to use as next hop (per protocol)
+	// Preserve the historical fallback for non-whitelist mode.
 	nodeIP := c.config.NodeIPs[proto]
 	if nodeIP != nil && nextHop.Equal(c.config.PodIPs[proto]) {
 		nextHop = nodeIP
