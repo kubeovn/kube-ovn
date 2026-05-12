@@ -726,7 +726,7 @@ func (c *Controller) loopOvn0Check() {
 
 	var alreadySet bool
 	for _, condition := range node.Status.Conditions {
-		if condition.Type == corev1.NodeNetworkUnavailable && condition.Status == corev1.ConditionTrue &&
+		if condition.Type == corev1.NodeNetworkUnavailable && condition.Status == status &&
 			condition.Reason == reason && condition.Message == message {
 			alreadySet = true
 			break
