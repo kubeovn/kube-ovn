@@ -484,6 +484,15 @@ const (
 	// Use for testing or non-ECMP upstreams only. Failover is manual.
 	BgpSpeakerNodeAnnotation = "ovn.kubernetes.io/bgp-speaker-node"
 
+	// BgpSpeakLbVipLabel gates whether the local node's BGP speaker is allowed
+	// to announce LoadBalancer Service ingress IPs via BGP.
+	// It intentionally uses the Label suffix to match the file-wide naming
+	// convention for labels (for example, NodeNameLabel and VpcNatGatewayLabel),
+	// unlike BgpAnnotation and BgpSpeakerNodeAnnotation which are annotations.
+	// This is a node label, separate from BgpAnnotation which controls whether
+	// the bgp-speaker Pod is scheduled onto the node.
+	BgpSpeakLbVipLabel = "ovn.kubernetes.io/bgp-speak-lb-vip"
+
 	// MetalLBAllowSharedIPAnnotation is MetalLB's shared-IP gate annotation.
 	// Its value is the name of the VIP CR; naming it after the IP (e.g. "111.62.241.102")
 	// is a common operational convention but is not required — kube-ovn only checks

@@ -27,6 +27,12 @@ const controllerAgentName = "ovn-speaker"
 type Controller struct {
 	config *Configuration
 
+	// nodesLister/nodesSynced are only initialized when EnableLbSvcAnnounce is enabled,
+	// because the node cache is used solely for the local node label gate on Service VIP
+	// announcements.
+	nodesLister listerv1.NodeLister
+	nodesSynced cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 
@@ -51,6 +57,7 @@ type Controller struct {
 	eipQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory        kubeinformers.SharedInformerFactory
+	nodeInformerFactory    kubeinformers.SharedInformerFactory
 	podInformerFactory     kubeinformers.SharedInformerFactory
 	gwPodsInformerFactory  kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
@@ -70,6 +77,15 @@ func NewController(config *Configuration) *Controller {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	var nodeInformerFactory kubeinformers.SharedInformerFactory
+	if config.EnableLbSvcAnnounce {
+		nodeInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+			kubeinformers.WithTransform(util.TrimManagedFields),
+			kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+				listOption.FieldSelector = "metadata.name=" + config.NodeName
+				listOption.AllowWatchBookmarks = true
+			}))
+	}
 	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -101,9 +117,19 @@ func NewController(config *Configuration) *Controller {
 	eipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	natgatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 
+	var nodesLister listerv1.NodeLister
+	nodesSynced := cache.InformerSynced(func() bool { return true })
+	if nodeInformerFactory != nil {
+		nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+		nodesLister = nodeInformer.Lister()
+		nodesSynced = nodeInformer.Informer().HasSynced
+	}
+
 	controller := &Controller{
 		config: config,
 
+		nodesLister:      nodesLister,
+		nodesSynced:      nodesSynced,
 		podsLister:       podInformer.Lister(),
 		podsSynced:       podInformer.Informer().HasSynced,
 		subnetsLister:    subnetInformer.Lister(),
@@ -116,6 +142,7 @@ func NewController(config *Configuration) *Controller {
 		natgatewaySynced: natgatewayInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
+		nodeInformerFactory:    nodeInformerFactory,
 		podInformerFactory:     podInformerFactory,
 		gwPodsInformerFactory:  gwPodsInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
@@ -138,6 +165,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.shutdownNodeRouteEIPWorkers()
 
 	c.informerFactory.Start(stopCh)
+	if c.nodeInformerFactory != nil {
+		c.nodeInformerFactory.Start(stopCh)
+	}
 	c.podInformerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
@@ -147,6 +177,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	cacheSyncs := []cache.InformerSynced{c.podsSynced, c.subnetSynced, c.servicesSynced, c.eipSynced}
+	cacheSyncs = append(cacheSyncs, c.nodesSynced)
 	if c.gwPodsSynced != nil {
 		cacheSyncs = append(cacheSyncs, c.gwPodsSynced)
 	}
@@ -186,14 +217,18 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 // The two modes above are mutually exclusive because they both claim ownership of IptablesEIP
 // BGP routes and would conflict if run together.
 //
-// Service VIP announcement (independent — composable with either EIP mode):
+// Service VIP announcement (independent from IptablesEIP, but not enabled in every mode):
 //
 //	--enable-lb-svc-announce:
 //	    Announces LoadBalancer Service ingress IPs (VIPs live on kube-ipvs0 on
 //	    every node, managed by kube-proxy/iptables). This plane is orthogonal to
 //	    IptablesEIP — different resources, different network plane, no conflict.
-//	    When node-route-eip-mode is active, syncNodeRouteEIPs() merges Service VIP
-//	    prefixes (expectedBgpLbServiceEip) into the expected set before reconciling.
+//	    Supported execution paths:
+//	    1. Default mode: syncSubnetRoutes() includes Service VIP prefixes.
+//	    2. node-route-eip-mode: syncNodeRouteEIPs() merges Service VIP prefixes
+//	       (expectedBgpLbServiceEip) into the expected set before reconciling.
+//	    nat-gw-mode does not participate in Service VIP announcement; it only
+//	    announces NAT gateway EIPs from inside the gateway pod.
 func (c *Controller) Reconcile() {
 	switch {
 	case c.config.NatGwMode:
