@@ -370,6 +370,8 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
+			// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
+			listOption.LabelSelector = fmt.Sprintf("%s,%s", util.VpcEgressGatewayLabel, util.VpcNatGatewayLabel)
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTransform(util.TrimManagedFields),

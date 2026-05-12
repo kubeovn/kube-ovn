@@ -430,7 +430,6 @@ func (c *Controller) natGwDeleted(dp string) (bool, error) {
 }
 
 func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
-<<<<<<< HEAD
 	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
 	// there is nothing to clean up. If the CRD still exists but the pod is
 	// temporarily absent (e.g. being recreated), return the error so the
@@ -444,10 +443,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
 		return nil
 	}
 
-	gwPods, err := c.getNatGwPods(dp, ns)
-=======
 	gwPods, err := c.getNatGwPods(dp, ns, false)
->>>>>>> 8a3c56f95 (feat(vpcnatgw): tests)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Pod is temporarily absent (e.g. being recreated); retry quietly.
@@ -579,13 +575,9 @@ func (c *Controller) addEipQoSInPod(
 
 func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
-<<<<<<< HEAD
 	// Same CRD / pod sentinel logic as deleteEipInPod: skip when the gateway is
 	// gone, retry when the pod is temporarily absent.
 	deleted, err := c.natGwDeleted(dp)
-=======
-	gwPods, err := c.getNatGwPods(dp, ns, false)
->>>>>>> 8a3c56f95 (feat(vpcnatgw): tests)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -597,7 +589,8 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoS
 		return nil
 	}
 
-	gwPods, err := c.getNatGwPods(dp, ns)
+	gwPods, err := c.getNatGwPods(dp, ns, false)
+
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(4).Infof("nat gw pod %s not found, will retry eip qos cleanup", dp)
