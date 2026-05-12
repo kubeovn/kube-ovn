@@ -1094,10 +1094,15 @@ func (c *Controller) generateNatGwRoutes(
 		routes.Add(eth0SubnetProvider, bfdIPv6, eth0V6Gateway)
 	}
 
-	// Add routes to reach service cluster IP range
-	v4ClusterIPRange, v6ClusterIPRange := util.SplitStringIP(c.config.ServiceClusterIPRange)
-	routes.Add(eth0SubnetProvider, v4ClusterIPRange, eth0V4Gateway)
-	routes.Add(eth0SubnetProvider, v6ClusterIPRange, eth0V6Gateway)
+	v4ClusterIPRanges := c.serviceCIDRStore.V4CIDRs()
+	for _, cidr := range v4ClusterIPRanges {
+		routes.Add(eth0SubnetProvider, cidr, eth0V4Gateway)
+	}
+
+	v6ClusterIPRanges := c.serviceCIDRStore.V6CIDRs()
+	for _, cidr := range v6ClusterIPRanges {
+		routes.Add(eth0SubnetProvider, cidr, eth0V6Gateway)
+	}
 
 	// Add routes to reach all subnets in the same VPC (might be unnecessary now as they're loaded dynamically)
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -1195,60 +1200,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		klog.Errorf("failed to get gateway ips for subnet %s: %v", gw.Spec.Subnet, err)
 		return nil, err
 	}
-
-	// Add routes to join the services (is this still needed?)
-	// It seems like the script inside the NAT GW already does that
-	v4ClusterIPRanges := c.serviceCIDRStore.V4CIDRs()
-	v6ClusterIPRanges := c.serviceCIDRStore.V6CIDRs()
-	routes := make([]request.Route, 0, len(v4ClusterIPRanges)+len(v6ClusterIPRanges))
-	if eth0V4Gateway != "" {
-		for _, cidr := range v4ClusterIPRanges {
-			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V4Gateway})
-		}
-	}
-	if eth0V6Gateway != "" {
-		for _, cidr := range v6ClusterIPRanges {
-			routes = append(routes, request.Route{Destination: cidr, Gateway: eth0V6Gateway})
-		}
-	}
-
-	// Add gateway to join every subnet in the same VPC? (is this still needed?)
-	// Are we trying to give the NAT gateway access to every subnet in the VPC?
-	// I suspect this is to solve a problem where a static route is inserted to redirect all the traffic
-	// from a VPC into the NAT GW. When that happens, the GW has no return path to the other subnets.
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != gw.Spec.Vpc || subnet.Name == gw.Spec.Subnet ||
-			!isOvnSubnet(subnet) || !subnet.Status.IsValidated() ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection) {
-			continue
-		}
-		cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if cidrV4 != "" && eth0V4Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV4, Gateway: eth0V4Gateway})
-		}
-		if cidrV6 != "" && eth0V6Gateway != "" {
-			routes = append(routes, request.Route{Destination: cidrV6, Gateway: eth0V6Gateway})
-		}
-	}
-
-	// Users can specify custom routes to inject in the NAT GW
-	for _, route := range gw.Spec.Routes {
-		nexthop := route.NextHopIP
-
-		// Users can specify "gateway" instead of an actual IP as the next hop, and
-		// we will auto-determine the address of the gateway based on the protocol
-		if nexthop == "gateway" {
-			if util.CheckProtocol(route.CIDR) == kubeovnv1.ProtocolIPv4 {
-				nexthop = eth0V4Gateway
-			} else {
-				nexthop = eth0V6Gateway
-			}
-		}
-
-		routes = append(routes, request.Route{Destination: route.CIDR, Gateway: nexthop})
-	}
-
-	if err = setPodRoutesAnnotation(templateAnnotations, eth0SubnetProvider, routes); err != nil {
 
 	// Get the external subnet for default routes
 	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
