@@ -321,7 +321,7 @@ func TestGetPolicyRouteParams_ClonedExternalIDs(t *testing.T) {
 }
 
 func TestEnqueueUpdateNode(t *testing.T) {
-	makeNode := func(readyStatus corev1.ConditionStatus, labels map[string]string, annotations map[string]string, addresses []corev1.NodeAddress) *corev1.Node {
+	makeNode := func(readyStatus corev1.ConditionStatus, labels, annotations map[string]string, addresses []corev1.NodeAddress) *corev1.Node {
 		return &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        "test-node",

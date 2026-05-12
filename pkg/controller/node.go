@@ -577,7 +577,7 @@ func (c *Controller) reconcileMasterNodeIPs(ctx context.Context) error {
 			klog.V(4).Infof("reconcileMasterNodeIPs: %s/%s env %s already set to %s, skipping", c.config.PodNamespace, t.name, t.envVarName, ipStr)
 			continue
 		}
-		payload := []byte(fmt.Sprintf(patchTemplate, t.containerName, t.envVarName, ipStr))
+		payload := fmt.Appendf(nil, patchTemplate, t.containerName, t.envVarName, ipStr)
 		var patchErr error
 		if t.isDaemonSet {
 			_, patchErr = c.config.KubeClient.AppsV1().DaemonSets(c.config.PodNamespace).Patch(
