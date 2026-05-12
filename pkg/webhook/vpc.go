@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -69,7 +70,7 @@ func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Reques
 			referencedVpc = item.Spec.Vpc
 		}
 		if referencedVpc == vpc.Name {
-			return ctrlwebhook.Denied("can't delete vpc when OvnDnatRules still reference it, delete them first")
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnDnatRule %q", vpc.Name, item.Name))
 		}
 	}
 
@@ -84,7 +85,22 @@ func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Reques
 			referencedVpc = item.Spec.Vpc
 		}
 		if referencedVpc == vpc.Name {
-			return ctrlwebhook.Denied("can't delete vpc when OvnSnatRules still reference it, delete them first")
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnSnatRule %q", vpc.Name, item.Name))
+		}
+	}
+
+	fipList := &ovnv1.OvnFipList{}
+	if err := v.cache.List(ctx, fipList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
+	for _, item := range fipList.Items {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnFip %q", vpc.Name, item.Name))
 		}
 	}
 
