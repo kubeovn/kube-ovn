@@ -1216,6 +1216,30 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.36 (2026-05-13)
+
+ * [4b05f2937](https://github.com/kubeovn/kube-ovn/commit/4b05f2937c548f2c67aaa2edcb09b0facd9f151c) release v1.14.36
+ * [3499f8788](https://github.com/kubeovn/kube-ovn/commit/3499f8788304b6511e5f59795b275a5e62920e2d) chore(deps): update go.opentelemetry.io/otel/sdk to v1.43.0
+ * [137e65432](https://github.com/kubeovn/kube-ovn/commit/137e6543245f2e8c2397226cd5086c4bbc10eb36) update golang dep
+ * [acb393262](https://github.com/kubeovn/kube-ovn/commit/acb3932624d0a8178c9b474df8098e046742704f) fix(deps): migrate resolvconf from docker/docker to containerd/nerdctl/v2
+ * [bb58bb1dc](https://github.com/kubeovn/kube-ovn/commit/bb58bb1dc4d8ebb8cf220e28cbf58cb7a4b732e9) chore: align kubectl version with release-1.15 and update go to 1.26.3
+ * [9fcd27627](https://github.com/kubeovn/kube-ovn/commit/9fcd276273d5fd71afc14c3db88680083d1af473) Block vpc deletion while SNAT, DNAT or FIP rules are using it (#6718)
+ * [d67a6166a](https://github.com/kubeovn/kube-ovn/commit/d67a6166a80c2dc4be95368d6f7b12fcc3717e2e) fix: use status variable instead of hardcoded ConditionTrue in loopOvn0Check (#6719)
+ * [f44cda9fe](https://github.com/kubeovn/kube-ovn/commit/f44cda9fefd3f1ad3a47d8ae015eb136e8f96608) fix(deps): update golang (#6608)
+ * [a1b0805b6](https://github.com/kubeovn/kube-ovn/commit/a1b0805b67d120577f7ae1d31004ce0c99ba692d) fix(deps): update module golang.org/x/sys to v0.43.0 (#6598)
+ * [95fd15a06](https://github.com/kubeovn/kube-ovn/commit/95fd15a066d819a5df9a57f2ab3d779a69337620) ci: install multus before kubevirt e2e tests (#6589)
+ * [fa4e3696b](https://github.com/kubeovn/kube-ovn/commit/fa4e3696bcfc12fbbd0e213353fa0fd0f1839d83) chore(deps): update dependency go to v1.26.2 (#6588)
+ * [c113256ce](https://github.com/kubeovn/kube-ovn/commit/c113256ce365b4eb3f9791f692adab3cc3f5fa41) fix: check northd endpoint by pod IP protocol in ovn leader checker (#6523)
+ * [1d41f933a](https://github.com/kubeovn/kube-ovn/commit/1d41f933a1ad5a39f21f36b0c1851d4fbef47cd3) prepare for next release
+
+### Contributors
+
+ * 09mulcs
+ * Mengxin Liu
+ * changluyi
+ * clyi
+ * renovate[bot]
+
 ## v1.14.35 (2026-03-23)
 
  * [812ce2663](https://github.com/kubeovn/kube-ovn/commit/812ce266314a0dde5e2a44966e26f43bac724251) release v1.14.35
