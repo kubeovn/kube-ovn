@@ -120,6 +120,54 @@ func (c *OVNNbClient) newGatewayChassis(lrpName, chassisName string, priority in
 	return gwChassis, nil
 }
 
+// DeleteGatewayChassises removes the specified chassis entries from an LRP's gateway_chassis list
+// and deletes the corresponding Gateway_Chassis rows.
+func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	if len(chassises) == 0 {
+		return nil
+	}
+
+	uuids := make([]string, 0, len(chassises))
+	deleteOps := make([]ovsdb.Operation, 0, len(chassises))
+
+	for _, chassisName := range chassises {
+		gwChassisName := lrpName + "-" + chassisName
+		gwChassis, err := c.GetGatewayChassis(gwChassisName, true)
+		if err != nil {
+			return fmt.Errorf("get gateway chassis %s: %w", gwChassisName, err)
+		}
+		if gwChassis == nil {
+			continue
+		}
+		uuids = append(uuids, gwChassis.UUID)
+
+		ops, err := c.Where(gwChassis).Delete()
+		if err != nil {
+			return fmt.Errorf("generate delete operations for gateway chassis %s: %w", gwChassisName, err)
+		}
+		deleteOps = append(deleteOps, ops...)
+	}
+
+	if len(uuids) == 0 {
+		return nil
+	}
+
+	mutateOps, err := c.LogicalRouterPortUpdateGatewayChassisOp(lrpName, uuids, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate mutation for lrp %s gateway chassis removal: %w", lrpName, err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(mutateOps)+len(deleteOps))
+	ops = append(ops, mutateOps...)
+	ops = append(ops, deleteOps...)
+
+	if err = c.Transact("gateway-chassises-del", ops); err != nil {
+		return fmt.Errorf("delete gateway chassis %v from lrp %s: %w", chassises, lrpName, err)
+	}
+
+	return nil
+}
+
 // CreateGatewayChassisesOp create operation which create gateway chassises
 func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []string) ([]ovsdb.Operation, error) {
 	if len(chassises) == 0 {
