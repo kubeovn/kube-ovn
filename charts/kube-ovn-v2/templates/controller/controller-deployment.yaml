@@ -185,8 +185,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if not .Values.central.dynamicPeers.enabled }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:

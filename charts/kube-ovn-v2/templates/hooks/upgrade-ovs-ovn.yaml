@@ -45,6 +45,7 @@ rules:
       - apps
     resources:
       - deployments
+      - statefulsets
     resourceNames:
       - ovn-central
     verbs:
@@ -151,10 +152,14 @@ spec:
                   fieldPath: metadata.namespace
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            {{- if not .Values.central.dynamicPeers.enabled }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            {{- end }}
             - name: OVN_VERSION_COMPATIBILITY
               value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
+            - name: OVN_CENTRAL_KIND
+              value: {{ if .Values.central.dynamicPeers.enabled }}statefulset{{ else }}deployment{{ end }}
           command:
             - bash
             - -eo
