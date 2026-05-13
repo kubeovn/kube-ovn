@@ -1,0 +1,66 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG DUMB_INIT_VERSION="1.2.5"
+ARG TARGETARCH
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /usr/lib/apt/methods/mirror && \
+    apt update && apt upgrade -y && \
+    apt install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    conntrack \
+    curl \
+    iperf3 \
+    iproute2 \
+    iptables \
+    iputils-arping \
+    iputils-ping \
+    jq \
+    kmod \
+    mtr \
+    net-tools \
+    netcat-openbsd \
+    nftables \
+    tcpdump \
+    telnet \
+    traceroute \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG NETTRACE_SHA256_AMD64="dfd9231000015223f2a2cb1da4cc35c597bb879f5be686942c81e055650b50ed"
+ARG NETTRACE_SHA256_ARM64="b16ac63c9216174bba8a23970a49240f15474e152d9aee07a37a70f2ce66da43"
+ARG DUMB_INIT_SHA256_AMD64="e874b55f3279ca41415d290c512a7ba9d08f98041b28ae7c2acb19a545f1c4df"
+ARG DUMB_INIT_SHA256_ARM64="b7d648f97154a99c539b63c55979cd29f005f88430fb383007fe3458340b795e"
+RUN case ${TARGETARCH} in \
+    "amd64") \
+    NETTRACE_SHA256=${NETTRACE_SHA256_AMD64}; \
+    ARCH="x86_64"; \
+    DUMB_INIT_SHA256=${DUMB_INIT_SHA256_AMD64}; \
+    ;; \
+    "arm64") \
+    NETTRACE_SHA256=${NETTRACE_SHA256_ARM64}; \
+    ARCH="aarch64"; \
+    DUMB_INIT_SHA256=${DUMB_INIT_SHA256_ARM64}; \
+    ;; \
+    *) echo "unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -sSf -L --retry 5 -o /tmp/nettrace.deb \
+    https://github.com/OpenCloudOS/nettrace/releases/download/v1.2.11/nettrace-1.2.11-2.${TARGETARCH}.deb && \
+    echo "${NETTRACE_SHA256}  /tmp/nettrace.deb" | sha256sum -c - && \
+    dpkg -i /tmp/nettrace.deb && \
+    rm -f /tmp/nettrace.deb && \
+    curl -sSf -L --retry 5 -o /usr/bin/dumb-init \
+    https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${ARCH} && \
+    echo "${DUMB_INIT_SHA256}  /usr/bin/dumb-init" | sha256sum -c - && \
+    chmod +x /usr/bin/dumb-init
+
+WORKDIR /kube-ovn
+COPY nat-gateway.sh /kube-ovn/
+COPY lb-svc.sh /kube-ovn/
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["sleep", "infinity"]
