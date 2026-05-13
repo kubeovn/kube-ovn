@@ -36,6 +36,18 @@ clusterDomain: cluster.local
 # If not specified, fallback to auto-identifying masters based on "masterNodesLabels"
 # @section -- Global parameters
 masterNodes: []
+# -- Override the replica/quorum count for ovn-central and kube-ovn-controller.
+# Set explicitly when DYNAMIC_PEERS=true (node IPs are not known at render time).
+# Falls back to auto-counting masterNodes / nodeIPs when unset.
+# @section -- Global parameters
+nodeCount: ""
+# -- DNS hostname of the OVN Northbound DB endpoint. When set, takes priority over masterNodes/masterNodesLabels.
+# Use for external endpoints where NB and SB are on different services (no square brackets in the connection string).
+# @section -- Global parameters
+ovnNbHost: ""
+# -- DNS hostname of the OVN Southbound DB endpoint. When set, takes priority over masterNodes/masterNodesLabels.
+# @section -- Global parameters
+ovnSbHost: ""
 # -- Label used to auto-identify masters.
 # Any node that has any of these labels will be considered a master node.
 # Note: This feature uses Helm "lookup" function, which is not compatible with tools such as ArgoCD.
@@ -1034,6 +1046,67 @@ central:
   # -- ""
   # @section -- OVN-central daemon configuration.
   ovnLeaderProbeInterval: 5
+
+  # -- ovn-central-controller settings: dynamic peer discovery, in-process raft
+  # recovery, and leader-checker replacement.
+  # @section -- OVN-central daemon configuration.
+  dynamicPeers:
+    # -- Enable the ovn-central-controller binary. Switches the readiness probe
+    # to ovn-central-controller-readiness.sh.
+    # @section -- OVN-central daemon configuration.
+    enabled: false
+    # -- Seconds the ovn-central-controller waits for cluster_member + leader
+    # during bring-up before falling into recovery.
+    # @section -- OVN-central daemon configuration.
+    joinTimeout: 30
+    # -- Seconds without last_msg from a peer before ovn-central-controller kicks it.
+    # @section -- OVN-central daemon configuration.
+    deadMemberTimeout: 120
+    # -- Seconds with no raft leader before in-process recovery is triggered.
+    # @section -- OVN-central daemon configuration.
+    noLeaderTimeout: 30
+    # -- Seconds before a not-joined join-stub on disk is wiped during preflight.
+    # @section -- OVN-central daemon configuration.
+    staleStubTimeout: 120
+    # -- Seconds between db-raft-header backups.
+    # @section -- OVN-central daemon configuration.
+    backupInterval: 60
+    # -- Seconds between ovsdb-server/compact invocations on the leader.
+    # @section -- OVN-central daemon configuration.
+    compactInterval: 300
+    # -- Seconds the controller tolerates a missing ovs-appctl socket before
+    # exiting fatal (kubelet then restarts the pod).
+    # @section -- OVN-central daemon configuration.
+    ovsdbCrashTimeout: 30
+    # -- Seconds the heartbeat goroutine tolerates "ovsdb not active" OUTSIDE
+    # recovery before halting heartbeats (liveness probe then fires).
+    # @section -- OVN-central daemon configuration.
+    ovsdbStuckTimeout: 180
+    # -- Seconds the bootstrap raft lease is held. Must comfortably exceed
+    # the worst-case reconvert (cluster-to-standalone on multi-GB DBs).
+    # @section -- OVN-central daemon configuration.
+    bootstrapLeaseDuration: 600
+    # -- Seconds before the bootstrap raft lease must be renewed.
+    # @section -- OVN-central daemon configuration.
+    bootstrapRenewDeadline: 300
+    # -- Seconds allotted to ovsdb-tool cluster-to-standalone during reconvert.
+    # @section -- OVN-central daemon configuration.
+    reconvertTimeout: 300
+    # -- Tunables for the readiness probe (ovn-central-controller).
+    # @section -- OVN-central daemon configuration.
+    readinessProbe:
+      periodSeconds: 5
+      timeoutSeconds: 10
+      failureThreshold: 3
+    # -- Tunables for the liveness probe. failureThreshold *
+    # periodSeconds = how long a stale heartbeat is tolerated before kubelet
+    # kills the pod. Default 5*30s=150s (≤3 min including probe latency).
+    # @section -- OVN-central daemon configuration.
+    livenessProbe:
+      initialDelaySeconds: 120
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 5
 
 
 # -- Configuration for the OVN interconnection (IC) controller.

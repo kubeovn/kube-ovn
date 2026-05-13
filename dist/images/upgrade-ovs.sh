@@ -3,9 +3,11 @@
 set -ex
 
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_NB_HOST=${OVN_NB_HOST:-}
 ENABLE_SSL=${ENABLE_SSL:-false}
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
+OVN_CENTRAL_KIND=${OVN_CENTRAL_KIND:-deployment}
 
 UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
@@ -15,7 +17,14 @@ if [ "$ENABLE_SSL" != "false" ]; then
 fi
 
 function gen_conn_str {
-  if [[ -z "${OVN_DB_IPS}" ]]; then
+  local port=$1
+  if [[ -n "${OVN_NB_HOST}" ]]; then
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+      x="tcp:${OVN_NB_HOST}:${port}"
+    else
+      x="ssl:${OVN_NB_HOST}:${port}"
+    fi
+  elif [[ -z "${OVN_DB_IPS}" ]]; then
     if [[ "$ENABLE_SSL" == "false" ]]; then
       x="tcp:[${OVN_NB_SERVICE_HOST}]:${OVN_NB_SERVICE_PORT}"
     else
@@ -24,9 +33,9 @@ function gen_conn_str {
   else
     t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     if [[ "$ENABLE_SSL" == "false" ]]; then
-      x=$(for i in ${t}; do echo -n "tcp:[$i]:$1,"; done | sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "tcp:[$i]:${port},"; done | sed 's/,$//')
     else
-      x=$(for i in ${t}; do echo -n "ssl:[$i]:$1,"; done | sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "ssl:[$i]:${port},"; done | sed 's/,$//')
     fi
   fi
   echo "$x"
@@ -45,7 +54,7 @@ while true; do
   sleep 3
 done
 
-kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+kubectl -n $POD_NAMESPACE rollout status $OVN_CENTRAL_KIND ovn-central --timeout=120s
 
 if [ $UPDATE_STRATEGY = OnDelete ]; then
   dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`

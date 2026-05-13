@@ -1,5 +1,9 @@
 {{- $centralImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.central.image) | fromYaml -}}
+{{- if .Values.central.dynamicPeers.enabled }}
+kind: StatefulSet
+{{- else }}
 kind: Deployment
+{{- end }}
 apiVersion: apps/v1
 metadata:
   name: ovn-central
@@ -14,11 +18,20 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ include "kubeovn.nodeCount" . }}
+  {{- if .Values.central.dynamicPeers.enabled }}
+  serviceName: ovn-central
+  podManagementPolicy: Parallel
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+  {{- else }}
   strategy:
     rollingUpdate:
       maxSurge: 0
       maxUnavailable: 1
     type: RollingUpdate
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: ovn-central
@@ -48,7 +61,8 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        {{- $clusterIDPreferred := list (dict "matchExpressions" (list (dict "key" "kube-ovn.io/ovn-nb-cluster-id" "operator" "Exists")) "weight" 100) -}}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $clusterIDPreferred "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -101,8 +115,39 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            {{- if .Values.central.dynamicPeers.enabled }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: DYNAMIC_PEERS
+              value: "{{ .Values.central.dynamicPeers.enabled | default false }}"
+            - name: DYNAMIC_JOIN_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.joinTimeout | default 30 }}"
+            - name: DEAD_MEMBER_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.deadMemberTimeout | default 120 }}"
+            - name: NO_LEADER_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.noLeaderTimeout | default 30 }}"
+            - name: STALE_STUB_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.staleStubTimeout | default 120 }}"
+            - name: BACKUP_INTERVAL
+              value: "{{ .Values.central.dynamicPeers.backupInterval | default 60 }}"
+            - name: COMPACT_INTERVAL
+              value: "{{ .Values.central.dynamicPeers.compactInterval | default 300 }}"
+            - name: OVSDB_CRASH_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.ovsdbCrashTimeout | default 30 }}"
+            - name: OVSDB_STUCK_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.ovsdbStuckTimeout | default 180 }}"
+            - name: BOOTSTRAP_LEASE_DURATION
+              value: "{{ .Values.central.dynamicPeers.bootstrapLeaseDuration | default 600 }}"
+            - name: BOOTSTRAP_RENEW_DEADLINE
+              value: "{{ .Values.central.dynamicPeers.bootstrapRenewDeadline | default 300 }}"
+            - name: RECONVERT_TIMEOUT
+              value: "{{ .Values.central.dynamicPeers.reconvertTimeout | default 300 }}"
+            {{- else }}
             - name: NODE_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -152,6 +197,25 @@ spec:
               readOnly: true
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+          {{- if .Values.central.dynamicPeers.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovn-central-controller-readiness.sh
+            periodSeconds: {{ .Values.central.dynamicPeers.readinessProbe.periodSeconds | default 5 }}
+            timeoutSeconds: {{ .Values.central.dynamicPeers.readinessProbe.timeoutSeconds | default 10 }}
+            failureThreshold: {{ .Values.central.dynamicPeers.readinessProbe.failureThreshold | default 3 }}
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovn-central-controller-liveness.sh
+            initialDelaySeconds: {{ .Values.central.dynamicPeers.livenessProbe.initialDelaySeconds | default 120 }}
+            periodSeconds: {{ .Values.central.dynamicPeers.livenessProbe.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.central.dynamicPeers.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.central.dynamicPeers.livenessProbe.failureThreshold | default 5 }}
+          {{- else }}
           readinessProbe:
             exec:
               command:
@@ -168,6 +232,7 @@ spec:
             periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
+          {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
