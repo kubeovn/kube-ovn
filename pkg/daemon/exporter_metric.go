@@ -8,7 +8,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/docker/docker/libnetwork/resolvconf"
+	"github.com/containerd/nerdctl/v2/pkg/resolvconf"
 )
 
 func (c *Controller) setIPLocalPortRangeMetric() {
