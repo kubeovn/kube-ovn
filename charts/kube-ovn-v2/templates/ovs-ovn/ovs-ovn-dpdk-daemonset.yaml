@@ -81,9 +81,9 @@ spec:
             {{- if .Values.central.hcp.enabled }}
             - name: OVN_SB_ADDR
               value: "{{ include "kubeovn.ovnSbAddress" . }}"
-            {{- else }}
+            {{- else if not .Values.central.dynamicPeers.enabled }}
             - name: OVN_DB_IPS
-              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnDbAddresses" . }}"
             {{- end }}
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
