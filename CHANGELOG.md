@@ -402,6 +402,36 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.11 (2026-05-13)
+
+ * [c231e542c](https://github.com/kubeovn/kube-ovn/commit/c231e542c020d1ea4d6ca3e191cd7950dfa5112b) release v1.15.11
+ * [e15870c99](https://github.com/kubeovn/kube-ovn/commit/e15870c9900339ca9e89d0df6e3f7369a4b7d4b3) Block vpc deletion while SNAT, DNAT or FIP rules are using it (#6718)
+ * [8947ed5e5](https://github.com/kubeovn/kube-ovn/commit/8947ed5e5b177ee0d2752f1dea5fd35a23332daa) chore(deps): bump github.com/moby/spdystream from 0.5.0 to 0.5.1
+ * [0d24cb786](https://github.com/kubeovn/kube-ovn/commit/0d24cb7865ffe519a80533180614daf201c3d143) revert(ha): undo cluster integrity check (#6363) for release-1.15 (#6723)
+ * [83a08f044](https://github.com/kubeovn/kube-ovn/commit/83a08f0444b5175e78dab626fafd360e1c122b37) fix: use status variable instead of hardcoded ConditionTrue in loopOvn0Check (#6719)
+ * [38e2eea31](https://github.com/kubeovn/kube-ovn/commit/38e2eea31f282097053ea31bf70961839eae0fef) fix(deps): update golang (#6710)
+ * [1aef8ea31](https://github.com/kubeovn/kube-ovn/commit/1aef8ea313f0d5d2fb8d79ea160f96805204a3c8) fix(deps): update module github.com/osrg/gobgp/v4 to v4.5.0
+ * [f712c2eb9](https://github.com/kubeovn/kube-ovn/commit/f712c2eb95df07dbfc2c5ce4b5b144df2ca36048) chore(deps): update dependency go to v1.26.3 (#6706)
+ * [c0bee1279](https://github.com/kubeovn/kube-ovn/commit/c0bee1279cccfa909cb4451777c51e0b65082e71) fix(image): rebase OVN patches for branch-25.03 ARP/ND localnet rename (#6707) (#6708)
+ * [2269b208c](https://github.com/kubeovn/kube-ovn/commit/2269b208c7a377a75aa4f1df5efe81aba403024d) fix(controller): keep VM LSP port-group memberships when a sibling pod is alive (#6666)
+ * [41c2a578d](https://github.com/kubeovn/kube-ovn/commit/41c2a578de34ae4082c8a2e68fece4d7042c12f2) fix(speaker): require NODE_NAME and inject POD_IPS in v2 chart (#6669)
+ * [43297c2e5](https://github.com/kubeovn/kube-ovn/commit/43297c2e5568e9a6883d341e1801913811a9f3e5) fix: add env NODE_NAME in spicker pod (#6664)
+ * [42b6bf3b6](https://github.com/kubeovn/kube-ovn/commit/42b6bf3b68811a3a65c741bda831ca6ebf025ab7) fix: docker timeout always (#6662)
+ * [d1f1cb2aa](https://github.com/kubeovn/kube-ovn/commit/d1f1cb2aa3cfb446006c2f51411a7e30ec75f4b7) fix(controller): serialize centralized subnet reconcile in node update path (#6627) (#6640)
+ * [e72f5edd6](https://github.com/kubeovn/kube-ovn/commit/e72f5edd683ba97c3392022c8c4e8303048be753) chore(deps): bump github.com/moby/spdystream in /test/cnp (#6639)
+ * [11a2d8985](https://github.com/kubeovn/kube-ovn/commit/11a2d898572b1d6630f4a88ba73d22bd69fa127c) prepare for next release
+
+### Contributors
+
+ * 09mulcs
+ * Andrei Kvapil
+ * Mengxin Liu
+ * Vitaly
+ * changluyi
+ * dependabot[bot]
+ * renovate[bot]
+ * zbb88888
+
 ## v1.15.10 (2026-04-10)
 
  * [a0e8fb099](https://github.com/kubeovn/kube-ovn/commit/a0e8fb099bcfd86a1be85b82bbb692c106a5142b) release v1.15.10
