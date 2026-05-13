@@ -65,6 +65,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SecurityGroupList{},
 		&Subnet{},
 		&SubnetList{},
+		&RouterLBRule{},
+		&RouterLBRuleList{},
 		&SwitchLBRule{},
 		&SwitchLBRuleList{},
 		&Vip{},
