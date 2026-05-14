@@ -156,6 +156,10 @@ networking:
   # Empty means it will use the same namespace as the controller (PodNamespace).
   # @section -- Network parameters of the CNI
   externalGatewayConfigNs: ""
+  # -- The name of the external gateway switch (OVS bridge providing external network).
+  # Empty means the default "external" is used.
+  # @section -- Network parameters of the CNI
+  externalGatewaySwitch: ""
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
