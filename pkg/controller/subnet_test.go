@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,6 +108,144 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 			require.Equal(t, tc.want, readyToRemoveFinalizer(tc.subnet))
 		})
 	}
+}
+
+func TestAddPolicyRouteForU2OInterconn_DisableInternalUnderlayDirectRouting(t *testing.T) {
+	t.Parallel()
+
+	const (
+		subnetName = "subnet-a"
+		peerName   = "subnet-b"
+		vlanName   = "vlan1"
+		cidr       = "10.16.1.0/24"
+		peerCIDR   = "10.16.2.0/24"
+		gateway    = "10.16.1.1"
+		nodeIP     = "192.168.0.10"
+	)
+
+	newSubnet := func(enabled bool) *kubeovnv1.Subnet {
+		return &kubeovnv1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+			Spec: kubeovnv1.SubnetSpec{
+				Vpc:                util.DefaultVpc,
+				Vlan:               vlanName,
+				CIDRBlock:          cidr,
+				Gateway:            gateway,
+				U2OInterconnection: true,
+				U2OFeatures: kubeovnv1.U2OFeatures{
+					DisableInternalUnderlayDirectRouting: enabled,
+				},
+			},
+			Status: kubeovnv1.SubnetStatus{
+				U2OInterconnectionVPC: util.DefaultVpc,
+			},
+		}
+	}
+	peerSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: peerName},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:                util.DefaultVpc,
+			Vlan:               vlanName,
+			CIDRBlock:          peerCIDR,
+			U2OInterconnection: true,
+			U2OFeatures: kubeovnv1.U2OFeatures{
+				DisableInternalUnderlayDirectRouting: true,
+			},
+		},
+	}
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node1"},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{{
+				Type:    corev1.NodeInternalIP,
+				Address: nodeIP,
+			}},
+		},
+	}
+
+	t.Run("enabled keeps current feature policies and adds them idempotently", func(t *testing.T) {
+		subnet := newSubnet(true)
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{subnet, peerSubnet},
+			Nodes:   []*corev1.Node{node},
+		})
+		require.NoError(t, err)
+
+		ctrl := fc.fakeController
+		mockOvnClient := fc.mockOvnClient
+		routeExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ORoutePolicy": "true"})
+		disabledPolicyExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+			"isU2ORoutePolicy": "true",
+			"isU2ODisableInternalUnderlayDirectRoutePolicy": "true",
+		})
+		u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+		u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
+		disabledCIDRs4Ag, disabledCIDRs6Ag := u2oDisabledInternalDirectRouteCIDRsAddressSetNames(subnet.Spec.Vpc)
+
+		mockOvnClient.EXPECT().CreateAddressSet(u2oExcludeIP4Ag, routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(u2oExcludeIP6Ag, routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(u2oExcludeIP4Ag, nodeIP).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(disabledCIDRs4Ag, u2oDisabledInternalDirectRouteCIDRsAddressSetExternalIDs(subnet.Spec.Vpc)).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(disabledCIDRs6Ag, u2oDisabledInternalDirectRouteCIDRsAddressSetExternalIDs(subnet.Spec.Vpc)).Return(nil)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(disabledCIDRs4Ag, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ string, addresses ...string) error {
+				require.ElementsMatch(t, []string{cidr, peerCIDR}, addresses)
+				return nil
+			},
+		)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(disabledCIDRs6Ag).Return(nil)
+
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.U2OSubnetPolicyPriority, fmt.Sprintf("ip4.dst == %s", cidr), string(kubeovnv1.PolicyRouteActionAllow), ([]string)(nil), ([]string)(nil), routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.SubnetRouterPolicyPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == %s", u2oExcludeIP4Ag, cidr), string(kubeovnv1.PolicyRouteActionReroute), []string{gateway}, ([]string)(nil), routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.GatewayRouterPolicyPriority, fmt.Sprintf("ip4.src == %s", cidr), string(kubeovnv1.PolicyRouteActionReroute), []string{gateway}, ([]string)(nil), routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.U2ODisableInternalUnderlayDirectRoutingAllowPriority, fmt.Sprintf("ip4.src == %s && ip4.dst == %s", cidr, cidr), string(kubeovnv1.PolicyRouteActionAllow), ([]string)(nil), ([]string)(nil), disabledPolicyExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.U2ODisableInternalUnderlayDirectRoutingPolicyPriority, fmt.Sprintf("ip4.src == %s && ip4.dst == $%s", cidr, disabledCIDRs4Ag), string(kubeovnv1.PolicyRouteActionReroute), []string{gateway}, ([]string)(nil), disabledPolicyExternalIDs).Return(nil)
+
+		require.NoError(t, ctrl.addPolicyRouteForU2OInterconn(subnet))
+	})
+
+	t.Run("disabled deletes stale feature policies", func(t *testing.T) {
+		subnet := newSubnet(false)
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{subnet, peerSubnet},
+			Nodes:   []*corev1.Node{node},
+		})
+		require.NoError(t, err)
+
+		ctrl := fc.fakeController
+		mockOvnClient := fc.mockOvnClient
+		routeExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ORoutePolicy": "true"})
+		u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+		u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
+		disabledCIDRs4Ag, disabledCIDRs6Ag := u2oDisabledInternalDirectRouteCIDRsAddressSetNames(subnet.Spec.Vpc)
+		featurePolicyExternalIDs := map[string]string{
+			"isU2ODisableInternalUnderlayDirectRoutePolicy": "true",
+			"vendor": util.CniTypeName,
+			"subnet": subnet.Name,
+		}
+
+		mockOvnClient.EXPECT().CreateAddressSet(u2oExcludeIP4Ag, routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(u2oExcludeIP6Ag, routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(u2oExcludeIP4Ag, nodeIP).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(disabledCIDRs4Ag, u2oDisabledInternalDirectRouteCIDRsAddressSetExternalIDs(subnet.Spec.Vpc)).Return(nil)
+		mockOvnClient.EXPECT().CreateAddressSet(disabledCIDRs6Ag, u2oDisabledInternalDirectRouteCIDRsAddressSetExternalIDs(subnet.Spec.Vpc)).Return(nil)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(disabledCIDRs4Ag, peerCIDR).Return(nil)
+		mockOvnClient.EXPECT().AddressSetUpdateAddress(disabledCIDRs6Ag).Return(nil)
+
+		mockOvnClient.EXPECT().GetLogicalRouter(util.DefaultVpc, true).Return(&ovnnb.LogicalRouter{Name: util.DefaultVpc}, nil)
+		mockOvnClient.EXPECT().ListLogicalRouterPolicies(util.DefaultVpc, -1, featurePolicyExternalIDs, true).Return([]*ovnnb.LogicalRouterPolicy{
+			{UUID: "allow-policy", Priority: util.U2ODisableInternalUnderlayDirectRoutingAllowPriority, Match: fmt.Sprintf("ip4.src == %s && ip4.dst == %s", cidr, cidr)},
+			{UUID: "reroute-policy", Priority: util.U2ODisableInternalUnderlayDirectRoutingPolicyPriority, Match: fmt.Sprintf("ip4.src == %s && ip4.dst == $%s", cidr, disabledCIDRs4Ag)},
+		}, nil)
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID(util.DefaultVpc, "allow-policy").Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID(util.DefaultVpc, "reroute-policy").Return(nil)
+
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.U2OSubnetPolicyPriority, fmt.Sprintf("ip4.dst == %s", cidr), string(kubeovnv1.PolicyRouteActionAllow), ([]string)(nil), ([]string)(nil), routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.SubnetRouterPolicyPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == %s", u2oExcludeIP4Ag, cidr), string(kubeovnv1.PolicyRouteActionReroute), []string{gateway}, ([]string)(nil), routeExternalIDs).Return(nil)
+		mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.GatewayRouterPolicyPriority, fmt.Sprintf("ip4.src == %s", cidr), string(kubeovnv1.PolicyRouteActionReroute), []string{gateway}, ([]string)(nil), routeExternalIDs).Return(nil)
+
+		require.NoError(t, ctrl.addPolicyRouteForU2OInterconn(subnet))
+	})
 }
 
 func Test_reconcileVips(t *testing.T) {

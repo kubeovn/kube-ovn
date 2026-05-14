@@ -136,6 +136,8 @@ type SubnetSpec struct {
 	U2OInterconnectionIP string `json:"u2oInterconnectionIP,omitempty"`
 	// Enable underlay to overlay interconnection.
 	U2OInterconnection bool `json:"u2oInterconnection,omitempty"`
+	// Feature configurations for underlay to overlay interconnection.
+	U2OFeatures U2OFeatures `json:"u2oFeatures,omitempty"`
 	// Enable LoadBalancer on this subnet.
 	EnableLb *bool `json:"enableLb,omitempty"`
 	// Enable ECMP for centralized gateway.
@@ -151,6 +153,12 @@ type SubnetSpec struct {
 	NamespaceSelectors []metav1.LabelSelector `json:"namespaceSelectors,omitempty"`
 	// Node network name for underlay.
 	NodeNetwork string `json:"nodeNetwork,omitempty"`
+}
+
+type U2OFeatures struct {
+	// DisableInternalUnderlayDirectRouting controls whether underlay-to-underlay traffic
+	// bypasses OVN internal routing and goes through the native underlay path.
+	DisableInternalUnderlayDirectRouting bool `json:"disableInternalUnderlayDirectRouting,omitempty"`
 }
 
 type ACL struct {

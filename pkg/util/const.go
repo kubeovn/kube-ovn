@@ -256,16 +256,18 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
-	GatewayRouterPolicyPriority      = 29000
-	EgressGatewayDropPolicyPriority  = 29090
-	EgressGatewayPolicyPriority      = 29100
-	EgressGatewayLocalPolicyPriority = 29150
-	NorthGatewayRoutePolicyPriority  = 29250
-	U2OSubnetPolicyPriority          = 29400
-	OvnICPolicyPriority              = 29500
-	NodeRouterPolicyPriority         = 30000
-	NodeLocalDNSPolicyPriority       = 30100
-	SubnetRouterPolicyPriority       = 31000
+	GatewayRouterPolicyPriority                           = 29000
+	EgressGatewayDropPolicyPriority                       = 29090
+	EgressGatewayPolicyPriority                           = 29100
+	EgressGatewayLocalPolicyPriority                      = 29150
+	NorthGatewayRoutePolicyPriority                       = 29250
+	U2OSubnetPolicyPriority                               = 29400
+	U2ODisableInternalUnderlayDirectRoutingPolicyPriority = 29450
+	U2ODisableInternalUnderlayDirectRoutingAllowPriority  = 29460
+	OvnICPolicyPriority                                   = 29500
+	NodeRouterPolicyPriority                              = 30000
+	NodeLocalDNSPolicyPriority                            = 30100
+	SubnetRouterPolicyPriority                            = 31000
 
 	OffloadType = "offload-port"
 	DpdkType    = "dpdk-port"
@@ -306,8 +308,9 @@ const (
 	MatchV6Src = "ip6.src"
 	MatchV6Dst = "ip6.dst"
 
-	U2OInterconnName = "u2o-interconnection.%s.%s"
-	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
+	U2OInterconnName                    = "u2o-interconnection.%s.%s"
+	U2OExcludeIPAg                      = "%s.u2o_exclude_ip.%s"
+	U2ODisabledInternalDirectRouteCIDRs = "%s.u2o_disabled_internal_direct_route_cidrs.%s"
 
 	McastQuerierName = "mcast-querier.%s"
 

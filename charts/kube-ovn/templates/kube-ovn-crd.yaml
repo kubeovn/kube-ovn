@@ -2649,6 +2649,15 @@ spec:
               routeTable:
                 description: Route table associated with the subnet.
                 type: string
+              u2oFeatures:
+                description: Feature configurations for underlay to overlay interconnection.
+                properties:
+                  disableInternalUnderlayDirectRouting:
+                    description: |-
+                      DisableInternalUnderlayDirectRouting controls whether underlay-to-underlay traffic
+                      bypasses OVN internal routing and goes through the native underlay path.
+                    type: boolean
+                type: object
               u2oInterconnection:
                 description: Enable underlay to overlay interconnection.
                 type: boolean
