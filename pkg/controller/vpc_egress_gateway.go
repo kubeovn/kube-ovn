@@ -452,7 +452,13 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		})
 
 		if gw.Spec.EvpnConf != "" {
-			evpnConf, err = c.evpnConfLister.Get(gw.Spec.EvpnConf)
+			evpnLister := c.evpnConfLister.Load()
+			if evpnLister == nil {
+				err = fmt.Errorf("EvpnConf CRD is not installed on the cluster, cannot configure EVPN for vpc-egress-gateway %s/%s", gw.Namespace, gw.Name)
+				klog.Error(err)
+				return attachmentNetworkName, nil, nil, nil, err
+			}
+			evpnConf, err = (*evpnLister).Get(gw.Spec.EvpnConf)
 			if err != nil {
 				err = fmt.Errorf("failed to get EvpnConf %s: %w", gw.Spec.EvpnConf, err)
 				klog.Error(err)
@@ -589,7 +595,13 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	// add FRR container if bgpConf is specified
 	if gw.Spec.BgpConf != "" {
-		bgpConf, err := c.bgpConfLister.Get(gw.Spec.BgpConf)
+		bgpLister := c.bgpConfLister.Load()
+		if bgpLister == nil {
+			err = fmt.Errorf("BgpConf CRD is not installed on the cluster, cannot configure BGP for vpc-egress-gateway %s/%s", gw.Namespace, gw.Name)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		bgpConf, err := (*bgpLister).Get(gw.Spec.BgpConf)
 		if err != nil {
 			err = fmt.Errorf("failed to get BgpConf %s: %w", gw.Spec.BgpConf, err)
 			klog.Error(err)
