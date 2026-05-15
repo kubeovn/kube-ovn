@@ -205,6 +205,11 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 }
 
 func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+	// record whether the v4 half is already cached on this nic — if so,
+	// getV4RandomAddress will fast-path it without mutating any state and
+	// we must keep that IP intact if the v6 half later fails.
+	existingV4 := s.V4NicToIP[nicName]
+
 	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		klog.Error(err)
@@ -212,6 +217,13 @@ func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *st
 	}
 	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		// only roll back the v4 half if this call actually allocated it.
+		// a fast-path return means the v4 counters were never mutated and
+		// tearing them down would silently revoke the pod's working IPv4.
+		if existingV4 == nil || !existingV4.Equal(v4IP) {
+			s.releaseV4Addr(podName, nicName)
+			s.popPodNic(podName, nicName)
+		}
 		klog.Error(err)
 		return nil, nil, "", err
 	}
@@ -275,6 +287,11 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 		return ip, nil, s.GetRandomMac(podName, nicName), nil
 	}
 	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		// the IPv4 counters were already mutated above, release just the v4
+		// half so retries do not leak IPs out of the pool. The IPv6 half
+		// (if any) on the same nic must stay untouched.
+		s.releaseV4Addr(podName, nicName)
+		s.popPodNic(podName, nicName)
 		klog.Error(err)
 		return nil, nil, "", err
 	}
@@ -332,6 +349,11 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 		return nil, ip, s.GetRandomMac(podName, nicName), nil
 	}
 	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		// the IPv6 counters were already mutated above, release just the v6
+		// half so retries do not leak IPs out of the pool. The IPv4 half
+		// (if any) on the same nic must stay untouched.
+		s.releaseV6Addr(podName, nicName)
+		s.popPodNic(podName, nicName)
 		klog.Error(err)
 		return nil, nil, "", err
 	}
@@ -530,89 +552,105 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	return nil, "", ErrNoAvailable
 }
 
-func (s *Subnet) releaseAddr(podName, nicName string) {
-	var ip IP
+// releaseV4Addr drops a pod's IPv4 lease from this subnet without touching
+// the IPv6 half. The MAC mapping is only cleared when the nic no longer
+// holds an IPv6 lease, so dual-stack rollback paths can undo just the IPv4
+// half they allocated.
+func (s *Subnet) releaseV4Addr(podName, nicName string) {
+	ip, ok := s.V4NicToIP[nicName]
+	if !ok {
+		return
+	}
+	oldPods := strings.Split(s.V4IPToPod[ip.String()], ",")
+	if len(oldPods) > 1 {
+		newPods := util.RemoveString(oldPods, podName)
+		s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
+		return
+	}
+	delete(s.V4NicToIP, nicName)
+	delete(s.V4IPToPod, ip.String())
 	var mac string
-	var ok, changed bool
-	if ip, ok = s.V4NicToIP[nicName]; ok {
-		oldPods := strings.Split(s.V4IPToPod[ip.String()], ",")
-		if len(oldPods) > 1 {
-			newPods := util.RemoveString(oldPods, podName)
-			s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
-		} else {
-			delete(s.V4NicToIP, nicName)
-			delete(s.V4IPToPod, ip.String())
-			if mac, ok = s.NicToMac[nicName]; ok {
-				delete(s.NicToMac, nicName)
-				delete(s.MacToPod, mac)
-			}
-
-			// When CIDR changed, do not relocate ip to CIDR list
-			if !s.V4CIDR.Contains(net.IP(ip)) {
-				// Continue to release IPv6 address
-				klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
-				changed = true
-			}
-
-			if s.V4Reserved.Contains(ip) {
-				klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
-				changed = true
-			}
-
-			s.V4Available.Add(ip)
-			s.V4Using.Remove(ip)
-			for _, pool := range s.IPPools {
-				if pool.V4Using.Remove(ip) {
-					pool.V4Available.Add(ip)
-					if !changed {
-						if pool.V4Released.Add(ip) {
-							klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
-						}
-					}
-					break
-				}
-			}
+	if m, hasMac := s.NicToMac[nicName]; hasMac {
+		mac = m
+		if _, hasV6 := s.V6NicToIP[nicName]; !hasV6 {
+			delete(s.NicToMac, nicName)
+			delete(s.MacToPod, mac)
 		}
 	}
-	if ip, ok = s.V6NicToIP[nicName]; ok {
-		oldPods := strings.Split(s.V6IPToPod[ip.String()], ",")
-		if len(oldPods) > 1 {
-			newPods := util.RemoveString(oldPods, podName)
-			s.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
-		} else {
-			delete(s.V6NicToIP, nicName)
-			delete(s.V6IPToPod, ip.String())
-			if mac, ok = s.NicToMac[nicName]; ok {
-				delete(s.NicToMac, nicName)
-				delete(s.MacToPod, mac)
-			}
-			changed = false
-			// When CIDR changed, do not relocate ip to CIDR list
-			if !s.V6CIDR.Contains(net.IP(ip)) {
-				klog.Infof("release v6 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
-				changed = true
-			}
-
-			if s.V6Reserved.Contains(ip) {
-				klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
-				changed = true
-			}
-
-			s.V6Available.Add(ip)
-			s.V6Using.Remove(ip)
-			for _, pool := range s.IPPools {
-				if pool.V6Using.Remove(ip) {
-					pool.V6Available.Add(ip)
-					if !changed {
-						if pool.V6Released.Add(ip) {
-							klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
-						}
-					}
-					break
+	var changed bool
+	// When CIDR changed, do not relocate ip to CIDR list
+	if !s.V4CIDR.Contains(net.IP(ip)) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
+		changed = true
+	}
+	if s.V4Reserved.Contains(ip) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
+		changed = true
+	}
+	s.V4Available.Add(ip)
+	s.V4Using.Remove(ip)
+	for _, pool := range s.IPPools {
+		if pool.V4Using.Remove(ip) {
+			pool.V4Available.Add(ip)
+			if !changed {
+				if pool.V4Released.Add(ip) {
+					klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
 				}
 			}
+			break
 		}
 	}
+}
+
+// releaseV6Addr is the IPv6 counterpart of releaseV4Addr.
+func (s *Subnet) releaseV6Addr(podName, nicName string) {
+	ip, ok := s.V6NicToIP[nicName]
+	if !ok {
+		return
+	}
+	oldPods := strings.Split(s.V6IPToPod[ip.String()], ",")
+	if len(oldPods) > 1 {
+		newPods := util.RemoveString(oldPods, podName)
+		s.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
+		return
+	}
+	delete(s.V6NicToIP, nicName)
+	delete(s.V6IPToPod, ip.String())
+	var mac string
+	if m, hasMac := s.NicToMac[nicName]; hasMac {
+		mac = m
+		if _, hasV4 := s.V4NicToIP[nicName]; !hasV4 {
+			delete(s.NicToMac, nicName)
+			delete(s.MacToPod, mac)
+		}
+	}
+	var changed bool
+	if !s.V6CIDR.Contains(net.IP(ip)) {
+		klog.Infof("release v6 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
+		changed = true
+	}
+	if s.V6Reserved.Contains(ip) {
+		klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
+		changed = true
+	}
+	s.V6Available.Add(ip)
+	s.V6Using.Remove(ip)
+	for _, pool := range s.IPPools {
+		if pool.V6Using.Remove(ip) {
+			pool.V6Available.Add(ip)
+			if !changed {
+				if pool.V6Released.Add(ip) {
+					klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
+				}
+			}
+			break
+		}
+	}
+}
+
+func (s *Subnet) releaseAddr(podName, nicName string) {
+	s.releaseV4Addr(podName, nicName)
+	s.releaseV6Addr(podName, nicName)
 }
 
 func (s *Subnet) ReleaseAddress(podName string) {
