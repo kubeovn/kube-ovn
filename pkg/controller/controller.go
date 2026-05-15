@@ -399,8 +399,8 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
-	bgpConfInformer := kubeovnInformerFactory.Kubeovn().V1().BgpConves()
-	evpnConfInformer := kubeovnInformerFactory.Kubeovn().V1().EvpnConves()
+	// BgpConf/EvpnConf informers are started lazily via StartBgpEvpnConfInformerFactory
+	// because their CRDs are optional on clusters that don't use vpc-egress-gateway BGP/EVPN.
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
@@ -468,10 +468,8 @@ func Run(ctx context.Context, config *Configuration) {
 		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
 		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
-		bgpConfLister:  bgpConfInformer.Lister(),
-		bgpConfSynced:  bgpConfInformer.Informer().HasSynced,
-		evpnConfLister: evpnConfInformer.Lister(),
-		evpnConfSynced: evpnConfInformer.Informer().HasSynced,
+		// bgpConfLister/bgpConfSynced/evpnConfLister/evpnConfSynced are populated lazily
+		// in startBgpEvpnConfInformer once the matching CRDs are detected.
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -737,6 +735,11 @@ func Run(ctx context.Context, config *Configuration) {
 	// don't have the API at all. Best-effort start with periodic retry.
 	controller.StartServiceCIDRInformerFactory(ctx)
 
+	// BgpConf/EvpnConf are optional CRDs (v1.16.0+, used by vpc-egress-gateway BGP/EVPN).
+	// They may be missing on clusters upgraded from <v1.16 via Helm, which does not
+	// re-apply the `crds/` directory on `helm upgrade`. Best-effort start with periodic retry.
+	controller.StartBgpEvpnConfInformerFactory(ctx)
+
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
@@ -748,7 +751,6 @@ func Run(ctx context.Context, config *Configuration) {
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
-		controller.bgpConfSynced, controller.evpnConfSynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
