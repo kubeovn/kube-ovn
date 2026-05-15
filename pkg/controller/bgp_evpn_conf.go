@@ -43,7 +43,8 @@ func (c *Controller) startBgpEvpnConfInformer(ctx context.Context, bgpReady, evp
 		informer := c.kubeovnInformerFactory.Kubeovn().V1().BgpConves()
 		syncs = append(syncs, informer.Informer().HasSynced)
 		publish = append(publish, func() {
-			c.bgpConfLister = informer.Lister()
+			lister := informer.Lister()
+			c.bgpConfLister.Store(&lister)
 			c.bgpConfSynced = informer.Informer().HasSynced
 		})
 	}
@@ -51,7 +52,8 @@ func (c *Controller) startBgpEvpnConfInformer(ctx context.Context, bgpReady, evp
 		informer := c.kubeovnInformerFactory.Kubeovn().V1().EvpnConves()
 		syncs = append(syncs, informer.Informer().HasSynced)
 		publish = append(publish, func() {
-			c.evpnConfLister = informer.Lister()
+			lister := informer.Lister()
+			c.evpnConfLister.Store(&lister)
 			c.evpnConfSynced = informer.Informer().HasSynced
 		})
 	}

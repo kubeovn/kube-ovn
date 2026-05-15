@@ -117,9 +117,13 @@ type Controller struct {
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
 
-	bgpConfLister  kubeovnlister.BgpConfLister
+	// bgpConfLister/evpnConfLister are published asynchronously by the
+	// optional-CRD background poller (StartBgpEvpnConfInformerFactory), but
+	// read by VEG worker goroutines. Atomic pointers keep the read/write
+	// race-free without locking the hot reconcile path.
+	bgpConfLister  atomic.Pointer[kubeovnlister.BgpConfLister]
 	bgpConfSynced  cache.InformerSynced
-	evpnConfLister kubeovnlister.EvpnConfLister
+	evpnConfLister atomic.Pointer[kubeovnlister.EvpnConfLister]
 	evpnConfSynced cache.InformerSynced
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister

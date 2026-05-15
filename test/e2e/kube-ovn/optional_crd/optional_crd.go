@@ -10,6 +10,7 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -79,8 +80,18 @@ var _ = framework.SerialDescribe("[group:optional-crd]", func() {
 		framework.WaitUntil(2*time.Second, time.Minute, func(ctx context.Context) (bool, error) {
 			for _, name := range []string{bgpConfCRDName, evpnConfCRDName} {
 				_, err := ext.Get(ctx, name, metav1.GetOptions{})
-				if !apierrors.IsNotFound(err) {
+				switch {
+				case err == nil:
+					// CRD still present, keep polling.
 					return false, nil
+				case apierrors.IsNotFound(err):
+					// CRD is gone, check the next one.
+					continue
+				default:
+					// Anything else (Forbidden, network issue, ...) is
+					// surfaced immediately so the test fails fast with
+					// the real cause instead of a generic timeout.
+					return false, fmt.Errorf("unexpected error checking CRD %s: %w", name, err)
 				}
 			}
 			return true, nil
@@ -118,11 +129,28 @@ var _ = framework.SerialDescribe("[group:optional-crd]", func() {
 		// status when the CRDs are established.
 		kubeovn := f.KubeOVNClientSet.KubeovnV1()
 		framework.WaitUntil(2*time.Second, selfHealTimeout, func(ctx context.Context) (bool, error) {
-			if _, err := kubeovn.BgpConves().List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
-				return false, nil
-			}
-			if _, err := kubeovn.EvpnConves().List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
-				return false, nil
+			for _, list := range []func() error{
+				func() error {
+					_, err := kubeovn.BgpConves().List(ctx, metav1.ListOptions{Limit: 1})
+					return err
+				},
+				func() error {
+					_, err := kubeovn.EvpnConves().List(ctx, metav1.ListOptions{Limit: 1})
+					return err
+				},
+			} {
+				switch err := list(); {
+				case err == nil:
+					continue
+				case apierrors.IsNotFound(err), meta.IsNoMatchError(err):
+					// Discovery has not yet caught up with the freshly
+					// restored CRD; keep polling.
+					return false, nil
+				default:
+					// RBAC/connectivity/other errors should surface
+					// immediately rather than be masked by the timeout.
+					return false, err
+				}
 			}
 			return true, nil
 		}, "BgpConf/EvpnConf APIs to become listable after CRD restoration")
@@ -148,7 +176,14 @@ func recreateCRD(ctx context.Context, ext apiextensionsCRDInterface, snapshot *a
 	framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
 		got, err := ext.Get(ctx, snapshot.Name, metav1.GetOptions{})
 		if err != nil {
-			return false, nil
+			if apierrors.IsNotFound(err) {
+				// The just-created CRD may not be visible yet on every
+				// api-server replica; keep polling.
+				return false, nil
+			}
+			// Anything else (Forbidden, conflict, transport error) is
+			// surfaced so the helper fails fast with the underlying cause.
+			return false, err
 		}
 		for _, cond := range got.Status.Conditions {
 			if cond.Type == apiextensionsv1.Established && cond.Status == apiextensionsv1.ConditionTrue {
