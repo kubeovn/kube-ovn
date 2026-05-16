@@ -328,6 +328,7 @@ func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.C
 		klog.V(3).Infof("netns %s not found", podNs)
 		return
 	}
+	defer podNS.Close()
 
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet's src and dst IP are both PodIP in netns
