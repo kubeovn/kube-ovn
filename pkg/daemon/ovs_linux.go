@@ -274,6 +274,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return nil, err
 	}
+	defer podNS.Close()
 	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, gwCheckMode, u2oInterconnectionIP)
 	if err != nil {
 		klog.Error(err)
@@ -1132,6 +1133,7 @@ func (c *Controller) loopOvnExt0Check() {
 			return
 		}
 	}
+	defer gwNS.Close()
 	nodeExtIP := cachedEip.Spec.V4Ip
 	ipAddr, err := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
@@ -1878,6 +1880,7 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %w", netns, err)
 	}
+	defer podNS.Close()
 
 	return ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		if ipv4 {
