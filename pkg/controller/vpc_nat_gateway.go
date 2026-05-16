@@ -1438,8 +1438,16 @@ func (c *Controller) execNatGwQoSInPod(
 		klog.Error(err)
 		return err
 	}
+	iface := r.Interface
+	if iface == "" {
+		if r.Direction == kubeovnv1.QoSDirectionEgress {
+			iface = "net1"
+		} else {
+			iface = "eth0"
+		}
+	}
 	rule := fmt.Sprintf("%s,%s,%d,%s,%s,%s,%s,%s,%s",
-		r.Direction, r.Interface, r.Priority,
+		r.Direction, iface, r.Priority,
 		classifierType, r.MatchType, matchDirection,
 		cidr, r.RateMax, r.BurstMax)
 	addRules = append(addRules, rule)
