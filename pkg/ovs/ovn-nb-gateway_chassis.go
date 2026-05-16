@@ -48,49 +48,6 @@ func (c *OVNNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fiel
 	return nil
 }
 
-// DeleteGatewayChassises delete multiple gateway chassis once
-func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
-	if len(chassises) == 0 {
-		return nil
-	}
-
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(chassises)*2)
-	for _, chassisName := range chassises {
-		gwChassisName := lrpName + "-" + chassisName
-		uuid, delOps, err := c.DeleteGatewayChassisOp(gwChassisName)
-		if err != nil {
-			klog.Error(err)
-			return nil
-		}
-
-		mutateOps, err := c.Where(lrp).Mutate(lrp, model.Mutation{
-			Field:   &lrp.GatewayChassis,
-			Value:   []string{uuid},
-			Mutator: ovsdb.MutateOperationDelete,
-		})
-		if err != nil {
-			klog.Error(err)
-			return nil
-		}
-
-		ops = append(ops, mutateOps...)
-		ops = append(ops, delOps...)
-	}
-
-	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("delete gateway chassises %v from logical router port %s: %w", chassises, lrpName, err)
-	}
-
-	return nil
-}
-
 // ListGatewayChassisByLogicalRouterPort get gateway chassis by lrp name
 func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -213,25 +170,4 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 	ops = append(ops, gwChassisAddOp...)
 
 	return ops, nil
-}
-
-// DeleteGatewayChassisOp create operation which delete gateway chassis
-func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, ops []ovsdb.Operation, err error) {
-	gwChassis, err := c.GetGatewayChassis(chassisName, true)
-	if err != nil {
-		klog.Error(err)
-		return "", nil, err
-	}
-
-	// not found, skip
-	if gwChassis == nil {
-		return "", nil, nil
-	}
-
-	if ops, err = c.Where(gwChassis).Delete(); err != nil {
-		klog.Error(err)
-		return "", nil, err
-	}
-
-	return gwChassis.UUID, ops, nil
 }

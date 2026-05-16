@@ -489,14 +489,6 @@ func (suite *OvnClientTestSuite) Test_UpdateGatewayChassis() {
 	suite.testUpdateGatewayChassis()
 }
 
-func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
-	suite.testDeleteGatewayChassises()
-}
-
-func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
-	suite.testDeleteGatewayChassisOp()
-}
-
 func (suite *OvnClientTestSuite) Test_NewGatewayChassis() {
 	suite.testNewGatewayChassis()
 }
