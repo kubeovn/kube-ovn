@@ -1382,6 +1382,11 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		return err
 	}
 
+	// distribute active gateway chassis across VPCs
+	sort.Slice(chassises, func(i, j int) bool {
+		return util.Sha256Hash([]byte(key+chassises[i])) < util.Sha256Hash([]byte(key+chassises[j]))
+	})
+
 	v4ipCidr, err := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
 		klog.Error(err)
