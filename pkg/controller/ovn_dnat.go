@@ -10,7 +10,6 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -75,29 +74,6 @@ func (c *Controller) enqueueDelOvnDnatRule(obj any) {
 	key := cache.MetaObjectToName(dnat).String()
 	klog.Infof("enqueue delete ovn dnat %s", key)
 	c.delOvnDnatRuleQueue.Add(key)
-}
-
-func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string) error {
-	// check if eip:external port already used
-	dnats, err := c.ovnDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
-		util.VpcDnatEPortLabel: externalPort,
-	}))
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Error(err)
-			return err
-		}
-	}
-	if len(dnats) != 0 {
-		for _, d := range dnats {
-			if d.Name != dnatName && d.Spec.OvnEip == eipName {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is used by dnat %s", dnatName, eipName, externalPort, d.Name)
-				klog.Error(err)
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (c *Controller) handleAddOvnDnatRule(key string) error {
@@ -204,7 +180,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, "", key); err != nil {
 		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -451,7 +427,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, "", key); err != nil {
 		klog.Errorf("failed to update dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -527,7 +503,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip
 		needUpdateLabel = true
 		dnat.Labels = map[string]string{
 			util.EipV4IpLabel: v4Eip,
-			util.EipV6IpLabel: v6Eip,
+			util.EipV6IpLabel: util.IPv6ToLabelValue(v6Eip),
 		}
 	} else if dnat.Labels[util.EipV4IpLabel] != v4Eip {
 		op = "replace"
