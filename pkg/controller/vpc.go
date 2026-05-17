@@ -698,7 +698,13 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	}
 
 	if vpc.Spec.EnableExternal {
-		if !vpc.Status.EnableExternal {
+		defaultLspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, vpc.Name)
+		defaultLspExists, err := c.OVNNbClient.LogicalSwitchPortExists(defaultLspName)
+		if err != nil {
+			klog.Errorf("failed to check lsp %s existence for vpc %s, error %v", defaultLspName, vpc.Name, err)
+			return err
+		}
+		if !vpc.Status.EnableExternal || !defaultLspExists {
 			// just add external connection
 			if vpc.Spec.ExtraExternalSubnets == nil && defaultExternalSubnetExist {
 				// only connect default external subnet

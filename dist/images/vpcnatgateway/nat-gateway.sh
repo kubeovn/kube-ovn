@@ -194,6 +194,15 @@ function init() {
         echo "IFB kernel module loaded successfully"
     fi
 
+    # MASQUERADE for DNAT loop-back: when a DNAT rule rewrites the destination to
+    # an internal VIP (e.g. EIP:port -> VIP:port), the kernel re-routes the packet
+    # back out $VPC_INTERFACE.  Without MASQUERADE the original source IP is
+    # preserved, so the backend responds directly to the original source, bypassing
+    # the NAT GW's conntrack and breaking reverse-NAT unwind.  Using ctstate NEW
+    # rewrites the source to the VPC interface IP only for new connections, so the
+    # backend always responds through the NAT GW for correct DNAT unwind.
+    $iptables_cmd -t nat -A POSTROUTING -o "$VPC_INTERFACE" -m conntrack --ctstate NEW -j MASQUERADE
+
     # Send gratuitous ARP for all the IPs on the external network interface at initialization
     # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker
     # Only send ARP if there are IP addresses on the external interface (skip in no-IPAM mode)
