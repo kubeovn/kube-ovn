@@ -20,7 +20,7 @@ for t in $(cat "$TRIVY_DIR/trivy-targets.txt"); do
     name=${t%@*}
     version=${t#*@}
     case $name in
-        loopback|macvlan)
+        loopback|macvlan|ipvlan)
             build_flags="-ldflags '-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=$version'"
             eval $GO_INSTALL $build_flags github.com/containernetworking/plugins/plugins/main/$name@$version
             ;;
