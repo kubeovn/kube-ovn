@@ -1,6 +1,9 @@
 package util
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 func TestSha256Hash(t *testing.T) {
 	tests := []struct {
@@ -69,5 +72,40 @@ func TestSha256HashObject(t *testing.T) {
 				t.Errorf("got hash %v, but want %v", hash, tt.hash)
 			}
 		})
+	}
+}
+
+func TestSha256HashGatewayChassisDistribution(t *testing.T) {
+	chassises := []string{
+		"efa09809-38e5-4c6d-b0a3-c8729fc40313",
+		"672a26c8-c12b-4853-907c-d3243c20e77d",
+		"4ac8c950-8839-4b72-93e5-3bab702657db",
+	}
+
+	getFirstChassis := func(vpcName string) string {
+		sorted := make([]string, len(chassises))
+		copy(sorted, chassises)
+		sort.Slice(sorted, func(i, j int) bool {
+			return Sha256Hash([]byte(vpcName+sorted[i])) < Sha256Hash([]byte(vpcName+sorted[j]))
+		})
+		return sorted[0]
+	}
+
+	// deterministic: same VPC always gets same result
+	first := getFirstChassis("vpc-a")
+	for range 10 {
+		if getFirstChassis("vpc-a") != first {
+			t.Fatal("not deterministic")
+		}
+	}
+
+	// distributed: not all VPCs get the same chassis
+	results := map[string]int{}
+	vpcs := []string{"vpc-a", "vpc-b", "vpc-c", "vpc-d", "vpc-e", "vpc-f", "vpc-g", "vpc-h", "vpc-i", "vpc-j"}
+	for _, vpc := range vpcs {
+		results[getFirstChassis(vpc)]++
+	}
+	if len(results) == 1 {
+		t.Fatalf("all VPCs got same chassis: %v", results)
 	}
 }
