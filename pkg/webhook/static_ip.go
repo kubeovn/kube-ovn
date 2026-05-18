@@ -161,6 +161,9 @@ func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map
 	}
 
 	if ipAddress := annotations[util.IPAddressAnnotation]; ipAddress != "" {
+		if err := checkIPAddressFamilyUniqueness(ipAddress); err != nil {
+			return err
+		}
 		if err := v.checkIPConflict(ipAddress, annoSubnet, name, ipList); err != nil {
 			return err
 		}
@@ -176,6 +179,41 @@ func (v *ValidatingHook) validateIPConflict(ctx context.Context, annotations map
 		} else if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkIPAddressFamilyUniqueness rejects ip_address annotation values that
+// carry more than one address of the same IP family. The annotation is a
+// single static address per family (optionally one IPv4 + one IPv6 for
+// dual-stack), so values like "10.0.0.1,10.0.0.2" are ambiguous and would
+// silently corrupt IPAM accounting and dual-stack auto-completion downstream.
+func checkIPAddressFamilyUniqueness(ipAddress string) error {
+	var v4Count, v6Count int
+	for ip := range strings.SplitSeq(ipAddress, ",") {
+		ip = strings.TrimSpace(ip)
+		var ipAddr net.IP
+		if strings.Contains(ip, "/") {
+			ipAddr, _, _ = net.ParseCIDR(ip)
+		} else {
+			ipAddr = net.ParseIP(ip)
+		}
+		if ipAddr == nil {
+			// Leave the invalid-IP error to checkIPConflict so the wording
+			// stays consistent across callers.
+			return nil
+		}
+		if ipAddr.To4() != nil {
+			v4Count++
+		} else {
+			v6Count++
+		}
+	}
+	if v4Count > 1 {
+		return fmt.Errorf("multiple IPv4 addresses in ip_address annotation %q", ipAddress)
+	}
+	if v6Count > 1 {
+		return fmt.Errorf("multiple IPv6 addresses in ip_address annotation %q", ipAddress)
 	}
 	return nil
 }
