@@ -1,0 +1,277 @@
+# Standalone openbfdd DaemonSet (hostNetwork)
+#
+# Deploys bfdd-beacon on every BGP ECMP node for BFD sessions with switch gateways.
+# Uses the same whitelist mechanism as kube-ovn-speaker: the init container
+# runs `ip route get` against the switch gateway address, validates the source IP
+# against ALLOWED_SOURCE_ADDRESSES, and fails the pod if it doesn't match.
+#
+# Three containers per pod:
+#   init-peer  - discover local IP via route lookup, validate against whitelist
+#   bfdd       - bfdd-beacon daemon, listens on local IP
+#   reconcile  - continuous loop: check BFD session, add gateway peer if missing
+#                (mirrors pkg/daemon/ovs_linux.go:checkNodeGwNicInNs logic)
+#
+# Environment variables:
+#   GATEWAY_ADDRESS          - Switch gateway address for route lookup (required),
+#                              used by `ip route get` to discover the node's source IP
+#   ALLOWED_SOURCE_ADDRESSES - Comma-separated whitelist of source IPs (required),
+#                              should match speaker's --allowed-source-addresses
+#   BFD_MIN_TX               - Minimum transmit interval in ms (default: 1000)
+#                              The minimum interval at which the local system sends BFD
+#                              control packets to the peer. Lower values = faster failure
+#                              detection but more CPU/network overhead.
+#   BFD_MIN_RX               - Minimum receive interval in ms  (default: 1000)
+#                              The minimum interval at which the local system can receive
+#                              BFD control packets from the peer. Tells the peer to send
+#                              no faster than this rate. Lower values = faster detection.
+#   BFD_MULTI                - Detection multiplier            (default: 3)
+#                              The number of consecutive missed BFD packets before the
+#                              session is declared DOWN. Failure detection time =
+#                              BFD_MULTI * max(BFD_MIN_TX, BFD_MIN_RX). With defaults:
+#                              3 * 1000ms = 3 seconds to detect a link failure.
+#
+# Usage:
+#   1. Edit GATEWAY_ADDRESS and ALLOWED_SOURCE_ADDRESSES to match your network
+#   2. kubectl apply -f bfdd-daemonset.yaml
+#
+# Debugging (openbfdd commands, run inside bfdd container):
+#   # ---- Session status ----
+#   # Check daemon overall status
+#   bfdd-control status
+#   # Check specific session (remote=gateway, local=our source IP)
+#   bfdd-control status remote <gateway-ip> local <local-ip>
+#   # Example: bfdd-control status remote 10.32.32.1 local 10.32.32.2
+#
+#   # ---- Session management (same as reconcile sidecar & checkNodeGwNicInNs) ----
+#   # Add a BFD peer (initiates session to remote)
+#   bfdd-control allow <remote-ip>
+#   # Example: bfdd-control allow 10.32.32.1
+#
+#   # ---- Session parameters (same as bfdd-prestart.sh) ----
+#   # Set minimum transmit interval
+#   bfdd-control session new set mintx <ms> ms
+#   # Set minimum receive interval
+#   bfdd-control session new set minrx <ms> ms
+#   # Set detection multiplier
+#   bfdd-control session new set multi <n>
+#
+#   # ---- Logging ----
+#   # Disable command logging (reduces noise)
+#   bfdd-control log type command no
+#
+#   # ---- Quick checks ----
+#   # View local IP (source IP from route lookup)
+#   cat /bfdd-peer/local-ip
+#   # Check reconcile sidecar logs
+#   kubectl logs -n kube-system ds/openbfdd -c reconcile
+#   # Check init container logs
+#   kubectl logs -n kube-system ds/openbfdd -c init-peer
+#
+# OVN-level BFD (managed by kube-ovn controller, for reference):
+#   # List OVN BFD entries
+#   kubectl ko nbctl list bfd
+#   # Find BFD by logical router port
+#   kubectl ko nbctl find bfd logical_port=<lrp-name>
+#   # Delete OVN BFD entry by UUID
+#   kubectl ko nbctl destroy bfd <uuid>
+#
+# Reference: pkg/daemon/ovs_linux.go:checkNodeGwNicInNs,loopOvnExt0Check
+#            pkg/controller/vpc_egress_gateway.go:reconcileVpcEgressGatewayOVNRoutes
+#            pkg/ovs/ovn-nb-bfd.go (CreateBFD/DeleteBFD/FindBFD/ListBFDs)
+#            pkg/speaker/config.go:resolveWhitelistedNeighborLocalAddress
+#            dist/images/start-bfdd.sh, dist/images/bfdd-prestart.sh
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: openbfdd
+  namespace: kube-system
+  labels:
+    app: openbfdd
+    component: network
+    type: infra
+spec:
+  selector:
+    matchLabels:
+      app: openbfdd
+  template:
+    metadata:
+      labels:
+        app: openbfdd
+        component: network
+        type: infra
+    spec:
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        ovn.kubernetes.io/bgp: "true"
+      initContainers:
+        # Discover source IP via route lookup to switch gateway and validate
+        # against whitelist. Mirrors speaker's resolveWhitelistedNeighborLocalAddress.
+        - name: init-peer
+          image: "docker.io/kubeovn/kube-ovn:v1.16.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              src_ip=$(ip -o route get "${GATEWAY_ADDRESS}" | grep -o 'src [^ ]*' | awk '{print $2}')
+              if [ -z "${src_ip}" ]; then
+                echo "ERROR: failed to resolve source IP for gateway ${GATEWAY_ADDRESS}"
+                exit 1
+              fi
+              if echo ",${ALLOWED_SOURCE_ADDRESSES}," | grep -q ",${src_ip},"; then
+                echo "Source IP ${src_ip} is in allowed list, using as BFD local IP"
+                echo -n "${src_ip}" > /bfdd-peer/local-ip
+              else
+                echo "ERROR: source IP ${src_ip} not in allowed source addresses [${ALLOWED_SOURCE_ADDRESSES}]"
+                exit 1
+              fi
+          env:
+            - name: GATEWAY_ADDRESS
+              value: "10.32.32.1"
+            - name: ALLOWED_SOURCE_ADDRESSES
+              value: "10.32.32.2,10.32.32.3,10.32.32.4,10.32.32.5"
+          securityContext:
+            privileged: false
+            runAsUser: 65534
+            capabilities:
+              add:
+                - NET_ADMIN
+              drop:
+                - ALL
+          volumeMounts:
+            - name: bfdd-peer
+              mountPath: /bfdd-peer
+      containers:
+        - name: bfdd
+          image: "docker.io/kubeovn/kube-ovn:v1.16.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - -c
+            - |
+              BFD_LOCAL_IP=$(cat /bfdd-peer/local-ip)
+              if [ -z "${BFD_LOCAL_IP}" ]; then
+                echo "ERROR: BFD local IP is empty, gateway ${GATEWAY_ADDRESS} may not be reachable"
+                exit 1
+              fi
+              export POD_IPS="${BFD_LOCAL_IP}"
+              exec bash /kube-ovn/start-bfdd.sh
+          env:
+            - name: GATEWAY_ADDRESS
+              value: "10.32.32.1"
+            # Minimum transmit interval (ms): how often this node sends BFD packets
+            - name: BFD_MIN_TX
+              value: "1000"
+            # Minimum receive interval (ms): how fast the peer is allowed to send
+            - name: BFD_MIN_RX
+              value: "1000"
+            # Detection multiplier: consecutive misses before session = DOWN
+            # Failure detection time = MULTI * max(TX, RX) = 3 * 1000ms = 3s
+            - name: BFD_MULTI
+              value: "3"
+          startupProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/bfdd-prestart.sh
+            initialDelaySeconds: 1
+            failureThreshold: 1
+          livenessProbe:
+            exec:
+              command:
+                - bfdd-control
+                - status
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - bfdd-control
+                - status
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 50Mi
+            limits:
+              cpu: 50m
+              memory: 50Mi
+              ephemeral-storage: 1Gi
+          securityContext:
+            privileged: false
+            runAsUser: 65534
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_BIND_SERVICE
+                - NET_RAW
+              drop:
+                - ALL
+          volumeMounts:
+            - name: bfdd-peer
+              mountPath: /bfdd-peer
+              readOnly: true
+        # Reconcile loop: continuously check BFD session and add gateway peer
+        # if missing. Mirrors pkg/daemon/ovs_linux.go:checkNodeGwNicInNs logic.
+        - name: reconcile
+          image: "docker.io/kubeovn/kube-ovn:v1.16.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - -c
+            - |
+              set -e
+              LOCAL_IP=$(cat /bfdd-peer/local-ip)
+              if [ -z "${LOCAL_IP}" ]; then
+                echo "ERROR: local IP is empty"
+                exit 1
+              fi
+              echo "Reconcile: local=${LOCAL_IP} gateway=${GATEWAY_ADDRESS}"
+              while true; do
+                if bfdd-control status remote "${GATEWAY_ADDRESS}" local "${LOCAL_IP}" 2>&1 | grep -q "No session"; then
+                  echo "$(date): No BFD session for remote=${GATEWAY_ADDRESS} local=${LOCAL_IP}, adding..."
+                  if bfdd-control allow "${GATEWAY_ADDRESS}"; then
+                    echo "$(date): BFD peer ${GATEWAY_ADDRESS} added"
+                  else
+                    echo "$(date): WARN: failed to add BFD peer ${GATEWAY_ADDRESS}"
+                  fi
+                fi
+                sleep 5
+              done
+          env:
+            - name: GATEWAY_ADDRESS
+              value: "10.32.32.1"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 10Mi
+            limits:
+              cpu: 10m
+              memory: 10Mi
+              ephemeral-storage: 100Mi
+          securityContext:
+            privileged: false
+            runAsUser: 65534
+            capabilities:
+              add:
+                - NET_ADMIN
+              drop:
+                - ALL
+          volumeMounts:
+            - name: bfdd-peer
+              mountPath: /bfdd-peer
+              readOnly: true
+      volumes:
+        - name: bfdd-peer
+          emptyDir: {}
