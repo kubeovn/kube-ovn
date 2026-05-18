@@ -266,7 +266,7 @@ RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-in
     chmod +x /usr/bin/dumb-init
 
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
-    cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
+    cp /godeps/loopback /godeps/portmap /godeps/macvlan /godeps/ipvlan ./ && \
     cp /godeps/kubectl /godeps/gobgp /usr/bin/
 
 ARG DEBUG=false
