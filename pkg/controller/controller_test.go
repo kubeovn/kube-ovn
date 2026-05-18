@@ -19,6 +19,7 @@ type fakeControllerInformers struct {
 	vpcInformer     kubeovninformer.VpcInformer
 	subnetInformer  kubeovninformer.SubnetInformer
 	serviceInformer coreinformers.ServiceInformer
+	nodeInformer    coreinformers.NodeInformer
 }
 
 type fakeController struct {
@@ -34,6 +35,7 @@ func newFakeController(t *testing.T) *fakeController {
 	kubeClient := fake.NewSimpleClientset()
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 
 	/* fake kube ovn client */
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
@@ -45,6 +47,7 @@ func newFakeController(t *testing.T) *fakeController {
 		vpcInformer:     vpcInformer,
 		subnetInformer:  subnetInformer,
 		serviceInformer: serviceInformer,
+		nodeInformer:    nodeInformer,
 	}
 
 	/* ovn fake client */
@@ -52,6 +55,7 @@ func newFakeController(t *testing.T) *fakeController {
 
 	ctrl := &Controller{
 		servicesLister:        serviceInformer.Lister(),
+		nodesLister:           nodeInformer.Lister(),
 		vpcsLister:            vpcInformer.Lister(),
 		vpcSynced:             alwaysReady,
 		subnetsLister:         subnetInformer.Lister(),
