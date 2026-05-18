@@ -13,7 +13,7 @@ DEPS_DIR=/godeps
 mkdir -p "$DEPS_DIR"
 
 curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz | \
-    tar -xz -C "$DEPS_DIR" ./loopback ./portmap ./macvlan
+    tar -xz -C "$DEPS_DIR" ./loopback ./portmap ./macvlan ./ipvlan
 
 curl -sSf -L --retry 5 https://dl.k8s.io/${KUBECTL_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | \
     tar -xz -C "$DEPS_DIR" --strip-components=3 kubernetes/client/bin/kubectl
@@ -33,7 +33,7 @@ TARGETS_FILE="$DEPS_DIR/trivy-targets.txt"
 jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy.json | while read f; do
     name=$(basename $f)
     case $name in
-        loopback|macvlan|portmap)
+        loopback|macvlan|portmap|ipvlan)
             echo "$name@$CNI_PLUGINS_VERSION" >> "$TARGETS_FILE"
             ;;
         kubectl)
