@@ -2639,10 +2639,8 @@ spec:
                 description: Route table associated with the subnet.
                 type: string
               u2oFeatures:
-                description: Feature configurations for underlay to overlay interconnection.
                 properties:
                   overlayOnlyRouting:
-                    description: Overlay-only routing controls whether only overlay CIDRs use U2O routing.
                     type: boolean
                 type: object
               u2oInterconnection:
