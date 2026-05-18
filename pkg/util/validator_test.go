@@ -262,6 +262,72 @@ func TestValidateSubnet(t *testing.T) {
 			err: "logicalGateway and u2oInterconnection can't be opened at the same time",
 		},
 		{
+			name: "U2OOverlayOnlyRoutingWithoutU2OErr",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-u2o-overlay-only-routing-without-u2o",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Vlan:        "vlan1",
+					U2OFeatures: kubeovnv1.U2OFeatures{
+						OverlayOnlyRouting: true,
+					},
+				},
+			},
+			err: "u2oFeatures.overlayOnlyRouting can only be enabled when u2OInterconnection is true",
+		},
+		{
+			name: "U2OOverlayOnlyRoutingWithoutVlanErr",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-u2o-overlay-only-routing-without-vlan",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:            true,
+					Vpc:                DefaultVpc,
+					Protocol:           kubeovnv1.ProtocolIPv4,
+					CIDRBlock:          "10.16.0.0/16",
+					Gateway:            "10.16.0.1",
+					Provider:           OvnProvider,
+					GatewayType:        kubeovnv1.GWDistributedType,
+					U2OInterconnection: true,
+					U2OFeatures: kubeovnv1.U2OFeatures{
+						OverlayOnlyRouting: true,
+					},
+				},
+			},
+			err: "u2oFeatures.overlayOnlyRouting can only be enabled on underlay subnets (vlan must be set)",
+		},
+		{
+			name: "U2OOverlayOnlyRoutingCorrect",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-u2o-overlay-only-routing-correct",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:            true,
+					Vpc:                DefaultVpc,
+					Protocol:           kubeovnv1.ProtocolIPv4,
+					CIDRBlock:          "10.16.0.0/16",
+					Gateway:            "10.16.0.1",
+					Provider:           OvnProvider,
+					GatewayType:        kubeovnv1.GWDistributedType,
+					Vlan:               "vlan1",
+					U2OInterconnection: true,
+					U2OFeatures: kubeovnv1.U2OFeatures{
+						OverlayOnlyRouting: true,
+					},
+				},
+			},
+		},
+		{
 			name: "ValidateNatOutgoingPolicyRulesErr",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{

@@ -13,7 +13,9 @@ import (
 	dockernetwork "github.com/moby/moby/api/types/network"
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
@@ -31,8 +33,9 @@ import (
 )
 
 const (
-	dockerNetworkName = "kube-ovn-vlan"
-	curlListenPort    = 8081
+	dockerNetworkName            = "kube-ovn-vlan"
+	curlListenPort               = 8081
+	underlayReservedStartIPCount = 20
 )
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *apiv1.ProviderNetwork {
@@ -53,6 +56,15 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
+func nodeDockerNetworkSettings(node kind.Node, networkID string) *dockernetwork.EndpointSettings {
+	for _, settings := range node.NetworkSettings.Networks {
+		if settings != nil && settings.NetworkID == networkID {
+			return settings
+		}
+	}
+	return nil
+}
+
 func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs int64) {
 	ginkgo.GinkgoHelper()
 
@@ -67,6 +79,124 @@ func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetCli
 		}
 		return true, nil
 	}, fmt.Sprintf("using IPs count of subnet %s to be %d", subnetName, expectedUsingIPs))
+}
+
+func waitServiceEndpointsReady(cs clientset.Interface, namespace, serviceName string) {
+	ginkgo.GinkgoHelper()
+
+	ginkgo.By("Waiting for endpoints " + serviceName + " to be ready")
+	framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		eps, err := cs.CoreV1().Endpoints(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+		if err == nil {
+			for _, subset := range eps.Subsets {
+				if len(subset.Addresses) > 0 {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}, fmt.Sprintf("endpoints %s has at least one ready address", serviceName))
+}
+
+func underlayExcludeIPs(f *framework.Framework, network *dockernetwork.Inspect, nodes []kind.Node, networkID string) []string {
+	ginkgo.GinkgoHelper()
+
+	excludeIPs := make([]string, 0, len(network.Containers)*2+len(nodes)*2)
+	seen := make(map[string]struct{}, cap(excludeIPs))
+	appendIP := func(ip string) {
+		if ip == "" {
+			return
+		}
+		if _, ok := seen[ip]; ok {
+			return
+		}
+		seen[ip] = struct{}{}
+		excludeIPs = append(excludeIPs, ip)
+	}
+
+	for _, container := range network.Containers {
+		if container.IPv4Address.IsValid() && f.HasIPv4() {
+			appendIP(container.IPv4Address.Addr().String())
+		}
+		if container.IPv6Address.IsValid() && f.HasIPv6() {
+			appendIP(container.IPv6Address.Addr().String())
+		}
+	}
+
+	for _, node := range nodes {
+		networkSettings := nodeDockerNetworkSettings(node, networkID)
+		framework.ExpectNotNil(networkSettings, "node %s should be connected to docker network %s", node.Name(), dockerNetworkName)
+		if networkSettings.IPAddress.IsValid() && f.HasIPv4() {
+			appendIP(networkSettings.IPAddress.String())
+		}
+		if networkSettings.GlobalIPv6Address.IsValid() && f.HasIPv6() {
+			appendIP(networkSettings.GlobalIPv6Address.String())
+		}
+	}
+
+	return excludeIPs
+}
+
+func reservedStartIPsForCIDRBlock(cidrBlock string, count int) []string {
+	ginkgo.GinkgoHelper()
+
+	if count <= 0 {
+		return nil
+	}
+
+	excludeIPs := make([]string, 0, 2)
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		framework.ExpectNoError(err)
+		ipRange := ipam.NewIPRangeFromCIDR(*ipNet)
+
+		firstIP, err := util.FirstIP(cidr)
+		framework.ExpectNoError(err)
+		start, err := ipam.NewIP(firstIP)
+		framework.ExpectNoError(err)
+
+		end := start.Add(int64(count - 1))
+		if ipRange.End().LessThan(end) {
+			end = ipRange.End()
+		}
+
+		if start.Equal(end) {
+			excludeIPs = append(excludeIPs, start.String())
+		} else {
+			excludeIPs = append(excludeIPs, start.String()+".."+end.String())
+		}
+	}
+
+	return excludeIPs
+}
+
+func removeNodeIPsFromProviderBridge(providerNetworkName string, nodes []kind.Node) {
+	ginkgo.GinkgoHelper()
+
+	bridgeName := util.ExternalBridgeName(providerNetworkName)
+	for _, node := range nodes {
+		links, err := node.ListLinks()
+		framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
+
+		var bridge *iproute.Link
+		for i, link := range links {
+			if link.IfName == bridgeName {
+				bridge = &links[i]
+				break
+			}
+		}
+		framework.ExpectNotNil(bridge, "bridge %s should exist on node %s", bridgeName, node.Name())
+
+		for _, addr := range bridge.NonLinkLocalAddresses() {
+			ginkgo.By(fmt.Sprintf("Deleting node IP %s from provider bridge %s on node %s", addr, bridgeName, node.Name()))
+			err = iproute.AddressDel(bridgeName, addr, node.Exec)
+			framework.ExpectNoError(err, "failed to delete address %s from bridge %s on node %s", addr, bridgeName, node.Name())
+		}
+	}
 }
 
 func waitSubnetU2OStatus(f *framework.Framework, subnetName string, subnetClient *framework.SubnetClient, enableU2O bool) {
@@ -110,7 +240,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var nodeNames []string
 	var clusterName, providerNetworkName, providerNetworkName2, vlanName, subnetName, podName, namespaceName, netpolName string
 	var vpcName string
-	var u2oPodNameUnderlay, u2oOverlaySubnetName, u2oPodNameOverlay, u2oOverlaySubnetNameCustomVPC, u2oPodOverlayCustomVPC string
+	var u2oPodNameUnderlay, sameSubnetUnderlayPodName, sameSubnetOverlayPodName, u2oOverlaySubnetName, u2oPodNameOverlay, u2oOverlaySubnetNameCustomVPC, u2oPodOverlayCustomVPC, overlayOnlyOverlaySubnetName string
+	var clusterIPServiceName, overlayClusterIPServiceName string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
 	var eventClient *framework.EventClient
@@ -137,15 +268,20 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		podName = "pod-" + framework.RandomSuffix()
 		u2oPodNameOverlay = "pod-" + framework.RandomSuffix()
 		u2oPodNameUnderlay = "pod-" + framework.RandomSuffix()
+		sameSubnetUnderlayPodName = "pod-" + framework.RandomSuffix()
+		sameSubnetOverlayPodName = "pod-" + framework.RandomSuffix()
 		u2oPodOverlayCustomVPC = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		u2oOverlaySubnetName = "subnet-" + framework.RandomSuffix()
 		u2oOverlaySubnetNameCustomVPC = "subnet-" + framework.RandomSuffix()
+		overlayOnlyOverlaySubnetName = "subnet-" + framework.RandomSuffix()
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
 		providerNetworkName2 = "p2-" + framework.RandomSuffix()
 		vpcName = "vpc-" + framework.RandomSuffix()
 		netpolName = "netpol-" + framework.RandomSuffix()
+		clusterIPServiceName = "svc-" + framework.RandomSuffix()
+		overlayClusterIPServiceName = "svc-" + framework.RandomSuffix()
 		containerID = ""
 		conflictVlan1Name = "conflict-vlan1-" + framework.RandomSuffix()
 		conflictVlanSubnet1Name = "conflict-vlan-subnet1-" + framework.RandomSuffix()
@@ -192,6 +328,9 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		routeMap = make(map[string][]iproute.Route, len(nodes))
 		nodeNames = make([]string, 0, len(nodes))
 		for _, node := range nodes {
+			networkSettings := nodeDockerNetworkSettings(node, dockerNetwork.ID)
+			framework.ExpectNotNil(networkSettings, "node %s should be connected to docker network %s", node.Name(), dockerNetworkName)
+
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 
@@ -199,7 +338,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectNoError(err, "failed to list routes on node %s: %v", node.Name(), err)
 
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress.String() {
+				if link.Address == networkSettings.MacAddress.String() {
 					linkMap[node.ID] = &link
 					break
 				}
@@ -207,6 +346,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			framework.ExpectHaveKey(linkMap, node.ID)
 
 			link := linkMap[node.ID]
+			routeMap[node.ID] = []iproute.Route{}
 			for _, route := range routes {
 				if route.Dev == link.IfName {
 					r := iproute.Route{
@@ -218,7 +358,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 					routeMap[node.ID] = append(routeMap[node.ID], r)
 				}
 			}
-			framework.ExpectHaveKey(routeMap, node.ID)
 
 			linkMap[node.Name()] = linkMap[node.ID]
 			routeMap[node.Name()] = routeMap[node.ID]
@@ -359,17 +498,32 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("Deleting pod " + u2oPodNameUnderlay)
 		podClient.DeleteSync(u2oPodNameUnderlay)
 
+		ginkgo.By("Deleting pod " + sameSubnetUnderlayPodName)
+		podClient.DeleteSync(sameSubnetUnderlayPodName)
+
 		ginkgo.By("Deleting pod " + u2oPodNameOverlay)
 		podClient.DeleteSync(u2oPodNameOverlay)
 
+		ginkgo.By("Deleting pod " + sameSubnetOverlayPodName)
+		podClient.DeleteSync(sameSubnetOverlayPodName)
+
 		ginkgo.By("Deleting pod " + u2oPodOverlayCustomVPC)
 		podClient.DeleteSync(u2oPodOverlayCustomVPC)
+
+		ginkgo.By("Deleting service " + clusterIPServiceName)
+		f.ServiceClientNS(namespaceName).DeleteSync(clusterIPServiceName)
+
+		ginkgo.By("Deleting service " + overlayClusterIPServiceName)
+		f.ServiceClientNS(namespaceName).DeleteSync(overlayClusterIPServiceName)
 
 		ginkgo.By("Deleting subnet " + u2oOverlaySubnetNameCustomVPC)
 		subnetClient.DeleteSync(u2oOverlaySubnetNameCustomVPC)
 
 		ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
 		subnetClient.DeleteSync(u2oOverlaySubnetName)
+
+		ginkgo.By("Deleting subnet " + overlayOnlyOverlaySubnetName)
+		subnetClient.DeleteSync(overlayOnlyOverlaySubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
@@ -620,7 +774,6 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			underlayCidr = append(underlayCidr, cidrV6)
 			gateway = append(gateway, gatewayV6)
 		}
-
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
 			if container.IPv4Address.IsValid() && f.HasIPv4() {
@@ -887,6 +1040,381 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		ginkgo.By("10. waiting for U2OInterconnection status of subnet " + subnetName + " to be false")
 		waitSubnetU2OStatus(f, subnetName, subnetClient, false)
 		checkU2OItems(f, subnet, underlayPod, overlayPod, false)
+	})
+
+	framework.ConformanceIt("should support U2O overlay only routing", func() {
+		f.SkipVersionPriorTo(1, 14, "overlayOnlyRouting was introduced in v1.14")
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting kind nodes")
+		kindNodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+		removeNodeIPsFromProviderBridge(providerNetworkName, kindNodes)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		var cidrV4, cidrV6, gatewayV4, gatewayV6 string
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet.String()) {
+			case apiv1.ProtocolIPv4:
+				if f.HasIPv4() {
+					cidrV4 = config.Subnet.String()
+					gatewayV4 = config.Gateway.String()
+				}
+			case apiv1.ProtocolIPv6:
+				if f.HasIPv6() {
+					cidrV6 = config.Subnet.String()
+					gatewayV6 = config.Gateway.String()
+				}
+			}
+		}
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		if f.HasIPv4() {
+			underlayCidr = append(underlayCidr, cidrV4)
+			gateway = append(gateway, gatewayV4)
+		}
+		if f.HasIPv6() {
+			underlayCidr = append(underlayCidr, cidrV6)
+			gateway = append(gateway, gatewayV6)
+		}
+		framework.ExpectNotEmpty(underlayCidr)
+		framework.ExpectNotEmpty(gateway)
+
+		excludeIPs := underlayExcludeIPs(f, network, kindNodes, dockerNetwork.ID)
+		excludeIPs = append(excludeIPs, reservedStartIPsForCIDRBlock(strings.Join(underlayCidr, ","), underlayReservedStartIPCount)...)
+
+		ginkgo.By("Creating underlay subnet " + subnetName + " with overlayOnlyRouting")
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
+		subnet.Spec.U2OInterconnection = true
+		subnet.Spec.U2OFeatures.OverlayOnlyRouting = true
+		subnet = subnetClient.CreateSync(subnet)
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+
+		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		ginkgo.By("Creating underlay pod " + u2oPodNameUnderlay)
+		underlayLabels := map[string]string{"app": u2oPodNameUnderlay}
+		underlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, map[string]string{
+			util.LogicalSwitchAnnotation: subnet.Name,
+		}, framework.AgnhostImage, nil, args)
+		underlayPod.Labels = underlayLabels
+		underlayPod = podClient.CreateSync(underlayPod)
+		waitSubnetStatusUpdate(subnet.Name, subnetClient, 2)
+
+		sameSubnetUnderlayLabels := map[string]string{"app": sameSubnetUnderlayPodName}
+		ginkgo.By("Creating same subnet underlay pod " + sameSubnetUnderlayPodName)
+		sameSubnetUnderlayPod := framework.MakePod(namespaceName, sameSubnetUnderlayPodName, sameSubnetUnderlayLabels, map[string]string{
+			util.LogicalSwitchAnnotation: subnet.Name,
+		}, framework.AgnhostImage, nil, args)
+		sameSubnetUnderlayPod = podClient.CreateSync(sameSubnetUnderlayPod)
+		waitSubnetStatusUpdate(subnet.Name, subnetClient, 3)
+
+		ginkgo.By("Creating same underlay backend ClusterIP service " + clusterIPServiceName)
+		service := framework.MakeService(clusterIPServiceName, corev1.ServiceTypeClusterIP, nil, sameSubnetUnderlayLabels, []corev1.ServicePort{{
+			Name:       "tcp",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       curlListenPort,
+			TargetPort: intstr.FromInt(curlListenPort),
+		}}, corev1.ServiceAffinityNone)
+		service = f.ServiceClientNS(namespaceName).CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(util.ServiceClusterIPs(*s)) != 0, nil
+		}, "cluster ip is allocated")
+		waitServiceEndpointsReady(cs, namespaceName, service.Name)
+
+		peerUnderlaySubnetName := "subnet-" + framework.RandomSuffix()
+		defer subnetClient.DeleteSync(peerUnderlaySubnetName)
+		ginkgo.By("Creating peer underlay subnet " + peerUnderlaySubnetName + " with overlayOnlyRouting")
+		peerUnderlayCIDR := framework.RandomCIDR(f.ClusterIPFamily)
+		peerUnderlayGateway := firstIPsForCIDRBlock(peerUnderlayCIDR)
+		peerUnderlaySubnet := framework.MakeSubnet(peerUnderlaySubnetName, vlanName, peerUnderlayCIDR, peerUnderlayGateway, "", "", nil, nil, nil)
+		peerUnderlaySubnet.Spec.U2OInterconnection = true
+		peerUnderlaySubnet.Spec.U2OFeatures.OverlayOnlyRouting = true
+		peerUnderlaySubnet = subnetClient.CreateSync(peerUnderlaySubnet)
+		waitSubnetU2OStatus(f, peerUnderlaySubnetName, subnetClient, true)
+
+		overlayCIDR := framework.RandomCIDR(f.ClusterIPFamily)
+		ginkgo.By("Creating overlay subnet " + overlayOnlyOverlaySubnetName)
+		overlaySubnet := framework.MakeSubnet(overlayOnlyOverlaySubnetName, "", overlayCIDR, "", "", "", nil, nil, nil)
+		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
+
+		ginkgo.By("Creating overlay pod " + u2oPodNameOverlay)
+		overlayLabels := map[string]string{"app": u2oPodNameOverlay}
+		overlayPod := framework.MakePod(namespaceName, u2oPodNameOverlay, overlayLabels, map[string]string{
+			util.LogicalSwitchAnnotation: overlaySubnet.Name,
+		}, framework.AgnhostImage, nil, args)
+		overlayPod = podClient.CreateSync(overlayPod)
+
+		ginkgo.By("Creating same subnet overlay pod " + sameSubnetOverlayPodName)
+		sameSubnetOverlayPod := framework.MakePod(namespaceName, sameSubnetOverlayPodName, nil, map[string]string{
+			util.LogicalSwitchAnnotation: overlaySubnet.Name,
+		}, framework.AgnhostImage, nil, args)
+		sameSubnetOverlayPod = podClient.CreateSync(sameSubnetOverlayPod)
+
+		ginkgo.By("Creating overlay backend ClusterIP service " + overlayClusterIPServiceName)
+		overlayService := framework.MakeService(overlayClusterIPServiceName, corev1.ServiceTypeClusterIP, nil, overlayLabels, []corev1.ServicePort{{
+			Name:       "tcp",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       curlListenPort,
+			TargetPort: intstr.FromInt(curlListenPort),
+		}}, corev1.ServiceAffinityNone)
+		overlayService = f.ServiceClientNS(namespaceName).CreateSync(overlayService, func(s *corev1.Service) (bool, error) {
+			return len(util.ServiceClusterIPs(*s)) != 0, nil
+		}, "overlay backend cluster ip is allocated")
+		waitServiceEndpointsReady(cs, namespaceName, overlayService.Name)
+
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+		subnet = subnetClient.Get(subnetName)
+
+		overlayCIDRs4As := strings.ReplaceAll(fmt.Sprintf(util.U2OOverlayCIDRs, subnet.Spec.Vpc, "ip4"), "-", ".")
+		overlayCIDRs6As := strings.ReplaceAll(fmt.Sprintf(util.U2OOverlayCIDRs, subnet.Spec.Vpc, "ip6"), "-", ".")
+		u2oExcludeIP4As := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+		u2oExcludeIP6As := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
+		overlayV4CIDR, overlayV6CIDR := util.SplitStringIP(overlaySubnet.Spec.CIDRBlock)
+		v4Gateway, v6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
+		checkOverlayOnlyPolicies := func(expectOverlayOnly bool) {
+			ginkgo.GinkgoHelper()
+
+			for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+				ipSuffix := "ip4"
+				overlayCIDRsAs := overlayCIDRs4As
+				u2oExcludeIPAs := u2oExcludeIP4As
+				overlayCIDRForProtocol := overlayV4CIDR
+				gatewayForProtocol := v4Gateway
+				if util.CheckProtocol(cidr) == apiv1.ProtocolIPv6 {
+					ipSuffix = "ip6"
+					overlayCIDRsAs = overlayCIDRs6As
+					u2oExcludeIPAs = u2oExcludeIP6As
+					overlayCIDRForProtocol = overlayV6CIDR
+					gatewayForProtocol = v6Gateway
+				}
+				if overlayCIDRForProtocol == "" {
+					continue
+				}
+
+				ginkgo.By("Checking overlay only u2o policies for " + ipSuffix)
+				checkPolicy(fmt.Sprintf("%d %s.src == $%s && %s.dst == %s allow", util.U2OSubnetPolicyPriority, ipSuffix, overlayCIDRsAs, ipSuffix, cidr), expectOverlayOnly, subnet.Spec.Vpc)
+				checkPolicy(fmt.Sprintf("%d %s.dst == $%s && %s.src == %s reroute %s", util.SubnetRouterPolicyPriority, ipSuffix, u2oExcludeIPAs, ipSuffix, cidr, gatewayForProtocol), true, subnet.Spec.Vpc)
+				checkPolicy(fmt.Sprintf("%d %s.src == %s && %s.dst == %s allow", util.U2OSameSubnetPolicyPriority, ipSuffix, cidr, ipSuffix, cidr), expectOverlayOnly, subnet.Spec.Vpc)
+				checkPolicy(fmt.Sprintf("%d %s.src == %s reroute %s", util.U2OPhysicalGatewayPolicyPriority, ipSuffix, cidr, gatewayForProtocol), expectOverlayOnly, subnet.Spec.Vpc)
+				checkPolicy(fmt.Sprintf("%d %s.src == %s reroute %s", util.GatewayRouterPolicyPriority, ipSuffix, cidr, gatewayForProtocol), !expectOverlayOnly, subnet.Spec.Vpc)
+
+				ginkgo.By("Checking legacy u2o policies for " + ipSuffix)
+				checkPolicy(fmt.Sprintf("%d %s.dst == %s allow", util.U2OSubnetPolicyPriority, ipSuffix, cidr), !expectOverlayOnly, subnet.Spec.Vpc)
+			}
+		}
+		checkOverlayOnlyReachability := func() {
+			ginkgo.GinkgoHelper()
+
+			for _, protocol := range u2oTraceProtocols(f) {
+				underlayPodIP := podIPForProtocol(underlayPod, protocol)
+				framework.ExpectNotEmpty(underlayPodIP)
+				overlayPodIP := podIPForProtocol(overlayPod, protocol)
+				framework.ExpectNotEmpty(overlayPodIP)
+
+				ginkgo.By("Checking underlay pod access to overlay pod with overlayOnlyRouting " + protocol)
+				checkReachable(underlayPod.Name, underlayPod.Namespace, underlayPodIP, overlayPodIP, strconv.Itoa(curlListenPort), true)
+
+				ginkgo.By("Checking overlay pod access to underlay pod with overlayOnlyRouting " + protocol)
+				checkReachable(overlayPod.Name, overlayPod.Namespace, overlayPodIP, underlayPodIP, strconv.Itoa(curlListenPort), true)
+
+				sameSubnetClusterIP := serviceClusterIPForProtocol(service, protocol)
+				framework.ExpectNotEmpty(sameSubnetClusterIP)
+				ginkgo.By("Checking underlay pod access to same underlay subnet backend ClusterIP with overlayOnlyRouting " + protocol)
+				checkReachable(underlayPod.Name, underlayPod.Namespace, underlayPodIP, sameSubnetClusterIP, strconv.Itoa(curlListenPort), true)
+			}
+		}
+
+		checkOverlayOnlyPolicies(true)
+		checkOverlayOnlyReachability()
+
+		ginkgo.By("Disabling overlayOnlyRouting for subnet " + subnetName)
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OFeatures.OverlayOnlyRouting = false
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+		subnet = subnetClient.Get(subnetName)
+		checkOverlayOnlyPolicies(false)
+
+		ginkgo.By("Enabling overlayOnlyRouting again for subnet " + subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OFeatures.OverlayOnlyRouting = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		waitSubnetU2OStatus(f, subnetName, subnetClient, true)
+		subnet = subnetClient.Get(subnetName)
+		checkOverlayOnlyPolicies(true)
+		checkOverlayOnlyReachability()
+
+		traceProtocol := u2oTraceProtocols(f)[0]
+		traceCIDR := cidrForProtocol(subnet.Spec.CIDRBlock, traceProtocol)
+		tracePeerCIDR := cidrForProtocol(peerUnderlaySubnet.Spec.CIDRBlock, traceProtocol)
+		traceOverlayCIDR := cidrForProtocol(overlaySubnet.Spec.CIDRBlock, traceProtocol)
+		traceJoinCIDR := cidrForProtocol(subnetClient.Get("join").Spec.CIDRBlock, traceProtocol)
+		traceIPSuffix := ipSuffixForProtocol(traceProtocol)
+		traceOverlayCIDRsAs := overlayCIDRs4As
+		if traceProtocol == apiv1.ProtocolIPv6 {
+			traceOverlayCIDRsAs = overlayCIDRs6As
+		}
+		traceOverlayRouteMatch := fmt.Sprintf("%s.dst == %s", traceIPSuffix, traceOverlayCIDR)
+		traceJoinRouteMatch := fmt.Sprintf("%s.dst == %s", traceIPSuffix, traceJoinCIDR)
+		var traceNodeRouteMatch string
+		traceUnderlayNodeRouteMatch := fmt.Sprintf("%s.dst == $%s && %s.src == %s", traceIPSuffix, map[bool]string{true: u2oExcludeIP6As, false: u2oExcludeIP4As}[traceProtocol == apiv1.ProtocolIPv6], traceIPSuffix, traceCIDR)
+		traceUnderlaySameSubnetMatch := fmt.Sprintf("%s.src == %s && %s.dst == %s", traceIPSuffix, traceCIDR, traceIPSuffix, traceCIDR)
+		traceUnderlayPhysicalGwMatch := fmt.Sprintf("%s.src == %s", traceIPSuffix, traceCIDR)
+		traceOverlayToUnderlayMatch := fmt.Sprintf("%s.src == $%s && %s.dst == %s", traceIPSuffix, traceOverlayCIDRsAs, traceIPSuffix, traceCIDR)
+		traceOverlayToPeerUnderlayMatch := fmt.Sprintf("%s.src == $%s && %s.dst == %s", traceIPSuffix, traceOverlayCIDRsAs, traceIPSuffix, tracePeerCIDR)
+		traceOverlayPodIP := podIPForProtocol(overlayPod, traceProtocol)
+		framework.ExpectNotEmpty(traceOverlayPodIP)
+		traceUnderlayPodIP := podIPForProtocol(underlayPod, traceProtocol)
+		framework.ExpectNotEmpty(traceUnderlayPodIP)
+		tracePeerUnderlayIP, err := util.FirstIP(tracePeerCIDR)
+		framework.ExpectNoError(err)
+		traceSameOverlayPodIP := podIPForProtocol(sameSubnetOverlayPod, traceProtocol)
+		framework.ExpectNotEmpty(traceSameOverlayPodIP)
+
+		// overlayOnlyRouting relies on existing baseline routes for overlay and
+		// join destinations, and adds an overlay->underlay allow policy plus
+		// underlay-specific routing for node IPs, same-subnet traffic, and the
+		// physical gateway fallback. The same-subnet allow was added after
+		// reproducing that U2O gateway readiness probes could not reach the U2O IP
+		// without an explicit underlay same-subnet exception.
+		// - underlay pod -> overlay pod: hit existing 31000 dst overlay CIDR allow.
+		// - underlay pod -> U2O IP: hit 30060 src/dst underlay CIDR allow because the
+		//   U2O interconnection IP is an LRP-local destination.
+		// - underlay pod -> same underlay subnet pod: same-subnet local/L2 path, do not hit
+		//   overlay-only policy.
+		// - underlay pod -> peer underlay CIDR: hit 30050 src underlay reroute physical gw.
+		// - underlay pod -> ServiceIP backed by overlay pod: DNAT to overlay pod, then hit existing 31000 dst overlay CIDR allow.
+		// - underlay pod -> ServiceIP backed by same underlay subnet pod: DNAT to underlay pod,
+		//   then hit 30060 src/dst underlay CIDR allow.
+		// - underlay pod -> node IP: hit 31000 dst excluded IP and src underlay CIDR reroute physical gw.
+		// - underlay pod -> join IP: keep baseline behavior and hit existing 31000 dst join CIDR allow.
+		// - overlay pod -> overlay pod: do not hit overlay-only policy.
+		// - overlay pod -> underlay pod: hit overlay-to-underlay allow policy.
+		// - overlay pod -> ServiceIP backed by overlay pod: DNAT to overlay pod and do not hit overlay-only policy.
+		// - overlay pod -> ServiceIP backed by underlay pod: DNAT to underlay pod, then hit overlay-to-underlay allow policy.
+		// - overlay pod -> node IP: keep baseline behavior and hit 30000 dst node IP reroute join IP.
+		// - overlay pod -> join IP: keep baseline behavior and hit existing 31000 dst join CIDR allow.
+		ginkgo.By("Tracing underlay pod to overlay pod: should hit existing overlay CIDR route " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, traceOverlayPodIP, "underlay to overlay "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceOverlayRouteMatch,
+			fmt.Sprintf("priority %d", util.SubnetRouterPolicyPriority),
+		})
+
+		ginkgo.By("Tracing overlay pod to underlay pod: should hit overlayOnlyRouting allow policy " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, overlayPod.Name, traceUnderlayPodIP, "overlay to underlay "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceOverlayToUnderlayMatch,
+			fmt.Sprintf("priority %d", util.U2OSubnetPolicyPriority),
+		})
+
+		u2oIPv4, u2oIPv6 := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
+		u2oIP := u2oIPv4
+		if traceProtocol == apiv1.ProtocolIPv6 {
+			u2oIP = u2oIPv6
+		}
+		framework.ExpectNotEmpty(u2oIP)
+		ginkgo.By("Tracing underlay pod to U2O IP: should hit same-subnet allow policy " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, u2oIP, "underlay to u2o ip "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceUnderlaySameSubnetMatch,
+			fmt.Sprintf("priority %d", util.U2OSameSubnetPolicyPriority),
+		})
+
+		sameSubnetPodIP := podIPForProtocol(sameSubnetUnderlayPod, traceProtocol)
+		framework.ExpectNotEmpty(sameSubnetPodIP)
+		ginkgo.By("Tracing underlay pod to same underlay subnet: should not hit overlayOnlyRouting policy " + traceIPSuffix)
+		checkKoOvnTracePolicyNotMatched(namespaceName, underlayPod.Name, sameSubnetPodIP, "underlay to same underlay subnet "+traceIPSuffix, []string{
+			traceOverlayToUnderlayMatch,
+			traceUnderlaySameSubnetMatch,
+			traceUnderlayPhysicalGwMatch,
+		})
+
+		ginkgo.By("Tracing underlay pod to peer underlay CIDR: should hit physical gateway policy " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, tracePeerUnderlayIP, "underlay to peer underlay "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceUnderlayPhysicalGwMatch,
+			fmt.Sprintf("priority %d", util.U2OPhysicalGatewayPolicyPriority),
+		})
+
+		nodeIP := nodeIPForProtocol(cs, traceProtocol)
+		framework.ExpectNotEmpty(nodeIP)
+		traceNodeRouteMatch = fmt.Sprintf("%s.dst == %s", traceIPSuffix, nodeIP)
+		ginkgo.By("Tracing underlay pod to node IP: should hit excluded node IP physical gateway policy " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, nodeIP, "underlay to node IP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceUnderlayNodeRouteMatch,
+			fmt.Sprintf("priority %d", util.SubnetRouterPolicyPriority),
+		})
+
+		clusterIP := serviceClusterIPForProtocol(service, traceProtocol)
+		framework.ExpectNotEmpty(clusterIP)
+		ginkgo.By("Tracing underlay pod to same underlay backend ClusterIP: should hit same-subnet allow policy after DNAT " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, clusterIP, "underlay to same underlay backend ClusterIP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceUnderlaySameSubnetMatch,
+			fmt.Sprintf("priority %d", util.U2OSameSubnetPolicyPriority),
+		})
+
+		overlayClusterIP := serviceClusterIPForProtocol(overlayService, traceProtocol)
+		framework.ExpectNotEmpty(overlayClusterIP)
+		ginkgo.By("Tracing underlay pod to overlay backend ClusterIP: should hit existing overlay CIDR route after DNAT " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, overlayClusterIP, "underlay to overlay backend ClusterIP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceOverlayRouteMatch,
+			fmt.Sprintf("priority %d", util.SubnetRouterPolicyPriority),
+		})
+
+		joinIP := nodeJoinIPForProtocol(cs, traceProtocol)
+		framework.ExpectNotEmpty(joinIP)
+		ginkgo.By("Tracing underlay pod to join IP: should hit existing join CIDR route " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, underlayPod.Name, joinIP, "underlay to join IP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceJoinRouteMatch,
+			fmt.Sprintf("priority %d", util.SubnetRouterPolicyPriority),
+		})
+
+		ginkgo.By("Tracing overlay pod to overlay pod: should not hit overlayOnlyRouting allow policy " + traceIPSuffix)
+		checkKoOvnTracePolicyNotMatched(namespaceName, overlayPod.Name, traceSameOverlayPodIP, "overlay to overlay "+traceIPSuffix, []string{
+			traceOverlayToUnderlayMatch,
+			traceOverlayToPeerUnderlayMatch,
+		})
+
+		ginkgo.By("Tracing overlay pod to overlay backend ClusterIP: should not hit overlayOnlyRouting allow policy " + traceIPSuffix)
+		checkKoOvnTracePolicyNotMatched(namespaceName, overlayPod.Name, overlayClusterIP, "overlay to overlay backend ClusterIP "+traceIPSuffix, []string{
+			traceOverlayToUnderlayMatch,
+			traceOverlayToPeerUnderlayMatch,
+		})
+
+		ginkgo.By("Tracing overlay pod to underlay backend ClusterIP: should hit overlayOnlyRouting allow policy after DNAT " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, overlayPod.Name, clusterIP, "overlay to underlay backend ClusterIP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceOverlayToUnderlayMatch,
+			fmt.Sprintf("priority %d", util.U2OSubnetPolicyPriority),
+		})
+
+		ginkgo.By("Tracing overlay pod to node IP: should hit baseline node IP route " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, overlayPod.Name, nodeIP, "overlay to node IP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceNodeRouteMatch,
+			fmt.Sprintf("priority %d", util.NodeRouterPolicyPriority),
+		})
+
+		ginkgo.By("Tracing overlay pod to join IP: should hit existing join CIDR route " + traceIPSuffix)
+		checkKoOvnTracePolicy(namespaceName, overlayPod.Name, joinIP, "overlay to join IP "+traceIPSuffix, []string{
+			"lr_in_policy",
+			traceJoinRouteMatch,
+			fmt.Sprintf("priority %d", util.SubnetRouterPolicyPriority),
+		})
 	})
 
 	framework.ConformanceIt(`should drop ARP/ND request from localnet port to LRP`, func() {
@@ -1453,6 +1981,156 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 	} else {
 		framework.ExpectError(err)
 	}
+}
+
+func u2oTraceProtocols(f *framework.Framework) []string {
+	protocols := make([]string, 0, 2)
+	if f.HasIPv4() {
+		protocols = append(protocols, apiv1.ProtocolIPv4)
+	}
+	if f.HasIPv6() {
+		protocols = append(protocols, apiv1.ProtocolIPv6)
+	}
+	return protocols
+}
+
+func ipSuffixForProtocol(protocol string) string {
+	if protocol == apiv1.ProtocolIPv4 {
+		return "ip4"
+	}
+	return "ip6"
+}
+
+func cidrForProtocol(cidrBlock, protocol string) string {
+	ginkgo.GinkgoHelper()
+
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
+		if util.CheckProtocol(cidr) == protocol {
+			return cidr
+		}
+	}
+	framework.Failf("CIDR block %q has no %s CIDR", cidrBlock, protocol)
+	return ""
+}
+
+func firstIPsForCIDRBlock(cidrBlock string) string {
+	ginkgo.GinkgoHelper()
+
+	ips := make([]string, 0, 2)
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
+		ip, err := util.FirstIP(cidr)
+		framework.ExpectNoError(err)
+		ips = append(ips, ip)
+	}
+	return strings.Join(ips, ",")
+}
+
+func podIPForProtocol(pod *corev1.Pod, protocol string) string {
+	ginkgo.GinkgoHelper()
+
+	for _, podIP := range pod.Status.PodIPs {
+		if util.CheckProtocol(podIP.IP) == protocol {
+			return podIP.IP
+		}
+	}
+	return ""
+}
+
+func serviceClusterIPForProtocol(service *corev1.Service, protocol string) string {
+	ginkgo.GinkgoHelper()
+
+	for _, ip := range util.ServiceClusterIPs(*service) {
+		if util.CheckProtocol(ip) == protocol {
+			return ip
+		}
+	}
+	return ""
+}
+
+func nodeIPForProtocol(cs clientset.Interface, protocol string) string {
+	ginkgo.GinkgoHelper()
+
+	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+	framework.ExpectNoError(err)
+	for _, node := range nodes.Items {
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
+		if protocol == apiv1.ProtocolIPv4 && nodeIPv4 != "" {
+			return nodeIPv4
+		}
+		if protocol == apiv1.ProtocolIPv6 && nodeIPv6 != "" {
+			return nodeIPv6
+		}
+	}
+	return ""
+}
+
+func nodeJoinIPForProtocol(cs clientset.Interface, protocol string) string {
+	ginkgo.GinkgoHelper()
+
+	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+	framework.ExpectNoError(err)
+	for _, node := range nodes.Items {
+		nodeIPv4, nodeIPv6 := util.SplitStringIP(node.Annotations[util.IPAddressAnnotation])
+		if protocol == apiv1.ProtocolIPv4 && nodeIPv4 != "" {
+			return nodeIPv4
+		}
+		if protocol == apiv1.ProtocolIPv6 && nodeIPv6 != "" {
+			return nodeIPv6
+		}
+	}
+	return ""
+}
+
+func checkKoOvnTracePolicy(namespace, podName, targetIP, description string, keywords []string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(3*time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "kubectl", "ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			framework.Logf("ovn-trace %s failed: %v\n%s", description, err, output)
+			return false, nil
+		}
+
+		trace := string(output)
+		for _, keyword := range keywords {
+			if !strings.Contains(trace, keyword) {
+				framework.Logf("ovn-trace %s does not contain %q\n%s", description, keyword, trace)
+				return false, nil
+			}
+		}
+		framework.Logf("ovn-trace %s matched keywords: %s", description, strings.Join(keywords, ", "))
+		return true, nil
+	}, "ovn-trace "+description+" should contain policy keywords: "+strings.Join(keywords, ", "))
+}
+
+func checkKoOvnTracePolicyNotMatched(namespace, podName, targetIP, description string, keywords []string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(3*time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "kubectl", "ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			framework.Logf("ovn-trace %s failed: %v\n%s", description, err, output)
+			return false, nil
+		}
+
+		trace := string(output)
+		for _, keyword := range keywords {
+			if strings.Contains(trace, keyword) {
+				framework.Logf("ovn-trace %s unexpectedly contains %q\n%s", description, keyword, trace)
+				return false, nil
+			}
+		}
+		framework.Logf("ovn-trace %s did not match keywords: %s", description, strings.Join(keywords, ", "))
+		return true, nil
+	}, "ovn-trace "+description+" should not contain policy keywords: "+strings.Join(keywords, ", "))
 }
 
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool, vpcName string) {

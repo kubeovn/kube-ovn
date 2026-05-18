@@ -74,6 +74,10 @@ func readyToRemoveFinalizer(subnet *kubeovnv1.Subnet) bool {
 	return false
 }
 
+func u2oOverlayOnlyRoutingEnabled(subnet *kubeovnv1.Subnet) bool {
+	return subnet != nil && subnet.Spec.U2OFeatures.OverlayOnlyRouting
+}
+
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	oldSubnet := oldObj.(*kubeovnv1.Subnet)
 	newSubnet := newObj.(*kubeovnv1.Subnet)
@@ -854,6 +858,13 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	}
 
+	if subnet.Spec.Vlan == "" {
+		if _, _, err := c.syncU2OOverlayCIDRsAddressSet(subnet.Spec.Vpc, subnet.Name); err != nil {
+			klog.Errorf("failed to sync u2o overlay cidrs after deleting subnet %s, %v", subnet.Name, err)
+			return err
+		}
+	}
+
 	klog.Infof("delete policy route for %s subnet %s", subnet.Spec.GatewayType, subnet.Name)
 	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true); err != nil {
 		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
@@ -936,6 +947,13 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 	} else if err := c.reconcileCustomVpcStaticRoute(subnet); err != nil {
 		klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 		return err
+	}
+
+	if subnet.Spec.Vlan == "" {
+		if _, _, err := c.syncU2OOverlayCIDRsAddressSet(subnet.Spec.Vpc, ""); err != nil {
+			klog.Errorf("sync u2o overlay cidrs for subnet %s failed: %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	if err := c.reconcileVlan(subnet); err != nil {
@@ -2360,8 +2378,12 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 
 func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
 	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+	overlayOnly := u2oOverlayOnlyRoutingEnabled(subnet)
 
 	externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ORoutePolicy": "true"})
+
+	u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
+	u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
@@ -2380,9 +2402,6 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 			nodesIPv6 = append(nodesIPv6, nodeIPv6)
 		}
 	}
-
-	u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
-	u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
 	if err := c.OVNNbClient.CreateAddressSet(u2oExcludeIP4Ag, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", u2oExcludeIP4Ag, err)
@@ -2408,35 +2427,69 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
+	overlayCIDRs4Ag, overlayCIDRs6Ag := u2oOverlayCIDRsAddressSetNames(subnet.Spec.Vpc)
+	if overlayOnly {
+		if _, _, err := c.syncU2OOverlayCIDRsAddressSet(subnet.Spec.Vpc, ""); err != nil {
+			return err
+		}
+	}
+
+	overlayOnlyExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+		"isU2ORoutePolicy":            "true",
+		"isU2OOverlayOnlyRoutePolicy": "true",
+	})
+	desiredPolicies := make(map[string]struct{})
+
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
 		nextHop := v4Gw
 		U2OexcludeIPAs := u2oExcludeIP4Ag
+		overlayCIDRsAg := overlayCIDRs4Ag
 		if ipSuffix == "ip6" {
 			nextHop = v6Gw
 			U2OexcludeIPAs = u2oExcludeIP6Ag
+			overlayCIDRsAg = overlayCIDRs6Ag
 		}
 
 		match1 := fmt.Sprintf("%s.dst == %s", ipSuffix, cidrBlock)
 		match2 := fmt.Sprintf("%s.dst == $%s && %s.src == %s", ipSuffix, U2OexcludeIPAs, ipSuffix, cidrBlock)
 		match3 := fmt.Sprintf("%s.src == %s", ipSuffix, cidrBlock)
+		matchSameSubnet := fmt.Sprintf("%s.src == %s && %s.dst == %s", ipSuffix, cidrBlock, ipSuffix, cidrBlock)
+		matchOverlayToUnderlay := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, overlayCIDRsAg, ipSuffix, cidrBlock)
 
 		/*
-			policy1:
-			priority 29400 match: "ip4.dst == underlay subnet cidr"                         action: allow
+			default u2o:
+			policy1 priority 29400 match: "ip4.dst == underlay subnet cidr"                         action: allow
+			policy2 priority 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reroute physical gw
+			policy3 priority 29000 match: "ip4.src == underlay subnet cidr"                         action: reroute physical gw
 
-			policy2:
-			priority 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reroute physical gw
-
-			policy3:
-			priority 29000 match: "ip4.src == underlay subnet cidr"                         action: reroute physical gw
-
-			comment:
-			policy1 and policy2 allow overlay pod access underlay but when overlay pod access node ip, it should go join subnet,
-			policy3: underlay pod first access u2o interconnection lrp and then reroute to physical gw
+			overlay only u2o:
+			baseline priority 31000 match: "ip4.dst == overlay cidr"                          action: allow
+			baseline priority 31000 match: "ip4.dst == join cidr"                             action: allow
+			policy1 priority 31000 match: "ip4.dst == node ips && ip4.src == underlay subnet cidr"  action: reroute physical gw
+			policy2 priority 30060 match: "ip4.src == underlay subnet cidr && ip4.dst == underlay subnet cidr" action: allow
+			policy3 priority 30050 match: "ip4.src == underlay cidr"                          action: reroute physical gw
+			policy4 priority 29400 match: "ip4.src == overlay cidrs && ip4.dst == underlay cidr" action: allow
 		*/
 		action := kubeovnv1.PolicyRouteActionAllow
-		if subnet.Spec.Vpc == c.config.ClusterRouter {
+		if overlayOnly {
+			klog.Infof("add u2o overlay only policy for router: %s, match %s, action %s", subnet.Spec.Vpc, matchOverlayToUnderlay, action)
+			if err := c.addPolicyRouteToVpc(
+				subnet.Spec.Vpc,
+				&kubeovnv1.PolicyRoute{
+					Priority: util.U2OSubnetPolicyPriority,
+					Match:    matchOverlayToUnderlay,
+					Action:   action,
+				},
+				overlayOnlyExternalIDs,
+			); err != nil {
+				klog.Errorf("failed to add u2o overlay to underlay policy for subnet %s %v", subnet.Name, err)
+				return err
+			}
+			desiredPolicies[logicalRouterPolicyKey(util.U2OSubnetPolicyPriority, matchOverlayToUnderlay)] = struct{}{}
+		}
+
+		if !overlayOnly && subnet.Spec.Vpc == c.config.ClusterRouter {
 			klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match1, action)
 			if err := c.addPolicyRouteToVpc(
 				subnet.Spec.Vpc,
@@ -2450,9 +2503,16 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 				klog.Errorf("failed to add u2o interconnection policy1 for subnet %s %v", subnet.Name, err)
 				return err
 			}
+			desiredPolicies[logicalRouterPolicyKey(util.U2OSubnetPolicyPriority, match1)] = struct{}{}
+		}
 
+		if overlayOnly || subnet.Spec.Vpc == c.config.ClusterRouter {
 			action = kubeovnv1.PolicyRouteActionReroute
 			klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s", subnet.Spec.Vpc, match2, action)
+			externalIDs := externalIDs
+			if overlayOnly {
+				externalIDs = overlayOnlyExternalIDs
+			}
 			if err := c.addPolicyRouteToVpc(
 				subnet.Spec.Vpc,
 				&kubeovnv1.PolicyRoute{
@@ -2466,14 +2526,36 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 				klog.Errorf("failed to add u2o interconnection policy2 for subnet %s %v", subnet.Name, err)
 				return err
 			}
+			desiredPolicies[logicalRouterPolicyKey(util.SubnetRouterPolicyPriority, match2)] = struct{}{}
+		}
+
+		if overlayOnly {
+			klog.Infof("add u2o overlay only same-subnet policy for router: %s, match %s, action %s", subnet.Spec.Vpc, matchSameSubnet, kubeovnv1.PolicyRouteActionAllow)
+			if err := c.addPolicyRouteToVpc(
+				subnet.Spec.Vpc,
+				&kubeovnv1.PolicyRoute{
+					Priority: util.U2OSameSubnetPolicyPriority,
+					Match:    matchSameSubnet,
+					Action:   kubeovnv1.PolicyRouteActionAllow,
+				},
+				overlayOnlyExternalIDs,
+			); err != nil {
+				klog.Errorf("failed to add u2o overlay only same-subnet policy for subnet %s %v", subnet.Name, err)
+				return err
+			}
+			desiredPolicies[logicalRouterPolicyKey(util.U2OSameSubnetPolicyPriority, matchSameSubnet)] = struct{}{}
 		}
 
 		action = kubeovnv1.PolicyRouteActionReroute
+		physicalGatewayPolicyPriority := util.GatewayRouterPolicyPriority
+		if overlayOnly {
+			physicalGatewayPolicyPriority = util.U2OPhysicalGatewayPolicyPriority
+		}
 		klog.Infof("add u2o interconnection policy for router: %s, match %s, action %s, nexthop %s", subnet.Spec.Vpc, match3, action, nextHop)
 		if err := c.addPolicyRouteToVpc(
 			subnet.Spec.Vpc,
 			&kubeovnv1.PolicyRoute{
-				Priority:  util.GatewayRouterPolicyPriority,
+				Priority:  physicalGatewayPolicyPriority,
 				Match:     match3,
 				Action:    action,
 				NextHopIP: nextHop,
@@ -2481,6 +2563,118 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 			externalIDs,
 		); err != nil {
 			klog.Errorf("failed to add u2o interconnection policy3 for subnet %s %v", subnet.Name, err)
+			return err
+		}
+		desiredPolicies[logicalRouterPolicyKey(physicalGatewayPolicyPriority, match3)] = struct{}{}
+	}
+	if err := c.deleteStaleU2ORoutePolicies(subnet, desiredPolicies); err != nil {
+		return err
+	}
+	return nil
+}
+
+func logicalRouterPolicyKey(priority int, match string) string {
+	return fmt.Sprintf("%d/%s", priority, match)
+}
+
+func u2oOverlayCIDRsAddressSetNames(vpcName string) (string, string) {
+	v4Name := strings.ReplaceAll(fmt.Sprintf(util.U2OOverlayCIDRs, vpcName, "ip4"), "-", ".")
+	v6Name := strings.ReplaceAll(fmt.Sprintf(util.U2OOverlayCIDRs, vpcName, "ip6"), "-", ".")
+	return v4Name, v6Name
+}
+
+func u2oOverlayCIDRsAddressSetExternalIDs(vpcName string) map[string]string {
+	// These ExternalIDs mark OVN address sets that cache overlay CIDRs per VPC.
+	// They are resource ownership metadata for lookup/debugging, not route policy labels.
+	return map[string]string{
+		"isU2OOverlayCIDRs": "true",
+		"vpc":               vpcName,
+	}
+}
+
+func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string) (v4CIDRs, v6CIDRs []string, err error) {
+	if vpcName == "" {
+		return nil, nil, nil
+	}
+
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	externalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)
+	if v4CIDRs, v6CIDRs, err = c.buildU2OOverlayCIDRs(vpcName, excludeSubnet); err != nil {
+		return nil, nil, err
+	}
+	if err := c.OVNNbClient.CreateAddressSet(v4Name, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", v4Name, err)
+		return nil, nil, err
+	}
+	if err := c.OVNNbClient.CreateAddressSet(v6Name, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", v6Name, err)
+		return nil, nil, err
+	}
+	if err := c.OVNNbClient.AddressSetUpdateAddress(v4Name, v4CIDRs...); err != nil {
+		klog.Errorf("set v4 address set %s with address %v: %v", v4Name, v4CIDRs, err)
+		return nil, nil, err
+	}
+	if err := c.OVNNbClient.AddressSetUpdateAddress(v6Name, v6CIDRs...); err != nil {
+		klog.Errorf("set v6 address set %s with address %v: %v", v6Name, v6CIDRs, err)
+		return nil, nil, err
+	}
+	return v4CIDRs, v6CIDRs, nil
+}
+
+func (c *Controller) buildU2OOverlayCIDRs(vpcName, excludeSubnet string) (v4CIDRs, v6CIDRs []string, err error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, nil, err
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Name == excludeSubnet || subnet.Spec.Vpc != vpcName || subnet.Spec.Vlan != "" {
+			continue
+		}
+		for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+			switch util.CheckProtocol(cidr) {
+			case kubeovnv1.ProtocolIPv4:
+				v4CIDRs = append(v4CIDRs, cidr)
+			case kubeovnv1.ProtocolIPv6:
+				v6CIDRs = append(v6CIDRs, cidr)
+			}
+		}
+	}
+	return v4CIDRs, v6CIDRs, nil
+}
+
+func (c *Controller) deleteStaleU2ORoutePolicies(subnet *kubeovnv1.Subnet, desiredPolicies map[string]struct{}) error {
+	lr := subnet.Status.U2OInterconnectionVPC
+	if lr == "" {
+		lr = subnet.Spec.Vpc
+	}
+	if !c.logicalRouterExists(lr) {
+		return nil
+	}
+
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lr, -1, map[string]string{
+		"isU2ORoutePolicy": "true",
+		"vendor":           util.CniTypeName,
+		"subnet":           subnet.Name,
+	}, true)
+	if err != nil {
+		klog.Errorf("failed to list u2o logical router policies: %v", err)
+		return err
+	}
+	for _, policy := range policies {
+		// No-LB U2O policies are managed by add/deletePolicyRouteForU2ONoLoadBalancer.
+		// They share the generic isU2ORoutePolicy label, so skip them here to avoid
+		// deleting policies that are outside this reconcile loop.
+		if policy.ExternalIDs["isU2ONoLBRoutePolicy"] == "true" {
+			continue
+		}
+		if _, ok := desiredPolicies[logicalRouterPolicyKey(policy.Priority, policy.Match)]; ok {
+			continue
+		}
+		klog.Infof("delete stale u2o policy for router %s with match %s priority %d", lr, policy.Match, policy.Priority)
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
+			klog.Errorf("failed to delete stale u2o policy for subnet %s: %v", subnet.Name, err)
 			return err
 		}
 	}
