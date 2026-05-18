@@ -403,6 +403,90 @@ func TestAddPolicyRouteForU2OInterconn_LegacyRoutingDeletesOverlayOnlyPolicies(t
 	require.NoError(t, err)
 }
 
+func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *testing.T) {
+	t.Parallel()
+
+	const (
+		vpcName      = util.DefaultVpc
+		overlayAName = "overlay-a"
+		overlayBName = "overlay-b"
+		underlayName = "underlay-a"
+		overlayAV4   = "10.244.0.0/16"
+		overlayAV6   = "fd00:244::/64"
+		overlayBV4   = "10.245.0.0/16"
+		overlayBV6   = "fd00:245::/64"
+		underlayCIDR = "10.16.1.0/24"
+		underlayVlan = "vlan1"
+	)
+
+	overlayA := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: overlayAName},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       vpcName,
+			CIDRBlock: overlayAV4 + "," + overlayAV6,
+		},
+	}
+	overlayB := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: overlayBName},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       vpcName,
+			CIDRBlock: overlayBV4 + "," + overlayBV6,
+		},
+	}
+	underlay := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: underlayName},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       vpcName,
+			Vlan:      underlayVlan,
+			CIDRBlock: underlayCIDR,
+		},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{overlayA, overlayB, underlay},
+	})
+	require.NoError(t, err)
+
+	ctrl := fc.fakeController
+	mockOvnClient := fc.mockOvnClient
+	overlayCIDRs4Ag, overlayCIDRs6Ag := u2oOverlayCIDRsAddressSetNames(vpcName)
+	overlayExternalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)
+
+	mockOvnClient.EXPECT().CreateAddressSet(overlayCIDRs4Ag, overlayExternalIDs).Return(nil).Times(2)
+	mockOvnClient.EXPECT().CreateAddressSet(overlayCIDRs6Ag, overlayExternalIDs).Return(nil).Times(2)
+	mockOvnClient.EXPECT().
+		AddressSetUpdateAddress(overlayCIDRs4Ag, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ string, addresses ...string) error {
+			require.ElementsMatch(t, []string{overlayAV4, overlayBV4}, addresses)
+			return nil
+		})
+	mockOvnClient.EXPECT().
+		AddressSetUpdateAddress(overlayCIDRs6Ag, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ string, addresses ...string) error {
+			require.ElementsMatch(t, []string{overlayAV6, overlayBV6}, addresses)
+			return nil
+		})
+	mockOvnClient.EXPECT().
+		AddressSetUpdateAddress(overlayCIDRs4Ag, overlayAV4).
+		Return(nil)
+	mockOvnClient.EXPECT().
+		AddressSetUpdateAddress(overlayCIDRs6Ag, overlayAV6).
+		Return(nil)
+
+	v4CIDRs, v6CIDRs, err := ctrl.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{overlayAV4, overlayBV4}, v4CIDRs)
+	require.ElementsMatch(t, []string{overlayAV6, overlayBV6}, v6CIDRs)
+
+	err = fc.fakeInformers.subnetInformer.Informer().GetStore().Delete(overlayB)
+	require.NoError(t, err)
+
+	v4CIDRs, v6CIDRs, err = ctrl.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+	require.NoError(t, err)
+	require.Equal(t, []string{overlayAV4}, v4CIDRs)
+	require.Equal(t, []string{overlayAV6}, v6CIDRs)
+}
+
 func Test_reconcileVips(t *testing.T) {
 	t.Parallel()
 
