@@ -135,7 +135,8 @@ type SubnetSpec struct {
 	// Underlay to overlay interconnection IP.
 	U2OInterconnectionIP string `json:"u2oInterconnectionIP,omitempty"`
 	// Enable underlay to overlay interconnection.
-	U2OInterconnection bool `json:"u2oInterconnection,omitempty"`
+	U2OInterconnection bool        `json:"u2oInterconnection,omitempty"`
+	U2OFeatures        U2OFeatures `json:"u2oFeatures,omitempty"`
 	// Enable LoadBalancer on this subnet.
 	EnableLb *bool `json:"enableLb,omitempty"`
 	// Enable ECMP for centralized gateway.
@@ -151,6 +152,10 @@ type SubnetSpec struct {
 	NamespaceSelectors []metav1.LabelSelector `json:"namespaceSelectors,omitempty"`
 	// Node network name for underlay.
 	NodeNetwork string `json:"nodeNetwork,omitempty"`
+}
+
+type U2OFeatures struct {
+	OverlayOnlyRouting bool `json:"overlayOnlyRouting,omitempty"`
 }
 
 type ACL struct {
