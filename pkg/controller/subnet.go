@@ -2097,6 +2097,7 @@ func (c *Controller) checkSubnetGwNodesExist(subnet *kubeovnv1.Subnet) bool {
 
 	return false
 }
+
 func getIPSuffix(protocol string) string {
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		return "ip6"
