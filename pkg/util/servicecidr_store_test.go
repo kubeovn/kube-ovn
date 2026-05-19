@@ -140,15 +140,15 @@ func TestServiceCIDRStoreDebounceCoalesces(t *testing.T) {
 	s := NewServiceCIDRStore("10.96.0.0/12")
 	s.debounceInterval = 30 * time.Millisecond
 
-	var fired int32
-	s.OnChange(func() { atomic.AddInt32(&fired, 1) })
+	var fired atomic.Int32
+	s.OnChange(func() { fired.Add(1) })
 
 	for range 5 {
 		s.UpsertFromAPI("k", []string{"10.97.0.0/16"})
 		s.UpsertFromAPI("k", []string{"10.98.0.0/16"})
 	}
 	time.Sleep(120 * time.Millisecond)
-	if got := atomic.LoadInt32(&fired); got > 2 {
+	if got := fired.Load(); got > 2 {
 		t.Fatalf("debounce should coalesce bursts, fired=%d", got)
 	}
 }

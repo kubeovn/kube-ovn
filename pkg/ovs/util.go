@@ -345,7 +345,7 @@ func (m groupACLMatch) String() string {
 
 type Limiter struct {
 	limit   int32
-	current int32
+	current atomic.Int32
 }
 
 func (l *Limiter) Limit() int32 {
@@ -353,7 +353,7 @@ func (l *Limiter) Limit() int32 {
 }
 
 func (l *Limiter) Current() int32 {
-	return atomic.LoadInt32(&l.current)
+	return l.current.Load()
 }
 
 func (l *Limiter) Update(limit int32) {
@@ -367,12 +367,12 @@ func (l *Limiter) Wait(ctx context.Context) error {
 			return errors.New("context canceled by timeout")
 		default:
 			if l.limit == 0 {
-				atomic.AddInt32(&l.current, 1)
+				l.current.Add(1)
 				return nil
 			}
 
-			if atomic.LoadInt32(&l.current) < l.limit {
-				atomic.AddInt32(&l.current, 1)
+			if l.current.Load() < l.limit {
+				l.current.Add(1)
 				return nil
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -381,5 +381,5 @@ func (l *Limiter) Wait(ctx context.Context) error {
 }
 
 func (l *Limiter) Done() {
-	atomic.AddInt32(&l.current, -1)
+	l.current.Add(-1)
 }
