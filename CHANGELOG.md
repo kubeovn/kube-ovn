@@ -402,6 +402,18 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.12 (2026-05-19)
+
+ * [88c8e621f](https://github.com/kubeovn/kube-ovn/commit/88c8e621f5b80330914045a22bc0950454d78420) release v1.15.12
+ * [b4437b98c](https://github.com/kubeovn/kube-ovn/commit/b4437b98c02c58f01eef5e076441c4120b273555) feat: backport u2o overlay only routing to release-1.15 (#6751)
+ * [aa0bd3996](https://github.com/kubeovn/kube-ovn/commit/aa0bd39961a6441d4ce28c7597013cf70b16619a) feat(cni): package ipvlan plugin in kube-ovn image (#6747) (#6748)
+ * [50ca826b2](https://github.com/kubeovn/kube-ovn/commit/50ca826b2219d9f86372421fef3bd36dec033a03) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.15.11 (2026-05-13)
 
  * [c231e542c](https://github.com/kubeovn/kube-ovn/commit/c231e542c020d1ea4d6ca3e191cd7950dfa5112b) release v1.15.11
