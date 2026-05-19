@@ -110,6 +110,12 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
+	// in case of multiple interfaces the interface name is used to distinguish different interfaces
+	// currently ovs.PodNameToPortName ignores the ifname which results in same port being returned
+	// for default nics the ifname is set to eth0 by the handler, so we can use that to distinguish default nics and non default nics, for non default nics we can append the ifname to the ifaceID to make it unique for ovs port creation and later retrieval, this is required to avoid the issue of same port being returned for multiple interfaces which results in wrong port being configured and attached to the pod, and also results in wrong port being deleted during pod deletion which affects other interfaces attached to the same pod.
+	if ifName != "eth0" {
+		ifaceID = fmt.Sprintf("%s.%s", ifaceID, ifName)
+	}
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)
 	if yusur.IsYusurSmartNic(deviceID) {
 		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
