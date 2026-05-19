@@ -347,3 +347,13 @@ kube-ovn-slr-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN) --timeout=10m \
 		--focus="\[group:slr-ip-port-mapping\]" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-vpc-external-e2e
+kube-ovn-vpc-external-e2e:
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
+	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN) --timeout=20m \
+                --focus="\[group:vpc-external\]" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
