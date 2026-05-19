@@ -38,16 +38,16 @@ type VpcEgressGatewayList struct {
 // +kubebuilder:resource:scope="Namespaced",shortName={"vpc-egress-gw","veg"},path="vpc-egress-gateways",singular="vpc-egress-gateway"
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.labelSelector
-// +kubebuilder:printcolumn:name="VPC",type="string",JSONPath=".spec.vpc"
-// +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
-// +kubebuilder:printcolumn:name="EXTERNAL SUBNET",type="string",JSONPath=".spec.externalSubnet"
-// +kubebuilder:printcolumn:name="PHASE",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
-// +kubebuilder:printcolumn:name="INTERNAL IPS",type="string",JSONPath=".status.internalIPs",priority=1
-// +kubebuilder:printcolumn:name="EXTERNAL IPS",type="string",JSONPath=".status.externalIPs",priority=1
-// +kubebuilder:printcolumn:name="WORKING NODES",type="string",JSONPath=".status.workload.nodes",priority=1
-// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
+// +kubebuilder:printcolumn:name="bfd",type="boolean",JSONPath=".spec.bfd.enabled"
+// +kubebuilder:printcolumn:name="External Subnet",type="string",JSONPath=".spec.externalSubnet"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
+// +kubebuilder:printcolumn:name="Internal IPs",type="string",JSONPath=".status.internalIPs",priority=1
+// +kubebuilder:printcolumn:name="External IPs",type="string",JSONPath=".status.externalIPs",priority=1
+// +kubebuilder:printcolumn:name="Working Nodes",type="string",JSONPath=".status.workload.nodes",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // vpc egress gateway is used to forward the egress traffic from the VPC to the external network
 type VpcEgressGateway struct {
 	metav1.TypeMeta   `json:",inline"`

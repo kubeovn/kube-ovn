@@ -32,7 +32,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -2887,24 +2886,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 	return vipsMap
 }
 
-func setPodRoutesAnnotation(annotations map[string]string, provider string, routes []request.Route) error {
-	key := fmt.Sprintf(util.RoutesAnnotationTemplate, provider)
-	if len(routes) == 0 {
-		delete(annotations, key)
-		return nil
-	}
-
-	buf, err := json.Marshal(routes)
-	if err != nil {
-		err = fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
-		klog.Error(err)
-		return err
-	}
-	annotations[key] = string(buf)
-
-	return nil
-}
-
 // Check if pod is a VPC NAT gateway using pod annotations
 func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 	if pod == nil {
@@ -2971,7 +2952,7 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		}
 		return err
 	}
-	if gw.Spec.LanIP != "" {
+	if gw.Spec.LanIP != "" || gw.Spec.Replicas > 1 {
 		return nil
 	}
 

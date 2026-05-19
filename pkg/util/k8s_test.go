@@ -709,6 +709,110 @@ func TestDeploymentIsReady(t *testing.T) {
 	}
 }
 
+func TestStatefulSetIsReady(t *testing.T) {
+	tests := []struct {
+		name string
+		sts  *appsv1.StatefulSet
+		want bool
+	}{
+		{
+			name: "ready",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](3),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					ReadyReplicas:      3,
+					CurrentReplicas:    3,
+					UpdatedReplicas:    3,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "generation mismatch",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 1,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "ready replicas less than desired replicas",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](3),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					ReadyReplicas:      2,
+					CurrentReplicas:    2,
+					UpdatedReplicas:    2,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "current replicas greater than ready replicas",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](3),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					ReadyReplicas:      2,
+					CurrentReplicas:    3,
+					UpdatedReplicas:    2,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "updated replicas less than ready replicas",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 2,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](3),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					ReadyReplicas:      3,
+					CurrentReplicas:    3,
+					UpdatedReplicas:    2,
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StatefulSetIsReady(tt.sts)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestInjectedServiceVariables(t *testing.T) {
 	tests := []struct {
 		name         string
