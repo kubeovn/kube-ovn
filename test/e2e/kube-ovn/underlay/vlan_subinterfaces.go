@@ -3,6 +3,7 @@ package underlay
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,8 +97,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
-		for i := len(providerNetworkNames) - 1; i >= 0; i-- {
-			providerNetworkClient.DeleteSync(providerNetworkNames[i])
+		for _, providerNetworkName := range slices.Backward(providerNetworkNames) {
+			providerNetworkClient.DeleteSync(providerNetworkName)
 		}
 
 		// Wait for OVS bridges to disappear on all nodes before disconnecting

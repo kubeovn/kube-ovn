@@ -772,12 +772,12 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				var availIPs []string
 				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
 				if v4Cidr != "" {
-					startIP := strings.Split(v4Cidr, "/")[0]
+					startIP, _, _ := strings.Cut(v4Cidr, "/")
 					ip, _ := ipam.NewIP(startIP)
 					availIPs = append(availIPs, ip.Add(100+int64(index)).String())
 				}
 				if v6Cidr != "" {
-					startIP := strings.Split(v6Cidr, "/")[0]
+					startIP, _, _ := strings.Cut(v6Cidr, "/")
 					ip, _ := ipam.NewIP(startIP)
 					availIPs = append(availIPs, ip.Add(100+int64(index)).String())
 				}
@@ -1065,7 +1065,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 		framework.ExpectNotEmpty(nodeIPv6, "No node with IPv6 address found")
-		ipv6Addr := strings.Split(nodeIPv6, "/")[0]
+		ipv6Addr, _, _ := strings.Cut(nodeIPv6, "/")
 
 		ginkgo.By(fmt.Sprintf("Creating pod %s that pings IPv6 node IP %s on node %s", podName, ipv6Addr, selectedNode.Name()))
 		// Use ping6 with one attempt and 1s timeout, checking the return code

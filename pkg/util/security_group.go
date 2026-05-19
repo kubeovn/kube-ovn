@@ -14,8 +14,7 @@ func (s *securityGroupTierValidationError) Error() string {
 }
 
 func (s *securityGroupTierValidationError) Is(err error) bool {
-	var sgError *securityGroupTierValidationError
-	if errors.As(err, &sgError) {
+	if sgError, ok := errors.AsType[*securityGroupTierValidationError](err); ok {
 		return sgError.invalidTier == s.invalidTier
 	}
 	return false
