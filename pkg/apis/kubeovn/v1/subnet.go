@@ -80,15 +80,20 @@ type SubnetSpec struct {
 
 	NatOutgoingPolicyRules []NatOutgoingPolicyRule `json:"natOutgoingPolicyRules,omitempty"`
 
-	U2OInterconnectionIP    string `json:"u2oInterconnectionIP,omitempty"`
-	U2OInterconnection      bool   `json:"u2oInterconnection,omitempty"`
-	EnableLb                *bool  `json:"enableLb,omitempty"`
-	EnableEcmp              bool   `json:"enableEcmp,omitempty"`
-	EnableMulticastSnoop    bool   `json:"enableMulticastSnoop,omitempty"`
-	EnableExternalLBAddress bool   `json:"enableExternalLBAddress,omitempty"`
+	U2OInterconnectionIP    string      `json:"u2oInterconnectionIP,omitempty"`
+	U2OInterconnection      bool        `json:"u2oInterconnection,omitempty"`
+	U2OFeatures             U2OFeatures `json:"u2oFeatures,omitempty"`
+	EnableLb                *bool       `json:"enableLb,omitempty"`
+	EnableEcmp              bool        `json:"enableEcmp,omitempty"`
+	EnableMulticastSnoop    bool        `json:"enableMulticastSnoop,omitempty"`
+	EnableExternalLBAddress bool        `json:"enableExternalLBAddress,omitempty"`
 
 	RouteTable         string                 `json:"routeTable,omitempty"`
 	NamespaceSelectors []metav1.LabelSelector `json:"namespaceSelectors,omitempty"`
+}
+
+type U2OFeatures struct {
+	OverlayOnlyRouting bool `json:"overlayOnlyRouting,omitempty"`
 }
 
 type ACL struct {

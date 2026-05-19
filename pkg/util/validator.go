@@ -173,6 +173,15 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return errors.New("logicalGateway and u2oInterconnection can't be opened at the same time")
 	}
 
+	if subnet.Spec.U2OFeatures.OverlayOnlyRouting {
+		if !subnet.Spec.U2OInterconnection {
+			return errors.New("u2oFeatures.overlayOnlyRouting can only be enabled when u2OInterconnection is true")
+		}
+		if subnet.Spec.Vlan == "" {
+			return errors.New("u2oFeatures.overlayOnlyRouting can only be enabled on underlay subnets (vlan must be set)")
+		}
+	}
+
 	if len(subnet.Spec.NatOutgoingPolicyRules) != 0 {
 		if err := validateNatOutgoingPolicyRules(subnet); err != nil {
 			klog.Error(err)
