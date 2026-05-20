@@ -686,3 +686,130 @@ func testPodConnectivityWithInterface(sourcePod *corev1.Pod, targetIP, descripti
 	_, _, err := framework.KubectlExec(sourcePod.Namespace, sourcePod.Name, cmd)
 	return err
 }
+
+// Iptables Cleanup Verification Test
+var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
+	f := framework.NewDefaultFramework("non-primary-cni-iptables")
+
+	ginkgo.Context("Iptables Cleanup", ginkgo.Label("Feature:Iptables-Cleanup"), func() {
+		var cs clientset.Interface
+
+		ginkgo.BeforeEach(func() {
+			cs = f.ClientSet
+			f.SkipVersionPriorTo(1, 16, "iptables cleanup in non-primary CNI mode requires v1.16+")
+		})
+
+		ginkgo.It("Should not have kube-ovn iptables chains or rules in non-primary CNI mode", func() {
+			ginkgo.By("Get cluster nodes")
+			nodeObjs, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			framework.ExpectNoError(err)
+			gomega.Expect(nodeObjs.Items).NotTo(gomega.BeEmpty(), "cluster should have at least one schedulable node")
+
+			ginkgo.By("Get ovs-ovn pod on first node")
+			node := nodeObjs.Items[0]
+			daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+			ds := daemonSetClient.Get("ovs-ovn")
+			ovsPod, err := daemonSetClient.GetPodOnNode(ds, node.Name)
+			framework.ExpectNoError(err)
+
+			// Kube-OVN custom chains that should not exist in non-primary CNI mode
+			kubeOvnChains := []struct {
+				table string
+				chain string
+			}{
+				{"nat", "OVN-PREROUTING"},
+				{"nat", "OVN-POSTROUTING"},
+				{"nat", "OVN-MASQUERADE"},
+				{"nat", "OVN-NAT-POLICY"},
+				{"mangle", "OVN-PREROUTING"},
+				{"mangle", "OVN-POSTROUTING"},
+				{"mangle", "OVN-OUTPUT"},
+			}
+
+			for _, tc := range kubeOvnChains {
+				ginkgo.By(fmt.Sprintf("Verify chain %s/%s does not exist", tc.table, tc.chain))
+				// Use iptables -S to list all rules in the table and verify the chain
+				// name is absent. This is more robust across iptables variants
+				// (iptables-legacy vs iptables-nft) than relying on a specific error
+				// message when querying a non-existent chain.
+				cmd := fmt.Sprintf("iptables -t %s -S 2>&1", tc.table)
+				stdout, _, err := framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+				framework.ExpectNoError(err)
+				gomega.Expect(string(stdout)).NotTo(
+					gomega.ContainSubstring(tc.chain),
+					fmt.Sprintf("chain %s should not exist in table %s", tc.chain, tc.table),
+				)
+			}
+
+			ginkgo.By("Verify no OVN-NAT-PSUBNET- chains in nat table")
+			cmd := "iptables -t nat -S 2>&1"
+			stdout, _, err := framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+			framework.ExpectNoError(err)
+			gomega.Expect(string(stdout)).NotTo(
+				gomega.ContainSubstring("OVN-NAT-PSUBNET-"),
+				"nat table should not contain OVN-NAT-PSUBNET- chains",
+			)
+
+			ginkgo.By("Verify no kube-ovn jump rules in nat/mangle PREROUTING/POSTROUTING")
+			for _, table := range []string{"nat", "mangle"} {
+				for _, chain := range []string{"PREROUTING", "POSTROUTING"} {
+					cmd := fmt.Sprintf("iptables -t %s -S %s", table, chain)
+					stdout, _, err := framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+					framework.ExpectNoError(err)
+					output := string(stdout)
+					gomega.Expect(output).NotTo(
+						gomega.ContainSubstring("kube-ovn"),
+						fmt.Sprintf("%s %s should not contain kube-ovn jump rules", table, chain),
+					)
+					gomega.Expect(output).NotTo(
+						gomega.ContainSubstring("OVN-"),
+						fmt.Sprintf("%s %s should not contain OVN- chain references", table, chain),
+					)
+				}
+			}
+
+			ginkgo.By("Verify no kube-ovn jump rules in mangle OUTPUT")
+			cmd = "iptables -t mangle -S OUTPUT"
+			stdout, _, err = framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+			framework.ExpectNoError(err)
+			gomega.Expect(string(stdout)).NotTo(
+				gomega.ContainSubstring("OVN-"),
+				"mangle OUTPUT should not contain OVN- chain references",
+			)
+
+			ginkgo.By("Verify no kube-ovn rules in filter INPUT/OUTPUT/FORWARD")
+			for _, chain := range []string{"INPUT", "OUTPUT", "FORWARD"} {
+				cmd := fmt.Sprintf("iptables -t filter -S %s", chain)
+				stdout, _, err := framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+				framework.ExpectNoError(err)
+				output := string(stdout)
+				gomega.Expect(output).NotTo(
+					gomega.ContainSubstring("ovn40subnets"),
+					fmt.Sprintf("filter %s should not contain ovn40subnets rules", chain),
+				)
+				gomega.Expect(output).NotTo(
+					gomega.ContainSubstring("ovn40services"),
+					fmt.Sprintf("filter %s should not contain ovn40services rules", chain),
+				)
+				gomega.Expect(output).NotTo(
+					gomega.ContainSubstring("ovn-subnet-gateway"),
+					fmt.Sprintf("filter %s should not contain ovn-subnet-gateway rules", chain),
+				)
+			}
+
+			ginkgo.By("Verify no kube-ovn NodePort MARK rules in nat PREROUTING")
+			cmd = "iptables -t nat -S PREROUTING"
+			stdout, _, err = framework.KubectlExec(ovsPod.Namespace, ovsPod.Name, cmd)
+			framework.ExpectNoError(err)
+			output := string(stdout)
+			gomega.Expect(output).NotTo(
+				gomega.ContainSubstring("0x80000/0x80000"),
+				"nat PREROUTING should not contain NodePort MARK rules",
+			)
+			gomega.Expect(output).NotTo(
+				gomega.ContainSubstring("0x4000/0x4000"),
+				"nat PREROUTING should not contain service MARK rules",
+			)
+		})
+	})
+})

@@ -622,6 +622,14 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 }
 
 func (c *Controller) setIptables() error {
+	if c.config.EnableNonPrimaryCNI {
+		if err := c.cleanupIptablesInNonPrimaryCNIMode(); err != nil {
+			return err
+		}
+		klog.V(3).Infoln("running in non-primary CNI mode, cleaned and skipped iptables configuration")
+		return nil
+	}
+
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
@@ -757,11 +765,12 @@ func (c *Controller) setIptables() error {
 		if ipsetExists {
 			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i %s -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, util.NodeNic, matchset, ipset))
 			rejectRule := strings.Fields(fmt.Sprintf(`-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
-			obsoleteRejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
 			iptablesRules = append(iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
 				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
 			)
+			// TODO: remove obsoleteRejectRule cleanup after all clusters have upgraded past v1.12
+			obsoleteRejectRule := strings.Fields(fmt.Sprintf(`-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
 			obsoleteRejectRules := []util.IPTableRule{
 				{Table: "filter", Chain: "INPUT", Rule: obsoleteRejectRule},
 				{Table: "filter", Chain: "OUTPUT", Rule: obsoleteRejectRule},
@@ -950,6 +959,168 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
+func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
+	if c.iptables == nil {
+		return nil
+	}
+
+	for _, protocol := range getProtocols(c.protocol) {
+		// Clean up both the default (nft) and legacy iptables backends to handle
+		// environments where kube-ovn previously ran in legacy mode.
+		iptInstances := []*iptables.IPTables{c.iptables[protocol]}
+		if c.iptablesObsolete != nil {
+			if ipt := c.iptablesObsolete[protocol]; ipt != nil {
+				iptInstances = append(iptInstances, ipt)
+			}
+		}
+
+		for _, ipt := range iptInstances {
+			if ipt == nil {
+				continue
+			}
+
+			for _, rule := range getKubeOVNBaseIptablesRulesForCleanup(protocol) {
+				bestEffortDeleteIptablesRule(ipt, rule)
+			}
+
+			for _, rule := range getKubeOVNJumpRulesForCleanup() {
+				bestEffortDeleteIptablesRule(ipt, rule)
+			}
+
+			if err := cleanupSubnetGatewayForwardRules(ipt); err != nil {
+				klog.Errorf("failed to cleanup subnet gateway FORWARD rules: %v", err)
+				return err
+			}
+
+			for _, item := range []struct {
+				table string
+				chain string
+			}{
+				{table: NAT, chain: OvnPrerouting},
+				{table: NAT, chain: OvnPostrouting},
+				{table: NAT, chain: OvnMasquerade},
+				{table: NAT, chain: OvnNatOutGoingPolicy},
+				{table: MANGLE, chain: OvnPrerouting},
+				{table: MANGLE, chain: OvnPostrouting},
+				{table: MANGLE, chain: OvnOutput},
+			} {
+				if err := clearAndDeleteChainIfExists(ipt, item.table, item.chain); err != nil {
+					klog.Errorf("failed to cleanup chain %s/%s: %v", item.table, item.chain, err)
+					return err
+				}
+			}
+
+			natChains, err := ipt.ListChains(NAT)
+			if err != nil {
+				klog.Errorf("failed to list nat chains: %v", err)
+				return err
+			}
+			for _, chain := range natChains {
+				if strings.HasPrefix(chain, OvnNatOutGoingPolicySubnet) {
+					if err := clearAndDeleteChainIfExists(ipt, NAT, chain); err != nil {
+						klog.Errorf("failed to cleanup nat policy chain %s: %v", chain, err)
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {
+	matchset := "ovn40subnets"
+	svcMatchset := "ovn40services"
+	nodePortPrefix := ""
+	nodeMatchset := "ovn40" + OtherNodeSet
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		matchset = "ovn60subnets"
+		svcMatchset = "ovn60services"
+		nodePortPrefix = "6-"
+		nodeMatchset = "ovn60" + OtherNodeSet
+	}
+
+	nodePortRules := make([]util.IPTableRule, 0, 4)
+	for _, p := range [...]string{"tcp", "udp"} {
+		nodePortIPSet := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", nodePortPrefix, strings.ToUpper(p))
+		nodePortRules = append(nodePortRules,
+			util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, nodePortIPSet))},
+			util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchset, nodePortIPSet))},
+		)
+	}
+
+	rules := []util.IPTableRule{
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s src -j ACCEPT", matchset))},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s dst -j ACCEPT", matchset))},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s src -j ACCEPT", svcMatchset))},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s dst -j ACCEPT", svcMatchset))},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s src -j ACCEPT", matchset))},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s dst -j ACCEPT", matchset))},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s src -j ACCEPT", svcMatchset))},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf("-m set --match-set %s dst -j ACCEPT", svcMatchset))},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT", svcMatchset))},
+		{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(fmt.Sprintf("-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT", svcMatchset))},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Fields(fmt.Sprintf("-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT", svcMatchset))},
+		{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(fmt.Sprintf("-m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT", svcMatchset))},
+		{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields("-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0")},
+		{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields("-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0")},
+	}
+
+	return append(rules, nodePortRules...)
+}
+
+func getKubeOVNJumpRulesForCleanup() []util.IPTableRule {
+	return []util.IPTableRule{
+		{Table: NAT, Chain: Prerouting, Rule: []string{"-m", "comment", "--comment", "kube-ovn prerouting rules", "-j", OvnPrerouting}},
+		{Table: NAT, Chain: Postrouting, Rule: []string{"-m", "comment", "--comment", "kube-ovn postrouting rules", "-j", OvnPostrouting}},
+		{Table: MANGLE, Chain: Prerouting, Rule: []string{"-m", "comment", "--comment", "kube-ovn prerouting rules", "-j", OvnPrerouting}},
+		{Table: MANGLE, Chain: Postrouting, Rule: []string{"-m", "comment", "--comment", "kube-ovn postrouting rules", "-j", OvnPostrouting}},
+		{Table: MANGLE, Chain: Output, Rule: []string{"-m", "comment", "--comment", "kube-ovn output rules", "-j", OvnOutput}},
+	}
+}
+
+func cleanupSubnetGatewayForwardRules(ipt *iptables.IPTables) error {
+	rules, err := ipt.List("filter", "FORWARD")
+	if err != nil {
+		klog.Errorf(`failed to list iptables rule table "filter" chain "FORWARD" with err %v `, err)
+		return err
+	}
+
+	pattern := fmt.Sprintf(`-m comment --comment "%s,`, util.OvnSubnetGatewayIptables)
+	for _, rule := range rules {
+		if !strings.Contains(rule, pattern) {
+			continue
+		}
+		fields := util.DoubleQuotedFields(rule)
+		if len(fields) < 3 {
+			continue
+		}
+
+		if err = deleteIptablesRule(ipt, util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: fields[2:]}); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func clearAndDeleteChainIfExists(ipt *iptables.IPTables, table, chain string) error {
+	exists, err := ipt.ChainExists(table, chain)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+
+	if err = ipt.ClearAndDeleteChain(table, chain); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	if !c.config.EnableTProxy {
 		return nil
@@ -1014,7 +1185,7 @@ func (c *Controller) cleanTProxyIPTableRules(protocol string) {
 		return
 	}
 	for _, chain := range [2]string{OvnPrerouting, OvnOutput} {
-		if err := ipt.ClearChain(MANGLE, chain); err != nil {
+		if err := clearAndDeleteChainIfExists(ipt, MANGLE, chain); err != nil {
 			klog.Errorf("failed to clear iptables chain %v in table %v, %+v", chain, MANGLE, err)
 			return
 		}
@@ -1153,6 +1324,26 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 	}
 
 	return natPolicySubnetIptables, natPolicyRuleIptablesMap, gcNatPolicySubnetChains, nil
+}
+
+// bestEffortDeleteIptablesRule attempts to delete an iptables rule but tolerates
+// errors (e.g. when referenced ipsets don't exist, causing iptables -C to fail).
+// This is used during non-primary CNI cleanup where rules may never have been created.
+func bestEffortDeleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) {
+	// If the chain does not exist, the rule was never installed; skip silently.
+	if exists, err := ipt.ChainExists(rule.Table, rule.Chain); err != nil || !exists {
+		return
+	}
+	// ipt.Exists may return an error when the rule references a target chain that
+	// does not exist (exit status 2). Treat any such failure as "rule not present".
+	exists, err := ipt.Exists(rule.Table, rule.Chain, rule.Rule...)
+	if err != nil || !exists {
+		klog.V(3).Infof("skipping best-effort iptables rule cleanup (not present) %v: %v", rule, err)
+		return
+	}
+	if err = ipt.Delete(rule.Table, rule.Chain, rule.Rule...); err != nil {
+		klog.V(3).Infof("ignoring error during best-effort iptables rule cleanup %v: %v", rule, err)
+	}
 }
 
 func deleteIptablesRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
