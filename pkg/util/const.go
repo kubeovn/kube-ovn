@@ -57,7 +57,17 @@ const (
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
 	KubeHostVMVip              = "kube_host_vm_vip"
-	SwitchLBRuleSubnet         = "switch_lb_subnet"
+  
+  // BgpVipAnnotation is set on a LoadBalancer Service to specify the VIP name
+	// (type=bgp_lb_vip) whose allocated IP will be written into spec.externalIPs
+	// and status.loadBalancer.ingress so the BGP speaker can announce it.
+	BgpVipAnnotation             = "ovn.kubernetes.io/bgp-lb-vip"
+	// BgpLbVip marks a VIP reserved as a BGP-announced external IP for a LoadBalancer Service.
+	// Unlike SwitchLBRuleVip and KubeHostVMVip, no OVN logical switch port is created;
+	// the IP is held in IPAM only, and the controller writes it into the Service
+	// spec.externalIPs / status.loadBalancer.ingress for the BGP speaker to announce.
+	BgpLbVip           = "bgp_lb_vip"
+	SwitchLBRuleSubnet = "switch_lb_subnet"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
@@ -414,8 +424,9 @@ const (
 
 // Readonly kinds of Kubernetes objects
 var (
-	KindNode = ObjectKind[*corev1.Node]()
-	KindPod  = ObjectKind[*corev1.Pod]()
+	KindNode    = ObjectKind[*corev1.Node]()
+	KindPod     = ObjectKind[*corev1.Pod]()
+	KindService = ObjectKind[*corev1.Service]()
 
 	KindDeployment  = ObjectKind[*appsv1.Deployment]()
 	KindDaemonSet   = ObjectKind[*appsv1.DaemonSet]()

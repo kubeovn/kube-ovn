@@ -238,3 +238,114 @@ func TestCollectPodExpectedPrefixes(t *testing.T) {
 		})
 	}
 }
+
+func makeService(name, ns, bgpPolicy string, ingressIPs ...string) *corev1.Service {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+	}
+	if bgpPolicy != "" {
+		svc.Annotations = map[string]string{
+			util.BgpAnnotation:    bgpPolicy,
+			util.BgpVipAnnotation: "vip1",
+		}
+	}
+	for _, ip := range ingressIPs {
+		svc.Status.LoadBalancer.Ingress = append(
+			svc.Status.LoadBalancer.Ingress,
+			corev1.LoadBalancerIngress{IP: ip},
+		)
+	}
+	return svc
+}
+
+func TestCollectSvcBgpPrefixes(t *testing.T) {
+	cases := []struct {
+		name     string
+		services []*corev1.Service
+		wantIPs  []string
+		wantNot  []string
+	}{
+		{
+			name:     "no annotation: not announced",
+			services: []*corev1.Service{makeService("svc1", "default", "", "1.2.3.4")},
+			wantNot:  []string{"1.2.3.4/32"},
+		},
+		{
+			name: "bgp annotation without bgp-vip: not announced",
+			services: []*corev1.Service{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.BgpAnnotation: "true",
+					},
+				},
+				Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "1.2.3.4"}}}},
+			}},
+			wantNot: []string{"1.2.3.4/32"},
+		},
+		{
+			name:     "bgp=true: announced",
+			services: []*corev1.Service{makeService("svc1", "default", "true", "1.2.3.4")},
+			wantIPs:  []string{"1.2.3.4/32"},
+		},
+		{
+			name:     "bgp=cluster: announced",
+			services: []*corev1.Service{makeService("svc1", "default", "cluster", "10.0.0.1")},
+			wantIPs:  []string{"10.0.0.1/32"},
+		},
+		{
+			name:     "bgp=local: announced on all nodes for LB service",
+			services: []*corev1.Service{makeService("svc1", "default", "local", "192.168.100.5")},
+			wantIPs:  []string{"192.168.100.5/32"},
+		},
+		{
+			name:     "no ingress IP: nothing announced",
+			services: []*corev1.Service{makeService("svc1", "default", "true")},
+			wantNot:  []string{},
+		},
+		{
+			name: "multiple services: each contributes independently",
+			services: []*corev1.Service{
+				makeService("svc1", "default", "true", "1.1.1.1"),
+				makeService("svc2", "default", "", "2.2.2.2"),
+				makeService("svc3", "default", "cluster", "3.3.3.3"),
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "svc4",
+						Namespace: "default",
+						Annotations: map[string]string{
+							util.BgpAnnotation: "cluster",
+						},
+					},
+					Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "4.4.4.4"}}}},
+				},
+			},
+			wantIPs: []string{"1.1.1.1/32", "3.3.3.3/32"},
+			wantNot: []string{"2.2.2.2/32", "4.4.4.4/32"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bgpExpected := make(prefixMap)
+			collectSvcBgpPrefixes(tc.services, "node1", bgpExpected)
+
+			for _, wantIP := range tc.wantIPs {
+				found := false
+				for _, prefixes := range bgpExpected {
+					if prefixes.Has(wantIP) {
+						found = true
+						break
+					}
+				}
+				require.True(t, found, "expected %s in bgpExpected, got %v", wantIP, bgpExpected)
+			}
+			for _, notIP := range tc.wantNot {
+				for _, prefixes := range bgpExpected {
+					require.False(t, prefixes.Has(notIP), "expected %s NOT in bgpExpected", notIP)
+				}
+			}
+		})
+	}
+}
