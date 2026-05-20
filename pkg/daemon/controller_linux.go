@@ -985,7 +985,7 @@ func (c *Controller) loopEncapIPCheck() {
 
 		var encapIP string
 		for _, addr := range addrs {
-			ipStr := strings.Split(addr.String(), "/")[0]
+			ipStr, _, _ := strings.Cut(addr.String(), "/")
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
 				continue
 			}

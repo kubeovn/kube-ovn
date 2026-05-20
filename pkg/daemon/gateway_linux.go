@@ -1076,7 +1076,7 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 	sort.Strings(subnetNames)
 
 	getMatchProtocol := func(ips string) string {
-		ip := strings.Split(ips, ",")[0]
+		ip, _, _ := strings.Cut(ips, ",")
 		return util.CheckProtocol(ip)
 	}
 

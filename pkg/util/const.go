@@ -264,6 +264,8 @@ const (
 	U2OSubnetPolicyPriority          = 29400
 	OvnICPolicyPriority              = 29500
 	NodeRouterPolicyPriority         = 30000
+	U2OPhysicalGatewayPolicyPriority = 30050
+	U2OSameSubnetPolicyPriority      = 30060
 	NodeLocalDNSPolicyPriority       = 30100
 	SubnetRouterPolicyPriority       = 31000
 
@@ -308,6 +310,7 @@ const (
 
 	U2OInterconnName = "u2o-interconnection.%s.%s"
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
+	U2OOverlayCIDRs  = "%s.u2o_overlay_cidrs.%s"
 
 	McastQuerierName = "mcast-querier.%s"
 

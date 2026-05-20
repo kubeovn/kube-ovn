@@ -655,7 +655,7 @@ func verifySNATRule(snatRule *kubeovnv1.IptablesSnatRule, expectedPodIP string, 
 	framework.ExpectNotEmpty(snatRule.Spec.EIP, "SNAT rule %s should specify an EIP", snatRule.Name)
 
 	if expectedPodIP != "" {
-		internalIP := strings.Split(snatRule.Spec.InternalCIDR, "/")[0]
+		internalIP, _, _ := strings.Cut(snatRule.Spec.InternalCIDR, "/")
 		framework.ExpectEqual(internalIP, expectedPodIP, "SNAT rule %s should map correct internal CIDR", snatRule.Name)
 	}
 	if expectedEIP != nil {

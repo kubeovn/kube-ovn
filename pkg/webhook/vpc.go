@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -49,7 +50,7 @@ func (v *ValidatingHook) VpcUpdateHook(_ context.Context, req admission.Request)
 	return ctrlwebhook.Allowed("bypass")
 }
 
-func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request) admission.Response {
+func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Request) admission.Response {
 	vpc := ovnv1.Vpc{}
 	if err := v.decoder.DecodeRaw(req.OldObject, &vpc); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -57,5 +58,51 @@ func (v *ValidatingHook) VpcDeleteHook(_ context.Context, req admission.Request)
 	if len(vpc.Status.Subnets) != 0 {
 		return ctrlwebhook.Denied("can't delete vpc when any subnet in the vpc")
 	}
+
+	dnatList := &ovnv1.OvnDnatRuleList{}
+	if err := v.cache.List(ctx, dnatList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
+	for _, item := range dnatList.Items {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnDnatRule %q", vpc.Name, item.Name))
+		}
+	}
+
+	snatList := &ovnv1.OvnSnatRuleList{}
+	if err := v.cache.List(ctx, snatList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
+	for _, item := range snatList.Items {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnSnatRule %q", vpc.Name, item.Name))
+		}
+	}
+
+	fipList := &ovnv1.OvnFipList{}
+	if err := v.cache.List(ctx, fipList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	// Use Status.Vpc first as vpc may be inferred from spec.ipName if not in spec.
+	for _, item := range fipList.Items {
+		referencedVpc := item.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = item.Spec.Vpc
+		}
+		if referencedVpc == vpc.Name {
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by OvnFip %q", vpc.Name, item.Name))
+		}
+	}
+
 	return ctrlwebhook.Allowed("bypass")
 }

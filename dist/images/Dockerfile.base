@@ -190,7 +190,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.9.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.36.0
+ARG KUBECTL_VERSION=v1.36.1
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.5.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"
@@ -266,7 +266,7 @@ RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-in
     chmod +x /usr/bin/dumb-init
 
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
-    cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
+    cp /godeps/loopback /godeps/portmap /godeps/macvlan /godeps/ipvlan ./ && \
     cp /godeps/kubectl /godeps/gobgp /usr/bin/
 
 ARG DEBUG=false

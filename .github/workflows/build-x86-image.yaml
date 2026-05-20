@@ -28,13 +28,13 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.11.4
+  GOLANGCI_LINT_VERSION: v2.12.2
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.1.4
+  HELM_VERSION: v4.2.0
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.23.1
+  SUBMARINER_VERSION: 0.24.0
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.13.0
+  TALOS_VERSION: v1.13.2
 
 jobs:
   build-kube-ovn-base:
@@ -210,7 +210,7 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
+          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin $GOLANGCI_LINT_VERSION
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
@@ -2978,15 +2978,21 @@ jobs:
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
 
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           make kubectl-ko-log
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz

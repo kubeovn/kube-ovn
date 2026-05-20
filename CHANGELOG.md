@@ -402,6 +402,48 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.12 (2026-05-19)
+
+ * [88c8e621f](https://github.com/kubeovn/kube-ovn/commit/88c8e621f5b80330914045a22bc0950454d78420) release v1.15.12
+ * [b4437b98c](https://github.com/kubeovn/kube-ovn/commit/b4437b98c02c58f01eef5e076441c4120b273555) feat: backport u2o overlay only routing to release-1.15 (#6751)
+ * [aa0bd3996](https://github.com/kubeovn/kube-ovn/commit/aa0bd39961a6441d4ce28c7597013cf70b16619a) feat(cni): package ipvlan plugin in kube-ovn image (#6747) (#6748)
+ * [50ca826b2](https://github.com/kubeovn/kube-ovn/commit/50ca826b2219d9f86372421fef3bd36dec033a03) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
+## v1.15.11 (2026-05-13)
+
+ * [c231e542c](https://github.com/kubeovn/kube-ovn/commit/c231e542c020d1ea4d6ca3e191cd7950dfa5112b) release v1.15.11
+ * [e15870c99](https://github.com/kubeovn/kube-ovn/commit/e15870c9900339ca9e89d0df6e3f7369a4b7d4b3) Block vpc deletion while SNAT, DNAT or FIP rules are using it (#6718)
+ * [8947ed5e5](https://github.com/kubeovn/kube-ovn/commit/8947ed5e5b177ee0d2752f1dea5fd35a23332daa) chore(deps): bump github.com/moby/spdystream from 0.5.0 to 0.5.1
+ * [0d24cb786](https://github.com/kubeovn/kube-ovn/commit/0d24cb7865ffe519a80533180614daf201c3d143) revert(ha): undo cluster integrity check (#6363) for release-1.15 (#6723)
+ * [83a08f044](https://github.com/kubeovn/kube-ovn/commit/83a08f0444b5175e78dab626fafd360e1c122b37) fix: use status variable instead of hardcoded ConditionTrue in loopOvn0Check (#6719)
+ * [38e2eea31](https://github.com/kubeovn/kube-ovn/commit/38e2eea31f282097053ea31bf70961839eae0fef) fix(deps): update golang (#6710)
+ * [1aef8ea31](https://github.com/kubeovn/kube-ovn/commit/1aef8ea313f0d5d2fb8d79ea160f96805204a3c8) fix(deps): update module github.com/osrg/gobgp/v4 to v4.5.0
+ * [f712c2eb9](https://github.com/kubeovn/kube-ovn/commit/f712c2eb95df07dbfc2c5ce4b5b144df2ca36048) chore(deps): update dependency go to v1.26.3 (#6706)
+ * [c0bee1279](https://github.com/kubeovn/kube-ovn/commit/c0bee1279cccfa909cb4451777c51e0b65082e71) fix(image): rebase OVN patches for branch-25.03 ARP/ND localnet rename (#6707) (#6708)
+ * [2269b208c](https://github.com/kubeovn/kube-ovn/commit/2269b208c7a377a75aa4f1df5efe81aba403024d) fix(controller): keep VM LSP port-group memberships when a sibling pod is alive (#6666)
+ * [41c2a578d](https://github.com/kubeovn/kube-ovn/commit/41c2a578de34ae4082c8a2e68fece4d7042c12f2) fix(speaker): require NODE_NAME and inject POD_IPS in v2 chart (#6669)
+ * [43297c2e5](https://github.com/kubeovn/kube-ovn/commit/43297c2e5568e9a6883d341e1801913811a9f3e5) fix: add env NODE_NAME in spicker pod (#6664)
+ * [42b6bf3b6](https://github.com/kubeovn/kube-ovn/commit/42b6bf3b68811a3a65c741bda831ca6ebf025ab7) fix: docker timeout always (#6662)
+ * [d1f1cb2aa](https://github.com/kubeovn/kube-ovn/commit/d1f1cb2aa3cfb446006c2f51411a7e30ec75f4b7) fix(controller): serialize centralized subnet reconcile in node update path (#6627) (#6640)
+ * [e72f5edd6](https://github.com/kubeovn/kube-ovn/commit/e72f5edd683ba97c3392022c8c4e8303048be753) chore(deps): bump github.com/moby/spdystream in /test/cnp (#6639)
+ * [11a2d8985](https://github.com/kubeovn/kube-ovn/commit/11a2d898572b1d6630f4a88ba73d22bd69fa127c) prepare for next release
+
+### Contributors
+
+ * 09mulcs
+ * Andrei Kvapil
+ * Mengxin Liu
+ * Vitaly
+ * changluyi
+ * dependabot[bot]
+ * renovate[bot]
+ * zbb88888
+
 ## v1.15.10 (2026-04-10)
 
  * [a0e8fb099](https://github.com/kubeovn/kube-ovn/commit/a0e8fb099bcfd86a1be85b82bbb692c106a5142b) release v1.15.10
@@ -1185,6 +1227,42 @@
  * zbb88888
  * zhangzujian
  * 张祖建
+
+## v1.14.37 (2026-05-19)
+
+ * [25a3f9054](https://github.com/kubeovn/kube-ovn/commit/25a3f90549e680ecdd0f1ae1f417a762c18d7cd1) release v1.14.37
+ * [6c46042dc](https://github.com/kubeovn/kube-ovn/commit/6c46042dc96959555759a3a8e4f9f760bf309277) feat: backport u2o overlay only routing to release-1.14 (#6750)
+ * [aaadb8b47](https://github.com/kubeovn/kube-ovn/commit/aaadb8b477081a41fe8b2f59a67189be981b597f) feat(cni): package ipvlan plugin in kube-ovn image (#6747) (#6749)
+ * [06afff9b1](https://github.com/kubeovn/kube-ovn/commit/06afff9b16678e41fb1be79e2919db219fbd2241) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
+## v1.14.36 (2026-05-13)
+
+ * [4b05f2937](https://github.com/kubeovn/kube-ovn/commit/4b05f2937c548f2c67aaa2edcb09b0facd9f151c) release v1.14.36
+ * [3499f8788](https://github.com/kubeovn/kube-ovn/commit/3499f8788304b6511e5f59795b275a5e62920e2d) chore(deps): update go.opentelemetry.io/otel/sdk to v1.43.0
+ * [137e65432](https://github.com/kubeovn/kube-ovn/commit/137e6543245f2e8c2397226cd5086c4bbc10eb36) update golang dep
+ * [acb393262](https://github.com/kubeovn/kube-ovn/commit/acb3932624d0a8178c9b474df8098e046742704f) fix(deps): migrate resolvconf from docker/docker to containerd/nerdctl/v2
+ * [bb58bb1dc](https://github.com/kubeovn/kube-ovn/commit/bb58bb1dc4d8ebb8cf220e28cbf58cb7a4b732e9) chore: align kubectl version with release-1.15 and update go to 1.26.3
+ * [9fcd27627](https://github.com/kubeovn/kube-ovn/commit/9fcd276273d5fd71afc14c3db88680083d1af473) Block vpc deletion while SNAT, DNAT or FIP rules are using it (#6718)
+ * [d67a6166a](https://github.com/kubeovn/kube-ovn/commit/d67a6166a80c2dc4be95368d6f7b12fcc3717e2e) fix: use status variable instead of hardcoded ConditionTrue in loopOvn0Check (#6719)
+ * [f44cda9fe](https://github.com/kubeovn/kube-ovn/commit/f44cda9fefd3f1ad3a47d8ae015eb136e8f96608) fix(deps): update golang (#6608)
+ * [a1b0805b6](https://github.com/kubeovn/kube-ovn/commit/a1b0805b67d120577f7ae1d31004ce0c99ba692d) fix(deps): update module golang.org/x/sys to v0.43.0 (#6598)
+ * [95fd15a06](https://github.com/kubeovn/kube-ovn/commit/95fd15a066d819a5df9a57f2ab3d779a69337620) ci: install multus before kubevirt e2e tests (#6589)
+ * [fa4e3696b](https://github.com/kubeovn/kube-ovn/commit/fa4e3696bcfc12fbbd0e213353fa0fd0f1839d83) chore(deps): update dependency go to v1.26.2 (#6588)
+ * [c113256ce](https://github.com/kubeovn/kube-ovn/commit/c113256ce365b4eb3f9791f692adab3cc3f5fa41) fix: check northd endpoint by pod IP protocol in ovn leader checker (#6523)
+ * [1d41f933a](https://github.com/kubeovn/kube-ovn/commit/1d41f933a1ad5a39f21f36b0c1851d4fbef47cd3) prepare for next release
+
+### Contributors
+
+ * 09mulcs
+ * Mengxin Liu
+ * changluyi
+ * clyi
+ * renovate[bot]
 
 ## v1.14.35 (2026-03-23)
 

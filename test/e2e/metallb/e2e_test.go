@@ -281,7 +281,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 				gateway = append(gateway, gatewayV4)
 			}
 			for index := range 10 {
-				startIP := strings.Split(cidrV4, "/")[0]
+				startIP, _, _ := strings.Cut(cidrV4, "/")
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv4s = append(metallbVIPv4s, ip.Add(100+int64(index)).String())
 			}
@@ -294,7 +294,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 				gateway = append(gateway, gatewayV6)
 			}
 			for index := range 10 {
-				startIP := strings.Split(cidrV6, "/")[0]
+				startIP, _, _ := strings.Cut(cidrV6, "/")
 				ip, _ := ipam.NewIP(startIP)
 				metallbVIPv6s = append(metallbVIPv6s, ip.Add(100+int64(index)).String())
 			}

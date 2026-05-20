@@ -1308,3 +1308,296 @@ func TestGetStaticMac(t *testing.T) {
 	err = subnet.GetStaticMac(podName, nicName, "", false)
 	require.NoError(t, err)
 }
+
+// TestGetV4RandomAddressMacConflictRollback verifies that when a random IPv4
+// allocation fails at the GetStaticMac step (mac conflict), every internal
+// counter the allocator already touched is rolled back, so the IP is not
+// leaked and the next request can succeed.
+func TestGetV4RandomAddressMacConflictRollback(t *testing.T) {
+	subnet, err := NewSubnet("rollbackV4Subnet", "10.0.0.0/24", []string{"10.0.0.1"})
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	pool := subnet.IPPools[""]
+	require.NotNil(t, pool)
+
+	staticMac := "00:11:22:33:44:55"
+
+	// 1. allocate the mac to pod1 first so the next request will conflict
+	_, _, mac1, err := subnet.GetRandomAddress("", "pod1.default", "pod1.default", &staticMac, nil, true)
+	require.NoError(t, err)
+	require.Equal(t, staticMac, mac1)
+
+	availAfterPod1 := subnet.V4Available.Len()
+	usingAfterPod1 := subnet.V4Using.Len()
+	poolAvailAfterPod1 := pool.V4Available.Len()
+	poolUsingAfterPod1 := pool.V4Using.Len()
+
+	// 2. pod2 reuses the same mac with checkConflict=true → GetStaticMac fails
+	v4IP2, _, _, err := subnet.GetRandomAddress("", "pod2.default", "pod2.default", &staticMac, nil, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Nil(t, v4IP2)
+
+	// 3. pod2's state must be fully rolled back
+	_, hasNic := subnet.V4NicToIP["pod2.default"]
+	require.False(t, hasNic, "V4NicToIP should not contain the failed nic")
+	require.NotContains(t, subnet.PodToNicList, "pod2.default", "PodToNicList should not contain the failed pod")
+	require.NotContains(t, subnet.NicToMac, "pod2.default", "NicToMac should not contain the failed nic")
+	for ip, owner := range subnet.V4IPToPod {
+		require.NotEqual(t, "pod2.default", owner, "V4IPToPod must not retain a stale entry for pod2, leaked ip=%s", ip)
+	}
+
+	// the available/using counters must match the pod1-only baseline (the
+	// rolled-back IP goes back to V4Available and pool.V4Released)
+	require.Equal(t, availAfterPod1, subnet.V4Available.Len(), "subnet V4Available leaked")
+	require.Equal(t, usingAfterPod1, subnet.V4Using.Len(), "subnet V4Using leaked")
+	require.Equal(t, poolAvailAfterPod1, pool.V4Available.Len(), "pool V4Available leaked")
+	require.Equal(t, poolUsingAfterPod1, pool.V4Using.Len(), "pool V4Using leaked")
+
+	// 4. retry with a different mac must succeed — the previously leaked IP
+	// must be reachable through the released pool
+	differentMac := "00:11:22:33:44:66"
+	v4IP3, _, mac3, err := subnet.GetRandomAddress("", "pod2.default", "pod2.default", &differentMac, nil, true)
+	require.NoError(t, err)
+	require.NotNil(t, v4IP3)
+	require.Equal(t, differentMac, mac3)
+}
+
+// TestGetV6RandomAddressMacConflictRollback mirrors the IPv4 test for the v6
+// path.
+func TestGetV6RandomAddressMacConflictRollback(t *testing.T) {
+	subnet, err := NewSubnet("rollbackV6Subnet", "2001:db8::/120", []string{"2001:db8::1"})
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	pool := subnet.IPPools[""]
+	require.NotNil(t, pool)
+
+	staticMac := "00:11:22:33:44:77"
+
+	_, _, _, err = subnet.GetRandomAddress("", "pod1.default", "pod1.default", &staticMac, nil, true)
+	require.NoError(t, err)
+
+	availAfterPod1 := subnet.V6Available.Len()
+	usingAfterPod1 := subnet.V6Using.Len()
+	poolUsingAfterPod1 := pool.V6Using.Len()
+
+	_, v6IP2, _, err := subnet.GetRandomAddress("", "pod2.default", "pod2.default", &staticMac, nil, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Nil(t, v6IP2)
+
+	_, hasNic := subnet.V6NicToIP["pod2.default"]
+	require.False(t, hasNic, "V6NicToIP should not retain the failed nic")
+	require.NotContains(t, subnet.PodToNicList, "pod2.default")
+	for ip, owner := range subnet.V6IPToPod {
+		require.NotEqual(t, "pod2.default", owner, "V6IPToPod must not retain a stale entry, leaked ip=%s", ip)
+	}
+
+	require.Equal(t, availAfterPod1, subnet.V6Available.Len(), "subnet V6Available leaked")
+	require.Equal(t, usingAfterPod1, subnet.V6Using.Len(), "subnet V6Using leaked")
+	require.Equal(t, poolUsingAfterPod1, pool.V6Using.Len(), "pool V6Using leaked")
+}
+
+// TestGetDualRandomAddressPreservesExistingV4WhenV6Fails covers the
+// dual-stack retry case where the IPv4 half is already cached on the nic.
+// When the v6 step then fails (e.g. pool exhausted), rollback must NOT
+// tear down the pre-existing IPv4 lease — only counters this call
+// actually mutated may be undone.
+func TestGetDualRandomAddressPreservesExistingV4WhenV6Fails(t *testing.T) {
+	// /127 has 2 v6 addresses; exclude both so the v6 pool is empty and
+	// any v6 allocation will fail with ErrNoAvailable.
+	subnet, err := NewSubnet(
+		"preserveExistingV4Subnet",
+		"10.0.0.0/24,2001:db8::/127",
+		[]string{"10.0.0.1", "2001:db8::", "2001:db8::1"},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	staticV4, err := NewIP("10.0.0.5")
+	require.NoError(t, err)
+	staticMac := "00:11:22:33:44:99"
+
+	// seed pod1 with a v4-only static lease — this mimics a prior
+	// allocation that succeeded for the v4 half only.
+	gotV4, gotMac, err := subnet.GetStaticAddress(podName, nicName, staticV4, &staticMac, false, true)
+	require.NoError(t, err)
+	require.Equal(t, staticV4.String(), gotV4.String())
+	require.Equal(t, staticMac, gotMac)
+	require.Equal(t, staticV4.String(), subnet.V4NicToIP[nicName].String())
+	require.Nil(t, subnet.V6NicToIP[nicName])
+
+	availBefore := subnet.V4Available.Len()
+	usingBefore := subnet.V4Using.Len()
+
+	// dual-stack request on the same nic: v4 fast-path returns the
+	// existing lease, v6 has nothing to allocate and must fail.
+	v4IP, v6IP, _, err := subnet.GetRandomAddress("", podName, nicName, &staticMac, nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
+	require.Nil(t, v4IP)
+	require.Nil(t, v6IP)
+
+	// pod1's pre-existing v4 lease and MAC mapping must be intact
+	require.Equal(t, staticV4.String(), subnet.V4NicToIP[nicName].String(), "v4 lease was wrongly revoked")
+	require.Equal(t, staticMac, subnet.NicToMac[nicName], "MAC mapping was wrongly revoked")
+	require.Equal(t, podName, subnet.V4IPToPod[staticV4.String()])
+	require.Equal(t, podName, subnet.MacToPod[staticMac])
+	require.Contains(t, subnet.PodToNicList, podName)
+	// counters must not have moved since the v4 fast-path never mutated them
+	require.Equal(t, availBefore, subnet.V4Available.Len(), "V4Available was disturbed by a no-op fast-path")
+	require.Equal(t, usingBefore, subnet.V4Using.Len(), "V4Using was disturbed by a no-op fast-path")
+}
+
+// TestGetV4RandomAddressMacConflictPreservesV6 covers the dual-stack case
+// where the nic already has a v6 lease and a fresh v4 allocation fails on
+// the static-MAC conflict check. The newly-allocated v4 state must be
+// torn down but the unrelated v6 lease must stay put.
+func TestGetV4RandomAddressMacConflictPreservesV6(t *testing.T) {
+	subnet, err := NewSubnet(
+		"preserveV6OnV4FailureSubnet",
+		"10.0.0.0/24,2001:db8::/120",
+		[]string{"10.0.0.1", "2001:db8::1"},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+
+	// pod0 owns the mac that pod1 will collide on
+	conflictMac := "00:11:22:33:44:aa"
+	_, _, _, err = subnet.GetRandomAddress("", "pod0.default", "pod0.default", &conflictMac, nil, true)
+	require.NoError(t, err)
+
+	// pod1 already has a v6-only lease and a different MAC on the nic
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	staticV6, err := NewIP("2001:db8::5")
+	require.NoError(t, err)
+	pod1Mac := "00:11:22:33:44:bb"
+	gotV6, _, err := subnet.GetStaticAddress(podName, nicName, staticV6, &pod1Mac, false, true)
+	require.NoError(t, err)
+	require.Equal(t, staticV6.String(), gotV6.String())
+	require.Equal(t, staticV6.String(), subnet.V6NicToIP[nicName].String())
+	require.Nil(t, subnet.V4NicToIP[nicName])
+
+	// dual-stack request on the same nic, but request pod0's mac so the
+	// v4 step's GetStaticMac fails with ErrConflict.
+	v4IP, v6IP, _, err := subnet.GetRandomAddress("", podName, nicName, &conflictMac, nil, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Nil(t, v4IP)
+	require.Nil(t, v6IP)
+
+	// pod1's pre-existing v6 lease and MAC must survive
+	require.Equal(t, staticV6.String(), subnet.V6NicToIP[nicName].String(), "v6 lease was wrongly revoked")
+	require.Equal(t, pod1Mac, subnet.NicToMac[nicName], "pod1's MAC was wrongly revoked")
+	require.Equal(t, podName, subnet.V6IPToPod[staticV6.String()])
+	require.Equal(t, podName, subnet.MacToPod[pod1Mac])
+	// no leaked v4 state for pod1
+	_, hasV4 := subnet.V4NicToIP[nicName]
+	require.False(t, hasV4, "V4NicToIP must not retain a stale entry")
+	for ip, owner := range subnet.V4IPToPod {
+		require.NotEqual(t, podName, owner, "V4IPToPod leaked ip=%s", ip)
+	}
+}
+
+// TestGetV6RandomAddressMacConflictPreservesV4 is the IPv6 mirror of the
+// previous test: the nic already has a v4 lease and the v6 allocation
+// fails on MAC conflict. The v4 lease must be left untouched.
+func TestGetV6RandomAddressMacConflictPreservesV4(t *testing.T) {
+	subnet, err := NewSubnet(
+		"preserveV4OnV6FailureSubnet",
+		"10.0.0.0/24,2001:db8::/120",
+		[]string{"10.0.0.1", "2001:db8::1"},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+
+	conflictMac := "00:11:22:33:44:cc"
+	_, _, _, err = subnet.GetRandomAddress("", "pod0.default", "pod0.default", &conflictMac, nil, true)
+	require.NoError(t, err)
+
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	staticV4, err := NewIP("10.0.0.5")
+	require.NoError(t, err)
+	pod1Mac := "00:11:22:33:44:dd"
+	gotV4, _, err := subnet.GetStaticAddress(podName, nicName, staticV4, &pod1Mac, false, true)
+	require.NoError(t, err)
+	require.Equal(t, staticV4.String(), gotV4.String())
+	require.Equal(t, staticV4.String(), subnet.V4NicToIP[nicName].String())
+	require.Nil(t, subnet.V6NicToIP[nicName])
+
+	// dual-stack request: v4 fast-path returns the existing lease, then
+	// v6 allocation fails the static MAC check on the conflicting mac.
+	v4IP, v6IP, _, err := subnet.GetRandomAddress("", podName, nicName, &conflictMac, nil, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Nil(t, v4IP)
+	require.Nil(t, v6IP)
+
+	// pod1's v4 lease and MAC must survive
+	require.Equal(t, staticV4.String(), subnet.V4NicToIP[nicName].String(), "v4 lease was wrongly revoked")
+	require.Equal(t, pod1Mac, subnet.NicToMac[nicName], "pod1's MAC was wrongly revoked")
+	require.Equal(t, podName, subnet.V4IPToPod[staticV4.String()])
+	require.Equal(t, podName, subnet.MacToPod[pod1Mac])
+	_, hasV6 := subnet.V6NicToIP[nicName]
+	require.False(t, hasV6, "V6NicToIP must not retain a stale entry")
+	for ip, owner := range subnet.V6IPToPod {
+		require.NotEqual(t, podName, owner, "V6IPToPod leaked ip=%s", ip)
+	}
+}
+
+// TestGetDualRandomAddressV6FailureRollsBackV4 verifies that when the IPv6
+// half of a dual-stack random allocation fails after the IPv4 half already
+// succeeded, the IPv4 allocation is rolled back too — otherwise the v4
+// pool would slowly leak every time the v6 step errors out.
+//
+// We trigger this by sizing the v6 range so it is empty by the time the
+// second dual-stack request runs; the v6 path returns ErrNoAvailable while
+// the v4 path has already mutated its counters.
+func TestGetDualRandomAddressV6FailureRollsBackV4(t *testing.T) {
+	// 2001:db8::/126 has 4 addresses; we exclude all but one so that
+	// pod1's allocation drains the v6 pool and pod2's v6 step must fail.
+	subnet, err := NewSubnet(
+		"rollbackDualSubnet",
+		"10.0.0.0/24,2001:db8::/126",
+		[]string{"10.0.0.1", "2001:db8::", "2001:db8::1", "2001:db8::3"},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	pool := subnet.IPPools[""]
+	require.NotNil(t, pool)
+
+	// pod1 takes the only remaining v6 IP — no mac to keep this isolated
+	// from the mac-conflict logic.
+	v4Pod1, v6Pod1, _, err := subnet.GetRandomAddress("", "pod1.default", "pod1.default", nil, nil, true)
+	require.NoError(t, err)
+	require.NotNil(t, v4Pod1)
+	require.NotNil(t, v6Pod1)
+
+	v4AvailAfterPod1 := subnet.V4Available.Len()
+	v4UsingAfterPod1 := subnet.V4Using.Len()
+	poolV4UsingAfterPod1 := pool.V4Using.Len()
+	poolV4AvailAfterPod1 := pool.V4Available.Len()
+
+	// pod2 dual-stack request: v4 still has space, v6 pool is empty →
+	// getV6RandomAddress returns ErrNoAvailable after getV4RandomAddress
+	// already mutated the v4 counters.
+	v4IP, v6IP, _, err := subnet.GetRandomAddress("", "pod2.default", "pod2.default", nil, nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
+	require.Nil(t, v4IP)
+	require.Nil(t, v6IP)
+
+	// pod2's v4 half must have been rolled back too
+	_, hasV4 := subnet.V4NicToIP["pod2.default"]
+	require.False(t, hasV4, "V4NicToIP must be cleared when the v6 half fails")
+	_, hasV6 := subnet.V6NicToIP["pod2.default"]
+	require.False(t, hasV6, "V6NicToIP must be cleared when the v6 half fails")
+	require.NotContains(t, subnet.PodToNicList, "pod2.default")
+	for ip, owner := range subnet.V4IPToPod {
+		require.NotEqual(t, "pod2.default", owner, "V4IPToPod leaked, ip=%s", ip)
+	}
+
+	// v4 counters should only reflect pod1, not pod2
+	require.Equal(t, v4AvailAfterPod1, subnet.V4Available.Len(), "subnet V4Available leaked across dual-stack failure")
+	require.Equal(t, v4UsingAfterPod1, subnet.V4Using.Len(), "subnet V4Using leaked across dual-stack failure")
+	require.Equal(t, poolV4UsingAfterPod1, pool.V4Using.Len(), "pool V4Using leaked across dual-stack failure")
+	require.Equal(t, poolV4AvailAfterPod1, pool.V4Available.Len(), "pool V4Available leaked across dual-stack failure")
+}

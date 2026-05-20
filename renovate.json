@@ -80,6 +80,12 @@
         "github.com/kubeovn/**"
       ],
       "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "sigs.k8s.io/network-policy-api"
+      ],
+      "enabled": false
     }
   ]
 }

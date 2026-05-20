@@ -274,6 +274,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		klog.Error(err)
 		return nil, err
 	}
+	defer podNS.Close()
 	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, gwCheckMode, u2oInterconnectionIP)
 	if err != nil {
 		klog.Error(err)
@@ -665,7 +666,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxR
 		return fmt.Errorf("the count of ip addresses and gateways mismatch: ips %q, gateways %q", ipAddr, gateway)
 	}
 	for i, gw := range gws {
-		src := strings.Split(ips[i], "/")[0]
+		src, _, _ := strings.Cut(ips[i], "/")
 		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
@@ -1132,6 +1133,7 @@ func (c *Controller) loopOvnExt0Check() {
 			return
 		}
 	}
+	defer gwNS.Close()
 	nodeExtIP := cachedEip.Spec.V4Ip
 	ipAddr, err := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
@@ -1878,6 +1880,7 @@ func (csh cniServerHandler) removeDefaultRoute(netns string, ipv4, ipv6 bool) er
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %w", netns, err)
 	}
+	defer podNS.Close()
 
 	return ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		if ipv4 {
