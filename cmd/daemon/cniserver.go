@@ -87,6 +87,12 @@ func main() {
 	nodeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.FieldSelector = "metadata.name=" + config.NodeName
+			listOption.AllowWatchBookmarks = true
+		}))
+	serviceInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTransform(util.TrimManagedFields),
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0,
@@ -104,7 +110,7 @@ func main() {
 		kubeinformers.WithNamespace(os.Getenv(util.EnvPodNamespace)),
 	)
 
-	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, caSecretInformerFactory, kubeovnInformerFactory)
+	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, serviceInformerFactory, caSecretInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}

@@ -105,7 +105,7 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 // NewController init a daemon controller
 func NewController(config *Configuration,
 	stopCh <-chan struct{},
-	podInformerFactory, nodeInformerFactory, caSecretInformerFactory informers.SharedInformerFactory,
+	podInformerFactory, nodeInformerFactory, serviceInformerFactory, caSecretInformerFactory informers.SharedInformerFactory,
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -118,7 +118,7 @@ func NewController(config *Configuration,
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
-	servicesInformer := nodeInformerFactory.Core().V1().Services()
+	servicesInformer := serviceInformerFactory.Core().V1().Services()
 	caSecretInformer := caSecretInformerFactory.Core().V1().Secrets()
 
 	controller := &Controller{
@@ -180,6 +180,7 @@ func NewController(config *Configuration,
 
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)
+	serviceInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 	caSecretInformerFactory.Start(stopCh)
 	controller.StartServiceCIDRInformerFactory(stopCh)
