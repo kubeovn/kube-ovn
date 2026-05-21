@@ -7,7 +7,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cert-manager/cert-manager v1.20.2
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
-	github.com/containerd/containerd/v2 v2.3.0
+	github.com/containerd/containerd/v2 v2.3.1
 	github.com/containerd/nerdctl/v2 v2.3.0
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.1
@@ -95,7 +95,7 @@ require (
 	github.com/chai2010/gettext-go v1.0.3 // indirect
 	github.com/container-storage-interface/spec v1.12.0 // indirect
 	github.com/containerd/cgroups/v3 v3.1.3 // indirect
-	github.com/containerd/containerd/api v1.11.0 // indirect
+	github.com/containerd/containerd/api v1.11.1 // indirect
 	github.com/containerd/continuity v0.5.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
