@@ -643,7 +643,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxR
 		return fmt.Errorf("the count of ip addresses and gateways mismatch: ips %q, gateways %q", ipAddr, gateway)
 	}
 	for i, gw := range gws {
-		src := strings.Split(ips[i], "/")[0]
+		src, _, _ := strings.Cut(ips[i], "/")
 		if preferARP && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
 			mac, count, err := util.ArpResolve(nic, gw, time.Second, maxRetry, done)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))

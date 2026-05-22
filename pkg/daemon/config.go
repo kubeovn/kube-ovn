@@ -308,7 +308,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			}
 
 			// exclude link-local and loopback addresses
-			ipStr := strings.Split(addr.String(), "/")[0]
+			ipStr, _, _ := strings.Cut(addr.String(), "/")
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
 				continue
 			}
