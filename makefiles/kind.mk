@@ -516,7 +516,8 @@ kind-install-metallb:
 		--version $(METALLB_VERSION:v%=%) \
 		--namespace metallb-system \
 		--create-namespace \
-		--set speaker.frr.image.tag=$(FRR_VERSION)
+		--set speaker.frr.image.tag=$(FRR_VERSION) \
+		--set frr-k8s.prometheus.serviceMonitor.enabled=false
 	$(call kubectl_wait_exist_and_ready,metallb-system,deployment,metallb-controller)
 	$(call kubectl_wait_exist,metallb-system,secret,metallb-memberlist)
 	$(call kubectl_wait_exist,metallb-system,daemonset,metallb-speaker)
