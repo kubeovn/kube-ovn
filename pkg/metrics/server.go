@@ -115,7 +115,7 @@ func ServeWithListener(ctx context.Context, config *rest.Config, listener net.Li
 
 	mux.Handle("/metrics", metricsHandler)
 	mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
-	mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
+	mux.HandleFunc("/livez", util.LivezHandler)
 	mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
 	if withPprof {
 		pprofHandlers := map[string]http.Handler{

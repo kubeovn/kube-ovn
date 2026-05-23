@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,6 +24,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
+
+const cniLivezDialTimeout = 2 * time.Second
 
 func main() {
 	defer klog.Flush()
@@ -129,6 +133,16 @@ func main() {
 		}
 	}
 
+	// Bind the CNI unix socket synchronously before the health server
+	// starts so that the liveness probe (registered below) cannot
+	// produce a false negative during startup.
+	cniListener, cniCleanup, err := daemon.NewCNIListener(config)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to listen on %s", config.BindSocket)
+	}
+	defer cniCleanup()
+	util.RegisterLivezProbe(cniSocketProbe(config.BindSocket))
+
 	servePprofInMetricsServer := config.EnableMetrics && slices.Contains(addrs, "0.0.0.0")
 	metrics.StartPprofServerIfNeeded(ctx, config.EnablePprof, servePprofInMetricsServer, "127.0.0.1", int(config.PprofPort))
 	if config.EnableMetrics {
@@ -138,9 +152,25 @@ func main() {
 
 	klog.Info("start daemon controller")
 	go ctl.Run(stopCh)
-	go daemon.RunServer(config, ctl)
+	go daemon.RunCNIServer(config, ctl, cniListener)
 
 	<-stopCh
+}
+
+// cniSocketProbe returns a liveness probe that dials the CNI unix
+// socket with a short timeout. It catches the failure mode reported
+// in issue #6775: the socket file disappearing (bash EXIT trap or
+// external cleanup of /run/openvswitch) while the daemon process
+// keeps a stale listener fd. A connect+close also detects a hung
+// accept queue, which a simple os.Stat would not.
+func cniSocketProbe(socket string) func() error {
+	return func() error {
+		conn, err := net.DialTimeout("unix", socket, cniLivezDialTimeout)
+		if err != nil {
+			return fmt.Errorf("dial cni socket %q: %w", socket, err)
+		}
+		return conn.Close()
+	}
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
