@@ -32,13 +32,16 @@ func DefaultHealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 
 // LivezHandler responds to /livez requests. When a probe has been
 // installed via RegisterLivezProbe it is invoked on every request; a
-// non-nil error becomes an HTTP 503. Otherwise the behaviour matches
-// DefaultHealthCheckHandler.
+// non-nil error becomes an HTTP 503 with a generic body, and the
+// detailed error is logged. Otherwise the behaviour matches
+// DefaultHealthCheckHandler. The generic body avoids leaking internal
+// details (e.g. filesystem paths) to unauthenticated callers, since
+// /livez is exempt from the metrics-server auth filter.
 func LivezHandler(w http.ResponseWriter, r *http.Request) {
 	if p := livezProbe.Load(); p != nil {
 		if err := (*p)(); err != nil {
 			klog.Warningf("liveness probe failed: %v", err)
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			http.Error(w, "probe failed", http.StatusServiceUnavailable)
 			return
 		}
 	}

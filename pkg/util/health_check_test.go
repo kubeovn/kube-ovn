@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -39,8 +40,8 @@ func TestLivezHandlerProbeHealthy(t *testing.T) {
 }
 
 func TestLivezHandlerProbeFailing(t *testing.T) {
-	probeErr := errors.New("socket unreachable")
-	RegisterLivezProbe(func() error { return probeErr })
+	const secret = "socket-/run/openvswitch/secret.sock-unreachable"
+	RegisterLivezProbe(func() error { return errors.New(secret) })
 	t.Cleanup(func() { RegisterLivezProbe(nil) })
 
 	req := httptest.NewRequest(http.MethodGet, "/livez", nil)
@@ -49,6 +50,10 @@ func TestLivezHandlerProbeFailing(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status 503, got %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if strings.Contains(string(body), secret) {
+		t.Fatalf("response body leaked probe error: %q", string(body))
 	}
 }
 
