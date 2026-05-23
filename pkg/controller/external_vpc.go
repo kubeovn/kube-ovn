@@ -61,10 +61,10 @@ func (c *Controller) syncExternalVpc() {
 				return
 			}
 
+			vpc.Status.Subnets = []string{}
 			for _, logicalSwitch := range logicalRouter.LogicalSwitches {
 				vpc.Status.Subnets = append(vpc.Status.Subnets, logicalSwitch.Name)
 			}
-			vpc.Status.Subnets = []string{}
 			vpc.Status.DefaultLogicalSwitch = ""
 			vpc.Status.Router = routerName
 			vpc.Status.Standby = true
@@ -115,24 +115,30 @@ func (c *Controller) getNonKubeovnRouterStatus() (logicalRouters map[string]util
 			peerPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 				return len(lsp.Options) != 0 && lsp.Options["router-port"] == port.Name
 			})
-			if err != nil || len(peerPorts) > 1 {
-				klog.Errorf("failed to list peer port of %s, %v", port, err)
+			if err != nil {
+				klog.Errorf("failed to list peer port of %s: %v", port.Name, err)
 				continue
 			}
 			if len(peerPorts) == 0 {
+				continue
+			}
+			if len(peerPorts) > 1 {
+				klog.Errorf("expected at most one peer port for %s, got %d", port.Name, len(peerPorts))
 				continue
 			}
 			lsp := peerPorts[0]
 			switches, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 				return slices.Contains(ls.Ports, lsp.UUID)
 			})
-			if err != nil || len(switches) > 1 {
-				klog.Errorf("failed to get logical switch of LSP %s: %v", lsp.Name, err)
+			if err != nil {
+				klog.Errorf("failed to list logical switch of LSP %s: %v", lsp.Name, err)
 				continue
 			}
-			var aLogicalSwitch util.LogicalSwitch
-			aLogicalSwitch.Name = switches[0].Name
-			tmpRouter.LogicalSwitches = append(tmpRouter.LogicalSwitches, aLogicalSwitch)
+			if len(switches) != 1 {
+				klog.Warningf("expected exactly one logical switch for LSP %s, got %d", lsp.Name, len(switches))
+				continue
+			}
+			tmpRouter.LogicalSwitches = append(tmpRouter.LogicalSwitches, util.LogicalSwitch{Name: switches[0].Name})
 		}
 		logicalRouters[routerName] = tmpRouter
 	}
