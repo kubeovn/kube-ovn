@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,19 +19,24 @@ const (
 	responseLogFormat = "[%s] Outgoing response %s %s with %d status code in %vms"
 )
 
-// RunServer runs the cniserver
-func RunServer(config *Configuration, controller *Controller) {
+// NewCNIListener binds the unix socket synchronously and returns the
+// listener plus a cleanup that removes the socket file. Binding before
+// the health server starts lets the liveness probe dial the socket
+// without racing the daemon's own startup.
+func NewCNIListener(config *Configuration) (net.Listener, func(), error) {
+	return listen(config.BindSocket)
+}
+
+// RunCNIServer serves CNI requests on the supplied listener. The
+// listener must come from NewCNIListener so that bind has completed
+// before the caller starts announcing readiness.
+func RunCNIServer(config *Configuration, controller *Controller, listener net.Listener) {
 	nodeName = config.NodeName
 	csh := createCniServerHandler(config, controller)
 	server := http.Server{
 		Handler:           createHandler(csh),
 		ReadHeaderTimeout: 3 * time.Second,
 	}
-	listener, cleanFunc, err := listen(config.BindSocket)
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to listen on %s", config.BindSocket)
-	}
-	defer cleanFunc()
 	klog.Infof("start listen on %s", config.BindSocket)
 	util.LogFatalAndExit(server.Serve(listener), "failed to serve on %s", config.BindSocket)
 }
