@@ -105,6 +105,7 @@ e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	$(GINKGO_E2E_BUILD) ./test/e2e/anp-domain
 	$(GINKGO_E2E_BUILD) ./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/single-replica
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -250,6 +251,14 @@ kube-ovn-ha-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/ha/ha.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-single-replica-e2e
+kube-ovn-single-replica-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/single-replica
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/single-replica/single-replica.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:

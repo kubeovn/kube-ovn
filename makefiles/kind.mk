@@ -285,6 +285,10 @@ kind-install-ipv6:
 kind-install-dual:
 	@DUAL_STACK=true $(MAKE) kind-install
 
+.PHONY: kind-install-single-replica
+kind-install-single-replica:
+	@ENABLE_SINGLE_REPLICA_OVN=true OVN_CENTRAL_STORAGE_CLASS=standard $(MAKE) kind-install
+
 .PHONY: kind-install-overlay
 kind-install-overlay: kind-install-overlay-ipv4
 
