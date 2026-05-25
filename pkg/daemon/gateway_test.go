@@ -59,13 +59,3 @@ func TestGetCidrByProtocol(t *testing.T) {
 		})
 	}
 }
-
-func TestSetIptablesSkipsInNonPrimaryCNIMode(t *testing.T) {
-	c := &Controller{
-		config: &Configuration{
-			EnableNonPrimaryCNI: true,
-		},
-	}
-
-	require.NoError(t, c.setIptables())
-}

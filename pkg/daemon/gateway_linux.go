@@ -622,14 +622,6 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 }
 
 func (c *Controller) setIptables() error {
-	if c.config.EnableNonPrimaryCNI {
-		if err := c.cleanupIptablesInNonPrimaryCNIMode(); err != nil {
-			return err
-		}
-		klog.V(3).Infoln("running in non-primary CNI mode, cleaned and skipped iptables configuration")
-		return nil
-	}
-
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
