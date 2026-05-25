@@ -69,6 +69,14 @@ OVN_CENTRAL_PVC_SIZE=${OVN_CENTRAL_PVC_SIZE:-10Gi}
 # pick one that supports cross-node attach (NFS-CSI, Ceph RBD, cloud EBS, ...).
 OVN_CENTRAL_STORAGE_CLASS=${OVN_CENTRAL_STORAGE_CLASS:-}
 
+# Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
+# only reachable from inside the cluster. Switch to LoadBalancer (or NodePort)
+# to expose the OVN DB to data-plane components running outside the
+# management cluster (e.g. Kamaji-style separated control/data planes).
+OVN_CENTRAL_SERVICE_TYPE=${OVN_CENTRAL_SERVICE_TYPE:-ClusterIP}
+OVN_CENTRAL_LB_IP=${OVN_CENTRAL_LB_IP:-}
+OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY=${OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY:-}
+
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
   PROBE_HTTP_SCHEME="HTTPS"
@@ -312,6 +320,16 @@ else
           hostPath:
             path: /etc/origin/ovn"
   OVN_CENTRAL_PVC_BLOCK=""
+fi
+
+# Optional LoadBalancer / NodePort tweaks for the three ovn-central Services.
+OVN_CENTRAL_LB_BLOCK=""
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -n "$OVN_CENTRAL_LB_IP" ]; then
+  OVN_CENTRAL_LB_BLOCK="  loadBalancerIP: \"$OVN_CENTRAL_LB_IP\""
+fi
+OVN_CENTRAL_ETP_BLOCK=""
+if { [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] || [ "$OVN_CENTRAL_SERVICE_TYPE" = "NodePort" ]; } && [ -n "$OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY" ]; then
+  OVN_CENTRAL_ETP_BLOCK="  externalTrafficPolicy: $OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY"
 fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
@@ -7194,7 +7212,9 @@ spec:
       protocol: TCP
       port: 6641
       targetPort: 6641
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
@@ -7213,7 +7233,9 @@ spec:
       protocol: TCP
       port: 6642
       targetPort: 6642
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
@@ -7232,7 +7254,9 @@ spec:
       protocol: TCP
       port: 6643
       targetPort: 6643
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central

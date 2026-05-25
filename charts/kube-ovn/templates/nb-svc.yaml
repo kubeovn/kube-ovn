@@ -1,3 +1,4 @@
+{{- $svc := index .Values "ovn-central" "service" }}
 kind: Service
 apiVersion: v1
 metadata:
@@ -9,7 +10,13 @@ spec:
       protocol: TCP
       port: 6641
       targetPort: 6641
-  type: ClusterIP
+  type: {{ $svc.type | default "ClusterIP" }}
+  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
+  {{- end }}
+  {{- if and (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+  {{- end }}
   {{- if eq .Values.networking.NET_STACK "dual_stack" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}

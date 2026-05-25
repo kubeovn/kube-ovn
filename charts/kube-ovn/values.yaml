@@ -179,6 +179,18 @@ ovn-central:
     size: 10Gi
     accessModes:
       - ReadWriteOnce
+  # Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
+  # only reachable from inside the cluster. Switch to LoadBalancer (or
+  # NodePort) to expose the OVN DB to data-plane components running outside
+  # the management cluster — for example a Kamaji-style topology where
+  # ovn-controller / kube-ovn-cni / kube-ovn-controller run in a separate
+  # tenant cluster and connect back over a stable VIP.
+  service:
+    type: ClusterIP
+    # Optional, only honoured when type=LoadBalancer; provider-dependent.
+    loadBalancerIP: ""
+    # Optional, only honoured when type=LoadBalancer / NodePort.
+    externalTrafficPolicy: ""
 ovs-ovn:
   updateStrategy:
     type: ""  # Override the DaemonSet update strategy. Leave empty to auto-detect based on the deployed version.

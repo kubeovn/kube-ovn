@@ -96,6 +96,71 @@ support **fencing** — otherwise the volume will stay attached to the dead node
 and the new pod will hang in `ContainerCreating` until Kubernetes force-detaches
 (typically 6+ minutes).
 
+## Exposing the OVN DB to data planes outside the cluster
+
+In a Kamaji-style topology the kube-ovn control plane (apiserver controllers,
+`ovn-central`) runs in a *management* cluster while `ovn-controller`,
+`kube-ovn-cni` and `kube-ovn-controller` run in one or more *tenant* clusters.
+The tenant components cannot reach a `ClusterIP` Service of the management
+cluster, so the `ovn-nb` / `ovn-sb` / `ovn-northd` Services need to be exposed
+via `LoadBalancer` (or `NodePort`).
+
+Single-replica mode is a prerequisite: with a stable, non-elected single backend
+the LoadBalancer always has exactly one healthy endpoint and there is no leader
+flapping when the LB does its own health checks.
+
+### Helm
+
+```yaml
+# values.yaml on the management cluster
+OVN_CENTRAL_MODE: single
+
+ovn-central:
+  storage:
+    enabled: true
+    storageClassName: my-csi
+    size: 10Gi
+  service:
+    type: LoadBalancer
+    loadBalancerIP: 10.99.99.99       # provider-dependent; omit to let LB pick
+    externalTrafficPolicy: Local      # optional; preserves source IPs
+```
+
+### install.sh
+
+```bash
+ENABLE_SINGLE_REPLICA_OVN=true \
+  OVN_CENTRAL_STORAGE_CLASS=my-csi \
+  OVN_CENTRAL_SERVICE_TYPE=LoadBalancer \
+  OVN_CENTRAL_LB_IP=10.99.99.99 \
+  OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY=Local \
+  bash dist/images/install.sh
+```
+
+### Wiring tenant clusters
+
+The tenant data plane deploys only `ovs-ovn` / `kube-ovn-cni` /
+`kube-ovn-controller` (not `ovn-central`) and is told where to connect via
+`OVN_DB_IPS`:
+
+```yaml
+# data-plane values (or chart fork) — pseudo-config
+OVN_DB_IPS: 10.99.99.99      # the LoadBalancer VIP from above
+```
+
+The startup scripts already handle a single-entry `OVN_DB_IPS` correctly,
+producing `tcp:[10.99.99.99]:6641` / `:6642` connection strings.
+
+> **Security note.** Exposing OVN DB over plain TCP outside the cluster is
+> usually unacceptable. Enable SSL (`networking.ENABLE_SSL=true`) and
+> distribute the OVN certs to the tenant clusters before pointing them at
+> the LB; the existing kube-ovn SSL machinery covers everything once the
+> certs are in place.
+
+A full Kamaji integration also needs a "data-plane only" rendering of the
+chart that skips `ovn-central` and its PVC — that's tracked separately and
+not part of this change.
+
 ## Backup and restore
 
 Take a hot backup of the standalone DB at any time:
