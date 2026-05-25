@@ -59,6 +59,16 @@ OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
 
+# Single-replica ovn-central mode: deploy a single Deployment-managed pod with
+# OVN DB stored on a PVC, so the pod can drift to another node on host failure.
+# When enabled, NODE_IPS/OVN_DB_IPS are passed empty so clients fall back to the
+# ovn-nb / ovn-sb Service ClusterIPs auto-injected via OVN_*_SERVICE_HOST.
+ENABLE_SINGLE_REPLICA_OVN=${ENABLE_SINGLE_REPLICA_OVN:-false}
+OVN_CENTRAL_PVC_SIZE=${OVN_CENTRAL_PVC_SIZE:-10Gi}
+# Empty means use the cluster's default StorageClass. For real cross-node drift
+# pick one that supports cross-node attach (NFS-CSI, Ceph RBD, cloud EBS, ...).
+OVN_CENTRAL_STORAGE_CLASS=${OVN_CENTRAL_STORAGE_CLASS:-}
+
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
   PROBE_HTTP_SCHEME="HTTPS"
@@ -245,7 +255,64 @@ echo ""
 echo "[Step 2/6] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',' | sed 's/,$//')
 count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
-echo "Install OVN DB in $addresses"
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  # In single-replica mode the OVN DB lives on a PVC, so NODE_IPS/OVN_DB_IPS
+  # must be empty (clients use the Service ClusterIPs) and the Deployment runs
+  # exactly one pod.
+  addresses=""
+  count=1
+  echo "Install ovn-central as a single-replica Deployment backed by PVC ovn-central-data"
+else
+  echo "Install OVN DB in $addresses"
+fi
+
+# Pre-compute the YAML fragments that differ between cluster and single mode.
+# These are injected into the ovn.yaml HEREDOC below via ${VAR} expansion.
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  OVN_NB_LEADER_SELECTOR=""
+  OVN_SB_LEADER_SELECTOR=""
+  OVN_NORTHD_LEADER_SELECTOR=""
+  OVN_CENTRAL_STRATEGY_BODY="    type: Recreate"
+  OVN_CENTRAL_AFFINITY_BLOCK=""
+  OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
+          persistentVolumeClaim:
+            claimName: ovn-central-data"
+  OVN_CENTRAL_PVC_BLOCK="---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ovn-central-data
+  namespace: kube-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: ${OVN_CENTRAL_PVC_SIZE}"
+  if [ -n "${OVN_CENTRAL_STORAGE_CLASS}" ]; then
+    OVN_CENTRAL_PVC_BLOCK="${OVN_CENTRAL_PVC_BLOCK}
+  storageClassName: \"${OVN_CENTRAL_STORAGE_CLASS}\""
+  fi
+else
+  OVN_NB_LEADER_SELECTOR='    ovn-nb-leader: "true"'
+  OVN_SB_LEADER_SELECTOR='    ovn-sb-leader: "true"'
+  OVN_NORTHD_LEADER_SELECTOR='    ovn-northd-leader: "true"'
+  OVN_CENTRAL_STRATEGY_BODY="    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate"
+  OVN_CENTRAL_AFFINITY_BLOCK="      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-central
+              topologyKey: kubernetes.io/hostname"
+  OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn"
+  OVN_CENTRAL_PVC_BLOCK=""
+fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
 cat <<'EOF' > kube-ovn-crd.yaml
@@ -7114,6 +7181,7 @@ kubectl apply -f kube-ovn-cni-sa.yaml
 kubectl apply -f kube-ovn-app-sa.yaml
 
 cat <<EOF > ovn.yaml
+${OVN_CENTRAL_PVC_BLOCK}
 ---
 kind: Service
 apiVersion: v1
@@ -7130,7 +7198,7 @@ spec:
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-nb-leader: "true"
+${OVN_NB_LEADER_SELECTOR}
   sessionAffinity: None
 
 ---
@@ -7149,7 +7217,7 @@ spec:
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-sb-leader: "true"
+${OVN_SB_LEADER_SELECTOR}
   sessionAffinity: None
 
 ---
@@ -7168,7 +7236,7 @@ spec:
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-northd-leader: "true"
+${OVN_NORTHD_LEADER_SELECTOR}
   sessionAffinity: None
 ---
 kind: Deployment
@@ -7182,10 +7250,7 @@ metadata:
 spec:
   replicas: $count
   strategy:
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
-    type: RollingUpdate
+${OVN_CENTRAL_STRATEGY_BODY}
   selector:
     matchLabels:
       app: ovn-central
@@ -7203,13 +7268,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: ovn-central
-              topologyKey: kubernetes.io/hostname
+${OVN_CENTRAL_AFFINITY_BLOCK}
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -7330,9 +7389,7 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-ovn
-          hostPath:
-            path: /etc/origin/ovn
+${OVN_CENTRAL_CONFIG_VOLUME}
         - name: host-log-ovn
           hostPath:
             path: $LOG_DIR/ovn
