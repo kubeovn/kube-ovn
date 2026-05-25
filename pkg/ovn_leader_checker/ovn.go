@@ -96,15 +96,28 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	config := &Configuration{
-		KubeConfigFile:  *argKubeConfigFile,
-		ProbeInterval:   *argProbeInterval,
-		EnableCompact:   *argEnableCompact,
-		IsICDBServer:    *argIsICDBServer,
-		localAddress:    *localAddress,
-		remoteAddresses: slices.DeleteFunc(*remoteAddresses, func(s string) bool { return s == *localAddress }),
+		KubeConfigFile: *argKubeConfigFile,
+		ProbeInterval:  *argProbeInterval,
+		EnableCompact:  *argEnableCompact,
+		IsICDBServer:   *argIsICDBServer,
+		localAddress:   *localAddress,
+		remoteAddresses: slices.DeleteFunc(*remoteAddresses, func(s string) bool {
+			// Drop the local address (already covered by isDBLeader on localAddress)
+			// and any empty entries produced by --remoteAddresses="" in single-replica
+			// mode.
+			return s == "" || s == *localAddress
+		}),
 	}
 
 	return config, nil
+}
+
+// isSingleReplicaMode reports whether ovn-central is running as a single
+// standalone pod (no raft cluster, no peers). In that mode the leader-checker
+// skips raft leader queries and ovn_northd lock stealing because they are
+// meaningless with only one DB instance.
+func (c *Configuration) isSingleReplicaMode() bool {
+	return len(c.remoteAddresses) == 0
 }
 
 // KubeClientInit funcs to check apiserver alive
@@ -400,6 +413,27 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	}
 
 	if !cfg.IsICDBServer {
+		if cfg.isSingleReplicaMode() {
+			// Standalone DB: no raft leader to query, no peers to detect a split
+			// brain against, no ovn_northd lock contention. Just keep the pod
+			// labelled as the leader for all three services and run compaction.
+			northdActive := checkNorthdActive()
+			patch := util.KVPatch{
+				"ovn-nb-leader":     "true",
+				"ovn-sb-leader":     "true",
+				"ovn-northd-leader": strconv.FormatBool(northdActive),
+			}
+			if err := util.PatchLabels(cfg.KubeClient.CoreV1().Pods(podNamespace), podName, patch); err != nil {
+				klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
+				return
+			}
+			if cfg.EnableCompact {
+				compactOvnDatabase("nb")
+				compactOvnDatabase("sb")
+			}
+			return
+		}
+
 		nbLeader := isDBLeader(cfg.localAddress, ovnnb.DatabaseName)
 		sbLeader := isDBLeader(cfg.localAddress, ovnsb.DatabaseName)
 		northdActive := checkNorthdActive()

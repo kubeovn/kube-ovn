@@ -15,5 +15,7 @@ spec:
   {{- end }}
   selector:
     app: ovn-central
+    {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
     ovn-sb-leader: "true"
+    {{- end }}
   sessionAffinity: None

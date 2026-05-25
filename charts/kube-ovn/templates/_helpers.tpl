@@ -64,6 +64,31 @@ Number of master nodes
 {{- end -}}
 
 {{/*
+Replica count for the ovn-central Deployment. Single mode always uses 1;
+cluster mode uses one replica per master node.
+*/}}
+{{- define "kubeovn.ovnCentralReplicas" -}}
+{{- if eq .Values.OVN_CENTRAL_MODE "single" -}}
+1
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Value of the NODE_IPS / OVN_DB_IPS env variable. In single mode this is empty,
+which makes start-db.sh take the standalone path and makes clients fall back to
+the ovn-nb / ovn-sb Service ClusterIP via the OVN_*_SERVICE_HOST env vars
+auto-injected by Kubernetes.
+*/}}
+{{- define "kubeovn.ovnCentralNodeIPs" -}}
+{{- if eq .Values.OVN_CENTRAL_MODE "single" -}}
+{{- else -}}
+{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Determine the updateStrategy type for the ovs-ovn DaemonSet.
 If ovs-ovn.updateStrategy.type is set, use it directly.
 Otherwise, auto-detect based on the currently deployed DaemonSet.

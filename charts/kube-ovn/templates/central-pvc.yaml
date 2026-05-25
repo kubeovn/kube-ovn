@@ -1,0 +1,22 @@
+{{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+{{- $storage := index .Values "ovn-central" "storage" }}
+{{- if $storage.enabled }}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ovn-central-data
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/description: |
+      Persistent storage for the ovn-central standalone OVN DB files.
+spec:
+  accessModes:
+{{ toYaml $storage.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ $storage.size }}
+  {{- with $storage.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

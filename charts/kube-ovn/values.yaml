@@ -21,6 +21,12 @@ namespace: kube-system
 MASTER_NODES: ""
 MASTER_NODES_LABEL: "kube-ovn/role=master"
 
+# OVN_CENTRAL_MODE controls how ovn-central is deployed.
+#   cluster: multi-replica raft cluster, one pod per master node (default).
+#   single:  single-replica Deployment backed by a PVC, can drift to another
+#            node when the host fails. Uses ovsdb standalone mode (no raft).
+OVN_CENTRAL_MODE: "cluster"
+
 networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
   NET_STACK: ipv4
@@ -163,6 +169,16 @@ ovn-central:
     cpu: "3"
     memory: "4Gi"
     ephemeral-storage: 1Gi
+  # Persistent storage for the OVN DB files. Only used when OVN_CENTRAL_MODE=single.
+  # The StorageClass should support cross-node attach (e.g. NFS, Ceph RBD, cloud
+  # block storage with attach/detach) if you want ovn-central to drift between
+  # nodes on host failure.
+  storage:
+    enabled: true
+    storageClassName: ""
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
 ovs-ovn:
   updateStrategy:
     type: ""  # Override the DaemonSet update strategy. Leave empty to auto-detect based on the deployed version.

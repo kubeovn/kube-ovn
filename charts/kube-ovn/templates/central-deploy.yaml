@@ -7,12 +7,16 @@ metadata:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
 spec:
-  replicas: {{ include "kubeovn.nodeCount" . }}
+  replicas: {{ include "kubeovn.ovnCentralReplicas" . }}
   strategy:
+    {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+    type: Recreate
+    {{- else }}
     rollingUpdate:
       maxSurge: 0
       maxUnavailable: 1
     type: RollingUpdate
+    {{- end }}
   selector:
     matchLabels:
       app: ovn-central
@@ -31,12 +35,14 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
+        {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
+        {{- end }}
         {{- include "kubeovn.masterNodeAffinity" . | nindent 8 }}
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
@@ -85,7 +91,7 @@ spec:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"
             - name: NODE_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -159,8 +165,13 @@ spec:
           hostPath:
             path: /run/ovn
         - name: host-config-ovn
+          {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+          persistentVolumeClaim:
+            claimName: ovn-central-data
+          {{- else }}
           hostPath:
             path: {{ .Values.OVN_DIR }}
+          {{- end }}
         - name: host-log-ovn
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn
