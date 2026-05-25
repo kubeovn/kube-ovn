@@ -59,7 +59,7 @@ func NewHealthOnlyServer(addr string, port int) (*manager.Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", util.DefaultHealthCheckHandler)
-	mux.HandleFunc("/livez", util.DefaultHealthCheckHandler)
+	mux.HandleFunc("/livez", util.LivezHandler)
 	mux.HandleFunc("/readyz", util.DefaultHealthCheckHandler)
 	return &manager.Server{
 		Name: "health-check",
