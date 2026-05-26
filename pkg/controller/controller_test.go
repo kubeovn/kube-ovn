@@ -237,6 +237,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		providerNetworksLister:  providerNetworkInformer.Lister(),
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
+		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
 		OVNNbClient:             mockOvnClient,
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),
