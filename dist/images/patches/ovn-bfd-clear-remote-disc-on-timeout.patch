@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Wed, 27 May 2026 11:00:00 +0800
+Subject: [PATCH] ovn-controller: clear BFD remote discriminator on timeout
+
+RFC 5880 requires bfd.RemoteDiscr to be set to zero after a Detection
+Time passes without receiving a valid BFD packet from the remote system.
+
+ovn-controller already cleared remote_disc when synchronizing a down BFD
+state to the Southbound database, but that made packet transmission depend
+on the later SB synchronization path.  If the local BFD entry was already
+down while remote_disc still held the peer's stale discriminator,
+ovn-controller could keep sending Down packets with your_disc set to the
+old peer discriminator.  A restarted peer no longer has that session and
+will discard those packets, so the BFD session cannot be re-established.
+
+Clear remote_disc immediately when the detection timer expires.  Also keep
+clearing it while the entry is already down and the detection window has
+expired, so an existing down entry with stale remote_disc can recover
+without waiting for a BFD row rebuild.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ controller/pinctrl.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/controller/pinctrl.c b/controller/pinctrl.c
+index b8ceb536d..939fd0437 100644
+--- a/controller/pinctrl.c
++++ b/controller/pinctrl.c
+@@ -8196,8 +8196,7 @@ update:
+ static void
+ bfd_check_detection_timeout(struct bfd_entry *entry)
+ {
+-    if (entry->state == BFD_STATE_ADMIN_DOWN ||
+-        entry->state == BFD_STATE_DOWN) {
++    if (entry->state == BFD_STATE_ADMIN_DOWN) {
+         return;
+     }
+ 
+@@ -8210,7 +8209,13 @@ bfd_check_detection_timeout(struct bfd_entry *entry)
+         return;
+     }
+ 
++    if (entry->state == BFD_STATE_DOWN) {
++        entry->remote_disc = 0;
++        return;
++    }
++
+     entry->state = BFD_STATE_DOWN;
++    entry->remote_disc = 0;
+     entry->change_state = true;
+     bfd_last_update = cur_time;
+     bfd_pending_update = 0;
+-- 
+2.43.0
+
