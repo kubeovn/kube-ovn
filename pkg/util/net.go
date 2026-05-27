@@ -31,10 +31,11 @@ const (
 	IPv4Zero             = "0.0.0.0/32"
 	IPv4LinkLocalUnicast = "169.254.0.0/16"
 
-	IPv6Unspecified      = "::/128"
-	IPv6Loopback         = "::1/128"
-	IPv6Multicast        = "ff00::/8"
-	IPv6LinkLocalUnicast = "FE80::/10"
+	IPv6Unspecified         = "::/128"
+	IPv6Loopback            = "::1/128"
+	IPv6Multicast           = "ff00::/8"
+	IPv6LinkLocalUnicast    = "FE80::/10"
+	DefaultPodInterfaceName = "eth0"
 )
 
 // GenerateMac generates mac address.
@@ -834,7 +835,7 @@ func GetAnnotationWithIfNameOverride(annotations map[string]string, provider, if
 	// default behaviour when no interface name is specified
 	// verify if a custom ifname is provided then annotation will be of form
 	// vm-overlay.default.ovn.net1.kubernetes.io/xxx: xxx
-	if ifName != "" {
+	if ifName != DefaultPodInterfaceName {
 		provider = fmt.Sprintf("%s.%s", provider, ifName)
 	}
 	return annotations[fmt.Sprintf(annotationTemplate, provider)]

@@ -440,7 +440,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip string) error {
 	klog.V(4).Infof("found subnet %s", subnet)
 	ipCRName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-	if podRequest.IfName != "" {
+	if podRequest.IfName != util.DefaultPodInterfaceName {
 		// append ifname to ipCRName
 		ipCRName = fmt.Sprintf("%s.%s", ipCRName, podRequest.IfName)
 	}
@@ -481,6 +481,7 @@ func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
 	var podRequest request.CniRequest
+
 	if err := req.ReadEntity(&podRequest); err != nil {
 		errMsg := fmt.Errorf("parse del request failed %w", err)
 		klog.Error(errMsg)
