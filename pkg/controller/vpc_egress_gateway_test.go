@@ -61,12 +61,13 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 	readyAttachment := `[{"name":"default/eth1","ips":["172.17.1.10"]}]`
 
 	tests := []struct {
-		name              string
-		pods              []*corev1.Pod
-		wantInternalIPs   []string
-		wantExternalIPs   []string
-		wantNodes         []string
-		wantNotReadyCount int
+		name                string
+		pods                []*corev1.Pod
+		wantInternalIPs     []string
+		wantExternalIPs     []string
+		wantNodes           []string
+		wantNodeNexthopIPv4 map[string]string
+		wantNotReadyCount   int
 	}{
 		{
 			name: "all workload pods have attachment network",
@@ -74,9 +75,21 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 				newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment),
 				newVegWorkloadPod("veg-2", "node-2", "10.16.1.11", `[{"name":"default/eth1","ips":["172.17.1.11"]}]`),
 			},
-			wantInternalIPs: []string{"10.16.1.10", "10.16.1.11"},
-			wantExternalIPs: []string{"172.17.1.10", "172.17.1.11"},
-			wantNodes:       []string{"node-1", "node-2"},
+			wantInternalIPs:     []string{"10.16.1.10", "10.16.1.11"},
+			wantExternalIPs:     []string{"172.17.1.10", "172.17.1.11"},
+			wantNodes:           []string{"node-1", "node-2"},
+			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10", "node-2": "10.16.1.11"},
+		},
+		{
+			name: "workload pods on the same node",
+			pods: []*corev1.Pod{
+				newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment),
+				newVegWorkloadPod("veg-2", "node-1", "10.16.1.11", `[{"name":"default/eth1","ips":["172.17.1.11"]}]`),
+			},
+			wantInternalIPs:     []string{"10.16.1.10", "10.16.1.11"},
+			wantExternalIPs:     []string{"172.17.1.10", "172.17.1.11"},
+			wantNodes:           []string{"node-1"},
+			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.11"},
 		},
 		{
 			name: "one workload pod misses attachment network",
@@ -84,10 +97,11 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 				newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment),
 				newVegWorkloadPod("veg-2", "node-2", "10.16.1.11", `[{"name":"kube-ovn","ips":["10.16.1.11"]}]`),
 			},
-			wantInternalIPs:   []string{"10.16.1.10"},
-			wantExternalIPs:   []string{"172.17.1.10"},
-			wantNodes:         []string{"node-1"},
-			wantNotReadyCount: 2,
+			wantInternalIPs:     []string{"10.16.1.10"},
+			wantExternalIPs:     []string{"172.17.1.10"},
+			wantNodes:           []string{"node-1"},
+			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10"},
+			wantNotReadyCount:   2,
 		},
 		{
 			name: "one workload pod has attachment network without ip",
@@ -95,10 +109,11 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 				newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment),
 				newVegWorkloadPod("veg-2", "node-2", "10.16.1.11", `[{"name":"default/eth1","ips":[]}]`),
 			},
-			wantInternalIPs:   []string{"10.16.1.10"},
-			wantExternalIPs:   []string{"172.17.1.10"},
-			wantNodes:         []string{"node-1"},
-			wantNotReadyCount: 2,
+			wantInternalIPs:     []string{"10.16.1.10"},
+			wantExternalIPs:     []string{"172.17.1.10"},
+			wantNodes:           []string{"node-1"},
+			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10"},
+			wantNotReadyCount:   2,
 		},
 	}
 
@@ -110,11 +125,12 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 				},
 			}
 
-			_, _, messages := collectVpcEgressGatewayWorkloadStatus(gw, tt.pods, attachmentNetwork)
+			nodeNexthopIPv4, _, messages := collectVpcEgressGatewayWorkloadStatus(gw, tt.pods, attachmentNetwork)
 
 			require.Equal(t, tt.wantInternalIPs, gw.Status.InternalIPs)
 			require.Equal(t, tt.wantExternalIPs, gw.Status.ExternalIPs)
 			require.Equal(t, tt.wantNodes, gw.Status.Workload.Nodes)
+			require.Equal(t, tt.wantNodeNexthopIPv4, nodeNexthopIPv4)
 			require.Len(t, messages, tt.wantNotReadyCount)
 		})
 	}

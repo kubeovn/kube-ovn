@@ -85,10 +85,11 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 	nodeNexthopIPv4 := make(map[string]string, int(gw.Spec.Replicas))
 	nodeNexthopIPv6 := make(map[string]string, int(gw.Spec.Replicas))
 	notReadyMessages := make([]string, 0)
+	workloadNodes := set.New[string]()
 
 	gw.Status.InternalIPs = nil
 	gw.Status.ExternalIPs = nil
-	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+	gw.Status.Workload.Nodes = nil
 
 	for _, pod := range pods {
 		if !pod.DeletionTimestamp.IsZero() {
@@ -125,8 +126,9 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 		}
 		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
 		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
-		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
+		workloadNodes.Insert(pod.Spec.NodeName)
 	}
+	gw.Status.Workload.Nodes = workloadNodes.SortedList()
 
 	if len(gw.Status.ExternalIPs) != int(gw.Spec.Replicas) {
 		notReadyMessages = append(notReadyMessages, fmt.Sprintf("expected %d ready workload pods with network %s, got %d", gw.Spec.Replicas, attachmentNetworkName, len(gw.Status.ExternalIPs)))
