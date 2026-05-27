@@ -80,6 +80,72 @@ func vegWorkloadLabels(vegName string) map[string]string {
 	}
 }
 
+func podReady(pod *corev1.Pod) bool {
+	if pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods []*corev1.Pod, attachmentNetworkName string) (map[string]string, map[string]string, []string) {
+	nodeNexthopIPv4 := make(map[string]string, int(gw.Spec.Replicas))
+	nodeNexthopIPv6 := make(map[string]string, int(gw.Spec.Replicas))
+	notReadyMessages := make([]string, 0)
+
+	gw.Status.InternalIPs = nil
+	gw.Status.ExternalIPs = nil
+	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+
+	for _, pod := range pods {
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		if !podReady(pod) {
+			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s is not ready", pod.Namespace, pod.Name))
+			continue
+		}
+
+		ips := util.PodIPs(*pod)
+		if len(ips) == 0 {
+			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s has no pod IP", pod.Namespace, pod.Name))
+			continue
+		}
+
+		extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
+		if err != nil {
+			notReadyMessages = append(notReadyMessages, err.Error())
+			continue
+		}
+		if len(extIPs) == 0 {
+			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s has no IP for network %s", pod.Namespace, pod.Name, attachmentNetworkName))
+			continue
+		}
+
+		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
+		if len(ipv4) != 0 {
+			nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
+		}
+		if len(ipv6) != 0 {
+			nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
+		}
+		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
+		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
+		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
+	}
+
+	if len(gw.Status.ExternalIPs) != int(gw.Spec.Replicas) {
+		notReadyMessages = append(notReadyMessages, fmt.Sprintf("expected %d ready workload pods with network %s, got %d", gw.Spec.Replicas, attachmentNetworkName, len(gw.Status.ExternalIPs)))
+	}
+
+	return nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages
+}
+
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -162,11 +228,10 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	gw.Status.Workload.Kind = deploy.Kind
 	gw.Status.Workload.Name = deploy.Name
 	gw.Status.Workload.Nodes = nil
-	nodeNexthopIPv4 := make(map[string]string, int(gw.Spec.Replicas))
-	nodeNexthopIPv6 := make(map[string]string, int(gw.Spec.Replicas))
 	ready := util.DeploymentIsReady(deploy)
 	if !ready {
 		gw.Status.Ready = false
+		gw.Status.Phase = kubeovnv1.PhaseProcessing
 		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
 		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, gw.Generation)
 	}
@@ -185,29 +250,15 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 
-	// update gateway status including the internal/external IPs and the nodes where the pods are running
-	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
-	for _, pod := range pods {
-		if len(pod.Status.PodIPs) == 0 {
-			continue
+	nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages := collectVpcEgressGatewayWorkloadStatus(gw, pods, attachmentNetworkName)
+	workloadReady := len(notReadyMessages) == 0
+	if !workloadReady {
+		gw.Status.Ready = false
+		gw.Status.Phase = kubeovnv1.PhaseProcessing
+		if ready {
+			msg := strings.Join(notReadyMessages, "; ")
+			gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "WorkloadNetworkNotReady", msg, gw.Generation)
 		}
-		extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
-		if err != nil {
-			klog.Error(err)
-			continue
-		}
-
-		ips := util.PodIPs(*pod)
-		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
-		if len(ipv4) != 0 {
-			nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
-		}
-		if len(ipv6) != 0 {
-			nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
-		}
-		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
-		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
-		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
 	}
 	if gw, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
 		klog.Error(err)
@@ -224,7 +275,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 
-	if ready {
+	if ready && workloadReady {
 		gw.Status.Ready = true
 		gw.Status.Phase = kubeovnv1.PhaseCompleted
 		gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
@@ -1268,6 +1319,23 @@ func vegAddressSetName(key string, af int) string {
 }
 
 func (c *Controller) handlePodEventForVpcEgressGateway(pod *corev1.Pod) error {
+	if vegName := pod.Labels[util.VpcEgressGatewayLabel]; pod.Labels["app"] == "vpc-egress-gateway" && vegName != "" {
+		gateways, err := c.vpcEgressGatewayLister.VpcEgressGateways(pod.Namespace).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vpc egress gateways in namespace %s: %v", pod.Namespace, err)
+			utilruntime.HandleError(err)
+			return err
+		}
+		for _, veg := range gateways {
+			if util.NormalizeLabelValue(veg.Name) == vegName {
+				key := cache.MetaObjectToName(veg).String()
+				klog.V(3).Infof("enqueue update vpc-egress-gateway %s for workload pod %s/%s", key, pod.Namespace, pod.Name)
+				c.addOrUpdateVpcEgressGatewayQueue.Add(key)
+				return nil
+			}
+		}
+	}
+
 	if !pod.DeletionTimestamp.IsZero() || pod.Annotations[util.AllocatedAnnotation] != "true" {
 		return nil
 	}
