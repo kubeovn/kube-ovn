@@ -338,6 +338,25 @@ if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -n "$OVN_CENTRAL_LB_IP"
   OVN_CENTRAL_SVC_ANNOTATIONS="  annotations:
     metallb.universe.tf/allow-shared-ip: kube-ovn-central"
 fi
+# externalOvnCentral.endpoint is a single IP, so all three OVN Services must
+# land on the same VIP. Without an explicit loadBalancerIP cloud LB controllers
+# assign three separate IPs and tenant clusters can only reach one of NB/SB/
+# northd. Mirror the Helm chart's kubeovn.validateService guard here.
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -z "$OVN_CENTRAL_LB_IP" ]; then
+  echo "ERROR: OVN_CENTRAL_SERVICE_TYPE=LoadBalancer requires OVN_CENTRAL_LB_IP to be set so the three OVN Services share a single VIP."
+  echo "       Pick a VIP, configure your LB controller to assign it (MetalLB allow-shared-ip annotation is emitted automatically), then re-run install.sh."
+  exit 1
+fi
+
+# /etc/ovn is mounted from a PVC in single-replica mode. Some backends (e.g.
+# root-squashed NFS, which the docs recommend for failover) reject chown by
+# root, so make the OVN DB directory's chown best-effort there. ovn-central
+# runs as `nobody` and creates new files with the right owner regardless.
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /var/log/ovn && (chown -R nobody: /etc/ovn 2>/dev/null || echo 'chown /etc/ovn skipped (likely root-squashed NFS); ovn will write as nobody anyway')"
+else
+  OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
 cat <<'EOF' > kube-ovn-crd.yaml
@@ -7316,7 +7335,7 @@ ${OVN_CENTRAL_AFFINITY_BLOCK}
           command:
             - sh
             - -c
-            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+            - "$OVN_CENTRAL_INIT_CHOWN_CMD"
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
