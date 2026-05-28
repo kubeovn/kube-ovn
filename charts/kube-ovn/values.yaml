@@ -27,6 +27,26 @@ MASTER_NODES_LABEL: "kube-ovn/role=master"
 #            node when the host fails. Uses ovsdb standalone mode (no raft).
 OVN_CENTRAL_MODE: "cluster"
 
+# installMode controls which slice of the chart this Helm release renders.
+#   full:             all components in one cluster (default, classic install).
+#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC. Use on the management cluster of a Kamaji-
+#                     style split deployment.
+#   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
+#                     pinger + monitor and their RBAC. Use on tenant data-plane
+#                     clusters that connect back to an external ovn-central via
+#                     externalOvnCentral below.
+installMode: full
+
+# When installMode=dataPlaneOnly, the agents and controller cannot rely on a
+# local ovn-central Service. Set externalOvnCentral.endpoint to the IP or
+# hostname that exposes the management cluster's ovn-nb / ovn-sb Services
+# (typically a LoadBalancer VIP or DNS name reachable from this cluster).
+externalOvnCentral:
+  endpoint: ""
+  nbPort: 6641
+  sbPort: 6642
+
 networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
   NET_STACK: ipv4

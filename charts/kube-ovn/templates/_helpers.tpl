@@ -76,15 +76,41 @@ cluster mode uses one replica per master node.
 {{- end -}}
 
 {{/*
-Value of the NODE_IPS / OVN_DB_IPS env variable. In single mode this is empty,
-which makes start-db.sh take the standalone path and makes clients fall back to
-the ovn-nb / ovn-sb Service ClusterIP via the OVN_*_SERVICE_HOST env vars
-auto-injected by Kubernetes.
+Value of the NODE_IPS / OVN_DB_IPS env variable.
+  - dataPlaneOnly: emit externalOvnCentral.endpoint so agents/controller dial
+    the management cluster's exposed ovn-nb / ovn-sb via the configured LB IP.
+  - single (control-plane / full): emit empty so start-db.sh takes the
+    standalone path and clients fall back to Service ClusterIP via the
+    auto-injected OVN_*_SERVICE_HOST env vars.
+  - cluster (default raft): emit comma-separated master node IPs.
 */}}
 {{- define "kubeovn.ovnCentralNodeIPs" -}}
-{{- if eq .Values.OVN_CENTRAL_MODE "single" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{ .Values.externalOvnCentral.endpoint }}
+{{- else if eq .Values.OVN_CENTRAL_MODE "single" -}}
 {{- else -}}
 {{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render gate for control-plane resources (ovn-central + Services + its RBAC).
+Emits "true" when this Helm release should render control-plane resources;
+empty otherwise. Use with {{- if include "kubeovn.renderControlPlane" . }}.
+*/}}
+{{- define "kubeovn.renderControlPlane" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "controlPlaneOnly") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render gate for data-plane resources (CRDs + kube-ovn-controller + ovs-ovn +
+kube-ovn-cni + kube-ovn-pinger + kube-ovn-monitor + their RBAC).
+*/}}
+{{- define "kubeovn.renderDataPlane" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "dataPlaneOnly") -}}
+true
 {{- end -}}
 {{- end -}}
 

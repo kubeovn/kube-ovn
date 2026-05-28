@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.func.ENABLE_IC }}
 kind: Deployment
 apiVersion: apps/v1
@@ -132,4 +133,6 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+{{- end }}
+
 {{- end }}

@@ -45,7 +45,15 @@ CHART_V1_CRD_PATH="charts/kube-ovn/templates/kube-ovn-crd.yaml"
 CHART_V2_CRD_PATH="charts/kube-ovn-v2/crds/kube-ovn-crd.yaml"
 INSTALL_PATH="dist/images/install.sh"
 
-cp "$BUNDLE_FILE" "$CHART_V1_CRD_PATH"
+# The v1 chart bundles CRDs as a template so they can be gated by
+# installMode (see charts/kube-ovn/templates/_helpers.tpl). Wrap the generated
+# CRD bundle with the data-plane render gate so dataPlaneOnly installs ship the
+# CRDs and controlPlaneOnly installs skip them.
+{
+  echo '{{- if include "kubeovn.renderDataPlane" . }}'
+  cat "$BUNDLE_FILE"
+  echo '{{- end }}'
+} > "$CHART_V1_CRD_PATH"
 cp "$BUNDLE_FILE" "$CHART_V2_CRD_PATH"
 
 START_ANCHOR="# BEGIN GENERATED KUBE-OVN CRD BUNDLE"

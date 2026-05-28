@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.HYBRID_DPDK }}
 kind: DaemonSet
 apiVersion: apps/v1
@@ -164,4 +165,6 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+{{- end }}
+
 {{- end }}

@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if include "kubeovn.ovn.versionCompatibility" . -}}
 ---
 apiVersion: v1
@@ -175,3 +176,5 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 {{- end -}}
+
+{{- end }}

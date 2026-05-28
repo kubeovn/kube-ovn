@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderControlPlane" . }}
 {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
 {{- $storage := index .Values "ovn-central" "storage" }}
 {{- if $storage.enabled }}
@@ -19,4 +20,6 @@ spec:
   storageClassName: {{ . | quote }}
   {{- end }}
 {{- end }}
+{{- end }}
+
 {{- end }}

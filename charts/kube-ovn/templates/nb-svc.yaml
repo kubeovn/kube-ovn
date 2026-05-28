@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderControlPlane" . }}
 {{- $svc := index .Values "ovn-central" "service" }}
 kind: Service
 apiVersion: v1
@@ -26,3 +27,5 @@ spec:
     ovn-nb-leader: "true"
     {{- end }}
   sessionAffinity: None
+
+{{- end }}

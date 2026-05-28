@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderControlPlane" . }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -183,3 +184,5 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 
+
+{{- end }}
