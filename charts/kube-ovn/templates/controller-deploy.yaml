@@ -8,7 +8,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn controller
 spec:
-  replicas: {{ include "kubeovn.nodeCount" . }}
+  replicas: {{ include "kubeovn.controllerReplicas" . }}
   selector:
     matchLabels:
       app: kube-ovn-controller

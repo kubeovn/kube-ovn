@@ -76,6 +76,25 @@ cluster mode uses one replica per master node.
 {{- end -}}
 
 {{/*
+Replica count for the kube-ovn-controller Deployment.
+- dataPlaneOnly: tenant cluster typically has no `kube-ovn/role=master` node
+  label and kube-ovn-controller can run with replicas=1 (active/standby HA is
+  configured via leader election, not horizontal scale). Use 1 by default,
+  letting operators override via `kube-ovn-controller.replicas`.
+- everywhere else: keep the historical behaviour of one replica per master.
+*/}}
+{{- define "kubeovn.controllerReplicas" -}}
+{{- $override := dig "replicas" nil (index .Values "kube-ovn-controller") -}}
+{{- if $override -}}
+{{ $override }}
+{{- else if eq .Values.installMode "dataPlaneOnly" -}}
+1
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Value of the NODE_IPS / OVN_DB_IPS env variable.
   - dataPlaneOnly: emit externalOvnCentral.endpoint so agents/controller dial
     the management cluster's exposed ovn-nb / ovn-sb via the configured LB IP.
