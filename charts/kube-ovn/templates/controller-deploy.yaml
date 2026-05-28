@@ -181,9 +181,9 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
-            - name: OVN_NB_PORT
+            - name: KUBE_OVN_NB_PORT
               value: "{{ include "kubeovn.ovnNbPort" . }}"
-            - name: OVN_SB_PORT
+            - name: KUBE_OVN_SB_PORT
               value: "{{ include "kubeovn.ovnSbPort" . }}"
             - name: POD_IP
               valueFrom:

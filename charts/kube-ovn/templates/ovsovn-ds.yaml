@@ -125,7 +125,7 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
-            - name: OVN_SB_PORT
+            - name: KUBE_OVN_SB_PORT
               value: "{{ include "kubeovn.ovnSbPort" . }}"
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "{{ .Values.networking.OVN_REMOTE_PROBE_INTERVAL }}"
