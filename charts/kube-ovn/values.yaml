@@ -33,9 +33,11 @@ OVN_CENTRAL_MODE: "cluster"
 #                     their RBAC. Use on the management cluster of a Kamaji-
 #                     style split deployment.
 #   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
-#                     pinger + monitor and their RBAC. Use on tenant data-plane
+#                     pinger and their RBAC. Use on tenant data-plane
 #                     clusters that connect back to an external ovn-central via
-#                     externalOvnCentral below.
+#                     externalOvnCentral below. kube-ovn-monitor is intentionally
+#                     skipped: it reads local OVN Unix sockets / DB files and
+#                     does not yet know how to talk to a remote ovn-central.
 installMode: full
 
 # When installMode=dataPlaneOnly, the agents and controller cannot rely on a

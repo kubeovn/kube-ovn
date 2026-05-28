@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderDataPlane" . }}
+{{- if include "kubeovn.renderFullOnly" . }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:

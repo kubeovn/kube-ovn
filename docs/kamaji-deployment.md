@@ -34,7 +34,8 @@ targeting different `--kube-context`s.
 |---|---|---|
 | `ovn-central` (Deployment + PVC + nb/sb/northd Services) | Management cluster | Centralised OVN DB; PVC keeps DB durable across pod drift |
 | `kube-ovn-controller` | Tenant cluster | Watches tenant Subnet/IP/Vpc CRs — best done with in-cluster auth |
-| `ovs-ovn`, `kube-ovn-cni`, `kube-ovn-pinger`, `kube-ovn-monitor` (DaemonSets / Deployments) | Tenant cluster | They program local OVS on every tenant node |
+| `ovs-ovn`, `kube-ovn-cni`, `kube-ovn-pinger` (DaemonSets) | Tenant cluster | They program local OVS on every tenant node |
+| `kube-ovn-monitor` (Deployment) | **`full` mode only** | Reads ovn-central's local Unix sockets and DB files; would crashloop in a tenant-only install. Tracked as follow-up. |
 | Kube-OVN CRDs (`kubeovn.io/v1` …) | Tenant apiserver | Tenants `kubectl create subnet` against their own apiserver |
 | `kube-ovn-tls` Secret | **Both clusters** | ovn-central serves SSL listeners (mgmt); controller / ovs-ovn use client certs (tenant) |
 
@@ -140,7 +141,6 @@ This release renders:
   start-controller.sh builds `tcp:[10.99.99.99]:6641` and `tcp:[…]:6642`
 - `ovs-ovn`, `kube-ovn-cni`, `kube-ovn-pinger` DaemonSets — also pointing at
   the management cluster's LB via `OVN_DB_IPS`
-- `kube-ovn-monitor` Deployment
 - All the related ServiceAccounts / ClusterRoles / RoleBindings
 
 …and **does not** render `ovn-central` or its Services.
@@ -220,7 +220,7 @@ Using one of the cross-cluster GitOps patterns helps:
   the management cluster does not trust. The chart fails with a clear
   message in this case rather than silently generating an incompatible
   CA.
-- DPDK (`HYBRID_DPDK=true`) and the OVS upgrade hooks
+- `kube-ovn-monitor`, DPDK (`HYBRID_DPDK=true`), and the OVS upgrade hooks
   (`pre-upgrade-ovs-ovn` / `upgrade-ovs-ovn`) are currently disabled outside
   `installMode: full` because they reference a local ovn-central. Running
   Kamaji with DPDK or doing in-place OVS upgrades on the tenant cluster

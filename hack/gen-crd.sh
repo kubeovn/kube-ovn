@@ -60,9 +60,12 @@ INSTALL_PATH="dist/images/install.sh"
   echo '{{- if include "kubeovn.renderDataPlane" . }}'
   awk '
     /^kind: CustomResourceDefinition$/ { in_crd = 1 }
-    in_crd && /^metadata:$/ {
+    # controller-gen always emits a `metadata.annotations:` block right after
+    # `metadata:`. Inject the keep annotation as an extra key inside that
+    # existing block so YAML does not collapse to a single annotations map
+    # and silently lose one set.
+    in_crd && /^  annotations:$/ {
       print
-      print "  annotations:"
       print "    helm.sh/resource-policy: keep"
       next
     }
