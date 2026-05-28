@@ -1,5 +1,6 @@
 {{- if include "kubeovn.renderControlPlane" . }}
 {{- $svc := index .Values "ovn-central" "service" }}
+{{- include "kubeovn.validateService" . }}
 kind: Service
 apiVersion: v1
 metadata:

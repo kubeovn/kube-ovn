@@ -96,6 +96,24 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
 {{- end -}}
 
 {{/*
+Validate the ovn-central.service block. Currently the only invariant we
+enforce is that LoadBalancer service type must come with an explicit
+loadBalancerIP, because externalOvnCentral.endpoint is a single IP and we
+need all three Services (ovn-nb / ovn-sb / ovn-northd) to land on the same
+VIP. Without it cloud LBs allocate three different IPs and tenant clusters
+can only reach one DB. Use {{- include "kubeovn.validateService" . }}
+anywhere a Service is rendered so the validation runs on every template.
+*/}}
+{{- define "kubeovn.validateService" -}}
+{{- $svc := index .Values "ovn-central" "service" -}}
+{{- if eq $svc.type "LoadBalancer" -}}
+{{- if not $svc.loadBalancerIP -}}
+{{- fail "ovn-central.service.type=LoadBalancer requires ovn-central.service.loadBalancerIP to be set so the three OVN Services share a single VIP. Without it cloud LB controllers allocate three separate IPs and externalOvnCentral.endpoint (single IP) can only reach one of NB/SB/northd. Pick a VIP, configure your LB controller to assign it (MetalLB allow-shared-ip annotation is emitted automatically), then re-run helm." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Port the agents/controller should use to connect to ovn-nb. In dataPlaneOnly
 mode this picks up externalOvnCentral.nbPort so NodePort or non-default
 LoadBalancer port mappings work. Other modes use the in-cluster Service port
