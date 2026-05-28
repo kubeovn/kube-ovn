@@ -79,8 +79,15 @@ HELPER
   kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas="${replicas:-1}"
   echo "ovn-central scaled back to ${replicas:-1}"
 
-  echo "restart ovs-ovn"
-  kubectl -n $KUBE_OVN_NS rollout restart ds ovs-ovn
+  # Best-effort ovs-ovn restart. In a Kamaji-style controlPlaneOnly install
+  # there is no ovs-ovn DaemonSet on this cluster, so missing is expected.
+  if kubectl -n $KUBE_OVN_NS get ds ovs-ovn >/dev/null 2>&1; then
+    echo "restart ovs-ovn"
+    kubectl -n $KUBE_OVN_NS rollout restart ds ovs-ovn
+  else
+    echo "ovs-ovn DaemonSet not present on this cluster — skipping restart"
+    echo "  (expected in controlPlaneOnly installs; restart ovs-ovn on the data-plane cluster yourself)"
+  fi
   exit 0
 fi
 

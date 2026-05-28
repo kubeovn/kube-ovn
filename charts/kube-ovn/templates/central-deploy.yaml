@@ -168,7 +168,7 @@ spec:
         - name: host-config-ovn
           {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
           persistentVolumeClaim:
-            claimName: ovn-central-data
+            claimName: {{ (index .Values "ovn-central" "storage").existingClaim | default "ovn-central-data" }}
           {{- else }}
           hostPath:
             path: {{ .Values.OVN_DIR }}

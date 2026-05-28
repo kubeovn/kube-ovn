@@ -94,6 +94,32 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
 {{- end -}}
 
 {{/*
+Port the agents/controller should use to connect to ovn-nb. In dataPlaneOnly
+mode this picks up externalOvnCentral.nbPort so NodePort or non-default
+LoadBalancer port mappings work. Other modes use the in-cluster Service port
+6641.
+*/}}
+{{- define "kubeovn.ovnNbPort" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{ .Values.externalOvnCentral.nbPort | default 6641 }}
+{{- else -}}
+6641
+{{- end -}}
+{{- end -}}
+
+{{/*
+Port the agents/controller should use to connect to ovn-sb. Mirror of
+kubeovn.ovnNbPort for the southbound DB.
+*/}}
+{{- define "kubeovn.ovnSbPort" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{ .Values.externalOvnCentral.sbPort | default 6642 }}
+{{- else -}}
+6642
+{{- end -}}
+{{- end -}}
+
+{{/*
 Render gate for control-plane resources (ovn-central + Services + its RBAC).
 Emits "true" when this Helm release should render control-plane resources;
 empty otherwise. Use with {{- if include "kubeovn.renderControlPlane" . }}.

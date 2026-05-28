@@ -1,7 +1,13 @@
 {{- if include "kubeovn.renderControlPlane" . }}
 {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
 {{- $storage := index .Values "ovn-central" "storage" }}
-{{- if $storage.enabled }}
+{{- /*
+PVC for the standalone OVN DB. Always created in single-replica mode because
+the Deployment unconditionally mounts a PVC claim. Set
+ovn-central.storage.existingClaim=<name> to point the Deployment at an
+externally-managed claim and skip in-chart PVC creation.
+*/ -}}
+{{- if not $storage.existingClaim }}
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:

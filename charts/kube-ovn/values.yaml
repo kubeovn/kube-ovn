@@ -194,11 +194,16 @@ ovn-central:
   # block storage with attach/detach) if you want ovn-central to drift between
   # nodes on host failure.
   storage:
-    enabled: true
     storageClassName: ""
     size: 10Gi
     accessModes:
       - ReadWriteOnce
+    # Set existingClaim to skip in-chart PVC creation and point the
+    # Deployment at a PVC the operator manages out-of-band (e.g. via a
+    # storage operator). The Deployment always mounts claim "ovn-central-data"
+    # so the value here must equal "ovn-central-data" — leaving the field
+    # empty means the chart creates the PVC itself.
+    existingClaim: ""
   # Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
   # only reachable from inside the cluster. Switch to LoadBalancer (or
   # NodePort) to expose the OVN DB to data-plane components running outside
