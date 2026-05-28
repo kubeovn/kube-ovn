@@ -34,7 +34,7 @@ var (
 	// default resource requirements for the vpc egress gateway container if not specified by the user
 	vegSleepResourceCPU         = resource.MustParse("10m")
 	vegSleepResourceMemory      = resource.MustParse("10Mi")
-	vegBFDDResourceCPU          = resource.MustParse("50m")
+	vegBFDDResourceCPU          = resource.MustParse("200m")
 	vegBFDDResourceMemory       = resource.MustParse("50Mi")
 	vegResourceEphemeralStorage = resource.MustParse("1Gi")
 )
