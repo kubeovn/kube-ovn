@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderDataPlane" . }}
+{{- if include "kubeovn.renderFullOnly" . }}
 {{- if include "kubeovn.ovn.versionCompatibility" . -}}
 ---
 apiVersion: v1

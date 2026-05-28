@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderDataPlane" . }}
+{{- if include "kubeovn.renderFullOnly" . }}
 {{- if .Values.HYBRID_DPDK }}
 kind: DaemonSet
 apiVersion: apps/v1

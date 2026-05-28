@@ -39,9 +39,12 @@ OVN_CENTRAL_MODE: "cluster"
 installMode: full
 
 # When installMode=dataPlaneOnly, the agents and controller cannot rely on a
-# local ovn-central Service. Set externalOvnCentral.endpoint to the IP or
-# hostname that exposes the management cluster's ovn-nb / ovn-sb Services
-# (typically a LoadBalancer VIP or DNS name reachable from this cluster).
+# local ovn-central Service. Set externalOvnCentral.endpoint to the IP address
+# that exposes the management cluster's ovn-nb / ovn-sb Services (typically a
+# LoadBalancer VIP reachable from this cluster). DNS hostnames work with OVN
+# >= 22.03 but use an IP literal if you need to support older OVN versions —
+# the OVN connection string format `tcp:[host]:port` parses brackets only as
+# IP literals in older code paths.
 externalOvnCentral:
   endpoint: ""
   nbPort: 6641

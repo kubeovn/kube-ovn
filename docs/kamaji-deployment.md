@@ -199,3 +199,14 @@ Using one of the cross-cluster GitOps patterns helps:
 - Single-cluster IC (interconnect) deployments are still rendered under
   `installMode: full`. Multi-cluster IC topologies need their own design and
   are out of scope here.
+- `externalOvnCentral.endpoint` should be an **IP address** (IPv4 or IPv6).
+  DNS hostnames work with recent OVN releases but the connection string
+  format `tcp:[host]:port` is fragile against older OVN parsers. If you
+  expose ovn-central behind a hostname, prefer a static VIP that hostname
+  resolves to and put the VIP in `endpoint`.
+- DPDK (`HYBRID_DPDK=true`) and the OVS upgrade hooks
+  (`pre-upgrade-ovs-ovn` / `upgrade-ovs-ovn`) are currently disabled outside
+  `installMode: full` because they reference a local ovn-central. Running
+  Kamaji with DPDK or doing in-place OVS upgrades on the tenant cluster
+  requires a follow-up to make `start-ovs-dpdk-v2.sh` and `upgrade-ovs.sh`
+  honor `OVN_DB_IPS` / `externalOvnCentral`.

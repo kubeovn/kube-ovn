@@ -141,6 +141,21 @@ true
 {{- end -}}
 
 {{/*
+Render gate for components that only make sense in a single-cluster install:
+- ovn-dpdk DaemonSet (start-ovs-dpdk-v2.sh still talks to OVN_SB_SERVICE_HOST,
+  no externalOvnCentral support yet)
+- pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh waits on a local
+  deploy/ovn-central, so it fails on tenant-only installs)
+Use `kubeovn.renderFullOnly` when the resource is not yet ready for the
+Kamaji-style split deployments.
+*/}}
+{{- define "kubeovn.renderFullOnly" -}}
+{{- if eq .Values.installMode "full" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
 Determine the updateStrategy type for the ovs-ovn DaemonSet.
 If ovs-ovn.updateStrategy.type is set, use it directly.
 Otherwise, auto-detect based on the currently deployed DaemonSet.
