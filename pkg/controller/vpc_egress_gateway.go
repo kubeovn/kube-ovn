@@ -186,29 +186,14 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	}
 
 	// update gateway status including the internal/external IPs and the nodes where the pods are running
-	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+	workloadNodes := set.New[string]()
 	for _, pod := range pods {
-		if len(pod.Status.PodIPs) == 0 {
-			continue
-		}
-		extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
-		if err != nil {
+		if err := appendVpcEgressGatewayPodStatus(gw, pod, attachmentNetworkName, nodeNexthopIPv4, nodeNexthopIPv6, workloadNodes); err != nil {
 			klog.Error(err)
 			continue
 		}
-
-		ips := util.PodIPs(*pod)
-		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
-		if len(ipv4) != 0 {
-			nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
-		}
-		if len(ipv6) != 0 {
-			nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
-		}
-		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
-		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
-		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
 	}
+	gw.Status.Workload.Nodes = workloadNodes.SortedList()
 	if gw, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
 		klog.Error(err)
 		return err
@@ -234,6 +219,30 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	}
 
 	klog.Infof("finished reconciling vpc-egress-gateway %s", key)
+
+	return nil
+}
+
+func appendVpcEgressGatewayPodStatus(gw *kubeovnv1.VpcEgressGateway, pod *corev1.Pod, attachmentNetworkName string, nodeNexthopIPv4, nodeNexthopIPv6 map[string]string, workloadNodes set.Set[string]) error {
+	ips := util.PodIPs(*pod)
+	if len(ips) == 0 {
+		return nil
+	}
+	extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
+	if err != nil {
+		return err
+	}
+
+	ipv4, ipv6 := util.SplitIpsByProtocol(ips)
+	if len(ipv4) != 0 {
+		nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
+	}
+	if len(ipv6) != 0 {
+		nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
+	}
+	gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
+	gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
+	workloadNodes.Insert(pod.Spec.NodeName)
 
 	return nil
 }
