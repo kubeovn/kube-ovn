@@ -331,6 +331,13 @@ OVN_CENTRAL_ETP_BLOCK=""
 if { [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] || [ "$OVN_CENTRAL_SERVICE_TYPE" = "NodePort" ]; } && [ -n "$OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY" ]; then
   OVN_CENTRAL_ETP_BLOCK="  externalTrafficPolicy: $OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY"
 fi
+# MetalLB shared-IP annotation for the three Services so they can colocate on
+# the same loadBalancerIP. Harmless on non-MetalLB providers.
+OVN_CENTRAL_SVC_ANNOTATIONS=""
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -n "$OVN_CENTRAL_LB_IP" ]; then
+  OVN_CENTRAL_SVC_ANNOTATIONS="  annotations:
+    metallb.universe.tf/allow-shared-ip: kube-ovn-central"
+fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
 cat <<'EOF' > kube-ovn-crd.yaml
@@ -7206,6 +7213,7 @@ apiVersion: v1
 metadata:
   name: ovn-nb
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-nb
@@ -7227,6 +7235,7 @@ apiVersion: v1
 metadata:
   name: ovn-sb
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-sb
@@ -7248,6 +7257,7 @@ apiVersion: v1
 metadata:
   name: ovn-northd
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-northd
@@ -7339,7 +7349,7 @@ ${OVN_CENTRAL_AFFINITY_BLOCK}
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: NODE_IPS
-              value: $addresses
+              value: "$addresses"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -7542,7 +7552,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
             - name: OVN_REMOTE_PROBE_INTERVAL
@@ -7694,7 +7704,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
@@ -7972,7 +7982,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -8603,7 +8613,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
           resources:
             requests:
               cpu: 300m

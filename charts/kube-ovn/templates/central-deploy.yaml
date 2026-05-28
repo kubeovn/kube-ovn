@@ -59,7 +59,15 @@ spec:
           command:
             - sh
             - -c
+            {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+            # /etc/ovn comes from a PVC in single-replica mode. Backends like
+            # root-squashed NFS reject chown by root, so make the OVN DB
+            # directory chown best-effort; the OVN containers run as `nobody`
+            # and will create new files with the correct owner regardless.
+            - "chown -R nobody: /var/run/ovn /var/log/ovn && (chown -R nobody: /etc/ovn 2>/dev/null || echo 'chown /etc/ovn skipped (likely root-squashed NFS); ovn will write as nobody anyway')"
+            {{- else }}
             - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
