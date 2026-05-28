@@ -24,14 +24,23 @@ if [ "$MODE" = "single" ]; then
     exit 1
   fi
 
-  # Verify the PVC exists (sanity check that the cluster really runs in single-replica mode).
-  if ! kubectl get pvc -n $KUBE_OVN_NS ovn-central-data >/dev/null 2>&1; then
-    echo "ERROR: PVC $KUBE_OVN_NS/ovn-central-data not found. This script's 'single' mode only applies"
-    echo "       when ovn-central was installed with ENABLE_SINGLE_REPLICA_OVN=true."
+  # Discover the actual PVC name from the Deployment so this also works when
+  # the operator pointed ovn-central at a custom claim via
+  # ovn-central.storage.existingClaim.
+  pvc_name=$(kubectl get deployment -n $KUBE_OVN_NS ovn-central \
+    -o jsonpath='{.spec.template.spec.volumes[?(@.name=="host-config-ovn")].persistentVolumeClaim.claimName}' 2>/dev/null)
+  if [ -z "$pvc_name" ]; then
+    echo "ERROR: ovn-central Deployment does not mount host-config-ovn from a PVC."
+    echo "       This script's 'single' mode only applies when ovn-central was"
+    echo "       installed with OVN_CENTRAL_MODE=single (or ENABLE_SINGLE_REPLICA_OVN=true)."
+    exit 1
+  fi
+  if ! kubectl get pvc -n $KUBE_OVN_NS "$pvc_name" >/dev/null 2>&1; then
+    echo "ERROR: PVC $KUBE_OVN_NS/$pvc_name (from ovn-central Deployment) not found."
     exit 1
   fi
 
-  echo "Restoring ovn-central from $BACKUP_FILE into PVC $KUBE_OVN_NS/ovn-central-data"
+  echo "Restoring ovn-central from $BACKUP_FILE into PVC $KUBE_OVN_NS/$pvc_name"
 
   replicas=$(kubectl get deployment -n $KUBE_OVN_NS ovn-central -o jsonpath='{.spec.replicas}')
   kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=0
@@ -59,7 +68,7 @@ spec:
   volumes:
     - name: ovn-data
       persistentVolumeClaim:
-        claimName: ovn-central-data
+        claimName: $pvc_name
 HELPER
 
   kubectl wait --for=condition=Ready pod/$helper_pod -n $KUBE_OVN_NS --timeout=120s

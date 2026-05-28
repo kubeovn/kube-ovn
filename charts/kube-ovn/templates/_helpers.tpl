@@ -79,6 +79,8 @@ cluster mode uses one replica per master node.
 Value of the NODE_IPS / OVN_DB_IPS env variable.
   - dataPlaneOnly: emit externalOvnCentral.endpoint so agents/controller dial
     the management cluster's exposed ovn-nb / ovn-sb via the configured LB IP.
+    Required — empty would fall back to OVN_NB_SERVICE_HOST which is not
+    injected in this mode because no local ovn-nb Service is rendered.
   - single (control-plane / full): emit empty so start-db.sh takes the
     standalone path and clients fall back to Service ClusterIP via the
     auto-injected OVN_*_SERVICE_HOST env vars.
@@ -86,7 +88,7 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
 */}}
 {{- define "kubeovn.ovnCentralNodeIPs" -}}
 {{- if eq .Values.installMode "dataPlaneOnly" -}}
-{{ .Values.externalOvnCentral.endpoint }}
+{{ required "installMode=dataPlaneOnly requires externalOvnCentral.endpoint (the management cluster's ovn-nb / ovn-sb VIP)" .Values.externalOvnCentral.endpoint }}
 {{- else if eq .Values.OVN_CENTRAL_MODE "single" -}}
 {{- else -}}
 {{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}
