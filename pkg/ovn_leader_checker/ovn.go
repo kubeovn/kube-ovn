@@ -56,6 +56,7 @@ type Configuration struct {
 	IsICDBServer    bool
 	localAddress    string
 	remoteAddresses []string
+	singleReplica   bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -95,6 +96,20 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
+	// Determine single-replica mode from the *raw* flag input, not from the
+	// filtered remoteAddresses slice. A one-node raft cluster passes a single
+	// IP equal to the local address, which DeleteFunc removes — that must
+	// stay in raft mode (with raft header backup and northd lock stealing),
+	// not be conflated with the single-replica standalone deployment that
+	// passes --remoteAddresses="" explicitly.
+	singleReplica := true
+	for _, addr := range *remoteAddresses {
+		if addr != "" {
+			singleReplica = false
+			break
+		}
+	}
+
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
 		ProbeInterval:  *argProbeInterval,
@@ -107,6 +122,7 @@ func ParseFlags() (*Configuration, error) {
 			// mode.
 			return s == "" || s == *localAddress
 		}),
+		singleReplica: singleReplica,
 	}
 
 	return config, nil
@@ -115,9 +131,12 @@ func ParseFlags() (*Configuration, error) {
 // isSingleReplicaMode reports whether ovn-central is running as a single
 // standalone pod (no raft cluster, no peers). In that mode the leader-checker
 // skips raft leader queries and ovn_northd lock stealing because they are
-// meaningless with only one DB instance.
+// meaningless with only one DB instance. This is computed from the original
+// --remoteAddresses flag, not the filtered slice, so a one-node raft cluster
+// stays in cluster behaviour (raft header backup, lock stealing) rather than
+// being mistakenly demoted to standalone semantics.
 func (c *Configuration) isSingleReplicaMode() bool {
-	return len(c.remoteAddresses) == 0
+	return c.singleReplica
 }
 
 // KubeClientInit funcs to check apiserver alive

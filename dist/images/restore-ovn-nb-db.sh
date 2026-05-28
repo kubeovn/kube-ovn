@@ -2,6 +2,10 @@
 
 KUBE_OVN_NS=kube-system
 MODE=${1:-cluster}
+# Override RESTORE_HELPER_IMAGE in air-gapped or private-registry environments
+# where docker.io/busybox:1.36 is not reachable. The image only needs `sh`,
+# `mv`, `chown`, and `ls`, so any small Linux base works.
+RESTORE_HELPER_IMAGE=${RESTORE_HELPER_IMAGE:-docker.io/library/busybox:1.36}
 
 usage() {
   cat >&2 <<USAGE
@@ -69,7 +73,7 @@ spec:
       operator: Exists
   containers:
     - name: restore
-      image: busybox:1.36
+      image: $RESTORE_HELPER_IMAGE
       command: ["sh", "-c", "sleep 600"]
       volumeMounts:
         - name: ovn-data

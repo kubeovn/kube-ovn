@@ -14,6 +14,11 @@ metadata:
   name: ovn-central-data
   namespace: {{ .Values.namespace }}
   annotations:
+    # Pin the PVC so an installMode switch (e.g. full -> dataPlaneOnly) that
+    # stops rendering this template does NOT delete the volume holding the
+    # standalone OVN DB. Operators can `kubectl delete pvc ovn-central-data`
+    # explicitly when they really mean to discard the DB.
+    helm.sh/resource-policy: keep
     kubernetes.io/description: |
       Persistent storage for the ovn-central standalone OVN DB files.
 spec:
