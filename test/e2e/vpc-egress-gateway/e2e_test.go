@@ -358,6 +358,87 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 
 		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas, nil)
 	})
+
+	framework.ConformanceIt("should report not ready when workload pod attachment network status is missing", func() {
+		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway workload network status validation was introduced in v1.17")
+
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		internalSubnetName := "int-" + framework.RandomSuffix()
+		ginkgo.By("Creating internal subnet " + internalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting internal subnet " + internalSubnetName)
+			subnetClient.DeleteSync(internalSubnetName)
+		})
+		cidr := framework.RandomCIDR(f.ClusterIPFamily)
+		internalSubnet := framework.MakeSubnet(internalSubnetName, "", cidr, "", "", "", nil, nil, nil)
+		_ = subnetClient.CreateSync(internalSubnet)
+
+		ginkgo.By("Getting docker network " + kindNetwork)
+		network, err := docker.NetworkInspect(kindNetwork)
+		framework.ExpectNoError(err, "getting docker network "+kindNetwork)
+
+		externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, f.HasIPv4(), f.HasIPv6())
+		externalSubnet.Spec.Provider = provider
+
+		ginkgo.By("Creating macvlan subnet " + externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting external subnet " + externalSubnetName)
+			subnetClient.DeleteSync(externalSubnetName)
+		})
+		_ = subnetClient.CreateSync(externalSubnet)
+
+		vegClient := f.VpcEgressGatewayClient()
+		deployClient := f.DeploymentClient()
+		podClient := f.PodClient()
+		vegName := "veg-" + framework.RandomSuffix()
+		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, "", 1, internalSubnetName, externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway " + vegName)
+			vegClient.DeleteSync(vegName)
+		})
+
+		ginkgo.By(fmt.Sprintf("Creating vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
+		veg = vegClient.CreateSync(veg)
+		framework.ExpectTrue(veg.Status.Ready)
+		framework.ExpectHaveLen(veg.Status.ExternalIPs, 1)
+
+		ginkgo.By("Removing the workload pod attachment network status")
+		deploy := deployClient.Get(veg.Status.Workload.Name)
+		workloadPods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(workloadPods.Items, 1)
+		pod := podClient.GetPod(workloadPods.Items[0].Name)
+		podIPs := util.PodIPs(*pod)
+		framework.ExpectNotEmpty(podIPs)
+		modifiedPod := pod.DeepCopy()
+		if modifiedPod.Annotations == nil {
+			modifiedPod.Annotations = map[string]string{}
+		}
+		modifiedPod.Annotations[nadv1.NetworkStatusAnnot] = fmt.Sprintf(`[{"name":"kube-ovn","ips":[%q]}]`, podIPs[0])
+		_ = podClient.Patch(pod, modifiedPod)
+
+		ginkgo.By("Validating vpc egress gateway reports workload network not ready")
+		veg = vegClient.WaitUntil(vegName, func(g *apiv1.VpcEgressGateway) (bool, error) {
+			condition := g.Status.Conditions.GetCondition(apiv1.Ready)
+			return !g.Status.Ready &&
+				g.Status.Phase == apiv1.PhaseProcessing &&
+				len(g.Status.ExternalIPs) == 0 &&
+				condition != nil &&
+				condition.Status == corev1.ConditionFalse &&
+				condition.Reason == "WorkloadNetworkNotReady", nil
+		}, "WorkloadNetworkNotReady", 2*time.Second, 2*time.Minute)
+		framework.ExpectFalse(veg.Status.Ready)
+	})
 })
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
