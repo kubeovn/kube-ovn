@@ -58,6 +58,15 @@ metadata:
   namespace: $KUBE_OVN_NS
 spec:
   restartPolicy: Never
+  # Mirror ovn-central's tolerations so the helper can schedule onto the
+  # same nodes (typically control-plane / master) that host the PVC.
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
   containers:
     - name: restore
       image: busybox:1.36
@@ -80,6 +89,10 @@ HELPER
     [ -f /etc/ovn/ovnnb_db.db ] && mv /etc/ovn/ovnnb_db.db /etc/ovn/ovnnb_db.db.bak.$(date +%s) || true
     [ -f /etc/ovn/ovnsb_db.db ] && mv /etc/ovn/ovnsb_db.db /etc/ovn/ovnsb_db.db.bak.$(date +%s) || true
     mv /etc/ovn/ovnnb_db.db.restore /etc/ovn/ovnnb_db.db
+    # kubectl cp extracts as the helper pods uid (root). ovn-central runs as
+    # nobody (uid 65534), so chown the restored DB. On root-squashed NFS the
+    # chown may be a no-op (root is already mapped to nobody) and that is OK.
+    chown -R 65534:65534 /etc/ovn 2>/dev/null || echo "chown /etc/ovn skipped (root-squashed NFS likely); restored file ownership left as-is"
     ls -l /etc/ovn/
   '
 

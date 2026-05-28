@@ -1,4 +1,26 @@
 {{- if include "kubeovn.renderControlPlane" . }}
+{{- /*
+Guard against in-place mode switches that would silently drop the live OVN
+DB. Switching from raft cluster (hostPath /etc/ovn) to single (PVC) leaves
+the new pod starting against an empty PVC; reverse direction loses the
+PVC-backed DB. Detect the existing Deployment's volume type via `lookup` and
+fail with explicit migration instructions if it disagrees with the rendered
+OVN_CENTRAL_MODE. `lookup` returns empty during dry-run / template, so this
+only fires on a real install/upgrade against a cluster.
+*/}}
+{{- $existing := lookup "apps/v1" "Deployment" .Values.namespace "ovn-central" }}
+{{- if $existing }}
+  {{- range $existing.spec.template.spec.volumes }}
+    {{- if eq .name "host-config-ovn" }}
+      {{- if and (eq $.Values.OVN_CENTRAL_MODE "single") .hostPath }}
+        {{- fail "Refusing to switch OVN_CENTRAL_MODE in place from raft (hostPath) to single (PVC). The new render would start ovn-central against an empty PVC and lose live OVN state. Migrate explicitly: (1) snapshot the current DB with `bash dist/images/restore-ovn-nb-db.sh` style backup; (2) `helm uninstall` the current release; (3) `helm install` with OVN_CENTRAL_MODE=single onto a fresh namespace or after clearing the existing ovn-central Deployment; (4) restore the snapshot via `bash dist/images/restore-ovn-nb-db.sh single <backup.db>`." }}
+      {{- end }}
+      {{- if and (ne $.Values.OVN_CENTRAL_MODE "single") .persistentVolumeClaim }}
+        {{- fail "Refusing to switch OVN_CENTRAL_MODE in place from single (PVC) to raft (hostPath). The new render would lose the PVC-backed DB. Migrate explicitly: snapshot the DB, helm uninstall, then helm install in the target mode and restore the snapshot." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:

@@ -49,9 +49,26 @@ INSTALL_PATH="dist/images/install.sh"
 # installMode (see charts/kube-ovn/templates/_helpers.tpl). Wrap the generated
 # CRD bundle with the data-plane render gate so dataPlaneOnly installs ship the
 # CRDs and controlPlaneOnly installs skip them.
+#
+# We also inject `helm.sh/resource-policy: keep` onto each CRD so a release
+# that flips installMode (e.g. full -> controlPlaneOnly) does not delete the
+# CRDs and cascade-delete all custom resources. Helm normally treats missing
+# templates on upgrade as resources to remove; the annotation pins CRDs in
+# place. Operators who really want to drop CRDs can `kubectl delete crd ...`
+# explicitly.
 {
   echo '{{- if include "kubeovn.renderDataPlane" . }}'
-  cat "$BUNDLE_FILE"
+  awk '
+    /^kind: CustomResourceDefinition$/ { in_crd = 1 }
+    in_crd && /^metadata:$/ {
+      print
+      print "  annotations:"
+      print "    helm.sh/resource-policy: keep"
+      next
+    }
+    /^---$/ { in_crd = 0 }
+    { print }
+  ' "$BUNDLE_FILE"
   echo '{{- end }}'
 } > "$CHART_V1_CRD_PATH"
 cp "$BUNDLE_FILE" "$CHART_V2_CRD_PATH"
