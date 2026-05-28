@@ -46,11 +46,11 @@ OVN_CENTRAL_MODE: single
 
 ovn-central:
   storage:
-    enabled: true
     storageClassName: my-csi          # leave empty to use the cluster default
     size: 10Gi
     accessModes:
       - ReadWriteOnce
+    # existingClaim: ""               # set to use a pre-created PVC instead
 ```
 
 ```bash
@@ -117,7 +117,6 @@ OVN_CENTRAL_MODE: single
 
 ovn-central:
   storage:
-    enabled: true
     storageClassName: my-csi
     size: 10Gi
   service:
@@ -157,9 +156,11 @@ producing `tcp:[10.99.99.99]:6641` / `:6642` connection strings.
 > the LB; the existing kube-ovn SSL machinery covers everything once the
 > certs are in place.
 
-A full Kamaji integration also needs a "data-plane only" rendering of the
-chart that skips `ovn-central` and its PVC — that's tracked separately and
-not part of this change.
+For a full Kamaji-style split-cluster deployment (management cluster runs
+`ovn-central` while tenant clusters run only the agents and connect back
+via a LoadBalancer), see [kamaji-deployment.md](./kamaji-deployment.md)
+which walks through the `installMode: controlPlaneOnly` / `dataPlaneOnly`
+flow.
 
 ## Backup and restore
 

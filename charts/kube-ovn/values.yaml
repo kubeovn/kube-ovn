@@ -205,9 +205,10 @@ ovn-central:
       - ReadWriteOnce
     # Set existingClaim to skip in-chart PVC creation and point the
     # Deployment at a PVC the operator manages out-of-band (e.g. via a
-    # storage operator). The Deployment always mounts claim "ovn-central-data"
-    # so the value here must equal "ovn-central-data" — leaving the field
-    # empty means the chart creates the PVC itself.
+    # storage operator). The value is the name of the existing PVC; the
+    # Deployment's host-config-ovn volume mounts whatever you set here.
+    # Leaving this empty makes the chart create a PVC named
+    # "ovn-central-data" itself.
     existingClaim: ""
   # Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
   # only reachable from inside the cluster. Switch to LoadBalancer (or

@@ -65,7 +65,6 @@ OVN_CENTRAL_MODE: single
 
 ovn-central:
   storage:
-    enabled: true
     storageClassName: my-csi
     size: 10Gi
   service:
