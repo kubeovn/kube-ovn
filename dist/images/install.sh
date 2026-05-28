@@ -263,6 +263,29 @@ echo ""
 echo "[Step 2/6] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',' | sed 's/,$//')
 count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
+
+# Reject in-place OVN_CENTRAL_MODE switches that would silently drop the live
+# OVN DB. Mirror the Helm chart's lookup-based guard so install.sh users get
+# the same protection. The Deployment's host-config-ovn volume tells us
+# whether the existing release is raft (hostPath) or single (PVC).
+if kubectl get deployment -n kube-system ovn-central >/dev/null 2>&1; then
+  existing_host_path=$(kubectl get deployment -n kube-system ovn-central \
+    -o jsonpath='{.spec.template.spec.volumes[?(@.name=="host-config-ovn")].hostPath.path}' 2>/dev/null)
+  existing_pvc=$(kubectl get deployment -n kube-system ovn-central \
+    -o jsonpath='{.spec.template.spec.volumes[?(@.name=="host-config-ovn")].persistentVolumeClaim.claimName}' 2>/dev/null)
+  if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ] && [ -n "$existing_host_path" ]; then
+    echo "ERROR: Refusing to switch in place from raft cluster mode (hostPath /etc/ovn) to single-replica mode (PVC)."
+    echo "       The new ovn-central pod would start against an empty PVC and lose all live OVN state."
+    echo "       Migrate explicitly: backup the DB, kubectl delete deployment ovn-central, then re-run install.sh."
+    exit 1
+  fi
+  if [ "$ENABLE_SINGLE_REPLICA_OVN" != "true" ] && [ -n "$existing_pvc" ]; then
+    echo "ERROR: Refusing to switch in place from single-replica mode (PVC) to raft cluster mode (hostPath)."
+    echo "       The cluster-mode ovn-central would start without the PVC-backed DB. Migrate explicitly."
+    exit 1
+  fi
+fi
+
 if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
   # In single-replica mode the OVN DB lives on a PVC, so NODE_IPS/OVN_DB_IPS
   # must be empty (clients use the Service ClusterIPs) and the Deployment runs
