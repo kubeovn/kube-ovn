@@ -160,7 +160,10 @@ spec:
             - -eo
             - pipefail
             - -c
-            - /kube-ovn/upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/upgrade-ovs.log
+            - |
+              touch /var/log/kube-ovn/upgrade-ovs.log
+              chmod 640 /var/log/kube-ovn/upgrade-ovs.log
+              /kube-ovn/upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/upgrade-ovs.log
           volumeMounts:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log

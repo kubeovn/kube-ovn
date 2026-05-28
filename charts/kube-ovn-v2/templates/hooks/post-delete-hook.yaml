@@ -119,7 +119,10 @@ spec:
           command:
             - sh
             - -c
-            - /kube-ovn/remove-finalizer.sh 2>&1 | tee -a /var/log/kube-ovn/remove-finalizer.log
+            - |
+              touch /var/log/kube-ovn/remove-finalizer.log
+              chmod 640 /var/log/kube-ovn/remove-finalizer.log
+              /kube-ovn/remove-finalizer.sh 2>&1 | tee -a /var/log/kube-ovn/remove-finalizer.log
           resources:
             requests:
               cpu: 100m
