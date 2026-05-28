@@ -204,6 +204,22 @@ Using one of the cross-cluster GitOps patterns helps:
   format `tcp:[host]:port` is fragile against older OVN parsers. If you
   expose ovn-central behind a hostname, prefer a static VIP that hostname
   resolves to and put the VIP in `endpoint`.
+- The three OVN Services (ovn-nb / ovn-sb / ovn-northd) share the single
+  `ovn-central.service.loadBalancerIP`. With MetalLB the chart emits the
+  `metallb.universe.tf/allow-shared-ip: kube-ovn-central` annotation so
+  the three Services land on one VIP distinguished by port. With cloud
+  LoadBalancer providers that reject duplicate `loadBalancerIP`, you have
+  two options: (a) use NodePort instead and front the node IPs with an
+  external LB you control, or (b) extend the chart to render
+  per-Service VIPs and have `externalOvnCentral` accept separate `nbEndpoint`
+  / `sbEndpoint` fields. The chart does not currently support (b) — track it
+  as follow-up work.
+- In `installMode=dataPlaneOnly` with `networking.ENABLE_SSL=true`, you
+  **must** pre-seed the `kube-ovn-tls` Secret in the tenant cluster
+  before installing the chart. Self-signing locally would produce certs
+  the management cluster does not trust. The chart fails with a clear
+  message in this case rather than silently generating an incompatible
+  CA.
 - DPDK (`HYBRID_DPDK=true`) and the OVS upgrade hooks
   (`pre-upgrade-ovs-ovn` / `upgrade-ovs-ovn`) are currently disabled outside
   `installMode: full` because they reference a local ovn-central. Running
