@@ -1228,6 +1228,17 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.39 (2026-05-29)
+
+ * [3e7d8629e](https://github.com/kubeovn/kube-ovn/commit/3e7d8629e23ae174baa47862255a18232e805a3d) release v1.14.39
+ * [8101b819e](https://github.com/kubeovn/kube-ovn/commit/8101b819e8b4a9411f50345e38dd40581635d490) fix: restrict hook log file permissions (#6794)
+ * [cd440469e](https://github.com/kubeovn/kube-ovn/commit/cd440469e34d1d673923b885be1c89a639d5a2df) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.38 (2026-05-25)
 
  * [67553a2bb](https://github.com/kubeovn/kube-ovn/commit/67553a2bb6268bc1c434f3ea15411309cd8820a4) release v1.14.38
