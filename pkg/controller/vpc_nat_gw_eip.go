@@ -398,13 +398,41 @@ func (c *Controller) createEipInPod(dp, addrV4, ns string) error {
 	return c.execNatGwRules(gwPod, natGwEipAdd, []string{addrV4})
 }
 
+// natGwDeleted returns true when the VpcNatGateway CRD with the given name no
+// longer exists. A (true, nil) result means the gateway has been fully removed
+// and any in-pod cleanup can be safely skipped. Other errors are returned
+// as-is for the caller to handle.
+func (c *Controller) natGwDeleted(dp string) (bool, error) {
+	if _, err := c.vpcNatGatewayLister.Get(dp); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
 func (c *Controller) deleteEipInPod(dp, v4Cidr, ns string) error {
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
+	// there is nothing to clean up. If the CRD still exists but the pod is
+	// temporarily absent (e.g. being recreated), return the error so the
+	// reconciler retries until the pod is ready.
+	deleted, err := c.natGwDeleted(dp)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
 	gwPod, err := c.getNatGwPod(dp, ns)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			// Pod is temporarily absent (e.g. being recreated); retry quietly.
+			klog.V(4).Infof("nat gw pod %s not found, will retry eip pod cleanup", dp)
+		} else {
+			klog.Error(err)
 		}
-		klog.Error(err)
 		return err
 	}
 	var delRules []string
@@ -513,9 +541,23 @@ func (c *Controller) addEipQoSInPod(
 
 func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
-	gwPod, err := c.getNatGwPod(dp, ns)
+	// Same CRD / pod sentinel logic as deleteEipInPod: skip when the gateway is
+	// gone, retry when the pod is temporarily absent.
+	deleted, err := c.natGwDeleted(dp)
 	if err != nil {
 		klog.Error(err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
+	gwPod, err := c.getNatGwPod(dp, ns)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(4).Infof("nat gw pod %s not found, will retry eip qos cleanup", dp)
+		} else {
+			klog.Error(err)
+		}
 		return err
 	}
 	var delRules []string
