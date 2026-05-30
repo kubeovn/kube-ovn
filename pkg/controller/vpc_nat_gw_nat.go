@@ -1927,12 +1927,25 @@ func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.Ipta
 }
 
 func (c *Controller) deleteFipInPod(dp, v4ip string) error {
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
+	// there is nothing to clean up. If the CRD still exists but the pod is
+	// temporarily absent (e.g. being recreated), return the error so the
+	// reconciler retries until the pod is ready.
+	deleted, err := c.natGwDeleted(dp)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
 	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			klog.V(4).Infof("nat gw pod %s not found, will retry fip pod cleanup", dp)
+		} else {
+			klog.Error(err)
 		}
-		klog.Error(err)
 		return err
 	}
 	// del_floating_ip matches by EIP only (FIP is 1:1, identity = EIP)
@@ -1961,12 +1974,25 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 }
 
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
+	// there is nothing to clean up. If the CRD still exists but the pod is
+	// temporarily absent (e.g. being recreated), return the error so the
+	// reconciler retries until the pod is ready.
+	deleted, err := c.natGwDeleted(dp)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
 	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			klog.V(4).Infof("nat gw pod %s not found, will retry dnat pod cleanup", dp)
+		} else {
+			klog.Error(err)
 		}
-		klog.Error(err)
 		return err
 	}
 
@@ -2008,12 +2034,25 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	internalCIDR = normalizeSnatInternalCIDR(internalCIDR)
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
+	// there is nothing to clean up. If the CRD still exists but the pod is
+	// temporarily absent (e.g. being recreated), return the error so the
+	// reconciler retries until the pod is ready.
+	deleted, err := c.natGwDeleted(dp)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if deleted {
+		return nil
+	}
 	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			klog.V(4).Infof("nat gw pod %s not found, will retry snat pod cleanup", dp)
+		} else {
+			klog.Error(err)
 		}
-		klog.Error(err)
 		return err
 	}
 	// del nat
