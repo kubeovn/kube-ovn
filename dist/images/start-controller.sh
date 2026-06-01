@@ -2,10 +2,14 @@
 set -euo pipefail
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
+# Default to the in-cluster Service ports. Override when reaching an
+# externally-exposed ovn-central whose NodePort/LoadBalancer remaps ports.
+KUBE_OVN_NB_PORT=${KUBE_OVN_NB_PORT:-6641}
+KUBE_OVN_SB_PORT=${KUBE_OVN_SB_PORT:-6642}
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
-    if [[ "$1" == "6641" ]]; then
+    if [[ "$1" == "$KUBE_OVN_NB_PORT" ]]; then
       if [[ "$ENABLE_SSL" == "false" ]]; then
         x="tcp:[${OVN_NB_SERVICE_HOST}]:${OVN_NB_SERVICE_PORT}"
       else
@@ -29,8 +33,8 @@ function gen_conn_str {
   echo "$x"
 }
 
-nb_addr="$(gen_conn_str 6641)"
-sb_addr="$(gen_conn_str 6642)"
+nb_addr="$(gen_conn_str "$KUBE_OVN_NB_PORT")"
+sb_addr="$(gen_conn_str "$KUBE_OVN_SB_PORT")"
 
 exec ./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
                            --ovn-sb-addr="$sb_addr" \

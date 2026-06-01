@@ -1,3 +1,26 @@
+{{- if include "kubeovn.renderControlPlane" . }}
+{{- /*
+Guard against in-place mode switches that would silently drop the live OVN
+DB. Switching from raft cluster (hostPath /etc/ovn) to single (PVC) leaves
+the new pod starting against an empty PVC; reverse direction loses the
+PVC-backed DB. Detect the existing Deployment's volume type via `lookup` and
+fail with explicit migration instructions if it disagrees with the rendered
+OVN_CENTRAL_MODE. `lookup` returns empty during dry-run / template, so this
+only fires on a real install/upgrade against a cluster.
+*/}}
+{{- $existing := lookup "apps/v1" "Deployment" .Values.namespace "ovn-central" }}
+{{- if $existing }}
+  {{- range $existing.spec.template.spec.volumes }}
+    {{- if eq .name "host-config-ovn" }}
+      {{- if and (eq $.Values.OVN_CENTRAL_MODE "single") .hostPath }}
+        {{- fail "Refusing to switch OVN_CENTRAL_MODE in place from raft (hostPath) to single (PVC). The new render would start ovn-central against an empty PVC and lose live OVN state. Migrate explicitly: (1) snapshot the current DB with `bash dist/images/restore-ovn-nb-db.sh` style backup; (2) `helm uninstall` the current release; (3) `helm install` with OVN_CENTRAL_MODE=single onto a fresh namespace or after clearing the existing ovn-central Deployment; (4) restore the snapshot via `bash dist/images/restore-ovn-nb-db.sh single <backup.db>`." }}
+      {{- end }}
+      {{- if and (ne $.Values.OVN_CENTRAL_MODE "single") .persistentVolumeClaim }}
+        {{- fail "Refusing to switch OVN_CENTRAL_MODE in place from single (PVC) to raft (hostPath). The new render would lose the PVC-backed DB. Migrate explicitly: snapshot the DB, helm uninstall, then helm install in the target mode and restore the snapshot." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -7,12 +30,16 @@ metadata:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
 spec:
-  replicas: {{ include "kubeovn.nodeCount" . }}
+  replicas: {{ include "kubeovn.ovnCentralReplicas" . }}
   strategy:
+    {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+    type: Recreate
+    {{- else }}
     rollingUpdate:
       maxSurge: 0
       maxUnavailable: 1
     type: RollingUpdate
+    {{- end }}
   selector:
     matchLabels:
       app: ovn-central
@@ -31,12 +58,14 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
+        {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
+        {{- end }}
         {{- include "kubeovn.masterNodeAffinity" . | nindent 8 }}
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
@@ -52,7 +81,15 @@ spec:
           command:
             - sh
             - -c
+            {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+            # /etc/ovn comes from a PVC in single-replica mode. Backends like
+            # root-squashed NFS reject chown by root, so make the OVN DB
+            # directory chown best-effort; the OVN containers run as `nobody`
+            # and will create new files with the correct owner regardless.
+            - "chown -R nobody: /var/run/ovn /var/log/ovn && (chown -R nobody: /etc/ovn 2>/dev/null || echo 'chown /etc/ovn skipped (likely root-squashed NFS); ovn will write as nobody anyway')"
+            {{- else }}
             - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
@@ -84,7 +121,7 @@ spec:
           env:
 {{- include "kubeovn.ovnCentralTLSEnv" . | nindent 12 }}
             - name: NODE_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -158,8 +195,13 @@ spec:
           hostPath:
             path: /run/ovn
         - name: host-config-ovn
+          {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
+          persistentVolumeClaim:
+            claimName: {{ (index .Values "ovn-central" "storage").existingClaim | default "ovn-central-data" }}
+          {{- else }}
           hostPath:
             path: {{ .Values.OVN_DIR }}
+          {{- end }}
         - name: host-log-ovn
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn
@@ -171,3 +213,5 @@ spec:
             optional: true
             secretName: kube-ovn-tls
 
+
+{{- end }}

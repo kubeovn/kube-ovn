@@ -1,3 +1,11 @@
+{{- /*
+ServiceAccounts. Partitioned by installMode:
+- ovn          : used by kube-ovn-controller / ic-controller   → data plane
+- ovn-ovs      : used by ovn-central AND ovs-ovn               → both planes
+- kube-ovn-cni : used by kube-ovn-cni DaemonSet                → data plane
+- kube-ovn-app : used by kube-ovn-monitor / kube-ovn-pinger    → data plane
+*/}}
+{{- if include "kubeovn.renderDataPlane" . }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -14,6 +22,7 @@ imagePullSecrets:
 {{- end }}
 
 ---
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -29,6 +38,7 @@ imagePullSecrets:
 {{- end }}
 {{- end }}
 
+{{- if include "kubeovn.renderDataPlane" . }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -57,6 +67,7 @@ imagePullSecrets:
 {{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
 {{- if $secret }}
 - name: {{ $secret | quote}}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

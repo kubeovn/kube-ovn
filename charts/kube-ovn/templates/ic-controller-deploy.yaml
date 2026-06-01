@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.func.ENABLE_IC }}
 kind: Deployment
 apiVersion: apps/v1
@@ -93,7 +94,11 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
+            - name: KUBE_OVN_NB_PORT
+              value: "{{ include "kubeovn.ovnNbPort" . }}"
+            - name: KUBE_OVN_SB_PORT
+              value: "{{ include "kubeovn.ovnSbPort" . }}"
           resources:
             requests:
               cpu: 300m
@@ -132,4 +137,6 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+{{- end }}
+
 {{- end }}

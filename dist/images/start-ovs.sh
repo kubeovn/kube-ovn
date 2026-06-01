@@ -130,16 +130,17 @@ function gen_conn_str {
     fi
   else
     t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
+    local port=${1:-${KUBE_OVN_SB_PORT:-6642}}
     if [[ "$ENABLE_SSL" == "false" ]]; then
-      x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "tcp:[$i]:${port}",; done| sed 's/,$//')
     else
-      x=$(for i in ${t}; do echo -n "ssl:[$i]:$1",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "ssl:[$i]:${port}",; done| sed 's/,$//')
     fi
   fi
   echo "$x"
 }
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
+ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str "${KUBE_OVN_SB_PORT:-6642}")"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 

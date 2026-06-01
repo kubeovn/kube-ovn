@@ -1,19 +1,41 @@
+{{- if include "kubeovn.renderControlPlane" . }}
+{{- $svc := index .Values "ovn-central" "service" }}
+{{- include "kubeovn.validateService" . }}
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
   namespace: {{ .Values.namespace }}
+  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  annotations:
+    # MetalLB allows multiple Services to share a single VIP only when they
+    # carry the same allow-shared-ip annotation. The three ovn-* Services all
+    # opt into the same group so a Kamaji-style data plane can dial nb / sb /
+    # northd on one VIP, distinguished only by port. Harmless on non-MetalLB
+    # load balancers; remove the annotation if your provider rejects it.
+    metallb.universe.tf/allow-shared-ip: kube-ovn-central
+  {{- end }}
 spec:
   ports:
     - name: ovn-nb
       protocol: TCP
       port: 6641
       targetPort: 6641
-  type: ClusterIP
+  type: {{ $svc.type | default "ClusterIP" }}
+  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
+  {{- end }}
+  {{- if and (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+  {{- end }}
   {{- if eq .Values.networking.NET_STACK "dual_stack" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}
   selector:
     app: ovn-central
+    {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
     ovn-nb-leader: "true"
+    {{- end }}
   sessionAffinity: None
+
+{{- end }}
