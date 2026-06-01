@@ -2095,7 +2095,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				var subnetProviderName string
 				if ifName != "" {
 					providerNameElements := strings.Split(providerName, ".")
-					subnetProviderName = fmt.Sprintf("%s.%s", providerNameElements[0], providerNameElements[1])
+					subnetProviderName = fmt.Sprintf("%s.%s.%s", providerNameElements[0], providerNameElements[1], util.OvnProvider)
 				}
 				if subnet.Spec.Provider == subnetProviderName {
 					klog.Infof("matched to subnet %s", subnet.Name)
