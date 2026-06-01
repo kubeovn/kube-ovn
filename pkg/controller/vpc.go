@@ -1346,9 +1346,10 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		}
 	} else {
 		v4ip = cachedEip.Spec.V4Ip
+		v6ip = cachedEip.Spec.V6Ip
 		mac = cachedEip.Spec.MacAddress
 	}
-	if v4ip == "" || mac == "" {
+	if (v4ip == "" && v6ip == "") || mac == "" {
 		err := fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
 		klog.Error(err)
 		return err
@@ -1387,7 +1388,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 		return util.Sha256Hash([]byte(key+chassises[i])) < util.Sha256Hash([]byte(key+chassises[j]))
 	})
 
-	v4ipCidr, err := util.GetIPAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	ipCidr, err := util.GetIPAddrWithMask(util.GetStringIP(v4ip, v6ip), cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1395,7 +1396,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 
-	if err := c.OVNNbClient.CreateLogicalPatchPort(subnet, key, lspName, lrpName, v4ipCidr, mac, chassises...); err != nil {
+	if err := c.OVNNbClient.CreateLogicalPatchPort(subnet, key, lspName, lrpName, ipCidr, mac, chassises...); err != nil {
 		klog.Errorf("failed to connect router '%s' to external: %v", key, err)
 		return err
 	}
