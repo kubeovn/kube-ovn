@@ -1,3 +1,11 @@
+{{- /*
+ClusterRoleBindings / RoleBindings partitioned by installMode:
+- ovn          : data plane (kube-ovn-controller, ic-controller)
+- ovn-ovs      : both planes (ovn-central in mgmt, ovs-ovn in tenant)
+- kube-ovn-cni : data plane
+- kube-ovn-app : data plane
+*/}}
+{{- if include "kubeovn.renderDataPlane" . }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -25,6 +33,7 @@ subjects:
     name: ovn
     namespace: {{ .Values.namespace }}
 ---
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -38,6 +47,7 @@ subjects:
     name: ovn-ovs
     namespace: {{ .Values.namespace }}
 
+{{- if include "kubeovn.renderDataPlane" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -106,3 +116,4 @@ subjects:
   - kind: ServiceAccount
     name: kube-ovn-app
     namespace: {{ .Values.namespace }}
+{{- end }}

@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderFullOnly" . }}
 {{- if include "kubeovn.ovn.versionCompatibility" . -}}
 ---
 apiVersion: v1
@@ -130,3 +131,5 @@ spec:
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
 {{- end -}}
+
+{{- end }}

@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderFullOnly" . }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -174,3 +175,5 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
+
+{{- end }}

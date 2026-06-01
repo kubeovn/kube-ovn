@@ -343,7 +343,11 @@ function ovn_db_pre_start() {
 trap quit EXIT
 if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
-        /usr/share/ovn/scripts/ovn-ctl restart_northd
+        # Standalone (single-replica) mode. The pod can drift between nodes when
+        # backed by a PV, so clean up any leftover sockets/pids on the host before
+        # starting ovsdb-server.
+        rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
+        /usr/share/ovn/scripts/ovn-ctl --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" restart_northd
         ovn-nbctl --no-leader-only set-connection ptcp:"${NB_PORT}":["${DB_ADDR}"]
         ovn-nbctl --no-leader-only set Connection . inactivity_probe=${PROBE_INTERVAL}
         ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${OVN_NORTHD_PROBE_INTERVAL}
@@ -467,6 +471,9 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
     fi
 else
     if [[ -z "$NODE_IPS" ]]; then
+        # Standalone (single-replica) mode. Clean up stale sockets/pids so a
+        # drifted pod can come up on a new node.
+        rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
         /usr/share/ovn/scripts/ovn-ctl $(ovn_db_ssl_args /var/run/tls) \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd

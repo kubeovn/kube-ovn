@@ -18,9 +18,39 @@ image:
   pullPolicy: IfNotPresent
 
 namespace: kube-system
-installMode: full
 MASTER_NODES: ""
 MASTER_NODES_LABEL: "kube-ovn/role=master"
+
+# OVN_CENTRAL_MODE controls how ovn-central is deployed.
+#   cluster: multi-replica raft cluster, one pod per master node (default).
+#   single:  single-replica Deployment backed by a PVC, can drift to another
+#            node when the host fails. Uses ovsdb standalone mode (no raft).
+OVN_CENTRAL_MODE: "cluster"
+
+# installMode controls which slice of the chart this Helm release renders.
+#   full:             all components in one cluster (default, classic install).
+#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC. Use on the management cluster of a Kamaji-
+#                     style split deployment.
+#   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
+#                     pinger and their RBAC. Use on tenant data-plane
+#                     clusters that connect back to an external ovn-central via
+#                     externalOvnCentral below. kube-ovn-monitor is intentionally
+#                     skipped: it reads local OVN Unix sockets / DB files and
+#                     does not yet know how to talk to a remote ovn-central.
+installMode: full
+
+# When installMode=dataPlaneOnly, the agents and controller cannot rely on a
+# local ovn-central Service. Set externalOvnCentral.endpoint to the IP address
+# that exposes the management cluster's ovn-nb / ovn-sb Services (typically a
+# LoadBalancer VIP reachable from this cluster). DNS hostnames work with OVN
+# >= 22.03 but use an IP literal if you need to support older OVN versions —
+# the OVN connection string format `tcp:[host]:port` parses brackets only as
+# IP literals in older code paths.
+externalOvnCentral:
+  endpoint: ""
+  nbPort: 6641
+  sbPort: 6642
 
 networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
@@ -180,6 +210,34 @@ ovn-central:
     cpu: "3"
     memory: "4Gi"
     ephemeral-storage: 1Gi
+  # Persistent storage for the OVN DB files. Only used when OVN_CENTRAL_MODE=single.
+  # The StorageClass should support cross-node attach (e.g. NFS, Ceph RBD, cloud
+  # block storage with attach/detach) if you want ovn-central to drift between
+  # nodes on host failure.
+  storage:
+    storageClassName: ""
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    # Set existingClaim to skip in-chart PVC creation and point the
+    # Deployment at a PVC the operator manages out-of-band (e.g. via a
+    # storage operator). The value is the name of the existing PVC; the
+    # Deployment's host-config-ovn volume mounts whatever you set here.
+    # Leaving this empty makes the chart create a PVC named
+    # "ovn-central-data" itself.
+    existingClaim: ""
+  # Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
+  # only reachable from inside the cluster. Switch to LoadBalancer (or
+  # NodePort) to expose the OVN DB to data-plane components running outside
+  # the management cluster — for example a Kamaji-style topology where
+  # ovn-controller / kube-ovn-cni / kube-ovn-controller run in a separate
+  # tenant cluster and connect back over a stable VIP.
+  service:
+    type: ClusterIP
+    # Optional, only honoured when type=LoadBalancer; provider-dependent.
+    loadBalancerIP: ""
+    # Optional, only honoured when type=LoadBalancer / NodePort.
+    externalTrafficPolicy: ""
 ovs-ovn:
   requests:
     cpu: "200m"
