@@ -2093,10 +2093,10 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			// helper function to try and identify correct subnet when interface name is provided in request, this is for the case when multiple attach with same NAD but different interface name and the providerName contains interface name but subnet spec does not contain it
 			subnetMatches := func(subnet *kubeovnv1.Subnet, providerName, ifName string) bool {
 				var subnetProviderName string
-				if ifName != "" {
-					providerNameElements := strings.Split(providerName, ".")
-					subnetProviderName = fmt.Sprintf("%s.%s.%s", providerNameElements[0], providerNameElements[1], util.OvnProvider)
-				}
+				// if providerName contains ifName, then we trim it from the providerName to match with subnet spec
+				subnetProviderName, _ = strings.CutSuffix(providerName, "."+ifName)
+				klog.Infof("subnet %s, subnet provider %s, providername %s, trimmed subnetprovider %s, ifName %s", subnet.Name, subnet.Spec.Provider, providerName, subnetProviderName, ifName)
+
 				if subnet.Spec.Provider == subnetProviderName {
 					klog.Infof("matched to subnet %s", subnet.Name)
 					return true
@@ -2115,6 +2115,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 					}
 				}
 			}
+			klog.V(5).Infof("found subnet %s for provider %s", subnetName, providerName)
 			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
 				// attachment network not specify subnet, use pod default subnet or namespace subnet

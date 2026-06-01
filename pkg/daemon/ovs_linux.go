@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string, appendIfName bool) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -113,7 +113,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	// in case of multiple interfaces the interface name is used to distinguish different interfaces
 	// currently ovs.PodNameToPortName ignores the ifname which results in same port being returned
 	// for default nics the ifname is set to eth0 by the handler, so we can use that to distinguish default nics and non default nics, for non default nics we can append the ifname to the ifaceID to make it unique for ovs port creation and later retrieval, this is required to avoid the issue of same port being returned for multiple interfaces which results in wrong port being configured and attached to the pod, and also results in wrong port being deleted during pod deletion which affects other interfaces attached to the same pod.
-	if ifName != "eth0" {
+	if appendIfName {
 		ifaceID = fmt.Sprintf("%s.%s", ifaceID, ifName)
 	}
 	ovs.CleanDuplicatePort(ifaceID, hostNicName)

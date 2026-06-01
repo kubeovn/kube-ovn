@@ -232,7 +232,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 	ginkgo.Context("VPC Simple", ginkgo.Label("Feature:VPC-Simple"), func() {
 		namespaceName := "vpc-simple-ns"
-		podNames := []string{"vpc-simple-pod1", "vpc-simple-pod2"}
+		podNames := []string{"vpc-simple-pod1", "vpc-simple-pod2", "vpc-multi-nic-pod"}
 		yamlFile := getTestConfigFile("VPC/00-vpc-simple.yaml")
 
 		var nodeNames []string

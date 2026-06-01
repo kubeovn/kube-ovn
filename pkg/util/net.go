@@ -831,12 +831,13 @@ func PerInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName string) string
 }
 
 // GetAnnotationWithIfNameOverride returns the annotation value with interface name override if ifName is provided, otherwise return the annotation value without interface name.
-func GetAnnotationWithIfNameOverride(annotations map[string]string, provider, ifName, annotationTemplate string) string {
+func GetAnnotationWithIfNameOverride(annotations map[string]string, provider, ifName, annotationTemplate string, appendIfName bool) string {
 	// default behaviour when no interface name is specified
 	// verify if a custom ifname is provided then annotation will be of form
 	// vm-overlay.default.ovn.net1.kubernetes.io/xxx: xxx
-	if ifName != DefaultPodInterfaceName {
+	if appendIfName {
 		provider = fmt.Sprintf("%s.%s", provider, ifName)
 	}
+
 	return annotations[fmt.Sprintf(annotationTemplate, provider)]
 }
