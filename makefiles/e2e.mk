@@ -105,6 +105,8 @@ e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	$(GINKGO_E2E_BUILD) ./test/e2e/anp-domain
 	$(GINKGO_E2E_BUILD) ./test/e2e/cnp-domain
+	$(GINKGO_E2E_BUILD) ./test/e2e/single-replica
+	$(GINKGO_E2E_BUILD) ./test/e2e/kamaji
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -250,6 +252,27 @@ kube-ovn-ha-e2e:
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/ha/ha.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-single-replica-e2e
+kube-ovn-single-replica-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/single-replica
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/single-replica/single-replica.test -- $(TEST_BIN_ARGS)
+
+# Kamaji split-cluster e2e. Runs against the tenant cluster the setup script
+# brings up; expects KUBECONFIG and KUBE_OVN_KAMAJI_MGMT_VIP exported via
+# `eval $(./hack/kamaji-e2e.sh vars)` (the setup target does this for you).
+.PHONY: kube-ovn-kamaji-e2e
+kube-ovn-kamaji-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/kamaji
+	$(eval export KUBECONFIG=$(shell ./hack/kamaji-e2e.sh kubeconfig))
+	$(eval export KUBE_OVN_KAMAJI_MGMT_VIP=$(shell awk -F= '/KUBE_OVN_KAMAJI_MGMT_VIP/{print $$2}' <(./hack/kamaji-e2e.sh vars)))
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/kamaji/kamaji.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:
