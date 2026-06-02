@@ -238,7 +238,7 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 	if egressNeedUpdate {
 		if err = c.OVNNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionFromLport); err != nil {
-			sg.Status.IngressLastSyncSuccess = false
+			sg.Status.EgressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			klog.Error(err)
 			return err
