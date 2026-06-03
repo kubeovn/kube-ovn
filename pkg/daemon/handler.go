@@ -46,13 +46,17 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
-func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
+func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
 	if util.IsOvnProvider(provider) {
 		return nil, true
 	}
 	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
+	// for multi interface attachments the ifname is included in provider, for example, vm-overlay.default.ovn.net1
+	// as a result if ifname is set, we need to append it to subnet provider when comparing with request provider
+	// else no subnet will be found
+	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
 	for _, subnet := range subnets {
-		if subnet.Spec.Provider == provider {
+		if subnet.Spec.Provider == providerName {
 			return subnet.DeepCopy(), true
 		}
 	}
@@ -70,7 +74,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.V(5).Infof("request body is %v", podRequest)
-	podSubnet, exist := csh.providerExists(podRequest.Provider)
+	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
 	if !exist {
 		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
@@ -95,6 +99,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var isDefaultRoute, noIPAM bool
 	var pod *v1.Pod
 	var err error
+
+	providerWithIfName := fmt.Sprintf("%s.%s", podRequest.Provider, podRequest.IfName)
+	var appendIfName bool
+
 	for range 20 {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %w", podRequest.PodNamespace, podRequest.PodName, err)
@@ -104,7 +112,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
-		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
+
+		// in case of multiple nics from same subnet
+		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
+		if ok {
+			appendIfName = true
+		}
+
+		ip = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName)
+		if ip == "" {
 			klog.Infof("wait address for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
 			// wait controller assign an address
 			cniWaitAddressResult.WithLabelValues(nodeName).Inc()
@@ -119,18 +135,18 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		ip = pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
-		cidr = pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podRequest.Provider)]
-		gw = pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podRequest.Provider)]
-		subnet = pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
-		ingress = pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, podRequest.Provider)]
-		egress = pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, podRequest.Provider)]
-		latency = pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, podRequest.Provider)]
-		limit = pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, podRequest.Provider)]
-		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
-		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
-		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
-		vmName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, podRequest.Provider)]
+
+		cidr = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.CidrAnnotationTemplate, appendIfName)
+		gw = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.GatewayAnnotationTemplate, appendIfName)
+		subnet = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.LogicalSwitchAnnotationTemplate, appendIfName)
+		ingress = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IngressRateAnnotationTemplate, appendIfName)
+		egress = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.EgressRateAnnotationTemplate, appendIfName)
+		latency = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.NetemQosLatencyAnnotationTemplate, appendIfName)
+		limit = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.NetemQosLimitAnnotationTemplate, appendIfName)
+		loss = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.NetemQosLossAnnotationTemplate, appendIfName)
+		jitter = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.NetemQosJitterAnnotationTemplate, appendIfName)
+		providerNetwork = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.ProviderNetworkTemplate, appendIfName)
+		vmName = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.VMAnnotationTemplate, appendIfName)
 		ipAddr, noIPAM, err = util.GetIPAddrWithMaskForCNI(ip, cidr)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get ip address with mask, %w", err)
@@ -140,6 +156,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
+
 		oldPodName = podRequest.PodName
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
 			if err = json.Unmarshal([]byte(s), &routes); err != nil {
@@ -199,7 +216,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		break
 	}
 
-	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
+	if util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName) == "" {
 		err := fmt.Errorf("no address allocated to pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
@@ -212,7 +229,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		subnet = podSubnet.Name
 	}
 	if !noIPAM {
-		if err := csh.UpdateIPCR(podRequest, subnet, ip); err != nil {
+		if err := csh.UpdateIPCR(podRequest, subnet, ip, appendIfName); err != nil {
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
@@ -305,7 +322,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		}
 
-		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
+		macAddr = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.MacAddressAnnotationTemplate, appendIfName)
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		podNicName = ifName
 
@@ -327,7 +344,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:
-			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP, appendIfName)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
@@ -410,8 +427,14 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 }
 
-func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip string) error {
+func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip string, appendIfName bool) error {
+	klog.V(4).Infof("found subnet %s", subnet)
 	ipCRName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
+
+	// for backward compatibility we will check if annotation ip address exists with ifName first and subsequently with ifname
+	if appendIfName {
+		ipCRName = fmt.Sprintf("%s.%s", ipCRName, podRequest.IfName)
+	}
 	for range 20 {
 		ipCR, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCRName, metav1.GetOptions{})
 		if err != nil {
@@ -449,6 +472,8 @@ func (csh cniServerHandler) UpdateIPCR(podRequest request.CniRequest, subnet, ip
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
 	var podRequest request.CniRequest
+	var appendIfName bool
+
 	if err := req.ReadEntity(&podRequest); err != nil {
 		errMsg := fmt.Errorf("parse del request failed %w", err)
 		klog.Error(errMsg)
@@ -469,6 +494,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 
+	providerWithIfName := fmt.Sprintf("%s.%s", podRequest.Provider, podRequest.IfName)
 	if podRequest.NetNs == "" {
 		klog.Infof("skip del port request: %v", podRequest)
 		resp.WriteHeader(http.StatusNoContent)
@@ -490,9 +516,13 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	// If the Pod was found, process its annotations and labels.
 	if pod != nil {
 		if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
-			subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
+			_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
+			if ok {
+				appendIfName = true
+			}
+			subnet := util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.LogicalSwitchAnnotationTemplate, appendIfName)
 			if subnet != "" {
-				ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podRequest.Provider)]
+				ip := util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName)
 				if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
 					errMsg := fmt.Errorf("failed to remove egress configuration: %w", err)
 					klog.Error(errMsg)

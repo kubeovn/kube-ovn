@@ -1451,6 +1451,10 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	return nil
 }
 
+// we send pod net generated from     k8s.v1.cni.cncf.io/networks: '[{"name": "vm-overlay", "namespace": "default", "interface": "net1"}, {"name": "vm-overlay", "namespace": "default", "interface": "net2"}]'
+// there is no mac or ip address request here in the object generated from here
+// interface name in providerName is used for annotation for ip address
+
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, error) {
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
@@ -1954,9 +1958,17 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			if k8serrors.IsNotFound(err) && ignoreSubnetNotExist {
 				// NAD deleted before pod, find subnet for cleanup
 				providerName := fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
+				// k8s.v1.cni.cncf.io/networks: '[{"name": "vm-overlay", "namespace": "default", "interface": "net1"}, {"name": "vm-overlay", "namespace": "default", "interface": "net2"}]'
+				// will make providerName to be "vm-overlay.default.ovn.net1" and "vm-overlay.default.ovn.net2", but the subnet annotation is "vm-overlay.default.ovn"
 				if nadCounts[nadKey] > 1 && attach.InterfaceRequest != "" {
 					providerName = fmt.Sprintf("%s.%s", providerName, attach.InterfaceRequest)
 				}
+
+				// if interface name is provided this means providerName will contain interface name
+				// say vm-overlay.default.ovn.net1 which will not match the `provider` definition in the config object
+				// for each interface then we need annotation
+				// vm-overlay.default.ovn.net1.kubernetes.io/logical_switch = "subnetName" to allow it to identify correct switch to be associated with this interface
+				// interfaceName is included in the name
 				subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
 				if subnetName == "" {
 					for _, subnet := range subnets {
@@ -2013,26 +2025,54 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			allowLiveMigration := false
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 
+			// same logic as above we adding ifName in providerName
+
+			// vm-overlay.default.ovn
 			providerName = fmt.Sprintf("%s.%s.%s", attach.Name, attach.Namespace, util.OvnProvider)
 			if nadCounts[nadKey] > 1 && attach.InterfaceRequest != "" {
+				// due to interface name in request this becomes
+				// vm-overlay.default.ovn.net1
 				providerName = fmt.Sprintf("%s.%s", providerName, attach.InterfaceRequest)
 			}
 			if pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] != "" {
 				allowLiveMigration = true
 			}
 
+			// as a result when default subnetName i not provided then it will not match subnet spec.. as a result we find nothing and subnet is set to empty
+			// key is vm-overlay.default.ovn.net1.kubernetes.io/logical_switch: vm-overlay
 			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+
+			// helper function to try and identify correct subnet when interface name is provided in request, this is for the case when multiple attach with same NAD but different interface name and the providerName contains interface name but subnet spec does not contain it
+			subnetMatches := func(subnet *kubeovnv1.Subnet, providerName, ifName string) bool {
+				var subnetProviderName string
+				// if providerName contains ifName, then we trim it from the providerName to match with subnet spec
+				subnetProviderName, _ = strings.CutSuffix(providerName, "."+ifName)
+				klog.Infof("subnet %s, subnet provider %s, providername %s, trimmed subnetprovider %s, ifName %s", subnet.Name, subnet.Spec.Provider, providerName, subnetProviderName, ifName)
+
+				if subnet.Spec.Provider == subnetProviderName {
+					klog.Infof("matched to subnet %s", subnet.Name)
+					return true
+				}
+
+				return false
+			}
 			if subnetName == "" {
+				// when ifName is provided in request, the `provider` in subnet spec will not match
+				// since it does not contain substring for interface name and wrong subnet will be selected
+				// and it goes to default subnet
 				for _, subnet := range subnets {
-					if subnet.Spec.Provider == providerName {
+					if subnetMatches(subnet, providerName, attach.InterfaceRequest) {
 						subnetName = subnet.Name
 						break
 					}
 				}
 			}
+			klog.V(5).Infof("found subnet %s for provider %s", subnetName, providerName)
 			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
 				// attachment network not specify subnet, use pod default subnet or namespace subnet
+				// uses default subnet based on namespace annotation
+				// in this it goes to `ovn-default` and that explains the ipam error because the address is not in the range
 				subnet, err = c.getPodDefaultSubnet(pod)
 				if err != nil {
 					klog.Errorf("failed to pod default subnet, %v", err)
@@ -2062,6 +2102,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				}
 			}
 
+			// we send no macrequest or ip request so these should be empty in the response here
 			ret := &kubeovnNet{
 				Type:               providerTypeOriginal,
 				ProviderName:       providerName,
@@ -2128,6 +2169,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 }
 
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
+	// becomes vmNAme when pod is owned by a kubevirt VM
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
@@ -2153,6 +2195,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 
 	var macPointer *string
 	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+		// will not use the mac address vm-overlay.default.kubernetes.io/mac_address.net1
 		key := perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
 		if macStr := pod.Annotations[key]; macStr != "" {
 			if _, err := net.ParseMAC(macStr); err != nil {
@@ -2250,11 +2293,13 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	// Random allocate
+	// will be subnet.namespace.interface.ovn.kubernetes.io/ip_address in case of multiple interfaces with
+	// interface name provided or subnet.namespace.ovn.kubernetes.io/ip_address in case of single interface or multiple interfaces without interface name provided
 	if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
 		ippoolStr == "" {
 		// check new IP annotation
 		if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+			// subnet.namespace.kubernetes.io/ip_address.ifName = ipAddress
 			annoKey := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
 			if ipStr := pod.Annotations[annoKey]; ipStr != "" {
 				return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key)
