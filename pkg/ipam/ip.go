@@ -42,11 +42,13 @@ func (a IP) Equal(b IP) bool {
 }
 
 // cmp compares a and b, returning -1, 0 or 1 if a is less than, equal to or
-// greater than b. It is allocation-free and normalizes per address family so
-// that IPv4 addresses compare as their 4-byte value regardless of whether they
-// are stored in 4-byte or 16-byte (v4-in-v6) representation. This keeps the
-// result consistent with Equal and avoids the big.Int allocations that the
-// range engine would otherwise pay on every comparison.
+// greater than b. It normalizes per address family so that IPv4 addresses
+// compare by their 4-byte value whether stored as 4 or 16 bytes, keeping the
+// result consistent with Equal. Same-family comparisons — the only kind the
+// range engine performs, since IP range lists are family-segregated — are
+// allocation-free, replacing the two heap big.Int the old implementation paid
+// on every comparison. The mixed-family fallback exists only for determinism
+// and is never reached on the hot path.
 func (a IP) cmp(b IP) int {
 	if a4, b4 := net.IP(a).To4(), net.IP(b).To4(); a4 != nil && b4 != nil {
 		return bytes.Compare(a4, b4)
