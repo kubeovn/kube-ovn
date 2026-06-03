@@ -754,22 +754,22 @@ func (c *Controller) fetchEgressSelectedAddressesCommon(namespaces *metav1.Label
 func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]string, []string, error) {
 	var allV4Addresses, allV6Addresses []string
 
+	// build a name->resolver lookup once instead of listing all resolvers per domain
+	dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("Failed to list DNSNameResolvers: %v", err)
+		return allV4Addresses, allV6Addresses, nil
+	}
+	resolverByName := make(map[string]*kubeovnv1.DNSNameResolver, len(dnsNameResolvers))
+	for _, resolver := range dnsNameResolvers {
+		// keep the first resolver seen for a given name (preserves first-match semantics)
+		if _, ok := resolverByName[string(resolver.Spec.Name)]; !ok {
+			resolverByName[string(resolver.Spec.Name)] = resolver
+		}
+	}
+
 	for _, domainName := range domainNames {
-		// Find DNSNameResolver for this domain name
-		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("Failed to list DNSNameResolvers: %v", err)
-			continue
-		}
-
-		var foundResolver *kubeovnv1.DNSNameResolver
-		for _, resolver := range dnsNameResolvers {
-			if string(resolver.Spec.Name) == string(domainName) {
-				foundResolver = resolver
-				break
-			}
-		}
-
+		foundResolver := resolverByName[string(domainName)]
 		if foundResolver == nil {
 			klog.V(3).Infof("No DNSNameResolver found for domain %s, skipping", domainName)
 			continue

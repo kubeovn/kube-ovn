@@ -1195,7 +1195,7 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 		NewACLMatch(ipKey, "!=", "$"+asExceptName, ""),
 	)
 
-	matches := make([]string, 0)
+	matches := make([]string, 0, len(npp))
 
 	// allow allowed ip traffic but except
 	if len(npp) == 0 {

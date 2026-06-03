@@ -225,6 +225,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
+	// hasCnpDomainNames is invariant across egress rules, so compute it once
+	hasDomainNames := hasCnpDomainNames(cnp)
+
 	// create egress acl
 	for index, rule := range cnp.Spec.Egress {
 		v4AddressSetName, as4len, v6AddressSetName, as6len, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
@@ -235,8 +238,6 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 
 		desiredEgressAddrSet.Add(v4AddressSetName, v6AddressSetName)
-
-		hasDomainNames := hasCnpDomainNames(cnp)
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
@@ -769,22 +770,22 @@ func (c *Controller) setAddrSetForCnpRuleCommon(anpName, pgName, ruleName string
 func (c *Controller) resolveDomainNamesForCnp(domainNames []v1alpha2.DomainName) ([]string, []string, error) {
 	var allV4Addresses, allV6Addresses []string
 
+	// build a name->resolver lookup once instead of listing all resolvers per domain
+	dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list DNSNameResolvers: %v", err)
+		return allV4Addresses, allV6Addresses, nil
+	}
+	resolverByName := make(map[string]*kubeovnv1.DNSNameResolver, len(dnsNameResolvers))
+	for _, resolver := range dnsNameResolvers {
+		// keep the first resolver seen for a given name (preserves first-match semantics)
+		if _, ok := resolverByName[string(resolver.Spec.Name)]; !ok {
+			resolverByName[string(resolver.Spec.Name)] = resolver
+		}
+	}
+
 	for _, domainName := range domainNames {
-		// Find DNSNameResolver for this domain name
-		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list DNSNameResolvers: %v", err)
-			continue
-		}
-
-		var foundResolver *kubeovnv1.DNSNameResolver
-		for _, resolver := range dnsNameResolvers {
-			if string(resolver.Spec.Name) == string(domainName) {
-				foundResolver = resolver
-				break
-			}
-		}
-
+		foundResolver := resolverByName[string(domainName)]
 		if foundResolver == nil {
 			klog.V(3).Infof("no DNSNameResolver found for domain %s, skipping", domainName)
 			continue

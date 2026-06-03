@@ -1931,10 +1931,17 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		}
 		multusNets = append(multusNets, attachments...)
 	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
+	// only pods with attachment networks need the full subnet list; skip the
+	// listing for the common case (no attachment network) to avoid allocating
+	// the whole subnet set on every pod reconcile
+	var subnets []*kubeovnv1.Subnet
+	if len(multusNets) != 0 {
+		var err error
+		subnets, err = c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets: %v", err)
+			return nil, err
+		}
 	}
 
 	// ignore to return all existing subnets to clean its ip crd
