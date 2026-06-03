@@ -1966,25 +1966,6 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 				// if interface name is provided this means providerName will contain interface name
 				// say vm-overlay.default.ovn.net1 which will not match the `provider` definition in the config object
-				/*
-									apiVersion: k8s.cni.cncf.io/v1
-					kind: NetworkAttachmentDefinition
-					metadata:
-					  creationTimestamp: "2026-05-18T00:49:37Z"
-					  finalizers:
-					  - wrangler.cattle.io/harvester-network-manager-nad-controller
-					  generation: 1
-					  labels:
-					    network.harvesterhci.io/clusternetwork: mgmt
-					    network.harvesterhci.io/ready: "true"
-					    network.harvesterhci.io/type: OverlayNetwork
-					  name: vm-overlay
-					  namespace: default
-					  resourceVersion: "23021"
-					  uid: c281375e-d7eb-4495-980e-ec4c09ac7be9
-					spec:
-					  config: '{"cniVersion":"0.3.1","name":"vm-overlay","type":"kube-ovn","provider":"vm-overlay.default.ovn","server_socket":"/run/openvswitch/kube-ovn-daemon.sock"}'
-				*/
 				// for each interface then we need annotation
 				// vm-overlay.default.ovn.net1.kubernetes.io/logical_switch = "subnetName" to allow it to identify correct switch to be associated with this interface
 				// interfaceName is included in the name
@@ -2057,35 +2038,6 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				allowLiveMigration = true
 			}
 
-			/*
-				apiVersion: kubeovn.io/v1
-				kind: Subnet
-				metadata:
-				  creationTimestamp: "2026-05-18T00:50:05Z"
-				  finalizers:
-				  - kubeovn.io/kube-ovn-controller
-				  generation: 6
-				  name: vm-overlay
-				  resourceVersion: "166506"
-				  uid: 094aca79-e976-42ba-bf52-3e65e6b02fc2
-				spec:
-				  cidrBlock: 192.168.0.0/24
-				  default: false
-				  dhcpV4Options: ""
-				  dhcpV6Options: ""
-				  enableDHCP: true
-				  enableLb: true
-				  excludeIps:
-				  - 192.168.0.1..192.168.0.100
-				  gateway: 192.168.0.1
-				  gatewayNode: ""
-				  gatewayType: distributed
-				  natOutgoing: false
-				  private: false
-				  protocol: IPv4
-				  provider: vm-overlay.default.ovn
-				  vpc: ovn-cluster
-			*/
 			// as a result when default subnetName i not provided then it will not match subnet spec.. as a result we find nothing and subnet is set to empty
 			// key is vm-overlay.default.ovn.net1.kubernetes.io/logical_switch: vm-overlay
 			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
@@ -2120,28 +2072,6 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			if subnetName == "" {
 				// attachment network not specify subnet, use pod default subnet or namespace subnet
 				// uses default subnet based on namespace annotation
-				/*
-					apiVersion: v1
-					kind: Namespace
-					metadata:
-					  annotations:
-					    ovn.kubernetes.io/cidr: 10.54.0.0/16
-					    ovn.kubernetes.io/exclude_ips: 10.54.0.1
-					    ovn.kubernetes.io/logical_switch: ovn-default
-					  creationTimestamp: "2026-05-18T00:29:34Z"
-					  finalizers:
-					  - wrangler.cattle.io/harvester-namespace-controller
-					  labels:
-					    kubernetes.io/metadata.name: default
-					  name: default
-					  resourceVersion: "21589"
-					  uid: f38759d7-0439-44bd-94bf-89e7c766723b
-					spec:
-					  finalizers:
-					  - kubernetes
-					status:
-					  phase: Active
-				*/
 				// in this it goes to `ovn-default` and that explains the ipam error because the address is not in the range
 				subnet, err = c.getPodDefaultSubnet(pod)
 				if err != nil {

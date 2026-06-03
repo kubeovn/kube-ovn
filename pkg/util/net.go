@@ -826,10 +826,6 @@ func ValidateProtocol(protocol string) error {
 	return nil
 }
 
-func PerInterfaceIPAnnotationKey(nadName, nadNamespace, ifaceName string) string {
-	return fmt.Sprintf("%s.%s.kubernetes.io/ip_address.%s", nadName, nadNamespace, ifaceName)
-}
-
 // GetAnnotationWithIfNameOverride returns the annotation value with interface name override if ifName is provided, otherwise return the annotation value without interface name.
 func GetAnnotationWithIfNameOverride(annotations map[string]string, provider, ifName, annotationTemplate string, appendIfName bool) string {
 	// default behaviour when no interface name is specified

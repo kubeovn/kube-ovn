@@ -512,10 +512,6 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	}
 
 	providerWithIfName := fmt.Sprintf("%s.%s", podRequest.Provider, podRequest.IfName)
-	_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
-	if ok {
-		appendIfName = true
-	}
 	if podRequest.NetNs == "" {
 		klog.Infof("skip del port request: %v", podRequest)
 		resp.WriteHeader(http.StatusNoContent)
@@ -537,7 +533,11 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	// If the Pod was found, process its annotations and labels.
 	if pod != nil {
 		if pod.Annotations != nil && (util.IsOvnProvider(podRequest.Provider) || podRequest.CniType == util.CniTypeName) {
-			subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
+			_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
+			if ok {
+				appendIfName = true
+			}
+			subnet := util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.LogicalSwitchAnnotationTemplate, appendIfName)
 			if subnet != "" {
 				ip := util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName)
 				if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
