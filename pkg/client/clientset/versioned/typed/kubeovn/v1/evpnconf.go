@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -45,18 +46,19 @@ type EvpnConfInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.EvpnConfList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.EvpnConf, err error)
+	Apply(ctx context.Context, evpnConf *applyconfigurationkubeovnv1.EvpnConfApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.EvpnConf, err error)
 	EvpnConfExpansion
 }
 
 // evpnConves implements EvpnConfInterface
 type evpnConves struct {
-	*gentype.ClientWithList[*kubeovnv1.EvpnConf, *kubeovnv1.EvpnConfList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.EvpnConf, *kubeovnv1.EvpnConfList, *applyconfigurationkubeovnv1.EvpnConfApplyConfiguration]
 }
 
 // newEvpnConves returns a EvpnConves
 func newEvpnConves(c *KubeovnV1Client) *evpnConves {
 	return &evpnConves{
-		gentype.NewClientWithList[*kubeovnv1.EvpnConf, *kubeovnv1.EvpnConfList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.EvpnConf, *kubeovnv1.EvpnConfList, *applyconfigurationkubeovnv1.EvpnConfApplyConfiguration](
 			"evpn-confs",
 			c.RESTClient(),
 			scheme.ParameterCodec,

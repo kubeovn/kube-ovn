@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type VlanInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.VlanList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.Vlan, err error)
+	Apply(ctx context.Context, vlan *applyconfigurationkubeovnv1.VlanApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.Vlan, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, vlan *applyconfigurationkubeovnv1.VlanApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.Vlan, err error)
 	VlanExpansion
 }
 
 // vlans implements VlanInterface
 type vlans struct {
-	*gentype.ClientWithList[*kubeovnv1.Vlan, *kubeovnv1.VlanList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.Vlan, *kubeovnv1.VlanList, *applyconfigurationkubeovnv1.VlanApplyConfiguration]
 }
 
 // newVlans returns a Vlans
 func newVlans(c *KubeovnV1Client) *vlans {
 	return &vlans{
-		gentype.NewClientWithList[*kubeovnv1.Vlan, *kubeovnv1.VlanList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.Vlan, *kubeovnv1.VlanList, *applyconfigurationkubeovnv1.VlanApplyConfiguration](
 			"vlans",
 			c.RESTClient(),
 			scheme.ParameterCodec,

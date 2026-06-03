@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeSubnets implements SubnetInterface
 type fakeSubnets struct {
-	*gentype.FakeClientWithList[*v1.Subnet, *v1.SubnetList]
+	*gentype.FakeClientWithListAndApply[*v1.Subnet, *v1.SubnetList, *kubeovnv1.SubnetApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeSubnets(fake *FakeKubeovnV1) kubeovnv1.SubnetInterface {
+func newFakeSubnets(fake *FakeKubeovnV1) typedkubeovnv1.SubnetInterface {
 	return &fakeSubnets{
-		gentype.NewFakeClientWithList[*v1.Subnet, *v1.SubnetList](
+		gentype.NewFakeClientWithListAndApply[*v1.Subnet, *v1.SubnetList, *kubeovnv1.SubnetApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("subnets"),

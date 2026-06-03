@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeOvnEips implements OvnEipInterface
 type fakeOvnEips struct {
-	*gentype.FakeClientWithList[*v1.OvnEip, *v1.OvnEipList]
+	*gentype.FakeClientWithListAndApply[*v1.OvnEip, *v1.OvnEipList, *kubeovnv1.OvnEipApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeOvnEips(fake *FakeKubeovnV1) kubeovnv1.OvnEipInterface {
+func newFakeOvnEips(fake *FakeKubeovnV1) typedkubeovnv1.OvnEipInterface {
 	return &fakeOvnEips{
-		gentype.NewFakeClientWithList[*v1.OvnEip, *v1.OvnEipList](
+		gentype.NewFakeClientWithListAndApply[*v1.OvnEip, *v1.OvnEipList, *kubeovnv1.OvnEipApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("ovn-eips"),
