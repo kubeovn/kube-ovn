@@ -770,24 +770,19 @@ func (c *Controller) setAddrSetForCnpRuleCommon(anpName, pgName, ruleName string
 func (c *Controller) resolveDomainNamesForCnp(domainNames []v1alpha2.DomainName) ([]string, []string, error) {
 	var allV4Addresses, allV6Addresses []string
 
-	// build a name->resolver lookup once instead of listing all resolvers per domain
-	dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list DNSNameResolvers: %v", err)
-		return allV4Addresses, allV6Addresses, nil
-	}
-	resolverByName := make(map[string]*kubeovnv1.DNSNameResolver, len(dnsNameResolvers))
-	for _, resolver := range dnsNameResolvers {
-		// keep the first resolver seen for a given name (preserves first-match semantics)
-		if _, ok := resolverByName[string(resolver.Spec.Name)]; !ok {
-			resolverByName[string(resolver.Spec.Name)] = resolver
-		}
-	}
-
 	for _, domainName := range domainNames {
-		foundResolver := resolverByName[string(domainName)]
-		if foundResolver == nil {
+		// O(1) lookup via the Spec.Name informer index instead of listing all resolvers
+		objs, err := c.dnsNameResolverIndexer.ByIndex(IndexDNSNameResolverByName, string(domainName))
+		if err != nil {
+			klog.Errorf("failed to query DNSNameResolver index for domain %s: %v", domainName, err)
+			continue
+		}
+		if len(objs) == 0 {
 			klog.V(3).Infof("no DNSNameResolver found for domain %s, skipping", domainName)
+			continue
+		}
+		foundResolver, ok := objs[0].(*kubeovnv1.DNSNameResolver)
+		if !ok {
 			continue
 		}
 

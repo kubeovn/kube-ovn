@@ -284,6 +284,7 @@ type Controller struct {
 	anpKeyMutex    keymutex.KeyMutex
 
 	dnsNameResolversLister          kubeovnlister.DNSNameResolverLister
+	dnsNameResolverIndexer          cache.Indexer
 	dnsNameResolversSynced          cache.InformerSynced
 	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
 	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
@@ -720,6 +721,12 @@ func Run(ctx context.Context, config *Configuration) {
 	if config.EnableDNSNameResolver {
 		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
 		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
+		if err := dnsNameResolverInformer.Informer().AddIndexers(cache.Indexers{
+			IndexDNSNameResolverByName: indexDNSNameResolverByName,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add DNSNameResolver indexer")
+		}
+		controller.dnsNameResolverIndexer = dnsNameResolverInformer.Informer().GetIndexer()
 		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
 	}
