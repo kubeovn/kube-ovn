@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 	"net"
@@ -40,12 +41,27 @@ func (a IP) Equal(b IP) bool {
 	return net.IP(a).Equal(net.IP(b))
 }
 
+// cmp compares a and b, returning -1, 0 or 1 if a is less than, equal to or
+// greater than b. It normalizes per address family so that IPv4 addresses
+// compare by their 4-byte value whether stored as 4 or 16 bytes, keeping the
+// result consistent with Equal. Same-family comparisons — the only kind the
+// range engine performs, since IP range lists are family-segregated — are
+// allocation-free, replacing the two heap big.Int the old implementation paid
+// on every comparison. The mixed-family fallback exists only for determinism
+// and is never reached on the hot path.
+func (a IP) cmp(b IP) int {
+	if a4, b4 := net.IP(a).To4(), net.IP(b).To4(); a4 != nil && b4 != nil {
+		return bytes.Compare(a4, b4)
+	}
+	return bytes.Compare(net.IP(a).To16(), net.IP(b).To16())
+}
+
 func (a IP) LessThan(b IP) bool {
-	return big.NewInt(0).SetBytes([]byte(a)).Cmp(big.NewInt(0).SetBytes([]byte(b))) < 0
+	return a.cmp(b) < 0
 }
 
 func (a IP) GreaterThan(b IP) bool {
-	return big.NewInt(0).SetBytes([]byte(a)).Cmp(big.NewInt(0).SetBytes([]byte(b))) > 0
+	return a.cmp(b) > 0
 }
 
 func bytes2IP(buff []byte, length int) IP {
