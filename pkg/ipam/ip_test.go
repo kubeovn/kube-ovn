@@ -136,6 +136,42 @@ func TestIPGreaterThan(t *testing.T) {
 	}
 }
 
+// TestIPCompareMixedRepresentation ensures the comparison orders IPv4 addresses
+// by numeric value regardless of whether they are stored in 4-byte or 16-byte
+// (v4-in-v6) representation. The previous big.Int implementation compared raw
+// bytes and got this wrong for mixed representations.
+func TestIPCompareMixedRepresentation(t *testing.T) {
+	v4 := IP(net.ParseIP("192.168.1.5").To4())   // 4-byte form
+	v16 := IP(net.ParseIP("192.168.1.2").To16()) // 16-byte v4-in-v6 form
+
+	require.True(t, v4.GreaterThan(v16), "192.168.1.5 (4-byte) > 192.168.1.2 (16-byte)")
+	require.True(t, v16.LessThan(v4), "192.168.1.2 (16-byte) < 192.168.1.5 (4-byte)")
+	require.False(t, v4.LessThan(v16))
+	require.False(t, v16.GreaterThan(v4))
+
+	// Same value across representations: neither less nor greater, and equal.
+	same4 := IP(net.ParseIP("10.0.0.1").To4())
+	same16 := IP(net.ParseIP("10.0.0.1").To16())
+	require.False(t, same4.LessThan(same16))
+	require.False(t, same4.GreaterThan(same16))
+	require.True(t, same4.Equal(same16))
+}
+
+// TestIPCompareV4ZeroVsV6Zero documents that 0.0.0.0 and :: are treated as
+// distinct addresses with a deterministic, total ordering that is consistent
+// with Equal. This case does not occur in practice because IP range lists are
+// segregated by address family, but the comparison must not report them equal.
+func TestIPCompareV4ZeroVsV6Zero(t *testing.T) {
+	v4zero := IP(net.ParseIP("0.0.0.0").To4()) // 4-byte, all zero
+	v6zero := IP(net.ParseIP("::"))            // 16-byte, all zero
+
+	require.False(t, v4zero.Equal(v6zero))
+	require.True(t, v4zero.GreaterThan(v6zero))
+	require.True(t, v6zero.LessThan(v4zero))
+	require.False(t, v4zero.LessThan(v6zero))
+	require.False(t, v6zero.GreaterThan(v4zero))
+}
+
 func TestIPAdd(t *testing.T) {
 	tests := []struct {
 		name string

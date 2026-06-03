@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 	"net"
@@ -40,12 +41,25 @@ func (a IP) Equal(b IP) bool {
 	return net.IP(a).Equal(net.IP(b))
 }
 
+// cmp compares a and b, returning -1, 0 or 1 if a is less than, equal to or
+// greater than b. It is allocation-free and normalizes per address family so
+// that IPv4 addresses compare as their 4-byte value regardless of whether they
+// are stored in 4-byte or 16-byte (v4-in-v6) representation. This keeps the
+// result consistent with Equal and avoids the big.Int allocations that the
+// range engine would otherwise pay on every comparison.
+func (a IP) cmp(b IP) int {
+	if a4, b4 := net.IP(a).To4(), net.IP(b).To4(); a4 != nil && b4 != nil {
+		return bytes.Compare(a4, b4)
+	}
+	return bytes.Compare(net.IP(a).To16(), net.IP(b).To16())
+}
+
 func (a IP) LessThan(b IP) bool {
-	return big.NewInt(0).SetBytes([]byte(a)).Cmp(big.NewInt(0).SetBytes([]byte(b))) < 0
+	return a.cmp(b) < 0
 }
 
 func (a IP) GreaterThan(b IP) bool {
-	return big.NewInt(0).SetBytes([]byte(a)).Cmp(big.NewInt(0).SetBytes([]byte(b))) > 0
+	return a.cmp(b) > 0
 }
 
 func bytes2IP(buff []byte, length int) IP {
