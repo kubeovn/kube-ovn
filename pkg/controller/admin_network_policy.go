@@ -755,23 +755,18 @@ func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]st
 	var allV4Addresses, allV6Addresses []string
 
 	for _, domainName := range domainNames {
-		// Find DNSNameResolver for this domain name
-		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+		// O(1) lookup via the Spec.Name informer index instead of listing all resolvers
+		objs, err := c.dnsNameResolverIndexer.ByIndex(IndexDNSNameResolverByName, string(domainName))
 		if err != nil {
-			klog.Errorf("Failed to list DNSNameResolvers: %v", err)
+			klog.Errorf("failed to query DNSNameResolver index for domain %s: %v", domainName, err)
 			continue
 		}
-
-		var foundResolver *kubeovnv1.DNSNameResolver
-		for _, resolver := range dnsNameResolvers {
-			if string(resolver.Spec.Name) == string(domainName) {
-				foundResolver = resolver
-				break
-			}
-		}
-
-		if foundResolver == nil {
+		if len(objs) == 0 {
 			klog.V(3).Infof("No DNSNameResolver found for domain %s, skipping", domainName)
+			continue
+		}
+		foundResolver, ok := objs[0].(*kubeovnv1.DNSNameResolver)
+		if !ok {
 			continue
 		}
 

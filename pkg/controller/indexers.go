@@ -4,11 +4,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/client-go/tools/cache"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 const (
-	IndexPodByNode    = "byNodeName"
-	IndexEPSByService = "byServiceName"
+	IndexPodByNode             = "byNodeName"
+	IndexEPSByService          = "byServiceName"
+	IndexDNSNameResolverByName = "byDNSName"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -29,6 +32,14 @@ func indexEPSByService(obj any) ([]string, error) {
 		return nil, nil
 	}
 	return []string{eps.Namespace + "/" + svc}, nil
+}
+
+func indexDNSNameResolverByName(obj any) ([]string, error) {
+	r, ok := obj.(*kubeovnv1.DNSNameResolver)
+	if !ok || r.Spec.Name == "" {
+		return nil, nil
+	}
+	return []string{string(r.Spec.Name)}, nil
 }
 
 // setupIndexers registers custom informer indexers used by hot-path

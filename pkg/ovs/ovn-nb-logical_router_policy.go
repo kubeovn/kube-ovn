@@ -32,8 +32,13 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 	// Same priority, same match, only retain the first policy
 	duplicate := make([]string, 0, len(policyList))
 	var policyFound *ovnnb.LogicalRouterPolicy
+	// nextHopSet is only consulted for reroute policies; skip the allocation otherwise
+	var nextHopSet *strset.Set
+	if action == ovnnb.LogicalRouterPolicyActionReroute {
+		nextHopSet = strset.New(nextHops...)
+	}
 	for _, policy := range policyList {
-		if policy.Action != action || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(nextHops...).IsEqual(strset.New(policy.Nexthops...))) {
+		if policy.Action != action || (policy.Action == ovnnb.LogicalRouterPolicyActionReroute && !nextHopSet.IsEqual(strset.New(policy.Nexthops...))) {
 			duplicate = append(duplicate, policy.UUID)
 			continue
 		}
@@ -549,8 +554,13 @@ func (c *OVNNbClient) matchLogicalRouterPolicies(policy *ovnnb.LogicalRouterPoli
 		policyFound *ovnnb.LogicalRouterPolicy
 	)
 
+	// nextHopSet is only consulted for reroute policies; skip the allocation otherwise
+	var nextHopSet *strset.Set
+	if policy.Action == ovnnb.LogicalRouterPolicyActionReroute {
+		nextHopSet = strset.New(policy.Nexthops...)
+	}
 	for _, policyOld := range policyList {
-		if policyOld.Action != policy.Action || (policyOld.Action == ovnnb.LogicalRouterPolicyActionReroute && !strset.New(policy.Nexthops...).IsEqual(strset.New(policyOld.Nexthops...))) {
+		if policyOld.Action != policy.Action || (policyOld.Action == ovnnb.LogicalRouterPolicyActionReroute && !nextHopSet.IsEqual(strset.New(policyOld.Nexthops...))) {
 			duplicate = append(duplicate, policyOld.UUID)
 			continue
 		}

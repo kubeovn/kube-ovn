@@ -298,11 +298,12 @@ func (r *IPRangeList) Merge(x *IPRangeList) *IPRangeList {
 		}
 	}
 
-	return ret.Clone()
+	// ret is freshly allocated with cloned ranges, so no extra copy is needed
+	return ret
 }
 
 func (r *IPRangeList) MergeRange(x *IPRange) *IPRangeList {
-	return r.Merge(&IPRangeList{ranges: []*IPRange{x}}).Clone()
+	return r.Merge(&IPRangeList{ranges: []*IPRange{x}})
 }
 
 // Intersect returns a new list which contains items which are in both `r` and `x`
@@ -312,11 +313,14 @@ func (r *IPRangeList) Intersect(x *IPRangeList) *IPRangeList {
 }
 
 func (r *IPRangeList) String() string {
-	s := make([]string, 0, r.Len())
+	var b strings.Builder
 	for i := range r.Len() {
-		s = append(s, r.At(i).String())
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(r.At(i).String())
 	}
-	return strings.Join(s, ",")
+	return b.String()
 }
 
 // ToCIDRs converts the IP range list to a sorted list of CIDR strings.
