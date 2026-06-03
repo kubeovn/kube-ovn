@@ -172,6 +172,74 @@ func TestIPCompareV4ZeroVsV6Zero(t *testing.T) {
 	require.False(t, v6zero.GreaterThan(v4zero))
 }
 
+// TestIPCompareIPv6 exercises the same-family IPv6 comparison path of cmp:
+// ordering across different 16-bit groups, compressed vs. expanded equality,
+// multi-byte boundaries, and the all-zero / all-ones extremes. Each case also
+// verifies the ordering is total by checking the reversed operands.
+func TestIPCompareIPv6(t *testing.T) {
+	tests := []struct {
+		name string
+		a    IP
+		b    IP
+		// rel is the expected relationship of a to b: -1 (a<b), 0 (a==b), 1 (a>b).
+		rel int
+	}{
+		{
+			name: "low group differs",
+			a:    IP(net.ParseIP("2001:db8::1")),
+			b:    IP(net.ParseIP("2001:db8::2")),
+			rel:  -1,
+		},
+		{
+			name: "high group dominates lower groups",
+			a:    IP(net.ParseIP("2001:db8::ffff")),
+			b:    IP(net.ParseIP("2001:db9::1")),
+			rel:  -1,
+		},
+		{
+			name: "middle group differs",
+			a:    IP(net.ParseIP("2001:db8:1::")),
+			b:    IP(net.ParseIP("2001:db8:2::")),
+			rel:  -1,
+		},
+		{
+			name: "compressed equals expanded",
+			a:    IP(net.ParseIP("2001:db8::1")),
+			b:    IP(net.ParseIP("2001:0db8:0000:0000:0000:0000:0000:0001")),
+			rel:  0,
+		},
+		{
+			name: "unspecified is the smallest",
+			a:    IP(net.ParseIP("::")),
+			b:    IP(net.ParseIP("::1")),
+			rel:  -1,
+		},
+		{
+			name: "all-ones is the largest",
+			a:    IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
+			b:    IP(net.ParseIP("fffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
+			rel:  1,
+		},
+		{
+			name: "multi-byte boundary 00ff < 0100",
+			a:    IP(net.ParseIP("2001:db8::ff")),
+			b:    IP(net.ParseIP("2001:db8::100")),
+			rel:  -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.rel < 0, tt.a.LessThan(tt.b), "LessThan")
+			require.Equal(t, tt.rel > 0, tt.a.GreaterThan(tt.b), "GreaterThan")
+			require.Equal(t, tt.rel == 0, tt.a.Equal(tt.b), "Equal")
+			// swapping the operands must invert the ordering
+			require.Equal(t, tt.rel > 0, tt.b.LessThan(tt.a), "reverse LessThan")
+			require.Equal(t, tt.rel < 0, tt.b.GreaterThan(tt.a), "reverse GreaterThan")
+		})
+	}
+}
+
 func TestIPAdd(t *testing.T) {
 	tests := []struct {
 		name string
