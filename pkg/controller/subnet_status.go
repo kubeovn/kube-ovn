@@ -175,10 +175,18 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		return nil, err
 	}
 
-	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
+	// Look up the subnet's IPs via the bySubnet indexer instead of scanning the
+	// whole IP store with a label selector, keeping this hot path O(matched).
+	ipObjs, err := c.ipIndexer.ByIndex(IndexIPBySubnet, subnet.Name)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
+	}
+	podUsedIPs := make([]*kubeovnv1.IP, 0, len(ipObjs))
+	for _, obj := range ipObjs {
+		if ip, ok := obj.(*kubeovnv1.IP); ok {
+			podUsedIPs = append(podUsedIPs, ip)
+		}
 	}
 
 	noGWExcludeIPs := filterNonGatewayExcludeIPs(subnet)

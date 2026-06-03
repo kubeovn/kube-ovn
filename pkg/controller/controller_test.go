@@ -258,7 +258,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		AttachNetClient:      nadClient,
 	}
 
-	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		return nil, err
 	}
 

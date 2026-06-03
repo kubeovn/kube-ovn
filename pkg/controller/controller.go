@@ -154,6 +154,7 @@ type Controller struct {
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
+	ipIndexer     cache.Indexer
 	addIPQueue    workqueue.TypedRateLimitingInterface[string]
 	updateIPQueue workqueue.TypedRateLimitingInterface[string]
 	delIPQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IP]
@@ -731,7 +732,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
 	}
 
-	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		util.LogFatalAndExit(err, "failed to set up informer indexers")
 	}
 
