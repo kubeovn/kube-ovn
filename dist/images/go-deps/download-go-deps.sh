@@ -49,4 +49,14 @@ jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .
     esac
 done
 
+# Always rebuild the CNI plugins from source. The trivy scan above only enlists
+# binaries that are vulnerable at build time, but the upstream prebuilt plugins
+# embed whatever Go toolchain they were released with, so a plugin that is clean
+# today silently ships an outdated stdlib and becomes vulnerable once a new stdlib
+# CVE is published. The plugins are cheap to build (unlike kubectl), so rebuild
+# them unconditionally instead of leaving them pinned to the upstream binaries.
+for name in loopback macvlan portmap ipvlan; do
+    grep -q "^$name@" "$TARGETS_FILE" || echo "$name@$CNI_PLUGINS_VERSION" >> "$TARGETS_FILE"
+done
+
 cat "$TARGETS_FILE"
