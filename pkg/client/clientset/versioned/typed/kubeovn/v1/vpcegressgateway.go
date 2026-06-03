@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +49,9 @@ type VpcEgressGatewayInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.VpcEgressGatewayList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.VpcEgressGateway, err error)
+	Apply(ctx context.Context, vpcEgressGateway *applyconfigurationkubeovnv1.VpcEgressGatewayApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.VpcEgressGateway, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, vpcEgressGateway *applyconfigurationkubeovnv1.VpcEgressGatewayApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.VpcEgressGateway, err error)
 	GetScale(ctx context.Context, vpcEgressGatewayName string, options metav1.GetOptions) (*autoscalingv1.Scale, error)
 	UpdateScale(ctx context.Context, vpcEgressGatewayName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error)
 
@@ -56,13 +60,13 @@ type VpcEgressGatewayInterface interface {
 
 // vpcEgressGateways implements VpcEgressGatewayInterface
 type vpcEgressGateways struct {
-	*gentype.ClientWithList[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList, *applyconfigurationkubeovnv1.VpcEgressGatewayApplyConfiguration]
 }
 
 // newVpcEgressGateways returns a VpcEgressGateways
 func newVpcEgressGateways(c *KubeovnV1Client, namespace string) *vpcEgressGateways {
 	return &vpcEgressGateways{
-		gentype.NewClientWithList[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.VpcEgressGateway, *kubeovnv1.VpcEgressGatewayList, *applyconfigurationkubeovnv1.VpcEgressGatewayApplyConfiguration](
 			"vpc-egress-gateways",
 			c.RESTClient(),
 			scheme.ParameterCodec,

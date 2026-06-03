@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeIptablesDnatRules implements IptablesDnatRuleInterface
 type fakeIptablesDnatRules struct {
-	*gentype.FakeClientWithList[*v1.IptablesDnatRule, *v1.IptablesDnatRuleList]
+	*gentype.FakeClientWithListAndApply[*v1.IptablesDnatRule, *v1.IptablesDnatRuleList, *kubeovnv1.IptablesDnatRuleApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeIptablesDnatRules(fake *FakeKubeovnV1) kubeovnv1.IptablesDnatRuleInterface {
+func newFakeIptablesDnatRules(fake *FakeKubeovnV1) typedkubeovnv1.IptablesDnatRuleInterface {
 	return &fakeIptablesDnatRules{
-		gentype.NewFakeClientWithList[*v1.IptablesDnatRule, *v1.IptablesDnatRuleList](
+		gentype.NewFakeClientWithListAndApply[*v1.IptablesDnatRule, *v1.IptablesDnatRuleList, *kubeovnv1.IptablesDnatRuleApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("iptables-dnat-rules"),

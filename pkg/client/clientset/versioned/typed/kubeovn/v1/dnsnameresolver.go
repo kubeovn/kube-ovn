@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type DNSNameResolverInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.DNSNameResolverList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.DNSNameResolver, err error)
+	Apply(ctx context.Context, dNSNameResolver *applyconfigurationkubeovnv1.DNSNameResolverApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.DNSNameResolver, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, dNSNameResolver *applyconfigurationkubeovnv1.DNSNameResolverApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.DNSNameResolver, err error)
 	DNSNameResolverExpansion
 }
 
 // dNSNameResolvers implements DNSNameResolverInterface
 type dNSNameResolvers struct {
-	*gentype.ClientWithList[*kubeovnv1.DNSNameResolver, *kubeovnv1.DNSNameResolverList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.DNSNameResolver, *kubeovnv1.DNSNameResolverList, *applyconfigurationkubeovnv1.DNSNameResolverApplyConfiguration]
 }
 
 // newDNSNameResolvers returns a DNSNameResolvers
 func newDNSNameResolvers(c *KubeovnV1Client) *dNSNameResolvers {
 	return &dNSNameResolvers{
-		gentype.NewClientWithList[*kubeovnv1.DNSNameResolver, *kubeovnv1.DNSNameResolverList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.DNSNameResolver, *kubeovnv1.DNSNameResolverList, *applyconfigurationkubeovnv1.DNSNameResolverApplyConfiguration](
 			"dnsnameresolvers",
 			c.RESTClient(),
 			scheme.ParameterCodec,

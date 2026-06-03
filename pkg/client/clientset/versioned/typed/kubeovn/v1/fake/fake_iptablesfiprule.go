@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeIptablesFIPRules implements IptablesFIPRuleInterface
 type fakeIptablesFIPRules struct {
-	*gentype.FakeClientWithList[*v1.IptablesFIPRule, *v1.IptablesFIPRuleList]
+	*gentype.FakeClientWithListAndApply[*v1.IptablesFIPRule, *v1.IptablesFIPRuleList, *kubeovnv1.IptablesFIPRuleApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeIptablesFIPRules(fake *FakeKubeovnV1) kubeovnv1.IptablesFIPRuleInterface {
+func newFakeIptablesFIPRules(fake *FakeKubeovnV1) typedkubeovnv1.IptablesFIPRuleInterface {
 	return &fakeIptablesFIPRules{
-		gentype.NewFakeClientWithList[*v1.IptablesFIPRule, *v1.IptablesFIPRuleList](
+		gentype.NewFakeClientWithListAndApply[*v1.IptablesFIPRule, *v1.IptablesFIPRuleList, *kubeovnv1.IptablesFIPRuleApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("iptables-fip-rules"),

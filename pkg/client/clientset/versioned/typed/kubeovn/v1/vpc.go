@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type VpcInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.VpcList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.Vpc, err error)
+	Apply(ctx context.Context, vpc *applyconfigurationkubeovnv1.VpcApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.Vpc, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, vpc *applyconfigurationkubeovnv1.VpcApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.Vpc, err error)
 	VpcExpansion
 }
 
 // vpcs implements VpcInterface
 type vpcs struct {
-	*gentype.ClientWithList[*kubeovnv1.Vpc, *kubeovnv1.VpcList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.Vpc, *kubeovnv1.VpcList, *applyconfigurationkubeovnv1.VpcApplyConfiguration]
 }
 
 // newVpcs returns a Vpcs
 func newVpcs(c *KubeovnV1Client) *vpcs {
 	return &vpcs{
-		gentype.NewClientWithList[*kubeovnv1.Vpc, *kubeovnv1.VpcList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.Vpc, *kubeovnv1.VpcList, *applyconfigurationkubeovnv1.VpcApplyConfiguration](
 			"vpcs",
 			c.RESTClient(),
 			scheme.ParameterCodec,
