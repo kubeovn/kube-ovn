@@ -136,6 +136,110 @@ func TestIPGreaterThan(t *testing.T) {
 	}
 }
 
+// TestIPCompareMixedRepresentation ensures the comparison orders IPv4 addresses
+// by numeric value regardless of whether they are stored in 4-byte or 16-byte
+// (v4-in-v6) representation. The previous big.Int implementation compared raw
+// bytes and got this wrong for mixed representations.
+func TestIPCompareMixedRepresentation(t *testing.T) {
+	v4 := IP(net.ParseIP("192.168.1.5").To4())   // 4-byte form
+	v16 := IP(net.ParseIP("192.168.1.2").To16()) // 16-byte v4-in-v6 form
+
+	require.True(t, v4.GreaterThan(v16), "192.168.1.5 (4-byte) > 192.168.1.2 (16-byte)")
+	require.True(t, v16.LessThan(v4), "192.168.1.2 (16-byte) < 192.168.1.5 (4-byte)")
+	require.False(t, v4.LessThan(v16))
+	require.False(t, v16.GreaterThan(v4))
+
+	// Same value across representations: neither less nor greater, and equal.
+	same4 := IP(net.ParseIP("10.0.0.1").To4())
+	same16 := IP(net.ParseIP("10.0.0.1").To16())
+	require.False(t, same4.LessThan(same16))
+	require.False(t, same4.GreaterThan(same16))
+	require.True(t, same4.Equal(same16))
+}
+
+// TestIPCompareV4ZeroVsV6Zero documents that 0.0.0.0 and :: are treated as
+// distinct addresses with a deterministic, total ordering that is consistent
+// with Equal. This case does not occur in practice because IP range lists are
+// segregated by address family, but the comparison must not report them equal.
+func TestIPCompareV4ZeroVsV6Zero(t *testing.T) {
+	v4zero := IP(net.ParseIP("0.0.0.0").To4()) // 4-byte, all zero
+	v6zero := IP(net.ParseIP("::"))            // 16-byte, all zero
+
+	require.False(t, v4zero.Equal(v6zero))
+	require.True(t, v4zero.GreaterThan(v6zero))
+	require.True(t, v6zero.LessThan(v4zero))
+	require.False(t, v4zero.LessThan(v6zero))
+	require.False(t, v6zero.GreaterThan(v4zero))
+}
+
+// TestIPCompareIPv6 exercises the same-family IPv6 comparison path of cmp:
+// ordering across different 16-bit groups, compressed vs. expanded equality,
+// multi-byte boundaries, and the all-zero / all-ones extremes. Each case also
+// verifies the ordering is total by checking the reversed operands.
+func TestIPCompareIPv6(t *testing.T) {
+	tests := []struct {
+		name string
+		a    IP
+		b    IP
+		// rel is the expected relationship of a to b: -1 (a<b), 0 (a==b), 1 (a>b).
+		rel int
+	}{
+		{
+			name: "low group differs",
+			a:    IP(net.ParseIP("2001:db8::1")),
+			b:    IP(net.ParseIP("2001:db8::2")),
+			rel:  -1,
+		},
+		{
+			name: "high group dominates lower groups",
+			a:    IP(net.ParseIP("2001:db8::ffff")),
+			b:    IP(net.ParseIP("2001:db9::1")),
+			rel:  -1,
+		},
+		{
+			name: "middle group differs",
+			a:    IP(net.ParseIP("2001:db8:1::")),
+			b:    IP(net.ParseIP("2001:db8:2::")),
+			rel:  -1,
+		},
+		{
+			name: "compressed equals expanded",
+			a:    IP(net.ParseIP("2001:db8::1")),
+			b:    IP(net.ParseIP("2001:0db8:0000:0000:0000:0000:0000:0001")),
+			rel:  0,
+		},
+		{
+			name: "unspecified is the smallest",
+			a:    IP(net.ParseIP("::")),
+			b:    IP(net.ParseIP("::1")),
+			rel:  -1,
+		},
+		{
+			name: "all-ones is the largest",
+			a:    IP(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
+			b:    IP(net.ParseIP("fffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
+			rel:  1,
+		},
+		{
+			name: "multi-byte boundary 00ff < 0100",
+			a:    IP(net.ParseIP("2001:db8::ff")),
+			b:    IP(net.ParseIP("2001:db8::100")),
+			rel:  -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.rel < 0, tt.a.LessThan(tt.b), "LessThan")
+			require.Equal(t, tt.rel > 0, tt.a.GreaterThan(tt.b), "GreaterThan")
+			require.Equal(t, tt.rel == 0, tt.a.Equal(tt.b), "Equal")
+			// swapping the operands must invert the ordering
+			require.Equal(t, tt.rel > 0, tt.b.LessThan(tt.a), "reverse LessThan")
+			require.Equal(t, tt.rel < 0, tt.b.GreaterThan(tt.a), "reverse GreaterThan")
+		})
+	}
+}
+
 func TestIPAdd(t *testing.T) {
 	tests := []struct {
 		name string

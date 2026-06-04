@@ -225,6 +225,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
+	// hasCnpDomainNames is invariant across egress rules, so compute it once
+	hasDomainNames := hasCnpDomainNames(cnp)
+
 	// create egress acl
 	for index, rule := range cnp.Spec.Egress {
 		v4AddressSetName, as4len, v6AddressSetName, as6len, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
@@ -235,8 +238,6 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 
 		desiredEgressAddrSet.Add(v4AddressSetName, v6AddressSetName)
-
-		hasDomainNames := hasCnpDomainNames(cnp)
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
@@ -770,23 +771,18 @@ func (c *Controller) resolveDomainNamesForCnp(domainNames []v1alpha2.DomainName)
 	var allV4Addresses, allV6Addresses []string
 
 	for _, domainName := range domainNames {
-		// Find DNSNameResolver for this domain name
-		dnsNameResolvers, err := c.dnsNameResolversLister.List(labels.Everything())
+		// O(1) lookup via the Spec.Name informer index instead of listing all resolvers
+		objs, err := c.dnsNameResolverIndexer.ByIndex(IndexDNSNameResolverByName, string(domainName))
 		if err != nil {
-			klog.Errorf("failed to list DNSNameResolvers: %v", err)
+			klog.Errorf("failed to query DNSNameResolver index for domain %s: %v", domainName, err)
 			continue
 		}
-
-		var foundResolver *kubeovnv1.DNSNameResolver
-		for _, resolver := range dnsNameResolvers {
-			if string(resolver.Spec.Name) == string(domainName) {
-				foundResolver = resolver
-				break
-			}
-		}
-
-		if foundResolver == nil {
+		if len(objs) == 0 {
 			klog.V(3).Infof("no DNSNameResolver found for domain %s, skipping", domainName)
+			continue
+		}
+		foundResolver, ok := objs[0].(*kubeovnv1.DNSNameResolver)
+		if !ok {
 			continue
 		}
 

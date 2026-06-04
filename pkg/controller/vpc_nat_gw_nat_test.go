@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -480,4 +481,70 @@ func TestValidateSnat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDeleteFipInPod_NatGwGone verifies that deleteFipInPod returns nil (skips
+// cleanup) when the VpcNatGateway CRD no longer exists.
+func TestDeleteFipInPod_NatGwGone(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	err = fc.fakeController.deleteFipInPod("missing-gw", "10.0.0.1")
+	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
+}
+
+// TestDeleteFipInPod_NatGwExistsPodMissing verifies that deleteFipInPod returns
+// an error to trigger a retry when the gateway CRD exists but the pod is absent.
+func TestDeleteFipInPod_NatGwExistsPodMissing(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
+	})
+	require.NoError(t, err)
+	err = fc.fakeController.deleteFipInPod("test-gw", "10.0.0.1")
+	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+}
+
+// TestDeleteDnatInPod_NatGwGone verifies that deleteDnatInPod returns nil when
+// the VpcNatGateway CRD no longer exists.
+func TestDeleteDnatInPod_NatGwGone(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	err = fc.fakeController.deleteDnatInPod("missing-gw", "tcp", "10.0.0.1", "80")
+	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
+}
+
+// TestDeleteDnatInPod_NatGwExistsPodMissing verifies that deleteDnatInPod
+// returns an error to trigger a retry when the pod is absent.
+func TestDeleteDnatInPod_NatGwExistsPodMissing(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
+	})
+	require.NoError(t, err)
+	err = fc.fakeController.deleteDnatInPod("test-gw", "tcp", "10.0.0.1", "80")
+	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+}
+
+// TestDeleteSnatInPod_NatGwGone verifies that deleteSnatInPod returns nil when
+// the VpcNatGateway CRD no longer exists.
+func TestDeleteSnatInPod_NatGwGone(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	err = fc.fakeController.deleteSnatInPod("missing-gw", "10.0.0.1", "192.168.1.0/24")
+	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
+}
+
+// TestDeleteSnatInPod_NatGwExistsPodMissing verifies that deleteSnatInPod
+// returns an error to trigger a retry when the pod is absent.
+func TestDeleteSnatInPod_NatGwExistsPodMissing(t *testing.T) {
+	t.Parallel()
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
+	})
+	require.NoError(t, err)
+	err = fc.fakeController.deleteSnatInPod("test-gw", "10.0.0.1", "192.168.1.0/24")
+	require.Error(t, err, "should return error to retry when pod is temporarily absent")
 }

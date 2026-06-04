@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeVpcs implements VpcInterface
 type fakeVpcs struct {
-	*gentype.FakeClientWithList[*v1.Vpc, *v1.VpcList]
+	*gentype.FakeClientWithListAndApply[*v1.Vpc, *v1.VpcList, *kubeovnv1.VpcApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVpcs(fake *FakeKubeovnV1) kubeovnv1.VpcInterface {
+func newFakeVpcs(fake *FakeKubeovnV1) typedkubeovnv1.VpcInterface {
 	return &fakeVpcs{
-		gentype.NewFakeClientWithList[*v1.Vpc, *v1.VpcList](
+		gentype.NewFakeClientWithListAndApply[*v1.Vpc, *v1.VpcList, *kubeovnv1.VpcApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("vpcs"),

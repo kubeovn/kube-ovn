@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -45,18 +46,19 @@ type BgpConfInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.BgpConfList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.BgpConf, err error)
+	Apply(ctx context.Context, bgpConf *applyconfigurationkubeovnv1.BgpConfApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.BgpConf, err error)
 	BgpConfExpansion
 }
 
 // bgpConves implements BgpConfInterface
 type bgpConves struct {
-	*gentype.ClientWithList[*kubeovnv1.BgpConf, *kubeovnv1.BgpConfList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.BgpConf, *kubeovnv1.BgpConfList, *applyconfigurationkubeovnv1.BgpConfApplyConfiguration]
 }
 
 // newBgpConves returns a BgpConves
 func newBgpConves(c *KubeovnV1Client) *bgpConves {
 	return &bgpConves{
-		gentype.NewClientWithList[*kubeovnv1.BgpConf, *kubeovnv1.BgpConfList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.BgpConf, *kubeovnv1.BgpConfList, *applyconfigurationkubeovnv1.BgpConfApplyConfiguration](
 			"bgp-confs",
 			c.RESTClient(),
 			scheme.ParameterCodec,

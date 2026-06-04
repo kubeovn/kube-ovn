@@ -31,10 +31,11 @@ const (
 	IPv4Zero             = "0.0.0.0/32"
 	IPv4LinkLocalUnicast = "169.254.0.0/16"
 
-	IPv6Unspecified      = "::/128"
-	IPv6Loopback         = "::1/128"
-	IPv6Multicast        = "ff00::/8"
-	IPv6LinkLocalUnicast = "FE80::/10"
+	IPv6Unspecified         = "::/128"
+	IPv6Loopback            = "::1/128"
+	IPv6Multicast           = "ff00::/8"
+	IPv6LinkLocalUnicast    = "FE80::/10"
+	DefaultPodInterfaceName = "eth0"
 )
 
 // GenerateMac generates mac address.
@@ -823,4 +824,16 @@ func ValidateProtocol(protocol string) error {
 		return fmt.Errorf("must be %s or %s", ProtocolTCP, ProtocolUDP)
 	}
 	return nil
+}
+
+// GetAnnotationWithIfNameOverride returns the annotation value with interface name override if ifName is provided, otherwise return the annotation value without interface name.
+func GetAnnotationWithIfNameOverride(annotations map[string]string, provider, ifName, annotationTemplate string, appendIfName bool) string {
+	// default behaviour when no interface name is specified
+	// verify if a custom ifname is provided then annotation will be of form
+	// vm-overlay.default.ovn.net1.kubernetes.io/xxx: xxx
+	if appendIfName {
+		provider = fmt.Sprintf("%s.%s", provider, ifName)
+	}
+
+	return annotations[fmt.Sprintf(annotationTemplate, provider)]
 }

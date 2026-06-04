@@ -237,6 +237,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		providerNetworksLister:  providerNetworkInformer.Lister(),
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
+		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
 		OVNNbClient:             mockOvnClient,
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),
@@ -257,7 +258,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		AttachNetClient:      nadClient,
 	}
 
-	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+	if err := ctrl.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		return nil, err
 	}
 

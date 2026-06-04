@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeEvpnConves implements EvpnConfInterface
 type fakeEvpnConves struct {
-	*gentype.FakeClientWithList[*v1.EvpnConf, *v1.EvpnConfList]
+	*gentype.FakeClientWithListAndApply[*v1.EvpnConf, *v1.EvpnConfList, *kubeovnv1.EvpnConfApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeEvpnConves(fake *FakeKubeovnV1) kubeovnv1.EvpnConfInterface {
+func newFakeEvpnConves(fake *FakeKubeovnV1) typedkubeovnv1.EvpnConfInterface {
 	return &fakeEvpnConves{
-		gentype.NewFakeClientWithList[*v1.EvpnConf, *v1.EvpnConfList](
+		gentype.NewFakeClientWithListAndApply[*v1.EvpnConf, *v1.EvpnConfList, *kubeovnv1.EvpnConfApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("evpn-confs"),

@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeBgpConves implements BgpConfInterface
 type fakeBgpConves struct {
-	*gentype.FakeClientWithList[*v1.BgpConf, *v1.BgpConfList]
+	*gentype.FakeClientWithListAndApply[*v1.BgpConf, *v1.BgpConfList, *kubeovnv1.BgpConfApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeBgpConves(fake *FakeKubeovnV1) kubeovnv1.BgpConfInterface {
+func newFakeBgpConves(fake *FakeKubeovnV1) typedkubeovnv1.BgpConfInterface {
 	return &fakeBgpConves{
-		gentype.NewFakeClientWithList[*v1.BgpConf, *v1.BgpConfList](
+		gentype.NewFakeClientWithListAndApply[*v1.BgpConf, *v1.BgpConfList, *kubeovnv1.BgpConfApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("bgp-confs"),

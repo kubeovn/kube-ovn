@@ -732,6 +732,17 @@ func (c *Controller) setIptables() error {
 		protocols = append(protocols, c.protocol)
 	}
 
+	// snapshot the existing ipset names once per pass; the KUBE-* sets are owned
+	// by kube-proxy and never change within this synchronous reconcile, so this
+	// replaces repeated `ipset list -n` forks (one per existence check) with a
+	// single fork shared across both protocols
+	ipsetNames, err := c.k8sipsets.ListSets()
+	if err != nil {
+		klog.Errorf("failed to list ipset names: %v", err)
+		return err
+	}
+	existingIPSets := set.New[string](ipsetNames...)
+
 	for _, protocol := range protocols {
 		ipt := c.iptables[protocol]
 		if ipt == nil {
@@ -749,12 +760,7 @@ func (c *Controller) setIptables() error {
 		}
 
 		ipset := fmt.Sprintf("KUBE-%sCLUSTER-IP", kubeProxyIpsetProtocol)
-		ipsetExists, err := c.ipsetExists(ipset)
-		if err != nil {
-			klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
-			return err
-		}
-		if ipsetExists {
+		if existingIPSets.Has(ipset) {
 			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i %s -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, util.NodeNic, matchset, ipset))
 			rejectRule := strings.Fields(fmt.Sprintf(`-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
 			iptablesRules = append(iptablesRules,
@@ -794,12 +800,7 @@ func (c *Controller) setIptables() error {
 
 			for _, p := range [...]string{"tcp", "udp"} {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
-				ipsetExists, err := c.ipsetExists(ipset)
-				if err != nil {
-					klog.Errorf("failed to check existence of ipset %s: %v", ipset, err)
-					return err
-				}
-				if !ipsetExists {
+				if !existingIPSets.Has(ipset) {
 					klog.V(5).Infof("ipset %s does not exist", ipset)
 					continue
 				}
@@ -1917,15 +1918,6 @@ func (c *Controller) deleteObsoleteSnatRules(ipt *iptables.IPTables, table, chai
 	}
 
 	return nil
-}
-
-func (c *Controller) ipsetExists(name string) (bool, error) {
-	sets, err := c.k8sipsets.ListSets()
-	if err != nil {
-		return false, fmt.Errorf("failed to list ipset names: %w", err)
-	}
-
-	return slices.Contains(sets, name), nil
 }
 
 func getNatOutGoingPolicyRuleIPSetName(ruleID, srcOrDst, protocol string, hasPrefix bool) string {

@@ -11,6 +11,32 @@ ovn-ctl status_ovnsb
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 BIND_LOCAL_ADDR=[${POD_IP:-127.0.0.1}]
 
+# Single-replica (standalone) mode: there is exactly one ovn-central pod and the
+# DB is not clustered, so there is no raft leader to query and no ovn_northd
+# lock to contend. Always mark this pod as the leader for nb/sb/northd, then run
+# the DB consistency check and compaction.
+if [[ -z "${NODE_IPS:-}" ]]; then
+    kubectl label --overwrite pod "$POD_NAME" -n "$POD_NAMESPACE" \
+        ovn-nb-leader=true ovn-sb-leader=true ovn-northd-leader=true
+
+    nb_status=$(ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound)
+    echo "nb $nb_status"
+    if [[ $nb_status =~ "inconsistent" ]]; then
+        exit 1
+    fi
+    sb_status=$(ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound)
+    echo "sb $sb_status"
+    if [[ $sb_status =~ "inconsistent" ]]; then
+        exit 1
+    fi
+
+    set +e
+    ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+    ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+    echo ""
+    exit 0
+fi
+
 # For data consistency, only store leader address in endpoint
 # Store ovn-nb leader to svc kube-system/ovn-nb
 if [[ "$ENABLE_SSL" == "false" ]]; then

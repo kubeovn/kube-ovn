@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderFullOnly" . }}
 {{- if include "kubeovn.ovn.versionCompatibility" . -}}
 ---
 apiVersion: v1
@@ -118,7 +119,10 @@ spec:
             - -eo
             - pipefail
             - -c
-            - bash /kube-ovn/pre-upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/pre-upgrade-ovs.log
+            - |
+              touch /var/log/kube-ovn/pre-upgrade-ovs.log
+              chmod 640 /var/log/kube-ovn/pre-upgrade-ovs.log
+              bash /kube-ovn/pre-upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/pre-upgrade-ovs.log
           volumeMounts:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
@@ -127,3 +131,5 @@ spec:
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/kube-ovn
 {{- end -}}
+
+{{- end }}

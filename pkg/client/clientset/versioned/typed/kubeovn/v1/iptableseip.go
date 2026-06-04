@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type IptablesEIPInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.IptablesEIPList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.IptablesEIP, err error)
+	Apply(ctx context.Context, iptablesEIP *applyconfigurationkubeovnv1.IptablesEIPApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.IptablesEIP, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, iptablesEIP *applyconfigurationkubeovnv1.IptablesEIPApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.IptablesEIP, err error)
 	IptablesEIPExpansion
 }
 
 // iptablesEIPs implements IptablesEIPInterface
 type iptablesEIPs struct {
-	*gentype.ClientWithList[*kubeovnv1.IptablesEIP, *kubeovnv1.IptablesEIPList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.IptablesEIP, *kubeovnv1.IptablesEIPList, *applyconfigurationkubeovnv1.IptablesEIPApplyConfiguration]
 }
 
 // newIptablesEIPs returns a IptablesEIPs
 func newIptablesEIPs(c *KubeovnV1Client) *iptablesEIPs {
 	return &iptablesEIPs{
-		gentype.NewClientWithList[*kubeovnv1.IptablesEIP, *kubeovnv1.IptablesEIPList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.IptablesEIP, *kubeovnv1.IptablesEIPList, *applyconfigurationkubeovnv1.IptablesEIPApplyConfiguration](
 			"iptables-eips",
 			c.RESTClient(),
 			scheme.ParameterCodec,

@@ -1228,6 +1228,28 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.39 (2026-05-29)
+
+ * [3e7d8629e](https://github.com/kubeovn/kube-ovn/commit/3e7d8629e23ae174baa47862255a18232e805a3d) release v1.14.39
+ * [8101b819e](https://github.com/kubeovn/kube-ovn/commit/8101b819e8b4a9411f50345e38dd40581635d490) fix: restrict hook log file permissions (#6794)
+ * [cd440469e](https://github.com/kubeovn/kube-ovn/commit/cd440469e34d1d673923b885be1c89a639d5a2df) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
+## v1.14.38 (2026-05-25)
+
+ * [67553a2bb](https://github.com/kubeovn/kube-ovn/commit/67553a2bb6268bc1c434f3ea15411309cd8820a4) release v1.14.38
+ * [700bf5dbd](https://github.com/kubeovn/kube-ovn/commit/700bf5dbd80d64face54087dca56a76b4c8debc3) chore(deps): update Go dependencies (#6779)
+ * [ce49e84c1](https://github.com/kubeovn/kube-ovn/commit/ce49e84c1a77fd1a4524b3309b98c74a870f79f2) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.37 (2026-05-19)
 
  * [25a3f9054](https://github.com/kubeovn/kube-ovn/commit/25a3f90549e680ecdd0f1ae1f417a762c18d7cd1) release v1.14.37

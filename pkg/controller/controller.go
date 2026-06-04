@@ -154,6 +154,7 @@ type Controller struct {
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
+	ipIndexer     cache.Indexer
 	addIPQueue    workqueue.TypedRateLimitingInterface[string]
 	updateIPQueue workqueue.TypedRateLimitingInterface[string]
 	delIPQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IP]
@@ -284,6 +285,7 @@ type Controller struct {
 	anpKeyMutex    keymutex.KeyMutex
 
 	dnsNameResolversLister          kubeovnlister.DNSNameResolverLister
+	dnsNameResolverIndexer          cache.Indexer
 	dnsNameResolversSynced          cache.InformerSynced
 	addOrUpdateDNSNameResolverQueue workqueue.TypedRateLimitingInterface[string]
 	deleteDNSNameResolverQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.DNSNameResolver]
@@ -720,11 +722,17 @@ func Run(ctx context.Context, config *Configuration) {
 	if config.EnableDNSNameResolver {
 		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
 		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
+		if err := dnsNameResolverInformer.Informer().AddIndexers(cache.Indexers{
+			IndexDNSNameResolverByName: indexDNSNameResolverByName,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add DNSNameResolver indexer")
+		}
+		controller.dnsNameResolverIndexer = dnsNameResolverInformer.Informer().GetIndexer()
 		controller.addOrUpdateDNSNameResolverQueue = newTypedRateLimitingQueue[string]("AddOrUpdateDNSNameResolver", nil)
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
 	}
 
-	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer()); err != nil {
+	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		util.LogFatalAndExit(err, "failed to set up informer indexers")
 	}
 

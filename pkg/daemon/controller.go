@@ -393,9 +393,9 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 
 	if excluded {
 		c.recordProviderNetworkErr(pn.Name, "")
-		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
+		return c.cleanProviderNetwork(pn.DeepCopy(), node)
 	}
-	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
+	return c.initProviderNetwork(pn.DeepCopy(), node)
 }
 
 func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
@@ -407,6 +407,8 @@ func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
 	return pn.Spec.DefaultInterface
 }
 
+// initProviderNetwork configures the provider network on the local node.
+// node must not be mutated; it is backed by the shared informer cache.
 func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
 	nic := providerNetworkNic(pn, node.Name)
 
@@ -543,6 +545,8 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 	}
 }
 
+// cleanProviderNetwork tears down the provider network from the local node.
+// node must not be mutated; it is backed by the shared informer cache.
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
 	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,

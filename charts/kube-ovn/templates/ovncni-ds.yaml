@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -290,3 +291,5 @@ spec:
           hostPath:
             path: {{ .Values.OVN_IPSEC_KEY_DIR }}
         {{- end }}
+
+{{- end }}

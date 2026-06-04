@@ -297,7 +297,6 @@ func decodeCertificate(pemBytes []byte) (*x509.Certificate, error) {
 func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "PRIVATE KEY" {
-		fmt.Println(block.Type)
 		err := errors.New("certificate PEM block type must be PRIVATE KEY")
 		return nil, err
 	}

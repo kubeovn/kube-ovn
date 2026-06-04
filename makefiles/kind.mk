@@ -9,7 +9,7 @@ CILIUM_VERSION ?= v1.18.5
 CILIUM_IMAGE_REPO ?= quay.io/cilium
 
 # renovate: datasource=docker depName=kindest/node packageName=kindest/node versioning=semver
-K8S_VERSION ?= v1.35.1
+K8S_VERSION ?= v1.36.1
 
 KIND_NETWORK_UNDERLAY = $(shell echo $${KIND_NETWORK_UNDERLAY:-kind})
 UNDERLAY_NETWORK_VAR_PREFIX = DOCKER_NETWORK_$(shell echo $(KIND_NETWORK_UNDERLAY) | tr '[:lower:]-' '[:upper:]_')
@@ -284,6 +284,23 @@ kind-install-ipv6:
 .PHONY: kind-install-dual
 kind-install-dual:
 	@DUAL_STACK=true $(MAKE) kind-install
+
+.PHONY: kind-install-single-replica
+kind-install-single-replica:
+	@ENABLE_SINGLE_REPLICA_OVN=true OVN_CENTRAL_STORAGE_CLASS=standard $(MAKE) kind-install
+
+# Kamaji split-cluster setup: brings up a mgmt kind cluster running Kamaji +
+# kube-ovn controlPlaneOnly, plus a docker-container tenant worker joined to
+# the Kamaji-hosted tenant apiserver and running kube-ovn dataPlaneOnly.
+# Requires `kubeovn/kube-ovn:dev` to already exist locally (run
+# `make build-dev` first).
+.PHONY: kind-install-kamaji
+kind-install-kamaji:
+	@KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
+
+.PHONY: kind-clean-kamaji
+kind-clean-kamaji:
+	@./hack/kamaji-e2e.sh teardown
 
 .PHONY: kind-install-overlay
 kind-install-overlay: kind-install-overlay-ipv4

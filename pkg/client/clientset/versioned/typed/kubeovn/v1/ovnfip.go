@@ -22,6 +22,7 @@ import (
 	context "context"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	applyconfigurationkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
 	scheme "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -47,18 +48,21 @@ type OvnFipInterface interface {
 	List(ctx context.Context, opts metav1.ListOptions) (*kubeovnv1.OvnFipList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *kubeovnv1.OvnFip, err error)
+	Apply(ctx context.Context, ovnFip *applyconfigurationkubeovnv1.OvnFipApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.OvnFip, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, ovnFip *applyconfigurationkubeovnv1.OvnFipApplyConfiguration, opts metav1.ApplyOptions) (result *kubeovnv1.OvnFip, err error)
 	OvnFipExpansion
 }
 
 // ovnFips implements OvnFipInterface
 type ovnFips struct {
-	*gentype.ClientWithList[*kubeovnv1.OvnFip, *kubeovnv1.OvnFipList]
+	*gentype.ClientWithListAndApply[*kubeovnv1.OvnFip, *kubeovnv1.OvnFipList, *applyconfigurationkubeovnv1.OvnFipApplyConfiguration]
 }
 
 // newOvnFips returns a OvnFips
 func newOvnFips(c *KubeovnV1Client) *ovnFips {
 	return &ovnFips{
-		gentype.NewClientWithList[*kubeovnv1.OvnFip, *kubeovnv1.OvnFipList](
+		gentype.NewClientWithListAndApply[*kubeovnv1.OvnFip, *kubeovnv1.OvnFipList, *applyconfigurationkubeovnv1.OvnFipApplyConfiguration](
 			"ovn-fips",
 			c.RESTClient(),
 			scheme.ParameterCodec,

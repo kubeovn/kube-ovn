@@ -20,19 +20,20 @@ package fake
 
 import (
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/applyconfiguration/kubeovn/v1"
+	typedkubeovnv1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	gentype "k8s.io/client-go/gentype"
 )
 
 // fakeVips implements VipInterface
 type fakeVips struct {
-	*gentype.FakeClientWithList[*v1.Vip, *v1.VipList]
+	*gentype.FakeClientWithListAndApply[*v1.Vip, *v1.VipList, *kubeovnv1.VipApplyConfiguration]
 	Fake *FakeKubeovnV1
 }
 
-func newFakeVips(fake *FakeKubeovnV1) kubeovnv1.VipInterface {
+func newFakeVips(fake *FakeKubeovnV1) typedkubeovnv1.VipInterface {
 	return &fakeVips{
-		gentype.NewFakeClientWithList[*v1.Vip, *v1.VipList](
+		gentype.NewFakeClientWithListAndApply[*v1.Vip, *v1.VipList, *kubeovnv1.VipApplyConfiguration](
 			fake.Fake,
 			"",
 			v1.SchemeGroupVersion.WithResource("vips"),

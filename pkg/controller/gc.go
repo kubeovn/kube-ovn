@@ -941,15 +941,17 @@ func (c *Controller) gcRoutePolicy() error {
 		return err
 	}
 
-	podIPs := []string{}
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods, %v", err)
 		return err
 	}
+	podIPs := make(map[string]struct{})
 	for _, pod := range pods {
 		if pod.Annotations != nil && pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			podIPs = append(podIPs, strings.Split(pod.Annotations[util.IPAddressAnnotation], ",")...)
+			for ip := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
+				podIPs[ip] = struct{}{}
+			}
 		}
 	}
 
@@ -959,7 +961,7 @@ func (c *Controller) gcRoutePolicy() error {
 			continue
 		}
 		srcIP := strings.TrimSpace(parts[1])
-		if !slices.Contains(podIPs, srcIP) {
+		if _, ok := podIPs[srcIP]; !ok {
 			klog.Infof("gc route policy %s", policy.Match)
 			if err := c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 				klog.Errorf("failed to delete route policy %s: %v", policy.Match, err)

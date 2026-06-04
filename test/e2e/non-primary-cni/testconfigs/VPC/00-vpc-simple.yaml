@@ -89,3 +89,20 @@ spec:
   containers:
     - name: vpc-simple-pod2
       image: docker.io/library/nginx:alpine
+---
+# Test Pod 3 with multiple interfaces
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vpc-multi-nic-pod
+  namespace: vpc-simple-ns
+  labels:
+    config-stage: "1"
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{"name": "vpc-simple-nad", "namespace": "vpc-simple-ns", "interface": "net1"}, {"name": "vpc-simple-nad", "namespace": "vpc-simple-ns", "interface": "net2"}]'
+    vpc-simple-nad.vpc-simple-ns.ovn.net1.kubernetes.io/logical_switch: vpc-simple-subnet
+    vpc-simple-nad.vpc-simple-ns.ovn.net2.kubernetes.io/logical_switch: vpc-simple-subnet
+spec:
+  containers:
+    - name: vpc-multi-nic-pod
+      image: docker.io/library/nginx:alpine
