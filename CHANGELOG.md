@@ -1,5 +1,42 @@
 # Changelog
 
+## v1.16.2 (2026-06-04)
+
+ * [12506be4b](https://github.com/kubeovn/kube-ovn/commit/12506be4b99b03dcd873618771b0a50fa9e666cd) release v1.16.2
+ * [6b48ab050](https://github.com/kubeovn/kube-ovn/commit/6b48ab050770bd835411097a7c578b0214041252) PR introduces changes to correctly support multiple network interfaces from same subnet (#6766)
+ * [65c1fe34b](https://github.com/kubeovn/kube-ovn/commit/65c1fe34b5d02db739ae4195d11138130ade3a77) chore(deps): update golang to v1.26.4 (#6808)
+ * [fc230d53f](https://github.com/kubeovn/kube-ovn/commit/fc230d53f31963f54c6d71a79a61a2f48b5ae2b9) fix(controller): correct egress sync status field on ACL update failure (#6804)
+ * [280ef5e54](https://github.com/kubeovn/kube-ovn/commit/280ef5e548674fabd7fa76663c215a347e294efe) chore(deps): bump containerd/v2 to v2.2.4 to fix CVE-2026-46680
+ * [16c091067](https://github.com/kubeovn/kube-ovn/commit/16c091067620719fd44b429c8e999379db5c6f26) fix(controller): skip in-pod cleanup when VPC NAT gateway CRD is deleted (#6784) (#6798)
+ * [90abb973d](https://github.com/kubeovn/kube-ovn/commit/90abb973df1b248fb71619925df3bc1d3088d45e) fix(controller): populate v6ip from cached EIP in handleAddVpcExternalSubnet (#6799)
+ * [136ed4401](https://github.com/kubeovn/kube-ovn/commit/136ed4401232677beac8d1fba3066ad2fef52a0b) fix: restrict hook log file permissions (#6794)
+ * [8b51737d6](https://github.com/kubeovn/kube-ovn/commit/8b51737d61ca03d31e4c148cc913c573180125dd) fix: report VEG workload network readiness (#6790)
+ * [824d1e680](https://github.com/kubeovn/kube-ovn/commit/824d1e680f743a31c5ccd581c7adbf745a0d86d3) fix(veg): raise default bfdd CPU limit (#6788)
+ * [800abb91e](https://github.com/kubeovn/kube-ovn/commit/800abb91e5a67e7ebe5f799d8ec56d91ba7234af) fix(controller): avoid panic in external VPC sync when no logical switch is found (#6777)
+ * [d644104ce](https://github.com/kubeovn/kube-ovn/commit/d644104ce8435740d431521e7207cc2485adf896) fix(deps): update golang (#6771)
+ * [091af00f7](https://github.com/kubeovn/kube-ovn/commit/091af00f7e2bca5fc79400b6631321ba80b7f482) chore: apply modernize fixes flagged by latest gopls modernize (#6758)
+ * [9f6313404](https://github.com/kubeovn/kube-ovn/commit/9f6313404180f24bb76bdaf0861e89b9051bd879) feat: backport u2o overlay only routing to release-1.16 (#6752)
+ * [854621c21](https://github.com/kubeovn/kube-ovn/commit/854621c2135f4b4a10de9f9933e2b34a27b001b2) fix(controller): make BgpConf/EvpnConf informers optional (#6726) (#6737)
+ * [50d0f3e7c](https://github.com/kubeovn/kube-ovn/commit/50d0f3e7c80459b6ac6b5c108b2bbb10c3dffdf8) Block vpc deletion while SNAT, DNAT or FIP rules are using it (#6718)
+ * [6d9496255](https://github.com/kubeovn/kube-ovn/commit/6d9496255cc6ec8cca43f5b1881f49135cfc216f) Revert "fix(ha): detect and recover from split-brain leader with incomplete cluster membership (#6363)" (#6722)
+ * [beb902670](https://github.com/kubeovn/kube-ovn/commit/beb902670cfeca4cf6fc861a9290c67d7d4473b2) fix: use status variable instead of hardcoded ConditionTrue in loopOvn0Check (#6719)
+ * [fb93ec347](https://github.com/kubeovn/kube-ovn/commit/fb93ec34716e45823d412060d9f063ff8b9b6177) fix(deps): update golang (#6709)
+ * [37e89c63d](https://github.com/kubeovn/kube-ovn/commit/37e89c63dd00586b4064922afc6a2a0c3cce0c5e) fix(deps): update module github.com/osrg/gobgp/v4 to v4.5.0
+ * [8311fce68](https://github.com/kubeovn/kube-ovn/commit/8311fce686f3de93de40a9bec0a14b767fb9c46a) chore(deps): update dependency go to v1.26.3 (#6705)
+ * [a8f44752e](https://github.com/kubeovn/kube-ovn/commit/a8f44752e82f21d2cdbb5ed80e64dac1f82b9c71) fix(image): rebase OVN patches for branch-25.03 ARP/ND localnet rename (#6707)
+ * [55c99c5f7](https://github.com/kubeovn/kube-ovn/commit/55c99c5f74f0dcac94a2ced470811d8d30d6fc15) prepare for next release
+
+### Contributors
+
+ * 09mulcs
+ * Gaurav Mehta
+ * Harisudarsan
+ * Mengxin Liu
+ * Rohan
+ * changluyi
+ * renovate[bot]
+ * 张祖建
+
 ## v1.16.1 (2026-04-24)
 
  * [aa9c04821](https://github.com/kubeovn/kube-ovn/commit/aa9c0482122f7db39e4c8627d750dffbdb8fd0c5) release v1.16.1
